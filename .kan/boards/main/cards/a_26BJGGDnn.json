@@ -5,7 +5,15 @@
   "area": [
     "testing"
   ],
-  "column": "backlog-hi",
+  "column": "next",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Now cheap: tools/herdr-probe attaches a control stream to any pane and records the frame envelopes and decoded ANSI verbatim (see corpus/herdr-0.8.0/frames/). What this card adds is running real agents in those panes rather than a fake, so the corpus carries what Claude Code, codex, and friends actually paint - alternate screen, kitty graphics, spinners, wide glyphs - instead of a script's marker lines.\n\nWorth capturing per agent and per state, since the grid-snapshot harness will replay these as its oracle.",
+      "created_at_millis": 1786486563481,
+      "id": "c_26Lhe8uBV"
+    }
+  ],
   "created_at_millis": 1786461793326,
   "creator": "Alexander Terp",
   "description": "Capture Claude Code (and friends) sessions as replayable byte corpora: state transitions, heavy TUI redraws, kitty-protocol negotiation. Data files drive state-detection and rendering cases.",
@@ -13,11 +21,12 @@
   "labels": [
     "ai-hi"
   ],
-  "position": "UM",
+  "position": "UUUU",
   "title": "Record ANSI corpora from real agent sessions",
   "type": "chore",
-  "updated_at_millis": 1786482567913,
+  "updated_at_millis": 1786486563513,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1786461793326}
+    {"field":"column","value":"backlog-hi","at":1786461793326},
+    {"field":"column","value":"next","at":1786486563513}
   ]
 }

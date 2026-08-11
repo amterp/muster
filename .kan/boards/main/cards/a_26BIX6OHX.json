@@ -6,7 +6,15 @@
     "devenv",
     "testing"
   ],
-  "column": "in-progress",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Landed. devenv/ builds a debian-slim container with sshd and a pinned Linux herdr 0.8.0 (release binary verified against its published sha256, not a source build), reachable at ssh -p 2222 dev@localhost via ./devenv/devenv up.\n\nAcceptance was the probe itself: tools/herdr-probe/probe --remote runs all six scenarios against the container's daemon through an SSH socket forward, and diff-corpus reports 0 differences against the macOS corpus. Identical attach frames, PTY handling, done derivation, and refused key names.\n\nFake agents come from tools/herdr-probe/fake-agent rather than being duplicated, so local and remote fixtures cannot drift. probe-agent reports its state through the API; screen-agent installs as 'claude' and is detected from its screen.\n\nNot done here: CI wiring. Nothing runs this automatically yet - that belongs with the ./dev script card (a_26Jyk8yxA), which is what CI is meant to invoke.",
+      "created_at_millis": 1786486537881,
+      "id": "c_26LgyqBcf"
+    }
+  ],
   "created_at_millis": 1786461765323,
   "creator": "Alexander Terp",
   "description": "Linux container under devenv/ reachable at ssh -p 2222 dev@localhost, running the Linux herdr build and a fake agent that emits recognizable working/blocked/done output. Emulates the work devenv AND serves as the remote-path IT fixture, locally and in CI.",
@@ -14,14 +22,15 @@
   "labels": [
     "ai-hi"
   ],
-  "position": "U",
+  "position": "UUU",
   "title": "devenv container: sshd + Linux herdr + scripted fake agent",
   "type": "feature",
-  "updated_at_millis": 1786485304641,
+  "updated_at_millis": 1786486537914,
   "history": [
     {"field":"column","value":"next","at":1786461765323},
     {"field":"column","value":"backlog-hi","at":1786482295959},
     {"field":"column","value":"next","at":1786482473598},
-    {"field":"column","value":"in-progress","at":1786485304641}
+    {"field":"column","value":"in-progress","at":1786485304641},
+    {"field":"column","value":"done","at":1786486537914}
   ]
 }
