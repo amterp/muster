@@ -198,10 +198,24 @@ def agent_states(daemon, rec: Recorder) -> None:
     rec.note(f"after focusing that tab -> {after_focus}")
 
     rec.write_text("events.ndjson", "".join(json.dumps(e, sort_keys=True) + "\n" for e in events))
-    status_events = [e for e in events if e.get("event") == "pane_agent_status_changed"]
+
+    # Event names are not spelled consistently: most arrive snake_cased
+    # (pane_created, tab_focused), but the three subscriptions that take parameters
+    # keep their dotted subscription name. An adapter has to accept both.
+    kinds = sorted({e["event"] for e in events if "event" in e})
+    rec.fact("event_kinds_delivered", kinds)
+    rec.fact("event_kinds_dotted", [k for k in kinds if "." in k])
+    rec.fact("event_kinds_snake_cased", [k for k in kinds if "." not in k])
+
+    status_events = [e for e in events if e.get("event") in
+                     ("pane.agent_status_changed", "pane_agent_status_changed")]
     rec.fact("agent_status_change_events_seen", len(status_events))
     rec.fact("agent_status_event_sequence",
              [e["data"].get("agent_status") for e in status_events if isinstance(e.get("data"), dict)])
+    rec.fact("agent_detected_event_seen",
+             any(e.get("event") in ("pane_agent_detected", "pane.agent_detected") for e in events))
+    rec.note(f"status-change events pushed: "
+             f"{[e['data'].get('agent_status') for e in status_events if isinstance(e.get('data'), dict)]}")
 
     # Does pane.focus alone move seen-ness, or must the pane's TAB become active?
     client.request("tab.create", {"workspace_id": "w1", "focus": True})

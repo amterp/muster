@@ -35,6 +35,7 @@ shape.
   an OS. Both chosen organs already run on Linux and Windows.
 - **AI-native surface.** Configuration is files. Every action runs through one shared path exposed to GUI, CLI, and
   API alike - parity by construction, not by discipline - so agents can drive Muster the way they drive herdr.
+- **Harness-agnostic.** Strive to support many harnesses.
 
 ## Non-goals
 
@@ -56,8 +57,9 @@ how you run your agents.
 ## Repo conventions
 
 - `docs/`: `origin.md` is the founding story, frozen as history; `architecture.md`, `testing.md`, and `glossary.md`
-  are living doctrine; `docs/mip/` holds MIPs, the rare large decisions. Routine rationale lives in commit
-  messages; open questions live in the kan board's `uncommitted` column.
+  are living doctrine; `docs/mip/` holds MIPs, the rare large decisions; `docs/observations/` records what a
+  dependency was measured doing, one file per version, each claim citing raw transcripts in `corpus/`. Routine
+  rationale lives in commit messages; open questions live in the kan board's `uncommitted` column.
 - Work is tracked on the in-repo [kan](https://github.com/amterp/kan) board (`.kan/`, `kan list`). Agents keep it
   current: move cards as work starts and finishes, and add cards for work discovered along the way. If finishing work
   empties the `next` column, refill it from the backlog by priority and natural sequencing, so there is always a

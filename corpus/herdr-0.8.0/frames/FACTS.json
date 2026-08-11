@@ -1,0 +1,39 @@
+{
+  "attach_first_frame_bytes": 35605,
+  "attach_first_frame_full": true,
+  "attach_first_frame_seq": 1,
+  "attach_frame_geometry": [
+    80,
+    24
+  ],
+  "frame_count": 3,
+  "frame_envelope_keys": [
+    "bytes",
+    "encoding",
+    "full",
+    "height",
+    "seq",
+    "type",
+    "width"
+  ],
+  "frame_seq_monotonic": true,
+  "frame_seq_range": [
+    1,
+    3
+  ],
+  "full_frame_count": 1,
+  "mode_sequences_any_survived": false,
+  "mode_sequences_survive_frame_stream": {
+    "alt_screen_1049": false,
+    "bracketed_paste_2004": false,
+    "focus_reporting_1004": false,
+    "kitty_keyboard_push": false,
+    "mouse_1000": false,
+    "mouse_sgr_1006": false
+  },
+  "observer_frame_geometry": [
+    80,
+    24
+  ],
+  "observer_gets_full_frame_on_attach": true
+}

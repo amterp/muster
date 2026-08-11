@@ -1,0 +1,6 @@
+[   638ms] reportable states: ['idle', 'working', 'blocked', 'unknown']; rejected: ['done']
+[  1666ms] completion while pane is in the ACTIVE tab -> idle
+[  4226ms] completion while pane's tab is in the BACKGROUND -> done
+[  4226ms] after focusing that tab -> idle
+[  4227ms] status-change events pushed: ['working', 'done', 'idle']
+[  6088ms] pane.focus on a done pane: done -> idle

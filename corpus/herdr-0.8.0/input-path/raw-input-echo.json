@@ -1,0 +1,9 @@
+{
+  "alt_b": "sh-3.2$ aA\n\n        ^[^[^[[A^[[B^[[D^[[C^[OP^[[24~^C^A\nsh-3.2$ 7;2;13~kk\u20ac\u00e9stty raw -echo; cat -v\nsh: 7: command not found\nsh: 2: command not found\nsh: 13~kk\u20ac\u00e9stty: command not found\na^C\nsh-3.2$ b\n",
+  "bracketed_paste": "\n        ^[^[^[[A^[[B^[[D^[[C^[OP^[[24~^C^A\nsh-3.2$ 7;2;13~kk\u20ac\u00e9stty raw -echo; cat -v\nsh: 7: command not found\nsh: 2: command not found\nsh: 13~kk\u20ac\u00e9stty: command not found\na^C\nsh-3.2$ b\u00e97u00~pasted01~\n",
+  "ctrl_c": "sh-3.2$ aA\n\n        ^[^[^[[A^[[B^[[D^[[C^[OP^[[24~^C^A\nsh-3.2$ 7;2;13~kk\u20ac\u00e9stty raw -echo; cat -v\nsh: 7: command not found\nsh: 2: command not found\nsh: 13~kk\u20ac\u00e9stty: command not found\na^C\nsh-3.2$\n",
+  "esc": "sh-3.2$ aA\n\n        ^[^[^[[A^[[B^[[D^[[C^[OP^[[24~^C^A\nsh-3.2$ 7;2;13~kk\u20ac\u00e9stty raw -echo; cat -v\nsh: 7: command not found\nsh: 2: command not found\nsh: 13~kk\u20ac\u00e9stty: command not found\na^C\nsh-3.2$\n",
+  "kitty_csi_u_a": "sh-3.2$ aA\n\n        ^[^[^[[A^[[B^[[D^[[C^[OP^[[24~^C^A\nsh-3.2$ 7;2;13~kk\u20ac\u00e9stty raw -echo; cat -v\nsh: 7: command not found\nsh: 2: command not found\nsh: 13~kk\u20ac\u00e9stty: command not found\na^C\nsh-3.2$ b\u00e97u\n",
+  "plain_a": "sh-3.2$ aA\n\n        ^[^[^[[A^[[B^[[D^[[C^[OP^[[24~^C^A\nsh-3.2$ 7;2;13~kk\u20ac\u00e9stty raw -echo; cat -v\nsh: 7: command not found\nsh: 2: command not found\nsh: 13~kk\u20ac\u00e9stty: command not found\na\n",
+  "utf8_e_acute": "sh-3.2$ aA\n\n        ^[^[^[[A^[[B^[[D^[[C^[OP^[[24~^C^A\nsh-3.2$ 7;2;13~kk\u20ac\u00e9stty raw -echo; cat -v\nsh: 7: command not found\nsh: 2: command not found\nsh: 13~kk\u20ac\u00e9stty: command not found\na^C\nsh-3.2$ b\u00e9\n"
+}

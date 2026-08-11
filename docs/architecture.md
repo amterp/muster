@@ -54,10 +54,16 @@ contract corpus at this seam is the executable form of this vocabulary and the d
 (fork or wholesale) must satisfy.
 
 Agent states are working / blocked / idle / done / **unknown** - five, not four; unknown renders as itself, never as
-success. One transition has a client-side input: herdr distinguishes idle from done partly by whether a pane has
-been *seen*, and only backend-recognized focus counts as seeing. Muster therefore reports focus to the daemon as
-panes gain focus in its windows - otherwise every pane it renders reads as unseen forever. State is daemon truth,
-but seen-ness is fed by clients, so the vocabulary carries a "pane was seen" intent.
+success. State is daemon truth, but one of the five is computed from a client-side input, so the vocabulary has to
+carry that input.
+
+`done` is not stored: it is `idle` on a pane that has not been *seen*, and seen-ness is written only when an agent
+completes - a working or blocked pane going idle. At that moment the daemon asks two questions: is the pane's **tab**
+the active one, and does the foreground client's **window** have OS focus. Pane focus is not consulted. So Muster
+feeds seen-ness by driving the daemon's active tab, which `pane.focus` does as a side effect, and by reporting
+window focus - and the second has no method on herdr's JSON API today (see `observations/herdr-0.8.0.md`, and the
+kan card tracking the upstream ask). Until it does, a Muster window that loses OS focus while its active tab holds a
+running agent will mark that agent seen when nobody saw it.
 
 ## Control plane, data plane
 
@@ -71,11 +77,15 @@ between "bytes" and "control":
   (desiderata: fast is a feature).
 - **Everything else rides the control plane, through the core** - daemon events (structure, agent states, bells,
   titles), intents, configuration, and *input*. Key encoding needs the pane's terminal modes (kitty keyboard,
-  bracketed paste, mouse reporting), and those modes live in the daemon's VT; they are not replayed in the frame
-  stream. So surfaces do not encode input: the shell reports key, mouse, and text events with full fidelity, the
-  core routes them, and encoding happens at the adapter seam or in the daemon - whichever stage 1 of the founding
-  plan (`origin.md`) proves out. This mirrors herdr's own client design: report maximal key information, encode
-  where the modes live.
+  bracketed paste, mouse reporting), those modes live in the daemon's VT, they are not replayed in the frame
+  stream, and herdr exposes none of them on its API. So surfaces do not encode input and neither does the adapter:
+  the shell reports key, mouse, and text events with full fidelity, the core routes them, and the daemon encodes.
+  Muster sends raw bytes on the pane's control stream, which is what herdr's own TUI client does - report maximal
+  key information, encode where the modes live. herdr's named-key API is not an option: it has no navigation
+  cluster.
+- **The control plane is not one connection.** herdr answers a request and closes the socket, so each intent costs a
+  connect; only subscriptions are long-lived. Nothing may assume a persistent request/response channel, and the
+  per-intent connect is a cost the perf budget has to carry.
 - **Scroll belongs to the daemon.** A frame stream has no history, so surfaces hold no scrollback and never handle
   the wheel: scroll is an intent, answered by the daemon repainting the viewport.
 
@@ -94,9 +104,12 @@ between "bytes" and "control":
   view-local. Interacting writes daemon focus (which also feeds seen-ness); Muster never *routes* input by reading
   it, so another client moving daemon focus never yanks Muster's keyboard.
 - **Geometry follows the controller.** Pane cell dimensions are daemon truth; the shell converts pixels to cells
-  and sends resize intents. While Muster controls a pane the daemon holds it at Muster's geometry and other clients
-  view it at that size; the hold releases when Muster detaches. Sessions always survive Muster - but concurrent TUI
-  *viewing* of a Muster-controlled pane is degraded by design, and the fallback guarantee is scoped accordingly.
+  and sends resize intents. While Muster controls a pane, the pane's PTY is held at Muster's geometry. Other clients
+  are not dragged to that size - the daemon re-renders the screen into each viewer's own requested viewport - so
+  concurrent TUI viewing is degraded by seeing a larger screen reflowed into a smaller window, not by resizing.
+  The hold does **not** release when Muster detaches: a pane keeps the last geometry its controller set. Leaving a
+  user's panes sized to a window that no longer exists is the sharp edge of "sessions outlive everything", and
+  restoring geometry on detach is Muster's job until herdr does it.
 - **The shell owns nothing.** Surfaces are disposable renders of a pane channel. A surface attaching to a live pane
   starts with a full repaint and never assumes it saw the start of the stream. Closing a window destroys surfaces
   and touches no session.
@@ -107,10 +120,13 @@ State changes only by applying events and intents in one place, in one order per
 the result. Pane content is not state in this sense - it is a stream the surface renders. Two constraints carry the
 model:
 
-- **Application is convergent.** herdr exposes no event sequence numbers and no replay, so a gap cannot be
-  detected, only survived: every event is applied idempotently and carries absolute values, never deltas, so that
-  snapshot-plus-events converges regardless of what raced the bootstrap. Periodic reconciliation against a fresh
-  snapshot is the only true gap detector; its cadence is an implementation choice.
+- **Application is convergent.** herdr offers no event replay, and subscribing replays the current session as
+  synthetic events, so a client sees every existing entity twice and cannot ask for what it missed. Every event is
+  therefore applied idempotently and carries absolute values, never deltas, so snapshot-plus-events converges
+  regardless of what raced the bootstrap. There *are* per-entity counters - `revision` on panes, `state_change_seq`
+  on agents, `seq` on pane frames - so staleness is detectable per entity even though gaps in the stream are not;
+  whether those are enough to detect a gap should be settled before the reconciliation cadence is chosen. Periodic
+  reconciliation against a fresh snapshot is the fallback gap detector.
 - **Cross-daemon order is core order.** Streams from different daemons have no mutual order. Composition and
   attention are ordered by the core's own application sequence, and nothing may depend on cross-daemon event order
   for correctness.

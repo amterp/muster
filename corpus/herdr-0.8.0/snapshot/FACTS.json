@@ -1,0 +1,60 @@
+{
+  "export_contains_live_fields": {
+    "agent_status": false,
+    "focused": false,
+    "foreground_cwd": false,
+    "revision": false,
+    "scroll": false
+  },
+  "export_top_level_keys": [
+    "layout",
+    "type"
+  ],
+  "snapshot_counts": {
+    "agents": 0,
+    "layouts": 2,
+    "panes": 3,
+    "tabs": 2,
+    "workspaces": 1
+  },
+  "snapshot_live_fields_present": {
+    "agent_status": true,
+    "focused": true,
+    "foreground_cwd": true,
+    "revision": true,
+    "scroll": true
+  },
+  "snapshot_pane_keys": [
+    "agent_status",
+    "cwd",
+    "focused",
+    "foreground_cwd",
+    "pane_id",
+    "revision",
+    "scroll",
+    "tab_id",
+    "terminal_id",
+    "workspace_id"
+  ],
+  "snapshot_top_level_keys": [
+    "agents",
+    "focused_pane_id",
+    "focused_tab_id",
+    "focused_workspace_id",
+    "layouts",
+    "panes",
+    "protocol",
+    "tabs",
+    "version",
+    "workspaces"
+  ],
+  "subscribe_replay_event_kinds": [
+    "pane_created",
+    "pane_focused",
+    "tab_created",
+    "tab_focused",
+    "workspace_created",
+    "workspace_focused"
+  ],
+  "subscribe_replays_existing_state": true
+}

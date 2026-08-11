@@ -1,0 +1,3 @@
+[   531ms] pane.send_keys accepted 24/31 probed key names
+[  5314ms] sent raw byte probes through terminal.input; echo captured in raw-input-echo.json
+[  7364ms] CSI I (focus gained) on the control stream: done -> done

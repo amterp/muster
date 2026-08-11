@@ -1,0 +1,137 @@
+[
+  {
+    "data": {
+      "pane": {
+        "agent_status": "unknown",
+        "cwd": "/private/tmp",
+        "focused": true,
+        "foreground_cwd": "/private/tmp",
+        "pane_id": "w1:p1",
+        "revision": 0,
+        "scroll": {
+          "max_offset_from_bottom": 0,
+          "offset_from_bottom": 0,
+          "viewport_rows": 24
+        },
+        "tab_id": "w1:t1",
+        "terminal_id": "term_658cc708f85911",
+        "workspace_id": "w1"
+      },
+      "type": "pane_created"
+    },
+    "event": "pane_created"
+  },
+  {
+    "data": {
+      "pane_id": "w1:p1",
+      "type": "pane_focused",
+      "workspace_id": "w1"
+    },
+    "event": "pane_focused"
+  },
+  {
+    "data": {
+      "tab": {
+        "agent_status": "unknown",
+        "focused": true,
+        "label": "1",
+        "number": 1,
+        "pane_count": 1,
+        "tab_id": "w1:t1",
+        "workspace_id": "w1"
+      },
+      "type": "tab_created"
+    },
+    "event": "tab_created"
+  },
+  {
+    "data": {
+      "tab_id": "w1:t1",
+      "type": "tab_focused",
+      "workspace_id": "w1"
+    },
+    "event": "tab_focused"
+  },
+  {
+    "data": {
+      "type": "workspace_created",
+      "workspace": {
+        "active_tab_id": "w1:t1",
+        "agent_status": "unknown",
+        "focused": true,
+        "label": "tmp",
+        "number": 1,
+        "pane_count": 1,
+        "tab_count": 1,
+        "workspace_id": "w1"
+      }
+    },
+    "event": "workspace_created"
+  },
+  {
+    "data": {
+      "type": "workspace_focused",
+      "workspace_id": "w1"
+    },
+    "event": "workspace_focused"
+  },
+  {
+    "data": {
+      "pane": {
+        "agent_status": "unknown",
+        "cwd": "/private/tmp",
+        "focused": false,
+        "foreground_cwd": "/private/tmp",
+        "pane_id": "w1:p2",
+        "revision": 0,
+        "scroll": {
+          "max_offset_from_bottom": 0,
+          "offset_from_bottom": 0,
+          "viewport_rows": 23
+        },
+        "tab_id": "w1:t1",
+        "terminal_id": "term_658cc708f92c22",
+        "workspace_id": "w1"
+      },
+      "type": "pane_created"
+    },
+    "event": "pane_created"
+  },
+  {
+    "data": {
+      "tab": {
+        "agent_status": "unknown",
+        "focused": false,
+        "label": "2",
+        "number": 2,
+        "pane_count": 1,
+        "tab_id": "w1:t2",
+        "workspace_id": "w1"
+      },
+      "type": "tab_created"
+    },
+    "event": "tab_created"
+  },
+  {
+    "data": {
+      "pane": {
+        "agent_status": "unknown",
+        "cwd": "/Users/amterp/src/muster/tools/herdr-probe",
+        "focused": false,
+        "foreground_cwd": "/Users/amterp/src/muster/tools/herdr-probe",
+        "pane_id": "w1:p3",
+        "revision": 0,
+        "scroll": {
+          "max_offset_from_bottom": 0,
+          "offset_from_bottom": 0,
+          "viewport_rows": 23
+        },
+        "tab_id": "w1:t2",
+        "terminal_id": "term_658cc708f9f433",
+        "workspace_id": "w1"
+      },
+      "type": "pane_created"
+    },
+    "event": "pane_created"
+  }
+]

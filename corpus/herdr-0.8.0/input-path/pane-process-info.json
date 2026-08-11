@@ -1,0 +1,20 @@
+{
+  "process_info": {
+    "foreground_process_group_id": 51832,
+    "foreground_processes": [
+      {
+        "argv": [
+          "/bin/sh"
+        ],
+        "argv0": "sh",
+        "cmdline": "/bin/sh",
+        "cwd": "/private/tmp",
+        "name": "bash",
+        "pid": 51832
+      }
+    ],
+    "pane_id": "w1:p1",
+    "shell_pid": 51832
+  },
+  "type": "pane_process_info"
+}
