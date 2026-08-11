@@ -62,3 +62,8 @@ how you run your agents.
   current: move cards as work starts and finishes, and add cards for work discovered along the way. If finishing work
   empties the `next` column, refill it from the backlog by priority and natural sequencing, so there is always a
   scoped next thing to pick up.
+
+## Contributing
+
+- Keep ./docs and this README.md up to date with changes. Don't inflate them needlessly, be judicious.
+- Use Conventional Commits for commits.
