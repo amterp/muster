@@ -1,2 +1,6 @@
 CLAUDE.md
 .DS_Store
+
+# Python bytecode (tools/herdr-probe)
+__pycache__/
+*.py[cod]

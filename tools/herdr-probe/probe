@@ -1,0 +1,110 @@
+#!/usr/bin/env python3
+"""Observe a real herdr daemon and record what it does.
+
+Everything in docs/architecture.md about the backend was read out of herdr's source
+rather than watched on the wire. This probe watches it, and saves raw transcripts so
+the next herdr release can be re-observed instead of re-argued.
+
+Each run spawns its own daemon under a scratch config dir; it never touches the one
+holding your sessions.
+
+    ./probe                     # every scenario
+    ./probe frames input-path   # a subset
+    ./probe --list
+"""
+
+from __future__ import annotations
+
+import argparse
+import shutil
+import subprocess
+import sys
+import traceback
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from herdrprobe import scenarios
+from herdrprobe.client import ProtectedSocketError
+from herdrprobe.daemon import DEFAULT_ROOT, IsolatedDaemon
+from herdrprobe.recorder import Recorder
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_CORPUS = REPO_ROOT / "corpus"
+
+
+def herdr_identity(herdr_bin: str) -> tuple[str, int]:
+    out = subprocess.run([herdr_bin, "--version"], capture_output=True, text=True, check=True).stdout
+    version = out.strip().split()[-1]
+    status = subprocess.run([herdr_bin, "api", "schema"], capture_output=True, text=True, check=False).stdout
+    protocol = 0
+    for line in status.splitlines():
+        if line.startswith("protocol:"):
+            protocol = int(line.split(":", 1)[1].strip())
+    return version, protocol
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("scenarios", nargs="*", help="scenarios to run (default: all)")
+    parser.add_argument("--list", action="store_true", help="list scenarios and exit")
+    parser.add_argument("--root", type=Path, default=DEFAULT_ROOT,
+                        help=f"scratch dir for the probe's daemon (default: {DEFAULT_ROOT})")
+    parser.add_argument("--corpus", type=Path, default=None,
+                        help="where transcripts land (default: <repo>/corpus/herdr-<version>)")
+    parser.add_argument("--herdr", default="herdr", help="herdr binary to observe")
+    parser.add_argument("--keep", action="store_true", help="leave the daemon running afterwards")
+    args = parser.parse_args()
+
+    if args.list:
+        for name in scenarios.ALL:
+            print(name)
+        return 0
+
+    selected = args.scenarios or list(scenarios.ALL)
+    unknown = [s for s in selected if s not in scenarios.ALL]
+    if unknown:
+        print(f"unknown scenario(s): {', '.join(unknown)}\n"
+              f"  Known: {', '.join(scenarios.ALL)}", file=sys.stderr)
+        return 2
+
+    version, protocol = herdr_identity(args.herdr)
+    corpus = args.corpus or (DEFAULT_CORPUS / f"herdr-{version}")
+    print(f"herdr {version} (protocol {protocol}) -> {corpus}")
+
+    failures = []
+    for name in selected:
+        print(f"\n[{name}]", flush=True)
+        shutil.rmtree(args.root, ignore_errors=True)
+        daemon = IsolatedDaemon(args.root, herdr_bin=args.herdr)
+        daemon.prepare()
+        rec = Recorder(corpus, name, version, protocol)
+        try:
+            daemon.start()
+            print(f"    daemon: {daemon.socket_path}", flush=True)
+            scenarios.ALL[name](daemon, rec)
+        except ProtectedSocketError as exc:
+            print(f"\nrefused to run: {exc}", file=sys.stderr)
+            return 3
+        except Exception:
+            failures.append(name)
+            rec.write_text("FAILURE.txt", traceback.format_exc())
+            print(f"    FAILED - traceback in {rec.dir / 'FAILURE.txt'}", file=sys.stderr, flush=True)
+        finally:
+            facts = rec.finish()
+            print(f"    {len(facts)} facts -> {rec.dir}", flush=True)
+            if not args.keep:
+                daemon.stop()
+
+    if failures:
+        print(f"\n{len(failures)} scenario(s) failed: {', '.join(failures)}.\n"
+              f"  Impact: the findings doc cannot cite evidence that was never recorded.\n"
+              f"  Look at the FAILURE.txt in each, and at {args.root}/config/herdr/herdr-server.log.",
+              file=sys.stderr)
+        return 1
+    print(f"\nall {len(selected)} scenario(s) recorded under {corpus}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
