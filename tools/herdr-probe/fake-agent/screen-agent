@@ -1,0 +1,34 @@
+#!/bin/sh
+# A fake agent that herdr detects by reading its screen.
+#
+# The companion to probe-agent, which reports its state through the API instead. This
+# one paints a marker line and says nothing, so it exercises the path a real coding
+# agent takes: the daemon analyzes the pane against a detection manifest and decides.
+# Install fake-agent/claude.toml as the override manifest for the markers to mean
+# anything, and invoke this script under a name herdr knows - it detects the agent
+# from the pane's foreground process name.
+#
+# Commands, one per line: working | blocked | idle | quit
+
+state=idle
+tick=0
+
+paint() {
+    printf '\033[2J\033[H'
+    printf 'screen-agent - fake coding agent, detected by screen\n'
+    printf 'tick %s\n\n' "$tick"
+    printf 'PROBE-STATE:%s\n' "$(echo "$state" | tr '[:lower:]' '[:upper:]')"
+}
+
+paint
+
+while IFS= read -r line; do
+    tick=$((tick + 1))
+    case "$line" in
+        *working*) state=working ;;
+        *blocked*) state=blocked ;;
+        *idle*)    state=idle ;;
+        *quit*)    exit 0 ;;
+    esac
+    paint
+done

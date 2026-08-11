@@ -7,10 +7,10 @@ Every verdict here points at a file under `corpus/herdr-0.8.0/`. Re-record with
 `tools/herdr-probe/probe`; source citations are against the `v0.8.0` tag at
 `~/src/herdr`.
 
-Four of the five sections were the load-bearing claims `architecture.md` rested on
-without ever having watched them. Two survived unchanged, two survived with their
-mechanism wrong, and the protocol itself turned out to work differently from what
-either document assumed.
+Four sections were the load-bearing claims `architecture.md` rested on without ever
+having watched them. Two survived unchanged, two survived with their mechanism wrong,
+and the protocol itself turned out to work differently from what either document
+assumed.
 
 ## 1. `session.snapshot` is live structure - confirmed
 
@@ -201,19 +201,34 @@ no-replay half is right. The no-sequence-numbers half is not, and whether these
 counters are enough to detect a gap is worth settling before the reconciliation
 cadence gets chosen.
 
-## Unresolved
+## 7. Screen detection does not need a viewer - confirmed
 
-**Screen-detection manifests did not fire in a headless daemon.** A pane running a
-binary named `claude` was detected as a claude agent and reported `idle`, but a
-local override manifest at `<config>/agent-detection/claude.toml` - which herdr
-confirmed it had loaded, `local override active` - never moved the state off `idle`
-regardless of what the pane painted. Custom agent ids cannot be added at all: the
-override path is keyed on herdr's known-agent enum (`src/detect/manifest.rs:1097`).
+The question worth asking, because `architecture.md` has hidden panes detach their
+channels: does herdr still analyze a pane nobody is watching?
 
-Untested and load-bearing if true: whether screen detection needs a client actually
-viewing the pane. If it does, hidden panes stop updating their agent states, and
-"hidden panes detach their channels" in `architecture.md` becomes expensive. The probe
-attaches control streams, so this is cheap to answer next.
+It does. A pane running a screen-detected agent with no client attached tracked every
+state change:
 
-The fake agent works around it by reporting its lifecycle through the API instead,
-which is deterministic and exercises the same seen-ness machinery.
+| Screen painted | no viewer attached | control stream attached |
+|---|---|---|
+| `working` | 2.09s | 0.26s |
+| `idle` | 0.78s | 0.52s |
+| `blocked` | 0.26s | 0.26s |
+| `idle` | 0.26s | 0.26s |
+
+Detection is unconditional; the only difference is that the first transition after an
+agent starts is slower, and that happens with or without a viewer. So hidden panes may
+detach their channels without going blind, and the data plane stays free to scale with
+visible panes.
+
+Worth recording how this was nearly got wrong: earlier attempts polled for about a
+second and concluded detection was broken, then that it required a viewer. Both
+readings came from a poll shorter than the first transition. The scenario now settles
+on a state rather than sampling once.
+
+Agent identity comes from the pane's foreground process name, and override manifests
+live at `<config>/agent-detection/<agent>.toml` keyed on herdr's known-agent enum
+(`src/detect/manifest.rs:1097`). A fixture cannot introduce its own agent id, so
+`fake-agent/` borrows `claude`'s and replaces its rules.
+
+Evidence: `corpus/herdr-0.8.0/detection/`.

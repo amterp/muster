@@ -1,0 +1,44 @@
+{
+  "agent_detected_from_process_name": [
+    "claude"
+  ],
+  "detection_latency_no_viewer_s": [
+    [
+      "working",
+      2.09
+    ],
+    [
+      "idle",
+      0.78
+    ],
+    [
+      "blocked",
+      0.26
+    ],
+    [
+      "idle",
+      0.26
+    ]
+  ],
+  "detection_latency_with_viewer_s": [
+    [
+      "working",
+      0.26
+    ],
+    [
+      "idle",
+      0.52
+    ],
+    [
+      "blocked",
+      0.26
+    ],
+    [
+      "idle",
+      0.26
+    ]
+  ],
+  "detection_works_with_no_viewer": true,
+  "detection_works_with_viewer": true,
+  "override_manifest_loaded": true
+}

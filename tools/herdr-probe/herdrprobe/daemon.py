@@ -60,21 +60,36 @@ class IsolatedDaemon:
         )
         return env
 
-    def prepare(self, manifest_source: Path | None = None, extra_manifests: list[Path] = ()) -> None:
-        for path in (self.config_dir, self.state_dir, self.root / "home", self.root / "data", self.root / "cache"):
+    @property
+    def screen_agent(self) -> Path:
+        """The fake screen-detected agent, installed under a name herdr recognizes.
+
+        herdr identifies an agent from the pane's foreground process name, and only
+        names in its known-agent enum can carry an override manifest, so the fixture
+        ships as `claude`.
+        """
+        return self.root / "bin" / "claude"
+
+    def prepare(self, manifest_source: Path | None = None) -> None:
+        for path in (self.config_dir, self.state_dir, self.root / "home",
+                     self.root / "data", self.root / "cache", self.root / "bin"):
             path.mkdir(parents=True, exist_ok=True)
         (self.config_dir / "config.toml").write_text(_CONFIG_TOML)
 
+        # Copy the real manifests in rather than letting the daemon fetch them, so a
+        # run works offline and records the same rules every time.
         detection = self.state_dir / "herdr" / "agent-detection"
         detection.mkdir(parents=True, exist_ok=True)
         source = manifest_source or (Path.home() / ".local/state/herdr/agent-detection")
         if source.is_dir():
             shutil.copytree(source, detection, dirs_exist_ok=True)
-        for manifest in extra_manifests:
-            for subdir in ("local", "remote"):
-                target = detection / subdir
-                target.mkdir(parents=True, exist_ok=True)
-                shutil.copy(manifest, target / manifest.name)
+
+        fixtures = Path(__file__).resolve().parents[1] / "fake-agent"
+        override_dir = self.config_dir / "agent-detection"
+        override_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy(fixtures / "claude.toml", override_dir / "claude.toml")
+        shutil.copy(fixtures / "screen-agent", self.screen_agent)
+        self.screen_agent.chmod(0o755)
 
     def start(self, timeout: float = 20.0) -> None:
         log = open(self.root / "server.log", "ab")

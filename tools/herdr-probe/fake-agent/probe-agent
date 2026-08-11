@@ -6,9 +6,10 @@
 # reporting path - it both paints a marker line and calls `herdr pane report-agent`,
 # so its state is driven, not inferred, and a test never waits on screen scraping.
 #
-# Screen detection is deliberately not used here: custom manifests need an agent id
-# that exists in herdr's known-agent enum, and overriding a stock manifest did not
-# make its rules fire in a headless daemon (see docs/observations/herdr-0.8.0.md).
+# Its companion, screen-agent, takes the detection path instead. Reporting is the
+# better default for a test fixture: the state is driven rather than inferred, so a
+# test asserts immediately instead of waiting out detection latency, which runs to two
+# seconds on an agent's first transition.
 #
 # Commands, one per line: working | blocked | idle | quit
 # It reports `idle` on start, so a pane running it is a live agent immediately.

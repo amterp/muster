@@ -47,4 +47,6 @@ Nothing else in the repo depends on this; it is a dev tool, not a component.
 | `herdrprobe/panestream.py` | the pane data plane (`terminal session control`) |
 | `herdrprobe/scenarios.py` | the scenarios |
 | `herdrprobe/recorder.py` | corpus writer |
-| `fake-agent/` | a scripted agent for driving states |
+| `fake-agent/probe-agent` | fake agent that reports its state through the API |
+| `fake-agent/screen-agent` | fake agent that herdr detects by reading its screen |
+| `fake-agent/claude.toml` | detection manifest the screen agent is matched against |

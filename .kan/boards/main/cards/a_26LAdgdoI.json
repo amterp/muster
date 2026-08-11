@@ -6,7 +6,15 @@
     "backend",
     "testing"
   ],
-  "column": "next",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Answered: no. herdr analyzes a pane's screen whether or not a client is viewing it, so hidden panes keep reporting agent state and the data plane stays free to detach.\n\nLatency, painted state to daemon agreement, with no viewer attached: 2.09s, 0.78s, 0.26s, 0.26s. With a control stream attached: 0.26s, 0.52s, 0.26s, 0.26s. The slow one is an agent's first transition, and it is slow either way.\n\nRecorded as the 'detection' scenario, corpus/herdr-0.8.0/detection/, written up in docs/observations/herdr-0.8.0.md section 7. architecture.md's data-plane bullet now says so.\n\nWorth keeping in mind for whoever writes the next probe: two earlier attempts concluded detection was broken, then that it needed a viewer. Both polled for about a second, which is shorter than the first transition.",
+      "created_at_millis": 1786485551002,
+      "id": "c_26LHJ60DZ"
+    }
+  ],
   "created_at_millis": 1786485294690,
   "creator": "Alexander Terp",
   "description": "Unresolved from the 0.8.0 observation pass. A pane running a binary named claude was detected as a claude agent, but a local override manifest that herdr confirmed loading never moved the state off idle regardless of what the pane painted. The daemon was headless with no client viewing the pane.\n\nIf detection needs a viewer, then hidden panes stop updating agent states, and 'hidden panes detach their channels' in architecture.md gets expensive: Muster would have to hold a channel per pane it wants states for, and the render cost stops scaling with visible panes. Agent states are the desideratum the whole tool exists for, so this decides how the data plane is allowed to work.\n\nCheap to answer: the probe already attaches control streams. Attach one, then drive a detected agent's screen and see whether the state follows.",
@@ -14,11 +22,12 @@
   "labels": [
     "kill-criterion"
   ],
-  "position": "UUUUUU",
+  "position": "UU",
   "title": "Does screen agent-detection need an attached viewer?",
   "type": "chore",
-  "updated_at_millis": 1786485294690,
+  "updated_at_millis": 1786485551031,
   "history": [
-    {"field":"column","value":"next","at":1786485294690}
+    {"field":"column","value":"next","at":1786485294690},
+    {"field":"column","value":"done","at":1786485551031}
   ]
 }

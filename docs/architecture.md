@@ -73,8 +73,9 @@ between "bytes" and "control":
 - **Output rides the data plane.** Each visible pane has its own channel from adapter to surface, bypassing the
   core. With herdr the channel carries server-rendered frame diffs of the pane's screen - not the raw program
   output - so the daemon's render cost scales with *visible* panes: hidden panes detach their channels, and
-  revealing a pane costs one full repaint. The core never sits in this path; per-byte work in the core is a defect
-  (desiderata: fast is a feature).
+  revealing a pane costs one full repaint. Detaching costs no state: herdr analyzes a pane's screen whether or not
+  anyone is watching it, so a hidden pane keeps reporting its agent state. The core never sits in this path;
+  per-byte work in the core is a defect (desiderata: fast is a feature).
 - **Everything else rides the control plane, through the core** - daemon events (structure, agent states, bells,
   titles), intents, configuration, and *input*. Key encoding needs the pane's terminal modes (kitty keyboard,
   bracketed paste, mouse reporting), those modes live in the daemon's VT, they are not replayed in the frame

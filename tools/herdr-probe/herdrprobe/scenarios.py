@@ -416,10 +416,58 @@ def input_path(daemon, rec: Recorder) -> None:
     rec.fact("focus_related_method_probe", availability)
 
 
+def detection(daemon, rec: Recorder) -> None:
+    """Does screen-based agent detection need a client viewing the pane?
+
+    It decides how much the data plane may detach. If detection only runs for panes
+    someone is watching, then hidden panes freeze their agent states, and agent states
+    are the whole reason Muster exists.
+    """
+    client = RecordingClient(daemon.client(), rec)
+    _new_workspace(client)
+    time.sleep(0.4)
+
+    client.request("pane.send_text", {"pane_id": "w1:p1", "text": f"exec {daemon.screen_agent}\n"})
+    time.sleep(1.5)
+    agents = client.request("session.snapshot")["snapshot"]["agents"]
+    rec.fact("agent_detected_from_process_name", [a.get("agent") for a in agents])
+    rec.fact("override_manifest_loaded",
+             "local override" in daemon.cli("server", "agent-manifests", check=False).stdout)
+
+    def settle(command: str, want: str, timeout: float = 30.0):
+        """Drive the screen and time how long the daemon takes to agree."""
+        client.request("pane.send_text", {"pane_id": "w1:p1", "text": command + "\n"})
+        start = time.monotonic()
+        while time.monotonic() - start < timeout:
+            live = client.request("session.snapshot")["snapshot"]["agents"]
+            if live and live[0].get("agent_status") == want:
+                return round(time.monotonic() - start, 2)
+            time.sleep(0.25)
+        return None
+
+    cycle = [("working", "working"), ("idle", "idle"), ("blocked", "blocked"), ("idle", "idle")]
+    unviewed = [[cmd, settle(cmd, want)] for cmd, want in cycle]
+    rec.fact("detection_latency_no_viewer_s", unviewed)
+    rec.fact("detection_works_with_no_viewer", all(v is not None for _, v in unviewed))
+    rec.note(f"with no viewer attached, detection settled in {[v for _, v in unviewed]}s")
+
+    stream = PaneStream(daemon, "w1:p1", "control", cols=80, rows=24)
+    try:
+        stream.wait_for_frames(1, timeout=5.0)
+        time.sleep(1.0)
+        viewed = [[cmd, settle(cmd, want)] for cmd, want in cycle]
+    finally:
+        stream.close()
+    rec.fact("detection_latency_with_viewer_s", viewed)
+    rec.fact("detection_works_with_viewer", all(v is not None for _, v in viewed))
+    rec.note(f"with a control stream attached, detection settled in {[v for _, v in viewed]}s")
+
+
 ALL = {
     "snapshot": snapshot,
     "frames": frames,
     "agent-states": agent_states,
+    "detection": detection,
     "geometry": geometry,
     "input-path": input_path,
 }

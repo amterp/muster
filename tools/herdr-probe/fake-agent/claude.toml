@@ -1,0 +1,34 @@
+# Detection manifest for the fake agent, installed as an override.
+#
+# herdr looks for overrides at <config>/agent-detection/<agent>.toml, and the agent
+# name has to be one it already knows (src/detect/manifest.rs:1097 keys the path on
+# its known-agent enum). A fixture cannot introduce its own id, so it borrows claude's
+# and replaces the rules with markers a script can paint on demand.
+#
+# Safe because the probe's daemon is a throwaway under a scratch config dir; it never
+# sees a real claude session.
+
+id = "claude"
+version = "2026.08.11.1"
+min_engine_version = 2
+
+[[rules]]
+id = "probe_working"
+state = "working"
+priority = 1000
+region = "whole_recent"
+contains = ["probe-state:working"]
+
+[[rules]]
+id = "probe_blocked"
+state = "blocked"
+priority = 990
+region = "whole_recent"
+contains = ["probe-state:blocked"]
+
+[[rules]]
+id = "probe_idle"
+state = "idle"
+priority = 980
+region = "whole_recent"
+contains = ["probe-state:idle"]
