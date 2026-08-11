@@ -33,7 +33,7 @@ class PaneStream:
         self.mode = mode
         self.cols = cols
         self.rows = rows
-        args = [daemon.herdr_bin, "terminal", "session", mode, target, "--cols", str(cols), "--rows", str(rows)]
+        args = daemon.herdr_argv("terminal", "session", mode, target, "--cols", str(cols), "--rows", str(rows))
         self._proc = subprocess.Popen(
             args, env=daemon.env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.PIPE, bufsize=0,

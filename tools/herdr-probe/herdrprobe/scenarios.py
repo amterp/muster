@@ -264,7 +264,7 @@ def geometry(daemon, rec: Recorder) -> None:
     rec.fact("pane_keys_carrying_size", [k for k in pane0 if any(t in k for t in ("col", "row", "width", "height", "size"))])
     rec.fact("layout_rect_no_viewer", layout0["layout"]["panes"][0]["rect"])
     rec.fact("pty_size_no_viewer", _pty_size(client))
-    rec.note(f"with no viewer attached the pane's PTY is {rec._facts['pty_size_no_viewer']}")
+    rec.note(f"with no viewer attached the pane's PTY is {rec.recall('pty_size_no_viewer')}")
 
     control = PaneStream(daemon, "w1:p1", "control", cols=100, rows=30)
     try:
@@ -277,7 +277,7 @@ def geometry(daemon, rec: Recorder) -> None:
         rec.fact("controller_frame_geometry", [frame1.get("width"), frame1.get("height")])
         rec.fact("pty_size_under_controller", _pty_size(client))
         rec.fact("layout_rect_under_controller", layout1["layout"]["panes"][0]["rect"])
-        rec.note(f"controller at 100x30 -> PTY {rec._facts['pty_size_under_controller']}, "
+        rec.note(f"controller at 100x30 -> PTY {rec.recall('pty_size_under_controller')}, "
                  f"pane.layout rect unchanged at {layout1['layout']['panes'][0]['rect']}")
 
         observer = PaneStream(daemon, "w1:p1", "observe", cols=80, rows=24)
@@ -294,7 +294,7 @@ def geometry(daemon, rec: Recorder) -> None:
             rec.fact("pty_size_with_observer_attached", _pty_size(client))
             rec.note(f"controller asked 100x30 and got {frame1.get('width')}x{frame1.get('height')}; "
                      f"observer asked 80x24 and got {obs_frame.get('width')}x{obs_frame.get('height')}; "
-                     f"PTY stayed {rec._facts['pty_size_with_observer_attached']}")
+                     f"PTY stayed {rec.recall('pty_size_with_observer_attached')}")
         finally:
             observer.close()
 
@@ -309,20 +309,26 @@ def geometry(daemon, rec: Recorder) -> None:
         rec.fact("pty_size_after_resize", _pty_size(client))
         rec.note(f"terminal.resize 120x40 -> frames at "
                  f"{resized[-1].get('width') if resized else None}x{resized[-1].get('height') if resized else None}, "
-                 f"PTY {rec._facts['pty_size_after_resize']}")
+                 f"PTY {rec.recall('pty_size_after_resize')}")
     finally:
         control.close()
 
     # The one that matters for "sessions survive anything Muster does": when the
     # controller goes away, does the pane go back to the size everyone else uses?
+    # Sampled twice, because "it had not reverted yet" and "it never reverts" are
+    # different claims and only the second one is worth acting on.
     time.sleep(1.5)
     pane4, layout4 = dims()
     rec.write_json("pane-after-detach.json", {"pane": pane4, "layout": layout4})
-    after_detach = _pty_size(client)
-    rec.fact("pty_size_after_controller_detached", after_detach)
-    rec.fact("geometry_hold_released_on_detach", after_detach == rec._facts["pty_size_no_viewer"])
-    rec.note(f"after the controller detached the PTY is {after_detach} "
-             f"(was {rec._facts['pty_size_no_viewer']} before any viewer attached)")
+    settled = rec.recall("pty_size_no_viewer")
+    soon = _pty_size(client)
+    time.sleep(8.0)
+    later = _pty_size(client)
+    rec.fact("pty_size_1s_after_detach", soon)
+    rec.fact("pty_size_10s_after_detach", later)
+    rec.fact("geometry_hold_released_on_detach", later == settled)
+    rec.note(f"after the controller detached the PTY is {soon}, still {later} ten seconds later "
+             f"(it was {settled} before any viewer attached)")
 
 
 # --------------------------------------------------------------------------- 5

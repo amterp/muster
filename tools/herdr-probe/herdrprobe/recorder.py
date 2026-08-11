@@ -58,6 +58,10 @@ class Recorder:
         """A machine-checkable observation the findings doc can cite."""
         self._facts[key] = value
 
+    def recall(self, key: str) -> Any:
+        """Read back a fact, for scenarios that compare a later state to an earlier one."""
+        return self._facts[key]
+
     def finish(self) -> dict[str, Any]:
         if self._notes:
             self.write_text("NOTES.txt", "\n".join(self._notes) + "\n")

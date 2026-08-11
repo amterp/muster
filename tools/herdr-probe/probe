@@ -28,6 +28,7 @@ from herdrprobe import scenarios
 from herdrprobe.client import ProtectedSocketError
 from herdrprobe.daemon import DEFAULT_ROOT, IsolatedDaemon
 from herdrprobe.recorder import Recorder
+from herdrprobe.remote import RemoteDaemon
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CORPUS = REPO_ROOT / "corpus"
@@ -44,6 +45,16 @@ def herdr_identity(herdr_bin: str) -> tuple[str, int]:
     return version, protocol
 
 
+def remote_identity(key: Path, port: int) -> tuple[str, int]:
+    daemon = RemoteDaemon(key, port=port)
+    version = daemon.ssh("herdr --version").stdout.strip().split()[-1]
+    protocol = 0
+    for line in daemon.ssh("herdr api schema").stdout.splitlines():
+        if line.startswith("protocol:"):
+            protocol = int(line.split(":", 1)[1].strip())
+    return version, protocol
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("scenarios", nargs="*", help="scenarios to run (default: all)")
@@ -54,6 +65,9 @@ def main() -> int:
                         help="where transcripts land (default: <repo>/corpus/herdr-<version>)")
     parser.add_argument("--herdr", default="herdr", help="herdr binary to observe")
     parser.add_argument("--keep", action="store_true", help="leave the daemon running afterwards")
+    parser.add_argument("--remote", action="store_true",
+                        help="observe the devenv container's daemon over SSH instead of a local one")
+    parser.add_argument("--remote-port", type=int, default=2222)
     args = parser.parse_args()
 
     if args.list:
@@ -68,15 +82,30 @@ def main() -> int:
               f"  Known: {', '.join(scenarios.ALL)}", file=sys.stderr)
         return 2
 
-    version, protocol = herdr_identity(args.herdr)
-    corpus = args.corpus or (DEFAULT_CORPUS / f"herdr-{version}")
-    print(f"herdr {version} (protocol {protocol}) -> {corpus}")
+    if args.remote:
+        key = REPO_ROOT / "devenv" / ".ssh" / "id_ed25519"
+        if not key.exists():
+            print(f"no devenv key at {key}.\n"
+                  f"  Impact: the probe cannot reach the container's daemon.\n"
+                  f"  Run ./devenv/devenv up first - it generates the keypair.", file=sys.stderr)
+            return 4
+        probe_daemon = lambda: RemoteDaemon(key, port=args.remote_port)
+        version, protocol = remote_identity(key, args.remote_port)
+        suffix = "-linux"
+    else:
+        probe_daemon = lambda: IsolatedDaemon(args.root, herdr_bin=args.herdr)
+        version, protocol = herdr_identity(args.herdr)
+        suffix = ""
+
+    corpus = args.corpus or (DEFAULT_CORPUS / f"herdr-{version}{suffix}")
+    print(f"herdr {version} (protocol {protocol}){' via devenv' if args.remote else ''} -> {corpus}")
 
     failures = []
     for name in selected:
         print(f"\n[{name}]", flush=True)
-        shutil.rmtree(args.root, ignore_errors=True)
-        daemon = IsolatedDaemon(args.root, herdr_bin=args.herdr)
+        if not args.remote:
+            shutil.rmtree(args.root, ignore_errors=True)
+        daemon = probe_daemon()
         daemon.prepare()
         rec = Recorder(corpus, name, version, protocol)
         try:
@@ -97,9 +126,11 @@ def main() -> int:
                 daemon.stop()
 
     if failures:
+        where = ("docker exec muster-devenv cat /home/dev/herdr-server.out" if args.remote
+                 else f"{args.root}/config/herdr/herdr-server.log")
         print(f"\n{len(failures)} scenario(s) failed: {', '.join(failures)}.\n"
               f"  Impact: the findings doc cannot cite evidence that was never recorded.\n"
-              f"  Look at the FAILURE.txt in each, and at {args.root}/config/herdr/herdr-server.log.",
+              f"  Look at the FAILURE.txt in each, and at the daemon's own log: {where}",
               file=sys.stderr)
         return 1
     print(f"\nall {len(selected)} scenario(s) recorded under {corpus}")

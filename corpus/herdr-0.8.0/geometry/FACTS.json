@@ -34,7 +34,11 @@
     24
   ],
   "pane_keys_carrying_size": [],
-  "pty_size_after_controller_detached": [
+  "pty_size_10s_after_detach": [
+    120,
+    40
+  ],
+  "pty_size_1s_after_detach": [
     120,
     40
   ],

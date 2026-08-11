@@ -118,10 +118,18 @@ class IsolatedDaemon:
             f"  Impact: no scenario can run.\n  Check {self.root / 'server.log'} for startup errors."
         )
 
+    def herdr_argv(self, *args: str) -> list[str]:
+        """How to invoke the herdr CLI against this daemon.
+
+        The one place local and remote differ for anything that shells out, so
+        PaneStream and the scenarios do not have to know which they are driving.
+        """
+        return [self.herdr_bin, *args]
+
     def cli(self, *args: str, check: bool = True, **kwargs) -> subprocess.CompletedProcess:
         """Run the herdr CLI against this daemon."""
         return subprocess.run(
-            [self.herdr_bin, *args], env=self.env, capture_output=True, text=True, check=check, **kwargs
+            self.herdr_argv(*args), env=self.env, capture_output=True, text=True, check=check, **kwargs
         )
 
     def client(self, timeout: float = 10.0) -> Client:

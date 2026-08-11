@@ -126,6 +126,7 @@ The pane's real PTY size, read by asking the pane's own shell for `stty size`:
 | plus `session observe --cols 80 --rows 24` | 100 x 30 |
 | controller sends `terminal.resize 120x40` | 120 x 40 |
 | controller detaches | **120 x 40** |
+| ten seconds later | **120 x 40** |
 
 Three things follow.
 
@@ -140,11 +141,11 @@ It is degraded by re-rendering a larger screen into a smaller viewport, which is
 different and milder problem.
 
 **The hold does not release on detach.** After the controlling stream closed, the PTY
-stayed at 120x40 rather than returning to 53x23. A Muster that quits leaves every pane
-it touched sized to a window that no longer exists, and the herdr TUI inherits that.
-`architecture.md` claims the hold releases; it does not. This is the one finding here
-that looks like a defect rather than a design, and it sits directly against "sessions
-outlive everything".
+stayed at 120x40 rather than returning to 53x23, and was still 120x40 ten seconds
+later. A Muster that quits leaves every pane it touched sized to a window that no
+longer exists, and the herdr TUI inherits that. `architecture.md` claimed the hold
+releases; it does not. This is the one finding here that looks like a defect rather
+than a design, and it sits directly against "sessions outlive everything".
 
 Also worth not tripping over: `pane.layout` reports a rect of 54x23 at (26,1)
 throughout, unchanged by any of the above. That is the pane's position in herdr's own
