@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "spike-embed-a",
+  "alias_explicit": false,
+  "area": [
+    "renderer"
+  ],
+  "column": "next",
+  "created_at_millis": 1786461765162,
+  "creator": "Alexander Terp",
+  "description": "Prove the unstable embedding API builds and runs outside ghostty's own app: one window, one surface, spawn $SHELL. Reference: ghostty's macos/Sources wiring. This is the foundation every later card stands on.",
+  "id": "a_26BIWqfiq",
+  "position": "U",
+  "title": "Spike: embed a libghostty surface in a bare Swift window",
+  "type": "feature",
+  "updated_at_millis": 1786461765162,
+  "history": [
+    {"field":"column","value":"next","at":1786461765162}
+  ]
+}

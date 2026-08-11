@@ -1,0 +1,23 @@
+{
+  "_v": 3,
+  "alias": "record-ansi-corpora",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1786461793326,
+  "creator": "Alexander Terp",
+  "description": "Capture Claude Code (and friends) sessions as replayable byte corpora: state transitions, heavy TUI redraws, kitty-protocol negotiation. Data files drive state-detection and rendering cases.",
+  "id": "a_26BJGGDnn",
+  "labels": [
+    "ai-hi"
+  ],
+  "position": "UM",
+  "title": "Record ANSI corpora from real agent sessions",
+  "type": "chore",
+  "updated_at_millis": 1786482567913,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1786461793326}
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "stage-2-second",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1786461793415,
+  "creator": "Alexander Terp",
+  "description": "Attach the devenv container's daemon alongside the local one - the mixed local/remote view herdr itself cannot do (their discussion #2232). Decide transport here: tunneled socket vs CLI-over-ssh.",
+  "id": "a_26BJGPTjG",
+  "position": "UUUUUUU",
+  "title": "Stage 2: second daemon over SSH in the same window",
+  "type": "feature",
+  "updated_at_millis": 1786461793415,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1786461793415}
+  ]
+}

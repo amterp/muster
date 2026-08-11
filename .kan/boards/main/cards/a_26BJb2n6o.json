@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "muster-cli-drive-the",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1786461806201,
+  "creator": "Alexander Terp",
+  "description": "Desideratum 9. Backend ops already have herdr's CLI; this covers view ops - focus, arrange, window management - so agents can drive muster the way they drive herdr.",
+  "id": "a_26BJb2n6o",
+  "position": "U",
+  "title": "muster CLI: drive the view layer from scripts and agents",
+  "type": "feature",
+  "updated_at_millis": 1786461806201,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1786461806201}
+  ]
+}

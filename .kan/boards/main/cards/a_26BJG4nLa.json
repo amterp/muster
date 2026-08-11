@@ -1,0 +1,23 @@
+{
+  "_v": 3,
+  "alias": "fake-herdr-daemon",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1786461793201,
+  "creator": "Alexander Terp",
+  "description": "In-process fake speaking the published herdr-api.schema.json at the socket seam: layout.export, events.subscribe, terminal session control streams. The IT edge for everything above the wire.",
+  "id": "a_26BJG4nLa",
+  "labels": [
+    "ai-hi"
+  ],
+  "position": "UU",
+  "title": "Fake herdr daemon for the test harness",
+  "type": "feature",
+  "updated_at_millis": 1786461793201,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1786461793201}
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "stage-2-render-the",
+  "alias_explicit": false,
+  "area": [
+    "shell",
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1786461793373,
+  "creator": "Alexander Terp",
+  "description": "Mirror herdr structure from session.snapshot + events (layout.export is a portable restore tree, not live state); render each tab's pane tree as real native splits; splits/resizes go back through the socket API. Event application must be idempotent and absolute-valued - no exposed sequence numbers upstream (see architecture.md, event model).",
+  "id": "a_26BJGL7VZ",
+  "position": "UUUUUU",
+  "title": "Stage 2: render the mirrored pane tree as native splits",
+  "type": "feature",
+  "updated_at_millis": 1786481774590,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1786461793373}
+  ]
+}

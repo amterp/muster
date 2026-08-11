@@ -1,0 +1,24 @@
+{
+  "_v": 3,
+  "alias": "input-path-prove",
+  "alias_explicit": false,
+  "area": [
+    "backend",
+    "testing"
+  ],
+  "column": "next",
+  "created_at_millis": 1786461765245,
+  "creator": "Alexander Terp",
+  "description": "Pane terminal modes (kitty keyboard, bracketed paste, mouse reporting) live in the daemon's VT and are not replayed in the frame stream, so surfaces cannot encode input. Candidates: daemon-side encoding (send-keys style API) or adapter-side encoding from exposed mode state (may need an upstream herdr PR - their own TUI client reports maximal key info and lets the server encode). Test kitty protocol, IME, AltGr, mouse, paste. Stage-1 gate: no faithful input path means the architecture fails.",
+  "id": "a_26BIWyMWc",
+  "labels": [
+    "kill-criterion"
+  ],
+  "position": "UUU",
+  "title": "Input path: prove daemon-side-correct encoding",
+  "type": "chore",
+  "updated_at_millis": 1786467111190,
+  "history": [
+    {"field":"column","value":"next","at":1786461765245}
+  ]
+}

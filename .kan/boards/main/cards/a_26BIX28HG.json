@@ -1,0 +1,24 @@
+{
+  "_v": 3,
+  "alias": "measure-double",
+  "alias_explicit": false,
+  "area": [
+    "renderer",
+    "testing"
+  ],
+  "column": "next",
+  "created_at_millis": 1786461765283,
+  "creator": "Alexander Terp",
+  "description": "Daemon VT -\u003e re-encoded ANSI -\u003e surface VT. Measure keypress-to-glyph against plain ghostty. Stage-1 gate: must feel native.",
+  "id": "a_26BIX28HG",
+  "labels": [
+    "kill-criterion"
+  ],
+  "position": "UUE",
+  "title": "Measure double-emulation latency",
+  "type": "chore",
+  "updated_at_millis": 1786482567879,
+  "history": [
+    {"field":"column","value":"next","at":1786461765283}
+  ]
+}

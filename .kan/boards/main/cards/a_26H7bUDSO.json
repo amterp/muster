@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "reproducible-views",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "uncommitted",
+  "created_at_millis": 1786475644887,
+  "creator": "Alexander Terp",
+  "description": "Session truth lives in the daemon; open whether presentation state (window arrangement, sidebar width) also syncs somewhere, so any machine renders the identical view, or stays app-local. Leaning reproducible. herdr's workspace.metadata_updated / pane.report_metadata events suggest the generic metadata surface this needs already exists.",
+  "id": "a_26H7bUDSO",
+  "position": "UU",
+  "title": "Reproducible views: sync presentation state daemon-side?",
+  "type": "chore",
+  "updated_at_millis": 1786475644887,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1786475644887}
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "name-collision-check",
+  "alias_explicit": false,
+  "column": "backlog-lo",
+  "created_at_millis": 1786461806334,
+  "creator": "Alexander Terp",
+  "description": "Sweep brew, crates, npm, GitHub for 'muster' clashes in the terminal/devtool space. Renaming is cheap now (fr sweep), expensive after a release.",
+  "id": "a_26BJbFai3",
+  "labels": [
+    "ai-hi"
+  ],
+  "position": "UUUU",
+  "title": "Name-collision check before going public",
+  "type": "chore",
+  "updated_at_millis": 1786461806334,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1786461806334}
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "define-the-backend",
+  "alias_explicit": false,
+  "area": [
+    "backend",
+    "testing"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1786466233620,
+  "creator": "Alexander Terp",
+  "description": "The core speaks a Muster-owned contract - pane tree, pane byte streams, agent states, intents - and everything herdr-shaped lives in a single adapter module. The contract corpus doubles as the spec any replacement backend (fork or wholesale) must pass. Exit lanes and rationale: docs/origin.md, 'The decision'.",
+  "id": "a_26DAm1Zt0",
+  "position": "UE",
+  "title": "Define the backend seam: Muster's vocabulary, herdr in one adapter",
+  "type": "feature",
+  "updated_at_millis": 1786466233620,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1786466233620}
+  ]
+}

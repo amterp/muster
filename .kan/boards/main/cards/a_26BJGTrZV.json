@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "stage-3-agent-state",
+  "alias_explicit": false,
+  "area": [
+    "shell",
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1786461793455,
+  "creator": "Alexander Terp",
+  "description": "Subscribe to pane.agent_status_changed across all attached daemons; render working/blocked/done/idle uniformly. The reason muster exists - the desiderata's #1.",
+  "id": "a_26BJGTrZV",
+  "position": "UUUUUUUU",
+  "title": "Stage 3: agent-state sidebar",
+  "type": "feature",
+  "updated_at_millis": 1786461793455,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1786461793455}
+  ]
+}

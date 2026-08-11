@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "dev-one-rad-script",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "next",
+  "created_at_millis": 1786482454123,
+  "creator": "Alexander Terp",
+  "description": "One command runs everything, decided before there are two languages to run. If the Swift shell lands 'swift test' and a core later lands its own runner, nothing forces anyone to notice the suite has quietly split in two - the green-suite desideratum erodes without a decision ever being made.\n\n'./dev' at the repo root, written in Rad, using clustered short bool flags so common combinations stay one token: './dev -t' tests, './dev -tl' tests and lints, and so on. It delegates to each subproject's native tooling rather than reimplementing it.\n\nCI invokes the same script and nothing else, so the command a contributor runs and the command that gates a merge cannot drift apart.\n\nLands with the first code commit - there is nothing to run before that.\n\nConsequence to handle: this puts Rad (https://github.com/amterp/rad) on the path for anyone who wants to run the suite. Fail with a clear install pointer when it is missing, and install it explicitly in CI.",
+  "id": "a_26Jyk8yxA",
+  "position": "UE",
+  "title": "dev: one Rad script as the door to build, test, and lint",
+  "type": "chore",
+  "updated_at_millis": 1786482567844,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1786482454123},
+    {"field":"column","value":"next","at":1786482473633}
+  ]
+}

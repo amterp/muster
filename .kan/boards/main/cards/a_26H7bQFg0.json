@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "optimistic-ui-for",
+  "alias_explicit": false,
+  "area": [
+    "shell",
+    "backend"
+  ],
+  "column": "uncommitted",
+  "created_at_millis": 1786475644842,
+  "creator": "Alexander Terp",
+  "description": "Splits and focus round-trip the daemon before rendering. If stage-1 latency numbers make that feel slow, adopt optimistic UI: one mutation path, pending state tagged with a request id, reconcile from the authoritative result, roll back explicitly on failure. Undecided until measured.",
+  "id": "a_26H7bQFg0",
+  "position": "U",
+  "title": "Optimistic UI for intents?",
+  "type": "chore",
+  "updated_at_millis": 1786475644842,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1786475644842}
+  ]
+}

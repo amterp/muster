@@ -1,0 +1,23 @@
+{
+  "_v": 3,
+  "alias": "grid-snapshot",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1786461793283,
+  "creator": "Alexander Terp",
+  "description": "Feed pane bytes through libghostty-vt (the production engine) in tests and snapshot the resulting grid as reviewable text files, go-snap style. Assert what the user sees, not pixels and not substrings.",
+  "id": "a_26BJGCx0d",
+  "labels": [
+    "ai-hi"
+  ],
+  "position": "UUUU",
+  "title": "Grid-snapshot harness via libghostty-vt",
+  "type": "feature",
+  "updated_at_millis": 1786461793283,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1786461793283}
+  ]
+}

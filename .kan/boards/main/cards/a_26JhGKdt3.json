@@ -1,0 +1,17 @@
+{
+  "_v": 3,
+  "alias": "add-notice-when-the",
+  "alias_explicit": false,
+  "column": "backlog-lo",
+  "created_at_millis": 1786481782163,
+  "creator": "Alexander Terp",
+  "description": "Apache-2.0 obliges us to propagate a dependency's NOTICE file only once we redistribute its code. We ship none today, so there is correctly no NOTICE here. The moment herdr code is vendored, ported, or closely translated, this repo owes attribution - do it in the same commit, not later.",
+  "id": "a_26JhGKdt3",
+  "position": "UUUUUUU",
+  "title": "Add NOTICE when the first Apache-2.0 code is vendored or ported",
+  "type": "chore",
+  "updated_at_millis": 1786481782163,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1786481782163}
+  ]
+}

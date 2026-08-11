@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "linux-shell",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1786461806421,
+  "creator": "Alexander Terp",
+  "description": "Ghostty ships a GTK app, so libghostty renders on Linux. Keep a running note of every place the shell layer touches macOS, as the honest measure of the port's cost.",
+  "id": "a_26BJbOvpb",
+  "position": "UUUUUU",
+  "title": "Linux shell feasibility notes",
+  "type": "docs",
+  "updated_at_millis": 1786461806421,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1786461806421}
+  ]
+}

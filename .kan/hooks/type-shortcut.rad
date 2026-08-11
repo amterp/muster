@@ -1,0 +1,53 @@
+#!/usr/bin/env rad
+---
+Pattern hook for setting card type from title shortcuts like !bug, !feat, !docs.
+Receives card_id and board_name as arguments from Kan pattern hooks.
+---
+args:
+    card_id str
+    board_name str
+
+type_aliases = {
+    "feat": "feature",
+    "enh": "enhancement",
+    "doc": "docs",
+}
+
+// Rad propagates a non-zero exit as an error, so a failed command is handled
+// with a catch: block - testing the exit code on the next line never runs.
+code, stdout = quiet $`kan show {card_id} -b {board_name} --json` catch:
+    print_err("type-shortcut: cannot read card {card_id} (exit {code})")
+    exit(1)
+
+title = parse_json(stdout)["card"]["title"]
+
+if not matches(title, "![a-zA-Z]+", partial=true):
+    exit(0)
+
+keyword = replace(title, ".*?!([a-zA-Z]+).*", "$1").lower()
+card_type = keyword in type_aliases ? type_aliases[keyword] : keyword
+
+code, stdout = quiet $`kan board describe -b {board_name} --json` catch:
+    print_err("type-shortcut: cannot read board {board_name} (exit {code})")
+    exit(1)
+
+options = parse_json(stdout)["board"]["custom_fields"]["type"]["options"]
+valid_types = [o["value"] for o in options]
+
+// Bail before editing on an unrelated bang ("Fix the !important override").
+// kan edit still applies -t when -f fails validation, so an unchecked edit
+// would rename the card and leave the type unset.
+if card_type not in valid_types:
+    exit(0)
+
+new_title = replace(title, "(?i)\\s*!{keyword}\\b\\s*", " ").trim()
+new_title = replace(new_title, "\\s+", " ")
+
+// A title that was nothing but the shortcut keeps its original text.
+title_arg = new_title == "" ? "" : `-t "{new_title}"`
+
+quiet $`kan edit {card_id} -b {board_name} {title_arg} -f type={card_type}` catch:
+    print_err("type-shortcut: failed to set type={card_type} on card {card_id}")
+    exit(1)
+
+print("Set type to '{card_type}'")

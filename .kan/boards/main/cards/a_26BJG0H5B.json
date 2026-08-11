@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "decide-the-shell",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1786461793160,
+  "creator": "Alexander Terp",
+  "description": "All-Swift with a headless Swift package, or a portable core (Rust/Go) from day one? Current lean (docs/origin.md): Swift-first, portability enforced by contract tests and shared corpora. Decide after stage 1 teaches us the real shape.",
+  "id": "a_26BJG0H5B",
+  "position": "U",
+  "title": "Decide the shell/core language split",
+  "type": "chore",
+  "updated_at_millis": 1786461793160,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1786461793160}
+  ]
+}

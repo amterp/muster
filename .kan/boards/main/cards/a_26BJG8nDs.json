@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "contract-tests",
+  "alias_explicit": false,
+  "area": [
+    "testing",
+    "devenv"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1786461793244,
+  "creator": "Alexander Terp",
+  "description": "The same recorded exchanges run against a real daemon (local + devenv container) so the fake cannot drift from reality. Fakes preserve the real edge's contract - this is what enforces it.",
+  "id": "a_26BJG8nDs",
+  "position": "UUU",
+  "title": "Contract tests: replay the fake's corpus against real herdr",
+  "type": "feature",
+  "updated_at_millis": 1786461793244,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1786461793244}
+  ]
+}

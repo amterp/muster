@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "herdr-version",
+  "alias_explicit": false,
+  "area": [
+    "backend",
+    "testing"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1786461806292,
+  "creator": "Alexander Terp",
+  "description": "Their socket API is not a stability contract yet. Pin a tested herdr version per muster release; contract-test corpus doubles as the upgrade gate.",
+  "id": "a_26BJbBnQC",
+  "position": "UUU",
+  "title": "herdr version compatibility policy",
+  "type": "chore",
+  "updated_at_millis": 1786461806292,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1786461806292}
+  ]
+}
