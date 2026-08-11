@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+# Drive the devenv container: the Linux machine Muster's remote path talks to, and the
+# fixture the remote tests run against.
+#
+#   ./devenv/devenv up       build if needed, then start it
+#   ./devenv/devenv down     stop and remove it
+#   ./devenv/devenv ssh      shell in as dev
+#   ./devenv/devenv status   is it up, and does its daemon answer
+#   ./devenv/devenv rebuild  rebuild the image from scratch, then up
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+IMAGE=muster-devenv
+CONTAINER=muster-devenv
+PORT=2222
+KEY="$REPO_ROOT/devenv/.ssh/id_ed25519"
+
+# StrictHostKeyChecking off and a null known-hosts file: the container gets a fresh
+# host key every rebuild, and a fixture that demands the developer clear a host-key
+# warning after every rebuild is a fixture nobody rebuilds.
+SSH_OPTS=(-i "$KEY" -p "$PORT"
+          -o StrictHostKeyChecking=no
+          -o UserKnownHostsFile=/dev/null
+          -o LogLevel=ERROR)
+
+die() { printf '%s\n' "$@" >&2; exit 1; }
+
+need_docker() {
+    command -v docker >/dev/null 2>&1 || die \
+        "docker is not on PATH." \
+        "  Impact: the devenv container cannot be built or started, so the remote path has nothing to talk to." \
+        "  Install Docker Desktop, or point this script at another OCI runtime."
+    docker info >/dev/null 2>&1 || die \
+        "docker is installed but not responding." \
+        "  Impact: same as above - no container, no remote path." \
+        "  Start Docker Desktop and try again."
+}
+
+ensure_key() {
+    [[ -f "$KEY" ]] && return
+    mkdir -p "$(dirname "$KEY")"
+    ssh-keygen -t ed25519 -N '' -C muster-devenv -f "$KEY" >/dev/null
+    echo "generated a devenv keypair at devenv/.ssh/ (gitignored)"
+}
+
+build() {
+    ensure_key
+    docker build \
+        --build-arg DEV_PUBKEY="$(cat "$KEY.pub")" \
+        -t "$IMAGE" -f "$REPO_ROOT/devenv/Dockerfile" "$@" "$REPO_ROOT"
+}
+
+case "${1:-up}" in
+    up)
+        need_docker
+        docker image inspect "$IMAGE" >/dev/null 2>&1 || build
+        if [[ -n "$(docker ps -q -f "name=^${CONTAINER}$")" ]]; then
+            echo "devenv already running on port $PORT"
+            exit 0
+        fi
+        docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+        docker run -d --name "$CONTAINER" -p "$PORT:22" "$IMAGE" >/dev/null
+        for _ in $(seq 1 100); do
+            ssh "${SSH_OPTS[@]}" dev@localhost true 2>/dev/null && break
+            sleep 0.2
+        done
+        ssh "${SSH_OPTS[@]}" dev@localhost true 2>/dev/null || die \
+            "devenv started but will not accept SSH on port $PORT." \
+            "  Impact: the remote path and its tests cannot reach the container." \
+            "  Check 'docker logs $CONTAINER', and whether something else holds port $PORT."
+        echo "devenv up: ssh -i devenv/.ssh/id_ed25519 -p $PORT dev@localhost"
+        ;;
+    down)
+        need_docker
+        docker rm -f "$CONTAINER" >/dev/null 2>&1 && echo "devenv down" || echo "devenv was not running"
+        ;;
+    ssh)
+        shift
+        exec ssh "${SSH_OPTS[@]}" dev@localhost "$@"
+        ;;
+    status)
+        need_docker
+        if [[ -z "$(docker ps -q -f "name=^${CONTAINER}$")" ]]; then
+            echo "devenv: not running"
+            exit 1
+        fi
+        echo "devenv: running on port $PORT"
+        ssh "${SSH_OPTS[@]}" dev@localhost 'herdr status server' || die \
+            "devenv is up but its herdr daemon does not answer." \
+            "  Impact: sessions cannot be created, so the remote path is untestable." \
+            "  Check 'docker exec $CONTAINER cat /home/dev/herdr-server.out'."
+        ;;
+    rebuild)
+        need_docker
+        docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+        build --no-cache
+        exec "$0" up
+        ;;
+    *)
+        die "unknown command: $1" "  Try: up | down | ssh | status | rebuild"
+        ;;
+esac

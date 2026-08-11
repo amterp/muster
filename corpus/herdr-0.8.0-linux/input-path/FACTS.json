@@ -1,0 +1,49 @@
+{
+  "csi_i_moves_seenness": false,
+  "focus_related_method_probe": {
+    "client.focus": "unknown_method",
+    "client.outer_focus": "unknown_method",
+    "client.window_title.set": "exists",
+    "pane.mark_seen": "unknown_method"
+  },
+  "pane_fields_mentioning_modes": [],
+  "process_info_mentions_modes": false,
+  "raw_bytes_accepted_on_control_stream": true,
+  "send_keys_accepted": [
+    "a",
+    "A",
+    "enter",
+    "return",
+    "tab",
+    "escape",
+    "esc",
+    "space",
+    "backspace",
+    "up",
+    "down",
+    "left",
+    "right",
+    "f1",
+    "f12",
+    "ctrl+c",
+    "ctrl+a",
+    "alt+b",
+    "shift+enter",
+    "ctrl+shift+k",
+    "cmd+k",
+    "super+k",
+    "\u20ac",
+    "\u00e9"
+  ],
+  "send_keys_refused": {
+    "ctrl+alt+delete": "pane.send_keys failed: {\"code\": \"invalid_key\", \"message\": \"unsupported key ctrl+alt+delete\"}",
+    "delete": "pane.send_keys failed: {\"code\": \"invalid_key\", \"message\": \"unsupported key delete\"}",
+    "end": "pane.send_keys failed: {\"code\": \"invalid_key\", \"message\": \"unsupported key end\"}",
+    "home": "pane.send_keys failed: {\"code\": \"invalid_key\", \"message\": \"unsupported key home\"}",
+    "insert": "pane.send_keys failed: {\"code\": \"invalid_key\", \"message\": \"unsupported key insert\"}",
+    "pagedown": "pane.send_keys failed: {\"code\": \"invalid_key\", \"message\": \"unsupported key pagedown\"}",
+    "pageup": "pane.send_keys failed: {\"code\": \"invalid_key\", \"message\": \"unsupported key pageup\"}"
+  },
+  "status_after_focus_gained_sequence": "done",
+  "status_before_focus_gained_sequence": "done"
+}

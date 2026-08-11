@@ -1,0 +1,5 @@
+[  3169ms] with no viewer attached the pane's PTY is [53, 23]
+[  5324ms] controller at 100x30 -> PTY [100, 30], pane.layout rect unchanged at {'x': 26, 'y': 1, 'width': 54, 'height': 23}
+[  7464ms] controller asked 100x30 and got 100x30; observer asked 80x24 and got 80x24; PTY stayed [100, 30]
+[  9717ms] terminal.resize 120x40 -> frames at 120x40, PTY [120, 40]
+[ 21559ms] after the controller detached the PTY is [120, 40], still [120, 40] ten seconds later (it was [53, 23] before any viewer attached)

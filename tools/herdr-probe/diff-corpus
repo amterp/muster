@@ -1,0 +1,88 @@
+#!/usr/bin/env python3
+"""Compare two recorded corpora, fact by fact.
+
+Two uses, the same mechanism:
+
+    ./diff-corpus ../../corpus/herdr-0.8.0 ../../corpus/herdr-0.8.0-linux
+        Does the devenv daemon behave like the local one? Muster renders and drives
+        both identically, so anything that differs here is something the adapter will
+        have to know about.
+
+    ./diff-corpus ../../corpus/herdr-0.8.0 ../../corpus/herdr-0.9.0
+        What changed in herdr. This is the upgrade gate testing.md asks for: the
+        diff is the release note that matters to us.
+
+Facts only. The raw transcripts differ in ids and timings on every run by design, so
+diffing them produces noise; the facts are the distilled claims and they should be
+stable.
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+# Facts that legitimately differ between machines and runs. Timings are timings, and
+# a pane's PTY with no viewer is herdr's TUI layout, which depends on the terminal
+# size the daemon assumes.
+VOLATILE = {
+    "detection_latency_no_viewer_s",
+    "detection_latency_with_viewer_s",
+    "attach_first_frame_bytes",
+    "frame_count",
+    "frame_seq_range",
+}
+
+
+def facts(root: Path) -> dict[str, dict]:
+    return {
+        d.name: json.loads((d / "FACTS.json").read_text())
+        for d in sorted(root.iterdir())
+        if (d / "FACTS.json").exists()
+    }
+
+
+def main() -> int:
+    if len(sys.argv) != 3:
+        print(__doc__, file=sys.stderr)
+        return 2
+    left_root, right_root = Path(sys.argv[1]), Path(sys.argv[2])
+    left, right = facts(left_root), facts(right_root)
+
+    print(f"--- {left_root}")
+    print(f"+++ {right_root}\n")
+
+    differences = 0
+    only_left = sorted(set(left) - set(right))
+    only_right = sorted(set(right) - set(left))
+    for name in only_left:
+        print(f"[{name}] recorded only on the left"); differences += 1
+    for name in only_right:
+        print(f"[{name}] recorded only on the right"); differences += 1
+
+    for name in sorted(set(left) & set(right)):
+        lf, rf = left[name], right[name]
+        rows = []
+        for key in sorted(set(lf) | set(rf)):
+            if key in VOLATILE:
+                continue
+            lv, rv = lf.get(key, "<absent>"), rf.get(key, "<absent>")
+            if lv != rv:
+                rows.append((key, lv, rv))
+        if rows:
+            print(f"[{name}]")
+            for key, lv, rv in rows:
+                print(f"  {key}")
+                print(f"    - {json.dumps(lv)}")
+                print(f"    + {json.dumps(rv)}")
+            differences += len(rows)
+
+    skipped = sum(1 for f in left.values() for k in f if k in VOLATILE)
+    print(f"\n{differences} difference(s) across {len(set(left) & set(right))} shared scenario(s); "
+          f"{skipped} volatile fact(s) not compared")
+    return 1 if differences else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -3,9 +3,9 @@
 What a real herdr daemon does, as opposed to what its source reads like it does.
 Recorded 2026-08-11 against herdr 0.8.0, protocol 19, macOS/arm64.
 
-Every verdict here points at a file under `corpus/herdr-0.8.0/`. Re-record with
-`tools/herdr-probe/probe`; source citations are against the `v0.8.0` tag at
-`~/src/herdr`.
+Every verdict here points at a file under `corpus/herdr-0.8.0/`, and section 8 re-runs
+the lot against Linux. Re-record with `tools/herdr-probe/probe`; source citations are
+against the `v0.8.0` tag at `~/src/herdr`.
 
 Four sections were the load-bearing claims `architecture.md` rested on without ever
 having watched them. Two survived unchanged, two survived with their mechanism wrong,
@@ -233,3 +233,22 @@ live at `<config>/agent-detection/<agent>.toml` keyed on herdr's known-agent enu
 `fake-agent/` borrows `claude`'s and replaces its rules.
 
 Evidence: `corpus/herdr-0.8.0/detection/`.
+
+## 8. Linux behaves the same as macOS
+
+Every scenario above was re-run against the Linux daemon in the devenv container, over
+SSH, and diffed:
+
+```
+$ tools/herdr-probe/diff-corpus corpus/herdr-0.8.0 corpus/herdr-0.8.0-linux
+0 difference(s) across 6 shared scenario(s); 5 volatile fact(s) not compared
+```
+
+Not one recorded fact differs. The attach frame is the same 35,605 bytes, the PTY
+walks the same 53x23 to 100x30 to 120x40, `done` derives the same way, and
+`pane.send_keys` refuses the same seven key names. The five facts not compared are
+timings and frame counts, which are not expected to match.
+
+So the remote path is the same path, and "local and remote in one window" costs the
+adapter nothing beyond the transport. Re-run this on every herdr upgrade: the day it
+stops printing zero is the day the remote path needs its own handling.

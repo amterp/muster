@@ -1,0 +1,14 @@
+# herdr config for the devenv container.
+#
+# Deterministic and offline: no update checks, no manifest fetches from herdr.dev, and
+# a pinned non-login /bin/sh so pane behavior comes from herdr rather than from
+# whatever a login shell sources.
+
+[terminal]
+default_shell = "/bin/sh"
+shell_mode = "non_login"
+new_cwd = "current"
+
+[update]
+version_check = false
+manifest_check = false

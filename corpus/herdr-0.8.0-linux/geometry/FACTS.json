@@ -1,0 +1,62 @@
+{
+  "controller_frame_geometry": [
+    100,
+    30
+  ],
+  "controller_requested": [
+    100,
+    30
+  ],
+  "geometry_after_resize": [
+    120,
+    40
+  ],
+  "geometry_hold_released_on_detach": false,
+  "layout_rect_no_viewer": {
+    "height": 23,
+    "width": 54,
+    "x": 26,
+    "y": 1
+  },
+  "layout_rect_under_controller": {
+    "height": 23,
+    "width": 54,
+    "x": 26,
+    "y": 1
+  },
+  "observer_forced_to_controller_size": false,
+  "observer_frame_geometry": [
+    80,
+    24
+  ],
+  "observer_requested": [
+    80,
+    24
+  ],
+  "pane_keys_carrying_size": [],
+  "pty_size_10s_after_detach": [
+    120,
+    40
+  ],
+  "pty_size_1s_after_detach": [
+    120,
+    40
+  ],
+  "pty_size_after_resize": [
+    120,
+    40
+  ],
+  "pty_size_no_viewer": [
+    53,
+    23
+  ],
+  "pty_size_under_controller": [
+    100,
+    30
+  ],
+  "pty_size_with_observer_attached": [
+    100,
+    30
+  ],
+  "resize_intent_took_effect": true
+}

@@ -1,0 +1,9 @@
+{
+  "alt_b": "\n$\n$       ^[^[^[[A^[[B^[[D^[[C^[OP^[[24~^C\n$ ^A^[b^[[27;2;13~^Kkk\u20ac\u00e9stty raw -echo; cat -v\n/bin/sh: 3: ot found\n/bin/sh: 3: 2: not found\n/bin/sh: 3: 13~\n               kk\u20ac\u00e9stty: not found\na^C\n$ ^[^[b\n",
+  "bracketed_paste": "^[[C^[OP^[[24~^C\n$ ^A^[b^[[27;2;13~^Kkk\u20ac\u00e9stty raw -echo; cat -v\n/bin/sh: 3: ot found\n/bin/sh: 3: 2: not found\n/bin/sh: 3: 13~\n               kk\u20ac\u00e9stty: not found\na^C\n$ ^[^[b\u00e9^[[97u^[[200~pasted^[[201~\n",
+  "ctrl_c": " found\n$\n$       ^[^[^[[A^[[B^[[D^[[C^[OP^[[24~^C\n$ ^A^[b^[[27;2;13~^Kkk\u20ac\u00e9stty raw -echo; cat -v\n/bin/sh: 3: ot found\n/bin/sh: 3: 2: not found\n/bin/sh: 3: 13~\n               kk\u20ac\u00e9stty: not found\na^C\n$\n",
+  "esc": "und\n$\n$       ^[^[^[[A^[[B^[[D^[[C^[OP^[[24~^C\n$ ^A^[b^[[27;2;13~^Kkk\u20ac\u00e9stty raw -echo; cat -v\n/bin/sh: 3: ot found\n/bin/sh: 3: 2: not found\n/bin/sh: 3: 13~\n               kk\u20ac\u00e9stty: not found\na^C\n$ ^[\n",
+  "kitty_csi_u_a": "    ^[^[^[[A^[[B^[[D^[[C^[OP^[[24~^C\n$ ^A^[b^[[27;2;13~^Kkk\u20ac\u00e9stty raw -echo; cat -v\n/bin/sh: 3: ot found\n/bin/sh: 3: 2: not found\n/bin/sh: 3: 13~\n               kk\u20ac\u00e9stty: not found\na^C\n$ ^[^[b\u00e9^[[97u\n",
+  "plain_a": " not found\n$\n$       ^[^[^[[A^[[B^[[D^[[C^[OP^[[24~^C\n$ ^A^[b^[[27;2;13~^Kkk\u20ac\u00e9stty raw -echo; cat -v\n/bin/sh: 3: ot found\n/bin/sh: 3: 2: not found\n/bin/sh: 3: 13~\n               kk\u20ac\u00e9stty: not found\na\n",
+  "utf8_e_acute": "$\n$       ^[^[^[[A^[[B^[[D^[[C^[OP^[[24~^C\n$ ^A^[b^[[27;2;13~^Kkk\u20ac\u00e9stty raw -echo; cat -v\n/bin/sh: 3: ot found\n/bin/sh: 3: 2: not found\n/bin/sh: 3: 13~\n               kk\u20ac\u00e9stty: not found\na^C\n$ ^[^[b\u00e9\n"
+}

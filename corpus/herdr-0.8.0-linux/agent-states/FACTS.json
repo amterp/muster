@@ -1,0 +1,48 @@
+{
+  "agent_detected_event_seen": true,
+  "agent_status_change_events_seen": 3,
+  "agent_status_event_sequence": [
+    "working",
+    "done",
+    "idle"
+  ],
+  "completion_in_active_tab": "idle",
+  "completion_in_background_tab": "done",
+  "done_is_derived_not_reported": true,
+  "event_kinds_delivered": [
+    "pane.agent_status_changed",
+    "pane_agent_detected",
+    "pane_created",
+    "pane_focused",
+    "tab_created",
+    "tab_focused",
+    "workspace_created",
+    "workspace_focused"
+  ],
+  "event_kinds_dotted": [
+    "pane.agent_status_changed"
+  ],
+  "event_kinds_snake_cased": [
+    "pane_agent_detected",
+    "pane_created",
+    "pane_focused",
+    "tab_created",
+    "tab_focused",
+    "workspace_created",
+    "workspace_focused"
+  ],
+  "pane_focus_supported": true,
+  "states_a_client_may_report": [
+    "idle",
+    "working",
+    "blocked",
+    "unknown"
+  ],
+  "states_rejected_when_reported": [
+    "done"
+  ],
+  "status_after_focusing_its_tab": "idle",
+  "status_after_pane_focus": "idle",
+  "status_before_pane_focus": "done",
+  "status_while_working": "working"
+}

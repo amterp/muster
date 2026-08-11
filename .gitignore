@@ -4,3 +4,6 @@ CLAUDE.md
 # Python bytecode (tools/herdr-probe)
 __pycache__/
 *.py[cod]
+
+# devenv SSH keypair, generated on first use
+devenv/.ssh/

@@ -1,0 +1,18 @@
+{"data": {"pane": {"agent_status": "unknown", "cwd": "/tmp", "focused": true, "foreground_cwd": "/tmp", "pane_id": "w1:p1", "revision": 0, "scroll": {"max_offset_from_bottom": 0, "offset_from_bottom": 0, "viewport_rows": 24}, "tab_id": "w1:t1", "terminal_id": "term_658ccc91f96f01", "workspace_id": "w1"}, "type": "pane_created"}, "event": "pane_created"}
+{"data": {"pane_id": "w1:p1", "type": "pane_focused", "workspace_id": "w1"}, "event": "pane_focused"}
+{"data": {"agent": "probe", "pane_id": "w1:p1", "type": "pane_agent_detected", "workspace_id": "w1"}, "event": "pane_agent_detected"}
+{"data": {"tab": {"agent_status": "unknown", "focused": true, "label": "1", "number": 1, "pane_count": 1, "tab_id": "w1:t1", "workspace_id": "w1"}, "type": "tab_created"}, "event": "tab_created"}
+{"data": {"tab_id": "w1:t1", "type": "tab_focused", "workspace_id": "w1"}, "event": "tab_focused"}
+{"data": {"type": "workspace_created", "workspace": {"active_tab_id": "w1:t1", "agent_status": "unknown", "focused": true, "label": "tmp", "number": 1, "pane_count": 1, "tab_count": 1, "workspace_id": "w1"}}, "event": "workspace_created"}
+{"data": {"type": "workspace_focused", "workspace_id": "w1"}, "event": "workspace_focused"}
+{"data": {"pane": {"agent_status": "unknown", "cwd": "/home/dev", "focused": true, "foreground_cwd": "/home/dev", "pane_id": "w1:p2", "revision": 0, "scroll": {"max_offset_from_bottom": 0, "offset_from_bottom": 0, "viewport_rows": 23}, "tab_id": "w1:t2", "terminal_id": "term_658ccc945b74e2", "workspace_id": "w1"}, "type": "pane_created"}, "event": "pane_created"}
+{"data": {"pane_id": "w1:p2", "type": "pane_focused", "workspace_id": "w1"}, "event": "pane_focused"}
+{"data": {"tab": {"agent_status": "unknown", "focused": true, "label": "2", "number": 2, "pane_count": 1, "tab_id": "w1:t2", "workspace_id": "w1"}, "type": "tab_created"}, "event": "tab_created"}
+{"data": {"tab_id": "w1:t2", "type": "tab_focused", "workspace_id": "w1"}, "event": "tab_focused"}
+{"data": {"type": "workspace_focused", "workspace_id": "w1"}, "event": "workspace_focused"}
+{"data": {"agent": "probe", "agent_status": "working", "pane_id": "w1:p1", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}
+{"data": {"agent": "probe", "agent_status": "done", "pane_id": "w1:p1", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}
+{"data": {"pane_id": "w1:p1", "type": "pane_focused", "workspace_id": "w1"}, "event": "pane_focused"}
+{"data": {"tab_id": "w1:t1", "type": "tab_focused", "workspace_id": "w1"}, "event": "tab_focused"}
+{"data": {"type": "workspace_focused", "workspace_id": "w1"}, "event": "workspace_focused"}
+{"data": {"agent": "probe", "agent_status": "idle", "pane_id": "w1:p1", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}
