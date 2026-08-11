@@ -1,0 +1,24 @@
+{
+  "_v": 3,
+  "alias": "does-screen-agent",
+  "alias_explicit": false,
+  "area": [
+    "backend",
+    "testing"
+  ],
+  "column": "next",
+  "created_at_millis": 1786485294690,
+  "creator": "Alexander Terp",
+  "description": "Unresolved from the 0.8.0 observation pass. A pane running a binary named claude was detected as a claude agent, but a local override manifest that herdr confirmed loading never moved the state off idle regardless of what the pane painted. The daemon was headless with no client viewing the pane.\n\nIf detection needs a viewer, then hidden panes stop updating agent states, and 'hidden panes detach their channels' in architecture.md gets expensive: Muster would have to hold a channel per pane it wants states for, and the render cost stops scaling with visible panes. Agent states are the desideratum the whole tool exists for, so this decides how the data plane is allowed to work.\n\nCheap to answer: the probe already attaches control streams. Attach one, then drive a detected agent's screen and see whether the state follows.",
+  "id": "a_26LAdgdoI",
+  "labels": [
+    "kill-criterion"
+  ],
+  "position": "UUUUUU",
+  "title": "Does screen agent-detection need an attached viewer?",
+  "type": "chore",
+  "updated_at_millis": 1786485294690,
+  "history": [
+    {"field":"column","value":"next","at":1786485294690}
+  ]
+}

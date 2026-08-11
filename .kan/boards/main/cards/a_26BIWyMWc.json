@@ -7,6 +7,14 @@
     "testing"
   ],
   "column": "next",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "The 0.8.0 observation pass settled the API half (docs/observations/herdr-0.8.0.md section 5).\n\nDecided: encoding is daemon-side. herdr exposes no pane terminal modes anywhere in its API, and the frame stream consumes the sequences that set them, so neither the surface nor the adapter can encode. terminal.input takes raw bytes; herdr's raw_input parses them and re-encodes for the pane's modes, which is what its own TUI relies on. Muster reports bytes.\n\nRuled out: pane.send_keys. It refuses home, end, pageup, pagedown, insert, delete, and ctrl+alt+delete with invalid_key - a named-key API with no navigation cluster cannot carry a terminal keyboard.\n\nStill open, and why this card stays in next: IME composition, AltGr, dead keys, and whether byte-level reporting preserves enough for the kitty protocol in practice. All need the Swift surface, so this is blocked behind the libghostty spike rather than behind more daemon observation.",
+      "created_at_millis": 1786485319243,
+      "id": "c_26LBHIbnj"
+    }
+  ],
   "created_at_millis": 1786461765245,
   "creator": "Alexander Terp",
   "description": "Pane terminal modes (kitty keyboard, bracketed paste, mouse reporting) live in the daemon's VT and are not replayed in the frame stream, so surfaces cannot encode input. Candidates: daemon-side encoding (send-keys style API) or adapter-side encoding from exposed mode state (may need an upstream herdr PR - their own TUI client reports maximal key info and lets the server encode). Test kitty protocol, IME, AltGr, mouse, paste. Stage-1 gate: no faithful input path means the architecture fails.",
@@ -17,7 +25,7 @@
   "position": "UUU",
   "title": "Input path: prove daemon-side-correct encoding",
   "type": "chore",
-  "updated_at_millis": 1786467111190,
+  "updated_at_millis": 1786485319243,
   "history": [
     {"field":"column","value":"next","at":1786461765245}
   ]

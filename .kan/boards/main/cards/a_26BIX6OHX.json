@@ -6,7 +6,7 @@
     "devenv",
     "testing"
   ],
-  "column": "next",
+  "column": "in-progress",
   "created_at_millis": 1786461765323,
   "creator": "Alexander Terp",
   "description": "Linux container under devenv/ reachable at ssh -p 2222 dev@localhost, running the Linux herdr build and a fake agent that emits recognizable working/blocked/done output. Emulates the work devenv AND serves as the remote-path IT fixture, locally and in CI.",
@@ -14,13 +14,14 @@
   "labels": [
     "ai-hi"
   ],
-  "position": "UUUUU",
+  "position": "U",
   "title": "devenv container: sshd + Linux herdr + scripted fake agent",
   "type": "feature",
-  "updated_at_millis": 1786482473598,
+  "updated_at_millis": 1786485304641,
   "history": [
     {"field":"column","value":"next","at":1786461765323},
     {"field":"column","value":"backlog-hi","at":1786482295959},
-    {"field":"column","value":"next","at":1786482473598}
+    {"field":"column","value":"next","at":1786482473598},
+    {"field":"column","value":"in-progress","at":1786485304641}
   ]
 }

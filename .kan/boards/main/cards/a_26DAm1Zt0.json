@@ -7,6 +7,14 @@
     "testing"
   ],
   "column": "backlog-hi",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Two shapes the adapter has to absorb, from the 0.8.0 observation pass:\n\nThe API socket is connection-per-request - herdr answers and closes, so the adapter cannot hold one channel for intents. Only events.subscribe persists, and subscribing replays the current session as synthetic events, so a client that snapshots then subscribes sees every entity twice.\n\nEvent names are spelled two ways. Most arrive snake_cased (pane_created, tab_focused); the three parameterized subscriptions keep their dotted names in the event (pane.agent_status_changed, pane.output_matched, pane.scroll_changed). The corpus recorder silently returned an empty result over this before it was caught, which is exactly the failure the contract tier exists to prevent.",
+      "created_at_millis": 1786485319281,
+      "id": "c_26LBHMKNE"
+    }
+  ],
   "created_at_millis": 1786466233620,
   "creator": "Alexander Terp",
   "description": "The core speaks a Muster-owned contract - pane tree, pane byte streams, agent states, intents - and everything herdr-shaped lives in a single adapter module. The contract corpus doubles as the spec any replacement backend (fork or wholesale) must pass. Exit lanes and rationale: docs/origin.md, 'The decision'.",
@@ -14,7 +22,7 @@
   "position": "UE",
   "title": "Define the backend seam: Muster's vocabulary, herdr in one adapter",
   "type": "feature",
-  "updated_at_millis": 1786466233620,
+  "updated_at_millis": 1786485319281,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786466233620}
   ]

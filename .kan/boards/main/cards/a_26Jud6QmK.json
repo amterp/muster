@@ -6,7 +6,7 @@
     "backend",
     "testing"
   ],
-  "column": "in-progress",
+  "column": "done",
   "created_at_millis": 1786482296005,
   "creator": "Alexander Terp",
   "description": "Everything in architecture.md rests on facts read from herdr's source, not observed running. Verify the four load-bearing ones against a live daemon with a throwaway script - no build system, no surface:\n\n1. session.snapshot returns live structure (panes, tabs, agent states), not a restore tree.\n2. 'terminal session control' emits server-rendered frame diffs, and mode-setting sequences (DECSET 2004/1049, CSI \u003e u, mouse 1000/1006) are consumed rather than forwarded - the fact that moves input encoding out of the surface.\n3. Five agent states including unknown, and idle-vs-done actually flips on backend-recognized focus.\n4. direct_attach_resize_locks: a controlling client holds pane geometry against the TUI.\n\nCheaper to be wrong here than in Swift with a GPU surface attached. The recordings are also the first corpus for the grid-snapshot harness and the fake daemon (testing.md: record reality, replay it as data) - they cannot be captured more cheaply than now. Save raw transcripts, not summaries.",
@@ -17,9 +17,10 @@
   "position": "U",
   "title": "Observe real herdr 0.8.0 on the wire, before any Swift",
   "type": "chore",
-  "updated_at_millis": 1786483742916,
+  "updated_at_millis": 1786485304611,
   "history": [
     {"field":"column","value":"next","at":1786482296005},
-    {"field":"column","value":"in-progress","at":1786483742916}
+    {"field":"column","value":"in-progress","at":1786483742916},
+    {"field":"column","value":"done","at":1786485304611}
   ]
 }
