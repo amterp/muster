@@ -9,7 +9,7 @@ at the time of pinning), macOS 26.4 / arm64, zig 0.16.0. The pin lives in
 against that tree; herdr citations are against the `v0.8.0` tag at `~/src/herdr`.
 
 `main` rather than the v1.3.1 release, because the release's libghostty-vt exposes only
-key, OSC, SGR and paste. Everything in section 5 - the oracle the whole testing strategy
+key, OSC, SGR and paste. Everything in section 6 - the oracle the whole testing strategy
 rests on - arrived after it.
 
 ## 1. Building it costs a toolchain pin and 5 minutes
@@ -57,7 +57,36 @@ This was carried on the board as the spike's unknown cost, on the assumption tha
 ghostty's own macOS app was the measure of what embedding demands. It is not: that app is
 large because it is a terminal, not because the API is.
 
-## 4. The input path is the same encoder on both ends
+## 4. Two things about embedding that the header does not say
+
+Both cost an afternoon, and neither is discoverable by reading `ghostty.h`. Recorded
+because the next person to touch `MusterRenderer` will hit them again.
+
+**`ghostty_init` wants the process's real argv.** It parses `+action` CLI verbs there.
+Handed `argc: 0` and an empty array, the process exits 6 before any error can be
+returned or logged - the failure looks like the embedding API rejecting the host, and is
+just a bad argv. Pass `CommandLine.argc` and `CommandLine.unsafeArgv`.
+
+**Runtime callbacks must be genuinely nonisolated.** libghostty invokes them from its own
+threads - renderer, IO. Written as closures inside a `@MainActor` type, Swift 6 infers
+main-actor isolation for them, compiles in an executor check, and aborts the process the
+first time the renderer thread calls `wakeup_cb`:
+
+```
+thread #8, name = 'renderer', stop reason = EXC_BREAKPOINT
+  libdispatch`_dispatch_assert_queue_fail
+  libswift_Concurrency`_swift_task_checkIsolatedSwift
+  muster`closure #1 in Renderer.init
+```
+
+That backtrace reads like a libghostty threading bug and is a host bug. Declare the six
+callbacks as file-scope functions, which `@convention(c)` wants anyway.
+
+Worth knowing alongside them: libghostty runs its own display link and paints the layer
+it attaches to the host's `NSView`. A host that also calls `ghostty_surface_draw` from
+`draw(_:)` is a second painter racing the first - ghostty's own macOS app never calls it.
+
+## 5. The input path is the same encoder on both ends
 
 libghostty-vt encodes key events to escape sequences with no surface and no terminal
 involved: `ghostty_key_encoder_new`, `_setopt`, `_encode`
@@ -70,11 +99,20 @@ to produce, `composing` included for IME.
 `GHOSTTY_KEY_ENCODER_OPT_MACOS_OPTION_AS_ALT` settles the macOS option key.
 
 The part that matters more: **herdr encodes with this same library.** It vendors
-libghostty-vt as `vendor/n-vt`, and `src/ghostty/mod.rs:2547` and `:2552` call
-`ghostty_key_encoder_setopt_from_terminal` and `ghostty_key_encoder_encode` to re-encode
-input for a pane's real modes. So Muster's input path is ghostty-encode, herdr's
-crossterm parse (`src/raw_input.rs`), ghostty-encode again - one foreign step between two
-runs of the same engine, rather than two independent implementations that have to agree.
+libghostty-vt under `vendor/libghostty-vt`, and `src/ghostty/mod.rs:2547` and `:2552`
+call `ghostty_key_encoder_setopt_from_terminal` and `ghostty_key_encoder_encode` to
+re-encode input for a pane's real modes. So Muster's input path is ghostty-encode,
+herdr's crossterm parse (`src/raw_input.rs`), ghostty-encode again - one foreign step
+between two runs of the same engine, rather than two independent implementations that
+have to agree.
+
+The two copies are near but not identical, and the difference is worth knowing before
+trusting the symmetry. herdr v0.8.0 vendors `c5a21edf` (`libghostty-vt-1.3.2-HEAD`)
+against our `9f9b8d1d`, and carries one local patch: `0001-default-grapheme-cluster-mode`
+makes DEC mode 2027 the default so multi-codepoint clusters land in one cell.
+That patch touches `src/terminal/c/terminal.zig` and nothing in key encoding, so it does
+not weaken the symmetry above - but `vendor/libghostty-vt.patches.md` is the file to
+re-read when herdr upgrades, because a patch that did touch encoding would.
 
 **Do not encode at maximal fidelity.** herdr's TUI enables exactly three kitty flags -
 disambiguate, report event types, report alternate keys
@@ -84,7 +122,7 @@ breaks IME. `src/input/model.rs:427` asserts `REPORT_ALL_KEYS_AS_ESCAPE_CODES` s
 Muster should emit the same three: it is what herdr's parser is tested against, and the
 two flags left off are left off on purpose.
 
-## 5. The grid oracle exists here
+## 6. The grid oracle exists here
 
 `ghostty_terminal_vt_write` (`vt/terminal.h:1721`) feeds bytes to a headless terminal;
 `ghostty_terminal_grid_ref` (`:1968`), `ghostty_row_get` and `ghostty_cell_get`
@@ -98,7 +136,7 @@ upstream. It is not blocked.
 `mouse.h` and `paste.h` are here too, so SGR mouse encoding and bracketed paste come from
 the same place as key encoding rather than being hand-rolled.
 
-## 6. What this changes
+## 7. What this changes
 
 Two things `architecture.md` says are now underspecified rather than wrong.
 
