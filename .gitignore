@@ -1,6 +1,10 @@
 CLAUDE.md
 .DS_Store
 
+# SwiftPM
+.build/
+.swiftpm/
+
 # Python bytecode (tools/herdr-probe)
 __pycache__/
 *.py[cod]

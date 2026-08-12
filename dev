@@ -1,0 +1,81 @@
+#!/usr/bin/env rad
+---
+Muster's one door: build, test, and lint.
+
+Run with no flags to take the full gate. CI runs exactly that and nothing else, so the
+command a contributor types and the command that gates a merge cannot drift apart.
+
+Flags are clustered short bools, so the common combinations stay one token:
+'./dev -t' tests, './dev -tl' tests and lints, './dev -fbt' reformats then builds and
+tests.
+---
+args:
+    build b bool   # Compile everything.
+    test t bool    # Run the suite.
+    lint l bool    # Report style violations, changing nothing.
+    format f bool  # Rewrite sources into canonical style.
+    clean c bool   # Delete build artifacts.
+
+fn announce(name):
+    print(bold("\n▸ {name}"))
+
+fn fail_empty_suite():
+    print_err(red("No tests were discovered."))
+    print_err("An empty suite passes, so this is a failure rather than a green run.")
+    print_err("Usual causes: a test target dropped out of Package.swift, or tests moved")
+    print_err("out of Tests/. Try: swift test list")
+    exit(1)
+
+if not (build or test or lint or format or clean):
+    build = true
+    test = true
+    lint = true
+
+if clean:
+    announce("clean")
+    $`swift package clean`
+
+if format:
+    announce("format")
+    $`swift format --recursive --in-place Sources Tests Package.swift`
+
+if build:
+    announce("build")
+    $`swift build`
+
+if test:
+    announce("test")
+
+    // A suite that quietly stops running is worse than a red one: it reports green
+    // forever. cmux shipped CI passing with "Executed 0 tests" for a while, and
+    // docs/testing.md takes that as a standing hazard, so ask what the runner can see
+    // before trusting what it reports.
+    //
+    // Note that a healthy run prints "Executed 0 tests" too - that is the empty XCTest
+    // suite sitting alongside swift-testing - so the run's own output cannot be the
+    // signal here.
+    stdout, stderr, code = $`swift test list` catch:
+        if matches(stderr, "no tests found", partial=true):
+            fail_empty_suite()
+        print_err(red("Test discovery failed, so the suite never ran."))
+        print_err("Until it does, nothing below has been verified. Compiler output:")
+        print_err(stderr.trim())
+        exit(1)
+
+    // Names land on stdout and build chatter on stderr, so every non-empty line is a
+    // test.
+    tests = stdout.trim().split_lines().filter(fn(line) line.trim() != "")
+    if len(tests) == 0:
+        fail_empty_suite()
+
+    print(dim("{len(tests)} test(s) discovered"))
+    $`swift test`
+
+if lint:
+    announce("lint")
+    $`swift format lint --recursive --strict Sources Tests Package.swift`
+    // The probe is a dev tool rather than a component, so it gets a syntax check and
+    // no more. It has no test suite of its own; running it needs a real herdr daemon.
+    $`python3 -m compileall -q tools/herdr-probe`
+
+print(green("\n✓ ok"))

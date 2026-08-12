@@ -54,6 +54,15 @@ how you run your agents.
                            ├─ daemon on this machine   local agents
                            └─ daemon on devenv (SSH)   remote agents
 
+## Building
+
+`./dev` is the only supported way to build, test, and lint. With no flags it takes the full gate, which is also all
+CI runs, so a contributor's green and a merge gate's green cannot drift apart. Flags narrow it and cluster: `./dev -t`
+tests, `./dev -tl` tests and lints, `./dev -h` lists them all.
+
+Requires a Swift 6.2 toolchain and [Rad](https://github.com/amterp/rad) on your PATH; a missing `rad` shows up as
+`env: rad: No such file or directory`.
+
 ## Repo conventions
 
 - `docs/`: `origin.md` is the founding story, frozen as history; `architecture.md`, `testing.md`, and `glossary.md`
