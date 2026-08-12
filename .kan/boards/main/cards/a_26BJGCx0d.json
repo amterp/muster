@@ -5,7 +5,7 @@
   "area": [
     "testing"
   ],
-  "column": "backlog-hi",
+  "column": "next",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -21,11 +21,12 @@
   "labels": [
     "ai-hi"
   ],
-  "position": "UUUU",
+  "position": "UUUUUU",
   "title": "Grid-snapshot harness via libghostty-vt",
   "type": "feature",
-  "updated_at_millis": 1786516942499,
+  "updated_at_millis": 1786518298310,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1786461793283}
+    {"field":"column","value":"backlog-hi","at":1786461793283},
+    {"field":"column","value":"next","at":1786518298310}
   ]
 }

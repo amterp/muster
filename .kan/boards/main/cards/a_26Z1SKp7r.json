@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "bridge-a-remote-pane",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "next",
+  "created_at_millis": 1786518307602,
+  "creator": "Alexander Terp",
+  "description": "The local bridge works; the remote path is the same code with a different child process. muster-bridge spawns 'herdr terminal session control \u003cpane\u003e' - for a remote daemon that becomes 'ssh \u003chost\u003e herdr terminal session control \u003cpane\u003e', and the frame envelopes are identical either way (docs/observations/herdr-0.8.0.md section 8 diffed Linux against macOS and found zero differences).\n\nWorth doing early and cheaply against the devenv container, because 'local and remote in one window' is a founding desideratum and this is the first chance to show it costs the adapter nothing beyond the transport.\n\nOpen: where the transport choice is made. The bridge taking a --ssh flag keeps it dumb, but the core is what knows which daemon a pane belongs to.",
+  "id": "a_26Z1SKp7r",
+  "position": "UUUUUUU",
+  "title": "Bridge a remote pane over SSH",
+  "type": "feature",
+  "updated_at_millis": 1786518321719,
+  "history": [
+    {"field":"column","value":"next","at":1786518307602}
+  ]
+}
