@@ -65,6 +65,22 @@ final class SurfaceView: NSView {
   }
 }
 
+/// What the surface should run: a herdr pane if one was named, otherwise a plain shell.
+///
+/// `muster w1:p1` mirrors a daemon-owned pane; bare `muster` runs $SHELL, which is the
+/// spike's own terminal and useful for telling a renderer problem apart from a backend
+/// one. Choosing panes properly is the core's job and does not belong on a command line.
+func paneCommand() -> String? {
+  guard CommandLine.arguments.count > 1 else {
+    return ProcessInfo.processInfo.environment["SHELL"]
+  }
+  let paneID = CommandLine.arguments[1]
+  let bridge = URL(fileURLWithPath: CommandLine.arguments[0])
+    .deletingLastPathComponent()
+    .appendingPathComponent("muster-bridge")
+  return "\(bridge.path) \(paneID)"
+}
+
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
   private var window: NSWindow?
@@ -89,8 +105,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       Renderer.current = renderer
       self.renderer = renderer
 
-      let shell = ProcessInfo.processInfo.environment["SHELL"]
-      view.attach(try renderer.makeSurface(in: view, command: shell))
+      view.attach(try renderer.makeSurface(in: view, command: paneCommand()))
       renderer.setFocus(true)
       window.makeFirstResponder(view)
     } catch {

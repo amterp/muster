@@ -16,6 +16,9 @@ let package = Package(
   platforms: [.macOS(.v14)],
   targets: [
     .target(name: "MusterCore"),
+    // The one herdr-shaped module. Frame decoding lives here rather than in the bridge
+    // executable so it can be tested: executables cannot be imported by a test target.
+    .target(name: "MusterHerdr", dependencies: ["MusterCore"]),
     .binaryTarget(name: "GhosttyKit", path: "deps/ghostty/macos/GhosttyKit.xcframework"),
     .target(
       name: "MusterRenderer",
@@ -36,7 +39,11 @@ let package = Package(
         .linkedLibrary("c++"),
       ]
     ),
+    // Spawned as a surface's command, one per visible pane. Its own executable because
+    // that is the only shape libghostty can be fed by.
+    .executableTarget(name: "muster-bridge", dependencies: ["MusterHerdr"]),
     .executableTarget(name: "muster", dependencies: ["MusterCore", "MusterRenderer"]),
     .testTarget(name: "MusterCoreTests", dependencies: ["MusterCore"]),
+    .testTarget(name: "MusterHerdrTests", dependencies: ["MusterHerdr"]),
   ]
 )
