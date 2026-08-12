@@ -13,6 +13,12 @@
       "body": "The 0.8.0 observation pass settled the API half (docs/observations/herdr-0.8.0.md section 5).\n\nDecided: encoding is daemon-side. herdr exposes no pane terminal modes anywhere in its API, and the frame stream consumes the sequences that set them, so neither the surface nor the adapter can encode. terminal.input takes raw bytes; herdr's raw_input parses them and re-encodes for the pane's modes, which is what its own TUI relies on. Muster reports bytes.\n\nRuled out: pane.send_keys. It refuses home, end, pageup, pagedown, insert, delete, and ctrl+alt+delete with invalid_key - a named-key API with no navigation cluster cannot carry a terminal keyboard.\n\nStill open, and why this card stays in next: IME composition, AltGr, dead keys, and whether byte-level reporting preserves enough for the kitty protocol in practice. All need the Swift surface, so this is blocked behind the libghostty spike rather than behind more daemon observation.",
       "created_at_millis": 1786485319243,
       "id": "c_26LBHIbnj"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "The renderer half is now settled too, and it lands better than expected: herdr re-encodes input with libghostty-vt's own key encoder (src/ghostty/mod.rs:2547 and :2552 call ghostty_key_encoder_setopt_from_terminal and _encode). Muster can encode with the same library, so the path is ghostty-encode, herdr's crossterm parse, ghostty-encode - one foreign step between two runs of one engine, not two implementations that have to agree.\n\nCorrecting the plan's wording: do NOT encode at maximal fidelity. herdr's TUI enables exactly three kitty flags - disambiguate, report event types, report alternate keys (src/input/model.rs:219) - and the function is called ime_compatible_keyboard_enhancement_flags because reporting all keys as escape codes breaks IME. src/input/model.rs:427 asserts REPORT_ALL_KEYS stays out. Match those three.\n\nStill needs the Swift surface: IME composition, AltGr, dead keys. The key event struct carries a 'composing' flag, so the shape is there.",
+      "created_at_millis": 1786516942542,
+      "id": "c_26YRwcHTS"
     }
   ],
   "created_at_millis": 1786461765245,
@@ -25,7 +31,7 @@
   "position": "UUU",
   "title": "Input path: prove daemon-side-correct encoding",
   "type": "chore",
-  "updated_at_millis": 1786485319243,
+  "updated_at_millis": 1786516942542,
   "history": [
     {"field":"column","value":"next","at":1786461765245}
   ]

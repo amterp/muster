@@ -6,6 +6,14 @@
     "testing"
   ],
   "column": "backlog-hi",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Not blocked on upstream after all. libghostty-vt at the pin in deps/ghostty.pin exposes the whole oracle in C: ghostty_terminal_vt_write feeds bytes to a headless terminal, and ghostty_terminal_grid_ref / ghostty_row_get / ghostty_cell_get read the grid back. snapshot.h and render.h are there too.\n\nThis is why the pin is a main commit rather than the v1.3.1 release - the release ships only key, OSC, SGR and paste. Details and citations: docs/observations/libghostty-9f9b8d1d.md section 5.",
+      "created_at_millis": 1786516942499,
+      "id": "c_26YRwXKnH"
+    }
+  ],
   "created_at_millis": 1786461793283,
   "creator": "Alexander Terp",
   "description": "Feed pane bytes through libghostty-vt (the production engine) in tests and snapshot the resulting grid as reviewable text files, go-snap style. Assert what the user sees, not pixels and not substrings.",
@@ -16,7 +24,7 @@
   "position": "UUUU",
   "title": "Grid-snapshot harness via libghostty-vt",
   "type": "feature",
-  "updated_at_millis": 1786461793283,
+  "updated_at_millis": 1786516942499,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786461793283}
   ]

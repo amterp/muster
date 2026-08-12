@@ -10,11 +10,18 @@ Flags are clustered short bools, so the common combinations stay one token:
 tests.
 ---
 args:
+    deps d bool    # Fetch and build the pinned libghostty.
     build b bool   # Compile everything.
     test t bool    # Run the suite.
     lint l bool    # Report style violations, changing nothing.
     format f bool  # Rewrite sources into canonical style.
     clean c bool   # Delete build artifacts.
+
+ZIG_VERSION = "0.16.0"
+GHOSTTY_REPO = "https://github.com/ghostty-org/ghostty"
+GHOSTTY_DIR = "deps/ghostty"
+XCFRAMEWORK = "deps/ghostty/macos/GhosttyKit.xcframework"
+BUILT_STAMP = "deps/.built"
 
 fn announce(name):
     print(bold("\n▸ {name}"))
@@ -26,10 +33,61 @@ fn fail_empty_suite():
     print_err("out of Tests/. Try: swift test list")
     exit(1)
 
-if not (build or test or lint or format or clean):
+fn read_pin():
+    result = read_file("deps/ghostty.pin") catch:
+        print_err(red("deps/ghostty.pin is missing or unreadable."))
+        print_err("It names the libghostty commit this tree builds against, so without it")
+        print_err("nothing can be built. Restore it from git.")
+        exit(1)
+    return result.content.trim()
+
+// Everything under deps/ is reproducible from the pin, so the check is only ever
+// "is what sits there the commit we asked for". libghostty takes minutes to build and
+// changes only when the pin does.
+fn deps_are_current(pin):
+    stamp = read_file(BUILT_STAMP) catch:
+        return false
+    return stamp.content.trim() == pin
+
+fn build_deps():
+    stdout = $`zig version`
+    installed = stdout.trim()
+    if installed != ZIG_VERSION:
+        print_err(red("zig {ZIG_VERSION} is required; found {installed}."))
+        print_err("libghostty pins its own minimum, and a mismatch surfaces as a wall of")
+        print_err("compiler errors inside ghostty rather than as a version complaint.")
+        print_err("Try: brew install zig")
+        exit(1)
+
+    pin = read_pin()
+    if deps_are_current(pin):
+        print(dim("libghostty already built at {pin[:12]}"))
+        return
+
+    print(dim("building libghostty at {pin[:12]} - several minutes on a cold cache"))
+    $`mkdir -p {GHOSTTY_DIR}`
+    $`git init -q {GHOSTTY_DIR}`
+    // A fresh clone and a re-pin take the same path: fetch exactly the one commit.
+    $`git -C {GHOSTTY_DIR} remote add origin {GHOSTTY_REPO} 2>/dev/null || true`
+    $`git -C {GHOSTTY_DIR} fetch -q --depth 1 origin {pin}`
+    $`git -C {GHOSTTY_DIR} checkout -q FETCH_HEAD`
+
+    // Two builds, because -Demit-lib-vt turns the xcframework off: the surface API that
+    // the shell renders through, then the VT that the core encodes keys with and the
+    // tests read grids from.
+    $`cd {GHOSTTY_DIR} && zig build -Doptimize=ReleaseFast -Demit-xcframework=true -Dxcframework-target=native`
+    $`cd {GHOSTTY_DIR} && zig build -Doptimize=ReleaseFast -Demit-lib-vt=true`
+    write_file(BUILT_STAMP, pin)
+
+if not (deps or build or test or lint or format or clean):
+    deps = true
     build = true
     test = true
     lint = true
+
+if deps:
+    announce("deps")
+    build_deps()
 
 if clean:
     announce("clean")

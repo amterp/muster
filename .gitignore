@@ -5,6 +5,11 @@ CLAUDE.md
 .build/
 .swiftpm/
 
+# The libghostty checkout and its build output. The pin is what we track; ./dev -d
+# reproduces everything else from it.
+deps/*
+!deps/ghostty.pin
+
 # Python bytecode (tools/herdr-probe)
 __pycache__/
 *.py[cod]
