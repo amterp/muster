@@ -4,7 +4,8 @@
 use conformance::{Conformance, fields};
 use muster_core::AgentState;
 use muster_core::mirror::backend::{
-    Focus, Pane, PaneId, Snapshot, Tab, TabId, Workspace, WorkspaceId,
+    Focus, Layout, LayoutNode, Pane, PaneId, Snapshot, SplitAxis, Tab, TabId, Workspace,
+    WorkspaceId,
 };
 use muster_core::mirror::{BackendEvent, Change, Mirror};
 use serde_json::{Value, json};
@@ -38,6 +39,7 @@ fn mirror_conformance() {
             ("tabs", Some(json!(ids(mirror.tabs().map(|t| t.id.as_str()))))),
             ("workspaces", Some(json!(ids(mirror.workspaces().map(|w| w.id.as_str()))))),
             ("agentStates", Some(agent_states(&mirror))),
+            ("layouts", Some(layouts(&mirror))),
             ("focus", Some(focus(mirror.focus()))),
             ("health", Some(json!(mirror.health().as_str()))),
             ("changes", Some(json!(changes.iter().map(describe).collect::<Vec<_>>()))),
@@ -72,6 +74,19 @@ fn agent_states(mirror: &Mirror) -> Value {
     Value::Object(map)
 }
 
+/// Each tab's tree on one line, keyed by tab.
+fn layouts(mirror: &Mirror) -> Value {
+    let mut map = serde_json::Map::new();
+    for layout in mirror.layouts() {
+        let mut described = layout.root.to_string();
+        if let Some(zoomed) = &layout.zoomed {
+            described = format!("{described} zoomed={zoomed}");
+        }
+        map.insert(layout.tab.to_string(), json!(described));
+    }
+    Value::Object(map)
+}
+
 /// Changes render as readable strings rather than as nested objects.
 ///
 /// A corpus is read by people deciding whether an expectation is right, and
@@ -89,6 +104,7 @@ fn describe(change: &Change) -> String {
         }
         Change::TabAdded(tab) => format!("tabAdded:{tab}"),
         Change::TabRemoved(tab) => format!("tabRemoved:{tab}"),
+        Change::LayoutChanged(tab) => format!("layoutChanged:{tab}"),
         Change::WorkspaceAdded(workspace) => format!("workspaceAdded:{workspace}"),
         Change::WorkspaceRemoved(workspace) => format!("workspaceRemoved:{workspace}"),
         Change::FocusChanged => "focusChanged".to_string(),
@@ -134,6 +150,13 @@ fn read_snapshot(given: &Value) -> Snapshot {
             .flatten()
             .map(read_pane)
             .collect(),
+        layouts: given
+            .get("layouts")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .map(read_layout)
+            .collect(),
         focus: Focus {
             workspace: optional(&focus, "workspace").map(WorkspaceId::new),
             tab: optional(&focus, "tab").map(TabId::new),
@@ -154,6 +177,42 @@ fn read_pane(given: &Value) -> Pane {
     }
 }
 
+/// A tree written the way a case reads best: a string is a pane, an object is a split.
+///
+/// The alternative - a `type` discriminant on every node - triples the size of a case for
+/// no information, and these cases are meant to be read.
+fn read_node(given: &Value) -> LayoutNode {
+    if let Some(pane) = given.as_str() {
+        return LayoutNode::Pane(PaneId::new(pane));
+    }
+    let axis = match text(given, "axis").as_str() {
+        "columns" => SplitAxis::Columns,
+        "rows" => SplitAxis::Rows,
+        other => panic!("corpus case names a split axis the driver does not know: {other:?}"),
+    };
+    LayoutNode::Split {
+        axis,
+        ratio: ratio(given),
+        first: Box::new(read_node(given.get("first").unwrap_or(&Value::Null))),
+        second: Box::new(read_node(given.get("second").unwrap_or(&Value::Null))),
+    }
+}
+
+/// JSON has one number type and a ratio is an `f32`, so narrowing is what reading one is.
+#[allow(clippy::cast_possible_truncation)]
+fn ratio(given: &Value) -> f32 {
+    given.get("ratio").and_then(Value::as_f64).unwrap_or(0.5) as f32
+}
+
+fn read_layout(given: &Value) -> Layout {
+    Layout {
+        tab: TabId::new(text(given, "tab")),
+        root: read_node(given.get("root").unwrap_or(&Value::Null)),
+        focused: optional(given, "focused").map(PaneId::new),
+        zoomed: optional(given, "zoomed").map(PaneId::new),
+    }
+}
+
 fn read_event(given: &Value) -> BackendEvent {
     match text(given, "kind").as_str() {
         "workspaceUpserted" => BackendEvent::WorkspaceUpserted(Workspace {
@@ -169,6 +228,7 @@ fn read_event(given: &Value) -> BackendEvent {
         "tabRemoved" => BackendEvent::TabRemoved(TabId::new(text(given, "id"))),
         "paneUpserted" => BackendEvent::PaneUpserted(read_pane(given)),
         "paneRemoved" => BackendEvent::PaneRemoved(PaneId::new(text(given, "id"))),
+        "layoutUpserted" => BackendEvent::LayoutUpserted(read_layout(given)),
         "agentStateChanged" => BackendEvent::AgentStateChanged {
             pane: PaneId::new(text(given, "pane")),
             state: AgentState::from_backend(&text(given, "state")),

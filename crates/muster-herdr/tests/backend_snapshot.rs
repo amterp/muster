@@ -38,6 +38,20 @@ fn backend_snapshot_conformance() {
             ),
             ("agentStates", Some(Value::Object(agent_states))),
             ("agents", Some(Value::Object(agents))),
+            // Trees on one line, keyed by tab. Rebuilding one is judged in
+            // layout-reconstruction.json; what a case here can say is which tabs came back
+            // with an arrangement at all, which is what `dropped` below is counting when
+            // one does not.
+            (
+                "layouts",
+                Some(Value::Object(
+                    snapshot
+                        .layouts
+                        .iter()
+                        .map(|layout| (layout.tab.to_string(), json!(layout.root.to_string())))
+                        .collect(),
+                )),
+            ),
             (
                 "focus",
                 Some(fields([

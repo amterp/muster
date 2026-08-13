@@ -178,6 +178,9 @@
           "w1:p3": "unknown"
         },
         "agents": {},
+        "layouts": {
+          "w1:t1": "columns(w1:p1, rows(w1:p2, w1:p3@0.5)@0.5)"
+        },
         "focus": {
           "workspace": "w1",
           "tab": "w1:t1",
@@ -299,6 +302,9 @@
         "agents": {
           "w1:p1": "probe"
         },
+        "layouts": {
+          "w1:t1": "w1:p1"
+        },
         "focus": {
           "workspace": "w1",
           "tab": "w1:t1",
@@ -336,6 +342,7 @@
         "panes": [],
         "agentStates": {},
         "agents": {},
+        "layouts": {},
         "focus": {},
         "agentStateSeq": 9,
         "dropped": 0
@@ -356,6 +363,7 @@
         "panes": [],
         "agentStates": {},
         "agents": {},
+        "layouts": {},
         "focus": {},
         "agentStateSeq": null,
         "dropped": 0
@@ -406,6 +414,7 @@
           "w1:p1": "idle"
         },
         "agents": {},
+        "layouts": {},
         "focus": {},
         "agentStateSeq": null,
         "dropped": 2
@@ -428,6 +437,7 @@
         "panes": [],
         "agentStates": {},
         "agents": {},
+        "layouts": {},
         "focus": {
           "workspace": "w1"
         },
@@ -460,6 +470,7 @@
           "w1:p1": "unknown"
         },
         "agents": {},
+        "layouts": {},
         "focus": {},
         "agentStateSeq": null,
         "dropped": 0

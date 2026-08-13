@@ -1,6 +1,6 @@
 {
   "layout": {
-    "focused_pane_id": "w1:p2",
+    "focused_pane_id": "w1:p1",
     "root": {
       "direction": "right",
       "first": {
@@ -14,14 +14,24 @@
         "second": {
           "direction": "right",
           "first": {
-            "cwd": "/private/tmp",
-            "pane_id": "w1:p3",
-            "type": "pane"
+            "direction": "right",
+            "first": {
+              "cwd": "/private/tmp",
+              "pane_id": "w1:p3",
+              "type": "pane"
+            },
+            "ratio": 0.5,
+            "second": {
+              "cwd": "/private/tmp",
+              "pane_id": "w1:p6",
+              "type": "pane"
+            },
+            "type": "split"
           },
           "ratio": 0.5,
           "second": {
             "cwd": "/private/tmp",
-            "pane_id": "w1:p6",
+            "pane_id": "w1:p4",
             "type": "pane"
           },
           "type": "split"

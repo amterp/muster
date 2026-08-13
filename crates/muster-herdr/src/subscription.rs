@@ -72,7 +72,7 @@ pub enum Notice {
 /// `pane_id` and no unparameterized subscription carries the same information
 /// (`observations/herdr-0.8.0.md` section 11), so agent state costs a connection per pane
 /// and is subscribed separately.
-pub const STRUCTURE: [&str; 15] = [
+pub const STRUCTURE: [&str; 16] = [
     "workspace.created",
     "workspace.updated",
     "workspace.renamed",
@@ -88,6 +88,10 @@ pub const STRUCTURE: [&str; 15] = [
     "pane.exited",
     "pane.focused",
     "pane.agent_detected",
+    // The only live description of how a tab arranges its panes. Absent, the mirror still
+    // gets a tree from every snapshot and would look correct until somebody split
+    // something - which is the silence this list's doc comment is about.
+    "layout.updated",
 ];
 
 /// A subscription's control handle.

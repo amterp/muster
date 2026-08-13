@@ -1209,6 +1209,24 @@ def layout(daemon, rec: Recorder) -> None:
         rec.note("split ids spell the same paths as the export tree: "
                  f"{all(_id_path(p['matched_split_id']) == p['path'] for p in pairings if p['matched_split_id'])}")
 
+        # One more shape, because it is the one that makes rebuilding ambiguous. Splitting
+        # p3 along the axis it is already split on gives columns(columns(p3, p6), p4): the
+        # inner split and its own first child both start at the outer split's corner and
+        # both span its height, so two candidates answer "what is the first child here" and
+        # only the larger is right. Every tree above has exactly one candidate at every
+        # node, so none of them can tell a reconstruction that picks wrong.
+        client.request("pane.split",
+                       {"direction": "right", "target_pane_id": "w1:p3", "cwd": "/tmp"})
+        time.sleep(0.6)
+        same_axis = client.request("session.snapshot")["snapshot"]
+        same_axis_export = client.request("layout.export", {})
+        rec.write_json("same-axis-session.snapshot.json", same_axis)
+        rec.write_json("same-axis-layout.export.json", same_axis_export)
+        rec.fact("same_axis_tree_shape",
+                 _tree_shape(same_axis_export.get("layout", {}).get("root")))
+        rec.note("same axis nested under a first child: "
+                 f"{_tree_shape(same_axis_export.get('layout', {}).get('root'))}")
+
         # Whose window do these rects describe? Nothing was attached above, so if they
         # move now, they are about a viewer rather than about the session - and a client
         # rendering at its own size can use ratios and nothing else.
@@ -1234,6 +1252,11 @@ def layout(daemon, rec: Recorder) -> None:
         time.sleep(1.0)
         ratio_events = [e.get("event") for e in stream.snapshot()[before_ratio:]]
         after_ratio = _tab_layout(client.request("session.snapshot")["snapshot"])
+        # herdr's own tree at this moment, so anything judging the dragged layout has an
+        # oracle from the daemon rather than from whatever read it.
+        rec.write_json("dragged-session.snapshot.json",
+                       client.request("session.snapshot")["snapshot"])
+        rec.write_json("dragged-layout.export.json", client.request("layout.export", {}))
         rec.fact("set_split_ratio_accepted", ok)
         rec.fact("set_split_ratio_events", ratio_events)
         rec.fact("root_ratio_after_setting_it_to_0_3",
@@ -1247,6 +1270,9 @@ def layout(daemon, rec: Recorder) -> None:
         zoom_ok, _ = client.try_request("pane.zoom", {"pane_id": "w1:p4", "mode": "on"})
         time.sleep(1.0)
         zoomed = _tab_layout(client.request("session.snapshot")["snapshot"])
+        rec.write_json("zoomed-session.snapshot.json",
+                       client.request("session.snapshot")["snapshot"])
+        rec.write_json("zoomed-layout.export.json", client.request("layout.export", {}))
         rec.fact("zoom_accepted", zoom_ok)
         rec.fact("zoom_events", [e.get("event") for e in stream.snapshot()[before_zoom:]])
         rec.fact("zoomed_flag", zoomed.get("zoomed"))

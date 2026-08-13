@@ -65,6 +65,107 @@ pub struct Tab {
     pub label: String,
 }
 
+/// Which way a split divides its area.
+///
+/// Named for the arrangement it produces rather than for where a new pane went. herdr says
+/// `right` and `down`, which describe the moment of splitting; a view has to know how to
+/// lay two children out long after that moment, and translating at the seam means the
+/// renderer never has to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SplitAxis {
+    /// Children sit side by side. `first` is the left one.
+    Columns,
+    /// Children sit one above the other. `first` is the upper one.
+    Rows,
+}
+
+/// One tab's pane tree.
+///
+/// Ratios rather than cells, because the cells are not about this window. herdr sizes its
+/// rects for a terminal area of its own - a fixed 54x23 whether a client is attached or
+/// not (`observations/herdr-0.8.0.md` section 13) - so the numbers it publishes describe
+/// nobody's window and only the proportions survive the trip to a view rendering at its
+/// own size.
+#[derive(Debug, Clone, PartialEq)]
+pub enum LayoutNode {
+    Pane(PaneId),
+    Split {
+        axis: SplitAxis,
+        /// The first child's share of the area, between 0 and 1.
+        ///
+        /// Compared exactly for change detection, which is safe because it is never
+        /// computed here: it arrives from one backend and is stored unchanged, so two
+        /// reads of an unmoved divider are the same bits. A ratio Muster sends *out* is
+        /// computed from a drag and never read back.
+        ratio: f32,
+        first: Box<LayoutNode>,
+        second: Box<LayoutNode>,
+    },
+}
+
+impl LayoutNode {
+    /// Every pane in the tree, in reading order.
+    ///
+    /// Allocates, and is meant to: this is called when structure changes, never per byte
+    /// or per keystroke. What it is for is the check nothing else can do - whether the
+    /// tree and the mirror's pane list describe the same session.
+    pub fn panes(&self) -> Vec<&PaneId> {
+        let mut found = Vec::new();
+        self.collect_panes(&mut found);
+        found
+    }
+
+    fn collect_panes<'a>(&'a self, found: &mut Vec<&'a PaneId>) {
+        match self {
+            LayoutNode::Pane(id) => found.push(id),
+            LayoutNode::Split { first, second, .. } => {
+                first.collect_panes(found);
+                second.collect_panes(found);
+            }
+        }
+    }
+}
+
+/// A tree on one line: `columns(w1:p1, rows(w1:p2, w1:p3@0.5)@0.5)`.
+///
+/// Exists for the run log, where "the layout changed" is useless and the shape it changed
+/// to is the whole answer, and reused by the conformance drivers - a reviewer deciding
+/// whether an expectation is right can hold this in their head, and cannot hold four
+/// screens of nested JSON.
+impl std::fmt::Display for LayoutNode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LayoutNode::Pane(id) => write!(f, "{id}"),
+            LayoutNode::Split { axis, ratio, first, second } => {
+                let axis = match axis {
+                    SplitAxis::Columns => "columns",
+                    SplitAxis::Rows => "rows",
+                };
+                write!(f, "{axis}({first}, {second}@{ratio})")
+            }
+        }
+    }
+}
+
+/// How one tab arranges its panes, and which of them the backend is showing.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Layout {
+    pub tab: TabId,
+    pub root: LayoutNode,
+    /// The backend's focused pane in this tab. Rendered as a cursor, never used to route
+    /// input: which pane Muster's keyboard feeds is view-local (`architecture.md`, cursors
+    /// are written, not read).
+    pub focused: Option<PaneId>,
+    /// The pane filling the whole tab, when one is.
+    ///
+    /// herdr spells this as a flag beside the layout's focused pane, and keeps publishing
+    /// every pane's ordinary unzoomed rect while it is set - so a view that renders what it
+    /// is handed paints the whole tree while the daemon is showing one pane
+    /// (`observations/herdr-0.8.0.md` section 13). Resolved to the pane itself here so that
+    /// the question a view actually asks has an answer it cannot skip.
+    pub zoomed: Option<PaneId>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Workspace {
     pub id: WorkspaceId,
@@ -86,11 +187,14 @@ pub struct Focus {
 /// Everything a backend says is true right now, as one answer.
 ///
 /// What a mirror bootstraps from, and what it rebuilds from after any gap.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct Snapshot {
     pub workspaces: Vec<Workspace>,
     pub tabs: Vec<Tab>,
     pub panes: Vec<Pane>,
+    /// One per tab that has one. A tab with no readable layout is absent rather than
+    /// empty, so a view keeps whatever it had instead of blanking.
+    pub layouts: Vec<Layout>,
     pub focus: Focus,
     /// The highest agent-state sequence the backend has issued, if it issues one. Lets a
     /// later gap be noticed rather than merely survived (`architecture.md`, event model).

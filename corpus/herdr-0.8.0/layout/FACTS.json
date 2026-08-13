@@ -29,26 +29,19 @@
   "collapsed_split_ids": [
     "split_0_root",
     "split_1_0",
-    "split_2_1"
+    "split_2_01",
+    "split_3_1"
   ],
-  "collapsed_tree_shape": "right(down(w1:p1, w1:p3@0.5), down(w1:p2, w1:p5@0.5)@0.3)",
+  "collapsed_tree_shape": "right(down(w1:p1, right(w1:p3, w1:p6@0.5)@0.5), down(w1:p2, w1:p5@0.5)@0.3)",
   "crowded": {
     "last_good_pane_count": 15,
     "steps": [
-      {
-        "borders_matched": 3,
-        "panes": 4,
-        "rebuildable": true,
-        "rects_distinct": true,
-        "smallest_rect": 11,
-        "splits": 3
-      },
       {
         "borders_matched": 4,
         "panes": 5,
         "rebuildable": true,
         "rects_distinct": true,
-        "smallest_rect": 11,
+        "smallest_rect": 8,
         "splits": 4
       },
       {
@@ -56,7 +49,7 @@
         "panes": 6,
         "rebuildable": true,
         "rects_distinct": true,
-        "smallest_rect": 11,
+        "smallest_rect": 8,
         "splits": 5
       },
       {
@@ -64,7 +57,7 @@
         "panes": 7,
         "rebuildable": true,
         "rects_distinct": true,
-        "smallest_rect": 9,
+        "smallest_rect": 8,
         "splits": 6
       },
       {
@@ -72,7 +65,7 @@
         "panes": 8,
         "rebuildable": true,
         "rects_distinct": true,
-        "smallest_rect": 9,
+        "smallest_rect": 8,
         "splits": 7
       },
       {
@@ -80,7 +73,7 @@
         "panes": 9,
         "rebuildable": true,
         "rects_distinct": true,
-        "smallest_rect": 9,
+        "smallest_rect": 8,
         "splits": 8
       },
       {
@@ -88,7 +81,7 @@
         "panes": 10,
         "rebuildable": true,
         "rects_distinct": true,
-        "smallest_rect": 9,
+        "smallest_rect": 8,
         "splits": 9
       },
       {
@@ -220,7 +213,7 @@
     },
     "w1:p3": {
       "height": 11,
-      "width": 8,
+      "width": 4,
       "x": 26,
       "y": 13
     },
@@ -235,9 +228,16 @@
       "width": 38,
       "x": 42,
       "y": 13
+    },
+    "w1:p6": {
+      "height": 11,
+      "width": 4,
+      "x": 30,
+      "y": 13
     }
   },
   "root_ratio_after_setting_it_to_0_3": 0.3,
+  "same_axis_tree_shape": "right(down(w1:p1, right(right(w1:p3, w1:p6@0.5), w1:p4@0.5)@0.5), down(w1:p2, w1:p5@0.5)@0.5)",
   "set_split_ratio_accepted": true,
   "set_split_ratio_events": [
     "layout_updated"

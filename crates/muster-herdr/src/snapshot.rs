@@ -12,6 +12,8 @@ use muster_core::mirror::backend::{
 };
 use serde_json::Value;
 
+use crate::layout::read_layout;
+
 /// Reads the `snapshot` object out of a `session.snapshot` result.
 ///
 /// Absent lists read as empty rather than as a refusal. A daemon with no workspaces is a
@@ -52,6 +54,12 @@ pub fn read_snapshot(snapshot: &Value) -> (Snapshot, usize) {
         })
     });
 
+    // Same object as a `layout_updated` carries, which is why one reader serves both. A
+    // tab whose arrangement will not read is counted as dropped and left absent: the
+    // mirror renders a tab it has no tree for as the tree it had, which is a better wrong
+    // answer than an empty tab.
+    let layouts = collect(snapshot, "layouts", &mut dropped, read_layout);
+
     // The highest stamp, not the count of agents: it is one session-wide counter, so the
     // highest value is what the session has run in total, and a pane that has never had an
     // agent contributes nothing to it.
@@ -67,6 +75,7 @@ pub fn read_snapshot(snapshot: &Value) -> (Snapshot, usize) {
         workspaces,
         tabs,
         panes,
+        layouts,
         focus: Focus {
             workspace: id(snapshot, "focused_workspace_id").map(WorkspaceId::new),
             tab: id(snapshot, "focused_tab_id").map(TabId::new),

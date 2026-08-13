@@ -16,6 +16,7 @@
         "tabs": [],
         "workspaces": [],
         "agentStates": {},
+        "layouts": {},
         "focus": {},
         "health": "disconnected",
         "changes": []
@@ -76,6 +77,7 @@
           "w1:p1": "unknown",
           "w1:p2": "working"
         },
+        "layouts": {},
         "focus": {
           "workspace": "w1",
           "tab": "w1:t1",
@@ -157,6 +159,7 @@
         "agentStates": {
           "w1:p1": "idle"
         },
+        "layouts": {},
         "focus": {
           "workspace": "w1",
           "tab": "w1:t1",
@@ -224,6 +227,7 @@
         "agentStates": {
           "w1:p1": "idle"
         },
+        "layouts": {},
         "focus": {},
         "health": "connected",
         "changes": [
@@ -294,6 +298,7 @@
         "agentStates": {
           "w1:p1": "idle"
         },
+        "layouts": {},
         "focus": {},
         "health": "connected",
         "changes": [
@@ -348,6 +353,7 @@
         "agentStates": {
           "w1:p1": "idle"
         },
+        "layouts": {},
         "focus": {},
         "health": "connected",
         "changes": [
@@ -393,6 +399,7 @@
         "agentStates": {
           "w1:p1": "idle"
         },
+        "layouts": {},
         "focus": {},
         "health": "connected",
         "changes": []
@@ -434,6 +441,7 @@
         "agentStates": {
           "w1:p1": "working"
         },
+        "layouts": {},
         "focus": {},
         "health": "connected",
         "changes": [
@@ -480,6 +488,7 @@
         "agentStates": {
           "w1:p1": "working"
         },
+        "layouts": {},
         "focus": {},
         "health": "connected",
         "changes": [
@@ -518,6 +527,7 @@
         "agentStates": {
           "w1:p1": "idle"
         },
+        "layouts": {},
         "focus": {},
         "health": "connected",
         "changes": []
@@ -566,6 +576,7 @@
         "agentStates": {
           "w1:p1": "working"
         },
+        "layouts": {},
         "focus": {},
         "health": "connected",
         "changes": [
@@ -622,6 +633,7 @@
         "agentStates": {
           "w1:p1": "blocked"
         },
+        "layouts": {},
         "focus": {},
         "health": "connected",
         "changes": [
@@ -690,6 +702,7 @@
           "w1:p1": "idle",
           "w1:p2": "idle"
         },
+        "layouts": {},
         "focus": {
           "workspace": "w1",
           "tab": "w1:t1",
@@ -740,6 +753,7 @@
         ],
         "workspaces": [],
         "agentStates": {},
+        "layouts": {},
         "focus": {
           "tab": "w1:t1"
         },
@@ -781,6 +795,7 @@
         "agentStates": {
           "w1:p1": "unknown"
         },
+        "layouts": {},
         "focus": {},
         "health": "connected",
         "changes": [
@@ -853,12 +868,664 @@
           "w1:p1": "blocked",
           "w1:p3": "idle"
         },
+        "layouts": {},
         "focus": {},
         "health": "connected",
         "changes": [
           "agentStateChanged:w1:p1:idle->blocked",
           "paneAdded:w1:p3",
           "paneRemoved:w1:p2:announced"
+        ]
+      }
+    },
+    {
+      "name": "a tab's tree arrives and is reported once",
+      "why": "The noun a window renders. herdr sends the whole tab in absolute values on every pane change, so the mirror stores it whole rather than patching it, and reports the tab rather than the tree - every reader already holds the mirror, and only some of them want to walk it.",
+      "given": {
+        "snapshot": {
+          "workspaces": [
+            {
+              "id": "w1",
+              "label": "tmp"
+            }
+          ],
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            },
+            {
+              "id": "w1:p2",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "layoutUpserted",
+            "tab": "w1:t1",
+            "root": {
+              "axis": "columns",
+              "ratio": 0.5,
+              "first": "w1:p1",
+              "second": "w1:p2"
+            },
+            "focused": "w1:p1"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1",
+          "w1:p2"
+        ],
+        "tabs": [
+          "w1:t1"
+        ],
+        "workspaces": [
+          "w1"
+        ],
+        "agentStates": {
+          "w1:p1": "idle",
+          "w1:p2": "idle"
+        },
+        "layouts": {
+          "w1:t1": "columns(w1:p1, w1:p2@0.5)"
+        },
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "layoutChanged:w1:t1"
+        ]
+      }
+    },
+    {
+      "name": "the same tree twice is one change",
+      "why": "A subscription replays the session it arrived after, and every pane event drags a layout_updated behind it, so a mirror sees the tree it already has constantly. Reporting each one would rebuild every surface in the window for no news, which is the cost the whole change-reporting arrangement exists to avoid.",
+      "given": {
+        "snapshot": {
+          "workspaces": [
+            {
+              "id": "w1",
+              "label": "tmp"
+            }
+          ],
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            },
+            {
+              "id": "w1:p2",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "layoutUpserted",
+            "tab": "w1:t1",
+            "root": {
+              "axis": "columns",
+              "ratio": 0.5,
+              "first": "w1:p1",
+              "second": "w1:p2"
+            },
+            "focused": "w1:p1"
+          },
+          {
+            "kind": "layoutUpserted",
+            "tab": "w1:t1",
+            "root": {
+              "axis": "columns",
+              "ratio": 0.5,
+              "first": "w1:p1",
+              "second": "w1:p2"
+            },
+            "focused": "w1:p1"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1",
+          "w1:p2"
+        ],
+        "tabs": [
+          "w1:t1"
+        ],
+        "workspaces": [
+          "w1"
+        ],
+        "agentStates": {
+          "w1:p1": "idle",
+          "w1:p2": "idle"
+        },
+        "layouts": {
+          "w1:t1": "columns(w1:p1, w1:p2@0.5)"
+        },
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "layoutChanged:w1:t1"
+        ]
+      }
+    },
+    {
+      "name": "a divider that moved is a change, though the panes did not",
+      "why": "Someone dragging a divider in herdr's own TUI emits layout_updated with the same panes and a different ratio (observations section 13). A mirror comparing only which panes are present would call that no news, and the window would sit at the old proportions until something else happened to it.",
+      "given": {
+        "snapshot": {
+          "workspaces": [
+            {
+              "id": "w1",
+              "label": "tmp"
+            }
+          ],
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            },
+            {
+              "id": "w1:p2",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "layoutUpserted",
+            "tab": "w1:t1",
+            "root": {
+              "axis": "columns",
+              "ratio": 0.5,
+              "first": "w1:p1",
+              "second": "w1:p2"
+            },
+            "focused": "w1:p1"
+          },
+          {
+            "kind": "layoutUpserted",
+            "tab": "w1:t1",
+            "root": {
+              "axis": "columns",
+              "ratio": 0.3,
+              "first": "w1:p1",
+              "second": "w1:p2"
+            },
+            "focused": "w1:p1"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1",
+          "w1:p2"
+        ],
+        "tabs": [
+          "w1:t1"
+        ],
+        "workspaces": [
+          "w1"
+        ],
+        "agentStates": {
+          "w1:p1": "idle",
+          "w1:p2": "idle"
+        },
+        "layouts": {
+          "w1:t1": "columns(w1:p1, w1:p2@0.3)"
+        },
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "layoutChanged:w1:t1",
+          "layoutChanged:w1:t1"
+        ]
+      }
+    },
+    {
+      "name": "a zoomed pane is named, not merely flagged",
+      "why": "herdr says `zoomed: true` and keeps publishing every pane at its ordinary rect, so a view rendering what it is handed paints the whole tree while the daemon is showing one pane. The adapter resolves the flag against the tab's focused pane, which makes the question a view actually asks - which pane fills this tab - one it cannot answer by accident.",
+      "given": {
+        "snapshot": {
+          "workspaces": [
+            {
+              "id": "w1",
+              "label": "tmp"
+            }
+          ],
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            },
+            {
+              "id": "w1:p2",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "layoutUpserted",
+            "tab": "w1:t1",
+            "root": {
+              "axis": "columns",
+              "ratio": 0.5,
+              "first": "w1:p1",
+              "second": "w1:p2"
+            },
+            "focused": "w1:p2",
+            "zoomed": "w1:p2"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1",
+          "w1:p2"
+        ],
+        "tabs": [
+          "w1:t1"
+        ],
+        "workspaces": [
+          "w1"
+        ],
+        "agentStates": {
+          "w1:p1": "idle",
+          "w1:p2": "idle"
+        },
+        "layouts": {
+          "w1:t1": "columns(w1:p1, w1:p2@0.5) zoomed=w1:p2"
+        },
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "layoutChanged:w1:t1"
+        ]
+      }
+    },
+    {
+      "name": "closing a tab takes its tree, silently",
+      "why": "layout_updated fires for every pane change and for no tab or workspace change (observations section 10), so a mirror that waited to be told would hold a tree for a tab nobody can reach. It goes without its own change: the tab's removal already says everything a reader needs, and a second announcement about a tab that no longer exists is a message with nowhere to land.",
+      "given": {
+        "snapshot": {
+          "workspaces": [
+            {
+              "id": "w1",
+              "label": "tmp"
+            }
+          ],
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            },
+            {
+              "id": "w1:t2",
+              "workspace": "w1",
+              "label": "2"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            },
+            {
+              "id": "w1:p4",
+              "tab": "w1:t2",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ],
+          "layouts": [
+            {
+              "tab": "w1:t1",
+              "root": "w1:p1"
+            },
+            {
+              "tab": "w1:t2",
+              "root": "w1:p4"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "tabRemoved",
+            "id": "w1:t2"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1"
+        ],
+        "tabs": [
+          "w1:t1"
+        ],
+        "workspaces": [
+          "w1"
+        ],
+        "agentStates": {
+          "w1:p1": "idle"
+        },
+        "layouts": {
+          "w1:t1": "w1:p1"
+        },
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "paneRemoved:w1:p4:cascaded",
+          "tabRemoved:w1:t2"
+        ]
+      }
+    },
+    {
+      "name": "a tree for a tab nobody has mentioned is kept",
+      "why": "herdr announces a new tab's layout and its tab with separate events, and nothing promises an order. A mirror that dropped a tree for arriving early would replace it with nothing until the next pane change, which on a tab where nobody is typing is never - so the tab would render empty for as long as it stayed quiet.",
+      "given": {
+        "snapshot": {
+          "workspaces": [
+            {
+              "id": "w1",
+              "label": "tmp"
+            }
+          ],
+          "tabs": [],
+          "panes": []
+        },
+        "events": [
+          {
+            "kind": "layoutUpserted",
+            "tab": "w1:t9",
+            "root": "w1:p9"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [],
+        "tabs": [],
+        "workspaces": [
+          "w1"
+        ],
+        "agentStates": {},
+        "layouts": {
+          "w1:t9": "w1:p9"
+        },
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "layoutChanged:w1:t9"
+        ]
+      }
+    },
+    {
+      "name": "a reconnect that finds a different tree says so",
+      "why": "Structure changing while a client was disconnected leaves no evidence at all - nothing reports a pane created and closed inside a gap - so the fresh snapshot is the only detector, and it has to report what moved rather than 'everything'. A reconnect that repainted every surface would make dropping the connection visibly expensive, and one that reported nothing would leave the window at the shape it had before the gap.",
+      "given": {
+        "snapshot": {
+          "workspaces": [
+            {
+              "id": "w1",
+              "label": "tmp"
+            }
+          ],
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            },
+            {
+              "id": "w1:p2",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ],
+          "layouts": [
+            {
+              "tab": "w1:t1",
+              "root": {
+                "axis": "columns",
+                "ratio": 0.5,
+                "first": "w1:p1",
+                "second": "w1:p2"
+              }
+            }
+          ]
+        },
+        "resnapshot": {
+          "workspaces": [
+            {
+              "id": "w1",
+              "label": "tmp"
+            }
+          ],
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            },
+            {
+              "id": "w1:p2",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            },
+            {
+              "id": "w1:p3",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ],
+          "layouts": [
+            {
+              "tab": "w1:t1",
+              "root": {
+                "axis": "columns",
+                "ratio": 0.5,
+                "first": "w1:p1",
+                "second": {
+                  "axis": "rows",
+                  "ratio": 0.5,
+                  "first": "w1:p2",
+                  "second": "w1:p3"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "expect": {
+        "panes": [
+          "w1:p1",
+          "w1:p2",
+          "w1:p3"
+        ],
+        "tabs": [
+          "w1:t1"
+        ],
+        "workspaces": [
+          "w1"
+        ],
+        "agentStates": {
+          "w1:p1": "idle",
+          "w1:p2": "idle",
+          "w1:p3": "idle"
+        },
+        "layouts": {
+          "w1:t1": "columns(w1:p1, rows(w1:p2, w1:p3@0.5)@0.5)"
+        },
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "paneAdded:w1:p3",
+          "layoutChanged:w1:t1"
+        ]
+      }
+    },
+    {
+      "name": "a tab whose tree stopped reading keeps rendering",
+      "why": "A snapshot whose layout will not read - herdr moved a field, or sent rectangles that describe no tree - drops that tab's entry rather than the whole snapshot. The mirror reports the loss so a window can say the shape it is showing is old, and keeps the last tree, because a tab rendered as its previous arrangement is wrong in a way a user can see through and a tab rendered as nothing is not.",
+      "given": {
+        "snapshot": {
+          "workspaces": [
+            {
+              "id": "w1",
+              "label": "tmp"
+            }
+          ],
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            },
+            {
+              "id": "w1:p2",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ],
+          "layouts": [
+            {
+              "tab": "w1:t1",
+              "root": {
+                "axis": "columns",
+                "ratio": 0.5,
+                "first": "w1:p1",
+                "second": "w1:p2"
+              }
+            }
+          ]
+        },
+        "resnapshot": {
+          "workspaces": [
+            {
+              "id": "w1",
+              "label": "tmp"
+            }
+          ],
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            },
+            {
+              "id": "w1:p2",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "panes": [
+          "w1:p1",
+          "w1:p2"
+        ],
+        "tabs": [
+          "w1:t1"
+        ],
+        "workspaces": [
+          "w1"
+        ],
+        "agentStates": {
+          "w1:p1": "idle",
+          "w1:p2": "idle"
+        },
+        "layouts": {},
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "layoutChanged:w1:t1"
         ]
       }
     }

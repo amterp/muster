@@ -12,7 +12,7 @@ use std::collections::BTreeMap;
 
 use crate::AgentState;
 use crate::mirror::backend::{
-    Focus, Health, Pane, PaneId, Snapshot, Tab, TabId, Workspace, WorkspaceId,
+    Focus, Health, Layout, Pane, PaneId, Snapshot, Tab, TabId, Workspace, WorkspaceId,
 };
 use crate::mirror::event::{BackendEvent, Change};
 
@@ -26,6 +26,11 @@ pub struct Mirror {
     workspaces: BTreeMap<WorkspaceId, Workspace>,
     tabs: BTreeMap<TabId, Tab>,
     panes: BTreeMap<PaneId, Pane>,
+    /// One tree per tab that has a readable one. Absent rather than empty when a tab's
+    /// layout will not read, because a tab with no tree renders as nothing and a tab
+    /// keeping its last tree renders as slightly stale - and the second is the better
+    /// wrong answer.
+    layouts: BTreeMap<TabId, Layout>,
     focus: Focus,
     health: Health,
     /// The agent-state stamp the last snapshot carried. herdr issues these from one
@@ -53,11 +58,13 @@ impl Mirror {
         let previous_panes = std::mem::take(&mut self.panes);
         let previous_tabs = std::mem::take(&mut self.tabs);
         let previous_workspaces = std::mem::take(&mut self.workspaces);
+        let previous_layouts = std::mem::take(&mut self.layouts);
         let previous_focus = std::mem::replace(&mut self.focus, snapshot.focus);
 
         self.workspaces = snapshot.workspaces.into_iter().map(|w| (w.id.clone(), w)).collect();
         self.tabs = snapshot.tabs.into_iter().map(|t| (t.id.clone(), t)).collect();
         self.panes = snapshot.panes.into_iter().map(|p| (p.id.clone(), p)).collect();
+        self.layouts = snapshot.layouts.into_iter().map(|l| (l.tab.clone(), l)).collect();
         self.health = Health::Connected;
         let previous_seq = std::mem::replace(&mut self.agent_state_seq, snapshot.agent_state_seq);
         let applied = std::mem::take(&mut self.agent_transitions_applied);
@@ -110,6 +117,22 @@ impl Mirror {
                 // Not cascaded: a snapshot is a fresh statement of the whole world, so
                 // nothing here is an inference about what a parent took with it.
                 changes.push(Change::PaneRemoved { pane: id.clone(), cascaded: false });
+            }
+        }
+        // After the panes, because a tree names them: a reader told the arrangement first
+        // would be handed a tree referring to a pane it has not been told exists.
+        //
+        // Reported for a tab whose tree moved, and for one that still exists and lost its
+        // tree. A tab that went away is a TabRemoved and needs no second announcement about
+        // the tree that went with it.
+        for (tab, layout) in &self.layouts {
+            if previous_layouts.get(tab) != Some(layout) {
+                changes.push(Change::LayoutChanged(tab.clone()));
+            }
+        }
+        for tab in previous_layouts.keys() {
+            if !self.layouts.contains_key(tab) && self.tabs.contains_key(tab) {
+                changes.push(Change::LayoutChanged(tab.clone()));
             }
         }
         if self.focus != previous_focus {
@@ -179,6 +202,18 @@ impl Mirror {
                 Vec::new()
             }
             BackendEvent::PaneRemoved(id) => self.remove_pane(&id, false),
+            // Kept even for a tab this mirror does not know. herdr sends the layout for a
+            // tab it has just created, and nothing says the tab event arrives first - a
+            // tree dropped for arriving early would be replaced by nothing until the next
+            // pane change, which on a quiet tab is never.
+            BackendEvent::LayoutUpserted(layout) => {
+                let tab = layout.tab.clone();
+                if self.layouts.get(&tab) == Some(&layout) {
+                    return Vec::new();
+                }
+                self.layouts.insert(tab.clone(), layout);
+                vec![Change::LayoutChanged(tab)]
+            }
             BackendEvent::AgentStateChanged { pane, state } => {
                 // Counted whether or not it moved anything, because the backend's counter
                 // is what this is reconciled against and the backend counted it.
@@ -257,6 +292,10 @@ impl Mirror {
         if self.tabs.remove(id).is_none() {
             return Vec::new();
         }
+        // The tree goes with the tab and is not reported separately: `layout_updated` does
+        // not fire for a tab closing, so a mirror that waited for one would keep a tree for
+        // a tab nobody can reach (`observations/herdr-0.8.0.md` section 10).
+        self.layouts.remove(id);
         let orphaned: Vec<PaneId> = self
             .panes
             .values()
@@ -329,6 +368,18 @@ impl Mirror {
 
     pub fn panes_in_tab<'a>(&'a self, tab: &'a TabId) -> impl Iterator<Item = &'a Pane> {
         self.panes.values().filter(move |pane| &pane.tab == tab)
+    }
+
+    /// How a tab arranges its panes, if the backend has said.
+    ///
+    /// `None` is a real answer rather than an empty one: a tab whose layout has not
+    /// arrived, or would not read, is a tab a view should leave as it is.
+    pub fn layout(&self, tab: &TabId) -> Option<&Layout> {
+        self.layouts.get(tab)
+    }
+
+    pub fn layouts(&self) -> impl Iterator<Item = &Layout> {
+        self.layouts.values()
     }
 
     pub fn focus(&self) -> &Focus {

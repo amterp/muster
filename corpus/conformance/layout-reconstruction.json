@@ -1,0 +1,1064 @@
+{
+  "concept": "herdr.layout.reconstruction",
+  "why": "herdr describes a tab's arrangement as a flat list of pane rectangles beside a flat list of split borders, with no parent or child links between them, and the tree it will not give you is exactly what a window has to render. Rebuilding it from the rectangles is the whole of Muster's structure adapter, and it is code that is either right or quietly catastrophic: a wrong tree puts panes in the wrong places, which looks like a rendering bug and is not. These are layouts a real daemon published, including the two shapes that make the problem hard - splits under both sides of the root, and a split nested under a first child along the axis it is already split on. Every expected tree is herdr's own layout.export rendered in Muster's words, so the oracle is the daemon's answer rather than a second copy of the code being judged. Cases that refuse are here in the same number as cases that succeed, because this reads untrusted input from a dependency that ships weekly, and the failure that matters is inventing a plausible tree out of rectangles that describe none.",
+  "source": "recorded",
+  "regenerate": "tools/herdr-probe/probe layout",
+  "cases": [
+    {
+      "name": "one pane is the whole tree",
+      "why": "A tab nobody has split has no borders at all, so the answer comes from the panes alone. The wrong shape here is a root split with one child, which every consumer downstream would then have to defend against forever.",
+      "given": {
+        "area": {
+          "x": 26,
+          "y": 1,
+          "width": 54,
+          "height": 23
+        },
+        "focused_pane_id": "w1:p1",
+        "panes": [
+          {
+            "pane_id": "w1:p1",
+            "focused": true,
+            "rect": {
+              "x": 26,
+              "y": 1,
+              "width": 54,
+              "height": 23
+            }
+          }
+        ],
+        "splits": [],
+        "tab_id": "w1:t1",
+        "workspace_id": "w1",
+        "zoomed": false
+      },
+      "expect": {
+        "tab": "w1:t1",
+        "tree": "w1:p1",
+        "focused": "w1:p1"
+      }
+    },
+    {
+      "name": "five panes at three levels",
+      "why": "Splits under both sides of the root, both axes at more than one level, and nesting under a first child - the shape the earlier corpus did not have, and which a reconstruction written against that corpus gets wrong while looking correct. herdr says `right` and `down`, meaning where the new pane went; what comes out says columns and rows, meaning how to lay two children out long afterwards.",
+      "given": {
+        "area": {
+          "height": 23,
+          "width": 54,
+          "x": 26,
+          "y": 1
+        },
+        "focused_pane_id": "w1:p1",
+        "panes": [
+          {
+            "focused": true,
+            "pane_id": "w1:p1",
+            "rect": {
+              "height": 12,
+              "width": 27,
+              "x": 26,
+              "y": 1
+            }
+          },
+          {
+            "focused": false,
+            "pane_id": "w1:p3",
+            "rect": {
+              "height": 11,
+              "width": 14,
+              "x": 26,
+              "y": 13
+            }
+          },
+          {
+            "focused": false,
+            "pane_id": "w1:p4",
+            "rect": {
+              "height": 11,
+              "width": 13,
+              "x": 40,
+              "y": 13
+            }
+          },
+          {
+            "focused": false,
+            "pane_id": "w1:p2",
+            "rect": {
+              "height": 12,
+              "width": 27,
+              "x": 53,
+              "y": 1
+            }
+          },
+          {
+            "focused": false,
+            "pane_id": "w1:p5",
+            "rect": {
+              "height": 11,
+              "width": 27,
+              "x": 53,
+              "y": 13
+            }
+          }
+        ],
+        "splits": [
+          {
+            "direction": "right",
+            "id": "split_0_root",
+            "ratio": 0.5,
+            "rect": {
+              "height": 23,
+              "width": 54,
+              "x": 26,
+              "y": 1
+            }
+          },
+          {
+            "direction": "down",
+            "id": "split_1_0",
+            "ratio": 0.5,
+            "rect": {
+              "height": 23,
+              "width": 27,
+              "x": 26,
+              "y": 1
+            }
+          },
+          {
+            "direction": "right",
+            "id": "split_2_01",
+            "ratio": 0.5,
+            "rect": {
+              "height": 11,
+              "width": 27,
+              "x": 26,
+              "y": 13
+            }
+          },
+          {
+            "direction": "down",
+            "id": "split_3_1",
+            "ratio": 0.5,
+            "rect": {
+              "height": 23,
+              "width": 27,
+              "x": 53,
+              "y": 1
+            }
+          }
+        ],
+        "tab_id": "w1:t1",
+        "workspace_id": "w1",
+        "zoomed": false
+      },
+      "expect": {
+        "tab": "w1:t1",
+        "tree": "columns(rows(w1:p1, columns(w1:p3, w1:p4@0.5)@0.5), rows(w1:p2, w1:p5@0.5)@0.5)",
+        "focused": "w1:p1"
+      }
+    },
+    {
+      "name": "the same axis nested under a first child",
+      "why": "The case that makes rebuilding ambiguous, and the reason the first child is the largest candidate rather than any candidate. In columns(columns(p3, p6), p4) the inner split and its own first child both start at the outer split's corner and both span its height, so two rectangles answer 'what is the first child here' and only the larger is right. Every other tree in this file has exactly one candidate at every node, so none of them can catch a reconstruction that picks wrong - which is how this case came to exist: the implementation was broken deliberately and the corpus passed.",
+      "given": {
+        "area": {
+          "height": 23,
+          "width": 54,
+          "x": 26,
+          "y": 1
+        },
+        "focused_pane_id": "w1:p1",
+        "panes": [
+          {
+            "focused": true,
+            "pane_id": "w1:p1",
+            "rect": {
+              "height": 12,
+              "width": 27,
+              "x": 26,
+              "y": 1
+            }
+          },
+          {
+            "focused": false,
+            "pane_id": "w1:p3",
+            "rect": {
+              "height": 11,
+              "width": 7,
+              "x": 26,
+              "y": 13
+            }
+          },
+          {
+            "focused": false,
+            "pane_id": "w1:p6",
+            "rect": {
+              "height": 11,
+              "width": 7,
+              "x": 33,
+              "y": 13
+            }
+          },
+          {
+            "focused": false,
+            "pane_id": "w1:p4",
+            "rect": {
+              "height": 11,
+              "width": 13,
+              "x": 40,
+              "y": 13
+            }
+          },
+          {
+            "focused": false,
+            "pane_id": "w1:p2",
+            "rect": {
+              "height": 12,
+              "width": 27,
+              "x": 53,
+              "y": 1
+            }
+          },
+          {
+            "focused": false,
+            "pane_id": "w1:p5",
+            "rect": {
+              "height": 11,
+              "width": 27,
+              "x": 53,
+              "y": 13
+            }
+          }
+        ],
+        "splits": [
+          {
+            "direction": "right",
+            "id": "split_0_root",
+            "ratio": 0.5,
+            "rect": {
+              "height": 23,
+              "width": 54,
+              "x": 26,
+              "y": 1
+            }
+          },
+          {
+            "direction": "down",
+            "id": "split_1_0",
+            "ratio": 0.5,
+            "rect": {
+              "height": 23,
+              "width": 27,
+              "x": 26,
+              "y": 1
+            }
+          },
+          {
+            "direction": "right",
+            "id": "split_2_01",
+            "ratio": 0.5,
+            "rect": {
+              "height": 11,
+              "width": 27,
+              "x": 26,
+              "y": 13
+            }
+          },
+          {
+            "direction": "right",
+            "id": "split_3_010",
+            "ratio": 0.5,
+            "rect": {
+              "height": 11,
+              "width": 14,
+              "x": 26,
+              "y": 13
+            }
+          },
+          {
+            "direction": "down",
+            "id": "split_4_1",
+            "ratio": 0.5,
+            "rect": {
+              "height": 23,
+              "width": 27,
+              "x": 53,
+              "y": 1
+            }
+          }
+        ],
+        "tab_id": "w1:t1",
+        "workspace_id": "w1",
+        "zoomed": false
+      },
+      "expect": {
+        "tab": "w1:t1",
+        "tree": "columns(rows(w1:p1, columns(columns(w1:p3, w1:p6@0.5), w1:p4@0.5)@0.5), rows(w1:p2, w1:p5@0.5)@0.5)",
+        "focused": "w1:p1"
+      }
+    },
+    {
+      "name": "a divider someone dragged keeps the ratio it was given",
+      "why": "Recorded after another client moved the root divider to 0.3. The ratio comes off the border rather than out of the rectangles, and this is where the difference shows: 0.3 of a 54-column area is 16.2, which herdr rounds to a 16-cell rectangle, so a reconstruction dividing widths would report 0.296. Not wrong enough to look wrong, and wrong again every time the divider moved.",
+      "given": {
+        "area": {
+          "height": 23,
+          "width": 54,
+          "x": 26,
+          "y": 1
+        },
+        "focused_pane_id": "w1:p1",
+        "panes": [
+          {
+            "focused": true,
+            "pane_id": "w1:p1",
+            "rect": {
+              "height": 12,
+              "width": 16,
+              "x": 26,
+              "y": 1
+            }
+          },
+          {
+            "focused": false,
+            "pane_id": "w1:p3",
+            "rect": {
+              "height": 11,
+              "width": 4,
+              "x": 26,
+              "y": 13
+            }
+          },
+          {
+            "focused": false,
+            "pane_id": "w1:p6",
+            "rect": {
+              "height": 11,
+              "width": 4,
+              "x": 30,
+              "y": 13
+            }
+          },
+          {
+            "focused": false,
+            "pane_id": "w1:p4",
+            "rect": {
+              "height": 11,
+              "width": 8,
+              "x": 34,
+              "y": 13
+            }
+          },
+          {
+            "focused": false,
+            "pane_id": "w1:p2",
+            "rect": {
+              "height": 12,
+              "width": 38,
+              "x": 42,
+              "y": 1
+            }
+          },
+          {
+            "focused": false,
+            "pane_id": "w1:p5",
+            "rect": {
+              "height": 11,
+              "width": 38,
+              "x": 42,
+              "y": 13
+            }
+          }
+        ],
+        "splits": [
+          {
+            "direction": "right",
+            "id": "split_0_root",
+            "ratio": 0.3,
+            "rect": {
+              "height": 23,
+              "width": 54,
+              "x": 26,
+              "y": 1
+            }
+          },
+          {
+            "direction": "down",
+            "id": "split_1_0",
+            "ratio": 0.5,
+            "rect": {
+              "height": 23,
+              "width": 16,
+              "x": 26,
+              "y": 1
+            }
+          },
+          {
+            "direction": "right",
+            "id": "split_2_01",
+            "ratio": 0.5,
+            "rect": {
+              "height": 11,
+              "width": 16,
+              "x": 26,
+              "y": 13
+            }
+          },
+          {
+            "direction": "right",
+            "id": "split_3_010",
+            "ratio": 0.5,
+            "rect": {
+              "height": 11,
+              "width": 8,
+              "x": 26,
+              "y": 13
+            }
+          },
+          {
+            "direction": "down",
+            "id": "split_4_1",
+            "ratio": 0.5,
+            "rect": {
+              "height": 23,
+              "width": 38,
+              "x": 42,
+              "y": 1
+            }
+          }
+        ],
+        "tab_id": "w1:t1",
+        "workspace_id": "w1",
+        "zoomed": false
+      },
+      "expect": {
+        "tab": "w1:t1",
+        "tree": "columns(rows(w1:p1, columns(columns(w1:p3, w1:p6@0.5), w1:p4@0.5)@0.5), rows(w1:p2, w1:p5@0.5)@0.3)",
+        "focused": "w1:p1"
+      }
+    },
+    {
+      "name": "a zoomed pane is named, not merely flagged",
+      "why": "Recorded with a pane zoomed, and the trap is that nothing about the rectangles changes: every pane is still listed at its ordinary unzoomed size and only a flag moves. A view rendering what it is handed paints the whole tree while the daemon shows one pane, so the flag is resolved against the tab's focused pane here rather than passed along to be forgotten downstream.",
+      "given": {
+        "area": {
+          "height": 23,
+          "width": 54,
+          "x": 26,
+          "y": 1
+        },
+        "focused_pane_id": "w1:p4",
+        "panes": [
+          {
+            "focused": false,
+            "pane_id": "w1:p1",
+            "rect": {
+              "height": 12,
+              "width": 16,
+              "x": 26,
+              "y": 1
+            }
+          },
+          {
+            "focused": false,
+            "pane_id": "w1:p3",
+            "rect": {
+              "height": 11,
+              "width": 4,
+              "x": 26,
+              "y": 13
+            }
+          },
+          {
+            "focused": false,
+            "pane_id": "w1:p6",
+            "rect": {
+              "height": 11,
+              "width": 4,
+              "x": 30,
+              "y": 13
+            }
+          },
+          {
+            "focused": true,
+            "pane_id": "w1:p4",
+            "rect": {
+              "height": 11,
+              "width": 8,
+              "x": 34,
+              "y": 13
+            }
+          },
+          {
+            "focused": false,
+            "pane_id": "w1:p2",
+            "rect": {
+              "height": 12,
+              "width": 38,
+              "x": 42,
+              "y": 1
+            }
+          },
+          {
+            "focused": false,
+            "pane_id": "w1:p5",
+            "rect": {
+              "height": 11,
+              "width": 38,
+              "x": 42,
+              "y": 13
+            }
+          }
+        ],
+        "splits": [
+          {
+            "direction": "right",
+            "id": "split_0_root",
+            "ratio": 0.3,
+            "rect": {
+              "height": 23,
+              "width": 54,
+              "x": 26,
+              "y": 1
+            }
+          },
+          {
+            "direction": "down",
+            "id": "split_1_0",
+            "ratio": 0.5,
+            "rect": {
+              "height": 23,
+              "width": 16,
+              "x": 26,
+              "y": 1
+            }
+          },
+          {
+            "direction": "right",
+            "id": "split_2_01",
+            "ratio": 0.5,
+            "rect": {
+              "height": 11,
+              "width": 16,
+              "x": 26,
+              "y": 13
+            }
+          },
+          {
+            "direction": "right",
+            "id": "split_3_010",
+            "ratio": 0.5,
+            "rect": {
+              "height": 11,
+              "width": 8,
+              "x": 26,
+              "y": 13
+            }
+          },
+          {
+            "direction": "down",
+            "id": "split_4_1",
+            "ratio": 0.5,
+            "rect": {
+              "height": 23,
+              "width": 38,
+              "x": 42,
+              "y": 1
+            }
+          }
+        ],
+        "tab_id": "w1:t1",
+        "workspace_id": "w1",
+        "zoomed": true
+      },
+      "expect": {
+        "tab": "w1:t1",
+        "tree": "columns(rows(w1:p1, columns(columns(w1:p3, w1:p6@0.5), w1:p4@0.5)@0.5), rows(w1:p2, w1:p5@0.5)@0.3)",
+        "focused": "w1:p4",
+        "zoomed": "w1:p4"
+      }
+    },
+    {
+      "name": "no tab means nothing to place",
+      "why": "The tab is what a tree hangs off, so a layout without one cannot be stored anywhere except under an empty key, where it collides with the next one. Refusing costs the caller one tab's arrangement and leaves it holding whatever it had.",
+      "given": {
+        "area": {
+          "height": 23,
+          "width": 54,
+          "x": 26,
+          "y": 1
+        },
+        "focused_pane_id": "w1:p1",
+        "panes": [
+          {
+            "focused": true,
+            "pane_id": "w1:p1",
+            "rect": {
+              "height": 12,
+              "width": 27,
+              "x": 26,
+              "y": 1
+            }
+          },
+          {
+            "focused": false,
+            "pane_id": "w1:p3",
+            "rect": {
+              "height": 11,
+              "width": 14,
+              "x": 26,
+              "y": 13
+            }
+          },
+          {
+            "focused": false,
+            "pane_id": "w1:p4",
+            "rect": {
+              "height": 11,
+              "width": 13,
+              "x": 40,
+              "y": 13
+            }
+          },
+          {
+            "focused": false,
+            "pane_id": "w1:p2",
+            "rect": {
+              "height": 12,
+              "width": 27,
+              "x": 53,
+              "y": 1
+            }
+          },
+          {
+            "focused": false,
+            "pane_id": "w1:p5",
+            "rect": {
+              "height": 11,
+              "width": 27,
+              "x": 53,
+              "y": 13
+            }
+          }
+        ],
+        "splits": [
+          {
+            "direction": "right",
+            "id": "split_0_root",
+            "ratio": 0.5,
+            "rect": {
+              "height": 23,
+              "width": 54,
+              "x": 26,
+              "y": 1
+            }
+          },
+          {
+            "direction": "down",
+            "id": "split_1_0",
+            "ratio": 0.5,
+            "rect": {
+              "height": 23,
+              "width": 27,
+              "x": 26,
+              "y": 1
+            }
+          },
+          {
+            "direction": "right",
+            "id": "split_2_01",
+            "ratio": 0.5,
+            "rect": {
+              "height": 11,
+              "width": 27,
+              "x": 26,
+              "y": 13
+            }
+          },
+          {
+            "direction": "down",
+            "id": "split_3_1",
+            "ratio": 0.5,
+            "rect": {
+              "height": 23,
+              "width": 27,
+              "x": 53,
+              "y": 1
+            }
+          }
+        ],
+        "workspace_id": "w1",
+        "zoomed": false
+      },
+      "expect": {
+        "read": false
+      }
+    },
+    {
+      "name": "a pane with no rectangle takes the tab with it",
+      "why": "Unlike a snapshot's pane list, where one unreadable entry costs that pane, a tree missing a pane is not a smaller tree - it is a different one, and the panes around the gap silently take its space. This is the only place in the adapter where partial success would be worse than none.",
+      "given": {
+        "area": {
+          "height": 23,
+          "width": 54,
+          "x": 26,
+          "y": 1
+        },
+        "focused_pane_id": "w1:p1",
+        "panes": [
+          {
+            "focused": true,
+            "pane_id": "w1:p1",
+            "rect": {
+              "height": 12,
+              "width": 27,
+              "x": 26,
+              "y": 1
+            }
+          },
+          {
+            "focused": false,
+            "pane_id": "w1:p3",
+            "rect": {
+              "height": 11,
+              "width": 14,
+              "x": 26,
+              "y": 13
+            }
+          },
+          {
+            "focused": false,
+            "pane_id": "w1:p4"
+          },
+          {
+            "focused": false,
+            "pane_id": "w1:p2",
+            "rect": {
+              "height": 12,
+              "width": 27,
+              "x": 53,
+              "y": 1
+            }
+          },
+          {
+            "focused": false,
+            "pane_id": "w1:p5",
+            "rect": {
+              "height": 11,
+              "width": 27,
+              "x": 53,
+              "y": 13
+            }
+          }
+        ],
+        "splits": [
+          {
+            "direction": "right",
+            "id": "split_0_root",
+            "ratio": 0.5,
+            "rect": {
+              "height": 23,
+              "width": 54,
+              "x": 26,
+              "y": 1
+            }
+          },
+          {
+            "direction": "down",
+            "id": "split_1_0",
+            "ratio": 0.5,
+            "rect": {
+              "height": 23,
+              "width": 27,
+              "x": 26,
+              "y": 1
+            }
+          },
+          {
+            "direction": "right",
+            "id": "split_2_01",
+            "ratio": 0.5,
+            "rect": {
+              "height": 11,
+              "width": 27,
+              "x": 26,
+              "y": 13
+            }
+          },
+          {
+            "direction": "down",
+            "id": "split_3_1",
+            "ratio": 0.5,
+            "rect": {
+              "height": 23,
+              "width": 27,
+              "x": 53,
+              "y": 1
+            }
+          }
+        ],
+        "tab_id": "w1:t1",
+        "workspace_id": "w1",
+        "zoomed": false
+      },
+      "expect": {
+        "read": false
+      }
+    },
+    {
+      "name": "a direction herdr has not used before is not guessed at",
+      "why": "herdr's split direction is `right` or `down` today. A third value means the daemon grew a layout Muster has never seen, and picking the closer of the two would render an arrangement the user did not ask for. The tab keeps its last one and the run log says a layout stopped reading, which points at a herdr upgrade rather than at a Muster bug.",
+      "given": {
+        "area": {
+          "height": 23,
+          "width": 54,
+          "x": 26,
+          "y": 1
+        },
+        "focused_pane_id": "w1:p1",
+        "panes": [
+          {
+            "focused": true,
+            "pane_id": "w1:p1",
+            "rect": {
+              "height": 12,
+              "width": 27,
+              "x": 26,
+              "y": 1
+            }
+          },
+          {
+            "focused": false,
+            "pane_id": "w1:p3",
+            "rect": {
+              "height": 11,
+              "width": 14,
+              "x": 26,
+              "y": 13
+            }
+          },
+          {
+            "focused": false,
+            "pane_id": "w1:p4",
+            "rect": {
+              "height": 11,
+              "width": 13,
+              "x": 40,
+              "y": 13
+            }
+          },
+          {
+            "focused": false,
+            "pane_id": "w1:p2",
+            "rect": {
+              "height": 12,
+              "width": 27,
+              "x": 53,
+              "y": 1
+            }
+          },
+          {
+            "focused": false,
+            "pane_id": "w1:p5",
+            "rect": {
+              "height": 11,
+              "width": 27,
+              "x": 53,
+              "y": 13
+            }
+          }
+        ],
+        "splits": [
+          {
+            "direction": "left",
+            "id": "split_0_root",
+            "ratio": 0.5,
+            "rect": {
+              "height": 23,
+              "width": 54,
+              "x": 26,
+              "y": 1
+            }
+          },
+          {
+            "direction": "down",
+            "id": "split_1_0",
+            "ratio": 0.5,
+            "rect": {
+              "height": 23,
+              "width": 27,
+              "x": 26,
+              "y": 1
+            }
+          },
+          {
+            "direction": "right",
+            "id": "split_2_01",
+            "ratio": 0.5,
+            "rect": {
+              "height": 11,
+              "width": 27,
+              "x": 26,
+              "y": 13
+            }
+          },
+          {
+            "direction": "down",
+            "id": "split_3_1",
+            "ratio": 0.5,
+            "rect": {
+              "height": 23,
+              "width": 27,
+              "x": 53,
+              "y": 1
+            }
+          }
+        ],
+        "tab_id": "w1:t1",
+        "workspace_id": "w1",
+        "zoomed": false
+      },
+      "expect": {
+        "read": false
+      }
+    },
+    {
+      "name": "rectangles that describe no tree are refused rather than assembled",
+      "why": "The failure this file exists for. With one border's rectangle moved so nothing lines up beneath it, a reconstruction taking the nearest candidate returns a plausible tree with panes in the wrong places - a window that looks built rather than broken, which nobody would think to blame on the adapter. Every child is found by exact containment or the tab does not read.",
+      "given": {
+        "area": {
+          "height": 23,
+          "width": 54,
+          "x": 26,
+          "y": 1
+        },
+        "focused_pane_id": "w1:p1",
+        "panes": [
+          {
+            "focused": true,
+            "pane_id": "w1:p1",
+            "rect": {
+              "height": 12,
+              "width": 27,
+              "x": 26,
+              "y": 1
+            }
+          },
+          {
+            "focused": false,
+            "pane_id": "w1:p3",
+            "rect": {
+              "height": 11,
+              "width": 14,
+              "x": 26,
+              "y": 13
+            }
+          },
+          {
+            "focused": false,
+            "pane_id": "w1:p4",
+            "rect": {
+              "height": 11,
+              "width": 13,
+              "x": 40,
+              "y": 13
+            }
+          },
+          {
+            "focused": false,
+            "pane_id": "w1:p2",
+            "rect": {
+              "height": 12,
+              "width": 27,
+              "x": 53,
+              "y": 1
+            }
+          },
+          {
+            "focused": false,
+            "pane_id": "w1:p5",
+            "rect": {
+              "height": 11,
+              "width": 27,
+              "x": 53,
+              "y": 13
+            }
+          }
+        ],
+        "splits": [
+          {
+            "direction": "right",
+            "id": "split_0_root",
+            "ratio": 0.5,
+            "rect": {
+              "height": 23,
+              "width": 54,
+              "x": 26,
+              "y": 1
+            }
+          },
+          {
+            "direction": "down",
+            "id": "split_1_0",
+            "ratio": 0.5,
+            "rect": {
+              "height": 23,
+              "width": 26,
+              "x": 26,
+              "y": 1
+            }
+          },
+          {
+            "direction": "right",
+            "id": "split_2_01",
+            "ratio": 0.5,
+            "rect": {
+              "height": 11,
+              "width": 27,
+              "x": 26,
+              "y": 13
+            }
+          },
+          {
+            "direction": "down",
+            "id": "split_3_1",
+            "ratio": 0.5,
+            "rect": {
+              "height": 23,
+              "width": 27,
+              "x": 53,
+              "y": 1
+            }
+          }
+        ],
+        "tab_id": "w1:t1",
+        "workspace_id": "w1",
+        "zoomed": false
+      },
+      "expect": {
+        "read": false
+      }
+    },
+    {
+      "name": "a tab with no panes at all is not an empty tree",
+      "why": "A tab always owns at least one pane, so an empty list is a payload that describes nothing rather than a tab that happens to be bare. Reading it as a tree with no root is how a window renders a tab blank and stays that way.",
+      "given": {
+        "area": {
+          "x": 26,
+          "y": 1,
+          "width": 54,
+          "height": 23
+        },
+        "focused_pane_id": "w1:p1",
+        "panes": [],
+        "splits": [],
+        "tab_id": "w1:t1",
+        "workspace_id": "w1",
+        "zoomed": false
+      },
+      "expect": {
+        "read": false
+      }
+    }
+  ]
+}

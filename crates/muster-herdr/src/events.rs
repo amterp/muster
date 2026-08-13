@@ -15,6 +15,8 @@ use muster_core::mirror::BackendEvent;
 use muster_core::mirror::backend::{Pane, PaneId, Tab, TabId, Workspace, WorkspaceId};
 use serde_json::Value;
 
+use crate::layout::read_layout;
+
 /// Pure, and deliberately so.
 ///
 /// Holds two things across calls: the tail of a line that has not finished arriving, and
@@ -151,17 +153,22 @@ fn decode(line: &[u8]) -> Decoded {
             tab: None,
             pane: id(data, "pane_id").map(PaneId::new),
         }),
+        // The whole tab, in absolute values, so applying it twice is applying it once. It
+        // follows every pane change and no tab or workspace change, which is why the mirror
+        // cascades a tab's tree itself rather than waiting to be told
+        // (`observations/herdr-0.8.0.md` sections 10 and 13).
+        "layout_updated" => {
+            data.get("layout").and_then(read_layout).map(BackendEvent::LayoutUpserted)
+        }
         // Recognized, and deliberately not read. Kept apart from the unknown set so that
         // set keeps meaning "herdr is sending something we have never seen", which is the
-        // drift signal. Geometry is chunk E's, and the rest describe things the mirror
-        // does not model.
+        // drift signal. These describe things the mirror does not model.
         //
         // Deliberately short. `pane_moved` and the reordering events are absent because
         // they plausibly do change what the mirror holds and no recording exists of one -
         // leaving them unknown means the first arrival says so in the run log rather than
         // being silently correct-looking.
-        "layout_updated"
-        | "pane_output_changed"
+        "pane_output_changed"
         | "pane.output_matched"
         | "pane.scroll_changed"
         | "workspace_metadata_updated"

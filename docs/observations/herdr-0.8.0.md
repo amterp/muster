@@ -586,6 +586,14 @@ recoverable from `layout_updated` alone, which is the event that already fires o
 pane change. Nothing has to ask `layout.export` for structure, which matters because that
 call carries none of the live fields and would be a second request per change.
 
+**One shape makes it ambiguous, and it is recorded too.** Splitting a pane along the axis
+it already sits on gives `columns(columns(p3, p6), p4)`, where the inner split and its own
+first child both start at the outer split's corner and both span its height. Two rectangles
+then answer "what is the first child here", and only the larger one is right. Every tree
+above has exactly one candidate at every node, so none of them can tell a reconstruction
+that picks wrong - which is not a hypothetical: the implementation was broken deliberately
+and the corpus passed, and this recording is what closed that.
+
 **The border ids spell the same paths, and so does the resize API.** They are named
 `split_<n>_<turns>`, where the turns are `root` at the top and a string of `0`s and `1`s
 below it: the split at `first`-then-`second` is `split_2_01`. Those paths agree with the

@@ -56,6 +56,16 @@ fn describe(event: &BackendEvent) -> String {
             pane.cwd
         ),
         BackendEvent::PaneRemoved(id) => format!("paneRemoved:{id}"),
+        BackendEvent::LayoutUpserted(layout) => {
+            let mut described = format!("layoutUpserted:{} tree={}", layout.tab, layout.root);
+            if let Some(focused) = &layout.focused {
+                let _ = write!(described, " focused={focused}");
+            }
+            if let Some(zoomed) = &layout.zoomed {
+                let _ = write!(described, " zoomed={zoomed}");
+            }
+            described
+        }
         BackendEvent::AgentStateChanged { pane, state } => {
             format!("agentStateChanged:{pane} state={}", state.as_str())
         }

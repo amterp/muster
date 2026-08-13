@@ -116,15 +116,17 @@
       }
     },
     {
-      "name": "geometry is recognized and dropped, without claiming the daemon changed",
-      "why": "layout_updated follows every pane creation and closure, so it is the highest-volume event on the stream. It is chunk E's input and not the mirror's, and reporting it as unrecognized would bury the one signal the unknown set exists for under something we chose.",
+      "name": "a tab's whole tree arrives on one event",
+      "why": "This event used to be recognized and thrown away, on the reasoning that geometry belonged to a later chunk. It is now the only live description of how a tab arranges its panes: it carries the whole tab in absolute values, so applying it twice is applying it once, and it follows every pane change. What comes out is Muster's tree rather than herdr's rectangles, because the rectangles are cells in a terminal area herdr keeps for itself and describe nobody's window. Rebuilding the tree is judged separately in layout-reconstruction.json; what this case protects is that the event is read at all, from the field it actually arrives in.",
       "given": {
         "chunks": [
-          "{\"data\":{\"layout\":{\"area\":{\"height\":24,\"width\":54,\"x\":26,\"y\":0},\"focused_pane_id\":\"w1:p1\",\"panes\":[{\"focused\":true,\"pane_id\":\"w1:p1\",\"rect\":{\"height\":24,\"width\":54,\"x\":26,\"y\":0}}],\"splits\":[],\"tab_id\":\"w1:t1\",\"workspace_id\":\"w1\",\"zoomed\":false},\"type\":\"layout_updated\"},\"event\":\"layout_updated\"}\n"
+          "{\"data\": {\"layout\": {\"area\": {\"height\": 23, \"width\": 54, \"x\": 26, \"y\": 1}, \"focused_pane_id\": \"w1:p1\", \"panes\": [{\"focused\": true, \"pane_id\": \"w1:p1\", \"rect\": {\"height\": 12, \"width\": 27, \"x\": 26, \"y\": 1}}, {\"focused\": false, \"pane_id\": \"w1:p3\", \"rect\": {\"height\": 11, \"width\": 14, \"x\": 26, \"y\": 13}}, {\"focused\": false, \"pane_id\": \"w1:p4\", \"rect\": {\"height\": 11, \"width\": 13, \"x\": 40, \"y\": 13}}, {\"focused\": false, \"pane_id\": \"w1:p2\", \"rect\": {\"height\": 12, \"width\": 27, \"x\": 53, \"y\": 1}}, {\"focused\": false, \"pane_id\": \"w1:p5\", \"rect\": {\"height\": 11, \"width\": 27, \"x\": 53, \"y\": 13}}], \"splits\": [{\"direction\": \"right\", \"id\": \"split_0_root\", \"ratio\": 0.5, \"rect\": {\"height\": 23, \"width\": 54, \"x\": 26, \"y\": 1}}, {\"direction\": \"down\", \"id\": \"split_1_0\", \"ratio\": 0.5, \"rect\": {\"height\": 23, \"width\": 27, \"x\": 26, \"y\": 1}}, {\"direction\": \"right\", \"id\": \"split_2_01\", \"ratio\": 0.5, \"rect\": {\"height\": 11, \"width\": 27, \"x\": 26, \"y\": 13}}, {\"direction\": \"down\", \"id\": \"split_3_1\", \"ratio\": 0.5, \"rect\": {\"height\": 23, \"width\": 27, \"x\": 53, \"y\": 1}}], \"tab_id\": \"w1:t1\", \"workspace_id\": \"w1\", \"zoomed\": false}, \"type\": \"layout_updated\"}, \"event\": \"layout_updated\"}\n"
         ]
       },
       "expect": {
-        "events": [],
+        "events": [
+          "layoutUpserted:w1:t1 tree=columns(rows(w1:p1, columns(w1:p3, w1:p4@0.5)@0.5), rows(w1:p2, w1:p5@0.5)@0.5) focused=w1:p1"
+        ],
         "unknownKinds": []
       }
     },

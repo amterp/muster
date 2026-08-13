@@ -8,13 +8,13 @@
 //! is no other information in the distinction: both carry the whole entity.
 
 use crate::AgentState;
-use crate::mirror::backend::{Pane, PaneId, Tab, TabId, Workspace, WorkspaceId};
+use crate::mirror::backend::{Layout, Pane, PaneId, Tab, TabId, Workspace, WorkspaceId};
 
 /// One thing a backend says happened.
 ///
 /// Every variant carries absolute values rather than deltas, so applying one twice is
 /// applying it once, and applying a stale one costs at most a redundant write.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum BackendEvent {
     WorkspaceUpserted(Workspace),
     WorkspaceRemoved(WorkspaceId),
@@ -38,6 +38,14 @@ pub enum BackendEvent {
         pane: PaneId,
         agent: String,
     },
+    /// A whole tab's tree, as it stands now.
+    ///
+    /// Whole rather than incremental because that is how it arrives: herdr's
+    /// `layout_updated` carries the entire tab in absolute values, so applying it twice is
+    /// applying it once. It follows every pane change and **no** tab or workspace change,
+    /// so nothing may treat it as the only structural signal
+    /// (`observations/herdr-0.8.0.md` section 10).
+    LayoutUpserted(Layout),
     /// A focus cursor moved. Each field is absolute and independent: `None` means this
     /// event says nothing about that cursor, not that the cursor was cleared.
     FocusMoved {
@@ -70,6 +78,9 @@ pub enum Change {
     },
     TabAdded(TabId),
     TabRemoved(TabId),
+    /// This tab's tree is not the one it was. Carries the tab rather than the tree,
+    /// because every reader has the mirror in hand and only some of them want to walk it.
+    LayoutChanged(TabId),
     WorkspaceAdded(WorkspaceId),
     WorkspaceRemoved(WorkspaceId),
     FocusChanged,

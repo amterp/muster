@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use herdr_harness::Daemon;
-use muster_core::mirror::backend::{Health, PaneId};
+use muster_core::mirror::backend::{Health, LayoutNode, PaneId, SplitAxis, TabId};
 use muster_core::mirror::{Change, Mirror};
 use muster_herdr::subscription::{Notice, Subscription};
 use serde_json::json;
@@ -282,4 +282,62 @@ fn a_pane_created_later_is_watched_too() {
         mirror.lock().unwrap().agent_state(&PaneId::new(new_pane.clone()))
             == Some(muster_core::AgentState::Working)
     });
+}
+
+#[test]
+fn a_tab_arranged_by_a_real_daemon_arrives_as_a_tree() {
+    // The recorded corpus judges the translation and this judges the plumbing: that the
+    // subscription asks for `layout.updated`, that what comes back is where the decoder
+    // looks for it, and that a tree built from a live daemon's rectangles is the tree that
+    // daemon says it has. All three were right in the recording by construction, because
+    // the recording is where they came from.
+    let daemon = Daemon::start();
+    daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "one", "focus": true }));
+
+    let (mirror, log, _subscription) = mirror_and_log(&daemon);
+    until("the first bootstrap", || log.bootstraps() > 0);
+
+    let tab = TabId::new(
+        daemon.call("session.snapshot", &json!({}))["snapshot"]["focused_tab_id"]
+            .as_str()
+            .expect("a focused tab")
+            .to_string(),
+    );
+    let single = mirror.lock().unwrap().layout(&tab).expect("the bootstrap carried a tree").clone();
+    assert!(matches!(single.root, LayoutNode::Pane(_)), "one pane is not a split: {single:?}");
+
+    // Split after the subscription is up, so what arrives can only have come from the
+    // event rather than from the snapshot that bootstrapped it.
+    daemon.call("pane.split", &json!({ "direction": "right" }));
+    until("the split to reach the mirror as a tree", || {
+        mirror
+            .lock()
+            .unwrap()
+            .layout(&tab)
+            .is_some_and(|layout| matches!(layout.root, LayoutNode::Split { .. }))
+    });
+
+    let mirror = mirror.lock().unwrap();
+    let layout = mirror.layout(&tab).expect("the tab still has a tree");
+    // Against the daemon's own exported tree rather than against a shape written here: if
+    // both were wrong in the same way, an assertion written from memory would agree with
+    // them.
+    let exported = daemon.call("layout.export", &json!({}));
+    let root = &exported["layout"]["root"];
+    assert_eq!(root["type"], "split", "herdr does not think this tab is split: {exported}");
+    assert_eq!(
+        layout.root.panes().len(),
+        2,
+        "the mirror's tree holds {} pane(s): {}",
+        layout.root.panes().len(),
+        layout.root
+    );
+    assert!(
+        matches!(&layout.root, LayoutNode::Split { axis, .. } if *axis == SplitAxis::Columns),
+        "a split to the right is columns, not {}",
+        layout.root
+    );
+    for pane in layout.root.panes() {
+        assert!(mirror.pane(pane).is_some(), "the tree names {pane}, which the mirror lacks");
+    }
 }

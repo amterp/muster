@@ -52,8 +52,13 @@ nothing herdr-shaped escapes it. Control-plane transports: local socket for loca
 ## The vocabulary
 
 The backend contract speaks Muster's terms, not any backend's. Nouns: backend session (one daemon connection),
-workspace, tab (the unit that owns one pane tree - trees hang off tabs, not workspaces), pane, pane channel (the
-output stream feeding a surface), agent state. Verbs, as intents: attach, split, close, focus, resize, send input,
+workspace, tab (the unit that owns one pane tree - trees hang off tabs, not workspaces), layout (a tab's tree, as
+proportions rather than cells), pane, pane channel (the output stream feeding a surface), agent state.
+
+**A layout is proportions, never geometry.** A backend sizes panes for a viewport of its own - herdr's is a fixed
+54x23 whether a client is attached or not (`observations/herdr-0.8.0.md` section 13) - so the cell rectangles it
+publishes describe nobody's window. What crosses the seam is the tree and its ratios; the shell lays that out at
+whatever size it has, and the pane's own geometry follows from the controller as below. Verbs, as intents: attach, split, close, focus, resize, send input,
 scroll, spawn. Small on purpose - everything the view needs, nothing any particular backend happens to offer. The
 contract corpus at this seam is the executable form of this vocabulary and the definition any replacement backend
 (fork or wholesale) must satisfy.
