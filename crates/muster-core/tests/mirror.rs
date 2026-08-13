@@ -17,16 +17,17 @@ fn mirror_conformance() {
         let mut mirror = Mirror::new();
         let mut changes = Vec::new();
 
+        // Snapshot, then stream, then snapshot again - the order a real connection takes,
+        // so that a case about a reconnect is a case about what the mirror had been told
+        // before the drop rather than about a bare pair of snapshots.
         if let Some(snapshot) = given.get("snapshot") {
             mirror.bootstrap(read_snapshot(snapshot));
         }
-        // A second snapshot stands in for a reconnection: the same call, against a mirror
-        // that already holds something, which is the only way the difference is visible.
-        if let Some(resnapshot) = given.get("resnapshot") {
-            changes.extend(mirror.bootstrap(read_snapshot(resnapshot)));
-        }
         for event in given.get("events").and_then(Value::as_array).into_iter().flatten() {
             changes.extend(mirror.apply(read_event(event)));
+        }
+        if let Some(resnapshot) = given.get("resnapshot") {
+            changes.extend(mirror.bootstrap(read_snapshot(resnapshot)));
         }
 
         // Every field, every case. The corpus compares whole objects, and for a state
@@ -171,7 +172,6 @@ fn read_event(given: &Value) -> BackendEvent {
         "agentStateChanged" => BackendEvent::AgentStateChanged {
             pane: PaneId::new(text(given, "pane")),
             state: AgentState::from_backend(&text(given, "state")),
-            seq: given.get("seq").and_then(Value::as_u64),
         },
         "agentDetected" => BackendEvent::AgentDetected {
             pane: PaneId::new(text(given, "pane")),

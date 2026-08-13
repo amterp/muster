@@ -2,13 +2,19 @@
   "_v": 3,
   "alias": "approach-the-herdr",
   "alias_explicit": false,
-  "column": "backlog-lo",
+  "column": "uncommitted",
   "comments": [
     {
       "author": "Alexander Terp",
       "body": "Agenda for that conversation is accumulating, all measured rather than guessed:\n\n1. Agent state needs a subscription per pane (a_27N6pklkl). pane.agent_status_changed requires a pane_id and no unparameterized subscription carries the same information, so an overview of N panes costs N held-open connections. pane.updated already exists unparameterized, so the plumbing looks present.\n\n2. Scrollback does not survive a daemon restart, though the tree and cwds do (observations section 12). Whether that is intended is worth asking before anyone builds around it.\n\n3. layout.export could carry the agent session reference herdr already tracks via pane.report_agent_session. That would make its own restore resumable rather than merely structural, for every client.\n\n4. A keystroke can wait out a render window it did not cause (a_27GiE7gJJ).",
       "created_at_millis": 1786646075348,
       "id": "c_27QdHK5LD"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "5. state_change_seq reaches clients only through session.snapshot's agents[], never on an event - one hit in the whole 252 KB schema, at success_response/$defs/AgentInfo. So a subscriber cannot tell live that it missed a transition; it learns only when it next snapshots, at which point the snapshot has already corrected it. Putting the stamp on PaneAgentStatusChangedEvent would cost one field and would let a client detect a gap at the moment it matters. Pairs with item 1: both are about a subscriber being able to trust what it holds.",
+      "created_at_millis": 1786647150950,
+      "id": "c_27R5GBZWm"
     }
   ],
   "created_at_millis": 1786461806376,
@@ -18,11 +24,16 @@
   "labels": [
     "blocked"
   ],
-  "position": "UUUUU",
+  "position": "E",
   "title": "Approach the herdr team once muster proves itself",
   "type": "chore",
-  "updated_at_millis": 1786646075348,
+  "updated_at_millis": 1786647150950,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1786461806376}
+    {"field":"column","value":"backlog-lo","at":1786461806376},
+    {"field":"column","value":"uncommitted","at":1786646389301},
+    {"field":"column","value":"backlog-lo","at":1786646398402},
+    {"field":"column","value":"uncommitted","at":1786646400415},
+    {"field":"column","value":"backlog-lo","at":1786646403220},
+    {"field":"column","value":"uncommitted","at":1786646406320}
   ]
 }

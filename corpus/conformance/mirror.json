@@ -478,8 +478,8 @@
       }
     },
     {
-      "name": "a jump in the agent sequence says transitions were missed",
-      "why": "herdr stamps agent transitions from one session-wide counter, so a gap is detectable even for panes this client never subscribed to - the recording walks p1 to 2, p5 to 4, p1 to 6. This is the only gap Muster can detect from evidence rather than by re-snapshotting on a timer, which makes it worth acting on, and the case pins that the mirror says so rather than carrying on quietly.",
+      "name": "transitions that ran while nobody was listening are reported on reconnect",
+      "why": "herdr stamps agent transitions from one session-wide counter, and that stamp reaches a client in exactly one place: the agents[] of a snapshot. It is never on an event. So a gap is visible only by comparing two snapshots against the transitions applied in between - here one was applied and the counter moved by four. Muster exists to route attention, so an agent that asked for the user during the gap has to be surfaced rather than quietly overwritten by the fresh snapshot.",
       "given": {
         "snapshot": {
           "panes": [
@@ -496,10 +496,20 @@
           {
             "kind": "agentStateChanged",
             "pane": "w1:p1",
-            "state": "working",
-            "seq": 9
+            "state": "working"
           }
-        ]
+        ],
+        "resnapshot": {
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "working"
+            }
+          ],
+          "agentStateSeq": 9
+        }
       },
       "expect": {
         "panes": [
@@ -513,14 +523,14 @@
         "focus": {},
         "health": "connected",
         "changes": [
-          "agentTransitionsMissed:5..9",
-          "agentStateChanged:w1:p1:idle->working"
+          "agentStateChanged:w1:p1:idle->working",
+          "agentTransitionsMissed:5..9"
         ]
       }
     },
     {
-      "name": "a sequence that advances by one is not a gap",
-      "why": "The companion to the case above, because an over-eager gap detector is worse than none: it would re-snapshot on every ordinary transition, which is a fresh request per agent blink and a mirror that never settles.",
+      "name": "a counter that moved by exactly what we applied is not a gap",
+      "why": "The companion to the case above, because an over-eager gap detector is worse than none: it would claim a missed notification on every ordinary reconnect, and a warning that fires every time is one nobody reads. Two transitions applied, counter up by two, nothing missed.",
       "given": {
         "snapshot": {
           "panes": [
@@ -537,10 +547,25 @@
           {
             "kind": "agentStateChanged",
             "pane": "w1:p1",
-            "state": "working",
-            "seq": 5
+            "state": "working"
+          },
+          {
+            "kind": "agentStateChanged",
+            "pane": "w1:p1",
+            "state": "blocked"
           }
-        ]
+        ],
+        "resnapshot": {
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "blocked"
+            }
+          ],
+          "agentStateSeq": 6
+        }
       },
       "expect": {
         "panes": [
@@ -549,12 +574,13 @@
         "tabs": [],
         "workspaces": [],
         "agentStates": {
-          "w1:p1": "working"
+          "w1:p1": "blocked"
         },
         "focus": {},
         "health": "connected",
         "changes": [
-          "agentStateChanged:w1:p1:idle->working"
+          "agentStateChanged:w1:p1:idle->working",
+          "agentStateChanged:w1:p1:working->blocked"
         ]
       }
     },

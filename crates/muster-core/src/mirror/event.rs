@@ -26,12 +26,13 @@ pub enum BackendEvent {
     /// stop existing, and keeping the difference would invite handling only one
     /// (`observations/herdr-0.8.0.md` section 10).
     PaneRemoved(PaneId),
+    /// No sequence stamp, because no backend sends one on an event. herdr's
+    /// `state_change_seq` appears in exactly one place in its whole schema - the `agents[]`
+    /// of a `session.snapshot` - so ordering is something a snapshot carries and a stream
+    /// does not (`observations/herdr-0.8.0.md` section 10).
     AgentStateChanged {
         pane: PaneId,
         state: AgentState,
-        /// The backend's session-wide ordering stamp, where it has one. Tracked so a
-        /// later jump reveals transitions that happened while nobody was listening.
-        seq: Option<u64>,
     },
     AgentDetected {
         pane: PaneId,
@@ -72,9 +73,14 @@ pub enum Change {
     WorkspaceAdded(WorkspaceId),
     WorkspaceRemoved(WorkspaceId),
     FocusChanged,
-    /// The backend's agent sequence skipped values, so transitions happened that this
-    /// mirror never saw - possibly on panes it has never heard of. The only honest
-    /// response is a fresh snapshot.
+    /// Between the last snapshot and this one, the backend ran more agent transitions than
+    /// this mirror was told about - possibly on panes it has never heard of.
+    ///
+    /// An attention signal rather than a consistency one. The mirror is already correct by
+    /// the time this is emitted, because it is emitted by the bootstrap that made it
+    /// correct. What it says is that an agent may have asked for the user while nobody was
+    /// listening, and a product whose reason to exist is routing attention should not let
+    /// that pass silently (`README.md`, attention routing).
     AgentTransitionsMissed {
         expected: u64,
         saw: u64,

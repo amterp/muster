@@ -461,14 +461,25 @@ It is not a general "this pane changed" counter and cannot be used as one.
 
 `state_change_seq` is better than per-entity. It is stamped from one session-wide
 counter (`src/app/actions.rs:2973`), so panes get interleaved values - the recording
-walks `{p1: 2}`, `{p1: 2, p5: 4}`, `{p1: 6, p5: 4}`. A client that remembers the highest
-value it has seen can tell that transitions happened while it was not listening, **including
-on panes it has never heard of**.
+walks `{p1: 2}`, `{p1: 2, p5: 4}`, `{p1: 6, p5: 4}`. Comparing two of them tells a client
+that transitions ran in between, **including on panes it has never heard of**.
 
-So: agent-state gaps are detectable from evidence, structural gaps are not. Nothing
-reports that a pane was created and closed inside a gap, which leaves periodic
-re-snapshot as the only detector for structure. That is the fact the reconciliation
-cadence gets chosen against.
+Two of them, and not a running count, because of where the stamp is: searching the
+schema for `state_change_seq` returns exactly one hit, `success_response/$defs/AgentInfo`
+- the `agents[]` of a `session.snapshot`. It is on no event. `PaneAgentStatusChangedEvent`
+carries `agent`, `agent_status`, `display_agent`, `pane_id`, `state_labels`, `title` and
+`workspace_id`, and `PaneInfo` does not carry it either.
+
+So the counter is a between-snapshots measure rather than a live one. A client learns
+what it missed at the moment it re-snapshots, which is the moment it stops needing to
+know for correctness - the snapshot already fixed the mirror. What survives is an
+attention fact: an agent may have gone blocked and back while nobody was listening, and
+that is a notification the user never got.
+
+So: agent-state gaps are quantifiable in arrears, structural gaps are not detectable at
+all. Nothing reports that a pane was created and closed inside a gap, which leaves
+periodic re-snapshot as the only detector for structure. That is the fact the
+reconciliation cadence gets chosen against.
 
 ### Subscribing still replays
 

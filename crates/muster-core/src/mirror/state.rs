@@ -28,10 +28,14 @@ pub struct Mirror {
     panes: BTreeMap<PaneId, Pane>,
     focus: Focus,
     health: Health,
-    /// The highest agent-state stamp seen. herdr issues these from one session-wide
-    /// counter, so a jump means transitions happened while nobody was listening - possibly
-    /// on panes this mirror has never heard of (`observations/herdr-0.8.0.md` section 10).
+    /// The agent-state stamp the last snapshot carried. herdr issues these from one
+    /// session-wide counter, so comparing two snapshots says how many transitions ran in
+    /// between - including on panes this mirror has never heard of
+    /// (`observations/herdr-0.8.0.md` section 10).
     agent_state_seq: Option<u64>,
+    /// Agent transitions applied since that snapshot. The backend's counter minus this is
+    /// how many ran without this mirror hearing about them.
+    agent_transitions_applied: u64,
 }
 
 impl Mirror {
@@ -55,9 +59,19 @@ impl Mirror {
         self.tabs = snapshot.tabs.into_iter().map(|t| (t.id.clone(), t)).collect();
         self.panes = snapshot.panes.into_iter().map(|p| (p.id.clone(), p)).collect();
         self.health = Health::Connected;
-        self.agent_state_seq = snapshot.agent_state_seq;
+        let previous_seq = std::mem::replace(&mut self.agent_state_seq, snapshot.agent_state_seq);
+        let applied = std::mem::take(&mut self.agent_transitions_applied);
 
         let mut changes = Vec::new();
+        // Before the per-entity diff, because it is about the interval rather than about
+        // any one pane: a transition that ran and reverted inside the gap leaves both
+        // snapshots identical and shows up here or nowhere.
+        if let (Some(previous), Some(saw)) = (previous_seq, snapshot.agent_state_seq) {
+            let expected = previous.saturating_add(applied);
+            if saw > expected {
+                changes.push(Change::AgentTransitionsMissed { expected, saw });
+            }
+        }
         for id in self.workspaces.keys() {
             if !previous_workspaces.contains_key(id) {
                 changes.push(Change::WorkspaceAdded(id.clone()));
@@ -165,19 +179,22 @@ impl Mirror {
                 }
             }
             BackendEvent::PaneRemoved(id) => self.remove_pane(&id, false),
-            BackendEvent::AgentStateChanged { pane, state, seq } => {
-                let mut changes = self.note_agent_seq(seq);
-                if let Some(existing) = self.panes.get_mut(&pane) {
-                    let from = existing.agent_state;
-                    if from != state {
-                        existing.agent_state = state;
-                        changes.push(Change::AgentStateChanged { pane, from, to: state });
-                    }
+            BackendEvent::AgentStateChanged { pane, state } => {
+                // Counted whether or not it moved anything, because the backend's counter
+                // is what this is reconciled against and the backend counted it.
+                self.agent_transitions_applied += 1;
+                let Some(existing) = self.panes.get_mut(&pane) else {
+                    // A state change for a pane we do not know is dropped rather than
+                    // inventing one: an agent event carries no tab or workspace, so a pane
+                    // built from it would be an orphan the view could not place.
+                    return Vec::new();
+                };
+                let from = existing.agent_state;
+                if from == state {
+                    return Vec::new();
                 }
-                // A state change for a pane we do not know is dropped rather than
-                // inventing one: an agent event carries no tab or workspace, so a pane
-                // built from it would be an orphan the view could not place.
-                changes
+                existing.agent_state = state;
+                vec![Change::AgentStateChanged { pane, from, to: state }]
             }
             BackendEvent::AgentDetected { pane, agent } => {
                 if let Some(existing) = self.panes.get_mut(&pane)
@@ -280,19 +297,6 @@ impl Mirror {
         if self.focus.workspace.as_ref().is_some_and(|id| !self.workspaces.contains_key(id)) {
             self.focus.workspace = None;
         }
-    }
-
-    /// Notices transitions that happened while this mirror was not listening.
-    fn note_agent_seq(&mut self, seq: Option<u64>) -> Vec<Change> {
-        let Some(seq) = seq else { return Vec::new() };
-        let previous = self.agent_state_seq.replace(seq);
-        let Some(previous) = previous else { return Vec::new() };
-        // Backwards is not a gap: a replayed or reordered event is stale, and the mirror
-        // already holds something at least as new.
-        if seq > previous + 1 {
-            return vec![Change::AgentTransitionsMissed { expected: previous + 1, saw: seq }];
-        }
-        Vec::new()
     }
 
     pub fn mark_stale(&mut self) {
