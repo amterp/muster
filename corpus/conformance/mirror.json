@@ -1,0 +1,794 @@
+{
+  "concept": "mirror.apply",
+  "source": "recorded",
+  "regenerate": "tools/herdr-probe/probe lifecycle snapshot",
+  "citation": "corpus/herdr-0.8.0/lifecycle/ and corpus/herdr-0.8.0/snapshot/; read out in docs/observations/herdr-0.8.0.md sections 1 and 10",
+  "why": "The mirror is the core's picture of daemon truth, and every desideratum above it reads from that picture: which panes exist, what each agent is doing, which one has focus. Its failures are not display bugs. A pane that never disappears is a surface the user cannot close; an agent transition dropped on the floor is the product's whole reason for existing, silently absent. These cases come from a real daemon's recorded event stream rather than from what herdr's docs imply, because three of them describe behavior nobody would have guessed: closing a tab removes its panes with no pane event at all, a pane whose program exits is announced differently from one a client closed, and subscribing replays the entire session as fresh creations. Each case states the whole resulting picture rather than the part it is about, so a change with a side effect somewhere else fails here rather than somewhere later.",
+  "cases": [
+    {
+      "name": "an empty mirror knows nothing",
+      "why": "The starting state has to be distinguishable from a real but empty session. A window that renders 'no panes' when it simply has not connected yet is telling the user something false, so health starts disconnected rather than at a hopeful default.",
+      "given": {
+        "events": []
+      },
+      "expect": {
+        "panes": [],
+        "tabs": [],
+        "workspaces": [],
+        "agentStates": {},
+        "focus": {},
+        "health": "disconnected",
+        "changes": []
+      }
+    },
+    {
+      "name": "a snapshot is the whole world",
+      "why": "Bootstrap replaces rather than merges. herdr offers no replay, so after any gap the only honest move is to take the new statement entire; merging would preserve entities that died while nobody was watching.",
+      "given": {
+        "snapshot": {
+          "workspaces": [
+            {
+              "id": "w1",
+              "label": "tmp"
+            }
+          ],
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "unknown"
+            },
+            {
+              "id": "w1:p2",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "working"
+            }
+          ],
+          "focus": {
+            "workspace": "w1",
+            "tab": "w1:t1",
+            "pane": "w1:p1"
+          }
+        },
+        "events": []
+      },
+      "expect": {
+        "panes": [
+          "w1:p1",
+          "w1:p2"
+        ],
+        "tabs": [
+          "w1:t1"
+        ],
+        "workspaces": [
+          "w1"
+        ],
+        "agentStates": {
+          "w1:p1": "unknown",
+          "w1:p2": "working"
+        },
+        "focus": {
+          "workspace": "w1",
+          "tab": "w1:t1",
+          "pane": "w1:p1"
+        },
+        "health": "connected",
+        "changes": []
+      }
+    },
+    {
+      "name": "subscribing after a snapshot does not double the session",
+      "why": "The load-bearing case. events.subscribe replays the current session as synthetic creation events, so a client that snapshots and then subscribes is told every existing entity was just created - 7 events for a one-pane session in the recording, 9 for a three-pane one. Convergence is what makes that harmless, and it is a property of the vocabulary rather than a rule each adapter remembers: there is no 'created' event to get wrong, only an upsert.",
+      "given": {
+        "snapshot": {
+          "workspaces": [
+            {
+              "id": "w1",
+              "label": "tmp"
+            }
+          ],
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ],
+          "focus": {
+            "workspace": "w1",
+            "tab": "w1:t1",
+            "pane": "w1:p1"
+          }
+        },
+        "events": [
+          {
+            "kind": "workspaceUpserted",
+            "id": "w1",
+            "label": "tmp"
+          },
+          {
+            "kind": "tabUpserted",
+            "id": "w1:t1",
+            "workspace": "w1",
+            "label": "1"
+          },
+          {
+            "kind": "paneUpserted",
+            "id": "w1:p1",
+            "tab": "w1:t1",
+            "workspace": "w1",
+            "agentState": "idle"
+          },
+          {
+            "kind": "focusMoved",
+            "workspace": "w1",
+            "tab": "w1:t1",
+            "pane": "w1:p1"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1"
+        ],
+        "tabs": [
+          "w1:t1"
+        ],
+        "workspaces": [
+          "w1"
+        ],
+        "agentStates": {
+          "w1:p1": "idle"
+        },
+        "focus": {
+          "workspace": "w1",
+          "tab": "w1:t1",
+          "pane": "w1:p1"
+        },
+        "health": "connected",
+        "changes": []
+      }
+    },
+    {
+      "name": "closing a tab takes its panes with it",
+      "why": "Recorded, and the sharpest trap in the capture: of five panes created, one got pane_closed, one got pane_exited, and two vanished with a parent that announced only itself. A mirror that removes only what it is told about keeps rendering panes whose terminal is gone, and the user has no way to dismiss them. The cascade is the mirror's own inference rather than something the backend said, which is why the change records that it was one.",
+      "given": {
+        "snapshot": {
+          "workspaces": [
+            {
+              "id": "w1",
+              "label": "tmp"
+            }
+          ],
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            },
+            {
+              "id": "w1:t2",
+              "workspace": "w1",
+              "label": "2"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            },
+            {
+              "id": "w1:p4",
+              "tab": "w1:t2",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "tabRemoved",
+            "id": "w1:t2"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1"
+        ],
+        "tabs": [
+          "w1:t1"
+        ],
+        "workspaces": [
+          "w1"
+        ],
+        "agentStates": {
+          "w1:p1": "idle"
+        },
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "paneRemoved:w1:p4:cascaded",
+          "tabRemoved:w1:t2"
+        ]
+      }
+    },
+    {
+      "name": "closing a workspace takes its tabs and their panes",
+      "why": "The same trap one level up, and also recorded: workspace_closed for w2 arrived with no tab_closed for w2:t1 and no pane_closed for w2:p1. Two levels of cascade, so a mirror that handles only the direct children still leaks the panes underneath.",
+      "given": {
+        "snapshot": {
+          "workspaces": [
+            {
+              "id": "w1",
+              "label": "tmp"
+            },
+            {
+              "id": "w2",
+              "label": "doomed"
+            }
+          ],
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            },
+            {
+              "id": "w2:t1",
+              "workspace": "w2",
+              "label": "1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            },
+            {
+              "id": "w2:p1",
+              "tab": "w2:t1",
+              "workspace": "w2",
+              "agentState": "working"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "workspaceRemoved",
+            "id": "w2"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1"
+        ],
+        "tabs": [
+          "w1:t1"
+        ],
+        "workspaces": [
+          "w1"
+        ],
+        "agentStates": {
+          "w1:p1": "idle"
+        },
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "paneRemoved:w2:p1:cascaded",
+          "tabRemoved:w2:t1",
+          "workspaceRemoved:w2"
+        ]
+      }
+    },
+    {
+      "name": "a pane whose program exited is removed like any other",
+      "why": "herdr says pane_exited for a program that ended and pane_closed for a pane a client closed, and never both - the recorded stream goes straight from pane_exited to layout_updated. Muster keeps no such distinction, because both mean the surface should stop existing and keeping the difference would invite handling only one of them. This case pins that one vocabulary word covers both, so the adapter has nowhere to put half the behavior.",
+      "given": {
+        "snapshot": {
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            },
+            {
+              "id": "w1:p2",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "paneRemoved",
+            "id": "w1:p2"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1"
+        ],
+        "tabs": [
+          "w1:t1"
+        ],
+        "workspaces": [],
+        "agentStates": {
+          "w1:p1": "idle"
+        },
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "paneRemoved:w1:p2:announced"
+        ]
+      }
+    },
+    {
+      "name": "removing something already gone changes nothing",
+      "why": "Not defensive coding: it is routine. A reconnect re-snapshots and the replay that follows describes a world the mirror has already caught up with, so a removal for an unknown id arrives in normal operation. Reporting it as a change would repaint for no news; failing on it would take the window down over an event that carried none.",
+      "given": {
+        "snapshot": {
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "paneRemoved",
+            "id": "w1:p9"
+          },
+          {
+            "kind": "tabRemoved",
+            "id": "w1:t9"
+          },
+          {
+            "kind": "workspaceRemoved",
+            "id": "w9"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1"
+        ],
+        "tabs": [],
+        "workspaces": [],
+        "agentStates": {
+          "w1:p1": "idle"
+        },
+        "focus": {},
+        "health": "connected",
+        "changes": []
+      }
+    },
+    {
+      "name": "an agent state change is reported once, and only when it moves",
+      "why": "The one change this whole product is about. Reported once so a listener can act on it, and not at all when the state repeats - herdr sends a status event per transition, and a mirror that echoed every one would flash the indicator on no news.",
+      "given": {
+        "snapshot": {
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "agentStateChanged",
+            "pane": "w1:p1",
+            "state": "working"
+          },
+          {
+            "kind": "agentStateChanged",
+            "pane": "w1:p1",
+            "state": "working"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1"
+        ],
+        "tabs": [],
+        "workspaces": [],
+        "agentStates": {
+          "w1:p1": "working"
+        },
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "agentStateChanged:w1:p1:idle->working"
+        ]
+      }
+    },
+    {
+      "name": "an agent state for an unknown pane is dropped, not invented",
+      "why": "An agent event carries a pane id and nothing else - no tab, no workspace. A mirror that created a pane from one would hold an orphan the view cannot place in any tab, which is worse than missing it: the pane would appear nowhere and never leave. The snapshot after a reconnect is what fills real gaps.",
+      "given": {
+        "snapshot": {
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "agentStateChanged",
+            "pane": "w1:p7",
+            "state": "blocked"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1"
+        ],
+        "tabs": [],
+        "workspaces": [],
+        "agentStates": {
+          "w1:p1": "idle"
+        },
+        "focus": {},
+        "health": "connected",
+        "changes": []
+      }
+    },
+    {
+      "name": "a jump in the agent sequence says transitions were missed",
+      "why": "herdr stamps agent transitions from one session-wide counter, so a gap is detectable even for panes this client never subscribed to - the recording walks p1 to 2, p5 to 4, p1 to 6. This is the only gap Muster can detect from evidence rather than by re-snapshotting on a timer, which makes it worth acting on, and the case pins that the mirror says so rather than carrying on quietly.",
+      "given": {
+        "snapshot": {
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ],
+          "agentStateSeq": 4
+        },
+        "events": [
+          {
+            "kind": "agentStateChanged",
+            "pane": "w1:p1",
+            "state": "working",
+            "seq": 9
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1"
+        ],
+        "tabs": [],
+        "workspaces": [],
+        "agentStates": {
+          "w1:p1": "working"
+        },
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "agentTransitionsMissed:5..9",
+          "agentStateChanged:w1:p1:idle->working"
+        ]
+      }
+    },
+    {
+      "name": "a sequence that advances by one is not a gap",
+      "why": "The companion to the case above, because an over-eager gap detector is worse than none: it would re-snapshot on every ordinary transition, which is a fresh request per agent blink and a mirror that never settles.",
+      "given": {
+        "snapshot": {
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ],
+          "agentStateSeq": 4
+        },
+        "events": [
+          {
+            "kind": "agentStateChanged",
+            "pane": "w1:p1",
+            "state": "working",
+            "seq": 5
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1"
+        ],
+        "tabs": [],
+        "workspaces": [],
+        "agentStates": {
+          "w1:p1": "working"
+        },
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "agentStateChanged:w1:p1:idle->working"
+        ]
+      }
+    },
+    {
+      "name": "focus cursors are absolute and independent",
+      "why": "herdr moves three cursors with separate events, each naming only its own. Treating absence as a clear would make a pane focus silently unfocus the workspace. Absolute values are also what makes ordering not matter: two events racing land on the later value rather than compounding.",
+      "given": {
+        "snapshot": {
+          "workspaces": [
+            {
+              "id": "w1",
+              "label": "tmp"
+            }
+          ],
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            },
+            {
+              "id": "w1:p2",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ],
+          "focus": {
+            "workspace": "w1",
+            "tab": "w1:t1",
+            "pane": "w1:p1"
+          }
+        },
+        "events": [
+          {
+            "kind": "focusMoved",
+            "pane": "w1:p2"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1",
+          "w1:p2"
+        ],
+        "tabs": [
+          "w1:t1"
+        ],
+        "workspaces": [
+          "w1"
+        ],
+        "agentStates": {
+          "w1:p1": "idle",
+          "w1:p2": "idle"
+        },
+        "focus": {
+          "workspace": "w1",
+          "tab": "w1:t1",
+          "pane": "w1:p2"
+        },
+        "health": "connected",
+        "changes": [
+          "focusChanged"
+        ]
+      }
+    },
+    {
+      "name": "focus does not survive the pane it names",
+      "why": "A cursor pointing at a removed pane is worse than an empty one: every reader has to handle the dangling case, and the one that forgets renders a pane that is gone. Clearing it here lets the rest of the core treat a focused id as one that exists. The reported change matters as much as the clearing - an earlier version cleared the cursor and told nobody, so a view watching for changes would have kept the stale highlight.",
+      "given": {
+        "snapshot": {
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ],
+          "focus": {
+            "tab": "w1:t1",
+            "pane": "w1:p1"
+          }
+        },
+        "events": [
+          {
+            "kind": "paneRemoved",
+            "id": "w1:p1"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [],
+        "tabs": [
+          "w1:t1"
+        ],
+        "workspaces": [],
+        "agentStates": {},
+        "focus": {
+          "tab": "w1:t1"
+        },
+        "health": "connected",
+        "changes": [
+          "paneRemoved:w1:p1:announced",
+          "focusChanged"
+        ]
+      }
+    },
+    {
+      "name": "a state nobody has heard of reads as unknown, never as idle",
+      "why": "herdr's API is explicitly unstable and ships weekly, so a newer daemon can name a state this build has never seen. Unknown renders as itself; idle would tell the user nothing needs them, which is the one wrong answer that looks like a right one.",
+      "given": {
+        "snapshot": {
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "agentStateChanged",
+            "pane": "w1:p1",
+            "state": "deliberating"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1"
+        ],
+        "tabs": [],
+        "workspaces": [],
+        "agentStates": {
+          "w1:p1": "unknown"
+        },
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "agentStateChanged:w1:p1:idle->unknown"
+        ]
+      }
+    },
+    {
+      "name": "a reconnect reports what moved, not that everything did",
+      "why": "Bootstrap runs again on every reconnection, and a mirror that reported the whole world as new would repaint every pane each time the network hiccupped. What a reader needs is the difference: this pane's agent changed while we were away, that one is gone, this one is new.",
+      "given": {
+        "snapshot": {
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            },
+            {
+              "id": "w1:p2",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ]
+        },
+        "resnapshot": {
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "blocked"
+            },
+            {
+              "id": "w1:p3",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ]
+        },
+        "events": []
+      },
+      "expect": {
+        "panes": [
+          "w1:p1",
+          "w1:p3"
+        ],
+        "tabs": [
+          "w1:t1"
+        ],
+        "workspaces": [],
+        "agentStates": {
+          "w1:p1": "blocked",
+          "w1:p3": "idle"
+        },
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "agentStateChanged:w1:p1:idle->blocked",
+          "paneAdded:w1:p3",
+          "paneRemoved:w1:p2:announced"
+        ]
+      }
+    }
+  ]
+}
