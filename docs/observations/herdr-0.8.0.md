@@ -357,3 +357,49 @@ timings and frame counts, which are not expected to match.
 So the remote path is the same path, and "local and remote in one window" costs the
 adapter nothing beyond the transport. Re-run this on every herdr upgrade: the day it
 stops printing zero is the day the remote path needs its own handling.
+
+## 9. Input-to-glyph is 1.4 ms, and its tail is a render throttle
+
+Added 2026-08-13, against the same daemon. The kill criterion this answers is
+`a_26BIX28HG`: double emulation puts a second terminal and a socket between a keystroke
+and a glyph, and if that is felt, the architecture is wrong.
+
+Measured with `tools/latency.py`: `cat` on both sides, one byte in, wait for it to come
+back, at a fast typist's cadence. The daemon side writes to a pane's control stream and
+reads frames off it; the floor writes to a plain PTY and reads the kernel's echo.
+
+| path | min | median | p95 | max |
+|---|---|---|---|---|
+| plain pty (the floor) | 0.03 | 0.07 | 0.22 | 1.33 |
+| daemon: stream responded | 0.49 | 1.03 | 2.61 | 21.96 |
+| daemon: glyph painted | 0.49 | 1.41 | 22.60 | 23.27 |
+
+**The daemon answers in about a millisecond.** Every keystroke produces a frame almost
+immediately - that column has no tail worth the name.
+
+**The p95 is a second frame, not slow work.** In 23 of 60 samples the frame that arrived
+first did not yet carry the byte, and the glyph waited for the next render: the PTY echo
+lost a race against a render that was already in flight. `App::can_render_now`
+(`src/app/runtime.rs:519`) gates rendering on `MIN_RENDER_INTERVAL`, 16 ms
+(`src/app/mod.rs:35`), so the loser of that race waits out the window. That is the whole
+shape of the distribution - roughly 1.4 ms or roughly 20 ms, with almost nothing between.
+
+**None of it is Muster's.** The measurement runs no Muster code: it is herdr answering
+its own control stream. One `render_and_stream` serves every render target, so herdr's
+own TUI is behind the same gate. Muster adds frame decode and VT parse on top, budgeted
+at 5.96 and 3.72 ns/byte by `./dev --perf` - about 0.35 ms for a 35 KB full repaint and
+microseconds for the diffs that follow.
+
+So the kill criterion passes, and it passes for a reason worth keeping straight: double
+emulation is cheap, and what latency there is belongs to a daemon-side throttle that is
+tunable rather than to the architecture. It also sets a ceiling Muster cannot beat by
+being fast, which is what makes it worth an upstream conversation rather than local
+optimization.
+
+Evidence: `tools/latency.py`, run with `./dev --latency`.
+
+One methodological note, recorded because it nearly became a wrong answer. The first
+version of this measurement read frames on a second thread and reported a 20 ms median
+with a 30 ms tail. The measuring loop held Python's GIL and starved the reader, so the
+number described the instrument. Single-threaded blocking reads moved the median from
+20 ms to 1.4 ms. Any future timing harness here reads on the thread that is timing.

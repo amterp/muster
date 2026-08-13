@@ -19,6 +19,7 @@ args:
     contract bool  # Run the app against a real herdr. Needs a GUI session; not in the gate.
     perf bool      # Measure the per-unit budgets against perf/baseline.json. Not in the gate.
     record bool    # With --perf, record this run as the new baseline instead of judging it.
+    latency bool   # Time input-to-glyph against a real herdr. Needs a daemon; not in the gate.
 
 ZIG_VERSION = "0.16.0"
 GHOSTTY_REPO = "https://github.com/ghostty-org/ghostty"
@@ -128,7 +129,7 @@ if record and not perf:
     print_err("Try: ./dev --perf --record")
     exit(1)
 
-if not (deps or build or test or lint or format or clean or contract or perf):
+if not (deps or build or test or lint or format or clean or contract or perf or latency):
     deps = true
     build = true
     test = true
@@ -204,6 +205,18 @@ if perf:
     else:
         stdout, stderr, code = $`{binary}/muster-perf` catch:
             fail_perf(stdout, stderr, code)
+    print(stdout.trim())
+
+if latency:
+    announce("latency")
+    // Reported rather than gated. It needs a real daemon, and the number it produces is
+    // mostly herdr's render cadence rather than Muster's cost - so a threshold here would
+    // fail builds over a dependency's behavior. ./dev --perf gates what is ours.
+    stdout, stderr, code = $`python3 tools/latency.py` catch:
+        print_err(red("Input-to-glyph could not be measured, so nothing was learned."))
+        print_err(stdout.trim())
+        print_err(stderr.trim())
+        exit(1)
     print(stdout.trim())
 
 if lint:

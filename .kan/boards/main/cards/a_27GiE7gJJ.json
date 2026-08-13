@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "upstream-a-keystroke",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1786622432756,
+  "creator": "Alexander Terp",
+  "description": "Measured: input-to-glyph through a herdr pane's control stream is 1.4 ms at the median but 22.6 ms at p95, and those are not the same event. In 23 of 60 samples the frame that arrived first did not carry the byte - the PTY echo lost a race against a render already in flight - so the glyph waited out MIN_RENDER_INTERVAL, 16 ms (src/app/mod.rs:35, gated in App::can_render_now, src/app/runtime.rs:519). The distribution is bimodal: about 1.4 ms or about 20 ms, with almost nothing between.\n\nNot a Muster problem to fix locally. One render_and_stream serves every render target, so herdr's own TUI sits behind the same gate and no client-side work can beat it. It is a ceiling on what Muster's latency can be.\n\nWhether it is worth raising depends on how deliberate the throttle is. 16 ms is a defensible 60fps cap; the sharp edge is that a pane with fresh PTY output can be made to wait a whole window by a render it had nothing to do with. A render scheduled to cover pending PTY reads, or a shorter window when only one pane is dirty, would pull p95 down toward the median.\n\nEvidence and method: docs/observations/herdr-0.8.0.md section 9, tools/latency.py, ./dev --latency. Sibling to a_27CTRluw7 and a_26LAtaO6T.",
+  "id": "a_27GiE7gJJ",
+  "position": "UUUUUUUUUUUUUUUU",
+  "title": "Upstream: a keystroke can wait out a render window it did not cause",
+  "type": "chore",
+  "updated_at_millis": 1786622432756,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1786622432756}
+  ]
+}

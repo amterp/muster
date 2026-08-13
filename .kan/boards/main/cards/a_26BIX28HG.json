@@ -6,7 +6,15 @@
     "renderer",
     "testing"
   ],
-  "column": "in-progress",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Measured, and it passes. tools/latency.py (./dev --latency): input-to-glyph over a plain PTY is 1.4 ms at the median, 22.6 ms at p95, at a typist's cadence. Full table and method in docs/observations/herdr-0.8.0.md section 9.\n\nThe tail is not double emulation. The daemon answers every keystroke in about 1 ms; in 23 of 60 samples the first frame did not yet carry the byte, because the PTY echo lost a race against a render already in flight, and the glyph then waited out herdr's 16 ms MIN_RENDER_INTERVAL (src/app/mod.rs:35, gated in App::can_render_now at src/app/runtime.rs:519). Roughly 1.4 ms or roughly 20 ms, with almost nothing between.\n\nNone of that is Muster's code - one render_and_stream serves every render target, so herdr's own TUI sits behind the same gate. What Muster adds is frame decode and VT parse, 5.96 and 3.72 ns/byte (./dev --perf): about 0.35 ms for a 35 KB repaint, microseconds for the diffs after it.\n\nMethod note worth keeping: the first version read frames on a second thread and reported a 20 ms median. The measuring loop held the GIL and starved the reader, so the number described the instrument. Single-threaded blocking reads took the median from 20 ms to 1.4 ms.",
+      "created_at_millis": 1786622399610,
+      "id": "c_27GhMfeDX"
+    }
+  ],
   "created_at_millis": 1786461765283,
   "creator": "Alexander Terp",
   "description": "Daemon VT -\u003e re-encoded ANSI -\u003e surface VT. Measure keypress-to-glyph against plain ghostty. Stage-1 gate: must feel native.",
@@ -14,12 +22,13 @@
   "labels": [
     "kill-criterion"
   ],
-  "position": "U",
+  "position": "UUUUUUUUUUUU",
   "title": "Measure double-emulation latency",
   "type": "chore",
-  "updated_at_millis": 1786621386348,
+  "updated_at_millis": 1786622399610,
   "history": [
     {"field":"column","value":"next","at":1786461765283},
-    {"field":"column","value":"in-progress","at":1786621386348}
+    {"field":"column","value":"in-progress","at":1786621386348},
+    {"field":"column","value":"done","at":1786622382063}
   ]
 }
