@@ -60,10 +60,19 @@ public enum Snapshot {
       """, sourceLocation: sourceLocation)
   }
 
+  /// `corpus/snapshots`, found by walking up from the test that asked.
+  ///
+  /// Beside the conformance cases rather than under one language's `Tests/`, because a
+  /// snapshot is an oracle too: both implementations read these same bytes, which is what
+  /// makes "the port did not have to re-record them" mean anything.
   private static func directory(for testFile: String) -> URL {
-    URL(fileURLWithPath: testFile)
-      .deletingLastPathComponent()
-      .appendingPathComponent("snapshots")
+    var directory = URL(fileURLWithPath: testFile).deletingLastPathComponent()
+    while directory.path != "/" {
+      let candidate = directory.appendingPathComponent("corpus/snapshots")
+      if FileManager.default.fileExists(atPath: candidate.path) { return candidate }
+      directory = directory.deletingLastPathComponent()
+    }
+    return URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
   }
 
   /// The first differing line, with its neighbours.

@@ -95,10 +95,6 @@ let package = Package(
     .testTarget(name: "MusterPerfTests", dependencies: ["MusterPerf", "TestSupport"]),
     .testTarget(
       name: "MusterVTTests",
-      dependencies: ["MusterVT", "MusterHerdr", "TestSupport"],
-      // Snapshots are read from the source tree by path, not from a bundle, so that
-      // regenerating one and reading its diff are the same file. Declared here because
-      // SwiftPM otherwise warns about them as unhandled resources.
-      exclude: ["snapshots"]),
+      dependencies: ["MusterVT", "MusterHerdr", "TestSupport"]),
   ]
 )
