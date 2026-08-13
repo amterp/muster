@@ -85,6 +85,12 @@ And the hazard all three share: a corpus no driver reads is the silently-skipped
 gate checks that every corpus file is claimed by a driver, that every driver reports how many cases it ran, and
 that the count is never zero.
 
+**Snapshots are oracles too**, so they live beside the cases in `corpus/snapshots/` rather than under one
+language's tests. Some behavior is one matrix with one reason rather than N behaviors with N justifications - what
+nineteen common keystrokes encode to, what a recorded frame stream paints - and a rendered file is the honest shape
+for that. Both implementations read the same bytes, which is what makes "the port did not have to re-record them"
+worth anything: a snapshot that gets regenerated to make a rewrite pass was never an oracle.
+
 **What stays native.** Not everything should be data, and forcing it produces an unreadable pseudo-language. The
 line falls where behavior stops being expressible in Muster's vocabulary: driving an `NSView` with a synthesized
 `NSEvent`, or proving that two processes appending to one log file never tear a line. Translation *into* the

@@ -76,8 +76,13 @@ the default suite is allowed to require.
 against a checked-in baseline and fails on regression, the second times input-to-glyph against a real daemon. A
 functional green is never a performance claim, so neither runs by default.
 
-Requires a Swift 6.2 toolchain, a Rust toolchain, and [Rad](https://github.com/amterp/rad) on your PATH; a missing
-`rad` shows up as `env: rad: No such file or directory`.
+Two toolchains, one door: the gate builds, tests and lints the Rust core and the Swift shell together, and a suite
+that discovers zero tests fails in either language rather than reporting green.
+
+Requires a Swift 6.2 toolchain, [Rad](https://github.com/amterp/rad), and Zig 0.16 on your PATH; a missing `rad`
+shows up as `env: rad: No such file or directory`. Rust installs itself - `rust-toolchain.toml` pins the version and
+rustup fetches it on the first `cargo` call, the same way `deps/ghostty.pin` decides which libghostty gets built.
+libclang, which the libghostty-vt bindings are generated with, comes from the Xcode command line tools.
 
 ## Repo conventions
 
@@ -85,6 +90,11 @@ Requires a Swift 6.2 toolchain, a Rust toolchain, and [Rad](https://github.com/a
   are living doctrine; `docs/mip/` holds MIPs, the rare large decisions; `docs/observations/` records what a
   dependency was measured doing, one file per version, each claim citing raw transcripts in `corpus/`. Routine
   rationale lives in commit messages; open questions live in the kan board's `uncommitted` column.
+- `corpus/`: what the code is judged against, in no language. `conformance/` holds the cases that define the core's
+  behavior, `snapshots/` the rendered oracles too broad to be cases, and the rest raw transcripts recorded from a
+  real dependency. The gate fails if a file here is checked in and never run.
+- `crates/` is the portable core (Rust), `Sources/` the macOS shell (Swift). Both are built, tested and linted by
+  `./dev`.
 - Work is tracked on the in-repo [kan](https://github.com/amterp/kan) board (`.kan/`, `kan list`). Agents keep it
   current: move cards as work starts and finishes, and add cards for work discovered along the way. If finishing work
   empties the `next` column, refill it from the backlog by priority and natural sequencing, so there is always a
