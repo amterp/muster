@@ -6,16 +6,17 @@
     "shell",
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "next",
   "created_at_millis": 1786623708969,
   "creator": "Alexander Terp",
   "description": "MIP-1. Move keymap, input pipeline, composition arbiter, frame decoding, diagnostics and the herdr adapter to Rust, with the conformance corpus as the acceptance criterion rather than a reading of the Swift tests.\n\nSequenced deliberately: port what already works and is covered before writing anything new on top, so a wrong seam surfaces on code we trust. herdr's src/ghostty/mod.rs is a working reference for driving libghostty-vt's key encoder from Rust, which is the fiddliest part.\n\nBlocked on the corpus extraction (a_27HFEWM52) landing first.",
   "id": "a_27HFQWfBQ",
-  "position": "UUUUUUUUUUUUUUUUU",
+  "position": "E",
   "title": "Port the core to Rust, against the corpus",
   "type": "feature",
-  "updated_at_millis": 1786623708969,
+  "updated_at_millis": 1786624791754,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1786623708969}
+    {"field":"column","value":"backlog-hi","at":1786623708969},
+    {"field":"column","value":"next","at":1786624791754}
   ]
 }
