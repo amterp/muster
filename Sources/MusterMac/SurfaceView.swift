@@ -34,6 +34,17 @@ public final class SurfaceView: NSView {
   /// Whether `insertText` is being called from inside `keyDown`.
   private var interpretingKeyEvent = false
 
+  /// Called when this view is clicked, meaning the user wants the keyboard here.
+  ///
+  /// A click is the primitive for picking a pane out of fifteen, and it is not first
+  /// responder handling: which pane the keyboard feeds is the core's answer, so a click asks
+  /// rather than takes. The responder move follows from the view the core publishes back.
+  ///
+  /// Mouse events do not otherwise reach the pane yet - a pane's mouse mode is not readable,
+  /// so an encoded click would be a guess (kan a_27CTgqqdv) - which leaves the gesture free
+  /// to mean this and nothing else.
+  public var onClick: (@MainActor () -> Void)?
+
   public override init(frame: NSRect) {
     super.init(frame: frame)
     // Layer-backed before the surface is created, and on the main thread. libghostty's
@@ -107,6 +118,15 @@ public final class SurfaceView: NSView {
     Core.send(
       keyUp: event.musterKeyEvent(
         action: event.isARepeat ? "repeated" : "release", isComposing: hasMarkedText()))
+  }
+
+  /// A click into a window that is not key still picks the pane, rather than being spent
+  /// activating the app. Fifteen panes make the alternative - click once to focus the window,
+  /// again to pick the pane - a papercut on every switch back.
+  public override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+  public override func mouseDown(with event: NSEvent) {
+    onClick?()
   }
 
   public override func scrollWheel(with event: NSEvent) {

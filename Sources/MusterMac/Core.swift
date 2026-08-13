@@ -43,16 +43,19 @@ public enum Core {
 
   /// Points this window's keyboard at a daemon-owned pane.
   ///
-  /// Returns where the bridge should dial back, or nil if the pane could not be attached -
-  /// the core has already said why on stderr and in the log. Nil means the window still
-  /// renders and ignores the keyboard, which is the same shape as a bare `muster`.
-  public static func attach(paneID: String) -> String? {
+  /// Everything that follows is pushed rather than returned: the core opens a socket for
+  /// every pane in that pane's tab and publishes the whole view, which is what builds the
+  /// surfaces. So the answer here is only whether there is anything to show at all - false
+  /// means the window renders nothing and ignores the keyboard, and the core has already said
+  /// why on stderr and in the log.
+  @discardableResult
+  public static func attach(paneID: String) -> Bool {
     var attach = Muster_AttachPane()
     attach.paneID = paneID
     var request = Muster_Request()
     request.attachPane = attach
-    guard case .attached(let attached) = send(request) else { return nil }
-    return attached.controlSocketPath
+    guard case .attached = send(request) else { return false }
+    return true
   }
 
   /// A press, with everything the core needs to decide what it meant.
@@ -105,6 +108,64 @@ public enum Core {
     scroll.lines = lines
     var request = Muster_Request()
     request.scroll = scroll
+    send(request)
+  }
+
+  // What the user can do to a pane. None of these changes a window: they ask the daemon, and
+  // the window changes when the view that comes back says it did. An empty pane id means the
+  // one this window's keyboard feeds, which is what a keybinding means.
+
+  /// Splits the focused pane, putting the new one beside it (`columns`) or below (`rows`).
+  ///
+  /// A ratio of zero means the daemon's own default, which is what a keybinding wants; a
+  /// drag-to-split would say.
+  public static func split(axis: String, ratio: Float = 0, paneID: String = "") {
+    var split = Muster_SplitPane()
+    split.paneID = paneID
+    split.axis = axis
+    split.ratio = ratio
+    var request = Muster_Request()
+    request.splitPane = split
+    send(request)
+  }
+
+  public static func closePane(paneID: String = "") {
+    var close = Muster_ClosePane()
+    close.paneID = paneID
+    var request = Muster_Request()
+    request.closePane = close
+    send(request)
+  }
+
+  /// Points this window's keyboard at a pane, and tells the daemon somebody looked.
+  public static func focus(paneID: String) {
+    var focus = Muster_FocusPane()
+    focus.paneID = paneID
+    var request = Muster_Request()
+    request.focusPane = focus
+    send(request)
+  }
+
+  /// Steps the keyboard one pane along: `next` or `previous`.
+  ///
+  /// A direction rather than a pane, because the shell does not get to decide what is next -
+  /// the order is the tab's tree, which is the daemon's.
+  public static func focus(step: String) {
+    var relative = Muster_FocusRelative()
+    relative.direction = step
+    var request = Muster_Request()
+    request.focusRelative = relative
+    send(request)
+  }
+
+  /// Moves one divider, named by the turns from its tab's root.
+  public static func setSplitRatio(tab: String, path: [Bool], ratio: CGFloat) {
+    var set = Muster_SetSplitRatio()
+    set.tabID = tab
+    set.path = path
+    set.ratio = Float(ratio)
+    var request = Muster_Request()
+    request.setSplitRatio = set
     send(request)
   }
 
@@ -163,16 +224,47 @@ public enum Core {
     }
     if case .failure(let failure) = decoded.payload {
       FileHandle.standardError.write(Data("muster: \(failure.reason)\n".utf8))
+      // And into the run log, because a bug report is the log file and a refusal that only
+      // reached a terminal nobody kept is a refusal nobody can read. Not for a log record:
+      // a refused record reported as a record is a loop.
+      if case .logRecord = request.payload {
+      } else {
+        record("error", "core.refused", ["request": name(of: request), "reason": failure.reason])
+      }
     }
     return decoded.payload
   }
 
-  /// Where the window's chrome hangs, set once by the shell at launch.
+  /// Which request was refused, in the schema's own words.
   ///
-  /// A single observer rather than a broadcast, because there is one window. It becomes a
-  /// lookup by pane when composition means there are several, and every event already
-  /// names its pane so nothing here has to change shape for that.
-  @MainActor public static weak var chrome: PaneChrome?
+  /// The reason says what went wrong and this says what the user was trying to do, and a log
+  /// line needs both: "no daemon holds a pane called w9:p99" reads very differently under an
+  /// attach than under a split.
+  private static func name(of request: Muster_Request) -> String {
+    switch request.payload {
+    case .startup: return "startup"
+    case .logRecord: return "log"
+    case .attachPane: return "attach_pane"
+    case .keyDown: return "key_down"
+    case .keyUp: return "key_up"
+    case .sendText: return "send_text"
+    case .paste: return "paste"
+    case .scroll: return "scroll"
+    case .splitPane: return "split_pane"
+    case .closePane: return "close_pane"
+    case .focusPane: return "focus_pane"
+    case .focusRelative: return "focus_relative"
+    case .setSplitRatio: return "set_split_ratio"
+    case nil: return "(none)"
+    }
+  }
+
+  /// The window every event reaches, set once by the shell at launch.
+  ///
+  /// A single observer rather than a broadcast, because there is one window. A second one
+  /// makes this a list and changes nothing else: every event already names the pane or region
+  /// it is about, so a window that is not showing it drops it.
+  @MainActor public static weak var window: MusterWindow?
 
   /// An event the core sent unasked, already back on the main thread.
   ///
@@ -183,17 +275,22 @@ public enum Core {
     case .paneTypeable(let typeable):
       info("pane.typeable", ["pane": typeable.paneID])
     case .paneStateChanged(let changed):
-      chrome?.apply(paneID: changed.paneID, state: changed.state)
+      window?.apply(paneID: changed.paneID, state: changed.state)
     case .backendHealth(let backend):
-      chrome?.apply(health: backend.state, detail: backend.detail)
-    case .viewChanged(let view):
-      // Noted, not yet rendered: this window still stands up one surface for one pane, and
-      // laying a region's tree out is the next card (kan a_27U1FBqTg). The shape the core
-      // published is already in the run log beside this line, written by the core, so this
-      // says only that it crossed - which is the part the core cannot see.
+      window?.apply(health: backend.state, detail: backend.detail)
+    case .viewChanged(let changed):
+      // The shape is already in the log beside this line, written by the core when it
+      // published. What is recorded here is that it crossed, and how many surfaces the window
+      // was asked for - the part the core cannot see.
+      let contents = WindowContents(changed)
       info(
         "view.received",
-        ["regions": String(view.regions.count), "focused": view.focusedRegion])
+        [
+          "regions": String(contents.regions.count),
+          "panes": String(contents.regions.reduce(0) { $0 + ($1.tree?.leaves.count ?? 0) }),
+          "keyboard": contents.keyboardPane ?? "",
+        ])
+      window?.apply(contents)
     case nil:
       break
     }

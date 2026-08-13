@@ -187,17 +187,92 @@ def check_agent_state_reaches_the_app(daemon: IsolatedDaemon, pane: str) -> None
             )
 
 
+def check_a_split_tab_becomes_splits(daemon: IsolatedDaemon, pane: str) -> None:
+    """Every pane in the tab gets a surface, a channel and something painted into it.
+
+    The one check that runs the whole chain for more than one pane: daemon, tree, mirror,
+    composition, view, window. Everything under it is verified against a fake or a corpus,
+    and every one of those could pass with the app wiring up one surface for a tab that has
+    three - which is the failure this exists for, because a window showing one pane of three
+    looks exactly like a session with one pane in it.
+
+    The splits are made through herdr rather than through Muster's own keybinding, because a
+    key equivalent needs a focused window and this runs headless. What Muster's side of that
+    does is asserted in the seam's own test against a real daemon.
+    """
+    client = daemon.client()
+    tab = client.request("pane.get", {"pane_id": pane})["pane"]["tab_id"]
+    client.request("pane.split", {"target_pane_id": pane, "direction": "right", "cwd": "/tmp"})
+    time.sleep(0.4)
+    client.request("pane.split", {"target_pane_id": pane, "direction": "down", "cwd": "/tmp"})
+    time.sleep(0.4)
+    panes = [
+        held["pane_id"]
+        for held in client.request("pane.list", {})["panes"]
+        if held["tab_id"] == tab
+    ]
+    if len(panes) != 3:
+        raise Failure(f"the daemon was asked for three panes in the tab and holds {panes}")
+
+    records = launch(daemon.env, [pane], "splits", settle=10.0)
+    expect_no_errors(records)
+
+    surfaced = {r.get("pane") for r in records if r["event"] == "surface.create"}
+    missing = set(panes) - surfaced
+    if missing:
+        raise Failure(
+            f"the tab holds {len(panes)} panes and the window built surfaces for "
+            f"{sorted(surfaced)}. Nothing renders {sorted(missing)}, so those agents are "
+            "invisible - which is the whole product."
+        )
+
+    # A surface that renders and swallows the keyboard is the failure that has cost this
+    # project the most time, and it is invisible without asking per pane. `pane.typeable` is
+    # the moment a bridge dialed back, which is the one that decides it.
+    connected = {r.get("pane") for r in records if r["event"] == "pane.typeable"}
+    silent = set(panes) - connected
+    if silent:
+        raise Failure(
+            f"{sorted(silent)} rendered and no bridge dialed back, so those panes swallow "
+            "every keystroke while looking alive"
+        )
+
+    # A bridge names itself in `process` rather than repeating the pane on every record, so
+    # this is where its records are attributed back.
+    painted = {
+        r["process"].removeprefix("bridge:")
+        for r in records
+        if r["event"] == "bridge.frame.first"
+    }
+    if set(panes) - painted:
+        raise Failure(f"{sorted(set(panes) - painted)} never painted, so they render empty")
+
+    view = [r for r in records if r["event"] == "view.region"]
+    if not view:
+        raise Failure("the core never published a view, so the window was never told anything")
+    # The tree, not just the count: three panes arranged flat and three panes nested are the
+    # same number and a different window.
+    tree = view[-1].get("tree", "")
+    if "columns(" not in tree or "rows(" not in tree:
+        raise Failure(
+            f"the tab was split right and then down, and the core published {tree!r}. A tree "
+            "with one axis in it means the reconstruction collapsed a level."
+        )
+
+
 def check_bad_pane(daemon: IsolatedDaemon) -> None:
     """A pane that does not exist must say so rather than showing a blank window."""
     records = launch(daemon.env, ["w9:p99"], "badpane")
-    expect(
+    refused = expect(
         records,
-        "bridge.attach.failed",
+        "core.refused",
         "a mistyped pane id was silent, which is how it reached a user as an empty window",
     )
-    failure = expect(records, "bridge.attach.failed", "")
-    if "not found" not in failure.get("reason", ""):
-        raise Failure(f"the failure did not carry herdr's reason: {failure}")
+    if refused.get("request") != "attach_pane":
+        raise Failure(f"something other than the attach was refused: {refused}")
+    # The id the user typed, so the log answers "which pane" without them re-running it.
+    if "w9:p99" not in refused.get("reason", ""):
+        raise Failure(f"the refusal did not name the pane that was asked for: {refused}")
 
 
 def check_bare_launch(daemon: IsolatedDaemon) -> None:
@@ -237,6 +312,11 @@ def main() -> int:
             ),
             ("a pane that does not exist says why", lambda: check_bad_pane(daemon)),
             ("a window with no pane admits it", lambda: check_bare_launch(daemon)),
+            # Last, because it splits the tab the checks above are written against.
+            (
+                "a split tab becomes splits, all of them typeable",
+                lambda: check_a_split_tab_becomes_splits(daemon, pane),
+            ),
         ]
         for title, check in checks:
             try:
@@ -257,7 +337,10 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-    print("\nsmoke: the app launches, connects, paints, and shows what its agent is doing.")
+    print(
+        "\nsmoke: the app launches, connects, paints, renders a split tab as splits, and "
+        "shows what its agents are doing."
+    )
     return 0
 
 

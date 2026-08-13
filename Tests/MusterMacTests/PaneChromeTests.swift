@@ -36,10 +36,9 @@ struct PaneChromeTests {
   @Test("a stale backend is admitted in the title")
   func staleIsVisible() {
     let title = PaneAppearance.title(
-      paneID: "w1:p1", state: "working", health: "stale", detail: "the daemon closed the connection"
-    )
+      paneID: "w1:p1", zoomed: false, health: "stale",
+      detail: "the daemon closed the connection")
     #expect(title.contains("w1:p1"))
-    #expect(title.contains("working"))
     // The failure this exists to prevent: a window rendering an hour-old session as though
     // it were live, which is indistinguishable from a working one without saying so.
     #expect(title.contains("stale"))
@@ -48,16 +47,22 @@ struct PaneChromeTests {
   @Test("a healthy window says nothing about its health")
   func connectedIsQuiet() {
     let title = PaneAppearance.title(
-      paneID: "w1:p1", state: "idle", health: "connected", detail: "")
+      paneID: "w1:p1", zoomed: false, health: "connected", detail: "")
     #expect(title == "muster - w1:p1")
+  }
+
+  @Test("a zoomed tab says so, because it looks like a tab with one pane")
+  func zoomIsAdmitted() {
+    // The other panes are still there and still running. Without this the user has no way to
+    // learn why they vanished, and nothing to undo.
+    let title = PaneAppearance.title(paneID: "w1:p1", zoomed: true, health: "connected", detail: "")
+    #expect(title.contains("zoomed"))
   }
 
   @MainActor
   @Test("a state for another pane is not this pane's state")
   func otherPanesAreIgnored() {
-    let chrome = PaneChrome(
-      frame: NSRect(x: 0, y: 0, width: 100, height: 100),
-      surface: SurfaceView(frame: NSRect(x: 0, y: 0, width: 100, height: 100)))
+    let chrome = pane()
     chrome.attach(paneID: "w1:p1")
 
     chrome.apply(paneID: "w1:p2", state: "blocked")
@@ -68,16 +73,50 @@ struct PaneChromeTests {
   }
 
   @MainActor
+  @Test("the keyboard and the agent are two different edges")
+  func focusAndStateDoNotShareABorder() {
+    // One edge carrying both would make a working pane and the focused pane
+    // indistinguishable, which is exactly the confusion these are for clearing up. Fifteen
+    // panes make that difference the whole product.
+    let chrome = pane()
+    chrome.attach(paneID: "w1:p1")
+
+    chrome.apply(paneID: "w1:p1", state: "working")
+    chrome.apply(focused: false)
+    #expect(chrome.isFocused == false)
+    #expect(chrome.state == "working")
+
+    chrome.apply(focused: true)
+    #expect(chrome.isFocused)
+    #expect(chrome.state == "working")
+  }
+
+  @MainActor
+  @Test("a click asks for the keyboard, and names the pane it is about")
+  func aClickCarriesThePane() {
+    let chrome = pane()
+    chrome.attach(paneID: "w1:p3")
+    var asked: [String] = []
+    chrome.onFocusRequested = { asked.append($0) }
+
+    chrome.surface.mouseDown(
+      with: NSEvent.mouseEvent(
+        with: .leftMouseDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0,
+        context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!)
+
+    #expect(asked == ["w1:p3"])
+  }
+
   @Test("the renderer check has no pane and says so")
   func rendererCheckIsLabeled() {
-    let chrome = PaneChrome(
-      frame: NSRect(x: 0, y: 0, width: 100, height: 100),
-      surface: SurfaceView(frame: NSRect(x: 0, y: 0, width: 100, height: 100)))
-    chrome.attach(paneID: nil)
     #expect(
-      PaneAppearance.title(
-        paneID: chrome.paneID, state: chrome.state, health: chrome.health, detail: ""
-      )
-      .contains("renderer check"))
+      PaneAppearance.title(paneID: nil, zoomed: false, health: "disconnected", detail: "")
+        .contains("renderer check"))
   }
+}
+
+@MainActor
+private func pane() -> PaneChrome {
+  let frame = NSRect(x: 0, y: 0, width: 100, height: 100)
+  return PaneChrome(frame: frame, surface: SurfaceView(frame: frame))
 }
