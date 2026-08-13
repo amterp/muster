@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "ime-coverage-needs",
+  "alias_explicit": false,
+  "area": [
+    "testing",
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1786619920965,
+  "creator": "Alexander Terp",
+  "description": "SurfaceViewTests can drive a composition's commit but not keep one open: with no input method installed, AppKit's default handler commits the character immediately, so 'still composing sends nothing' is only pinned as a pure decision on CompositionArbiter and never as wiring.\n\nThat leaves the interesting half of IME untested end to end - candidate selection, multi-keystroke preedit, a commit that bears no resemblance to the keys that produced it. All of it currently rests on one manual check (option+e then e).\n\nOptions, roughly in order of cost: drive NSTextInputContext directly with a scripted sequence of setMarkedText/insertText calls, which tests our handling but not AppKit's; install an input source in CI, which is heavy and probably not reproducible; or accept this as a manual check and write it down as one in docs/testing.md rather than leaving it looking covered.\n\nNot urgent - dead keys work and are verified by hand. Worth deciding before anyone claims the IME path is tested.",
+  "id": "a_27Fesq81o",
+  "position": "UUUUUUUUUUUUUUU",
+  "title": "IME coverage needs an input method, or a fake one",
+  "type": "chore",
+  "updated_at_millis": 1786619920965,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1786619920965}
+  ]
+}
