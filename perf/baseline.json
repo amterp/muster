@@ -1,41 +1,62 @@
 {
-  "recorded": "2026-08-13T19:09:40.367Z",
+  "recorded": "2026-08-13T23:26:32.163Z",
   "machine": "arm64-Darwin 25.4.0",
   "costs": [
     {
       "name": "frame.decode",
       "unit": "ns/byte",
-      "best": 0.7964168050752852,
-      "median": 0.8304517112750838,
+      "best": 0.8304517112750838,
+      "median": 0.8644866174748822,
       "iterations": 50
     },
     {
       "name": "frame.vt_parse",
       "unit": "ns/byte",
-      "best": 3.8215035544587277,
-      "median": 3.9504217466573355,
+      "best": 3.793878227559026,
+      "median": 3.839920439058529,
       "iterations": 20
     },
     {
       "name": "input.encode",
       "unit": "ns/key",
-      "best": 37.5,
-      "median": 45.0,
+      "best": 35.0,
+      "median": 42.5,
       "iterations": 100
     },
     {
       "name": "mirror.apply",
       "unit": "ns/event",
-      "best": 194.44444444444446,
-      "median": 211.11111111111111,
+      "best": 228.0,
+      "median": 230.0,
       "iterations": 20
     },
     {
       "name": "seam.dispatch",
       "unit": "ns/event",
-      "best": 270.0,
-      "median": 300.0,
+      "best": 290.0,
+      "median": 310.0,
       "iterations": 200
+    },
+    {
+      "name": "view.build",
+      "unit": "ns/pane",
+      "best": 118.66666666666667,
+      "median": 119.0,
+      "iterations": 20
+    },
+    {
+      "name": "pane.channel",
+      "unit": "ns/pane",
+      "best": 86400.0,
+      "median": 90866.66666666667,
+      "iterations": 10
+    },
+    {
+      "name": "pane.encoder",
+      "unit": "ns/pane",
+      "best": 66.66666666666667,
+      "median": 66.66666666666667,
+      "iterations": 10
     }
   ]
 }

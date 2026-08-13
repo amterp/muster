@@ -16,6 +16,7 @@
 use std::io::Write;
 use std::os::fd::AsRawFd;
 use std::os::unix::net::{UnixListener, UnixStream};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use muster_core::diagnostics::log;
@@ -48,6 +49,10 @@ pub struct PaneControlChannel {
     /// Set once the bridge dials in. `None` is normal exactly once - between the surface
     /// starting and the bridge connecting - and a real problem after that.
     client: Arc<Mutex<Option<UnixStream>>>,
+    /// Told to the accepting thread by `drop`, and read by it after every accept.
+    closing: Arc<AtomicBool>,
+    /// Set by the accepting thread on its way out.
+    stopped: Arc<AtomicBool>,
 }
 
 impl PaneControlChannel {
@@ -84,6 +89,9 @@ impl PaneControlChannel {
         let client = Arc::new(Mutex::new(None));
         let accepting = Arc::clone(&client);
         let accept_path = path.clone();
+        let closing = Arc::new(AtomicBool::new(false));
+        let stopped = Arc::new(AtomicBool::new(false));
+        let (told, telling) = (Arc::clone(&closing), Arc::clone(&stopped));
         std::thread::spawn(move || {
             let mut connections = 0u64;
             loop {
@@ -101,9 +109,17 @@ impl PaneControlChannel {
                                              rendering, so it looks frozen rather than broken",
                             },
                         );
+                        telling.store(true, Ordering::Release);
                         return;
                     }
                 };
+                // The channel is going away and this connection is its own doing. Checked
+                // after the accept rather than before, because a thread parked in `accept` is
+                // not checking anything - which is why the drop has to knock first.
+                if told.load(Ordering::Acquire) {
+                    telling.store(true, Ordering::Release);
+                    return;
+                }
 
                 // Without this, writing to a bridge that has died raises SIGPIPE and kills the
                 // app - one pane's subprocess crashing would take every other pane's window
@@ -123,12 +139,23 @@ impl PaneControlChannel {
             }
         });
 
-        Ok(PaneControlChannel { path, client })
+        Ok(PaneControlChannel { path, client, closing, stopped })
     }
 
     /// The path to hand the bridge.
     pub fn socket_path(&self) -> &str {
         &self.path
+    }
+
+    /// Whether the accepting thread has finished, for a test that needs to prove it does.
+    ///
+    /// A thread parked on a listener nobody will dial is invisible from outside the process
+    /// and unobservable through any other API, and it is exactly what a closed pane would
+    /// leave behind - one per pane, for as long as the window is open. Handed out as a flag
+    /// rather than a join handle because joining inside `drop` would turn a wake-up that did
+    /// not arrive into a hang on quit, which is a worse failure than the leak.
+    pub fn stopped(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.stopped)
     }
 
     /// Sends a message to the pane, if the bridge has connected.
@@ -158,6 +185,13 @@ impl PaneControlChannel {
 
 impl Drop for PaneControlChannel {
     fn drop(&mut self) {
+        // Knock, then take the door away. The accepting thread is parked inside `accept` and
+        // nothing else will wake it: a pane that closes would otherwise leave a thread there
+        // for as long as the window is open, one per pane, and a window whose panes come and
+        // go all day would collect them silently. The connection is thrown away by the thread
+        // the moment it reads the flag this sets.
+        self.closing.store(true, Ordering::Release);
+        let _ = UnixStream::connect(&self.path);
         let _ = std::fs::remove_file(&self.path);
     }
 }

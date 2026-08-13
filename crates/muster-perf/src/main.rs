@@ -10,10 +10,19 @@
 
 use std::hint::black_box;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
-use muster_core::input::{Key, KeyEvent, Keymap, Modifiers, Resolution, TerminalModeProfile};
+use muster_core::AgentState;
+use muster_core::composition::{Composition, Daemon, DaemonId, Endpoint, View};
+use muster_core::input::{
+    Key, KeyEvent, Keymap, Modifiers, PaneInput, Resolution, TerminalModeProfile,
+};
+use muster_core::mirror::backend::{
+    Focus, Layout, LayoutNode, Pane, PaneId, Snapshot, SplitAxis, Tab, TabId, Workspace,
+    WorkspaceId,
+};
 use muster_core::mirror::{BackendEvent, Mirror};
-use muster_herdr::{EventDecoder, FrameDecoder, PaneFrame, PaneStreamEvent};
+use muster_herdr::{EventDecoder, FrameDecoder, PaneControlChannel, PaneFrame, PaneStreamEvent};
 use muster_perf::{Baseline, Cost, compare, measure, pending, table, verdict};
 use muster_vt::{KeyEncoder, Terminal};
 use prost::Message;
@@ -28,13 +37,22 @@ Measures the per-unit costs on Muster's hot paths and compares them to a baselin
   --corpus       recorded frames to replay (default corpus)
   --tolerance    how many times the recorded cost still passes (default 2.0)";
 
+/// How many panes a window is budgeted for.
+///
+/// Fifteen because that is roughly what fits on one screen before the panes stop being
+/// readable, and because the desiderata name it. Nothing here is quadratic in it, and this
+/// constant is how that stays true: a cost measured per pane at fifteen and divided by
+/// fifteen only matches the one-pane number while it stays linear.
+const BUDGETED_PANES: usize = 15;
+
 /// The desiderata name four budgets - per byte, per event, per render - at 1 and 15 panes.
-/// One of them has no code to measure yet. It is printed rather than omitted, because a
+/// One of them has no code here to measure. It is printed rather than omitted, because a
 /// budget nobody wrote down reads the same as a budget nobody exceeded.
 const PENDING: [(&str, &str); 1] = [(
-    "render at 15 panes",
-    "per-byte cost is linear and already covered; what 15 panes actually tests is \
-     aggregate scheduling across surfaces, which needs splits. Kan a_26BJGL7VZ.",
+    "input-to-glyph at 15 panes",
+    "everything Muster does per pane is measured above and is linear. What is left is what \
+     libghostty's own renderer threads do with fifteen surfaces, which no offline benchmark \
+     can see - it needs a real window in front of a real daemon, which is ./dev --latency.",
 )];
 
 fn main() {
@@ -238,7 +256,112 @@ fn measure_everything(streams: &[Vec<u8>]) -> Vec<Cost> {
         }
     }));
 
+    // What one structural change costs a window that is full. Every pane event republishes
+    // the whole view - that is what keeps the shell from holding a picture it has to patch -
+    // so this runs whenever anything moves, and it is the one cost that scales with how many
+    // panes are on screen rather than with how much they print.
+    //
+    // Per pane rather than per view, so that the number stays comparable as the budgeted
+    // window size changes, and so that a build that made it quadratic shows up as a number
+    // that no longer matches the one-pane case.
+    let (composition, mirror) = full_window(BUDGETED_PANES);
+    let daemon = DaemonId::new("local");
+    costs.push(measure("view.build", "ns/pane", BUDGETED_PANES * 200, 20, 5, || {
+        for _ in 0..200 {
+            let view = View::of(
+                &composition,
+                |named| (named == &daemon).then_some(&mirror),
+                |_, pane| Some(pane.to_string()),
+            );
+            black_box(view.regions.len());
+        }
+    }));
+
+    // What Muster holds open per pane, which is the half of "fast is a feature" that is fixed
+    // cost rather than throughput: a full window is fifteen bound sockets, fifteen threads
+    // waiting on them, and fifteen key encoders. None of it is visible in a per-byte number,
+    // because none of it happens per byte.
+    //
+    // Two numbers rather than one, because they regress for unrelated reasons and a single
+    // one would not say which. The socket and its thread are Muster's own; the encoder is
+    // libghostty-vt's, and is the cost a replacement renderer would have to match.
+    costs.push(measure("pane.channel", "ns/pane", BUDGETED_PANES, 10, 3, || {
+        let held: Vec<_> = (0..BUDGETED_PANES).filter_map(bind_pane_socket).collect();
+        black_box(held.len());
+    }));
+    costs.push(measure("pane.encoder", "ns/pane", BUDGETED_PANES, 10, 3, || {
+        for _ in 0..BUDGETED_PANES {
+            black_box(KeyEncoder::new(TerminalModeProfile::UNKNOWN_PANE).is_ok());
+        }
+    }));
+
     costs
+}
+
+/// A window as full as Muster budgets for: one region, one tab, `panes` panes in a tree.
+///
+/// Nested down one side rather than balanced, because that is what splitting the pane you
+/// are looking at produces over and over, and it is the deepest tree the same pane count can
+/// make - so a walk that is worse than linear in depth shows up here rather than hiding
+/// behind a shape nobody builds by hand.
+fn full_window(panes: usize) -> (Composition, Mirror) {
+    let (workspace, tab) = (WorkspaceId::new("w1"), TabId::new("w1:t1"));
+    let ids: Vec<PaneId> = (0..panes).map(|index| PaneId::new(format!("w1:p{index}"))).collect();
+
+    let mut root = LayoutNode::Pane(ids[panes - 1].clone());
+    for id in ids.iter().rev().skip(1) {
+        root = LayoutNode::Split {
+            axis: SplitAxis::Columns,
+            ratio: 0.5,
+            first: Box::new(LayoutNode::Pane(id.clone())),
+            second: Box::new(root),
+        };
+    }
+
+    let mut mirror = Mirror::new();
+    mirror.bootstrap(Snapshot {
+        workspaces: vec![Workspace { id: workspace.clone(), label: "w1".to_string() }],
+        tabs: vec![Tab { id: tab.clone(), workspace: workspace.clone(), label: "t1".to_string() }],
+        panes: ids
+            .iter()
+            .map(|id| Pane {
+                id: id.clone(),
+                tab: tab.clone(),
+                workspace: workspace.clone(),
+                agent_state: AgentState::Idle,
+                agent: None,
+                cwd: "/tmp".to_string(),
+            })
+            .collect(),
+        layouts: vec![Layout { tab: tab.clone(), root, focused: None, zoomed: None }],
+        focus: Focus::default(),
+        agent_state_seq: None,
+    });
+
+    let daemon = DaemonId::new("local");
+    let mut composition = Composition::new();
+    composition.attach_daemon(Daemon {
+        id: daemon.clone(),
+        endpoint: Endpoint::Local { socket_path: "/tmp/herdr-perf.sock".to_string() },
+    });
+    composition.open_region(&daemon, workspace, tab);
+    composition.reconcile(&daemon, &mirror);
+    (composition, mirror)
+}
+
+/// One pane's socket, bound and listening, with the input path built over it.
+///
+/// The daemon's own side is deliberately absent. What a herdr connection costs is herdr's
+/// number and belongs in an observation, not in a budget that gates this repo's builds.
+fn bind_pane_socket(index: usize) -> Option<(Arc<PaneControlChannel>, PaneInput)> {
+    let path = std::env::temp_dir()
+        .join(format!("muster-perf-{}-{index}.sock", std::process::id()))
+        .to_string_lossy()
+        .into_owned();
+    let control = Arc::new(PaneControlChannel::bind(path, || {}).ok()?);
+    let encoder = Arc::new(KeyEncoder::new(TerminalModeProfile::UNKNOWN_PANE).ok()?);
+    let input = PaneInput::new(Arc::clone(&control) as Arc<_>, None, encoder, Keymap::default());
+    Some((control, input))
 }
 
 /// Every event in a recorded subscription, already translated.

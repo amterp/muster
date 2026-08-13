@@ -217,10 +217,46 @@ def measure_daemon_path(
     return first_frame, to_glyph, late
 
 
+def fill_window(daemon: IsolatedDaemon, pane: str, panes: int) -> list[ControlStream]:
+    """Splits the tab to `panes` and leaves every other pane printing.
+
+    A full window that is idle costs the daemon nothing, so it would measure the same thing
+    as one pane and say so in a way that looks like good news. What is being measured is
+    contention: fifteen panes, fifteen attached streams, fourteen of them rendering, and one
+    keystroke waiting its turn.
+
+    Attached rather than merely open, because that is what Muster does - a surface per leaf,
+    a bridge per surface - and a daemon streams frames to the clients it has.
+    """
+    streams = []
+    for _ in range(panes - 1):
+        made = daemon.client().request(
+            "pane.split", {"target_pane_id": pane, "direction": "right", "cwd": "/tmp"}
+        )
+        extra = made["pane"]["pane_id"]
+        stream = ControlStream(daemon, extra)
+        stream.read_frame()
+        # Paced rather than saturating: a busy window is agents printing, not `yes`. Twenty
+        # lines a second each, which is fourteen panes' worth of renders competing with the
+        # keystroke being timed.
+        stream.send("while true; do date; sleep 0.05; done\n")
+        streams.append(stream)
+    time.sleep(1.0)
+    for stream in streams:
+        stream.drain(0.2)
+    return streams
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--samples", type=int, default=60)
     parser.add_argument("--timeout", type=float, default=5.0)
+    parser.add_argument(
+        "--panes",
+        type=int,
+        default=15,
+        help="how full the window is for the second measurement (1 skips it)",
+    )
     parser.add_argument("--json", action="store_true")
     options = parser.parse_args()
 
@@ -238,6 +274,7 @@ def main() -> int:
     daemon.prepare()
     daemon.start()
     stream = None
+    crowd: list[ControlStream] = []
 
     try:
         created = daemon.client().request(
@@ -258,10 +295,23 @@ def main() -> int:
         )
         plain = summarize("plain pty (the floor)", measure_plain_pty(
             options.samples, options.timeout))
+
+        crowded = None
+        if options.panes > 1:
+            crowd = fill_window(daemon, pane, options.panes)
+            stream.drain(0.5)
+            _, crowded_glyph, _ = measure_daemon_path(
+                stream, options.samples, options.timeout
+            )
+            crowded = summarize(
+                f"daemon: glyph painted, {options.panes} panes", crowded_glyph
+            )
     except Failure as exc:
         print(f"latency: {exc}", file=sys.stderr)
         return 1
     finally:
+        for extra in crowd:
+            extra.close()
         if stream is not None:
             stream.close()
         daemon.stop()
@@ -271,6 +321,8 @@ def main() -> int:
         summarize("daemon: stream responded", first_frame),
         summarize("daemon: glyph painted", to_glyph),
     ]
+    if crowded is not None:
+        rows.append(crowded)
     print(render(rows))
 
     glyph = rows[2]
@@ -283,6 +335,15 @@ def main() -> int:
         f"Input-to-glyph over a plain PTY: {glyph['median_ms']:.1f} ms at the median, "
         f"{glyph['p95_ms']:.1f} ms at p95."
     )
+    if crowded is not None:
+        cost = crowded["median_ms"] - glyph["median_ms"]
+        print(
+            f"With {options.panes} panes open and {options.panes - 1} of them printing, the "
+            f"same keystroke takes {crowded['median_ms']:.1f} ms at the median "
+            f"({cost:+.1f} ms) and {crowded['p95_ms']:.1f} ms at p95. That difference is a "
+            "full window's contention inside the daemon, which is where a keystroke waits "
+            "when it waits at all."
+        )
     print(
         "None of this is Muster's code - it is herdr answering its own control stream, "
         "and every client of that stream pays it. What Muster adds on top is the frame "
