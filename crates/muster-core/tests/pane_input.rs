@@ -12,7 +12,7 @@ use muster_core::input::{
     ScrollDirection,
 };
 use serde_json::{Value, json};
-use support::{FakeChannel, FakeEncoder, SendRecorder};
+use support::input::{FakeChannel, FakeEncoder, SendRecorder};
 
 #[test]
 fn pane_input_conformance() {

@@ -1,12 +1,15 @@
 //! Exactly one thing may reach the pane per key press. Cases live in
 //! corpus/conformance/composition-arbiter.json.
+//!
+//! The composition here is an input method's, not the window arrangement of the same name
+//! (`docs/glossary.md`).
 
 use conformance::{Conformance, fields};
 use muster_core::input::{CompositionOutcome, composition_outcome};
 use serde_json::{Value, json};
 
 #[test]
-fn composition_conformance() {
+fn composition_arbiter_conformance() {
     let corpus = Conformance::load("composition-arbiter.json");
 
     let ran = corpus.run(|given| {
