@@ -5,17 +5,26 @@
   "area": [
     "testing"
   ],
-  "column": "in-progress",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Done, and it answered more than it was asked. corpus/herdr-0.8.0/layout\nholds five panes at three levels with a split under each side of the\nroot, plus zoom, a divider drag, a close, and a crowding sweep to\nsixteen panes. Findings in observations section 13.\n\nWhere geometry comes from is settled: layout_updated. Every split in\nthe exported tree has a border in the snapshot covering exactly the\npanes beneath it, same direction and ratio, so structure is\nreconstructible from the live event with no second request. The border\nids independently spell the same paths (split_2_01 = first, second),\nand layout.set_split_ratio takes that same path - so rebuilding the\ntree also derives the address a divider drag is sent back on.\n\nTwo things that would have bitten later. The rects are about nobody's\nwindow: the area is a fixed 54x23 whether a client is attached at\n200x50 or not attached at all, so only structure and ratios transfer.\nAnd zoom leaves every pane listed at its unzoomed rect with only a\nflag moving, so a view that renders what it is given paints every pane\nwhile the daemon shows one.\n\nThe crowding sweep was the one that could have gone badly. It did not:\nat sixteen panes every covering rect was still distinct, smallest\ndimension 5 cells.",
+      "created_at_millis": 1786654645324,
+      "id": "c_27UEDsenR"
+    }
+  ],
   "created_at_millis": 1786648302883,
   "creator": "Alexander Terp",
   "description": "Chunk E cannot be planned against the corpus as it stands: the deepest recorded layout is three panes at two levels, captured as a side effect of the lifecycle scenario. Deciding where geometry comes from - session.snapshot rects, layout.export's BSP tree, or a reconstruction - needs a recording with mixed directions and real nesting to check any design against.\n\nBlocks a_26BJGL7VZ more than it looks: a design checked against one split level is a design checked against nothing.",
   "id": "a_27RZE8ywI",
-  "position": "E",
+  "position": "0",
   "title": "🌲 Record a nested layout deeper than one split",
   "type": "chore",
-  "updated_at_millis": 1786654146443,
+  "updated_at_millis": 1786654645355,
   "history": [
     {"field":"column","value":"next","at":1786648302883},
-    {"field":"column","value":"in-progress","at":1786654146443}
+    {"field":"column","value":"in-progress","at":1786654146443},
+    {"field":"column","value":"done","at":1786654645355}
   ]
 }
