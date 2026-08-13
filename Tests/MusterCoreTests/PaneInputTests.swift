@@ -3,152 +3,97 @@ import Testing
 
 @testable import MusterCore
 
-// The input pipeline was moved into the core so it could be tested against fakes at the
-// two seams. These are those tests: what reaches a pane, over which channel, in what
-// order, and what happens when a channel says no.
+// A driver over the first sequential concept in the corpus: a case is a list of steps and
+// the expectation is the ordered trace of everything that went out, across every channel.
+// Cases and their reasoning live in corpus/conformance/pane-input.json.
 
-@Test("a plain keystroke is encoded locally and goes out as bytes")
-func plainKeyTakesTheControlStream() {
-  let recorder = SendRecorder()
-  let pane = PaneInput(
-    channel: FakeChannel(name: "control", recorder: recorder), encoder: FakeEncoder())
+@Test("pane input routing")
+func paneInputConformance() throws {
+  let corpus = try Conformance.load("pane-input.json")
 
-  pane.send(press(.keyH, text: "h"))
+  let ran = corpus.run { given in
+    let recorder = SendRecorder()
+    let pane = PaneInput(
+      channel: FakeChannel(name: "control", recorder: recorder),
+      serverChannel: serverChannel(from: given["daemon"], recorder: recorder),
+      encoder: FakeEncoder())
 
-  #expect(recorder.intents == [.input([0x68])])
-  #expect(recorder.channels == ["control"])
+    for step in given["steps"]?.arrayValue ?? [] {
+      try apply(step, to: pane)
+    }
+
+    return .fields([
+      "trace": .array(recorder.sends.map { describe(channel: $0.channel, intent: $0.intent) })
+    ])
+  }
+
+  #expect(ran == corpus.cases.count)
+  #expect(ran > 0)
 }
 
-@Test("an arrow is handed to the daemon, not encoded here")
-func arrowsTakeTheServerChannel() {
-  // The whole point of the second channel: application cursor mode is invisible from
-  // here, so guessing produces bytes a pager rejects.
-  let recorder = SendRecorder()
-  let pane = PaneInput(
-    channel: FakeChannel(name: "control", recorder: recorder),
-    serverChannel: FakeChannel(name: "daemon", recorder: recorder, encodesServerSide: true),
-    encoder: FakeEncoder())
-
-  pane.send(press(.arrowUp, text: ""))
-
-  #expect(recorder.intents == [.key(name: "up")])
-  #expect(recorder.channels == ["daemon"])
+/// The daemon channel a case asks for, or none.
+///
+/// Absent means no daemon at all - the degraded arrangement where the app has to guess.
+/// `refuses` means reachable but declining, which is the wedged-daemon state and a
+/// different path from absence.
+private func serverChannel(from value: JSONValue?, recorder: SendRecorder) -> FakeChannel? {
+  guard let value else { return nil }
+  let refuses = value["refuses"]?.boolValue ?? false
+  return FakeChannel(
+    name: "daemon", recorder: recorder, encodesServerSide: true, accepts: { _ in !refuses })
 }
 
-@Test("with no daemon channel an arrow still reaches the pane, guessed")
-func arrowsDegradeRatherThanVanish() {
-  // A guessed arrow beats no arrow. The encoder is asked for its best answer instead of
-  // the key being dropped.
-  let recorder = SendRecorder()
-  let pane = PaneInput(
-    channel: FakeChannel(name: "control", recorder: recorder), encoder: FakeEncoder())
-
-  pane.send(press(.arrowUp, text: "\u{1b}[A"))
-
-  #expect(recorder.channels == ["control"])
-  #expect(recorder.intents == [.input(Array("\u{1b}[A".utf8))])
+private func apply(_ step: JSONValue, to pane: PaneInput) throws {
+  if let send = step["send"] {
+    guard let name = send["key"]?.stringValue, let key = Key(rawValue: name) else {
+      throw CaseError("`send.key` is missing or not a W3C key name")
+    }
+    guard let modifiers = Modifiers(names: send.strings("modifiers")) else {
+      throw CaseError("`send.modifiers` names something that is not a modifier")
+    }
+    pane.send(
+      KeyEvent(
+        action: .press, key: key, modifiers: modifiers, consumedModifiers: [],
+        text: send["text"]?.stringValue ?? "", unshiftedCodepoint: nil, isComposing: false))
+    return
+  }
+  if let text = step["paste"]?.stringValue {
+    pane.paste(text: text)
+    return
+  }
+  if let scroll = step["scroll"] {
+    guard let name = scroll["direction"]?.stringValue,
+      let direction = PaneIntent.ScrollDirection(rawValue: name),
+      let lines = scroll["lines"]?.intValue
+    else {
+      throw CaseError("`scroll` needs a known `direction` and `lines`")
+    }
+    pane.scroll(direction: direction, lines: UInt16(lines))
+    return
+  }
+  throw CaseError("a step must be one of send, paste, scroll")
 }
 
-@Test("a daemon that refuses falls back to the control stream")
-func serverRefusalFallsBack() {
-  // A wedged or departed daemon must not take the keyboard with it.
-  let recorder = SendRecorder()
-  let pane = PaneInput(
-    channel: FakeChannel(name: "control", recorder: recorder),
-    serverChannel: FakeChannel(
-      name: "daemon", recorder: recorder, encodesServerSide: true, accepts: { _ in false }),
-    encoder: FakeEncoder())
-
-  pane.send(press(.arrowUp, text: "\u{1b}[A"))
-
-  #expect(recorder.channels == ["control"])
-  #expect(recorder.intents == [.input(Array("\u{1b}[A".utf8))])
+private func describe(channel: String, intent: PaneIntent) -> JSONValue {
+  switch intent {
+  case .input(let bytes):
+    .fields([
+      "channel": .string(channel), "intent": "input",
+      "bytes_hex": .string(bytes.map { String(format: "%02x", $0) }.joined()),
+    ])
+  case .text(let text):
+    .fields(["channel": .string(channel), "intent": "text", "text": .string(text)])
+  case .key(let name):
+    .fields(["channel": .string(channel), "intent": "key", "name": .string(name)])
+  case .scroll(let direction, let lines):
+    .fields([
+      "channel": .string(channel), "intent": "scroll",
+      "direction": .string(direction.rawValue), "lines": .number(Double(lines)),
+    ])
+  }
 }
 
-@Test("typing around an arrow keeps its order across both channels")
-func orderSurvivesTwoRoutes() {
-  // Bytes reach the PTY through the bridge while a named key goes to the daemon directly,
-  // so the two routes have different lengths and can race. `abc<up>def` arriving as
-  // `abcdef<up>` is the failure this pins.
-  let recorder = SendRecorder()
-  let pane = PaneInput(
-    channel: FakeChannel(name: "control", recorder: recorder),
-    serverChannel: FakeChannel(name: "daemon", recorder: recorder, encodesServerSide: true),
-    encoder: FakeEncoder())
-
-  pane.send(press(.keyA, text: "a"))
-  pane.send(press(.arrowUp, text: ""))
-  pane.send(press(.keyB, text: "b"))
-
-  #expect(recorder.channels == ["control", "daemon", "control"])
-  #expect(recorder.intents == [.input([0x61]), .key(name: "up"), .input([0x62])])
-}
-
-@Test("a bound chord becomes its own bytes and never reaches the encoder")
-func keymapWinsOverTheEncoder() {
-  let recorder = SendRecorder()
-  let pane = PaneInput(
-    channel: FakeChannel(name: "control", recorder: recorder), encoder: FakeEncoder())
-
-  pane.send(press(.backspace, text: "\u{7f}", modifiers: .`super`))
-
-  // 0x15 is unix-line-discard, not the 0x7f the encoder would have produced.
-  #expect(recorder.intents == [.input([0x15])])
-}
-
-@Test("a paste asks the daemon to encode it, because only it knows the paste mode")
-func pasteIsServerEncoded() {
-  let recorder = SendRecorder()
-  let pane = PaneInput(
-    channel: FakeChannel(name: "control", recorder: recorder),
-    serverChannel: FakeChannel(name: "daemon", recorder: recorder, encodesServerSide: true),
-    encoder: FakeEncoder())
-
-  pane.paste(text: "one\ntwo")
-
-  #expect(recorder.intents == [.text("one\ntwo")])
-  #expect(recorder.channels == ["daemon"])
-}
-
-@Test("with no daemon a paste still arrives, unfenced")
-func pasteDegradesToRawText() {
-  // Wrong for several lines - a shell runs them - but sending fence markers to a program
-  // that never enabled the mode puts literal `[200~` on its input, which is worse.
-  let recorder = SendRecorder()
-  let pane = PaneInput(
-    channel: FakeChannel(name: "control", recorder: recorder), encoder: FakeEncoder())
-
-  pane.paste(text: "one\ntwo")
-
-  #expect(recorder.intents == [.input(Array("one\ntwo".utf8))])
-}
-
-@Test("a keystroke that encodes to nothing sends nothing")
-func emptyEncodingsAreNotSent() {
-  // Bare modifiers, and every key while an input method is composing. Sending an empty
-  // write per modifier press would be constant traffic for no reason.
-  let recorder = SendRecorder()
-  let pane = PaneInput(
-    channel: FakeChannel(name: "control", recorder: recorder), encoder: FakeEncoder())
-
-  pane.send(press(.shiftLeft, text: ""))
-
-  #expect(recorder.intents.isEmpty)
-}
-
-@Test("a scroll goes out as an intent rather than as wheel bytes")
-func scrollStaysAnIntent() {
-  let recorder = SendRecorder()
-  let pane = PaneInput(
-    channel: FakeChannel(name: "control", recorder: recorder), encoder: FakeEncoder())
-
-  pane.scroll(direction: .up, lines: 3)
-
-  #expect(recorder.intents == [.scroll(direction: .up, lines: 3)])
-}
-
-private func press(_ key: Key, text: String, modifiers: Modifiers = []) -> KeyEvent {
-  KeyEvent(
-    action: .press, key: key, modifiers: modifiers, consumedModifiers: [], text: text,
-    unshiftedCodepoint: nil, isComposing: false)
+private struct CaseError: Error, CustomStringConvertible {
+  let description: String
+  init(_ description: String) { self.description = description }
 }

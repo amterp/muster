@@ -37,8 +37,21 @@ def problems_in(path: Path) -> list[str]:
     name = path.name
     try:
         document = json.loads(path.read_text())
-    except (ValueError, OSError) as exc:
+    except OSError as exc:
         return [f"{name}: unreadable ({exc})"]
+    except ValueError as exc:
+        # The corpus is full of terminal bytes, so this is nearly always one escape
+        # sequence written as itself. JSON's own message names a column and not a cure.
+        raw = path.read_bytes()
+        stray = sorted({b for b in raw if b < 0x20 and b not in (0x09, 0x0A, 0x0D)})
+        if stray:
+            spelled = ", ".join(f"0x{b:02x} (write it as \\u{b:04x})" for b in stray)
+            return [
+                f"{name}: not JSON ({exc}). It carries raw control byte(s): {spelled}. "
+                "A control character written as itself is not legal in a JSON string, and "
+                "escape sequences are most of what this corpus is about."
+            ]
+        return [f"{name}: not JSON ({exc})"]
 
     if not document.get("concept"):
         found.append(f"{name}: no `concept`")

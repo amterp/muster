@@ -1,0 +1,93 @@
+{
+  "concept": "paneInput.routing",
+  "source": "ported",
+  "citation": "docs/architecture.md, control plane and input precedence",
+  "why": "Which channel a keystroke leaves by, in what order, and what happens when a channel says no. This is the first sequential concept in the corpus: a case is a list of steps and the expectation is the ordered trace of everything that went out, across every channel, because the interesting property spans them. Two per-channel logs could not express it.\n\nTwo routes reach the same PTY. Bytes go app to bridge to the daemon's stdin, while a named key goes to the daemon directly - different lengths, so they can race, and `abc<up>def` arriving as `abcdef<up>` is a real failure this pins.\n\nThe fakes are part of the contract, so a driver in any language builds the same ones. The encoder spells a keystroke as its `text` field in UTF-8 and nothing more; what the bytes should really be is key-encoder.json's question, answered against libghostty rather than against a fixture. `given.daemon` present means a server channel exists and encodes server-side; absent means no daemon; `refuses: true` means it is reachable but declines everything.",
+  "cases": [
+    {
+      "name": "a plain keystroke is encoded locally and goes out as bytes",
+      "why": "The common path, and the baseline every other case is a deviation from. Nothing about an ordinary letter needs the daemon, so paying a round trip for one would tax every keystroke a person types.",
+      "given": { "steps": [{ "send": { "key": "KeyH", "text": "h" } }] },
+      "expect": { "trace": [{ "channel": "control", "intent": "input", "bytes_hex": "68" }] }
+    },
+    {
+      "name": "an arrow is handed to the daemon, not encoded here",
+      "why": "The whole point of the second channel: application cursor mode is invisible from the app, and guessing produces bytes a pager rejects. The daemon can see the pane's real modes, so it gets the name and does the encoding.",
+      "given": {
+        "daemon": {},
+        "steps": [{ "send": { "key": "ArrowUp", "text": "" } }]
+      },
+      "expect": { "trace": [{ "channel": "daemon", "intent": "key", "name": "up" }] }
+    },
+    {
+      "name": "with no daemon an arrow still reaches the pane, guessed",
+      "why": "A guessed arrow beats no arrow. When there is no server channel the encoder is asked for its best answer rather than the key being dropped - degraded is a state a user can work around, silence is not.",
+      "given": { "steps": [{ "send": { "key": "ArrowUp", "text": "\u001b[A" } }] },
+      "expect": { "trace": [{ "channel": "control", "intent": "input", "bytes_hex": "1b5b41" }] }
+    },
+    {
+      "name": "a daemon that refuses falls back to the control stream",
+      "why": "A wedged or departed daemon must not take the keyboard with it. Refusal is a real state - the channel declines anything it cannot encode, and any channel can fail once the far end is gone - so the fallback is a path rather than an error.",
+      "given": {
+        "daemon": { "refuses": true },
+        "steps": [{ "send": { "key": "ArrowUp", "text": "\u001b[A" } }]
+      },
+      "expect": { "trace": [{ "channel": "control", "intent": "input", "bytes_hex": "1b5b41" }] }
+    },
+    {
+      "name": "typing around an arrow keeps its order across both channels",
+      "why": "The race. Bytes reach the PTY through the bridge while a named key goes to the daemon directly, so the two routes have different lengths. `a<up>b` arriving as `ab<up>` is the failure, and it would show up as a shell history recall landing in the middle of a word.",
+      "given": {
+        "daemon": {},
+        "steps": [
+          { "send": { "key": "KeyA", "text": "a" } },
+          { "send": { "key": "ArrowUp", "text": "" } },
+          { "send": { "key": "KeyB", "text": "b" } }
+        ]
+      },
+      "expect": {
+        "trace": [
+          { "channel": "control", "intent": "input", "bytes_hex": "61" },
+          { "channel": "daemon", "intent": "key", "name": "up" },
+          { "channel": "control", "intent": "input", "bytes_hex": "62" }
+        ]
+      }
+    },
+    {
+      "name": "a bound chord becomes its own bytes and never reaches the encoder",
+      "why": "Input precedence: the keymap gets first refusal, and what it takes the encoder never sees. 0x15 is readline's unix-line-discard, not the 0x7f the encoder would have produced from this key's text - so a pipeline that consulted the encoder first would look correct until someone pressed this chord.",
+      "given": {
+        "steps": [{ "send": { "key": "Backspace", "modifiers": ["super"], "text": "" } }]
+      },
+      "expect": { "trace": [{ "channel": "control", "intent": "input", "bytes_hex": "15" }] }
+    },
+    {
+      "name": "a paste asks the daemon to encode it, because only it knows the paste mode",
+      "why": "Bracketed paste is a mode the app cannot see. One action rather than one per keystroke, so the round trip costs nothing, and the daemon applies the fencing from the pane's real state.",
+      "given": { "daemon": {}, "steps": [{ "paste": "one\ntwo" }] },
+      "expect": { "trace": [{ "channel": "daemon", "intent": "text", "text": "one\ntwo" }] }
+    },
+    {
+      "name": "with no daemon a paste still arrives, unfenced",
+      "why": "Wrong for several lines - a shell runs them - but sending fence markers to a program that never enabled the mode puts a literal `[200~` on its input, which is worse and harder to explain. Degrade toward the failure a user can see and undo.",
+      "given": { "steps": [{ "paste": "one\ntwo" }] },
+      "expect": {
+        "trace": [{ "channel": "control", "intent": "input", "bytes_hex": "6f6e650a74776f" }]
+      }
+    },
+    {
+      "name": "a keystroke that encodes to nothing sends nothing",
+      "why": "Bare modifiers, and every key while an input method is composing. An empty write per modifier press would be constant traffic for no reason, and on the control stream it is a syscall each.",
+      "given": { "steps": [{ "send": { "key": "ShiftLeft", "text": "" } }] },
+      "expect": { "trace": [] }
+    },
+    {
+      "name": "a scroll goes out as an intent rather than as wheel bytes",
+      "why": "A frame stream has no history, so surfaces hold no scrollback and never handle the wheel themselves. Scroll is answered by the daemon repainting the viewport, which is also the only way it can be encoded correctly for a pane reporting mouse.",
+      "given": { "steps": [{ "scroll": { "direction": "up", "lines": 3 } }] },
+      "expect": {
+        "trace": [{ "channel": "control", "intent": "scroll", "direction": "up", "lines": 3 }]
+      }
+    }
+  ]
+}
