@@ -19,6 +19,12 @@ message Request {
   oneof payload {
     Startup startup = 1;
     LogRecord log_record = 2;
+    AttachPane attach_pane = 3;
+    KeyDown key_down = 4;
+    KeyUp key_up = 5;
+    SendText send_text = 6;
+    Paste paste = 7;
+    Scroll scroll = 8;
   }
 }
 
@@ -30,6 +36,7 @@ message Response {
   oneof payload {
     Ok ok = 1;
     Failure failure = 2;
+    Attached attached = 3;
   }
 }
 
@@ -70,6 +77,107 @@ message LogRecord {
   string level = 1;
   string event = 2;
   map<string, string> fields = 3;
+}
+
+// Point this window's keyboard at a daemon-owned pane.
+//
+// Everything about what a keystroke means lives behind this: the core opens the socket the
+// pane's bridge will dial, finds the daemon if there is one, and owns the keymap and the
+// encoder from here on. The shell's remaining job is to say that a key was pressed.
+message AttachPane {
+  string pane_id = 1;
+}
+
+// The pane is attached, and here is what the shell needs to finish standing it up.
+message Attached {
+  // Where the bridge should dial back. Chosen by the core because it is the core's
+  // listener; the shell only relays it onto the bridge's command line.
+  string control_socket_path = 1;
+
+  // Whether a daemon was found to encode arrows and paste against the pane's real modes.
+  // False means the pane still works, with a guess that pagers reject and that runs a
+  // multi-line paste as commands.
+  bool server_encoded = 2;
+}
+
+// A keystroke, with the fidelity a terminal encoder needs and nothing else.
+//
+// Names rather than numbers throughout, because this vocabulary has to survive leaving the
+// process - into the conformance corpus, into the log, and into a CLI. `520` in a case file
+// tells a reader nothing, and silently means something else if bits are ever renumbered.
+message KeyEvent {
+  // press, release, or repeated. Repeat is distinct because the kitty protocol reports it
+  // separately and a program tracking held keys needs the difference.
+  string action = 1;
+
+  // The physical key, as the W3C UI Events code standard names it: KeyA, ArrowUp, Digit0.
+  // Layout-independent - what the layout produced travels separately as `text`.
+  string key = 2;
+
+  repeated string modifiers = 3;
+
+  // The modifiers the keyboard layout already spent producing `text`. Encoders must not
+  // report these a second time: on a German layout option+8 produces `{`, and an encoder
+  // told both "option is down" and "the text is {" sends alt+{ instead of a brace.
+  repeated string consumed_modifiers = 4;
+
+  // What the layout produced, if anything. Empty for keys with no text, such as arrows.
+  string text = 5;
+
+  // The codepoint this key produces with no modifiers at all, which the kitty protocol
+  // reports so an application can recognize a chord by the key printed on the cap.
+  optional uint32 unshifted_codepoint = 6;
+
+  // Whether an input method is mid-composition. A composing keystroke belongs to the input
+  // method, not the pane: encoding it would deliver the romaji as well as the result.
+  bool is_composing = 7;
+}
+
+// A key press, as it looked after the input method had its turn.
+//
+// The three composition signals travel with the keystroke rather than being resolved by the
+// shell, because picking between them is a decision and the shell makes none. Picking
+// *both* is the failure mode - committed text and an encoded keystroke are two renderings
+// of one press, and sending both is how `hello` arrived as `hheelllloo`.
+message KeyDown {
+  KeyEvent key = 1;
+
+  // Whether a composition was already in progress before this press.
+  bool was_composing = 2;
+
+  // Text the input method handed over during this press, if any. Absent and empty mean
+  // different things: absent is "the method committed nothing".
+  optional string committed = 3;
+
+  // Whether a composition remains in progress afterwards.
+  bool still_composing = 4;
+}
+
+// A key release.
+//
+// Only reported when the pane asked for release events, which the encoder decides from the
+// mode profile - sending them unconditionally is how a program that never asked ends up
+// with every keystroke twice.
+message KeyUp {
+  KeyEvent key = 1;
+}
+
+// Text with no keystroke behind it - a character picker, a service, a committed
+// composition.
+message SendText {
+  string text = 1;
+}
+
+// The clipboard, on its way to the pane.
+message Paste {
+  string text = 1;
+}
+
+// A wheel movement, which the daemon routes against the pane's mouse mode. Never encoded
+// here: a frame stream has no history, so surfaces hold no scrollback.
+message Scroll {
+  string direction = 1;  // up or down
+  uint32 lines = 2;
 }
 
 // What the core tells the shell without being asked.

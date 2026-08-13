@@ -9,7 +9,11 @@ use muster_core::diagnostics::log::{self, LogLevel};
 use muster_core::diagnostics::sink::JsonLinesSink;
 use muster_core::fields;
 
-use crate::proto::{self, Request, Response, request};
+use muster_core::input::{CompositionOutcome, ScrollDirection, composition_outcome};
+
+use crate::convert;
+use crate::proto::{self, Request, Response, request, response};
+use crate::session::{self, AttachError, Pane};
 use prost::Message;
 
 /// Answers one encoded request.
@@ -43,6 +47,105 @@ fn handle(request: Request) -> Response {
     match payload {
         request::Payload::Startup(startup) => start(&startup),
         request::Payload::LogRecord(record) => write(record),
+        request::Payload::AttachPane(attach) => attach_pane(&attach.pane_id),
+        request::Payload::KeyDown(down) => with_pane("a keystroke", |pane| key_down(pane, &down)),
+        request::Payload::KeyUp(up) => {
+            with_pane("a key release", |pane| send_key(pane, up.key.as_ref()))
+        }
+        request::Payload::SendText(text) => with_pane("text", |pane| {
+            pane.input.send_text(&text.text);
+            Response::ok()
+        }),
+        request::Payload::Paste(paste) => with_pane("a paste", |pane| {
+            pane.input.paste(&paste.text);
+            Response::ok()
+        }),
+        request::Payload::Scroll(scroll) => {
+            with_pane("a scroll", |pane| match ScrollDirection::parse(&scroll.direction) {
+                Some(direction) => {
+                    pane.input.scroll(direction, scroll.lines.try_into().unwrap_or(u16::MAX));
+                    Response::ok()
+                }
+                None => Response::failure(format!(
+                    "the core does not know a scroll direction called {:?}, so the wheel did \
+                     nothing. Only up and down exist; the shell builds this from a fixed set, \
+                     so this is a bug there.",
+                    scroll.direction
+                )),
+            })
+        }
+    }
+}
+
+/// One press, after the input method has had its turn.
+///
+/// The arbitration happens here rather than in the shell because it is a decision, and
+/// exactly one thing may come of a press: the text a composition produced, or the key
+/// itself, or nothing at all.
+fn key_down(pane: &Pane, down: &proto::KeyDown) -> Response {
+    match composition_outcome(down.was_composing, down.committed.as_deref(), down.still_composing) {
+        CompositionOutcome::SendNothing => Response::ok(),
+        CompositionOutcome::SendText(text) => {
+            pane.input.send_text(&text);
+            Response::ok()
+        }
+        CompositionOutcome::SendKey => send_key(pane, down.key.as_ref()),
+    }
+}
+
+fn send_key(pane: &Pane, key: Option<&proto::KeyEvent>) -> Response {
+    let Some(key) = key else {
+        return Response::failure(
+            "the core was handed a keystroke with no key in it, so nothing reached the pane. \
+             This is a bug in the shell's request building rather than a state worth \
+             recovering from.",
+        );
+    };
+    match convert::key(key) {
+        Ok(key) => {
+            pane.input.send(&key);
+            Response::ok()
+        }
+        Err(reason) => Response::failure(reason),
+    }
+}
+
+/// Runs something against the attached pane, or explains why there is not one.
+///
+/// A bare `muster` legitimately has no pane - it is the renderer check - so this is a
+/// refusal rather than an error, and it says which input went nowhere so a log reads as
+/// something other than silence.
+fn with_pane(what: &str, act: impl FnOnce(&Pane) -> Response) -> Response {
+    let pane = session::PANE.lock().expect("a panicking sender poisoned the pane");
+    match pane.as_ref() {
+        Some(pane) => act(pane),
+        None => Response::failure(format!(
+            "no pane is attached, so {what} went nowhere. A window with no pane named is the \
+             renderer check and this is expected there; anywhere else it means the attach \
+             failed earlier, and that failure is the one worth reading."
+        )),
+    }
+}
+
+fn attach_pane(pane_id: &str) -> Response {
+    match session::attach(pane_id) {
+        Ok(pane) => {
+            let attached = proto::Attached {
+                control_socket_path: pane.control_socket_path.clone(),
+                server_encoded: pane.server_encoded,
+            };
+            *session::PANE.lock().expect("a panicking sender poisoned the pane") = Some(pane);
+            Response { payload: Some(response::Payload::Attached(attached)) }
+        }
+        Err(AttachError::NoSocket(detail)) => Response::failure(format!(
+            "the core could not open the socket a pane's bridge dials back on ({detail}), so \
+             this pane can never be typed into - it will render and ignore the keyboard. \
+             Usual causes: a full or read-only temporary directory."
+        )),
+        Err(AttachError::NoEncoder(detail)) => Response::failure(format!(
+            "the core could not build a key encoder ({detail}), so nothing typed into this \
+             pane would reach it. libghostty-vt is behind this; check that ./dev built it."
+        )),
     }
 }
 

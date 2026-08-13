@@ -1,5 +1,4 @@
 import AppKit
-import MusterCore
 import MusterRenderer
 
 /// Hosts one libghostty surface, and feeds the pane it mirrors.
@@ -15,7 +14,11 @@ import MusterRenderer
 @MainActor
 public final class SurfaceView: NSView {
   private var surface: Surface?
-  private var pane: PaneInput?
+
+  /// Whether this view has a pane to type into. A bare `muster` does not - it is the
+  /// renderer check - and a view that sent keystrokes anyway would fill the log with
+  /// refusals for a state that is expected.
+  private var isTypeable = false
 
   /// The composition in progress, if any. Its length is the whole of "is the input method
   /// still working", which is what `NSTextInputClient` asks about constantly.
@@ -46,9 +49,9 @@ public final class SurfaceView: NSView {
 
   public override var acceptsFirstResponder: Bool { true }
 
-  public func attach(_ surface: Surface, pane: PaneInput?) {
+  public func attach(_ surface: Surface, typeable: Bool) {
     self.surface = surface
-    attach(pane: pane)
+    attach(typeable: typeable)
     surface.setSize(
       width: UInt32(bounds.width * (window?.backingScaleFactor ?? 2)),
       height: UInt32(bounds.height * (window?.backingScaleFactor ?? 2)))
@@ -59,8 +62,8 @@ public final class SurfaceView: NSView {
   /// Separate because the two are separate: a view will eventually be re-pointed at a
   /// different pane without its surface changing. It also lets a test drive the whole
   /// keystroke path with no GPU, no window and no daemon behind it.
-  public func attach(pane: PaneInput?) {
-    self.pane = pane
+  public func attach(typeable: Bool) {
+    isTypeable = typeable
   }
 
   public override func setFrameSize(_ newSize: NSSize) {
@@ -83,40 +86,36 @@ public final class SurfaceView: NSView {
     interpretKeyEvents([event])
     interpretingKeyEvent = false
 
-    switch CompositionArbiter.outcome(
-      wasComposing: wasComposing, committed: committedText, stillComposing: hasMarkedText())
-    {
-    case .sendNothing:
-      return
-    case .sendText(let text):
-      pane?.send(text: text)
-    case .sendKey:
-      send(event, action: .press)
-    }
+    guard isTypeable else { return }
+    // All three signals travel together and the core picks between them. Choosing here
+    // would be the shell deciding what a keystroke means, and choosing *both* - the
+    // committed text and the encoded key - is the bug that made `hello` arrive as
+    // `hheelllloo`.
+    Core.send(
+      keyDown: event.musterKeyEvent(
+        action: event.isARepeat ? "repeated" : "press", isComposing: hasMarkedText()),
+      wasComposing: wasComposing,
+      committed: committedText,
+      stillComposing: hasMarkedText())
   }
 
   public override func keyUp(with event: NSEvent) {
     // Only reported when the pane asked for release events, which the encoder decides from
     // the mode profile. Sending it unconditionally is how a program that never asked ends
     // up with every keystroke twice.
-    send(event, action: .release)
-  }
-
-  private func send(_ event: NSEvent, action: KeyEvent.Action) {
-    guard let pane,
-      let key = event.musterKeyEvent(
-        action: event.isARepeat ? .repeated : action, isComposing: hasMarkedText())
-    else { return }
-    pane.send(key)
+    guard isTypeable else { return }
+    Core.send(
+      keyUp: event.musterKeyEvent(
+        action: event.isARepeat ? "repeated" : "release", isComposing: hasMarkedText()))
   }
 
   public override func scrollWheel(with event: NSEvent) {
     // Scroll never becomes bytes here. It goes out as an intent, and the daemon answers it
     // against the pane's real modes - the one input-shaped thing Muster does not have to
     // guess about.
-    guard let pane, event.scrollingDeltaY != 0 else { return }
-    let lines = max(1, UInt16(abs(event.scrollingDeltaY).rounded()))
-    pane.scroll(direction: event.scrollingDeltaY > 0 ? .up : .down, lines: lines)
+    guard isTypeable, event.scrollingDeltaY != 0 else { return }
+    let lines = max(1, UInt32(abs(event.scrollingDeltaY).rounded()))
+    Core.scroll(direction: event.scrollingDeltaY > 0 ? "up" : "down", lines: lines)
   }
 
   /// The clipboard, on its way to the pane.
@@ -133,7 +132,7 @@ public final class SurfaceView: NSView {
       Core.debug("input.paste.empty", ["impact": "nothing was sent; the clipboard has no text"])
       return
     }
-    pane?.paste(text: text)
+    Core.paste(text: text)
   }
 
   public override func becomeFirstResponder() -> Bool {
@@ -166,7 +165,7 @@ extension SurfaceView: @preconcurrency NSTextInputClient {
     guard interpretingKeyEvent else {
       // Not from a keystroke at all - a menu, a service, a character picker. Nothing else
       // is going to send this, so it goes now.
-      pane?.send(text: text)
+      Core.send(text: text)
       return
     }
     committedText = (committedText ?? "") + text

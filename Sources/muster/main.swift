@@ -1,9 +1,6 @@
 import AppKit
-import MusterCore
-import MusterHerdr
 import MusterMac
 import MusterRenderer
-import MusterVT
 
 // The spike shell: one window, one surface, one pane. Its whole job is to stand things up
 // and hand them to each other. Nothing here decides anything - which chord is an action,
@@ -17,7 +14,6 @@ import MusterVT
 final class AppDelegate: NSObject, NSApplicationDelegate {
   private var window: NSWindow?
   private var renderer: Renderer?
-  private var channel: PaneControlChannel?
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     // First, so that everything after it is on the record - including the failures that
@@ -55,15 +51,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       Renderer.current = renderer
       self.renderer = renderer
 
-      // Bound before the surface exists, so the bridge cannot dial a socket that is not
+      // Attached before the surface exists, so the bridge cannot dial a socket that is not
       // listening yet.
-      let pane = try makePaneInput()
-      let command = paneCommand(controlSocketPath: channel?.socketPath)
+      let socketPath = attachPane()
+      let command = paneCommand(controlSocketPath: socketPath)
       Core.info("surface.create", ["command": command ?? "(none)"])
-      view.attach(try renderer.makeSurface(in: view, command: command), pane: pane)
+      view.attach(try renderer.makeSurface(in: view, command: command), typeable: socketPath != nil)
       renderer.setFocus(true)
       window.makeFirstResponder(view)
-      Core.info("app.ready", ["typeable": String(pane != nil)])
+      Core.info("app.ready", ["typeable": String(socketPath != nil)])
     } catch {
       // A spike that fails silently teaches nothing. Say which step broke, because each
       // one fails for a different reason: init and app creation mean the embedding API
@@ -74,7 +70,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
   }
 
-  /// The input path for the pane this window shows, or nil when running a plain shell.
+  /// Points the core at the pane this window shows, and returns the bridge's dial-back
+  /// path - or nil when running a plain shell.
   ///
   /// A bare `muster` has no daemon behind it, and Muster's input path only knows how to
   /// talk to one: it encodes a keystroke and hands the bytes to a pane's control stream. A
@@ -85,7 +82,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   /// calling `ghostty_surface_key` and putting input back inside the renderer seam
   /// (architecture.md), for a mode that ships in no version of Muster - every real pane
   /// comes from a daemon.
-  private func makePaneInput() throws -> PaneInput? {
+  private func attachPane() -> String? {
     guard CommandLine.arguments.count > 1 else {
       window?.title = "muster (renderer check - keyboard not connected)"
       FileHandle.standardError.write(
@@ -102,28 +99,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     let paneID = CommandLine.arguments[1]
     window?.title = "muster - \(paneID)"
-    let path = FileManager.default.temporaryDirectory
-      .appendingPathComponent("muster-\(getpid()).sock").path
-    let channel = try PaneControlChannel(path: path)
-    self.channel = channel
-
-    // The second channel, for the keys and text whose correct encoding depends on modes
-    // the control stream cannot show us. Optional on purpose: no daemon socket means the
-    // pane still works, with a guess.
-    let server = HerdrPaneChannel(paneID: paneID)
-    if server == nil {
-      Core.warn(
-        "app.server_channel.unavailable",
-        [
-          "impact": "arrow keys and paste fall back to a guessed encoding, "
-            + "which pagers reject and multi-line pastes run as commands"
-        ])
-    }
-
-    // The pane's modes are not readable, so this is the documented guess. One day it is
-    // fed from the daemon; nothing above here changes when it is.
-    return PaneInput(
-      channel: channel, serverChannel: server, encoder: try KeyEncoder(profile: .unknownPane))
+    // Everything about what a keystroke means is behind this call: the socket, the daemon
+    // lookup, the keymap and the encoder all belong to the core, and the shell's remaining
+    // job is to report that a key was pressed.
+    return Core.attach(paneID: paneID)
   }
 
   /// The smallest menu bar that makes the platform's shortcuts work.

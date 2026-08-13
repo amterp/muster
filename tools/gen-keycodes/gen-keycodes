@@ -39,8 +39,7 @@ REPO = Path(__file__).resolve().parents[2]
 KEYCODES_ZIG = REPO / "deps/ghostty/src/input/keycodes.zig"
 EVENT_H = REPO / "deps/ghostty/zig-out/include/ghostty/vt/key/event.h"
 PIN = REPO / "deps/ghostty.pin"
-CORE_OUT = REPO / "Sources/MusterCore/Input/Key.generated.swift"
-VT_OUT = REPO / "Sources/MusterVT/KeyMapping.generated.swift"
+SHELL_OUT = REPO / "Sources/MusterMac/KeyNames.generated.swift"
 RUST_CORE_OUT = REPO / "crates/muster-core/src/input/key.rs"
 RUST_VT_OUT = REPO / "crates/muster-vt/src/key_mapping.rs"
 
@@ -295,60 +294,43 @@ def main() -> int:
     dom_for_c = dom_codes_for_known_keys(rows, known)
     mac_table = mac_keycode_table(rows, known)
 
-    core = [
+    shell = [
         header(pin),
         "",
-        "/// A physical key, named as the W3C UI Events code standard names it.",
+        "/// The W3C name of the key a macOS virtual keycode identifies.",
         "///",
-        "/// Layout-independent: this is the key's place on the keyboard, not the character",
-        "/// it produces. The `a` key on a US layout and the `ф` key on a Russian one are",
-        "/// both `keyA`, and what the layout produced travels separately as text.",
-        "public enum Key: String, Sendable, CaseIterable {",
-    ]
-    for c_name in names:
-        raw = dom_for_c.get(c_name, c_name.removeprefix("GHOSTTY_KEY_").lower())
-        core.append(f'  case {swift_name(c_name)} = "{raw}"')
-    core.append("}")
-    core += [
-        "",
-        "extension Key {",
-        "  /// The key a macOS virtual keycode identifies, if macOS names one.",
-        "  public init?(macOSKeycode: UInt16) {",
-        "    switch macOSKeycode {",
+        "/// The whole of the shell's key vocabulary. Muster's seam carries a key by the name",
+        "/// the core and the conformance corpus both speak, so translating into that name is",
+        "/// all a shell does with a keystroke's identity - a GTK shell writes its own table",
+        "/// producing the same names (docs/testing.md, what stays native).",
+        "enum KeyNames {",
+        "  /// Nil for a key macOS names and libghostty does not, which today is the two JIS",
+        "  /// keys. Those still type their character, so the caller sends them unidentified",
+        "  /// with text rather than dropping the keystroke.",
+        "  static func name(forMacOSKeycode keycode: UInt16) -> String? {",
+        "    switch keycode {",
     ]
     for mac in sorted(mac_table):
-        core.append(f"    case {mac:#04x}: self = .{swift_name(mac_table[mac])}")
-    core += [
-        "    default: return nil",
+        c_name = mac_table[mac]
+        raw = dom_for_c.get(c_name, c_name.removeprefix("GHOSTTY_KEY_").lower())
+        shell.append(f'    case {mac:#04x}: "{raw}"')
+    shell += [
+        "    default: nil",
         "    }",
         "  }",
         "}",
         "",
     ]
 
-    vt = [header(pin), "", "import CGhosttyVt", "import MusterCore", "", "extension Key {"]
-    vt += [
-        "  /// This key as libghostty-vt names it.",
-        "  ///",
-        "  /// The encoder seam, and the only place the two vocabularies meet.",
-        "  public var ghosttyKey: GhosttyKey {",
-        "    switch self {",
-    ]
-    for c_name in names:
-        vt.append(f"    case .{swift_name(c_name)}: {c_name}")
-    vt += ["    }", "  }", "}", ""]
-
-    CORE_OUT.parent.mkdir(parents=True, exist_ok=True)
-    VT_OUT.parent.mkdir(parents=True, exist_ok=True)
+    SHELL_OUT.parent.mkdir(parents=True, exist_ok=True)
     RUST_CORE_OUT.parent.mkdir(parents=True, exist_ok=True)
-    CORE_OUT.write_text("\n".join(core))
-    VT_OUT.write_text("\n".join(vt))
+    SHELL_OUT.write_text("\n".join(shell))
     RUST_CORE_OUT.write_text(emit_rust(pin, names, dom_for_c))
     RUST_VT_OUT.parent.mkdir(parents=True, exist_ok=True)
     RUST_VT_OUT.write_text(emit_rust_mapping(pin, names))
 
     subprocess.run(
-        ["swift", "format", "--in-place", str(CORE_OUT), str(VT_OUT)], check=True, cwd=REPO
+        ["swift", "format", "--in-place", str(SHELL_OUT)], check=True, cwd=REPO
     )
     subprocess.run(
         ["rustfmt", "--edition", "2024", str(RUST_CORE_OUT), str(RUST_VT_OUT)],
@@ -358,7 +340,7 @@ def main() -> int:
 
     print(
         f"{len(names)} keys, {len(mac_table)} macOS keycodes -> "
-        f"{CORE_OUT.name}, {VT_OUT.name}, {RUST_CORE_OUT.name}, {RUST_VT_OUT.name}"
+        f"{SHELL_OUT.name}, {RUST_CORE_OUT.name}, {RUST_VT_OUT.name}"
     )
     return 0
 

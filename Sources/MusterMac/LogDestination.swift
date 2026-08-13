@@ -1,9 +1,8 @@
 import Foundation
-import MusterCore
 
-// Where the logs go, which is the one part of logging that is an OS question. Muster's
-// core writes records; this file decides they belong in ~/Library/Logs. Ports pick their
-// own answer here and nothing above changes.
+// Where the logs go, which is the one part of logging that is an OS question. The core
+// writes the records; this file decides they belong in ~/Library/Logs, and hands the path
+// over at startup. Ports pick their own answer here and nothing below changes.
 
 /// Opens this run's log file and points every process Muster spawns at it.
 ///
@@ -15,7 +14,6 @@ public func startLogging() -> String? {
   let environment = ProcessInfo.processInfo.environment
   // An explicit file wins, so a bug report can be captured to a path of its own.
   if let path = environment["MUSTER_LOG_FILE"], !path.isEmpty {
-    Log.startFromEnvironment(process: "app")
     return path
   }
 
@@ -40,7 +38,6 @@ public func startLogging() -> String? {
   // Inherited by every bridge this app spawns, which is what puts both sides of a
   // keystroke in one timeline.
   setenv("MUSTER_LOG_FILE", path, 1)
-  Log.startFromEnvironment(process: "app")
 
   pointLatestAt(path, in: directory)
   pruneSessions(in: directory)

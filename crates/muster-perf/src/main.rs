@@ -15,6 +15,7 @@ use muster_core::input::{Key, KeyEvent, Keymap, Modifiers, Resolution, TerminalM
 use muster_herdr::{FrameDecoder, PaneFrame, PaneStreamEvent};
 use muster_perf::{Baseline, Cost, compare, measure, pending, table, verdict};
 use muster_vt::{KeyEncoder, Terminal};
+use prost::Message;
 
 const USAGE: &str = "\
 usage: muster-perf [--record] [--baseline <path>] [--corpus <path>] [--tolerance <x>]
@@ -200,7 +201,39 @@ fn measure_everything(streams: &[Vec<u8>]) -> Vec<Cost> {
         }
     }
 
+    // What the shell/core boundary costs per keystroke: encode a request, decode it, answer,
+    // encode the answer. MIP-1 argued this seam can afford protobuf because it carries
+    // events at human rates rather than bytes - around ten keystrokes a second - and this is
+    // the number that claim is checkable against.
+    //
+    // No pane is attached, so what is measured is the crossing itself rather than the
+    // encoder behind it, which `input.encode` already covers separately.
+    let request = key_down_request();
+    costs.push(measure("seam.dispatch", "ns/event", 100, 200, 5, || {
+        for _ in 0..100 {
+            black_box(muster::dispatch(&request).len());
+        }
+    }));
+
     costs
+}
+
+/// One press, encoded the way the shell encodes one.
+fn key_down_request() -> Vec<u8> {
+    let mut key = muster::proto::KeyEvent {
+        action: "press".to_string(),
+        key: "KeyH".to_string(),
+        text: "h".to_string(),
+        ..muster::proto::KeyEvent::default()
+    };
+    key.modifiers.push("control".to_string());
+    muster::proto::Request {
+        payload: Some(muster::proto::request::Payload::KeyDown(muster::proto::KeyDown {
+            key: Some(key),
+            ..muster::proto::KeyDown::default()
+        })),
+    }
+    .encode_to_vec()
 }
 
 fn typed(key: Key, modifiers: Modifiers, text: &str) -> KeyEvent {

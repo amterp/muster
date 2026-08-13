@@ -34,6 +34,11 @@ Muster's principles, adapted to that evidence:
   already passed, rather than by reading the old tests and hoping. It is the same argument as the backend contract
   corpus, one layer further in: the corpus is the executable definition of what a replacement must provide.
   Roughly four fifths of the suite fits this; the shell's does not and should not try (see below).
+
+  That port is done, so there is one driver again rather than two, and the cross-language check the corpus was
+  briefly performing is gone with it. Worth saying plainly: what remains is a suite of readable cases that outlived
+  a rewrite, which is what it was for. The next thing to run them will be a second backend or a second shell, and
+  the cases are already waiting.
 - **Assert what the user sees and what the daemon receives.** The user-facing oracle is the terminal grid, computed
   in the harness by libghostty-vt - the production engine. The daemon-facing oracle is the exact intent messages on
   the wire. Never pixels (GPU-flaky), never internal structures (false confidence in both directions).

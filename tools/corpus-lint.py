@@ -151,14 +151,7 @@ def main() -> int:
         print(f"\n{len(found)} problem(s). See docs/testing.md, 'The conformance corpus'.")
         return 1
 
-    # Which languages run each file, because during the port that is the progress bar: a
-    # file only Swift loads is a concept the Rust core has not reached yet, and the gate is
-    # the one place that already knows.
-    ported = sum(1 for path in files if "rs" in claims.get(path.name, set()))
-    print(
-        f"corpus-lint: {len(files)} file(s), {total} case(s), all claimed by a driver "
-        f"({ported}/{len(files)} run by the Rust core)."
-    )
+    print(f"corpus-lint: {len(files)} file(s), {total} case(s), all claimed by a driver.")
     return 0
 
 

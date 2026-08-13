@@ -41,6 +41,73 @@ public enum Core {
   /// one lands in a file that gets attached to bug reports.
   public static let includesInput = ProcessInfo.processInfo.environment["MUSTER_LOG_INPUT"] == "1"
 
+  /// Points this window's keyboard at a daemon-owned pane.
+  ///
+  /// Returns where the bridge should dial back, or nil if the pane could not be attached -
+  /// the core has already said why on stderr and in the log. Nil means the window still
+  /// renders and ignores the keyboard, which is the same shape as a bare `muster`.
+  public static func attach(paneID: String) -> String? {
+    var attach = Muster_AttachPane()
+    attach.paneID = paneID
+    var request = Muster_Request()
+    request.attachPane = attach
+    guard case .attached(let attached) = send(request) else { return nil }
+    return attached.controlSocketPath
+  }
+
+  /// A press, with everything the core needs to decide what it meant.
+  ///
+  /// Internal, like every generated type: the seam's vocabulary is the shell's business
+  /// and stops at this module's edge.
+  static func send(
+    keyDown key: Muster_KeyEvent,
+    wasComposing: Bool,
+    committed: String?,
+    stillComposing: Bool
+  ) {
+    var down = Muster_KeyDown()
+    down.key = key
+    down.wasComposing = wasComposing
+    if let committed { down.committed = committed }
+    down.stillComposing = stillComposing
+    var request = Muster_Request()
+    request.keyDown = down
+    send(request)
+  }
+
+  static func send(keyUp key: Muster_KeyEvent) {
+    var up = Muster_KeyUp()
+    up.key = key
+    var request = Muster_Request()
+    request.keyUp = up
+    send(request)
+  }
+
+  public static func send(text: String) {
+    var send = Muster_SendText()
+    send.text = text
+    var request = Muster_Request()
+    request.sendText = send
+    Core.send(request)
+  }
+
+  public static func paste(text: String) {
+    var paste = Muster_Paste()
+    paste.text = text
+    var request = Muster_Request()
+    request.paste = paste
+    send(request)
+  }
+
+  public static func scroll(direction: String, lines: UInt32) {
+    var scroll = Muster_Scroll()
+    scroll.direction = direction
+    scroll.lines = lines
+    var request = Muster_Request()
+    request.scroll = scroll
+    send(request)
+  }
+
   public static func trace(_ event: String, _ fields: [String: String] = [:]) {
     record("trace", event, fields)
   }
@@ -75,11 +142,12 @@ public enum Core {
   ///
   /// stderr, because the thing most likely to be refused is a log record, and reporting
   /// that failure into the log would be reporting it into the void.
-  private static func send(_ request: Muster_Request) {
+  @discardableResult
+  private static func send(_ request: Muster_Request) -> Muster_Response.OneOf_Payload? {
     guard let encoded = try? request.serializedBytes() as [UInt8] else {
       FileHandle.standardError.write(
         Data("muster: a request could not be encoded, so the core never saw it.\n".utf8))
-      return
+      return nil
     }
     let response = dispatcher.dispatch(encoded)
     guard !response.isEmpty, let decoded = try? Muster_Response(serializedBytes: response) else {
@@ -91,11 +159,12 @@ public enum Core {
           but the run log is now incomplete. Its own error is above.
 
           """.utf8))
-      return
+      return nil
     }
     if case .failure(let failure) = decoded.payload {
       FileHandle.standardError.write(Data("muster: \(failure.reason)\n".utf8))
     }
+    return decoded.payload
   }
 
   /// An event the core sent unasked, already back on the main thread.

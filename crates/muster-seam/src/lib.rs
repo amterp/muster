@@ -11,9 +11,11 @@
 
 // Public because the exported symbols are this crate's whole surface, even though no Rust
 // caller reaches them - `unreachable_pub` cannot see through `extern "C"`.
+mod convert;
 pub mod ffi;
 mod handler;
 pub mod proto;
+mod session;
 
 pub use ffi::emit;
 pub use handler::dispatch;

@@ -99,8 +99,8 @@ regenerates on demand; a normal build does it only when the schema's hash change
 - `corpus/`: what the code is judged against, in no language. `conformance/` holds the cases that define the core's
   behavior, `snapshots/` the rendered oracles too broad to be cases, and the rest raw transcripts recorded from a
   real dependency. The gate fails if a file here is checked in and never run.
-- `crates/` is the portable core (Rust), `Sources/` the macOS shell (Swift). Both are built, tested and linted by
-  `./dev`.
+- `crates/` is the portable core (Rust), `Sources/` the macOS shell (Swift), and `proto/muster.proto` plus
+  `include/muster.h` are the seam between them. Both languages are built, tested and linted by `./dev`.
 - Work is tracked on the in-repo [kan](https://github.com/amterp/kan) board (`.kan/`, `kan list`). Agents keep it
   current: move cards as work starts and finishes, and add cards for work discovered along the way. If finishing work
   empties the `next` column, refill it from the backlog by priority and natural sequencing, so there is always a

@@ -368,7 +368,9 @@ dependencies = [
  "libc",
  "muster-core",
  "muster-herdr",
+ "muster-seam",
  "muster-vt",
+ "prost",
  "serde",
  "serde_json",
 ]
@@ -378,6 +380,7 @@ name = "muster-seam"
 version = "0.1.0"
 dependencies = [
  "muster-core",
+ "muster-herdr",
  "muster-vt",
  "prost",
  "prost-build",

@@ -19,10 +19,8 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 muster-core.workspace = true
+muster-herdr.workspace = true
 prost.workspace = true
-# Unused until the input path crosses. Present from the first commit anyway: the link it
-# pulls in is the risky part of this crate, and it should be exercised before anything
-# depends on it working.
 muster-vt.workspace = true
 
 [build-dependencies]
