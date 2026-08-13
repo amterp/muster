@@ -25,7 +25,7 @@ struct Log {
 impl Log {
     fn record(self: &Arc<Log>) -> muster_herdr::subscription::Report {
         let log = Arc::clone(self);
-        Box::new(move |notice| log.notices.lock().unwrap().push(notice))
+        Arc::new(move |notice| log.notices.lock().unwrap().push(notice))
     }
 
     fn notices(&self) -> Vec<Notice> {
@@ -225,4 +225,61 @@ fn an_agent_state_survives_a_replayed_pane() {
         "a structure event rolled back the agent state, which is the one thing this \
          product exists to show"
     );
+}
+
+#[test]
+fn every_pane_reports_its_agent_state_without_being_attached_to() {
+    let daemon = Daemon::start();
+    daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "one", "focus": true }));
+    daemon.call("pane.split", &json!({ "direction": "right" }));
+
+    let (mirror, log, _subscription) = mirror_and_log(&daemon);
+    until("both panes to reach the mirror", || pane_count(&mirror) == 2);
+
+    let panes: Vec<String> =
+        mirror.lock().unwrap().panes().map(|pane| pane.id.to_string()).collect();
+    assert_eq!(panes.len(), 2);
+
+    // The second pane, deliberately: an implementation that watches only what the window
+    // is attached to would pass on the first and fail here, which is the whole difference
+    // between a terminal and the thing this is meant to be.
+    let elsewhere = &panes[1];
+    daemon.call(
+        "pane.report_agent",
+        &json!({ "pane_id": elsewhere, "agent": "probe", "source": "probe", "state": "blocked" }),
+    );
+
+    until("the unattached pane's state to arrive", || {
+        mirror.lock().unwrap().agent_state(&PaneId::new(elsewhere.clone()))
+            == Some(muster_core::AgentState::Blocked)
+    });
+    assert!(log.notices().iter().any(|notice| matches!(
+        notice,
+        Notice::Changed(Change::AgentStateChanged { to, .. })
+            if *to == muster_core::AgentState::Blocked
+    )));
+}
+
+#[test]
+fn a_pane_created_later_is_watched_too() {
+    let daemon = Daemon::start();
+    daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "one", "focus": true }));
+
+    let (mirror, log, _subscription) = mirror_and_log(&daemon);
+    until("the first bootstrap", || log.bootstraps() > 0);
+
+    // Split after the subscription is up, so the watcher for this pane can only exist if
+    // the set follows the mirror rather than being decided once at connect.
+    let split = daemon.call("pane.split", &json!({ "direction": "down" }));
+    let new_pane = split["pane"]["pane_id"].as_str().expect("no pane id").to_string();
+    until("the new pane to reach the mirror", || pane_count(&mirror) == 2);
+
+    daemon.call(
+        "pane.report_agent",
+        &json!({ "pane_id": new_pane, "agent": "probe", "source": "probe", "state": "working" }),
+    );
+    until("the new pane's agent state to arrive", || {
+        mirror.lock().unwrap().agent_state(&PaneId::new(new_pane.clone()))
+            == Some(muster_core::AgentState::Working)
+    });
 }
