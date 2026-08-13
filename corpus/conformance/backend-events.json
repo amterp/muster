@@ -1,0 +1,225 @@
+{
+  "concept": "backend-events",
+  "source": "recorded",
+  "regenerate": "tools/herdr-probe/probe lifecycle agent-states",
+  "why": "herdr's wire, translated into Muster's vocabulary - the one place a JSON key from a dependency is allowed to appear. Kept apart from mirror.json so a failure says which of two things broke: these cases go red when herdr changes what it sends, those go red when our fold over it is wrong. Every payload here is a line a real daemon emitted, copied from corpus/herdr-0.8.0/, except where a case is explicitly about a shape we have not seen and want to survive.",
+  "cases": [
+    {
+      "name": "a workspace, a tab and a pane arrive as upserts",
+      "why": "The happy path, in the order a subscription replays it. Upsert rather than created is the whole reason the mirror converges: this same triple arrives again on every reconnect, and a decoder that emitted a distinct creation event would push the de-duplication problem up into the mirror where it has less to work with.",
+      "given": {
+        "chunks": [
+          "{\"data\":{\"type\":\"workspace_created\",\"workspace\":{\"active_tab_id\":\"w1:t1\",\"agent_status\":\"unknown\",\"focused\":true,\"label\":\"tmp\",\"number\":1,\"pane_count\":1,\"tab_count\":1,\"workspace_id\":\"w1\"}},\"event\":\"workspace_created\"}\n{\"data\":{\"tab\":{\"agent_status\":\"unknown\",\"focused\":true,\"label\":\"1\",\"number\":1,\"pane_count\":1,\"tab_id\":\"w1:t1\",\"workspace_id\":\"w1\"},\"type\":\"tab_created\"},\"event\":\"tab_created\"}\n{\"data\":{\"pane\":{\"agent_status\":\"unknown\",\"cwd\":\"/private/tmp\",\"focused\":true,\"foreground_cwd\":\"/private/tmp\",\"pane_id\":\"w1:p1\",\"revision\":0,\"scroll\":{\"max_offset_from_bottom\":0,\"offset_from_bottom\":0,\"viewport_rows\":24},\"tab_id\":\"w1:t1\",\"terminal_id\":\"term_658f07c3ea9a21\",\"workspace_id\":\"w1\"},\"type\":\"pane_created\"},\"event\":\"pane_created\"}\n"
+        ]
+      },
+      "expect": {
+        "events": [
+          "workspaceUpserted:w1 label=tmp",
+          "tabUpserted:w1:t1 workspace=w1 label=1",
+          "paneUpserted:w1:p1 tab=w1:t1 workspace=w1 state=unknown cwd=/private/tmp"
+        ],
+        "unknownKinds": []
+      }
+    },
+    {
+      "name": "a pane whose program exited is the same event as one a client closed",
+      "why": "herdr announces the two differently and a client keyed on pane_closed alone renders dead panes forever, which reads as a Muster bug rather than as a missing event name (observations/herdr-0.8.0.md section 10). Muster has no use for the difference: both mean the surface should stop existing.",
+      "given": {
+        "chunks": [
+          "{\"data\":{\"pane_id\":\"w1:p3\",\"type\":\"pane_closed\",\"workspace_id\":\"w1\"},\"event\":\"pane_closed\"}\n{\"data\":{\"pane_id\":\"w1:p2\",\"type\":\"pane_exited\",\"workspace_id\":\"w1\"},\"event\":\"pane_exited\"}\n"
+        ]
+      },
+      "expect": {
+        "events": [
+          "paneRemoved:w1:p3",
+          "paneRemoved:w1:p2"
+        ],
+        "unknownKinds": []
+      }
+    },
+    {
+      "name": "a closed workspace is read from its id, not from the copy of itself it carries",
+      "why": "workspace_closed is the one closure that carries the whole entity as well as its id, so there are two places to read it from and they agree here. Pinning which one is read matters because a future payload that drops the redundant copy must not stop removals from working.",
+      "given": {
+        "chunks": [
+          "{\"data\":{\"type\":\"workspace_closed\",\"workspace\":{\"active_tab_id\":\"w2:t1\",\"agent_status\":\"unknown\",\"focused\":false,\"label\":\"doomed\",\"number\":2,\"pane_count\":1,\"tab_count\":1,\"workspace_id\":\"w2\"},\"workspace_id\":\"w2\"},\"event\":\"workspace_closed\"}\n"
+        ]
+      },
+      "expect": {
+        "events": [
+          "workspaceRemoved:w2"
+        ],
+        "unknownKinds": []
+      }
+    },
+    {
+      "name": "the dotted and snake spellings of an agent status change are one event",
+      "why": "The dotted name comes from a per-pane subscription and the snake name from the session-wide enum; only the dotted one has ever been observed arriving (observations/herdr-0.8.0.md section 11). Reading only what we have seen would make a daemon that switches spellings look like an agent that never moves, which is the failure this product cannot have.",
+      "given": {
+        "chunks": [
+          "{\"event\":\"pane.agent_status_changed\",\"data\":{\"pane_id\":\"w1:p1\",\"workspace_id\":\"w1\",\"agent\":\"probe\",\"agent_status\":\"working\"}}\n{\"event\":\"pane_agent_status_changed\",\"data\":{\"type\":\"pane_agent_status_changed\",\"pane_id\":\"w1:p1\",\"workspace_id\":\"w1\",\"agent_status\":\"blocked\"}}\n"
+        ]
+      },
+      "expect": {
+        "events": [
+          "agentStateChanged:w1:p1 state=working",
+          "agentStateChanged:w1:p1 state=blocked"
+        ],
+        "unknownKinds": []
+      }
+    },
+    {
+      "name": "a status herdr invented since this build reads as unknown, never as idle",
+      "why": "herdr's API is unstable and ships weekly, so a new state is a thing it may add. Reading one as idle would tell the user nothing needs them, which is the one wrong answer that is worse than showing nothing.",
+      "given": {
+        "chunks": [
+          "{\"event\":\"pane.agent_status_changed\",\"data\":{\"pane_id\":\"w1:p1\",\"workspace_id\":\"w1\",\"agent_status\":\"compacting\"}}\n"
+        ]
+      },
+      "expect": {
+        "events": [
+          "agentStateChanged:w1:p1 state=unknown"
+        ],
+        "unknownKinds": []
+      }
+    },
+    {
+      "name": "a focus event names the workspace as well as its own cursor",
+      "why": "The three cursors move on three events and the mirror treats an absent cursor as saying nothing rather than as a clear. So carrying the workspace on all three is free, and leaves that cursor correct even when its own event was the one lost.",
+      "given": {
+        "chunks": [
+          "{\"data\":{\"type\":\"workspace_focused\",\"workspace_id\":\"w1\"},\"event\":\"workspace_focused\"}\n{\"data\":{\"tab_id\":\"w1:t1\",\"type\":\"tab_focused\",\"workspace_id\":\"w1\"},\"event\":\"tab_focused\"}\n{\"data\":{\"pane_id\":\"w1:p1\",\"type\":\"pane_focused\",\"workspace_id\":\"w1\"},\"event\":\"pane_focused\"}\n"
+        ]
+      },
+      "expect": {
+        "events": [
+          "focusMoved workspace=w1",
+          "focusMoved workspace=w1 tab=w1:t1",
+          "focusMoved workspace=w1 pane=w1:p1"
+        ],
+        "unknownKinds": []
+      }
+    },
+    {
+      "name": "an agent detection is not an agent state",
+      "why": "pane_agent_detected says which harness is running, and says nothing about what it is doing - it fired once in the recording, on the transition to working, and never again. A decoder that read it as a state change would report a working agent whenever one was first noticed.",
+      "given": {
+        "chunks": [
+          "{\"data\":{\"agent\":\"probe\",\"pane_id\":\"w1:p1\",\"type\":\"pane_agent_detected\",\"workspace_id\":\"w1\"},\"event\":\"pane_agent_detected\"}\n"
+        ]
+      },
+      "expect": {
+        "events": [
+          "agentDetected:w1:p1 agent=probe"
+        ],
+        "unknownKinds": []
+      }
+    },
+    {
+      "name": "geometry is recognized and dropped, without claiming the daemon changed",
+      "why": "layout_updated follows every pane creation and closure, so it is the highest-volume event on the stream. It is chunk E's input and not the mirror's, and reporting it as unrecognized would bury the one signal the unknown set exists for under something we chose.",
+      "given": {
+        "chunks": [
+          "{\"data\":{\"layout\":{\"area\":{\"height\":24,\"width\":54,\"x\":26,\"y\":0},\"focused_pane_id\":\"w1:p1\",\"panes\":[{\"focused\":true,\"pane_id\":\"w1:p1\",\"rect\":{\"height\":24,\"width\":54,\"x\":26,\"y\":0}}],\"splits\":[],\"tab_id\":\"w1:t1\",\"workspace_id\":\"w1\",\"zoomed\":false},\"type\":\"layout_updated\"},\"event\":\"layout_updated\"}\n"
+        ]
+      },
+      "expect": {
+        "events": [],
+        "unknownKinds": []
+      }
+    },
+    {
+      "name": "an unrecognized kind is reported once, however often it arrives",
+      "why": "herdr defines 29 event kinds against the 13 Muster reads, and an unread one arrives whether or not anyone wants it. The name is worth exactly one log line - repeating it per event is how a run log stops being read, which costs the run log its whole purpose.",
+      "given": {
+        "chunks": [
+          "{\"event\":\"tab_moved\",\"data\":{\"type\":\"tab_moved\",\"tab_id\":\"w1:t1\"}}\n{\"event\":\"tab_moved\",\"data\":{\"type\":\"tab_moved\",\"tab_id\":\"w1:t2\"}}\n{\"event\":\"pane_moved\",\"data\":{\"type\":\"pane_moved\",\"pane_id\":\"w1:p1\"}}\n"
+        ]
+      },
+      "expect": {
+        "events": [],
+        "unknownKinds": [
+          "tab_moved",
+          "pane_moved"
+        ]
+      }
+    },
+    {
+      "name": "a kind we do read, whose payload moved, is reported rather than dropped",
+      "why": "This is what a herdr upgrade looks like from inside: the name still arrives and the field it needs is gone. Dropping it silently means panes stop appearing and the run log says nothing, which is a morning lost to bisecting Muster for a change in herdr.",
+      "given": {
+        "chunks": [
+          "{\"event\":\"pane_created\",\"data\":{\"type\":\"pane_created\",\"pane\":{\"id\":\"w1:p1\",\"tab_id\":\"w1:t1\",\"workspace_id\":\"w1\",\"agent_status\":\"idle\"}}}\n"
+        ]
+      },
+      "expect": {
+        "events": [],
+        "unknownKinds": [
+          "pane_created"
+        ]
+      }
+    },
+    {
+      "name": "an empty id is not an id",
+      "why": "An id is a lookup key, and the empty string finds nothing in a way that looks exactly like an entity that was never created. Refusing it turns a silently missing pane into a named line in the run log.",
+      "given": {
+        "chunks": [
+          "{\"event\":\"pane_closed\",\"data\":{\"type\":\"pane_closed\",\"pane_id\":\"\",\"workspace_id\":\"w1\"}}\n"
+        ]
+      },
+      "expect": {
+        "events": [],
+        "unknownKinds": [
+          "pane_closed"
+        ]
+      }
+    },
+    {
+      "name": "a line arriving in two reads is one event, once it is whole",
+      "why": "Nothing about a socket promises a read ends on a newline, and a subscription's first chunk routinely carries several replayed events and half of another. Half a JSON object must decode to nothing rather than to something wrong.",
+      "given": {
+        "chunks": [
+          "{\"event\":\"pane_closed\",\"data\":{\"type\":\"pane_clo",
+          "sed\",\"pane_id\":\"w1:p3\",\"workspace_id\":\"w1\"}}\n"
+        ]
+      },
+      "expect": {
+        "events": [
+          "paneRemoved:w1:p3"
+        ],
+        "unknownKinds": []
+      }
+    },
+    {
+      "name": "a stream cut mid-line keeps the complete events and invents no partial one",
+      "why": "What a daemon hanging up mid-frame looks like. The events that arrived whole are real and the view should keep them; the fragment is not an event and must not become one with its missing fields defaulted.",
+      "given": {
+        "chunks": [
+          "{\"data\":{\"pane_id\":\"w1:p3\",\"type\":\"pane_closed\",\"workspace_id\":\"w1\"},\"event\":\"pane_closed\"}\n{\"event\":\"pane_exited\",\"data\":{\"type\":\"pane_exi"
+        ]
+      },
+      "expect": {
+        "events": [
+          "paneRemoved:w1:p3"
+        ],
+        "unknownKinds": []
+      }
+    },
+    {
+      "name": "garbage between good lines costs only that line",
+      "why": "Matching FrameDecoder, deliberately: this crate's two stream parsers should fail the same way. A daemon that emits one malformed line has not stopped being worth listening to, and dropping the connection over it turns a cosmetic bug upstream into a dead window here.",
+      "given": {
+        "chunks": [
+          "not json at all\n{\"data\":{\"pane_id\":\"w1:p3\",\"type\":\"pane_closed\",\"workspace_id\":\"w1\"},\"event\":\"pane_closed\"}\n{\"half\":\"an object\"}\n{\"data\":{\"pane_id\":\"w1:p2\",\"type\":\"pane_exited\",\"workspace_id\":\"w1\"},\"event\":\"pane_exited\"}\n"
+        ]
+      },
+      "expect": {
+        "events": [
+          "paneRemoved:w1:p3",
+          "paneRemoved:w1:p2"
+        ],
+        "unknownKinds": []
+      }
+    }
+  ]
+}
