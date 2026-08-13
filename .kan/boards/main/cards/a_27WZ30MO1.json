@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "record-herdr-s-transient",
+  "alias_explicit": false,
+  "area": [
+    "backend",
+    "testing"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1786660212393,
+  "creator": "Alexander Terp",
+  "description": "Splitting a two-pane tab publishes a layout naming only one pane before publishing the settled tree. Composition now treats the pane list as the authority on what exists and the tree as an ordering only (corpus/conformance/composition.json, 'a tree that has not caught up does not move the keyboard'), which is the right rule regardless - but the herdr behavior behind it was observed in a test log rather than recorded.\n\nAdd it to tools/herdr-probe's layout scenario: split a two-pane tab with a subscription open, capture every layout_updated in order, and write the sequence into corpus/herdr-0.8.0/layout/. Then docs/observations/herdr-0.8.0.md section 13 can state it with a citation instead of the claim resting on a comment.\n\nWorth doing because the same shape probably applies to close and move, and because anything else that reads a tree as evidence will hit it too.",
+  "id": "a_27WZ30MO1",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "title": "🔬 Record herdr's transient one-pane tree during a split",
+  "type": "chore",
+  "updated_at_millis": 1786660212393,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1786660212393}
+  ]
+}
