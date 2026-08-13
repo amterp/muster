@@ -9,16 +9,17 @@
 //! translation `layout.rs` does in reverse when it reads a tree back. And a path down the
 //! tree becomes an array of booleans, herdr's own spelling for the turns.
 
-use muster_core::intent::{BackendChannel, BackendIntent, Branch};
-use muster_core::mirror::backend::SplitAxis;
+use muster_core::intent::{BackendChannel, BackendIntent, Branch, Outcome};
+use muster_core::mirror::backend::{PaneId, SplitAxis};
 use serde_json::{Value, json};
 
 use crate::client::HerdrClient;
 
 impl BackendChannel for HerdrClient {
-    fn submit(&self, intent: &BackendIntent) -> Result<(), String> {
+    fn submit(&self, intent: &BackendIntent) -> Result<Outcome, String> {
         let (method, params) = request(intent);
-        self.request(method, &params).map(|_| ()).map_err(|failure| failure.to_string())
+        let result = self.request(method, &params).map_err(|failure| failure.to_string())?;
+        Ok(Outcome { created: created(&result) })
     }
 
     fn description(&self) -> &str {
@@ -57,6 +58,20 @@ fn request(intent: &BackendIntent) -> (&'static str, Value) {
             }),
         ),
     }
+}
+
+/// The pane a request made, if it made one.
+///
+/// `pane.split` answers with the whole new pane, nested under `pane` the way every herdr
+/// result nests under a key beside its `type`. Only the id is read: everything else about it
+/// arrives on the event stream a moment later, and reading it here would be a second source
+/// for facts the mirror already owns.
+///
+/// A shape that does not match is `None` rather than a refusal. The split happened - the
+/// daemon said so - and the only cost of not finding the id is a keyboard that stays where it
+/// was, which is worth less than turning a successful split into an error.
+fn created(result: &Value) -> Option<PaneId> {
+    Some(PaneId::new(result.get("pane")?.get("pane_id")?.as_str()?))
 }
 
 /// herdr names a split for where the new pane goes; Muster names it for the arrangement it

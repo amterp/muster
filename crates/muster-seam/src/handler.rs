@@ -9,6 +9,7 @@ use muster_core::diagnostics::log::{self, LogLevel};
 use muster_core::diagnostics::sink::JsonLinesSink;
 use muster_core::fields;
 
+use muster_core::composition::Step;
 use muster_core::input::{CompositionOutcome, ScrollDirection, composition_outcome};
 use muster_core::intent::{BackendIntent, Branch};
 use muster_core::mirror::backend::{PaneId, TabId};
@@ -80,9 +81,21 @@ fn handle(request: Request) -> Response {
         request::Payload::ClosePane(close) => {
             act(&close.pane_id, |pane| BackendIntent::ClosePane { pane })
         }
-        request::Payload::FocusPane(focus) => {
-            act(&focus.pane_id, |pane| BackendIntent::FocusPane { pane })
-        }
+        request::Payload::FocusPane(focus) if focus.pane_id.is_empty() => Response::failure(
+            "a focus request named no pane, so the keyboard stayed where it was. Unlike every \
+             other pane request, an empty id has no useful meaning here - it would ask to \
+             focus whatever is already focused - so the shell building this has a bug.",
+        ),
+        request::Payload::FocusPane(focus) => answer(session::focus(&PaneId::new(focus.pane_id))),
+        request::Payload::FocusRelative(step) => match Step::parse(&step.direction) {
+            Some(direction) => answer(session::step(direction)),
+            None => Response::failure(format!(
+                "the core does not know a step called {:?}, so the keyboard stayed where it \
+                 was. Only next and previous exist; the shell builds this from a fixed set, \
+                 so this is a bug there.",
+                step.direction
+            )),
+        },
         request::Payload::SetSplitRatio(set) => submit(&BackendIntent::SetSplitRatio {
             tab: TabId::new(set.tab_id),
             path: set
@@ -187,7 +200,11 @@ fn act(pane_id: &str, build: impl FnOnce(PaneId) -> BackendIntent) -> Response {
 }
 
 fn submit(intent: &BackendIntent) -> Response {
-    match session::submit(intent) {
+    answer(session::submit(intent))
+}
+
+fn answer(outcome: Result<(), String>) -> Response {
+    match outcome {
         Ok(()) => Response::ok(),
         Err(refusal) => Response::failure(format!(
             "the daemon did not make that change: {refusal} Nothing about the session moved, \

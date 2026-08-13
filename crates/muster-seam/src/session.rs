@@ -13,7 +13,7 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 
-use muster_core::composition::{Composition, Daemon, DaemonId, Endpoint, View};
+use muster_core::composition::{Composition, Daemon, DaemonId, Endpoint, RegionId, Step, View};
 use muster_core::diagnostics::log;
 use muster_core::fields;
 use muster_core::input::{Keymap, PaneInput, TerminalModeProfile};
@@ -256,16 +256,16 @@ impl Session {
         self.panes.get(&region.daemon)?.get(region.pane.as_ref()?).map(Arc::clone)
     }
 
-    /// Which daemon holds this pane, out of the ones this window is showing.
+    /// Which region shows this pane, out of the ones this window is showing.
     ///
     /// Searched rather than assumed, because two daemons hand out the same pane ids and a
     /// request naming `w1:p1` means the one in front of the user. A pane in no region is a
     /// pane this window is not showing, and nothing here will act on it.
-    fn daemon_holding(&self, pane: &PaneId) -> Option<DaemonId> {
+    fn region_holding(&self, pane: &PaneId) -> Option<(RegionId, DaemonId)> {
         self.composition.regions().find_map(|region| {
             let backend = self.backends.get(&region.daemon)?;
             let held = backend.mirror.lock().ok()?;
-            (held.pane(pane)?.tab == region.tab).then(|| region.daemon.clone())
+            (held.pane(pane)?.tab == region.tab).then(|| (region.id, region.daemon.clone()))
         })
     }
 
@@ -300,30 +300,38 @@ pub(crate) fn keyboard_pane() -> Option<Arc<AttachedPane>> {
 /// afterwards on the daemon's own events, which is what keeps one description of the session
 /// rather than two that can disagree (`architecture.md`, view = f(daemon state)).
 ///
+/// The one exception is where the keyboard ends up, which is Muster's own state and not the
+/// daemon's. A split you asked for takes it, because that is what pressing the key meant.
+///
 /// The channel is taken out from under the lock before the request goes, because a request
 /// is a round trip and holding the session across one would stall every event arriving from
 /// every other daemon behind a wedged one.
 pub(crate) fn submit(intent: &BackendIntent) -> Result<(), String> {
-    let channel = {
+    let (region, channel) = {
         let session = SESSION.lock().expect("a panicking sender poisoned the session");
-        let daemon = match intent {
+        let found = match intent {
             BackendIntent::SplitPane { pane, .. }
             | BackendIntent::ClosePane { pane }
-            | BackendIntent::FocusPane { pane } => session.daemon_holding(pane),
-            BackendIntent::SetSplitRatio { tab, .. } => session.daemon_showing(tab),
+            | BackendIntent::FocusPane { pane } => session.region_holding(pane),
+            BackendIntent::SetSplitRatio { tab, .. } => {
+                session.daemon_showing(tab).and_then(|daemon| {
+                    Some((session.composition.region_showing(&daemon, tab)?, daemon))
+                })
+            }
         };
-        let daemon = daemon.ok_or_else(|| {
+        let (region, daemon) = found.ok_or_else(|| {
             "no daemon this window is showing holds that pane or tab, so nothing was asked \
              of anything. Either it closed while this was in flight, or the request names \
              something in a session this window is not attached to."
                 .to_string()
         })?;
-        session.channel_of(&daemon).ok_or_else(|| {
+        let channel = session.channel_of(&daemon).ok_or_else(|| {
             format!(
                 "the daemon {daemon} is in this window's composition and is not being \
                      followed, which is a bug in the core rather than a state to recover from"
             )
-        })?
+        })?;
+        (region, channel)
     };
 
     let outcome = channel.submit(intent);
@@ -332,10 +340,62 @@ pub(crate) fn submit(intent: &BackendIntent) -> Result<(), String> {
         fields! {
             "intent" => format!("{intent:?}"),
             "backend" => channel.description(),
+            "created" => outcome.as_ref().ok().and_then(|outcome| outcome.created.clone())
+                .map(|pane| pane.to_string()).unwrap_or_default(),
             "refused" => outcome.as_ref().err().cloned().unwrap_or_default(),
         },
     );
-    outcome
+
+    // The new pane is not in the mirror yet - its event is still in flight - so the region is
+    // the one that was split rather than one looked up. Taking the pane on trust is what
+    // `Composition::focus_pane` is for, and the reconcile behind the event that follows is
+    // where daemon truth gets applied to it.
+    if let Some(created) = outcome.as_ref().ok().and_then(|outcome| outcome.created.clone()) {
+        SESSION
+            .lock()
+            .expect("a panicking sender poisoned the session")
+            .composition
+            .focus_pane(region, created);
+        publish();
+    }
+    outcome.map(|_| ())
+}
+
+/// Points this window's keyboard at a pane, and tells the daemon somebody looked.
+///
+/// The two halves are one action to whoever clicked, and they are kept separate underneath:
+/// the keyboard moves whatever the daemon says, because it is Muster's own cursor, and the
+/// daemon is told as a courtesy it may refuse. A refused write is worth a log line and not
+/// worth undoing a focus move the user can see happened.
+pub(crate) fn focus(pane: &PaneId) -> Result<(), String> {
+    {
+        let mut session = SESSION.lock().expect("a panicking sender poisoned the session");
+        let (region, _) = session.region_holding(pane).ok_or_else(|| {
+            format!(
+                "no region in this window is showing a pane called {pane}, so the keyboard \
+                 stayed where it was. Either the pane closed while this was in flight, or it \
+                 belongs to a tab this window is not showing."
+            )
+        })?;
+        session.composition.focus_pane(region, pane.clone());
+    }
+    publish();
+    submit(&BackendIntent::FocusPane { pane: pane.clone() })
+}
+
+/// Moves the keyboard one pane along, in the window's own reading order.
+pub(crate) fn step(direction: Step) -> Result<(), String> {
+    let stepped = {
+        let session = SESSION.lock().expect("a panicking sender poisoned the session");
+        session.view().step(direction)
+    };
+    let (_, pane) = stepped.ok_or_else(|| {
+        "this window is showing no panes to step through, so the keyboard stayed where it \
+         was. A window with no daemon behind it looks like this, and so does one whose tabs \
+         all closed."
+            .to_string()
+    })?;
+    focus(&pane)
 }
 
 /// The pane this window's keyboard feeds, named.

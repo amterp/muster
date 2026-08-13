@@ -56,13 +56,18 @@ impl PaneControlChannel {
     /// The socket is bound before this returns, and so before the surface is created, which
     /// is what stops the bridge losing a race against its own listener.
     ///
-    /// `on_connect` runs on the accepting thread the moment the pane becomes typeable. It
-    /// exists because that fact is the single most useful one in the log when keystrokes go
-    /// nowhere, and because it is the shell's first reason to be told something it did not
-    /// ask about.
+    /// `on_connect` runs on the accepting thread each time a bridge dials in. It exists
+    /// because that fact is the single most useful one in the log when keystrokes go nowhere,
+    /// and because it is the shell's first reason to be told something it did not ask about.
+    ///
+    /// Each time, not once: a pane keeps its channel while its surface is thrown away and
+    /// built again, which happens whenever a window has to rebuild a pane. A listener that
+    /// accepted once would leave the replacement bridge unable to connect at all - and that
+    /// pane would render, paint, and swallow every keystroke, which is the exact failure this
+    /// whole path exists to prevent.
     pub fn bind(
         path: impl Into<String>,
-        on_connect: impl FnOnce() + Send + 'static,
+        on_connect: impl Fn() + Send + 'static,
     ) -> Result<PaneControlChannel, Failure> {
         let path = path.into();
         // A path left behind by a crashed run would make bind fail with EADDRINUSE; nothing
@@ -80,32 +85,42 @@ impl PaneControlChannel {
         let accepting = Arc::clone(&client);
         let accept_path = path.clone();
         std::thread::spawn(move || {
-            let stream = match listener.accept() {
-                Ok((stream, _)) => stream,
-                Err(error) => {
-                    // Nothing retries after this, so the pane is typed-into-the-void from
-                    // here on.
-                    log::error(
-                        "channel.accept.failed",
-                        fields! {
-                            "path" => &accept_path,
-                            "detail" => error.to_string(),
-                            "impact" => "this pane will never become typeable; it keeps \
-                                         rendering, so it looks frozen rather than broken",
-                        },
-                    );
-                    return;
-                }
-            };
+            let mut connections = 0u64;
+            loop {
+                let stream = match listener.accept() {
+                    Ok((stream, _)) => stream,
+                    Err(error) => {
+                        // Nothing retries after this, so the pane is typed-into-the-void from
+                        // here on.
+                        log::error(
+                            "channel.accept.failed",
+                            fields! {
+                                "path" => &accept_path,
+                                "detail" => error.to_string(),
+                                "impact" => "this pane will never become typeable; it keeps \
+                                             rendering, so it looks frozen rather than broken",
+                            },
+                        );
+                        return;
+                    }
+                };
 
-            // Without this, writing to a bridge that has died raises SIGPIPE and kills the
-            // app - one pane's subprocess crashing would take every other pane's window
-            // with it. macOS spells it as a socket option rather than a per-write flag.
-            set_nosigpipe(&stream);
+                // Without this, writing to a bridge that has died raises SIGPIPE and kills the
+                // app - one pane's subprocess crashing would take every other pane's window
+                // with it. macOS spells it as a socket option rather than a per-write flag.
+                set_nosigpipe(&stream);
 
-            *accepting.lock().expect("a panicking sender poisoned the channel") = Some(stream);
-            log::info("channel.connected", fields! { "path" => &accept_path });
-            on_connect();
+                // The newest bridge wins, because the one it replaced belongs to a surface
+                // that has already been thrown away. Dropping the old stream here closes it,
+                // which is how that bridge learns to exit.
+                *accepting.lock().expect("a panicking sender poisoned the channel") = Some(stream);
+                log::info(
+                    "channel.connected",
+                    fields! { "path" => &accept_path, "connection" => connections.to_string() },
+                );
+                connections += 1;
+                on_connect();
+            }
         });
 
         Ok(PaneControlChannel { path, client })

@@ -29,6 +29,7 @@ message Request {
     ClosePane close_pane = 10;
     FocusPane focus_pane = 11;
     SetSplitRatio set_split_ratio = 12;
+    FocusRelative focus_relative = 13;
   }
 }
 
@@ -59,13 +60,25 @@ message ClosePane {
   string pane_id = 1;
 }
 
-// Points the *daemon's* cursor at a pane.
+// Points this window's keyboard at a pane, and tells the daemon somebody looked.
 //
-// Not the same as moving this window's keyboard, which is view-local and never read back.
-// Muster writes daemon focus as the user moves around, because a daemon deciding whether an
-// agent was seen is watching this (architecture.md, cursors are written, not read).
+// Both halves, because they are one thing to the person who clicked. Muster routes input by
+// its own view-local cursor and never reads the daemon's back - daemon focus is a single
+// value shared with every client, so a herdr TUI in another window could otherwise yank this
+// window's keyboard. It is still *written*, because a daemon deciding whether an agent was
+// seen is watching it (architecture.md, cursors are written, not read).
 message FocusPane {
   string pane_id = 1;
+}
+
+// Steps this window's keyboard through the panes it is showing.
+//
+// A direction rather than a pane, because the caller does not know what is next - the order
+// is the tab's tree, which is daemon truth. Resolved in the core so that a keybinding, the
+// CLI and an agent all reach the same answer.
+message FocusRelative {
+  // next or previous, in reading order across every region, wrapping at the ends.
+  string direction = 1;
 }
 
 // Moves one divider in a tab's tree.

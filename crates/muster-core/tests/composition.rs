@@ -10,7 +10,9 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
 use conformance::{CaseError, Conformance, fields};
-use muster_core::composition::{Composition, Daemon, DaemonId, Endpoint, Region, RegionId, View};
+use muster_core::composition::{
+    Composition, Daemon, DaemonId, Endpoint, Region, RegionId, Step, View,
+};
 use muster_core::mirror::Mirror;
 use muster_core::mirror::backend::{PaneId, TabId, WorkspaceId};
 use serde_json::{Value, json};
@@ -29,7 +31,7 @@ fn composition_conformance() {
         let mut current: BTreeMap<DaemonId, String> = BTreeMap::new();
 
         for step in given.get("steps").and_then(Value::as_array).into_iter().flatten() {
-            act(&mut composition, step, &worlds, &mut current)?;
+            act(&mut composition, step, given, &worlds, &mut current)?;
         }
 
         // Every field, every case. What a region shows and which pane the keyboard feeds
@@ -59,6 +61,7 @@ fn composition_conformance() {
 fn act(
     composition: &mut Composition,
     step: &Value,
+    given: &Value,
     worlds: &BTreeMap<String, Mirror>,
     current: &mut BTreeMap<DaemonId, String>,
 ) -> Result<(), CaseError> {
@@ -78,6 +81,22 @@ fn act(
         "closeRegion" => composition.close_region(region(step)?),
         "focusRegion" => composition.focus_region(region(step)?),
         "focusPane" => composition.focus_pane(region(step)?, PaneId::new(text(step, "pane"))),
+        // The seam's own two lines: ask the view where a step lands, then move the keyboard
+        // there. Written out here rather than wrapped in the core, because what the core
+        // owns is the answer and the applying is one call.
+        "step" => {
+            let named = text(step, "direction");
+            let direction = Step::parse(&named).ok_or_else(|| {
+                CaseError::new(format!(
+                    "a step goes next or previous, and this case says {named:?}"
+                ))
+            })?;
+            if let Some((region, pane)) =
+                view_of(composition, given, worlds, current).step(direction)
+            {
+                composition.focus_pane(region, pane);
+            }
+        }
         "reconcile" => {
             let name = text(step, "world");
             let world = worlds.get(&name).ok_or_else(|| {
@@ -140,12 +159,12 @@ fn read_worlds(given: &Value) -> BTreeMap<String, Mirror> {
 /// `attached` in the given names the panes a channel is open for, spelled by pane alone -
 /// good enough here, where no case needs two daemons to differ in which of their panes are
 /// attached.
-fn describe_view(
+fn view_of(
     composition: &Composition,
     given: &Value,
     worlds: &BTreeMap<String, Mirror>,
     current: &BTreeMap<DaemonId, String>,
-) -> Vec<String> {
+) -> View {
     let attached: Vec<String> = given
         .get("attached")
         .and_then(Value::as_array)
@@ -155,15 +174,23 @@ fn describe_view(
         .map(str::to_string)
         .collect();
 
-    let view = View::of(
+    View::of(
         composition,
         |daemon| worlds.get(current.get(daemon)?),
         |daemon, pane| {
             attached.contains(&pane.to_string()).then(|| format!("/tmp/{daemon}-{pane}.sock"))
         },
-    );
+    )
+}
 
-    view.regions
+fn describe_view(
+    composition: &Composition,
+    given: &Value,
+    worlds: &BTreeMap<String, Mirror>,
+    current: &BTreeMap<DaemonId, String>,
+) -> Vec<String> {
+    view_of(composition, given, worlds, current)
+        .regions
         .iter()
         .map(|region| {
             let mut described = format!("{} tab={}", region.id, region.tab);

@@ -341,7 +341,7 @@
     },
     {
       "name": "a tree naming a pane the mirror has not got skips it",
-      "why": "The tree and the pane list arrive on separate events, so a tree can name a pane the mirror has not been told about yet. Pointing the keyboard at one would give the window a focused pane that nothing can render and nothing can type into, which looks exactly like a hung terminal.",
+      "why": "The tree and the pane list arrive on separate events, so a tree can name a pane the mirror has not been told about yet. Pointing the keyboard at one would give the window a focused pane that nothing can render and nothing can type into, which looks exactly like a hung terminal. The view withholds that tree rather than rendering it without the missing pane: an arrangement that disagrees with the tab's pane list is one no daemon published, and rendering it would tear down the surfaces it omits.",
       "given": {
         "worlds": {
           "tree ran ahead": {
@@ -412,7 +412,7 @@
         "focusedRegion": "r0",
         "focusedPane": "w1:p2",
         "view": [
-          "r0 tab=w1:t1 columns(w1:p1*, w1:p2@0.5)"
+          "r0 tab=w1:t1 (no tree)"
         ]
       }
     },
@@ -1582,7 +1582,7 @@
         "focusedRegion": "r0",
         "focusedPane": "w1:p2",
         "view": [
-          "r0 tab=w1:t1 w1:p1*"
+          "r0 tab=w1:t1 (no tree)"
         ]
       }
     },
@@ -1795,6 +1795,917 @@
         "focusedPane": "w1:p1",
         "view": [
           "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)",
+          "r1 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
+        ]
+      }
+    },
+    {
+      "name": "a step moves the keyboard along the tree",
+      "why": "Reaching every pane from the keyboard is the floor for a window that renders more than one, and the order has to be the one a person sees rather than the one panes were created in. Tree order is that order: left to right, top to bottom, which is how the same panes are laid out on screen.",
+      "given": {
+        "attached": [
+          "w1:p1"
+        ],
+        "worlds": {
+          "three panes": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "w1"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ],
+            "layouts": [
+              {
+                "tab": "w1:t1",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p1",
+                  "second": {
+                    "axis": "columns",
+                    "ratio": 0.5,
+                    "first": "w1:p2",
+                    "second": "w1:p3"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "steps": [
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/herdr-local.sock"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "three panes"
+          },
+          {
+            "do": "step",
+            "direction": "next"
+          }
+        ]
+      },
+      "expect": {
+        "daemons": [
+          "local local=/tmp/herdr-local.sock"
+        ],
+        "regions": [
+          "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p2"
+        ],
+        "focusedRegion": "r0",
+        "focusedPane": "w1:p2",
+        "view": [
+          "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
+        ]
+      }
+    },
+    {
+      "name": "a step past the last pane comes back to the first",
+      "why": "A window has no edge to bump against, and a step that silently did nothing at the end is indistinguishable from a dead key - which is the failure this whole vocabulary exists to avoid. Wrapping also means the same keystroke reaches every pane without the user tracking where they are in the tree.",
+      "given": {
+        "attached": [
+          "w1:p1"
+        ],
+        "worlds": {
+          "three panes": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "w1"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ],
+            "layouts": [
+              {
+                "tab": "w1:t1",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p1",
+                  "second": {
+                    "axis": "columns",
+                    "ratio": 0.5,
+                    "first": "w1:p2",
+                    "second": "w1:p3"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "steps": [
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/herdr-local.sock"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "three panes"
+          },
+          {
+            "do": "focusPane",
+            "region": "r0",
+            "pane": "w1:p3"
+          },
+          {
+            "do": "step",
+            "direction": "next"
+          }
+        ]
+      },
+      "expect": {
+        "daemons": [
+          "local local=/tmp/herdr-local.sock"
+        ],
+        "regions": [
+          "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p1"
+        ],
+        "focusedRegion": "r0",
+        "focusedPane": "w1:p1",
+        "view": [
+          "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
+        ]
+      }
+    },
+    {
+      "name": "a step back from the first pane lands on the last",
+      "why": "The other direction has to wrap the other way, and it is worth its own case because a modulo written once tends to be written for next only - previous then either refuses at the start or walks off the front of the list.",
+      "given": {
+        "attached": [
+          "w1:p1"
+        ],
+        "worlds": {
+          "three panes": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "w1"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ],
+            "layouts": [
+              {
+                "tab": "w1:t1",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p1",
+                  "second": {
+                    "axis": "columns",
+                    "ratio": 0.5,
+                    "first": "w1:p2",
+                    "second": "w1:p3"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "steps": [
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/herdr-local.sock"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "three panes"
+          },
+          {
+            "do": "step",
+            "direction": "previous"
+          }
+        ]
+      },
+      "expect": {
+        "daemons": [
+          "local local=/tmp/herdr-local.sock"
+        ],
+        "regions": [
+          "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p3"
+        ],
+        "focusedRegion": "r0",
+        "focusedPane": "w1:p3",
+        "view": [
+          "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
+        ]
+      }
+    },
+    {
+      "name": "a step crosses out of one region into the next",
+      "why": "Two regions side by side are one window to the person looking at them, so a step that stopped at a region's edge would leave panes no keystroke could reach - and in the arrangement this product is for, those are the panes on the devenv. Stepping is over the window's reading order, not over one region's.",
+      "given": {
+        "attached": [
+          "w1:p1"
+        ],
+        "worlds": {
+          "three panes": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "w1"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ],
+            "layouts": [
+              {
+                "tab": "w1:t1",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p1",
+                  "second": {
+                    "axis": "columns",
+                    "ratio": 0.5,
+                    "first": "w1:p2",
+                    "second": "w1:p3"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "steps": [
+          {
+            "do": "attachDaemon",
+            "daemon": "devenv",
+            "socketPath": "/tmp/herdr-devenv.sock"
+          },
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/herdr-local.sock"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "devenv",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "devenv",
+            "world": "three panes"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "three panes"
+          },
+          {
+            "do": "focusPane",
+            "region": "r0",
+            "pane": "w1:p3"
+          },
+          {
+            "do": "step",
+            "direction": "next"
+          }
+        ]
+      },
+      "expect": {
+        "daemons": [
+          "devenv local=/tmp/herdr-devenv.sock",
+          "local local=/tmp/herdr-local.sock"
+        ],
+        "regions": [
+          "r0 daemon=devenv workspace=w1 tab=w1:t1 pane=w1:p3",
+          "r1 daemon=local workspace=w1 tab=w1:t1 pane=w1:p1"
+        ],
+        "focusedRegion": "r1",
+        "focusedPane": "w1:p1",
+        "view": [
+          "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)",
+          "r1 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
+        ]
+      }
+    },
+    {
+      "name": "stepping a window with nothing in it leaves the keyboard alone",
+      "why": "A bare `muster` is the renderer check and has no panes at all. A step there must be a refusal the caller can report rather than a focus set to something invented, because a composition naming a pane no daemon holds is the state that renders and ignores the keyboard.",
+      "given": {
+        "attached": [],
+        "worlds": {},
+        "steps": [
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/herdr-local.sock"
+          },
+          {
+            "do": "step",
+            "direction": "next"
+          }
+        ]
+      },
+      "expect": {
+        "daemons": [
+          "local local=/tmp/herdr-local.sock"
+        ],
+        "regions": [],
+        "view": []
+      }
+    },
+    {
+      "name": "a tree that disagrees with the tab's panes is not published",
+      "why": "A backend publishes a tab's pane list and its arrangement as separate events, and nothing orders them against each other - a tab mid-split briefly has a tree naming fewer panes than it holds, and a subscription that has just bootstrapped replays layout events and walks a tab backwards through arrangements it had minutes ago. Both were measured against herdr 0.8.0. Rendering the stale tree drops every pane it omits, and a dropped pane costs its surface and the bridge feeding it - which then cannot reconnect, so the pane comes back rendering and swallowing every keystroke. Withholding is a state the shell already answers correctly by leaving what it shows alone.",
+      "given": {
+        "attached": [
+          "w1:p1"
+        ],
+        "worlds": {
+          "three panes": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "w1"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ],
+            "layouts": [
+              {
+                "tab": "w1:t1",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p1",
+                  "second": {
+                    "axis": "columns",
+                    "ratio": 0.5,
+                    "first": "w1:p2",
+                    "second": "w1:p3"
+                  }
+                }
+              }
+            ]
+          },
+          "one in the tree": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "w1"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ],
+            "layouts": [
+              {
+                "tab": "w1:t1",
+                "root": "w1:p1"
+              }
+            ]
+          }
+        },
+        "steps": [
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/herdr-local.sock"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "three panes"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "one in the tree"
+          }
+        ]
+      },
+      "expect": {
+        "daemons": [
+          "local local=/tmp/herdr-local.sock"
+        ],
+        "regions": [
+          "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p1"
+        ],
+        "focusedRegion": "r0",
+        "focusedPane": "w1:p1",
+        "view": [
+          "r0 tab=w1:t1 (no tree)"
+        ]
+      }
+    },
+    {
+      "name": "a tree naming a pane the tab does not hold is not published either",
+      "why": "The other direction, and it arrives the same way: a pane closes, and the tree still naming it is published before or after the pane list drops it. Rendering that tree builds a surface for a pane that is gone, which spawns a bridge that attaches to nothing and a rectangle that will never paint. One rule covers both directions because there is only one question - does this arrangement describe this tab.",
+      "given": {
+        "attached": [
+          "w1:p1"
+        ],
+        "worlds": {
+          "three panes": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "w1"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ],
+            "layouts": [
+              {
+                "tab": "w1:t1",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p1",
+                  "second": {
+                    "axis": "columns",
+                    "ratio": 0.5,
+                    "first": "w1:p2",
+                    "second": "w1:p3"
+                  }
+                }
+              }
+            ]
+          },
+          "one closed": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "w1"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ],
+            "layouts": [
+              {
+                "tab": "w1:t1",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p1",
+                  "second": {
+                    "axis": "columns",
+                    "ratio": 0.5,
+                    "first": "w1:p2",
+                    "second": "w1:p3"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "steps": [
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/herdr-local.sock"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "three panes"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "one closed"
+          }
+        ]
+      },
+      "expect": {
+        "daemons": [
+          "local local=/tmp/herdr-local.sock"
+        ],
+        "regions": [
+          "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p1"
+        ],
+        "focusedRegion": "r0",
+        "focusedPane": "w1:p1",
+        "view": [
+          "r0 tab=w1:t1 (no tree)"
+        ]
+      }
+    },
+    {
+      "name": "a step out of a region with no arrangement lands in one that has it",
+      "why": "While a region's tree is withheld there is nothing in it to step through, and the keyboard is standing somewhere the window's reading order does not contain. Refusing would make the key look dead for as long as that lasts, which is unpredictable; going to the first pane the window does know about is an answer that is always available and always somewhere the user can see.",
+      "given": {
+        "attached": [
+          "w1:p1"
+        ],
+        "worlds": {
+          "three panes": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "w1"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ],
+            "layouts": [
+              {
+                "tab": "w1:t1",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p1",
+                  "second": {
+                    "axis": "columns",
+                    "ratio": 0.5,
+                    "first": "w1:p2",
+                    "second": "w1:p3"
+                  }
+                }
+              }
+            ]
+          },
+          "one in the tree": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "w1"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ],
+            "layouts": [
+              {
+                "tab": "w1:t1",
+                "root": "w1:p1"
+              }
+            ]
+          }
+        },
+        "steps": [
+          {
+            "do": "attachDaemon",
+            "daemon": "devenv",
+            "socketPath": "/tmp/herdr-devenv.sock"
+          },
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/herdr-local.sock"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "devenv",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "devenv",
+            "world": "one in the tree"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "three panes"
+          },
+          {
+            "do": "step",
+            "direction": "next"
+          }
+        ]
+      },
+      "expect": {
+        "daemons": [
+          "devenv local=/tmp/herdr-devenv.sock",
+          "local local=/tmp/herdr-local.sock"
+        ],
+        "regions": [
+          "r0 daemon=devenv workspace=w1 tab=w1:t1 pane=w1:p1",
+          "r1 daemon=local workspace=w1 tab=w1:t1 pane=w1:p1"
+        ],
+        "focusedRegion": "r1",
+        "focusedPane": "w1:p1",
+        "view": [
+          "r0 tab=w1:t1 (no tree)",
           "r1 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
         ]
       }

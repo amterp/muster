@@ -56,6 +56,19 @@ pub enum BackendIntent {
     },
 }
 
+/// What a backend said about a change it just made.
+///
+/// Not state, and not a shortcut around the event stream: what the session now looks like
+/// still arrives on the daemon's own events, and the mirror still learns it there. What is
+/// here is the one thing those events cannot answer - *which* of the panes that appeared is
+/// the one this request created - and Muster needs it only to point its own keyboard, which
+/// is Muster's state rather than the daemon's.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Outcome {
+    /// The pane a split made, when the request made one.
+    pub created: Option<PaneId>,
+}
+
 /// A way to ask one backend for a change.
 ///
 /// One per daemon rather than one per pane, unlike the input channels: these are about
@@ -66,7 +79,7 @@ pub trait BackendChannel: Send + Sync + std::fmt::Debug {
     /// The error is prose for a log rather than a code to branch on, because there is no
     /// second thing to try: a refused split is a split that did not happen, and the honest
     /// response is to say so where somebody will read it.
-    fn submit(&self, intent: &BackendIntent) -> Result<(), String>;
+    fn submit(&self, intent: &BackendIntent) -> Result<Outcome, String>;
 
     /// What this channel is talking to, for the log.
     fn description(&self) -> &str;

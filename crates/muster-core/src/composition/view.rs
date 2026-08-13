@@ -13,9 +13,9 @@
 //! Derived and disposable, unlike the records next door. Nothing here is saved, and nothing
 //! here is authoritative: a view is correct exactly as long as the mirror behind it is.
 
-use crate::composition::record::{Composition, DaemonId, RegionId};
+use crate::composition::record::{Composition, DaemonId, Region, RegionId};
 use crate::mirror::Mirror;
-use crate::mirror::backend::{LayoutNode, PaneId, SplitAxis, TabId};
+use crate::mirror::backend::{Layout, LayoutNode, PaneId, SplitAxis, TabId};
 
 /// Everything one window is showing.
 #[derive(Debug, Clone, PartialEq)]
@@ -89,7 +89,8 @@ impl View {
             .regions()
             .filter_map(|region| {
                 let held = mirror(&region.daemon)?;
-                let layout = held.layout(&region.tab);
+                let layout =
+                    held.layout(&region.tab).filter(|layout| arranges(held, region, layout));
                 Some(ViewRegion {
                     id: region.id,
                     daemon: region.daemon.clone(),
@@ -113,6 +114,68 @@ impl View {
     pub fn region(&self, id: RegionId) -> Option<&ViewRegion> {
         self.regions.iter().find(|region| region.id == id)
     }
+
+    /// Where the keyboard lands after stepping one pane.
+    ///
+    /// Reading order across the whole window, not within a region: two regions side by side
+    /// are one thing to a person looking at them, and a step that stopped at a region's edge
+    /// would leave panes no keystroke could reach. It wraps, because a window has no edge to
+    /// bump against and a step that silently did nothing is indistinguishable from a dead key.
+    ///
+    /// Here rather than in the shell because it is a decision, and because the CLI and the
+    /// agent-facing API ask for it in the same words. Here rather than on [`Composition`]
+    /// because the order is the tab's tree, and composition holds no tree - it is daemon truth
+    /// (`architecture.md`, one action path).
+    pub fn step(&self, direction: Step) -> Option<(RegionId, PaneId)> {
+        let order: Vec<(RegionId, PaneId)> = self
+            .regions
+            .iter()
+            .flat_map(|region| {
+                region
+                    .root
+                    .iter()
+                    .flat_map(ViewNode::panes)
+                    .map(|pane| (region.id, pane.id.clone()))
+            })
+            .collect();
+        let at = self.focused.and_then(|focused| {
+            let pane = self.region(focused)?.pane.as_ref()?;
+            order.iter().position(|(region, held)| *region == focused && held == pane)
+        });
+        match at {
+            Some(at) => {
+                let step = match direction {
+                    Step::Next => 1,
+                    Step::Previous => order.len().checked_sub(1)?,
+                };
+                order.get((at + step) % order.len()).cloned()
+            }
+            // The keyboard is on a pane no tree names, which is an ordinary moment rather
+            // than a bug: a tab mid-split publishes its panes and its tree separately. A step
+            // from nowhere goes to the end it came from rather than refusing.
+            None => match direction {
+                Step::Next => order.first().cloned(),
+                Step::Previous => order.last().cloned(),
+            },
+        }
+    }
+}
+
+/// Which way a step through the window's panes goes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Step {
+    Next,
+    Previous,
+}
+
+impl Step {
+    pub fn parse(name: &str) -> Option<Step> {
+        match name {
+            "next" => Some(Step::Next),
+            "previous" => Some(Step::Previous),
+            _ => None,
+        }
+    }
 }
 
 impl ViewNode {
@@ -132,6 +195,28 @@ impl ViewNode {
             }
         }
     }
+}
+
+/// Whether a tab's tree describes the panes that tab actually holds.
+///
+/// A backend publishes a tab's pane list and its arrangement as separate events, and nothing
+/// orders them against each other. Two ways that shows up, both measured against herdr 0.8.0:
+/// a tab mid-split briefly has a tree naming fewer panes than it holds, and a subscription
+/// that has just bootstrapped replays layout events, walking a tab backwards through
+/// arrangements it had minutes ago.
+///
+/// A tree that disagrees is withheld rather than repaired. Repairing it means inventing a
+/// place to put a pane no daemon put anywhere, and rendering it as it stands means dropping
+/// every pane it omits - which costs those panes their surfaces and, with them, the bridges
+/// that feed them. Withholding is a state the shell already understands and already has the
+/// right answer to: it leaves what it is showing alone, and the real tree arrives on its own
+/// event a moment later.
+fn arranges(mirror: &Mirror, region: &Region, layout: &Layout) -> bool {
+    let mut arranged: Vec<&PaneId> = layout.root.panes();
+    arranged.sort_unstable();
+    let mut held: Vec<&PaneId> = mirror.panes_in_tab(&region.tab).map(|pane| &pane.id).collect();
+    held.sort_unstable();
+    arranged == held
 }
 
 fn build(
