@@ -17,6 +17,13 @@ import PackageDescription
 let package = Package(
   name: "muster",
   platforms: [.macOS(.v14)],
+  dependencies: [
+    // The seam's runtime, and - as `swift run protoc` and `swift run protoc-gen-swift` -
+    // its code generator too. It vendors protoc's own C++ source, so `./dev --proto`
+    // needs nothing installed and cannot pick up whichever protoc happens to be first on
+    // PATH. Nothing it generates is committed; see proto/muster.proto.
+    .package(url: "https://github.com/apple/swift-protobuf.git", from: "1.38.0")
+  ],
   targets: [
     .target(name: "MusterCore"),
     // The one herdr-shaped module. Frame decoding lives here rather than in the bridge
@@ -33,6 +40,10 @@ let package = Package(
     // and keeps its runtime private, so it composes with GhosttyKit where the archive
     // cannot. Revisit if upstream ever emits one library carrying both APIs.
     .systemLibrary(name: "CGhosttyVt", path: "Sources/CGhosttyVt"),
+    // The portable core, reached through the one seam symbol. Built by cargo, not by
+    // SwiftPM - `./dev` runs the Rust build first, and a missing dylib surfaces here as a
+    // linker error naming libmuster.
+    .systemLibrary(name: "CMuster", path: "Sources/CMuster"),
     // What the shell still needs from libghostty-vt: the key encoder, on the path from an
     // NSEvent to a socket. The grid oracle and the terminal it reads moved to the Rust
     // crate of the same name (MIP-1); this shrinks to nothing when the input path follows.
@@ -75,7 +86,23 @@ let package = Package(
     // assumes an OS, which is allowed - it is the per-OS layer - but an executable whose
     // entry point is top-level code cannot be imported by a test target, and this layer
     // has shipped bugs. A library keeps it reachable (docs/testing.md, thin shell).
-    .target(name: "MusterMac", dependencies: ["MusterCore", "MusterRenderer"]),
+    .target(
+      name: "MusterMac",
+      dependencies: [
+        "CMuster", "MusterCore", "MusterRenderer",
+        .product(name: "SwiftProtobuf", package: "swift-protobuf"),
+      ],
+      linkerSettings: [
+        .unsafeFlags([
+          "-Ltarget/debug",
+          // Loader-relative, so a checkout works without installing anything: the first
+          // depth resolves for executables in .build/<triple>/<config>/, the second for a
+          // test bundle's deeper Contents/MacOS. Same arrangement as MusterVT's.
+          "-Xlinker", "-rpath", "-Xlinker", "@loader_path/../../../target/debug",
+          "-Xlinker", "-rpath", "-Xlinker", "@loader_path/../../../../../../target/debug",
+        ])
+      ]
+    ),
     .executableTarget(
       name: "muster",
       dependencies: ["MusterCore", "MusterHerdr", "MusterMac", "MusterRenderer", "MusterVT"]),

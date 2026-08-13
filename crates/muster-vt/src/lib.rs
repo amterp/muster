@@ -4,12 +4,14 @@
 //! with it and tests read grids from it. Nothing here needs a GPU, a window, or a running
 //! app.
 
+mod build_info;
 mod ffi;
 mod grid;
 mod key_encoder;
 mod key_mapping;
 mod terminal;
 
+pub use build_info::engine_version;
 pub use grid::{Cell, Cursor, Grid, Row, Width};
 pub use key_encoder::{EncoderError, KeyEncoder};
 pub use terminal::{Terminal, TerminalError};

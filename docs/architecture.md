@@ -106,11 +106,22 @@ between "bytes" and "control":
 The shell and the core are different languages in one process, so the boundary between them is real and has to be
 narrow. It is one C ABI symbol - `muster_dispatch(request_bytes) -> response_bytes` - carrying protobuf-encoded
 messages in the vocabulary above, plus a callback the shell registers so the core can wake it unasked (an agent
-changed state, a notification is due). Details and alternatives in `mip/0001-portable-core.md`.
+changed state, a notification is due). `include/muster.h` is the whole contract and is hand-written, because a shell
+on another platform implements against it and should be able to read it without building anything. Details and
+alternatives in `mip/0001-portable-core.md`.
 
 Two properties keep this from being a bottleneck or a maintenance tax. **It carries events, never bytes**: the data
 plane runs adapter to surface and never enters the core, so this seam sees keystrokes and daemon events, not output.
-And **the schema is generated on both sides**, so a vocabulary change is one edit rather than two that can drift.
+And **the schema is generated on both sides** from `proto/muster.proto` and committed on neither, so a shell and a
+core that disagree is not a state the repo can hold.
+
+The core answers every request, including the ones it refuses. A shell cannot otherwise tell "the core said no" from
+"the core is gone", and those want opposite reactions - so a refusal is a `Failure` carrying prose written for
+whoever finds it in a log, not an error code to branch on.
+
+Backpressure has no design yet, and the starting answer is a property of this architecture rather than a mechanism:
+because view = f(daemon state), a queued update can be **coalesced** rather than dropped or blocked on. That is what
+lets this seam afford a bounded queue when there is finally state worth queueing.
 
 The same schema is the CLI and the agent-facing API. "One action path" stops being a discipline and becomes
 codegen - a surface that cannot express an action is a missing message, visible at build time.

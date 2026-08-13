@@ -1,0 +1,33 @@
+[package]
+name = "muster-seam"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lib]
+name = "muster"
+# A dynamic library rather than a static one, on purpose. libghostty ships two builds of
+# one commit - the surface xcframework the shell renders through, and the vt library the
+# core encodes with - and both statically embed Zig's runtime, so linking both archives
+# into one binary fails on 35 duplicate ubsan symbols. A dylib exporting only the symbols
+# in include/muster.h keeps its dependencies its own, which makes that collision
+# impossible rather than merely unlikely (mip/0001-portable-core.md).
+# The rlib alongside it is for the suite: a cdylib alone produces nothing a Rust test can
+# link against, and the request handling below is exactly what wants testing without a
+# shell in the picture.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+muster-core.workspace = true
+prost.workspace = true
+# Unused until the input path crosses. Present from the first commit anyway: the link it
+# pulls in is the risky part of this crate, and it should be exercised before anything
+# depends on it working.
+muster-vt.workspace = true
+
+[build-dependencies]
+prost-build = "0.14"
+protox = "0.9"
+
+[lints]
+workspace = true

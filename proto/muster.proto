@@ -1,0 +1,92 @@
+// Muster's vocabulary, and the only thing that crosses the shell/core seam.
+//
+// Generated on both sides from this file and never committed, so a shell and a core that
+// disagree is not a state the repo can be in (see ./dev --proto). The same schema is meant
+// to serve the CLI and the agent-facing API, which is what turns "every action runs
+// through one shared path" from a discipline into codegen (mip/0001-portable-core.md).
+//
+// Field numbers are not yet a compatibility promise: today both sides are generated from
+// this file in the same build, so nothing outlives a renumbering. That changes the day a
+// CLI speaks this over a socket to a different build, and this comment should change with
+// it.
+
+syntax = "proto3";
+
+package muster;
+
+// Everything the shell asks of the core.
+message Request {
+  oneof payload {
+    Startup startup = 1;
+    LogRecord log_record = 2;
+  }
+}
+
+// Everything the core answers.
+//
+// A request the core understood and refused is a Failure, not a missing response: the
+// shell has nowhere better to put an error than the log this seam already carries.
+message Response {
+  oneof payload {
+    Ok ok = 1;
+    Failure failure = 2;
+  }
+}
+
+message Ok {}
+
+message Failure {
+  // Written for whoever reads it in a log at 2am: what broke, what it costs, what to
+  // check. Not an error code - the seam has no failures a caller can branch on, and
+  // pretending otherwise would invite handling instead of reporting.
+  string reason = 1;
+}
+
+// What the core cannot work out for itself, handed over once at launch.
+message Startup {
+  // Where this run's log file goes. Empty turns logging off, which is what a release build
+  // does unless asked otherwise. The shell decides because where logs belong is an OS
+  // question (architecture.md, the diagnostic log).
+  //
+  // The shell also exports this as MUSTER_LOG_FILE so that bridges inherit it. That is a
+  // different mechanism for a different process, not a duplicate of this field: a bridge
+  // is spawned, not dispatched to.
+  string log_path = 1;
+
+  // trace, debug, info, warn, error. Empty means debug.
+  string log_level = 2;
+
+  // Names this process in every record it writes. The bridges use their own.
+  string process = 3;
+}
+
+// One thing that happened, on its way to the file the core owns.
+//
+// The shell logs through the seam rather than writing its own file, so that one writer
+// owns the format, the truncation rule and the ordering. `event` is a dotted name rather
+// than a sentence - `channel.connected`, not "the channel connected" - so finding every
+// instance is a grep instead of a guess at how it was worded.
+message LogRecord {
+  string level = 1;
+  string event = 2;
+  map<string, string> fields = 3;
+}
+
+// What the core tells the shell without being asked.
+//
+// Delivered through the callback registered at startup, from whichever thread noticed.
+// Nothing here is a reply to anything.
+message Event {
+  oneof payload {
+    PaneTypeable pane_typeable = 1;
+  }
+}
+
+// A pane's bridge dialed back, so keystrokes now have somewhere to go.
+//
+// The single most useful fact in the log when typing does nothing, and the reason the push
+// direction exists at all: it becomes true on a socket accept, long after the shell
+// finished asking about it.
+message PaneTypeable {
+  string pane_id = 1;
+}

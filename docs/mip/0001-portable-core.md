@@ -168,7 +168,9 @@ call.
 - How the callback direction handles a shell that is slow to drain. Backpressure at this
   seam has no design yet. The starting answer worth writing down: because view = f(daemon
   state), a queued state update can be *coalesced* rather than dropped or blocked on, which
-  is what lets this seam afford a bounded queue.
+  is what lets this seam afford a bounded queue. Nothing is queued today - the callback
+  runs on the thread that noticed and the shell copies and hops - so this stays open until
+  there is state worth coalescing.
 - Whether the herdr adapter can share types with herdr itself rather than restating them.
   Tempting, and in tension with "nothing herdr-shaped escapes the adapter".
 
@@ -186,3 +188,6 @@ call.
 - 2026-08-13 Accepted
 - 2026-08-13 Core, herdr adapter, VT and bridge ported; the bridge question answered in
   Rust's favor. The seam itself is still ahead.
+- 2026-08-13 The seam exists and carries the shell's log records. The libghostty
+  co-linking worry did not materialize: the core is a dylib exporting three symbols, so
+  its libghostty-vt dependency is its own and never meets the surface xcframework's.

@@ -22,14 +22,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   func applicationDidFinishLaunching(_ notification: Notification) {
     // First, so that everything after it is on the record - including the failures that
     // terminate this method.
-    if let logPath = startLogging() {
+    let logPath = startLogging()
+    if let logPath {
       FileHandle.standardError.write(Data("muster: logging to \(logPath)\n".utf8))
     }
-    Log.info(
+    // The core owns the file from here. The shell decided where it goes, which is the one
+    // part of logging that is an OS question (architecture.md, the diagnostic log).
+    Core.start(logPath: logPath)
+    Core.info(
       "app.launch",
       [
         "args": CommandLine.arguments.dropFirst().joined(separator: " "),
-        "input_recorded": String(Log.includesInput),
+        "input_recorded": String(Core.includesInput),
       ])
 
     installMenu()
@@ -55,16 +59,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       // listening yet.
       let pane = try makePaneInput()
       let command = paneCommand(controlSocketPath: channel?.socketPath)
-      Log.info("surface.create", ["command": command ?? "(none)"])
+      Core.info("surface.create", ["command": command ?? "(none)"])
       view.attach(try renderer.makeSurface(in: view, command: command), pane: pane)
       renderer.setFocus(true)
       window.makeFirstResponder(view)
-      Log.info("app.ready", ["typeable": String(pane != nil)])
+      Core.info("app.ready", ["typeable": String(pane != nil)])
     } catch {
       // A spike that fails silently teaches nothing. Say which step broke, because each
       // one fails for a different reason: init and app creation mean the embedding API
       // itself is not usable here, surface creation means the view binding is wrong.
-      Log.error("app.setup.failed", ["error": "\(error)"])
+      Core.error("app.setup.failed", ["error": "\(error)"])
       FileHandle.standardError.write(Data("muster: renderer setup failed: \(error)\n".utf8))
       NSApp.terminate(nil)
     }
@@ -108,7 +112,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // pane still works, with a guess.
     let server = HerdrPaneChannel(paneID: paneID)
     if server == nil {
-      Log.warn(
+      Core.warn(
         "app.server_channel.unavailable",
         [
           "impact": "arrow keys and paste fall back to a guessed encoding, "

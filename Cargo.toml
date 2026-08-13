@@ -6,6 +6,7 @@ members = [
     "crates/muster-bridge",
     "crates/muster-herdr",
     "crates/muster-perf",
+    "crates/muster-seam",
     "crates/muster-vt",
 ]
 
@@ -22,6 +23,7 @@ libc = "0.2"
 muster-core = { path = "crates/muster-core" }
 muster-herdr = { path = "crates/muster-herdr" }
 muster-vt = { path = "crates/muster-vt" }
+prost = "0.14"
 serde_json = "1"
 
 # Lints live here rather than in a CI flag, so that `cargo build`, rust-analyzer and the

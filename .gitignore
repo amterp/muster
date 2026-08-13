@@ -19,3 +19,8 @@ devenv/.ssh/
 
 # Rust
 target/
+
+# Protobuf, generated on both sides from proto/muster.proto and committed on neither, so
+# a shell and a core that disagree is not a state this repo can be in. Rust generates into
+# target/ on every cargo build; ./dev regenerates this one when the schema's hash changes.
+Sources/MusterMac/Generated/

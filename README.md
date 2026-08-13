@@ -85,6 +85,11 @@ shows up as `env: rad: No such file or directory`. Rust installs itself - `rust-
 rustup fetches it on the first `cargo` call, the same way `deps/ghostty.pin` decides which libghostty gets built.
 libclang, which the libghostty-vt bindings are generated with, comes from the Xcode command line tools.
 
+The seam's types are generated from `proto/muster.proto` on both sides and committed on neither, so a checkout
+cannot hold a shell and a core that disagree. Neither generator is a thing you install: Rust compiles the schema
+with a Rust library, and swift-protobuf vendors protoc's own source, so `./dev` builds it. `./dev --proto`
+regenerates on demand; a normal build does it only when the schema's hash changes.
+
 ## Repo conventions
 
 - `docs/`: `origin.md` is the founding story, frozen as history; `architecture.md`, `testing.md`, and `glossary.md`

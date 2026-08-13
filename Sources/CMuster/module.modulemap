@@ -1,0 +1,11 @@
+// The core's C ABI, as a module Swift can import.
+//
+// The header is checked in (include/muster.h) rather than produced by a build, because it
+// is the seam's contract rather than a description of one side's implementation. The
+// library it names is built by cargo; ./dev stages it beside the app, the same way it
+// stages muster-bridge.
+module CMuster {
+  header "../../include/muster.h"
+  link "muster"
+  export *
+}

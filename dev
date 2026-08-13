@@ -16,6 +16,7 @@ args:
     lint l bool    # Report style violations, changing nothing.
     format f bool  # Rewrite sources into canonical style.
     clean c bool   # Delete build artifacts.
+    proto bool     # Regenerate the seam's Swift types, whether or not the schema changed.
     contract bool  # Run the app against a real herdr. Needs a GUI session; not in the gate.
     perf bool      # Measure the per-unit budgets against perf/baseline.json. Not in the gate.
     record bool    # With --perf, record this run as the new baseline instead of judging it.
@@ -33,6 +34,11 @@ DEP_ARTIFACTS = [
     "deps/ghostty/zig-out/lib/libghostty-vt.dylib",
     "deps/ghostty/zig-out/include/ghostty/vt.h",
 ]
+PROTO = "proto/muster.proto"
+PROTO_OUT = "Sources/MusterMac/Generated"
+// Gitignored, beside the code it describes: the hash of the schema that produced it. The
+// Rust side needs no equivalent - cargo tracks the same file itself.
+PROTO_STAMP = "Sources/MusterMac/Generated/.proto.sha256"
 
 fn announce(name):
     print(bold("\n▸ {name}"))
@@ -68,6 +74,35 @@ fn stage_bridge():
     stdout = $`swift build --show-bin-path`
     swift_bin = stdout.trim()
     $`cp target/debug/muster-bridge {swift_bin}/muster-bridge`
+
+// The seam's types are generated on both sides and committed on neither, so a checkout
+// cannot hold a shell and a core that disagree - it holds neither until something builds
+// them. Rust needs nothing here: protox is a Rust library, so cargo regenerates from the
+// same schema and does its own freshness tracking. Swift has no equivalent parser, so this
+// builds swift-protobuf's vendored protoc from source - about half a minute, once - and
+// gates the run on the schema's hash the way deps/.built gates libghostty.
+fn proto_hash():
+    stdout = $`shasum -a 256 {PROTO}`
+    return stdout.split(" ")[0]
+
+fn proto_is_current():
+    if not get_path(PROTO_OUT).exists:
+        return false
+    stamp = read_file(PROTO_STAMP) catch:
+        return false
+    return stamp.content.trim() == proto_hash()
+
+fn generate_proto():
+    print(dim("generating the seam's Swift types - builds protoc from source the first time"))
+    stdout = $`swift build --show-bin-path`
+    bin = stdout.trim()
+    $`swift build --product protoc`
+    $`swift build --product protoc-gen-swift`
+    $`mkdir -p {PROTO_OUT}`
+    // The plugin is named by path rather than found on PATH, so this cannot pick up some
+    // other protoc-gen-swift that happens to be installed.
+    $`{bin}/protoc --plugin=protoc-gen-swift={bin}/protoc-gen-swift --swift_out={PROTO_OUT} --proto_path=proto {PROTO}`
+    write_file(PROTO_STAMP, proto_hash())
 
 fn read_pin():
     result = read_file("deps/ghostty.pin") catch:
@@ -138,6 +173,9 @@ if record and not perf:
     print_err("Try: ./dev --perf --record")
     exit(1)
 
+if proto:
+    build = true
+
 if not (deps or build or test or lint or format or clean or contract or perf or latency):
     deps = true
     build = true
@@ -160,6 +198,8 @@ if format:
 
 if build:
     announce("build")
+    if proto or not proto_is_current():
+        generate_proto()
     // The core first: it is the layer the shell will call into, and its errors are the
     // ones a contributor can act on without a window.
     $`cargo build --workspace --all-targets`

@@ -130,7 +130,7 @@ public final class SurfaceView: NSView {
   /// than a method `NSView` declares, so this declares it.
   @objc public func paste(_ sender: Any?) {
     guard let text = NSPasteboard.general.string(forType: .string) else {
-      Log.debug("input.paste.empty", ["impact": "nothing was sent; the clipboard has no text"])
+      Core.debug("input.paste.empty", ["impact": "nothing was sent; the clipboard has no text"])
       return
     }
     pane?.paste(text: text)
