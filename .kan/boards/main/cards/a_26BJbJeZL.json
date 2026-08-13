@@ -3,6 +3,14 @@
   "alias": "approach-the-herdr",
   "alias_explicit": false,
   "column": "backlog-lo",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Agenda for that conversation is accumulating, all measured rather than guessed:\n\n1. Agent state needs a subscription per pane (a_27N6pklkl). pane.agent_status_changed requires a pane_id and no unparameterized subscription carries the same information, so an overview of N panes costs N held-open connections. pane.updated already exists unparameterized, so the plumbing looks present.\n\n2. Scrollback does not survive a daemon restart, though the tree and cwds do (observations section 12). Whether that is intended is worth asking before anyone builds around it.\n\n3. layout.export could carry the agent session reference herdr already tracks via pane.report_agent_session. That would make its own restore resumable rather than merely structural, for every client.\n\n4. A keystroke can wait out a render window it did not cause (a_27GiE7gJJ).",
+      "created_at_millis": 1786646075348,
+      "id": "c_27QdHK5LD"
+    }
+  ],
   "created_at_millis": 1786461806376,
   "creator": "Alexander Terp",
   "description": "After daily-driving through stage 3: show them the client, offer daemon-side PRs, gauge interest in an official native client. Apache-2.0 on both sides keeps this easy. Deliberately parked - see docs/origin.md, 'The decision'.",
@@ -13,7 +21,7 @@
   "position": "UUUUU",
   "title": "Approach the herdr team once muster proves itself",
   "type": "chore",
-  "updated_at_millis": 1786461806376,
+  "updated_at_millis": 1786646075348,
   "history": [
     {"field":"column","value":"backlog-lo","at":1786461806376}
   ]

@@ -1,0 +1,5 @@
+[  2038ms] before restart: 3 pane(s), marker on screen: True
+[  4826ms] terminals reused: False (pane ids reused: True)
+[  4826ms] after restart: 3 pane(s) - survived: True
+[  4828ms] scrollback marker survived: False
+[  6053ms] layout.apply rebuilt 5 pane(s), 1 split(s)

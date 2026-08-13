@@ -1,0 +1,164 @@
+{
+  "agents": [],
+  "focused_pane_id": "w1:p1",
+  "focused_tab_id": "w1:t1",
+  "focused_workspace_id": "w1",
+  "layouts": [
+    {
+      "area": {
+        "height": 23,
+        "width": 54,
+        "x": 26,
+        "y": 1
+      },
+      "focused_pane_id": "w1:p1",
+      "panes": [
+        {
+          "focused": true,
+          "pane_id": "w1:p1",
+          "rect": {
+            "height": 23,
+            "width": 27,
+            "x": 26,
+            "y": 1
+          }
+        },
+        {
+          "focused": false,
+          "pane_id": "w1:p2",
+          "rect": {
+            "height": 23,
+            "width": 27,
+            "x": 53,
+            "y": 1
+          }
+        }
+      ],
+      "splits": [
+        {
+          "direction": "right",
+          "id": "split_0_root",
+          "ratio": 0.5,
+          "rect": {
+            "height": 23,
+            "width": 54,
+            "x": 26,
+            "y": 1
+          }
+        }
+      ],
+      "tab_id": "w1:t1",
+      "workspace_id": "w1",
+      "zoomed": false
+    },
+    {
+      "area": {
+        "height": 23,
+        "width": 54,
+        "x": 26,
+        "y": 1
+      },
+      "focused_pane_id": "w1:p3",
+      "panes": [
+        {
+          "focused": true,
+          "pane_id": "w1:p3",
+          "rect": {
+            "height": 23,
+            "width": 54,
+            "x": 26,
+            "y": 1
+          }
+        }
+      ],
+      "splits": [],
+      "tab_id": "w1:t2",
+      "workspace_id": "w1",
+      "zoomed": false
+    }
+  ],
+  "panes": [
+    {
+      "agent_status": "unknown",
+      "cwd": "/private/tmp",
+      "focused": true,
+      "foreground_cwd": "/private/tmp",
+      "pane_id": "w1:p1",
+      "revision": 0,
+      "scroll": {
+        "max_offset_from_bottom": 0,
+        "offset_from_bottom": 0,
+        "viewport_rows": 21
+      },
+      "tab_id": "w1:t1",
+      "terminal_id": "term_658f1effe40da1",
+      "workspace_id": "w1"
+    },
+    {
+      "agent_status": "unknown",
+      "cwd": "/private/tmp",
+      "focused": false,
+      "foreground_cwd": "/private/tmp",
+      "pane_id": "w1:p2",
+      "revision": 0,
+      "scroll": {
+        "max_offset_from_bottom": 0,
+        "offset_from_bottom": 0,
+        "viewport_rows": 21
+      },
+      "tab_id": "w1:t1",
+      "terminal_id": "term_658f1effe4dd82",
+      "workspace_id": "w1"
+    },
+    {
+      "agent_status": "unknown",
+      "cwd": "/Users/amterp/src/muster",
+      "focused": false,
+      "foreground_cwd": "/Users/amterp/src/muster",
+      "pane_id": "w1:p3",
+      "revision": 0,
+      "scroll": {
+        "max_offset_from_bottom": 0,
+        "offset_from_bottom": 0,
+        "viewport_rows": 23
+      },
+      "tab_id": "w1:t2",
+      "terminal_id": "term_658f1effe5a153",
+      "workspace_id": "w1"
+    }
+  ],
+  "protocol": 19,
+  "tabs": [
+    {
+      "agent_status": "unknown",
+      "focused": true,
+      "label": "1",
+      "number": 1,
+      "pane_count": 2,
+      "tab_id": "w1:t1",
+      "workspace_id": "w1"
+    },
+    {
+      "agent_status": "unknown",
+      "focused": false,
+      "label": "2",
+      "number": 2,
+      "pane_count": 1,
+      "tab_id": "w1:t2",
+      "workspace_id": "w1"
+    }
+  ],
+  "version": "0.8.0",
+  "workspaces": [
+    {
+      "active_tab_id": "w1:t1",
+      "agent_status": "unknown",
+      "focused": true,
+      "label": "tmp",
+      "number": 1,
+      "pane_count": 3,
+      "tab_count": 2,
+      "workspace_id": "w1"
+    }
+  ]
+}

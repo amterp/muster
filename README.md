@@ -17,8 +17,12 @@ shape.
 - **Fast is a feature.** Input-to-glyph latency indistinguishable from plain Ghostty. Work is budgeted by frequency
   times cardinality - per byte, per event, per render, across panes and daemons - and profiled at 1 and 15 panes.
 - **Local and remote in one window.** Harnesses on this machine and on an SSH devenv, rendered and driven identically.
-- **Sessions outlive everything.** Backend daemons own the PTYs. Quit the app, drop the VPN, close the lid: agents
-  keep working and every pane comes back.
+- **Sessions outlive the app, and their shape outlives the daemon.** Backend daemons own the PTYs, so quitting
+  Muster, dropping the VPN or closing the lid costs nothing: agents keep working and every pane comes back. Below
+  that line the guarantee weakens honestly rather than silently - a daemon restart returns the pane tree and each
+  pane's directory but not the processes, and a reboot is the same case with the daemon to start first. What can be
+  written down is written down; a live process cannot be, and Muster does not pretend otherwise
+  (`docs/architecture.md`, durability).
 - **View = f(daemon state).** The app owns no truth. Layout, agent state, and scrollback live in the backend; the app
   renders them and forwards intent.
 - **Swappable organs, pragmatically.** The session backend ([herdr](https://github.com/herdrdev/herdr) today) and the

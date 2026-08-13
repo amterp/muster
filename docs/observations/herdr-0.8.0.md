@@ -515,3 +515,45 @@ exists and is unparameterized, which suggests the plumbing is there.
 
 Not a blocker for one pane, which is what the app shows today. It is a blocker for the
 sidebar, and the number of connections it implies should be settled before that is built.
+
+## 12. A daemon restart keeps the shape and loses the processes
+
+Added 2026-08-13. `architecture.md` promised sessions outlive quitting the app, dropping
+the VPN and closing the lid - every one of which is a case where the daemon itself
+survives. Nobody had watched what happens when it does not, which is the ordinary
+consequence of a crash, an update, or a reboot.
+
+Evidence: `corpus/herdr-0.8.0/durability/`, recorded with
+`tools/herdr-probe/probe durability`. A graceful `herdr server stop` was used, so a crash
+or a power cut is strictly worse than this and loses at least as much.
+
+| | survives a daemon restart |
+|---|---|
+| workspaces, tabs, pane tree | yes |
+| pane ids | yes - `w1:p1`, `w1:p2`, `w1:p3` came back unchanged |
+| per-pane cwd | yes |
+| terminal ids | **no** - every one changed |
+| scrollback | **no** |
+
+herdr persists and restores the session's *shape*. It does not, and cannot, keep the
+processes: `terminal_id` changed on all three panes (`term_658f1ed496e411` became
+`term_658f1ed77653f1`), and a marker echoed into a pane before the restart was gone
+afterwards. So a pane comes back in the right place, in the right directory, running a
+fresh shell.
+
+This is better than assumed and it is the shape a durability story should take. What is
+lost is exactly what nothing can save - a live process - and what is kept is exactly what
+is cheap to write down. It also means Muster inherits most of this for free rather than
+needing a persistence layer of its own, which would have made it the multiplexer it says
+it is not.
+
+### `layout.apply` builds, it does not restore
+
+The counterpart to `layout.export` accepts an exported `root` and rebuilds the tree with
+the recorded cwds. But it is **additive**: applying a two-pane export to a session that
+already had three panes produced five, not three. It creates a layout rather than
+reconciling one.
+
+That is the right primitive and the wrong verb for a restore button. Anything built on it
+has to decide what it is applying *into* - a fresh workspace, most likely - because
+running it twice against the same session silently doubles the panes.

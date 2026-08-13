@@ -875,6 +875,108 @@ def _counters(client, rec: Recorder) -> None:
     rec.note(f"agent state_change_seq across panes: {final}")
 
 
+# --------------------------------------------------------------------------- 10
+
+def durability(daemon, rec: Recorder) -> None:
+    """What survives a daemon restart, and whether structure can be put back.
+
+    architecture.md promises sessions outlive quitting the app, dropping the VPN and
+    closing the lid - all cases where the daemon itself lives. Nothing has ever watched
+    what happens when the daemon does not, which is the ordinary consequence of a reboot
+    or a crash. This measures the floor rather than assuming it.
+
+    Also checks the restore half: layout.export claims to be a restore tree, and
+    layout.apply takes one. Whether the pair actually round-trips decides how much of a
+    'reopen my workspace' feature is a call rather than a project.
+    """
+    client = RecordingClient(daemon.client(), rec)
+    _new_workspace(client)
+    client.request("pane.split", {"direction": "right", "target_pane_id": "w1:p1", "cwd": "/tmp"})
+    client.request("tab.create", {"workspace_id": "w1"})
+    time.sleep(0.8)
+
+    # Something identifiable in the scrollback, to see whether it comes back.
+    marker = "MUSTER-DURABILITY-MARKER"
+    client.request("pane.send_text", {"pane_id": "w1:p1", "text": f"echo {marker}\n"})
+    time.sleep(1.0)
+
+    before_snapshot = client.request("session.snapshot")["snapshot"]
+    before_export = client.request("layout.export", {})
+    rec.write_json("before-restart.snapshot.json", before_snapshot)
+    rec.write_json("before-restart.layout.json", before_export)
+    before_panes = sorted(p["pane_id"] for p in before_snapshot["panes"])
+    before_screen = _read_visible(client, "w1:p1")
+    rec.fact("panes_before_restart", before_panes)
+    rec.fact("marker_on_screen_before_restart", marker in before_screen)
+    rec.note(f"before restart: {len(before_panes)} pane(s), marker on screen: {marker in before_screen}")
+
+    # The event under test. `herdr server stop` is the graceful path - a crash or a power
+    # cut is strictly worse, so anything lost here is lost there too.
+    daemon.stop()
+    time.sleep(1.0)
+    daemon.start()
+    time.sleep(1.5)
+    client = RecordingClient(daemon.client(), rec)
+
+    after_snapshot = client.request("session.snapshot")["snapshot"]
+    rec.write_json("after-restart.snapshot.json", after_snapshot)
+    after_panes = sorted(p["pane_id"] for p in after_snapshot["panes"])
+    rec.fact("panes_after_restart", after_panes)
+    rec.fact("session_survives_daemon_restart", after_panes == before_panes)
+    rec.fact("workspaces_after_restart", [w["workspace_id"] for w in after_snapshot["workspaces"]])
+
+    # The distinction that decides what "survives" is worth: a pane can come back with
+    # its id and its cwd while its terminal - and therefore the process in it - is new.
+    terminals = lambda snap: {p["pane_id"]: p["terminal_id"] for p in snap["panes"]}
+    before_terms, after_terms = terminals(before_snapshot), terminals(after_snapshot)
+    rec.fact("terminal_ids_before_restart", before_terms)
+    rec.fact("terminal_ids_after_restart", after_terms)
+    rec.fact("terminals_survive_daemon_restart", before_terms == after_terms)
+    rec.fact("cwds_survive_daemon_restart",
+             {p["pane_id"]: p["cwd"] for p in before_snapshot["panes"]}
+             == {p["pane_id"]: p["cwd"] for p in after_snapshot["panes"]})
+    rec.note(f"terminals reused: {before_terms == after_terms} "
+             f"(pane ids reused: {after_panes == before_panes})")
+    rec.note(f"after restart: {len(after_panes)} pane(s) - survived: {after_panes == before_panes}")
+
+    if after_panes:
+        after_screen = _read_visible(client, after_panes[0])
+        rec.fact("scrollback_survives_daemon_restart", marker in after_screen)
+        rec.note(f"scrollback marker survived: {marker in after_screen}")
+    else:
+        rec.fact("scrollback_survives_daemon_restart", False)
+
+    # The restore half: can the exported tree be put back?
+    root = before_export.get("layout", {}).get("root")
+    rec.fact("export_carries_root", root is not None)
+    rec.fact("export_carries_cwd_per_pane", '"cwd"' in json.dumps(before_export))
+    if root is None:
+        rec.note("no root in the export, so nothing to apply back")
+        return
+
+    ok, applied = client.try_request("layout.apply", {"root": root, "focus": True})
+    time.sleep(1.2)
+    rec.fact("layout_apply_accepted_an_export", ok)
+    if not ok:
+        rec.fact("layout_apply_error", applied)
+        rec.note(f"layout.apply refused the exported tree: {applied}")
+        return
+
+    restored = client.request("session.snapshot")["snapshot"]
+    rec.write_json("after-apply.snapshot.json", restored)
+    # Additive or replacing? A restore that duplicates instead of rebuilding is a very
+    # different feature, and the difference is invisible until someone runs it twice.
+    rec.fact("layout_apply_is_additive", len(restored["panes"]) > len(after_panes))
+    rec.fact("panes_before_apply", after_panes)
+    restored_layout = next((l for l in restored["layouts"] if l.get("panes")), {})
+    rec.fact("panes_after_apply", sorted(p["pane_id"] for p in restored["panes"]))
+    rec.fact("pane_count_after_apply", len(restored["panes"]))
+    rec.fact("splits_after_apply", len(restored_layout.get("splits", [])))
+    rec.fact("cwds_after_apply", sorted({p.get("cwd") for p in restored["panes"]}))
+    rec.note(f"layout.apply rebuilt {len(restored['panes'])} pane(s), "
+             f"{len(restored_layout.get('splits', []))} split(s)")
+
+
 ALL = {
     "snapshot": snapshot,
     "frames": frames,
@@ -885,4 +987,5 @@ ALL = {
     "input-encoding": input_encoding,
     "frame-fidelity": frame_fidelity,
     "lifecycle": lifecycle,
+    "durability": durability,
 }

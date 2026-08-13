@@ -222,6 +222,54 @@ Liveness needs an active probe - the control plane is legitimately silent when n
 is an implementation choice. Version skew between Muster and a daemon is detected at attach and surfaced plainly.
 Sessions survive anything Muster does: a broken Muster must never strand a session (see also geometry, above).
 
+**A fourth state, and the one that is easy to get wrong: the daemon answered, and the session it describes is not
+the one we knew.** After a daemon restart the pane ids and the tree come back but every terminal is new
+(`observations/herdr-0.8.0.md` section 12); after a config change or a crash the session may be empty entirely.
+Every test for "connected" passes in both cases, and rendering an empty session as though the user closed
+everything is the worst available answer. This is a distinct state with a distinct response - say what was there,
+offer to rebuild it - and it belongs to Muster because no daemon can know what a window was showing.
+
+## Durability
+
+What survives what. Written down because "sessions outlive everything" reads as one guarantee and is really four,
+and because the layer that can honestly answer each is different.
+
+| | what is lost | who can help |
+|---|---|---|
+| Muster quits or crashes | nothing | nobody needs to; the daemon owns the PTYs |
+| the connection drops (VPN, lid, SSH) | nothing; the view goes stale and resyncs | the degradation model above |
+| the daemon restarts | every process; scrollback | herdr restores the tree and cwds |
+| the machine reboots | the same, plus the daemon must come back | as above |
+| the machine is gone | local work only | remote daemons keep running |
+
+Two things follow.
+
+**Persist intent, never observation.** The mirror is an observation - these panes exist, this agent is blocked,
+focus is here - and it is explicitly disposable. A restore description is an intent: make a right-split with these
+two directories. Writing down observations would tempt a restore to reinstate things that are meaningless after a
+restart (agent status, scroll offsets, revisions), so the mirror is deliberately **not** serializable and gains no
+persistence hooks. What gets written down is what someone would ask for again.
+
+This also resolves an apparent gap in "view = f(daemon state)": restoring looks like it needs an inverse, and does
+not. A restore is a sequence of ordinary intents - create a workspace, apply a layout, spawn - so it flows through
+the one action path, which makes it scriptable, agent-drivable, and testable with no new mechanism. `layout.apply`
+is the primitive, and it is additive rather than reconciling, so whatever calls it must apply into something fresh.
+
+**Muster's own durable state is composition, and only composition.** Which daemons are attached, and which (daemon,
+workspace, tab) shows in which window region. Everything else it holds is derived. That is a few hundred bytes, and
+its smallness is the point: the shell owns nothing, so there is nearly nothing to save.
+
+But it is the one piece nobody else can save. A herdr daemon's export is scoped to itself and structurally cannot
+describe a workspace spanning a laptop and a devenv, because neither daemon knows the other exists. Muster is the
+only layer that sees across them, which makes cross-daemon composition the part of durability that is genuinely
+ours - and it follows that restore is per-daemon and partial by nature, since after a reboot the local daemon comes
+back fresh while the remote one never noticed.
+
+What Muster must not do here: keep its own session store, or infer an agent's resume token by reading its output.
+The first is the multiplexer non-goal and the second is the agent-framework one. Reporting a session reference the
+harness hands over is metadata about a pane and is fine; herdr already has `pane.report_agent_session` for it, and
+that is where a real "resume this agent" story lives - in the harness's own session, not in the terminal.
+
 ## The diagnostic log
 
 One run, one file, every process. The app names it, and every bridge it spawns inherits the path, so a keystroke

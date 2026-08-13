@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "degradation-the",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1786646058597,
+  "creator": "Alexander Terp",
+  "description": "A fourth connection state, distinct from connected/stale/disconnected and currently indistinguishable from a healthy one.\n\nAfter a daemon restart the pane ids and tree return but every terminal is new (observations/herdr-0.8.0.md section 12). After a crash or a config change the session may be empty. Both read as 'connected' to every check we have, and rendering an empty session as though the user closed everything is the worst available answer.\n\nNeeds: detect it (the mirror already holds what was there; terminal_id changing per pane is the signal for a restart, and an empty snapshot for the harder case), then say what was there and offer to rebuild rather than silently repainting.\n\nBelongs to Muster because no daemon can know what a window was showing.",
+  "id": "a_27QcqJTYb",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUU",
+  "title": "🔁 Degradation: the daemon answered, and the session is not the one we knew",
+  "type": "feature",
+  "updated_at_millis": 1786646058597,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1786646058597}
+  ]
+}
