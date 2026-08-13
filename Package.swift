@@ -20,6 +20,35 @@ let package = Package(
     // executable so it can be tested: executables cannot be imported by a test target.
     .target(name: "MusterHerdr", dependencies: ["MusterCore"]),
     .binaryTarget(name: "GhosttyKit", path: "deps/ghostty/macos/GhosttyKit.xcframework"),
+    // libghostty-vt: the same engine, headless. It ships an xcframework of its own next
+    // to the dylib, and Muster uses the *dylib* instead - deliberately.
+    //
+    // The two libraries are separate builds of one commit (-Demit-lib-vt turns the
+    // xcframework off), and both statically embed Zig's runtime. Linking both archives
+    // into one binary fails on 35 duplicate symbols - ubsan handlers defined by each
+    // Zig compilation unit. The dylib exports only libghostty-vt's 192 public functions
+    // and keeps its runtime private, so it composes with GhosttyKit where the archive
+    // cannot. Revisit if upstream ever emits one library carrying both APIs.
+    .systemLibrary(name: "CGhosttyVt", path: "Sources/CGhosttyVt"),
+    // The terminal Muster reasons with rather than shows: tests read grids from it, and
+    // the input path encodes keys with it. Kept apart from MusterRenderer because
+    // nothing here needs a GPU, a window, or a running app.
+    .target(
+      name: "MusterVT",
+      dependencies: ["CGhosttyVt", "MusterCore"],
+      swiftSettings: [.unsafeFlags(["-Xcc", "-Ideps/ghostty/zig-out/include"])],
+      linkerSettings: [
+        .unsafeFlags([
+          "-Ldeps/ghostty/zig-out/lib",
+          // Both rpaths are relative to the loading binary, so a checkout works without
+          // installing anything: the first resolves for executables in .build/<triple>/
+          // <config>/, the second for a test bundle's deeper Contents/MacOS.
+          "-Xlinker", "-rpath", "-Xlinker", "@loader_path/../../../deps/ghostty/zig-out/lib",
+          "-Xlinker", "-rpath", "-Xlinker",
+          "@loader_path/../../../../../../deps/ghostty/zig-out/lib",
+        ])
+      ]
+    ),
     .target(
       name: "MusterRenderer",
       dependencies: ["GhosttyKit", "MusterCore"],
@@ -42,8 +71,12 @@ let package = Package(
     // Spawned as a surface's command, one per visible pane. Its own executable because
     // that is the only shape libghostty can be fed by.
     .executableTarget(name: "muster-bridge", dependencies: ["MusterHerdr"]),
-    .executableTarget(name: "muster", dependencies: ["MusterCore", "MusterRenderer"]),
+    .executableTarget(name: "muster", dependencies: ["MusterCore", "MusterRenderer", "MusterVT"]),
+    // Test plumbing, shared rather than duplicated: the snapshot cases the grid oracle
+    // writes and the ones the input path will write are the same mechanism.
+    .target(name: "TestSupport", path: "Tests/Support"),
     .testTarget(name: "MusterCoreTests", dependencies: ["MusterCore"]),
     .testTarget(name: "MusterHerdrTests", dependencies: ["MusterHerdr"]),
+    .testTarget(name: "MusterVTTests", dependencies: ["MusterVT", "MusterHerdr", "TestSupport"]),
   ]
 )

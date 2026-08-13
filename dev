@@ -22,6 +22,13 @@ GHOSTTY_REPO = "https://github.com/ghostty-org/ghostty"
 GHOSTTY_DIR = "deps/ghostty"
 XCFRAMEWORK = "deps/ghostty/macos/GhosttyKit.xcframework"
 BUILT_STAMP = "deps/.built"
+// Both builds of the pin: the surface API the shell renders through, and the VT the
+// core encodes keys with and the tests read grids from.
+DEP_ARTIFACTS = [
+    XCFRAMEWORK,
+    "deps/ghostty/zig-out/lib/libghostty-vt.dylib",
+    "deps/ghostty/zig-out/include/ghostty/vt.h",
+]
 
 fn announce(name):
     print(bold("\n▸ {name}"))
@@ -44,10 +51,20 @@ fn read_pin():
 // Everything under deps/ is reproducible from the pin, so the check is only ever
 // "is what sits there the commit we asked for". libghostty takes minutes to build and
 // changes only when the pin does.
+//
+// The stamp alone is not enough: a deleted or half-copied artifact leaves the stamp
+// saying yes, and the failure then surfaces minutes later as a linker error naming a
+// path nobody recognizes.
 fn deps_are_current(pin):
     stamp = read_file(BUILT_STAMP) catch:
         return false
-    return stamp.content.trim() == pin
+    if stamp.content.trim() != pin:
+        return false
+    for artifact in DEP_ARTIFACTS:
+        if not get_path(artifact).exists:
+            print(dim("{artifact} is missing; rebuilding libghostty"))
+            return false
+    return true
 
 fn build_deps():
     stdout = $`zig version`

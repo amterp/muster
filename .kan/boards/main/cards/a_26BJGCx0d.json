@@ -5,13 +5,19 @@
   "area": [
     "testing"
   ],
-  "column": "next",
+  "column": "done",
   "comments": [
     {
       "author": "Alexander Terp",
       "body": "Not blocked on upstream after all. libghostty-vt at the pin in deps/ghostty.pin exposes the whole oracle in C: ghostty_terminal_vt_write feeds bytes to a headless terminal, and ghostty_terminal_grid_ref / ghostty_row_get / ghostty_cell_get read the grid back. snapshot.h and render.h are there too.\n\nThis is why the pin is a main commit rather than the v1.3.1 release - the release ships only key, OSC, SGR and paste. Details and citations: docs/observations/libghostty-9f9b8d1d.md section 5.",
       "created_at_millis": 1786516942499,
       "id": "c_26YRwXKnH"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Landed, and it found something on the first run.\n\nThe harness is MusterVT: a headless libghostty-vt terminal (bytes in, grid out), a Grid value type carrying text and cell widths, and GridSnapshot rendering it as row-numbered text with trailing blanks cut. Snapshot plumbing is Tests/Support, regenerating under MUSTER_UPDATE_SNAPSHOTS=1 - and a recording run deliberately fails, because a run where every case wrote its own expectation must not be able to pass for a real one.\n\nWiring the library in cost a finding: GhosttyKit and libghostty-vt cannot both be linked as static archives (35 duplicate Zig runtime symbols). The dylib exports only the public API and composes fine, so the surface API links statically and the VT dynamically. Details in docs/observations/libghostty-9f9b8d1d.md section 8.\n\nThe oracle is not just a snapshot. corpus/herdr-0.8.0/frame-fidelity/ records both halves of one moment - the frames herdr sent, and herdr's own pane.read of the screen those frames describe - so the test holds two independent renderers against each other. It failed immediately: herdr patches DEC mode 2027 on by default and stock libghostty-vt does not, so a ZWJ family emoji lands in one cell there and several here. A snapshot alone would have recorded the wrong screen as the expectation and passed forever. MusterVT.Terminal now sets 2027 at creation.",
+      "created_at_millis": 1786612979087,
+      "id": "c_27CkIGLZf"
     }
   ],
   "created_at_millis": 1786461793283,
@@ -21,12 +27,13 @@
   "labels": [
     "ai-hi"
   ],
-  "position": "UUUUUU",
+  "position": "UUUUUUU",
   "title": "Grid-snapshot harness via libghostty-vt",
   "type": "feature",
-  "updated_at_millis": 1786518298310,
+  "updated_at_millis": 1786612979087,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786461793283},
-    {"field":"column","value":"next","at":1786518298310}
+    {"field":"column","value":"next","at":1786518298310},
+    {"field":"column","value":"done","at":1786612979049}
   ]
 }

@@ -507,6 +507,68 @@ def _read_visible(client, pane_id: str) -> str:
     return read["read"]["text"]
 
 
+# --------------------------------------------------------------------------- 5c
+
+# Text chosen for the ways a grid reader goes wrong rather than for looking realistic:
+# a wide character occupies two cells and leaves a spacer, a combining mark belongs to
+# the cell before it, and an emoji cluster is several codepoints that must land in one
+# cell rather than several.
+FIDELITY_PAYLOAD = [
+    "ascii: hello world",
+    "wide: NIHAO -> 你好世界",
+    "combining: é and é should look alike",
+    "box: ┌─┬─┐",
+    "emoji: \U0001f44d and \U0001f468‍\U0001f469‍\U0001f467",
+]
+
+
+def frame_fidelity(daemon, rec: Recorder) -> None:
+    """Do herdr's frames, replayed into libghostty-vt, reproduce herdr's own screen?
+
+    The grid harness reads a screen out of the frame stream and calls it what the user
+    sees. That is only true if replaying the frames lands where the daemon's own
+    terminal did, and the daemon can be asked directly: pane.read returns its rendering
+    of the same screen at the same moment. Recording both gives the test two independent
+    oracles instead of a snapshot that only proves the pipeline ran.
+    """
+    client = RecordingClient(daemon.client(), rec)
+    _new_workspace(client)
+    time.sleep(0.4)
+
+    stream = PaneStream(daemon, "w1:p1", "control", cols=80, rows=24)
+    try:
+        stream.wait_for_frames(1, timeout=5.0)
+        stream.wait_quiet(quiet_for=0.5, timeout=3.0)
+
+        # clear first, so the prompt and the command line do not sit above the payload
+        # differently on a re-record.
+        stream.send_input_text("clear\n")
+        time.sleep(0.8)
+        for line in FIDELITY_PAYLOAD:
+            # ensure_ascii=False, or json quotes the payload into \uXXXX escapes and the
+            # shell prints the escape text - a screen with no wide characters on it,
+            # which is the one thing this scenario exists to capture.
+            stream.send_input_text(f"printf '%s\\n' {json.dumps(line, ensure_ascii=False)}\n")
+            time.sleep(0.4)
+        stream.wait_quiet(quiet_for=0.8, timeout=5.0)
+
+        frames = stream.snapshot()
+        with (rec.dir / "frames.ndjson").open("w") as f:
+            for frame in frames:
+                f.write(json.dumps({k: v for k, v in frame.items() if k != "_t_ms"}) + "\n")
+
+        # herdr's own rendering of the screen those frames describe.
+        rec.write_text("herdr-screen.txt", _read_visible(client, "w1:p1"))
+
+        rec.fact("frame_count", len(frames))
+        rec.fact("full_frame_count", sum(1 for f in frames if f.get("full")))
+        rec.fact("payload_lines", FIDELITY_PAYLOAD)
+        rec.note(f"painted {len(FIDELITY_PAYLOAD)} lines, captured {len(frames)} frame(s) "
+                 f"and herdr's own screen text")
+    finally:
+        stream.close()
+
+
 def detection(daemon, rec: Recorder) -> None:
     """Does screen-based agent detection need a client viewing the pane?
 
@@ -562,4 +624,5 @@ ALL = {
     "geometry": geometry,
     "input-path": input_path,
     "input-encoding": input_encoding,
+    "frame-fidelity": frame_fidelity,
 }

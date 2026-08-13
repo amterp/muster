@@ -145,7 +145,56 @@ API". True, and section 2 is the evidence - but it reads as a temporary embarras
 and it is a stable constraint worth stating as one.
 
 The control plane says the shell reports keys with full fidelity and "the daemon
-encodes". Also true, and incomplete: the report is itself a kitty-protocol encoding, the
-core produces it with libghostty-vt, and the flag set is chosen to match herdr's TUI
-rather than to be maximal. Both encoding steps deserve naming, because "report" sounds
-like a structure on the wire and it is bytes.
+encodes". That half is now overturned outright - the daemon does not encode on the
+channel Muster uses (`herdr-0.8.0.md` section 5) - but the correction this section asked
+for still holds: the report is itself a kitty-protocol encoding, the core produces it
+with libghostty-vt, and the flag set matches herdr's TUI rather than being maximal.
+
+## 8. Using both libraries at once costs two things
+
+Recorded 2026-08-13, wiring libghostty-vt into the package. Neither is visible in a
+header, and both were found by building.
+
+**The two static archives cannot go in one binary.** `GhosttyKit.xcframework` and
+`ghostty-vt.xcframework` are separate builds of the same commit, and each embeds its own
+copy of Zig's runtime. Linking both fails on 35 duplicate symbols - `___ubsan_handle_*`,
+defined by each Zig compilation unit:
+
+```
+duplicate symbol '___ubsan_handle_sub_overflow_abort' in:
+    .build/.../libghostty-vt.a[arm64][6](libghostty-vt-static_zcu.o)
+    .build/.../libghostty-internal.a[276](libghostty_zcu.o)
+ld: 35 duplicate symbols
+```
+
+The shared C++ dependencies (simdutf, highway) sit in separate archive members and would
+have resolved against GhosttyKit's copies; it is the Zig units that collide, and both are
+pulled the moment anything calls into either API.
+
+`libghostty-vt.dylib` composes where the archive cannot: it exports only the 192 public
+`ghostty_*` functions and keeps its runtime private, so `Package.swift` links the surface
+API statically and the VT dynamically. Its install name is `@rpath/libghostty-vt.dylib`,
+so two `@loader_path` rpaths - one for executables, one for a test bundle's deeper
+`Contents/MacOS` - make a plain checkout run without installing anything. Revisit if
+upstream ever emits one library carrying both APIs; until then this is a fact about the
+build, not a preference.
+
+**A stock headless terminal does not render what a herdr pane renders.** herdr's
+vendored copy patches DEC mode 2027 on by default (section 5); ours has it off, and the
+difference is visible on the first emoji:
+
+```
+herdr:      emoji: 👍 and 👨‍👩‍👧
+libghostty: emoji: 👍 and 👨‍" 👧
+```
+
+A ZWJ cluster lands in one cell there and several here, so a grid read from an unmodified
+terminal describes a screen the user never saw. `MusterVT.Terminal` writes `CSI ? 2027 h`
+at creation to match; there is no option on `ghostty_terminal_set` that reaches DEC modes.
+
+Worth noting how this surfaced, because it is the argument for the check that found it:
+the patch was already written down in section 5 and its consequence was still missed. It
+came back as a failing cross-oracle test - herdr's own `pane.read` of a screen against
+libghostty-vt's replay of the frames describing that same screen
+(`corpus/herdr-0.8.0/frame-fidelity/`). A snapshot alone would have recorded the wrong
+screen as the expectation and passed forever.
