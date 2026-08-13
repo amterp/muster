@@ -25,7 +25,60 @@ message Request {
     SendText send_text = 6;
     Paste paste = 7;
     Scroll scroll = 8;
+    SplitPane split_pane = 9;
+    ClosePane close_pane = 10;
+    FocusPane focus_pane = 11;
+    SetSplitRatio set_split_ratio = 12;
   }
+}
+
+// Splits a pane, putting the new one beside or below it.
+//
+// The four messages below are the write half of the seam, and the reason it is worth having
+// one: a keybinding, a menu item, the CLI and an agent all send these, so a surface that
+// cannot express an action is a missing message rather than a missing feature somebody has
+// to notice (architecture.md, one action path).
+//
+// Muster never mutates. Each of these is a request to a daemon, and what actually happened
+// arrives afterwards as a ViewChanged - so a shell that renders its own optimistic answer is
+// a shell that can be wrong, and none of these carry one.
+message SplitPane {
+  // Empty means the pane this window's keyboard feeds, which is what a keybinding means.
+  string pane_id = 1;
+
+  // columns (the new pane goes beside it) or rows (below it).
+  string axis = 2;
+
+  // The existing pane's share afterwards, between 0 and 1. Zero means the daemon's own
+  // default, which is what a keybinding wants; a drag-to-split would say.
+  float ratio = 3;
+}
+
+message ClosePane {
+  // Empty means the pane this window's keyboard feeds.
+  string pane_id = 1;
+}
+
+// Points the *daemon's* cursor at a pane.
+//
+// Not the same as moving this window's keyboard, which is view-local and never read back.
+// Muster writes daemon focus as the user moves around, because a daemon deciding whether an
+// agent was seen is watching this (architecture.md, cursors are written, not read).
+message FocusPane {
+  string pane_id = 1;
+}
+
+// Moves one divider in a tab's tree.
+message SetSplitRatio {
+  string tab_id = 1;
+
+  // The turns from the tab's root down to the divider: false takes the first child, true the
+  // second. A divider has no id - it is a position in a shape that changes under it - so it
+  // is addressed by the way there, which the shell reads straight off the tree it rendered.
+  repeated bool path = 2;
+
+  // The first child's share afterwards, between 0 and 1.
+  float ratio = 3;
 }
 
 // Everything the core answers.

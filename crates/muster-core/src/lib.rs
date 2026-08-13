@@ -9,9 +9,11 @@ pub mod agent_state;
 pub mod composition;
 pub mod diagnostics;
 pub mod input;
+pub mod intent;
 pub mod mirror;
 
 pub use agent_state::AgentState;
 pub use composition::Composition;
 pub use input::{Key, KeyEvent, Keymap, Modifiers, PaneInput};
+pub use intent::{BackendChannel, BackendIntent};
 pub use mirror::{BackendEvent, Change, Mirror};

@@ -19,8 +19,8 @@ use std::sync::Mutex;
 
 use herdr_harness::Daemon;
 use muster::proto::{
-    AttachPane, Event, Paste, Request, Response, Startup, ViewChanged, ViewNode, event, request,
-    response, view_node,
+    AttachPane, ClosePane, Event, Paste, Request, Response, SplitPane, Startup, ViewChanged,
+    ViewNode, event, request, response, view_node,
 };
 use prost::Message;
 use serde_json::{Value, json};
@@ -30,7 +30,7 @@ fn attaching_places_a_pane_where_the_keyboard_can_find_it() {
     let daemon = Daemon::start();
     daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "attach", "focus": true }));
     let first = only_pane(&daemon);
-    daemon.call("pane.split", &json!({ "pane_id": first, "direction": "right" }));
+    daemon.call("pane.split", &json!({ "target_pane_id": first, "direction": "right" }));
     let second = panes(&daemon)
         .into_iter()
         .find(|pane| pane != &first)
@@ -128,6 +128,14 @@ fn attaching_places_a_pane_where_the_keyboard_can_find_it() {
          as well as, or instead of, {second}"
     );
 
+    the_window_follows_and_drives_the_tree(&daemon, &second);
+}
+
+/// The view the core publishes, and the two directions it moves in.
+///
+/// Its own function because the test above had grown into three things; still one test,
+/// because the seam holds the session in a process global and a second one would race it.
+fn the_window_follows_and_drives_the_tree(daemon: &Daemon, second: &str) {
     // Both panes in one region, because a region shows a tab and both panes are in it. A
     // second region here would mean attaching a pane opened a second copy of its tab.
     //
@@ -148,11 +156,51 @@ fn attaching_places_a_pane_where_the_keyboard_can_find_it() {
     // point twice over: the view follows the daemon rather than Muster's own record of what
     // it did, and the pane it grew gets a channel although nobody attached to it. Without
     // that, a shell rendering a surface per leaf would build one it can never type into.
-    daemon.call("pane.split", &json!({ "pane_id": second, "direction": "down" }));
+    daemon.call("pane.split", &json!({ "target_pane_id": second, "direction": "right" }));
     until(
         "a third leaf, with a socket of its own, to reach the window",
         || settled(3).is_some(),
         || format!("the last view the core published: {:?}", latest_view()),
+    );
+
+    // And now the other direction: Muster asks. A split named no pane, which means the one
+    // the keyboard is on - what a keybinding means. Nothing about the window is applied
+    // here; the fourth leaf arrives because the daemon said so.
+    assert_ok(&answer(request::Payload::SplitPane(SplitPane {
+        axis: "rows".to_string(),
+        ..SplitPane::default()
+    })));
+    // Where it landed, not just that something did. Every other split in this tab is a
+    // column, so the pane the keyboard was on ending up under a row is the one arrangement
+    // that could only have come from this request, aimed at this pane. A fourth leaf alone
+    // would be satisfied by a split spelled wrong, or aimed at somebody else's pane.
+    until(
+        "the keyboard's pane to end up split below, which is what was asked",
+        || settled(4).is_some() && parent_axis(second).as_deref() == Some("rows"),
+        || {
+            format!(
+                "{second} sits under {:?}; the last view: {:?}",
+                parent_axis(second),
+                latest_view()
+            )
+        },
+    );
+
+    // Closing names a pane, the way a CLI would.
+    let doomed = settled(4).expect("just waited for it")[0].0.clone();
+    assert_ok(&answer(request::Payload::ClosePane(ClosePane { pane_id: doomed.clone() })));
+    until(
+        "the closed pane to leave the window",
+        || settled(3).is_some_and(|panes| panes.iter().all(|(id, _)| id != &doomed)),
+        || format!("the last view the core published: {:?}", latest_view()),
+    );
+
+    // A refusal is a refusal, not a silent no-op. Nothing this window shows holds that pane,
+    // so there is no daemon to ask - which is the state a stale intent arrives in.
+    let reason = refusal(request::Payload::ClosePane(ClosePane { pane_id: doomed.clone() }));
+    assert!(
+        reason.contains("no daemon this window is showing"),
+        "a request for a pane that is gone should say so, and said: {reason}"
     );
 }
 
@@ -187,6 +235,28 @@ extern "C" fn note_view(bytes: *const u8, len: usize) {
 
 fn latest_view() -> Option<ViewChanged> {
     VIEW.lock().expect("a panicking reader poisoned the view").clone()
+}
+
+/// The axis of the split this pane hangs directly off, in the published tree.
+///
+/// Which axis a pane's own parent has is the only thing that says a split was spelled right
+/// *and* aimed right: the number of panes says neither.
+fn parent_axis(pane: &str) -> Option<String> {
+    fn walk(node: &ViewNode, pane: &str) -> Option<String> {
+        let Some(view_node::Node::Split(split)) = &node.node else { return None };
+        for child in split.first.iter().chain(split.second.iter()) {
+            if let Some(view_node::Node::Pane(leaf)) = &child.node
+                && leaf.pane_id == pane
+            {
+                return Some(split.axis.clone());
+            }
+            if let Some(found) = walk(child, pane) {
+                return Some(found);
+            }
+        }
+        None
+    }
+    walk(&latest_view()?.regions.into_iter().next()?.root?, pane)
 }
 
 /// Every pane in a tree, as (id, socket path), in reading order.

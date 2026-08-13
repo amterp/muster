@@ -10,6 +10,8 @@ use muster_core::diagnostics::sink::JsonLinesSink;
 use muster_core::fields;
 
 use muster_core::input::{CompositionOutcome, ScrollDirection, composition_outcome};
+use muster_core::intent::{BackendIntent, Branch};
+use muster_core::mirror::backend::{PaneId, TabId};
 
 use crate::convert;
 use crate::proto::{self, Request, Response, request, response};
@@ -59,6 +61,36 @@ fn handle(request: Request) -> Response {
         request::Payload::Paste(paste) => with_pane("a paste", |pane| {
             pane.input.paste(&paste.text);
             Response::ok()
+        }),
+        request::Payload::SplitPane(split) => match convert::axis(&split.axis) {
+            Some(axis) => act(&split.pane_id, |pane| BackendIntent::SplitPane {
+                pane,
+                axis,
+                // Zero is proto3's unset, and a divider at the very edge is not a thing
+                // anyone asks for, so the two are safely the same answer here.
+                ratio: (split.ratio > 0.0).then_some(split.ratio),
+            }),
+            None => Response::failure(format!(
+                "the core does not know a split axis called {:?}, so nothing was split. \
+                 Only columns and rows exist; the shell builds this from a fixed set, so \
+                 this is a bug there.",
+                split.axis
+            )),
+        },
+        request::Payload::ClosePane(close) => {
+            act(&close.pane_id, |pane| BackendIntent::ClosePane { pane })
+        }
+        request::Payload::FocusPane(focus) => {
+            act(&focus.pane_id, |pane| BackendIntent::FocusPane { pane })
+        }
+        request::Payload::SetSplitRatio(set) => submit(&BackendIntent::SetSplitRatio {
+            tab: TabId::new(set.tab_id),
+            path: set
+                .path
+                .into_iter()
+                .map(|second| if second { Branch::Second } else { Branch::First })
+                .collect(),
+            ratio: set.ratio,
         }),
         request::Payload::Scroll(scroll) => {
             with_pane("a scroll", |pane| match ScrollDirection::parse(&scroll.direction) {
@@ -127,6 +159,40 @@ fn with_pane(what: &str, act: impl FnOnce(&AttachedPane) -> Response) -> Respons
              pane named is the renderer check and this is expected there; anywhere else it \
              means the attach failed earlier, or the pane it succeeded on has since exited, \
              and that is the event worth reading."
+        )),
+    }
+}
+
+/// Builds an intent about a pane and asks for it.
+///
+/// An empty pane id means the one this window's keyboard feeds, because that is what a
+/// keybinding means and a keybinding is the common caller. A CLI that names a pane gets the
+/// pane it named.
+fn act(pane_id: &str, build: impl FnOnce(PaneId) -> BackendIntent) -> Response {
+    let pane = if pane_id.is_empty() {
+        match session::focused_pane() {
+            Some(pane) => pane,
+            None => {
+                return Response::failure(
+                    "no pane has this window's keyboard, so there was nothing to act on. A \
+                     request that names no pane means the focused one, and this window has \
+                     none - the attach failed earlier, or the pane it succeeded on exited.",
+                );
+            }
+        }
+    } else {
+        PaneId::new(pane_id)
+    };
+    submit(&build(pane))
+}
+
+fn submit(intent: &BackendIntent) -> Response {
+    match session::submit(intent) {
+        Ok(()) => Response::ok(),
+        Err(refusal) => Response::failure(format!(
+            "the daemon did not make that change: {refusal} Nothing about the session moved, \
+             and the window still shows what it showed before - which is the honest answer \
+             rather than a view that pretends."
         )),
     }
 }

@@ -11,6 +11,7 @@ pub mod control_stream;
 pub mod discovery;
 pub mod events;
 pub mod frame;
+pub mod intent;
 pub mod layout;
 pub mod pane_channel;
 pub mod snapshot;

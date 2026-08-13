@@ -17,10 +17,13 @@ use muster_core::composition::{Composition, Daemon, DaemonId, Endpoint, View};
 use muster_core::diagnostics::log;
 use muster_core::fields;
 use muster_core::input::{Keymap, PaneInput, TerminalModeProfile};
-use muster_core::mirror::backend::{PaneId, Snapshot};
+use muster_core::intent::{BackendChannel, BackendIntent};
+use muster_core::mirror::backend::{PaneId, Snapshot, TabId};
 use muster_core::mirror::{Change, Mirror};
 use muster_herdr::subscription::{Notice, Subscription};
-use muster_herdr::{HerdrPaneChannel, PaneControlChannel, discover_socket_path, fetch_snapshot};
+use muster_herdr::{
+    HerdrClient, HerdrPaneChannel, PaneControlChannel, discover_socket_path, fetch_snapshot,
+};
 use muster_vt::KeyEncoder;
 
 use crate::proto::{BackendHealth, Event, PaneStateChanged, PaneTypeable, event};
@@ -47,6 +50,9 @@ pub(crate) struct AttachedPane {
 #[derive(Debug)]
 struct Backend {
     mirror: Arc<Mutex<Mirror>>,
+    /// How this daemon is asked for changes. One per daemon rather than one per pane,
+    /// because what these ask for is structure and structure belongs to the daemon.
+    channel: Arc<dyn BackendChannel>,
     /// Held because dropping it ends the subscription and every thread under it - the
     /// structure stream and one agent watcher per pane.
     _subscription: Subscription,
@@ -96,7 +102,14 @@ impl Session {
             Arc::clone(&mirror),
             Arc::new(move |notice| announce(&reporting, notice)),
         );
-        self.backends.insert(daemon.clone(), Backend { mirror, _subscription: subscription });
+        self.backends.insert(
+            daemon.clone(),
+            Backend {
+                mirror,
+                channel: Arc::new(HerdrClient::new(socket_path)),
+                _subscription: subscription,
+            },
+        );
     }
 
     /// Brings composition, and what this process holds open, in line with one daemon.
@@ -243,6 +256,30 @@ impl Session {
         self.panes.get(&region.daemon)?.get(region.pane.as_ref()?).map(Arc::clone)
     }
 
+    /// Which daemon holds this pane, out of the ones this window is showing.
+    ///
+    /// Searched rather than assumed, because two daemons hand out the same pane ids and a
+    /// request naming `w1:p1` means the one in front of the user. A pane in no region is a
+    /// pane this window is not showing, and nothing here will act on it.
+    fn daemon_holding(&self, pane: &PaneId) -> Option<DaemonId> {
+        self.composition.regions().find_map(|region| {
+            let backend = self.backends.get(&region.daemon)?;
+            let held = backend.mirror.lock().ok()?;
+            (held.pane(pane)?.tab == region.tab).then(|| region.daemon.clone())
+        })
+    }
+
+    fn daemon_showing(&self, tab: &TabId) -> Option<DaemonId> {
+        self.composition
+            .regions()
+            .find(|region| &region.tab == tab)
+            .map(|region| region.daemon.clone())
+    }
+
+    fn channel_of(&self, daemon: &DaemonId) -> Option<Arc<dyn BackendChannel>> {
+        self.backends.get(daemon).map(|backend| Arc::clone(&backend.channel))
+    }
+
     fn next_socket_path(&mut self) -> String {
         // A pid in the name because nothing else can legitimately own this path, which is
         // what makes unlinking a stale one safe.
@@ -255,6 +292,56 @@ impl Session {
 /// The pane this window's keyboard feeds, if it has one.
 pub(crate) fn keyboard_pane() -> Option<Arc<AttachedPane>> {
     SESSION.lock().expect("a panicking sender poisoned the session").keyboard_pane()
+}
+
+/// Asks the daemon showing this window for a change.
+///
+/// Nothing is applied here, and nothing is answered with new state: what happened arrives
+/// afterwards on the daemon's own events, which is what keeps one description of the session
+/// rather than two that can disagree (`architecture.md`, view = f(daemon state)).
+///
+/// The channel is taken out from under the lock before the request goes, because a request
+/// is a round trip and holding the session across one would stall every event arriving from
+/// every other daemon behind a wedged one.
+pub(crate) fn submit(intent: &BackendIntent) -> Result<(), String> {
+    let channel = {
+        let session = SESSION.lock().expect("a panicking sender poisoned the session");
+        let daemon = match intent {
+            BackendIntent::SplitPane { pane, .. }
+            | BackendIntent::ClosePane { pane }
+            | BackendIntent::FocusPane { pane } => session.daemon_holding(pane),
+            BackendIntent::SetSplitRatio { tab, .. } => session.daemon_showing(tab),
+        };
+        let daemon = daemon.ok_or_else(|| {
+            "no daemon this window is showing holds that pane or tab, so nothing was asked \
+             of anything. Either it closed while this was in flight, or the request names \
+             something in a session this window is not attached to."
+                .to_string()
+        })?;
+        session.channel_of(&daemon).ok_or_else(|| {
+            format!(
+                "the daemon {daemon} is in this window's composition and is not being \
+                     followed, which is a bug in the core rather than a state to recover from"
+            )
+        })?
+    };
+
+    let outcome = channel.submit(intent);
+    log::info(
+        "intent.submitted",
+        fields! {
+            "intent" => format!("{intent:?}"),
+            "backend" => channel.description(),
+            "refused" => outcome.as_ref().err().cloned().unwrap_or_default(),
+        },
+    );
+    outcome
+}
+
+/// The pane this window's keyboard feeds, named.
+pub(crate) fn focused_pane() -> Option<PaneId> {
+    let session = SESSION.lock().expect("a panicking sender poisoned the session");
+    session.composition.focused_region()?.pane.clone()
 }
 
 /// Why a pane could not be attached.
@@ -344,6 +431,7 @@ fn publish() {
                 "region" => region.id.to_string(),
                 "daemon" => region.daemon.to_string(),
                 "tab" => region.tab.to_string(),
+                "keyboard" => region.pane.as_ref().map(ToString::to_string).unwrap_or_default(),
                 "tree" => match &region.root {
                     Some(root) => root.to_string(),
                     None => "(not yet published)".to_string(),
