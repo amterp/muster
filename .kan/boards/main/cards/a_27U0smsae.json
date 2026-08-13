@@ -6,18 +6,27 @@
     "backend",
     "testing"
   ],
-  "column": "in-progress",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Done. The mirror holds a Layout per tab; muster-herdr rebuilds the tree\nfrom layout_updated's rectangles by exact containment and keeps the\nratio off the border rather than dividing the rects. Cases in\ncorpus/conformance/layout-reconstruction.json, all expectations derived\nfrom herdr's own layout.export rather than from our output.\n\nTwo findings worth carrying forward:\n\nThe subscription was never asking for layout.updated. Every offline\ntest passed - recorded bytes cannot show a subscription that was never\nopened - so a live daemon would have rendered the tree it had at\nconnect and frozen it. Caught by the one daemon-backed test added here,\nwhich is the argument for having it.\n\nA reconstruction taking any first-child candidate rather than the\nlargest is wrong only when a split nests under a first child along its\nown axis. Nothing recorded had that shape, so the implementation was\nbroken deliberately, the corpus passed, and the probe now records\ncolumns(columns(p3, p6), p4) as well.\n\nLeft for the seam landing: nothing in the shell can see any of this\nyet, and Change::LayoutChanged has no consumer.",
+      "created_at_millis": 1786655820013,
+      "id": "c_27UimXTNw"
+    }
+  ],
   "created_at_millis": 1786654132528,
   "creator": "Alexander Terp",
   "description": "The mirror knows a pane's tab and workspace and nothing about where it\nsits, so there is no tree for a window to render. This is the noun that\nis missing.\n\n`layout_updated` is the source: it carries a whole tab's layout in\nabsolute values, so applying it twice is applying it once, and it fires\non every pane event (observations/herdr-0.8.0.md). What it does not\nfire for is tab and workspace events, so it must not become the only\nstructural signal.\n\nThe catch is that its rects live in herdr's own TUI coordinate space -\nthe recorded area is 54x23 at (26,1), herdr's window minus its sidebar.\nOnly structure and ratios mean anything to Muster; the cell numbers are\nfor reconstructing which node contains which, and nothing else. A tree\nrebuilt that way is also how a divider is named back to the daemon,\nsince `layout.set_split_ratio` addresses one by a path of booleans.\n\nBlocked on a_27RZE8ywI: a reconstruction checked against the one\nrecorded layout is a reconstruction checked against nothing.",
   "id": "a_27U0smsae",
-  "position": "E",
+  "position": "!U",
   "title": "🧱 Layout in the vocabulary: a tab's tree, in Muster's words",
   "type": "feature",
-  "updated_at_millis": 1786654645387,
+  "updated_at_millis": 1786655820046,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786654132528},
     {"field":"column","value":"next","at":1786654146475},
-    {"field":"column","value":"in-progress","at":1786654645387}
+    {"field":"column","value":"in-progress","at":1786654645387},
+    {"field":"column","value":"done","at":1786655820046}
   ]
 }
