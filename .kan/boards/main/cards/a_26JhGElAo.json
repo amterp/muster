@@ -12,6 +12,12 @@
       "body": "The control plane is connection-per-request: herdr answers a request and closes the socket, so every intent Muster dispatches pays a connect() (docs/observations/herdr-0.8.0.md section 6). That belongs in the input-to-glyph budget, and it is a per-intent cost rather than a per-byte one, so it scales with interaction rate rather than output volume.",
       "created_at_millis": 1786485319318,
       "id": "c_26LBHPCtO"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Half landed. ./dev --perf measures and gates the per-byte and per-key budgets in release, against a checked-in baseline, with a 2x tolerance and a loud failure when a benchmark stops running. Verified it fails by doctoring the baseline: regression, vanished benchmark and new benchmark all reported correctly.\n\nStill open, and now printed by the harness itself rather than left implicit:\n- mirror.apply (ns/event), the control plane's per-event cost - needs the mirror (a_26DAm1Zt0).\n- render at 15 panes - per-byte cost is linear and covered; what 15 panes actually tests is aggregate scheduling across surfaces, which needs splits (a_26BJGL7VZ).\n\nThe input-to-glyph half is answered separately by ./dev --latency and a_26BIX28HG.",
+      "created_at_millis": 1786622535031,
+      "id": "c_27Gkt5MfX"
     }
   ],
   "created_at_millis": 1786481782109,
@@ -21,7 +27,7 @@
   "position": "UU",
   "title": "Perf harness: budget input-to-glyph at 1 and 15 panes",
   "type": "feature",
-  "updated_at_millis": 1786621386398,
+  "updated_at_millis": 1786622535031,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786481782109},
     {"field":"column","value":"in-progress","at":1786621386398}

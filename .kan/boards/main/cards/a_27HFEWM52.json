@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "extract-the",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "in-progress",
+  "created_at_millis": 1786623701522,
+  "creator": "Alexander Terp",
+  "description": "Turn the core's tests into data plus a thin driver, before any porting starts. The order matters: cases extracted from a passing implementation are proven, and become the port's acceptance criterion instead of something written afterward to match whatever Rust happened to do.\n\nClassified over the 81 tests as they stand:\n- ~51 are pure f(input) -\u003e output and become case tables: agent states, composition arbiter, keymap resolution, control-stream messages, frame decoding, socket discovery, pane command, key encoding, perf comparison, log record encoding.\n- ~16 are sequential and become scenario/trace files: input routing (a sequence of sends -\u003e an ordered trace of channel and intent), grid fidelity (already snapshot-driven).\n- ~7 stay native and should: SurfaceView driving AppKit with synthesized NSEvents, log sink concurrency.\n- 7 are hybrid: NSEvent -\u003e KeyEvent translation keeps a Swift driver but a portable expectation, so a GTK shell writes its own table producing the same KeyEvent.\n\nDoctrine and the three failure modes it has to answer are in docs/testing.md, 'The conformance corpus'. In short: every case carries a required non-empty 'why' or the driver fails it; every file declares source as recorded/ported/authored; disagreement between implementations is never resolved by editing the corpus; and the gate checks that every corpus file is claimed by a driver and that no driver ran zero cases.\n\nDone when ./dev is still green with the Swift tests reading from the corpus, and the case count is reported rather than assumed.",
+  "id": "a_27HFEWM52",
+  "position": "UUU",
+  "title": "Extract the conformance corpus, while the Swift suite is green",
+  "type": "chore",
+  "updated_at_millis": 1786623721505,
+  "history": [
+    {"field":"column","value":"next","at":1786623701522},
+    {"field":"column","value":"in-progress","at":1786623721505}
+  ]
+}

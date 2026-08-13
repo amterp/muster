@@ -20,3 +20,4 @@ corrections get a superseding MIP, and the History section records the transitio
 
 | ID | Title | Kind | Status |
 |---|---|---|---|
+| [MIP-1](0001-portable-core.md) | A portable core, and the seam that reaches it | Architecture | Accepted |

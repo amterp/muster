@@ -27,6 +27,13 @@ Muster's principles, adapted to that evidence:
 - **Record reality, replay it as data.** Oracles come from capture, not belief: ANSI streams from real agent
   sessions, key encodings from real terminals, daemon event logs. Cases are text files a reviewer can read, in the
   style of [go-snap](https://github.com/amterp/go-snap); adding coverage means adding data, not test code.
+- **Cases outlive implementations.** The core's tests are a conformance suite: one corpus of cases, and a thin
+  driver per language that feeds them in and compares what comes out. The shape is Web Platform Tests', or
+  CommonMark's - and herdr's own `keyboard_protocol_corpus.tsv`, which puts input and expectation in the same row.
+  What this buys is that a core rewritten in another language (MIP-1) is verified by cases a working implementation
+  already passed, rather than by reading the old tests and hoping. It is the same argument as the backend contract
+  corpus, one layer further in: the corpus is the executable definition of what a replacement must provide.
+  Roughly four fifths of the suite fits this; the shell's does not and should not try (see below).
 - **Assert what the user sees and what the daemon receives.** The user-facing oracle is the terminal grid, computed
   in the harness by libghostty-vt - the production engine. The daemon-facing oracle is the exact intent messages on
   the wire. Never pixels (GPU-flaky), never internal structures (false confidence in both directions).
@@ -43,3 +50,43 @@ Muster's principles, adapted to that evidence:
   budgets separately; a functional green is never a performance claim.
 
 The seams these tests inject at, and the oracles they read, are defined in `architecture.md` (seams and test hooks).
+
+## The conformance corpus
+
+Three things go wrong with tests-as-data, and each is answered by something that fails the build rather than by
+good intentions.
+
+**The reasoning evaporates.** A test named "an arrow is handed to the daemon, not encoded here", with a comment
+explaining that application cursor mode is invisible from the app and a guess produces bytes a pager rejects, is
+the best documentation in this repo. A row in a table is not. So every case carries a `why`, and a driver **fails
+a case whose `why` is missing or empty** - the same standing as an empty suite. Cases are JSON, one file per
+concept, because prose survives it and both languages parse it without a dependency.
+
+**A wrong oracle gets agreed on twice.** If the corpus is wrong, every implementation passes and every
+implementation is wrong. Each file declares its `source`:
+
+- `recorded` - captured from real herdr, real libghostty-vt, a real terminal. Carries the command that regenerates
+  it, so it can be re-derived rather than believed.
+- `ported` - lifted from an existing suite. Trusted exactly as far as that implementation was, which is the honest
+  label for most of an extraction.
+- `authored` - our own policy, with a citation. Muster's keymap defaults have no oracle beyond ghostty's config;
+  saying so is better than implying a verification we do not have.
+
+And the rule that makes the corpus a spec rather than a record of one implementation's habits: **when two
+implementations disagree on a case, the corpus is never edited to match whichever is louder.** The answer comes
+from a recording or from a dependency's source, and the commit says which.
+
+**A red suite becomes a scavenger hunt.** A failing row is worse to debug than a failing named test unless the
+driver is built for it. Failure output names the file, the case, the `why` - included precisely because that is
+the moment it is needed - then input, expected, actual, and the first difference. Bytes render readably: `ESC [ A`,
+not `[27, 91, 65]`. The driver's own output is tested, like any other thing whose failure mode is silence.
+
+And the hazard all three share: a corpus no driver reads is the silently-skipped suite in a new costume. So the
+gate checks that every corpus file is claimed by a driver, that every driver reports how many cases it ran, and
+that the count is never zero.
+
+**What stays native.** Not everything should be data, and forcing it produces an unreadable pseudo-language. The
+line falls where behavior stops being expressible in Muster's vocabulary: driving an `NSView` with a synthesized
+`NSEvent`, or proving that two processes appending to one log file never tear a line. Translation *into* the
+vocabulary is the hybrid case - a macOS driver maps `NSEvent` to a `KeyEvent` and asserts against a portable
+expectation, and a GTK shell would write its own table producing the same `KeyEvent`.

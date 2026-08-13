@@ -37,7 +37,8 @@ shape.
   file an agent can read rather than a session someone has to re-stage. Terminals carry secrets, so what you typed is
   never in it unless you ask for it.
 - **Cross-platform stays open.** macOS ships first. The shell layer is thin and per-OS; nothing outside it may assume
-  an OS. Both chosen organs already run on Linux and Windows.
+  an OS, and the core is portable by construction rather than by intention - it is a different language from the
+  shell, so an OS type cannot leak into it by accident. Both chosen organs already run on Linux and Windows.
 - **AI-native surface.** Configuration is files. Every action runs through one shared path exposed to GUI, CLI, and
   API alike - parity by construction, not by discipline - so agents can drive Muster the way they drive herdr.
 - **Harness-agnostic.** Strive to support many harnesses.
@@ -53,11 +54,13 @@ how you run your agents.
 
 ## Shape
 
-    native shell (macOS first)        thin, per-OS, mostly dumb
+    native shell (macOS first)        thin, per-OS, mostly dumb - Swift + AppKit today
       ├─ renderer seam → libghostty   real splits, GPU, VT fidelity
-      └─ backend seam  → herdr API    JSON socket + ANSI pane streams
-                           ├─ daemon on this machine   local agents
-                           └─ daemon on devenv (SSH)   remote agents
+      └─ core seam     → one symbol   protobuf over a C ABI; events, never bytes
+           portable core (Rust)       mirror, keymap, dispatch, attention, config
+             └─ backend seam → herdr  JSON socket + ANSI pane streams
+                  ├─ daemon on this machine   local agents
+                  └─ daemon on devenv (SSH)   remote agents
 
 ## Building
 
@@ -69,8 +72,12 @@ tests, `./dev -tl` tests and lints, `./dev -h` lists them all.
 reads its run log to see what connected, so it needs a daemon on PATH and a logged-in GUI session - neither of which
 the default suite is allowed to require.
 
-Requires a Swift 6.2 toolchain and [Rad](https://github.com/amterp/rad) on your PATH; a missing `rad` shows up as
-`env: rad: No such file or directory`.
+`./dev --perf` and `./dev --latency` are the other two out-of-gate tiers: the first measures the per-unit budgets
+against a checked-in baseline and fails on regression, the second times input-to-glyph against a real daemon. A
+functional green is never a performance claim, so neither runs by default.
+
+Requires a Swift 6.2 toolchain, a Rust toolchain, and [Rad](https://github.com/amterp/rad) on your PATH; a missing
+`rad` shows up as `env: rad: No such file or directory`.
 
 ## Repo conventions
 

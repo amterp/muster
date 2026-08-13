@@ -37,9 +37,14 @@ surface per visible pane. Deliberately thin: it wires OS events into the core an
 nothing more. Its failure modes should be wiring failures - that is what makes it testable by a small smoke layer
 (see `testing.md`).
 
-**Core** (headless, OS-free). The view-model and the only place decisions live: the mirror of each daemon's state,
-the action dispatcher, keymap policy, attention routing, configuration. The core never touches an OS API, a real
-clock, or a socket directly - those arrive through injected edges.
+**Core** (headless, OS-free, Rust). The view-model and the only place decisions live: the mirror of each daemon's
+state, the action dispatcher, keymap policy, attention routing, configuration. The core never touches an OS API, a
+real clock, or a socket directly - those arrive through injected edges.
+
+Rust rather than the shell's language, decided in `mip/0001-portable-core.md`. The short version: a boundary
+between shell and core has to exist the moment a second platform appears, because a Linux or Windows shell will not
+be Swift either. Putting a portable core on one side of it means macOS pays a well-supported FFI direction and every
+other platform pays nothing.
 
 **Backend adapters** (herdr today). Translate the Muster vocabulary to a concrete backend. One adapter per backend;
 nothing herdr-shaped escapes it. Control-plane transports: local socket for local daemons, SSH for remote ones.
@@ -95,6 +100,20 @@ between "bytes" and "control":
   herdr answers against a pane's real modes, and it is the shape the rest of input should eventually take. Mouse
   buttons and motion have no such command, and Muster does not send them: an SGR click encoded blind is garbage
   on the program's stdin, where a mis-encoded key is merely a wrong key.
+
+## The shell/core seam
+
+The shell and the core are different languages in one process, so the boundary between them is real and has to be
+narrow. It is one C ABI symbol - `muster_dispatch(request_bytes) -> response_bytes` - carrying protobuf-encoded
+messages in the vocabulary above, plus a callback the shell registers so the core can wake it unasked (an agent
+changed state, a notification is due). Details and alternatives in `mip/0001-portable-core.md`.
+
+Two properties keep this from being a bottleneck or a maintenance tax. **It carries events, never bytes**: the data
+plane runs adapter to surface and never enters the core, so this seam sees keystrokes and daemon events, not output.
+And **the schema is generated on both sides**, so a vocabulary change is one edit rather than two that can drift.
+
+The same schema is the CLI and the agent-facing API. "One action path" stops being a discipline and becomes
+codegen - a surface that cannot express an action is a missing message, visible at build time.
 
 ## Ownership of truth
 
