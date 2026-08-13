@@ -52,7 +52,14 @@ class Recorder:
     def note(self, line: str) -> None:
         """A human-readable breadcrumb, ordered with the transcript."""
         self._notes.append(f"[{self.t_ms():>6}ms] {line}")
-        print(f"    {line}", flush=True)
+        try:
+            print(f"    {line}", flush=True)
+        except BrokenPipeError:
+            # `probe lifecycle | head` closes stdout partway through, and letting that
+            # abort the run leaves a half-written recording that looks like a real
+            # capture. The transcript is the output that matters; the console echo is
+            # a convenience and may be dropped.
+            pass
 
     def fact(self, key: str, value: Any) -> None:
         """A machine-checkable observation the findings doc can cite."""
