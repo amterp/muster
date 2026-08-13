@@ -28,6 +28,27 @@ SUBSCRIPTIONS = [
     {"type": "workspace.focused"},
 ]
 
+# Every subscription that takes no parameters, which is every structural change a
+# mirror has to apply. Kept separate from SUBSCRIPTIONS above so that widening it does
+# not silently rewrite what the older scenarios recorded; those transcripts are cited
+# by the findings doc and should change only when someone means to re-record them.
+#
+# The three parameterized subscriptions - pane.agent_status_changed, pane.output_matched,
+# pane.scroll_changed - are deliberately absent: they need a pane id, and they are the
+# ones that come back with dotted names (see docs/observations/herdr-0.8.0.md section 6).
+STRUCTURE_SUBSCRIPTIONS = [
+    {"type": name} for name in (
+        "workspace.created", "workspace.updated", "workspace.metadata_updated",
+        "workspace.renamed", "workspace.moved", "workspace.reordered",
+        "workspace.closed", "workspace.focused",
+        "worktree.created", "worktree.opened", "worktree.removed",
+        "tab.created", "tab.closed", "tab.focused", "tab.renamed", "tab.moved",
+        "pane.created", "pane.closed", "pane.updated", "pane.focused", "pane.moved",
+        "pane.exited", "pane.agent_detected",
+        "layout.updated",
+    )
+]
+
 
 def _new_workspace(client, cwd="/tmp", label=None):
     return client.request("workspace.create", {"cwd": cwd, "focus": True, "label": label})
@@ -616,6 +637,189 @@ def detection(daemon, rec: Recorder) -> None:
     rec.note(f"with a control stream attached, detection settled in {[v for _, v in viewed]}s")
 
 
+# --------------------------------------------------------------------------- 9
+
+def _wait_for_kind(stream, *kinds, timeout=6.0):
+    return stream.wait_for(lambda e: e.get("event") in kinds, timeout=timeout)
+
+
+def _tree_depth(node) -> int:
+    if not isinstance(node, dict) or node.get("type") != "split":
+        return 0
+    return 1 + max(_tree_depth(node.get("first")), _tree_depth(node.get("second")))
+
+
+def lifecycle(daemon, rec: Recorder) -> None:
+    """What a mirror has to survive: things being destroyed, and nesting.
+
+    Every earlier scenario recorded a session that only ever grew, so the corpus has
+    no removal in it at all - and removal is the half of convergent application that
+    is easy to get wrong. This also records the first layout deeper than one split,
+    because rendering native splits cannot be designed against a single-level tree.
+
+    Also settles what the per-entity counters actually track, which decides whether a
+    client can detect a gap in the event stream or only survive one.
+    """
+    client = RecordingClient(daemon.client(), rec)
+    _new_workspace(client)
+    time.sleep(0.5)
+
+    with daemon.client().subscribe(STRUCTURE_SUBSCRIPTIONS) as stream:
+        # The replay arrives on the drain thread, so counting it needs a beat. Reading
+        # immediately reports zero and looks like herdr not replaying at all.
+        time.sleep(1.0)
+        replayed = stream.snapshot()
+
+        # Two levels, mixed directions: root = split(right, p1, split(down, p2, p3)).
+        client.request("pane.split", {"direction": "right", "target_pane_id": "w1:p1", "cwd": "/tmp"})
+        time.sleep(0.4)
+        client.request("pane.split", {"direction": "down", "target_pane_id": "w1:p2", "cwd": "/tmp"})
+        time.sleep(0.6)
+
+        nested_snapshot = client.request("session.snapshot")["snapshot"]
+        nested_export = client.request("layout.export", {})
+        rec.write_json("nested-session.snapshot.json", nested_snapshot)
+        rec.write_json("nested-layout.export.json", nested_export)
+
+        root = nested_export.get("layout", {}).get("root")
+        tab_layout = next((l for l in nested_snapshot["layouts"] if l["tab_id"] == "w1:t1"), {})
+        rec.fact("nested_tree_depth", _tree_depth(root))
+        rec.fact("nested_tree_directions", sorted(_directions(root)))
+        rec.fact("nested_snapshot_split_count", len(tab_layout.get("splits", [])))
+        rec.fact("nested_snapshot_split_keys",
+                 sorted(tab_layout["splits"][0].keys()) if tab_layout.get("splits") else [])
+        rec.fact("nested_snapshot_pane_rects",
+                 {p["pane_id"]: p["rect"] for p in tab_layout.get("panes", [])})
+        rec.note(f"three panes, two levels: export tree depth {_tree_depth(root)}, "
+                 f"snapshot lists {len(tab_layout.get('splits', []))} split border(s)")
+
+        # Now take things away, which is the part nothing has ever recorded.
+        client.request("tab.create", {"workspace_id": "w1", "focus": False})
+        time.sleep(0.4)
+        client.request("pane.close", {"pane_id": "w1:p3"})
+        closed = _wait_for_kind(stream, "pane_closed", "pane.closed")
+        time.sleep(0.3)
+        client.request("tab.close", {"tab_id": "w1:t2"})
+        _wait_for_kind(stream, "tab_closed", "tab.closed")
+        time.sleep(0.3)
+
+        client.request("workspace.create", {"cwd": "/tmp", "focus": False, "label": "doomed"})
+        time.sleep(0.4)
+        client.request("workspace.close", {"workspace_id": "w2"})
+        _wait_for_kind(stream, "workspace_closed", "workspace.closed")
+        time.sleep(0.3)
+
+        # A pane whose program ends on its own, rather than one a client closed.
+        client.request("pane.send_text", {"pane_id": "w1:p2", "text": "exit\n"})
+        exited = _wait_for_kind(stream, "pane_exited", "pane.exited", timeout=8.0)
+        time.sleep(0.6)
+
+        events = stream.snapshot()
+
+    rec.write_text("events.ndjson", "".join(json.dumps(e, sort_keys=True) + "\n" for e in events))
+    kinds = sorted({e["event"] for e in events if "event" in e})
+    rec.fact("subscribe_replayed_event_count", len(replayed))
+    rec.fact("subscribe_replayed_kinds", sorted({e["event"] for e in replayed if "event" in e}))
+    rec.fact("lifecycle_event_kinds_delivered", kinds)
+    rec.fact("removal_kinds_seen", [k for k in kinds if "clos" in k or "exit" in k])
+    # The shape decides how a mirror applies a removal: an id is enough to drop an
+    # entry, a whole entity is not, and guessing wrong is a pane that never disappears.
+    rec.fact("pane_closed_payload_keys", sorted(closed["data"].keys()) if closed else None)
+    rec.fact("pane_exited_payload_keys", sorted(exited["data"].keys()) if exited else None)
+    rec.fact("pane_exited_payload", exited["data"] if exited else None)
+
+    # The trap: a pane whose program ended and a pane a client closed are announced by
+    # different events. A mirror that only handles pane_closed keeps the exited pane
+    # forever, which is a dead surface the user cannot get rid of.
+    order = [e["event"] for e in events if "event" in e]
+    exited_at = order.index("pane_exited") if "pane_exited" in order else None
+    rec.fact("pane_exit_also_emits_pane_closed",
+             "pane_closed" in order[exited_at + 1:] if exited_at is not None else None)
+
+    layouts = [e for e in events if e.get("event") == "layout_updated"]
+    rec.fact("layout_updated_count", len(layouts))
+    rec.fact("layout_updated_payload_keys",
+             sorted(layouts[0]["data"]["layout"].keys()) if layouts else None)
+    rec.fact("layout_updated_is_whole_tab_absolute",
+             bool(layouts) and {"panes", "splits", "tab_id", "focused_pane_id"}
+             <= set(layouts[0]["data"]["layout"].keys()))
+    # Which structural changes did NOT get one. A mirror that renders geometry only on
+    # layout_updated goes stale exactly here.
+    followed = {order[i]: order[i + 1] == "layout_updated"
+                for i in range(len(order) - 1)
+                if order[i] in ("pane_created", "pane_closed", "pane_exited",
+                                "tab_created", "tab_closed", "workspace_closed")}
+    rec.fact("structural_change_followed_by_layout_updated", followed)
+
+    rec.note(f"kinds delivered: {kinds}")
+    rec.note(f"removals: {[k for k in kinds if 'clos' in k or 'exit' in k] or 'NONE'}")
+    rec.note(f"subscribe replayed {len(replayed)} event(s) for a one-pane session")
+    rec.note(f"pane_exited followed by a pane_closed: "
+             f"{order[exited_at + 1:] if exited_at is not None else 'n/a'}")
+
+    _counters(client, rec)
+
+
+def _directions(node, found=None):
+    found = found if found is not None else set()
+    if isinstance(node, dict) and node.get("type") == "split":
+        found.add(node.get("direction"))
+        _directions(node.get("first"), found)
+        _directions(node.get("second"), found)
+    return found
+
+
+def _counters(client, rec: Recorder) -> None:
+    """Can a client detect that it missed events, or only that it is out of date?
+
+    architecture.md left this open, and it decides whether reconciliation can be
+    triggered by evidence or has to be a timer.
+    """
+    def pane(pane_id="w1:p1"):
+        return next(p for p in _panes(client) if p["pane_id"] == pane_id)
+
+    before = pane()["revision"]
+    client.request("pane.report_agent",
+                   {"pane_id": "w1:p1", "source": "probe", "agent": "probe", "state": "working"})
+    time.sleep(0.5)
+    after_state = pane()["revision"]
+
+    client.request("pane.send_text",
+                   {"pane_id": "w1:p1", "text": "printf '\\033]0;muster-probe\\007'\n"})
+    time.sleep(1.0)
+    after_title = pane()["revision"]
+
+    rec.fact("pane_revision_start", before)
+    rec.fact("pane_revision_bumped_by_agent_state", after_state != before)
+    rec.fact("pane_revision_bumped_by_title", after_title != after_state)
+    rec.note(f"pane revision: {before} -> {after_state} after an agent state change "
+             f"-> {after_title} after a title change")
+
+    # Is the agent counter per-pane or session-global? A global one can be used to
+    # notice a transition on a pane this client has never seen.
+    client.request("pane.split", {"direction": "right", "target_pane_id": "w1:p1", "cwd": "/tmp"})
+    time.sleep(0.5)
+    fresh = [p["pane_id"] for p in _panes(client)]
+    second = next((p for p in fresh if p != "w1:p1"), None)
+    seqs = []
+    for pane_id in ("w1:p1", second, "w1:p1"):
+        if not pane_id:
+            continue
+        for state in ("working", "idle"):
+            client.request("pane.report_agent",
+                           {"pane_id": pane_id, "source": "probe", "agent": "probe", "state": state})
+            time.sleep(0.35)
+        agents = client.request("session.snapshot")["snapshot"]["agents"]
+        seqs.append({a.get("pane_id"): a.get("state_change_seq") for a in agents})
+
+    rec.fact("agent_state_change_seq_progression", seqs)
+    final = seqs[-1] if seqs else {}
+    values = [v for v in final.values() if v is not None]
+    rec.fact("agent_state_change_seq_unique_across_panes", len(set(values)) == len(values))
+    rec.fact("agent_state_change_seq_final", final)
+    rec.note(f"agent state_change_seq across panes: {final}")
+
+
 ALL = {
     "snapshot": snapshot,
     "frames": frames,
@@ -625,4 +829,5 @@ ALL = {
     "input-path": input_path,
     "input-encoding": input_encoding,
     "frame-fidelity": frame_fidelity,
+    "lifecycle": lifecycle,
 }

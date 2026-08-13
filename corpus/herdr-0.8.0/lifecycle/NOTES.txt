@@ -1,0 +1,7 @@
+[  2768ms] three panes, two levels: export tree depth 2, snapshot lists 2 split border(s)
+[  5388ms] kinds delivered: ['layout_updated', 'pane_closed', 'pane_created', 'pane_exited', 'pane_focused', 'tab_closed', 'tab_created', 'tab_focused', 'workspace_closed', 'workspace_created', 'workspace_focused']
+[  5388ms] removals: ['pane_closed', 'pane_exited', 'tab_closed', 'workspace_closed']
+[  5388ms] subscribe replayed 7 event(s) for a one-pane session
+[  5388ms] pane_exited followed by a pane_closed: ['layout_updated']
+[  6904ms] pane revision: 0 -> 0 after an agent state change -> 1 after a title change
+[  9566ms] agent state_change_seq across panes: {'w1:p1': 6, 'w1:p5': 4}

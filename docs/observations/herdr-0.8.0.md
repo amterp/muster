@@ -403,3 +403,77 @@ version of this measurement read frames on a second thread and reported a 20 ms 
 with a 30 ms tail. The measuring loop held Python's GIL and starved the reader, so the
 number described the instrument. Single-threaded blocking reads moved the median from
 20 ms to 1.4 ms. Any future timing harness here reads on the thread that is timing.
+
+## 10. Removals, and what the counters actually count
+
+Added 2026-08-13, for the mirror (`a_26DAm1Zt0`). Every earlier scenario recorded a
+session that only ever grew, so nothing here had ever watched herdr take something
+away - and removal is the half of convergent application that is easy to get wrong.
+
+Evidence: `corpus/herdr-0.8.0/lifecycle/`, recorded with
+`tools/herdr-probe/probe lifecycle`.
+
+### A pane whose program exits is announced differently from a pane a client closed
+
+`pane.close` emits `pane_closed`. A pane whose program ends emits `pane_exited` and
+**never** a `pane_closed` afterwards - the recorded stream goes straight from
+`pane_exited` to `layout_updated`. Both payloads are the same three fields,
+`{type, pane_id, workspace_id}`: an id, not the entity, which is all a mirror needs to
+drop an entry.
+
+A mirror that keys removal on `pane_closed` alone therefore keeps every exited pane
+forever. That is a surface rendering a dead PTY that the user cannot get rid of, and it
+would have looked like a Muster bug rather than a missing event name.
+
+### `layout_updated` is the geometry, and it does not fire for tabs
+
+It carries a whole tab's layout - `area`, `panes` with rects, `splits`, `focused_pane_id`,
+`tab_id`, `workspace_id`, `zoomed` - in absolute values, so applying one twice is
+applying it once. That makes it the right thing to render splits from.
+
+What it does not do is fire for everything. In the recording it followed every
+`pane_created`, `pane_closed` and `pane_exited`, and followed **none** of `tab_created`,
+`tab_closed` or `workspace_closed`. A client that treats it as "geometry changed" and
+refreshes nothing else shows a closed tab's panes until something touches a pane.
+
+Its `splits` are herdr's `SplitBorder` (`src/layout.rs:119`) - boundaries for mouse-drag
+resize, with no parent or child links. The BSP tree itself is only in `layout.export`,
+which carries none of the live fields. Recorded at three panes and two levels
+(`nested-layout.export.json`, `nested-session.snapshot.json`), which is the first
+layout in the corpus deeper than a single split.
+
+### The counters answer a narrower question than architecture.md assumed
+
+`architecture.md` said gaps "cannot be detected, only survived", then corrected itself to
+note the per-entity counters and left open whether they are enough. Measured, they are
+enough for one of the two kinds of change:
+
+| counter | bumped by | use |
+|---|---|---|
+| pane `revision` | terminal title, metadata tokens | nothing a mirror wants |
+| agent `state_change_seq` | any agent state transition, session-wide | detects missed transitions |
+
+A pane's `revision` did not move when its agent went idle to working, and did move when
+its title changed (0 -> 0 -> 1). Reading the source says why: it is bumped in exactly
+three places, all of them title or metadata-token
+(`src/terminal/state.rs:198`, `src/app/actions.rs:1083`, `src/app/api/panes.rs:1411`).
+It is not a general "this pane changed" counter and cannot be used as one.
+
+`state_change_seq` is better than per-entity. It is stamped from one session-wide
+counter (`src/app/actions.rs:2973`), so panes get interleaved values - the recording
+walks `{p1: 2}`, `{p1: 2, p5: 4}`, `{p1: 6, p5: 4}`. A client that remembers the highest
+value it has seen can tell that transitions happened while it was not listening, **including
+on panes it has never heard of**.
+
+So: agent-state gaps are detectable from evidence, structural gaps are not. Nothing
+reports that a pane was created and closed inside a gap, which leaves periodic
+re-snapshot as the only detector for structure. That is the fact the reconciliation
+cadence gets chosen against.
+
+### Subscribing still replays
+
+Confirmed again on a smaller session: 7 events for one workspace, one tab, one pane -
+`workspace_created`, `workspace_focused`, `tab_created`, `tab_focused`, `pane_created`,
+`pane_focused`, `layout_updated`. Section 1 saw 9 for a three-pane session. The replay is
+the current session described as synthetic creation events, so snapshot-then-subscribe
+sees everything twice and convergent application is not optional.

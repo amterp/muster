@@ -160,10 +160,16 @@ model:
 - **Application is convergent.** herdr offers no event replay, and subscribing replays the current session as
   synthetic events, so a client sees every existing entity twice and cannot ask for what it missed. Every event is
   therefore applied idempotently and carries absolute values, never deltas, so snapshot-plus-events converges
-  regardless of what raced the bootstrap. There *are* per-entity counters - `revision` on panes, `state_change_seq`
-  on agents, `seq` on pane frames - so staleness is detectable per entity even though gaps in the stream are not;
-  whether those are enough to detect a gap should be settled before the reconciliation cadence is chosen. Periodic
-  reconciliation against a fresh snapshot is the fallback gap detector.
+  regardless of what raced the bootstrap.
+- **Gaps are detectable for agent state, and not for structure.** Measured rather than assumed
+  (`observations/herdr-0.8.0.md` section 10). An agent's `state_change_seq` is stamped from one session-wide
+  counter, so a client that remembers the highest value it has seen can tell that transitions happened while it was
+  not listening, including on panes it has never heard of. A pane's `revision` cannot be used this way: it tracks
+  terminal titles and metadata tokens, and does not move when an agent changes state. Nothing reports a pane created
+  and closed inside a gap, so structure has no evidence-based detector and periodic reconciliation against a fresh
+  snapshot is the only one. Cadence is a separate decision.
+- **Removal has two spellings.** A pane a client closes emits `pane_closed`; a pane whose program ends emits
+  `pane_exited` and no `pane_closed`. Both must drop the pane, or an exited pane renders forever.
 - **Cross-daemon order is core order.** Streams from different daemons have no mutual order. Composition and
   attention are ordered by the core's own application sequence, and nothing may depend on cross-daemon event order
   for correctness.
