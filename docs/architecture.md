@@ -186,6 +186,25 @@ Liveness needs an active probe - the control plane is legitimately silent when n
 is an implementation choice. Version skew between Muster and a daemon is detected at attach and surfaced plainly.
 Sessions survive anything Muster does: a broken Muster must never strand a session (see also geometry, above).
 
+## The diagnostic log
+
+One run, one file, every process. The app names it, and every bridge it spawns inherits the path, so a keystroke
+leaving the app and arriving at a daemon reads as consecutive lines rather than as a correlation exercise across
+clocks. Records are one JSON object per line - time, level, process, pid, a dotted event name, then fields - which
+makes the log greppable by hand and an assertion surface for tests: a launch smoke test can assert that
+`channel.connected` appeared and that no `error` record did.
+
+Events are named for the question they answer, not for the code that emitted them. The load-bearing ones are the
+boundaries where a process can silently stop mattering: the control socket binding, a bridge dialing back, the first
+frame painted, and the reason a pane's stream ended.
+
+On by default in debug builds and opt-in in release, because a terminal multiplexer's logs are unusually sensitive.
+What the user typed is recorded only under a separate switch again: by default a keystroke record carries its shape -
+which key, how many bytes - and not its content. The default must stay the one that cannot leak a password into a
+file destined for a bug report.
+
+Where the file lives is an OS question and therefore the shell's; nothing in the core knows the path.
+
 ## Seams and test hooks
 
 The injected edges, matching `testing.md`: the backend connection (a fake daemon speaks the same

@@ -31,6 +31,11 @@ shape.
   in the untestable layer; the world faked only at the two seams, with the fakes audited against real herdr; oracles
   recorded from reality - terminal grids via libghostty-vt, intent on the wire - never pixels or internals;
   deterministic and offline.
+- **Every run explains itself.** Muster is several processes, often on several machines, and a symptom in one usually
+  has its cause in another: a window that ignores the keyboard is a bridge that never started, or one that started and
+  could not dial back. Each run leaves a single machine-readable timeline spanning all of them, so a bug report is a
+  file an agent can read rather than a session someone has to re-stage. Terminals carry secrets, so what you typed is
+  never in it unless you ask for it.
 - **Cross-platform stays open.** macOS ships first. The shell layer is thin and per-OS; nothing outside it may assume
   an OS. Both chosen organs already run on Linux and Windows.
 - **AI-native surface.** Configuration is files. Every action runs through one shared path exposed to GUI, CLI, and

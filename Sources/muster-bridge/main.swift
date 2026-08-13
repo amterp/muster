@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import MusterCore
 import MusterHerdr
 
 // muster-bridge: one pane's frame stream, unwrapped into one surface.
@@ -33,6 +34,10 @@ else {
 let paneID = CommandLine.arguments[1]
 let controlSocketPath = CommandLine.arguments.count == 4 ? CommandLine.arguments[3] : nil
 
+// The app names the file and every bridge it spawns inherits it, so one pane's whole
+// story - keystroke leaves the app, arrives here, goes to herdr - reads in order.
+Log.startFromEnvironment(process: "bridge:\(paneID)")
+
 /// The surface's grid, read from the PTY libghostty gave us.
 ///
 /// This is why resize needs no channel of its own: libghostty sizes the PTY from the
@@ -57,9 +62,17 @@ herdr.standardInput = toHerdr
 herdr.standardOutput = fromHerdr
 herdr.standardError = FileHandle.standardError
 
+Log.info(
+  "bridge.start",
+  [
+    "pane": paneID, "cols": String(initial.cols), "rows": String(initial.rows),
+    "control_socket": controlSocketPath ?? "(none)",
+  ])
+
 do {
   try herdr.run()
 } catch {
+  Log.error("bridge.herdr.failed", ["pane": paneID, "error": "\(error)"])
   FileHandle.standardError.write(
     Data(
       """
@@ -97,6 +110,9 @@ signal(SIGWINCH, SIG_IGN)
 final class FramePump: @unchecked Sendable {
   private var decoder = FrameDecoder()
   private let out = FileHandle.standardOutput
+  /// Whether anything was ever painted, which is what separates a pane that ended from a
+  /// pane that never began.
+  private var rendered = false
 
   func consume(_ chunk: Data) {
     for event in decoder.consume(chunk) {
@@ -104,11 +120,46 @@ final class FramePump: @unchecked Sendable {
       case .frame(let frame):
         // An attach opens with a full repaint, so a surface never has to have seen the
         // start of the stream.
+        if !rendered { Log.info("bridge.frame.first", ["bytes": String(frame.bytes.count)]) }
+        rendered = true
+        Log.trace("bridge.frame", ["bytes": String(frame.bytes.count)])
         out.write(frame.bytes)
-      case .closed:
-        exit(0)
+      case .closed(let reason):
+        finish(reason: reason)
       }
     }
+  }
+
+  /// Reports why the stream ended, and exits.
+  ///
+  /// herdr states its reason in the closing frame and this process is the only thing that
+  /// ever sees it. Exiting silently made a mistyped pane id and a pane the user closed
+  /// into the same event: an empty window and ghostty's own "failed to launch" box, which
+  /// blames the command rather than naming the pane that does not exist.
+  func finish(reason: String?) -> Never {
+    let why = reason ?? "herdr gave no reason"
+    Log.info("bridge.closed", ["pane": paneID, "reason": why, "rendered": String(rendered)])
+    guard rendered else {
+      Log.error(
+        "bridge.attach.failed",
+        [
+          "pane": paneID, "reason": why,
+          "impact": "this window stays empty for as long as it is open",
+        ])
+      // Nothing ever painted, so the attach itself failed. Non-zero because this is not
+      // a session ending - it is a session that never started.
+      FileHandle.standardError.write(
+        Data(
+          """
+          muster-bridge: could not attach to pane \(paneID): \(why)
+          This window will stay empty. Most often the pane id is wrong or its workspace \
+          is gone; `herdr pane list` names the panes that exist right now.
+
+          """.utf8))
+      exit(1)
+    }
+    FileHandle.standardError.write(Data("muster-bridge: pane \(paneID) closed: \(why)\n".utf8))
+    exit(0)
   }
 }
 
@@ -116,9 +167,10 @@ let pump = FramePump()
 fromHerdr.fileHandleForReading.readabilityHandler = { handle in
   let chunk = handle.availableData
   if chunk.isEmpty {
-    // herdr hung up. Exiting is what tells libghostty this pane's command is gone; the
-    // surface keeps its last painted frame until then.
-    exit(0)
+    // herdr hung up without a closing frame, which the protocol does not call for. Same
+    // exit either way - it is what tells libghostty this pane's command is gone - but it
+    // goes through the same reporting so the window never just stops.
+    pump.finish(reason: "herdr's stream ended without a closing frame")
   }
   pump.consume(chunk)
 }
@@ -130,10 +182,23 @@ fromHerdr.fileHandleForReading.readabilityHandler = { handle in
 let controlSocket = controlSocketPath.flatMap(ControlSocket.init(path:))
 if let controlSocketPath {
   if let controlSocket {
+    Log.info("bridge.control.dialed", ["path": controlSocketPath])
     controlSocket.relay { line in
+      Log.debug(
+        "bridge.relay",
+        [
+          "bytes": String(line.count),
+          "line": Log.includesInput ? String(decoding: line, as: UTF8.self) : "",
+        ])
       toHerdr.fileHandleForWriting.write(line)
     }
   } else {
+    Log.error(
+      "bridge.control.failed",
+      [
+        "path": controlSocketPath,
+        "impact": "this pane renders but swallows every keystroke",
+      ])
     FileHandle.standardError.write(
       Data(
         """

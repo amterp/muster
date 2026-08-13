@@ -23,6 +23,17 @@ final class SurfaceView: NSView {
   /// that says composition is still in progress.
   private var markedText = NSMutableAttributedString()
 
+  /// What the input method committed while the current `keyDown` was being interpreted.
+  ///
+  /// Held rather than sent, because at the moment `insertText` runs it is not yet known
+  /// whether this is a composition finishing - which the pane should receive as text - or
+  /// AppKit simply handing back the character that was typed, which the encoder is about
+  /// to produce anyway. Sending from both places is how every keystroke arrived twice.
+  private var committedText: String?
+
+  /// Whether `insertText` is being called from inside `keyDown`.
+  private var interpretingKeyEvent = false
+
   override init(frame: NSRect) {
     super.init(frame: frame)
     // Layer-backed before the surface is created, and on the main thread. libghostty's
@@ -61,8 +72,23 @@ final class SurfaceView: NSView {
     // belong to it - they select candidates and build characters - and the pane must see
     // only what it commits. interpretKeyEvents calls back into insertText or
     // setMarkedText below.
+    let wasComposing = hasMarkedText()
+    committedText = nil
+    interpretingKeyEvent = true
     interpretKeyEvents([event])
+    interpretingKeyEvent = false
+
+    // Still composing: this keystroke was the input method's, not the pane's.
     guard !hasMarkedText() else { return }
+
+    // A composition that just finished is the one case where the committed text is the
+    // truth and the keystroke is not: what an input method produces need not resemble the
+    // key that produced it. Every other press goes to the encoder, which already carries
+    // the typed characters on the event.
+    if wasComposing, let text = committedText, !text.isEmpty {
+      pane?.send(text: text)
+      return
+    }
     send(event, action: .press)
   }
 
@@ -117,9 +143,16 @@ extension SurfaceView: @preconcurrency NSTextInputClient {
       default: ""
       }
     guard !text.isEmpty else { return }
-    // Committed text goes as text rather than as keystrokes: what the method produced
-    // may have no relationship to the keys that produced it.
-    pane?.send(text: text)
+    guard interpretingKeyEvent else {
+      // Not from a keystroke at all - a menu, a service, a character picker. Nothing else
+      // is going to send this, so it goes now.
+      pane?.send(text: text)
+      return
+    }
+    // Committed text goes as text rather than as keystrokes: what the method produced may
+    // have no relationship to the keys that produced it. keyDown decides whether that is
+    // what happened here.
+    committedText = (committedText ?? "") + text
   }
 
   func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
@@ -185,12 +218,43 @@ final class PaneInput {
 
   func send(_ key: KeyEvent) {
     // Precedence: a bound chord is Muster's and the pane never sees it.
-    guard case .unbound = keymap.resolve(key) else { return }
-    guard let bytes = try? encoder.encode(key), !bytes.isEmpty else { return }
+    guard case .unbound = keymap.resolve(key) else {
+      Log.debug("input.bound", ["key": "\(key.key)", "mods": "\(key.modifiers.rawValue)"])
+      return
+    }
+    guard let bytes = try? encoder.encode(key) else {
+      Log.warn(
+        "input.encode.failed",
+        [
+          "key": "\(key.key)", "mods": "\(key.modifiers.rawValue)",
+          "impact": "this keystroke reaches the pane as nothing at all",
+        ])
+      return
+    }
+    // An empty encoding is normal and frequent - modifiers alone, and every key while an
+    // input method is composing - so it is not a warning, but a silence worth being able
+    // to tell apart from a dropped one.
+    guard !bytes.isEmpty else {
+      Log.trace("input.key.empty", ["key": "\(key.key)", "action": "\(key.action)"])
+      return
+    }
+    Log.debug(
+      "input.key",
+      [
+        "key": "\(key.key)", "mods": "\(key.modifiers.rawValue)", "action": "\(key.action)",
+        "bytes": String(bytes.count),
+        "encoded": Log.includesInput ? String(decoding: bytes, as: UTF8.self).debugDescription : "",
+      ])
     deliver(.input(bytes))
   }
 
   func send(text: String) {
+    Log.debug(
+      "input.text",
+      [
+        "characters": String(text.count),
+        "text": Log.includesInput ? text.debugDescription : "",
+      ])
     deliver(.input(Array(text.utf8)))
   }
 
@@ -200,6 +264,12 @@ final class PaneInput {
 
   private func deliver(_ message: ControlStreamMessage) {
     guard !channel.send(message) else { return }
+    Log.warn(
+      "input.dropped",
+      [
+        "socket": channel.socketPath,
+        "impact": "the pane looks frozen but is fine; nothing typed here reached it",
+      ])
     // Once, not per keystroke: a pane that swallows input produces a lot of them, and a
     // log that scrolls is a log nobody reads.
     guard !warnedAboutDroppedInput else { return }
@@ -240,6 +310,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private var channel: PaneControlChannel?
 
   func applicationDidFinishLaunching(_ notification: Notification) {
+    // First, so that everything after it is on the record - including the failures that
+    // terminate this method.
+    if let logPath = startLogging() {
+      FileHandle.standardError.write(Data("muster: logging to \(logPath)\n".utf8))
+    }
+    Log.info(
+      "app.launch",
+      [
+        "args": CommandLine.arguments.dropFirst().joined(separator: " "),
+        "input_recorded": String(Log.includesInput),
+      ])
+
     let view = SurfaceView(frame: NSRect(x: 0, y: 0, width: 960, height: 600))
 
     let window = NSWindow(
@@ -261,16 +343,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       // Bound before the surface exists, so the bridge cannot dial a socket that is not
       // listening yet.
       let pane = try makePaneInput()
-      view.attach(
-        try renderer.makeSurface(
-          in: view, command: paneCommand(controlSocketPath: channel?.socketPath)),
-        pane: pane)
+      let command = paneCommand(controlSocketPath: channel?.socketPath)
+      Log.info("surface.create", ["command": command ?? "(none)"])
+      view.attach(try renderer.makeSurface(in: view, command: command), pane: pane)
       renderer.setFocus(true)
       window.makeFirstResponder(view)
+      Log.info("app.ready", ["typeable": String(pane != nil)])
     } catch {
       // A spike that fails silently teaches nothing. Say which step broke, because each
       // one fails for a different reason: init and app creation mean the embedding API
       // itself is not usable here, surface creation means the view binding is wrong.
+      Log.error("app.setup.failed", ["error": "\(error)"])
       FileHandle.standardError.write(Data("muster: renderer setup failed: \(error)\n".utf8))
       NSApp.terminate(nil)
     }
@@ -278,11 +361,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
   /// The input path for the pane this window shows, or nil when running a plain shell.
   ///
-  /// A bare `muster` has no daemon behind it, so the surface's own command owns its
-  /// input and there is nothing for Muster to encode.
+  /// A bare `muster` has no daemon behind it, and Muster's input path only knows how to
+  /// talk to one: it encodes a keystroke and hands the bytes to a pane's control stream.
+  /// A local shell has no control stream, so there is nowhere to put them.
+  ///
+  /// That makes bare `muster` an output-only check on the renderer, and it says so rather
+  /// than presenting a terminal that ignores the keyboard. Wiring this mode up would mean
+  /// calling `ghostty_surface_key` and putting input back inside the renderer seam
+  /// (architecture.md), for a mode that ships in no version of Muster - every real pane
+  /// comes from a daemon.
   private func makePaneInput() throws -> PaneInput? {
-    guard CommandLine.arguments.count > 1 else { return nil }
+    guard CommandLine.arguments.count > 1 else {
+      window?.title = "muster (renderer check - keyboard not connected)"
+      FileHandle.standardError.write(
+        Data(
+          """
+          muster: no pane named, so this window only proves the renderer works.
+          It runs $SHELL and paints what that prints, but every keystroke is dropped - \
+          input needs a daemon-owned pane to encode for. To type into one, pass its id: \
+          `muster w1:p1`. `herdr pane list` names the panes that exist.
 
+          """.utf8))
+      return nil
+    }
+
+    window?.title = "muster - \(CommandLine.arguments[1])"
     let path = FileManager.default.temporaryDirectory
       .appendingPathComponent("muster-\(getpid()).sock").path
     let channel = try PaneControlChannel(path: path)

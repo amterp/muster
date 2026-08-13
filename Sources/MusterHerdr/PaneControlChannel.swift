@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import MusterCore
 
 /// The app's way of talking to a pane's bridge process.
 ///
@@ -63,6 +64,7 @@ public final class PaneControlChannel {
       throw Failure.bindFailed(path: path, errno: code)
     }
 
+    Log.info("channel.listening", ["path": path])
     accept()
   }
 
@@ -79,7 +81,13 @@ public final class PaneControlChannel {
     queue.async { [weak self] in
       guard let self else { return }
       let accepted = Darwin.accept(listener, nil, nil)
-      guard accepted >= 0 else { return }
+      guard accepted >= 0 else {
+        // Nothing retries after this, so the pane is typed-into-the-void from here on.
+        Log.error(
+          "channel.accept.failed",
+          ["path": path, "errno": String(errno), "detail": String(cString: strerror(errno))])
+        return
+      }
 
       // Without this, writing to a bridge that has died raises SIGPIPE and kills the
       // app - one pane's subprocess crashing would take every other pane's window with
@@ -88,6 +96,9 @@ public final class PaneControlChannel {
       setsockopt(accepted, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
 
       client = accepted
+      // The moment the pane becomes typeable. Its absence is the single most useful fact
+      // in the log when keystrokes go nowhere.
+      Log.info("channel.connected", ["path": path])
     }
   }
 
@@ -105,7 +116,12 @@ public final class PaneControlChannel {
         var sent = 0
         while sent < buffer.count {
           let wrote = Darwin.send(client, buffer.baseAddress! + sent, buffer.count - sent, 0)
-          guard wrote > 0 else { return false }
+          guard wrote > 0 else {
+            Log.error(
+              "channel.send.failed",
+              ["errno": String(errno), "detail": String(cString: strerror(errno))])
+            return false
+          }
           sent += wrote
         }
         return true
