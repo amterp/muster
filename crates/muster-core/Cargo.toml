@@ -1,0 +1,15 @@
+[package]
+name = "muster-core"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+libc.workspace = true
+
+[dev-dependencies]
+conformance.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

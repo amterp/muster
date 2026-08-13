@@ -1,0 +1,12 @@
+# Pinned exactly, like deps/ghostty.pin and the zig version ./dev checks for. A toolchain
+# that floats is a build that behaves differently on two machines for a reason nobody
+# wrote down, and rustup installs this one on the first cargo invocation rather than
+# leaving a contributor to guess.
+#
+# Bumping it is a commit: read the release notes, run the gate, say why in the message.
+[toolchain]
+channel = "1.97.1"
+profile = "minimal"
+# rustfmt and clippy are part of the gate, so they are part of the toolchain rather than
+# something a contributor is expected to have installed. rust-src is for rust-analyzer.
+components = ["rustfmt", "clippy", "rust-src"]

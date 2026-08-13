@@ -26,10 +26,13 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 CORPUS = REPO / "corpus/conformance"
-DRIVERS = REPO / "Tests"
+DRIVER_ROOTS = (REPO / "Tests", REPO / "crates")
 SOURCES = {"recorded", "ported", "authored"}
-# How every driver, in any language, is expected to name the file it runs.
-CLAIM = re.compile(r"""Conformance\.load\(\s*["']([^"']+)["']""")
+# How every driver, in any language, is expected to name the file it runs. Swift spells the
+# call `Conformance.load`, Rust `Conformance::load`, and a regex that knew only one of them
+# would report a whole language's drivers as absent - which reads as a corpus nobody runs,
+# exactly the alarm this file exists to raise.
+CLAIM = re.compile(r"""Conformance(?:\.|::)load\(\s*["']([^"']+)["']""")
 
 
 def problems_in(path: Path) -> list[str]:
@@ -97,11 +100,16 @@ def problems_in(path: Path) -> list[str]:
     return found
 
 
-def claimed_files() -> set[str]:
-    claims = set()
-    for path in DRIVERS.rglob("*"):
-        if path.is_file() and path.suffix in {".swift", ".rs", ".py"}:
-            claims.update(CLAIM.findall(path.read_text(errors="replace")))
+def claimed_files() -> dict[str, set[str]]:
+    """Which corpus files each language's drivers load."""
+    claims: dict[str, set[str]] = {}
+    for root in DRIVER_ROOTS:
+        if not root.exists():
+            continue
+        for path in root.rglob("*"):
+            if path.is_file() and path.suffix in {".swift", ".rs", ".py"}:
+                for name in CLAIM.findall(path.read_text(errors="replace")):
+                    claims.setdefault(name, set()).add(path.suffix.lstrip("."))
     return claims
 
 
@@ -143,7 +151,14 @@ def main() -> int:
         print(f"\n{len(found)} problem(s). See docs/testing.md, 'The conformance corpus'.")
         return 1
 
-    print(f"corpus-lint: {len(files)} file(s), {total} case(s), all claimed by a driver.")
+    # Which languages run each file, because during the port that is the progress bar: a
+    # file only Swift loads is a concept the Rust core has not reached yet, and the gate is
+    # the one place that already knows.
+    ported = sum(1 for path in files if "rs" in claims.get(path.name, set()))
+    print(
+        f"corpus-lint: {len(files)} file(s), {total} case(s), all claimed by a driver "
+        f"({ported}/{len(files)} run by the Rust core)."
+    )
     return 0
 
 

@@ -1,0 +1,13 @@
+# Deliberately near-empty: rustfmt's defaults *are* the convention, and a project that
+# invents its own makes every snippet from the wider ecosystem look wrong in place.
+#
+# The Swift side is 2-space and 100 columns because that is Swift's convention. Rust code
+# should look like Rust.
+max_width = 100
+newline_style = "Unix"
+
+# The one default worth overriding. Left alone, rustfmt sizes calls and struct literals
+# against fractions of max_width - a struct literal wraps past 18 columns - so
+# `timespec { tv_sec: 0, tv_nsec: 0 }` becomes four lines while the budget says 100. Max
+# means one rule instead of six, and it is the density the rest of the repo is written at.
+use_small_heuristics = "Max"

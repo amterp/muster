@@ -1,0 +1,51 @@
+[workspace]
+resolver = "3"
+members = ["crates/conformance", "crates/muster-core"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97"
+publish = false
+
+[workspace.dependencies]
+conformance = { path = "crates/conformance" }
+libc = "0.2"
+serde_json = "1"
+
+# Lints live here rather than in a CI flag, so that `cargo build`, rust-analyzer and the
+# gate all judge the code the same way. A rule only enforced by CI is a rule discovered
+# after the work is done.
+[workspace.lints.rust]
+# Unsafe exists only where we touch C. Edition 2024 already requires the block; denying
+# this keeps a whole `unsafe fn` from becoming one implicit unsafe region.
+unsafe_op_in_unsafe_fn = "deny"
+missing_debug_implementations = "warn"
+unreachable_pub = "warn"
+unused_qualifications = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+# Every unsafe block states why it is sound. The FFI boundary is where a wrong assumption
+# is a crash rather than a failing test, so the reasoning belongs next to it.
+undocumented_unsafe_blocks = "warn"
+
+# Allowed, each for a reason rather than to quieten a run:
+# The docs here are prose about why something exists, and they are full of proper nouns -
+# libghostty, AppKit, herdr, macOS. Backticking every one costs readability and buys
+# nothing.
+doc_markdown = "allow"
+# Modules are named for what they hold, so `input::KeyEvent` reads better than the
+# shortened alternative this asks for.
+module_name_repetitions = "allow"
+# A required section produces prose nobody reads. What a function's failure *means* is
+# already in its doc comment where it matters.
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+must_use_candidate = "allow"
+
+# The perf harness measures this core, and a debug build describes a binary nobody runs.
+# Line tables kept so a profile names functions instead of addresses.
+[profile.release]
+debug = "line-tables-only"

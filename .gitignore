@@ -16,3 +16,6 @@ __pycache__/
 
 # devenv SSH keypair, generated on first use
 devenv/.ssh/
+
+# Rust
+target/

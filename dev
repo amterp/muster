@@ -37,11 +37,10 @@ DEP_ARTIFACTS = [
 fn announce(name):
     print(bold("\n▸ {name}"))
 
-fn fail_empty_suite():
-    print_err(red("No tests were discovered."))
+fn fail_empty_suite(language, cure):
+    print_err(red("No {language} tests were discovered."))
     print_err("An empty suite passes, so this is a failure rather than a green run.")
-    print_err("Usual causes: a test target dropped out of Package.swift, or tests moved")
-    print_err("out of Tests/. Try: swift test list")
+    print_err(cure)
     exit(1)
 
 // Exit 2 means the run could not judge itself - no baseline, no corpus - and exit 1 means
@@ -141,14 +140,19 @@ if deps:
 
 if clean:
     announce("clean")
+    $`cargo clean`
     $`swift package clean`
 
 if format:
     announce("format")
+    $`cargo fmt --all`
     $`swift format --recursive --in-place Sources Tests Package.swift`
 
 if build:
     announce("build")
+    // The core first: it is the layer the shell will call into, and its errors are the
+    // ones a contributor can act on without a window.
+    $`cargo build --workspace --all-targets`
     $`swift build`
 
 if test:
@@ -171,10 +175,26 @@ if test:
     // Note that a healthy run prints "Executed 0 tests" too - that is the empty XCTest
     // suite sitting alongside swift-testing - so the run's own output cannot be the
     // signal here.
+    // Both suites get the same treatment, because adding a second language doubles the
+    // places a suite can quietly stop running.
+    stdout, stderr, code = $`cargo test --workspace -- --list` catch:
+        print_err(red("Rust test discovery failed, so that suite never ran."))
+        print_err("Until it does, nothing below has been verified. Compiler output:")
+        print_err(stderr.trim())
+        exit(1)
+
+    // One line per test, each ending in ": test"; the per-binary totals land between them.
+    rust_tests = stdout.split_lines().filter(fn(line) line.ends_with(": test"))
+    if len(rust_tests) == 0:
+        fail_empty_suite("Rust", "Usual causes: a crate dropped out of the workspace members, or a tests/ file was renamed. Try: cargo test --workspace -- --list")
+
+    print(dim("{len(rust_tests)} Rust test(s) discovered"))
+    $`cargo test --workspace`
+
     stdout, stderr, code = $`swift test list` catch:
         if matches(stderr, "no tests found", partial=true):
-            fail_empty_suite()
-        print_err(red("Test discovery failed, so the suite never ran."))
+            fail_empty_suite("Swift", "Try: swift test list")
+        print_err(red("Swift test discovery failed, so that suite never ran."))
         print_err("Until it does, nothing below has been verified. Compiler output:")
         print_err(stderr.trim())
         exit(1)
@@ -183,9 +203,9 @@ if test:
     // test.
     tests = stdout.trim().split_lines().filter(fn(line) line.trim() != "")
     if len(tests) == 0:
-        fail_empty_suite()
+        fail_empty_suite("Swift", "Usual causes: a test target dropped out of Package.swift, or tests moved out of Tests/. Try: swift test list")
 
-    print(dim("{len(tests)} test(s) discovered"))
+    print(dim("{len(tests)} Swift test(s) discovered"))
     $`swift test`
 
 if contract:
@@ -230,6 +250,11 @@ if latency:
 
 if lint:
     announce("lint")
+    // Which lints are on is declared in Cargo.toml, so that cargo, rust-analyzer and this
+    // all judge the code the same way. The gate's job is only to escalate them: a warning
+    // a contributor can ignore forever is not a rule.
+    $`cargo fmt --all --check`
+    $`cargo clippy --workspace --all-targets -- -D warnings`
     $`swift format lint --recursive --strict Sources Tests Package.swift`
     // The probe is a dev tool rather than a component, so it gets a syntax check and
     // no more. It has no test suite of its own; running it needs a real herdr daemon.
