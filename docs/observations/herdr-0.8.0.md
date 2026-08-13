@@ -227,8 +227,32 @@ hands it out as `input_state()`. Kitty flags are tracked alongside it
 structured key events the way `terminal.scroll` already takes scrolls, is a smaller change
 than it sounds - which is what the upstream ask should say.
 
-Still open, and needing the Swift surface: IME composition, AltGr, dead keys, and how much
-the guess costs against an agent that negotiates the kitty protocol.
+**Measured, 2026-08-13, driving a real pane through Muster.** The guess costs less than
+feared and exactly one thing more than expected.
+
+| Case | Result |
+| --- | --- |
+| Printable text, enter, ctrl+C, tab | works |
+| shift+enter in Claude Code | works - `CSI 27;2;13~` is understood without kitty negotiation |
+| Dead keys (`option+e`, `e` → `é`) | works |
+| Arrows in `vim` | works |
+| Arrows in `less` | **broken** |
+| Paste | sent unfenced; single-line correct, multi-line runs line by line |
+
+`less` is the case that fails, and it fails loudly rather than subtly. It calls terminfo's
+`smkx` (`\E[?1h\E=`) on startup, which turns application cursor mode on, and then decodes
+arrows as `kcuu1`/`kcud1`, which `xterm-256color` defines as `\EOA`/`\EOB`. Sent `\E[B`
+instead, it echoes `ESC [ B` into its status line and rings the bell. Verified in a local
+pty, no daemon involved: `\E[B` produces a 38-byte response containing `\x07`, `\EOB`
+produces 99 bytes of scrolled content and no bell.
+
+`vim` survives the same mode because its own key tables accept both forms, which is why a
+single-program check would have concluded the loss was theoretical. It is not: the split is
+between programs that trust terminfo and programs that hedge, and the ones that trust
+terminfo are the ones a guess breaks.
+
+Still open, and needing more of the Swift surface: full IME composition with a candidate
+window, AltGr on a non-US layout, and mouse.
 
 Evidence: `corpus/herdr-0.8.0/input-encoding/` for this section,
 `corpus/herdr-0.8.0/input-path/` for the `send_keys` vocabulary and the mode-exposure

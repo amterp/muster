@@ -6,6 +6,14 @@
     "backend"
   ],
   "column": "backlog-hi",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Measured 2026-08-13 against a real pane. less rings the bell instead of scrolling: it calls terminfo's smkx on startup, turning application cursor mode on, then decodes arrows as kcuu1 - ESC O A under xterm-256color. Muster sends ESC [ A because it assumes power-on state, so less echoes the sequence into its status line and beeps. vim is unaffected because its key tables accept both forms.\n\nPaste and arrows want different answers. A paste is one action, so a socket connect per paste costs nothing and send_input can carry it today. Arrows repeat at 30+ events a second under key repeat, which is the case the latency measurement (a_26BIX28HG) has to rule on first.\n\nReproduce with tools/mode-cost.py - local pty, no daemon.",
+      "created_at_millis": 1786617520388,
+      "id": "c_27EeQwQyN"
+    }
+  ],
   "created_at_millis": 1786614510328,
   "creator": "Alexander Terp",
   "description": "Muster encodes keystrokes locally against a guessed mode profile, because the control stream is a raw PTY write and pane modes are invisible. The two documented losses are bracketed paste and application cursor keys (arrows in vim and less).\n\nBoth are already solved server-side, on a channel we are not using. pane.send_input {pane_id, text, keys} encodes text through encode_api_text, which reads input_state().bracketed_paste and wraps the markers itself (src/app/api_helpers.rs:25-35), and encodes named keys through runtime.encode_terminal_key, the same mode-aware ghostty encoder herdr's TUI uses (:37-49, called from src/app/api/panes.rs:1508). No upstream change needed.\n\nTwo costs decide whether this is worth it, and one of them is the next card.\n\nLatency: the JSON API socket is one request per connection, so every call pays a connect(). That is on the keypress-to-glyph path, which is exactly what a_26BIX28HG has to measure. Local encoding on the already-open control stream has no such cost.\n\nCoverage: herdr's key-name parser refuses home, end, pageup, pagedown, insert, delete and ctrl+alt+delete (observed, corpus/herdr-0.8.0/input-path/). Arrows are accepted, so the arrow fix is available; the navigation cluster is not.\n\nLikely shape: keep local encoding as the fast path for ordinary keys, and route the cases where the guess is known wrong - paste, and arrows if the latency allows - through pane.send_input. That is a hybrid rather than a switch, and it should be decided with the latency number in hand rather than before it.",
@@ -13,7 +21,7 @@
   "position": "UUUUUUUUUUUUUUU",
   "title": "Recover paste and arrow keys via pane.send_input",
   "type": "feature",
-  "updated_at_millis": 1786614510328,
+  "updated_at_millis": 1786617520388,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786614510328}
   ]

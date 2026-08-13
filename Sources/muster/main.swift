@@ -236,10 +236,22 @@ final class PaneInput {
   }
 
   func send(_ key: KeyEvent) {
-    // Precedence: a bound chord is Muster's and the pane never sees it.
-    guard case .unbound = keymap.resolve(key) else {
+    // Precedence: the keymap gets first refusal, and the encoder only sees what it
+    // declines.
+    switch keymap.resolve(key) {
+    case .text(let bytes):
+      Log.debug(
+        "input.bound.text",
+        [
+          "key": "\(key.key)", "mods": "\(key.modifiers.rawValue)", "bytes": String(bytes.count),
+        ])
+      deliver(.input(bytes))
+      return
+    case .action:
       Log.debug("input.bound", ["key": "\(key.key)", "mods": "\(key.modifiers.rawValue)"])
       return
+    case .unbound:
+      break
     }
     guard let bytes = try? encoder.encode(key) else {
       Log.warn(

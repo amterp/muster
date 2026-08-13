@@ -151,6 +151,6 @@ if lint:
     $`swift format lint --recursive --strict Sources Tests Package.swift`
     // The probe is a dev tool rather than a component, so it gets a syntax check and
     // no more. It has no test suite of its own; running it needs a real herdr daemon.
-    $`python3 -m compileall -q tools/herdr-probe`
+    $`python3 -m compileall -q tools`
 
 print(green("\n✓ ok"))

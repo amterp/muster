@@ -69,7 +69,7 @@ public struct KeyEvent: Equatable, Sendable {
 /// rather than a translation. That is a deliberate coupling to a published ABI, and
 /// `MusterVTTests` pins it: if a pin bump renumbers these, a test fails rather than
 /// every chord quietly encoding as something else.
-public struct Modifiers: OptionSet, Sendable {
+public struct Modifiers: OptionSet, Hashable, Sendable {
   public let rawValue: UInt16
 
   public init(rawValue: UInt16) {

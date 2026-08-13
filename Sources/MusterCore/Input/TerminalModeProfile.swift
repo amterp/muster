@@ -89,10 +89,15 @@ public struct TerminalModeProfile: Equatable, Sendable {
   /// What this actually costs is narrower than it first looks. Shift+enter - the
   /// distinction an agent needs most - survives, because ghostty encodes it as
   /// `CSI 27;2;13~` in every mode rather than only under kitty
-  /// (`src/input/function_keys.zig:199`, no mode qualifier on the entry). The real
-  /// losses are `applicationCursorKeys`, which decides whether arrow keys work in vim
-  /// and less, and `bracketedPaste`, which decides whether a paste arrives as text or as
-  /// text wrapped in visible markers.
+  /// (`src/input/function_keys.zig:199`, no mode qualifier on the entry). Dead keys and
+  /// IME commits survive too, since composed text is sent as text.
+  ///
+  /// Two losses were measured against a real pane. `applicationCursorKeys` breaks arrow
+  /// keys in any program that trusts terminfo: `less` calls `smkx`, then decodes arrows
+  /// as `kcuu1` (`\u{1b}OA` under xterm-256color), and rings the bell at the `\u{1b}[A`
+  /// sent instead. `vim` is unaffected because its key tables accept both forms, which is
+  /// why checking one program proves nothing. `bracketedPaste` costs a multi-line paste,
+  /// which reaches a shell as a sequence of commands to run rather than as text to edit.
   ///
   /// Replace it with truth, not with a better guess. Both of those losses also have a
   /// fallback that needs no upstream change: `pane.send_input` encodes text and named
