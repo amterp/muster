@@ -6,18 +6,27 @@
     "shell",
     "backend"
   ],
-  "column": "in-progress",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Done for everything short of the seam. The core, the herdr adapter, the VT bindings, the bridge, the grid oracle and the perf harness are Rust; all 73 conformance cases run in both languages and the gate reports the count on every run.\n\nTwo proofs that mattered more than the green suite. The key-encoder survey snapshots and both grid snapshots pass unregenerated, so the Rust code drives libghostty to byte-identical output. And './dev --contract' runs the real app against a real daemon with the Rust bridge - which needed no FFI, because a separate process needs no seam.\n\nPerf moved with the code it measures: frame.decode 5.96 -\u003e 0.80 ns/byte, input.encode 162 -\u003e 40 ns/key, frame.vt_parse flat at 3.72 -\u003e 3.91 (the same libghostty call in both, so its flatness is what says the other two are real).\n\nWhat stays Swift until the seam lands (a_27HFQbwG6): the window, the renderer, PaneInput's callers, and the key encoder the app still calls directly.",
+      "created_at_millis": 1786628067174,
+      "id": "c_27J4nt84g"
+    }
+  ],
   "created_at_millis": 1786623708969,
   "creator": "Alexander Terp",
   "description": "MIP-1. Move keymap, input pipeline, composition arbiter, frame decoding, diagnostics and the herdr adapter to Rust, with the conformance corpus as the acceptance criterion rather than a reading of the Swift tests.\n\nSequenced deliberately: port what already works and is covered before writing anything new on top, so a wrong seam surfaces on code we trust. herdr's src/ghostty/mod.rs is a working reference for driving libghostty-vt's key encoder from Rust, which is the fiddliest part.\n\nBlocked on the corpus extraction (a_27HFEWM52) landing first.",
   "id": "a_27HFQWfBQ",
-  "position": "UUU",
+  "position": "UUUUUUUUUUUUUUU",
   "title": "Port the core to Rust, against the corpus",
   "type": "feature",
-  "updated_at_millis": 1786625687911,
+  "updated_at_millis": 1786628067205,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786623708969},
     {"field":"column","value":"next","at":1786624791754},
-    {"field":"column","value":"in-progress","at":1786625687911}
+    {"field":"column","value":"in-progress","at":1786625687911},
+    {"field":"column","value":"done","at":1786628067205}
   ]
 }

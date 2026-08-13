@@ -59,6 +59,7 @@ how you run your agents.
       └─ core seam     → one symbol   protobuf over a C ABI; events, never bytes
            portable core (Rust)       mirror, keymap, dispatch, attention, config
              └─ backend seam → herdr  JSON socket + ANSI pane streams
+                  ├─ one bridge per pane      unwraps frames onto a surface's PTY
                   ├─ daemon on this machine   local agents
                   └─ daemon on devenv (SSH)   remote agents
 

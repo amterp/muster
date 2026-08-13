@@ -6,16 +6,17 @@
     "shell",
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "next",
   "created_at_millis": 1786623709018,
   "creator": "Alexander Terp",
   "description": "MIP-1. muster_dispatch(request_bytes) -\u003e response_bytes over a C ABI, with Muster's vocabulary defined in .proto and generated on both sides, so a vocabulary change is one edit rather than two that drift.\n\nThe part MIP-1 flags as most likely to be got wrong, and which protobuf does not solve: the push direction. The core has to wake the shell unasked - an agent changed state, a daemon event landed, a notification is due - which is a registered callback pointer or a channel the shell drains. Backpressure when the shell is slow to drain has no design yet.\n\nThe same schema is the CLI and agent-facing API surface, so 'one action path, parity by construction' becomes codegen rather than discipline.",
   "id": "a_27HFQbwG6",
-  "position": "UUUUUUUUUUUUUUUUUU",
+  "position": "UUUUUUUUU",
   "title": "The shell/core seam: one symbol, protobuf, and a way to push",
   "type": "feature",
-  "updated_at_millis": 1786623709018,
+  "updated_at_millis": 1786628067238,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1786623709018}
+    {"field":"column","value":"backlog-hi","at":1786623709018},
+    {"field":"column","value":"next","at":1786628067238}
   ]
 }

@@ -161,11 +161,14 @@ call.
 
 ## Open Questions
 
-- Whether `muster-bridge` stays a Swift executable or moves to Rust. It is a data-plane
-  relay whose only decidable part - frame decoding - belongs to the core, which argues for
-  Rust, but it is also the thing a surface spawns and nothing about that is language-bound.
+- ~~Whether `muster-bridge` stays a Swift executable or moves to Rust.~~ **Answered: Rust,
+  and first.** Its only decidable part - frame decoding - belongs to the core, and being a
+  separate process it needs no seam at all. That made it the one place Rust could run in
+  production at zero FFI risk, so it crossed before the boundary existed rather than after.
 - How the callback direction handles a shell that is slow to drain. Backpressure at this
-  seam has no design yet.
+  seam has no design yet. The starting answer worth writing down: because view = f(daemon
+  state), a queued state update can be *coalesced* rather than dropped or blocked on, which
+  is what lets this seam afford a bounded queue.
 - Whether the herdr adapter can share types with herdr itself rather than restating them.
   Tempting, and in tension with "nothing herdr-shaped escapes the adapter".
 
@@ -181,3 +184,5 @@ call.
 ## History
 - 2026-08-13 Draft
 - 2026-08-13 Accepted
+- 2026-08-13 Core, herdr adapter, VT and bridge ported; the bridge question answered in
+  Rust's favor. The seam itself is still ahead.
