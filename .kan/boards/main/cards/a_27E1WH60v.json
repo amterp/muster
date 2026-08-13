@@ -6,7 +6,7 @@
     "testing",
     "shell"
   ],
-  "column": "backlog-hi",
+  "column": "next",
   "created_at_millis": 1786616024538,
   "creator": "Alexander Terp",
   "description": "SwiftPM cannot import an executable target into a test target, so every line in Sources/muster is unreachable by the suite. Real decisions are sitting there today: PaneInput (keymap, then encode, then deliver), paneCommand, the launch sequencing, and the keyDown arbitration between an input method and the key encoder.\n\nThat last one shipped a bug that doubled every printable keystroke - insertText and the encoder both sent it - and no test could have caught it, because no test can reach the file. It was found by a human typing 'hello' and reading 'hheelllloo'.\n\nThe desideratum already says it: a thin shell over a thick headless core, so no logic hides in the untestable layer. main.swift stopped being thin.\n\nMove each piece into a library target and unit-test it. The arbitration is the valuable one and is pure: given (was composing, what insertText committed, whether marked text remains), decide send-text, send-key, or send-nothing. Five lines of test would have caught the doubling.\n\nNSEvent translation goes with it. NSEvent.keyEvent(with:...) is a plain constructor - no app, no window, no run loop - so KeyTranslation.swift's ported heuristics are table-testable today and are currently tested by nothing at all.",
@@ -14,8 +14,9 @@
   "position": "E",
   "title": "No decidable logic may live in the executable target",
   "type": "chore",
-  "updated_at_millis": 1786616024538,
+  "updated_at_millis": 1786617580929,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1786616024538}
+    {"field":"column","value":"backlog-hi","at":1786616024538},
+    {"field":"column","value":"next","at":1786617580929}
   ]
 }

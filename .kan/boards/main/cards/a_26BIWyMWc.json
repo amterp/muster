@@ -6,7 +6,7 @@
     "backend",
     "testing"
   ],
-  "column": "in-progress",
+  "column": "done",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -31,6 +31,12 @@
       "body": "The buildable half has landed; what is left is measurement.\n\nBuilt: MusterCore carries an OS-free KeyEvent and a Key vocabulary generated from the pinned ghostty (the generator resolves keys ghostty's own lookup leaves unnamed, IntlBackslash among them, rather than inheriting dead keys). MusterVT wraps libghostty-vt's key encoder. The shell translates NSEvents, routes them through a Keymap seam that has no bindings yet, and sends bytes on a socket the bridge dials back on. IME goes through NSTextInputClient: the pane sees only committed text.\n\nVerified end to end against a real daemon with cat -v in the pane: typing, arrows, shift+enter and ctrl+c each arrive as exactly the bytes the recorded encoder matrix says they should. Transcript recipe in the commit; the matrices are Tests/MusterVTTests/snapshots/keys-*.txt.\n\nOne assumption in the plan turned out wrong in our favour. Guessing low does NOT lose shift+enter: ghostty encodes it as CSI 27;2;13~ in every mode, not only under kitty (src/input/function_keys.zig:199, an entry with no mode qualifier). So the flagship agent distinction survives a pane we know nothing about. What the guess actually costs is application cursor keys (arrows in vim and less) and bracketed paste.\n\nStill open, and all of it needs a human at a real keyboard: IME composition, AltGr, dead keys, and how a real kitty-negotiating agent behaves through this path. That is the kill-criterion verdict and it stays here until it is recorded.",
       "created_at_millis": 1786614271233,
       "id": "c_27DHuNnN5"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Verdict: passes, with one documented loss.\n\nWorks through Muster against a real pane: printable text, enter, tab, ctrl+C, dead keys (option+e then e), arrows in vim, and shift+enter in Claude Code - the distinction an agent needs most, and it survives without kitty negotiation because ghostty encodes it as CSI 27;2;13~ in every mode.\n\nFails: arrows in less, and multi-line paste. Both are the same root cause - the pane's terminal modes are invisible to a control-stream client - and both have known fixes that need no upstream change (a_27DO80J34), gated on latency (a_26BIX28HG). Mechanism and measurement in docs/observations/herdr-0.8.0.md section 5.\n\nNot covered, and carded separately: mouse buttons (a_27CTgqqdv), full IME with a candidate window, AltGr on a non-US layout.",
+      "created_at_millis": 1786617562244,
+      "id": "c_27EfWSHrB"
     }
   ],
   "created_at_millis": 1786461765245,
@@ -40,12 +46,13 @@
   "labels": [
     "kill-criterion"
   ],
-  "position": "U",
+  "position": "UUUUUUUU",
   "title": "Input path: prove daemon-side-correct encoding",
   "type": "chore",
-  "updated_at_millis": 1786614271233,
+  "updated_at_millis": 1786617580890,
   "history": [
     {"field":"column","value":"next","at":1786461765245},
-    {"field":"column","value":"in-progress","at":1786614271192}
+    {"field":"column","value":"in-progress","at":1786614271192},
+    {"field":"column","value":"done","at":1786617580890}
   ]
 }
