@@ -5,7 +5,11 @@
 //! app.
 
 mod ffi;
+mod grid;
 mod key_encoder;
 mod key_mapping;
+mod terminal;
 
+pub use grid::{Cell, Cursor, Grid, Row, Width};
 pub use key_encoder::{EncoderError, KeyEncoder};
+pub use terminal::{Terminal, TerminalError};

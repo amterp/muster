@@ -30,9 +30,9 @@ fn main() {
     println!("cargo:rerun-if-changed={}", header.display());
     println!("cargo:rustc-link-search=native={}", lib.display());
     println!("cargo:rustc-link-lib=dylib=ghostty-vt");
-    // An absolute rpath, so a test binary anywhere under target/ finds the dylib without
-    // anything being installed. The shipped app resolves it through its own bundle.
-    println!("cargo:rustc-link-arg=-Wl,-rpath,{}", lib.display());
+    // Where a binary looks for the dylib at *runtime* is set in .cargo/config.toml, not
+    // here: a link argument emitted by a build script reaches only its own crate, and every
+    // downstream binary would link fine and fail at startup.
 
     let bindings = bindgen::Builder::default()
         .header(header.to_string_lossy())

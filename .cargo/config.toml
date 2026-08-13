@@ -1,0 +1,15 @@
+# Where a built binary looks for libghostty-vt.
+#
+# It has to be here rather than in muster-vt's build script: `cargo:rustc-link-arg` reaches
+# only the crate whose script emitted it, so every downstream binary - the bridge, the perf
+# harness, their test executables - would link fine and then fail at startup with a dyld
+# error naming a path nobody recognizes.
+#
+# Relative to the loading binary, so a checkout works without installing anything. The two
+# depths are `target/<profile>/` for a binary and `target/<profile>/deps/` for a test
+# executable. Package.swift carries the same pair for the same reason.
+[target.'cfg(target_os = "macos")']
+rustflags = [
+    "-C", "link-arg=-Wl,-rpath,@loader_path/../../deps/ghostty/zig-out/lib",
+    "-C", "link-arg=-Wl,-rpath,@loader_path/../../../deps/ghostty/zig-out/lib",
+]

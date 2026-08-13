@@ -1,27 +1,27 @@
 {
-  "costs" : [
+  "recorded": "2026-08-13T13:33:00.336Z",
+  "machine": "arm64-Darwin 25.4.0",
+  "costs": [
     {
-      "best" : 5.9629155662047,
-      "iterations" : 50,
-      "median" : 6.037792359844256,
-      "name" : "frame.decode",
-      "unit" : "ns\/byte"
+      "name": "frame.decode",
+      "unit": "ns/byte",
+      "best": 0.8372586925150435,
+      "median": 0.8712935987148419,
+      "iterations": 50
     },
     {
-      "best" : 3.720210689159822,
-      "iterations" : 20,
-      "median" : 3.8215035544587277,
-      "name" : "frame.vt_parse",
-      "unit" : "ns\/byte"
+      "name": "frame.vt_parse",
+      "unit": "ns/byte",
+      "best": 3.8122951121588273,
+      "median": 3.913587977457733,
+      "iterations": 20
     },
     {
-      "best" : 162.5,
-      "iterations" : 100,
-      "median" : 175,
-      "name" : "input.encode",
-      "unit" : "ns\/key"
+      "name": "input.encode",
+      "unit": "ns/key",
+      "best": 37.5,
+      "median": 42.5,
+      "iterations": 100
     }
-  ],
-  "machine" : "arm64-Version 26.4.1 (Build 25E253)",
-  "recorded" : "2026-08-13T11:49:28Z"
+  ]
 }

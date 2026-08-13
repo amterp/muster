@@ -233,17 +233,15 @@ if contract:
 
 if perf:
     announce("perf")
-    // Release, always. A debug Swift build runs several times slower than what ships, so
-    // a budget measured there describes a binary nobody uses - and it would report
-    // headroom the shipped binary does not have.
-    $`swift build -c release --product muster-perf`
-    bin_path = $`swift build -c release --product muster-perf --show-bin-path`
-    binary = bin_path.trim()
+    // Release, always. A debug build runs several times slower than what ships, so a budget
+    // measured there describes a binary nobody uses - and it would report headroom the
+    // shipped binary does not have.
+    $`cargo build --release --bin muster-perf`
     if record:
-        stdout, stderr, code = $`{binary}/muster-perf --record` catch:
+        stdout, stderr, code = $`target/release/muster-perf --record` catch:
             fail_perf(stdout, stderr, code)
     else:
-        stdout, stderr, code = $`{binary}/muster-perf` catch:
+        stdout, stderr, code = $`target/release/muster-perf` catch:
             fail_perf(stdout, stderr, code)
     print(stdout.trim())
 

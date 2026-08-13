@@ -9,11 +9,13 @@
 //! oracle, and the difference would say the Rust encoder is driving libghostty differently
 //! from the Swift one.
 
+mod support;
+
 use std::fmt::Write as _;
-use std::path::{Path, PathBuf};
 
 use muster_core::input::{Key, KeyEvent, Modifiers, TerminalModeProfile};
 use muster_vt::KeyEncoder;
+use support::expect_snapshot;
 
 /// The matrix, as one readable list. Every row is a keystroke a user makes constantly.
 fn common_keystrokes() -> Vec<(&'static str, KeyEvent)> {
@@ -92,48 +94,4 @@ fn readable(bytes: &[u8]) -> String {
         })
         .collect::<Vec<_>>()
         .join(" ")
-}
-
-/// Compares against a checked-in file, or writes it when asked.
-///
-/// `MUSTER_UPDATE_SNAPSHOTS=1` rewrites and then fails, so a recording run cannot pass for
-/// a real one - the same rule the Swift helper follows, because a snapshot tool that makes
-/// accepting a change effortless eventually records a bug as the expectation.
-fn expect_snapshot(actual: &str, name: &str) {
-    let path = snapshot_dir().join(name);
-
-    if std::env::var("MUSTER_UPDATE_SNAPSHOTS").as_deref() == Ok("1") {
-        std::fs::write(&path, actual).expect("the snapshot directory should be writable");
-        panic!(
-            "Recorded snapshot {name}. This run proves nothing: MUSTER_UPDATE_SNAPSHOTS was \
-             set, so every case wrote its own expectation. Review the diff, then re-run \
-             without it."
-        );
-    }
-
-    let expected = std::fs::read_to_string(&path).unwrap_or_else(|_| {
-        panic!(
-            "No snapshot at {}. Nothing was verified for this case. Create it with \
-             MUSTER_UPDATE_SNAPSHOTS=1 and read the file it writes before committing it.",
-            path.display()
-        )
-    });
-
-    assert_eq!(
-        expected, actual,
-        "\nSnapshot {name} does not match. If the new output is right, re-record with \
-         MUSTER_UPDATE_SNAPSHOTS=1 and review the diff. If it is not, this is the bug the \
-         snapshot was there to catch.\n"
-    );
-}
-
-fn snapshot_dir() -> PathBuf {
-    let mut directory: &Path = Path::new(env!("CARGO_MANIFEST_DIR"));
-    loop {
-        let candidate = directory.join("corpus/snapshots");
-        if candidate.is_dir() {
-            return candidate;
-        }
-        directory = directory.parent().expect("corpus/snapshots should be above this crate");
-    }
 }

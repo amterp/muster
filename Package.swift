@@ -33,9 +33,9 @@ let package = Package(
     // and keeps its runtime private, so it composes with GhosttyKit where the archive
     // cannot. Revisit if upstream ever emits one library carrying both APIs.
     .systemLibrary(name: "CGhosttyVt", path: "Sources/CGhosttyVt"),
-    // The terminal Muster reasons with rather than shows: tests read grids from it, and
-    // the input path encodes keys with it. Kept apart from MusterRenderer because
-    // nothing here needs a GPU, a window, or a running app.
+    // What the shell still needs from libghostty-vt: the key encoder, on the path from an
+    // NSEvent to a socket. The grid oracle and the terminal it reads moved to the Rust
+    // crate of the same name (MIP-1); this shrinks to nothing when the input path follows.
     .target(
       name: "MusterVT",
       dependencies: ["CGhosttyVt", "MusterCore"],
@@ -76,25 +76,16 @@ let package = Package(
     // entry point is top-level code cannot be imported by a test target, and this layer
     // has shipped bugs. A library keeps it reachable (docs/testing.md, thin shell).
     .target(name: "MusterMac", dependencies: ["MusterCore", "MusterRenderer"]),
-    // The perf harness's decidable half: what a measurement is, how a run is judged
-    // against a baseline, and how the verdict reads. Separated from the executable that
-    // runs the timing loops, so the part that decides whether to fail a build is tested.
-    .target(name: "MusterPerf", dependencies: ["MusterCore"]),
     .executableTarget(
       name: "muster",
       dependencies: ["MusterCore", "MusterHerdr", "MusterMac", "MusterRenderer", "MusterVT"]),
-    // Timing loops only. Everything it decides lives in MusterPerf.
-    .executableTarget(
-      name: "muster-perf", dependencies: ["MusterCore", "MusterHerdr", "MusterPerf", "MusterVT"]),
-    // Test plumbing, shared rather than duplicated: the snapshot cases the grid oracle
-    // writes and the ones the input path will write are the same mechanism.
+    // Test plumbing, shared rather than duplicated.
     .target(name: "TestSupport", dependencies: ["MusterCore"], path: "Tests/Support"),
     .testTarget(name: "MusterCoreTests", dependencies: ["MusterCore", "TestSupport"]),
     .testTarget(name: "MusterHerdrTests", dependencies: ["MusterHerdr", "TestSupport"]),
     .testTarget(name: "MusterMacTests", dependencies: ["MusterMac", "MusterCore", "TestSupport"]),
-    .testTarget(name: "MusterPerfTests", dependencies: ["MusterPerf", "TestSupport"]),
     .testTarget(
       name: "MusterVTTests",
-      dependencies: ["MusterVT", "MusterHerdr", "TestSupport"]),
+      dependencies: ["MusterVT", "TestSupport"]),
   ]
 )

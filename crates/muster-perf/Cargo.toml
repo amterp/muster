@@ -1,18 +1,19 @@
 [package]
-name = "muster-vt"
+name = "muster-perf"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
 
+[[bin]]
+name = "muster-perf"
+path = "src/main.rs"
+
 [dependencies]
+libc.workspace = true
 muster-core.workspace = true
-
-[build-dependencies]
-bindgen = "0.72"
-
-[dev-dependencies]
-conformance.workspace = true
 muster-herdr.workspace = true
+muster-vt.workspace = true
+serde = { version = "1", features = ["derive"] }
 serde_json.workspace = true
 
 [lints]
