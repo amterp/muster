@@ -27,6 +27,18 @@ func unmodifiedKeysPassThrough() {
   #expect(keymap.resolve(press(.keyA, .`super`)) == .unbound)
 }
 
+@Test("bare arrows are handed to the daemon to encode")
+func arrowsAreServerEncoded() {
+  // The measured loss: application cursor mode decides between SS3 and CSI, Muster cannot
+  // see which is on, and a program that trusts terminfo rejects the wrong one - `less`
+  // rings the bell rather than scrolling. The daemon knows, so it encodes these.
+  let keymap = Keymap()
+  #expect(keymap.resolve(press(.arrowUp, [])) == .serverEncoded("up"))
+  #expect(keymap.resolve(press(.arrowDown, [])) == .serverEncoded("down"))
+  #expect(keymap.resolve(press(.arrowLeft, [])) == .serverEncoded("left"))
+  #expect(keymap.resolve(press(.arrowRight, [])) == .serverEncoded("right"))
+}
+
 @Test("a modified arrow keeps its local binding rather than a round trip")
 func modifiedArrowsStayLocal() {
   // ⌘← and ⌥← are line and word motion, which are control codes that mean the same thing
@@ -34,6 +46,8 @@ func modifiedArrowsStayLocal() {
   let keymap = Keymap()
   #expect(keymap.resolve(press(.arrowLeft, .`super`)) == .text([0x01]))
   #expect(keymap.resolve(press(.arrowLeft, .alt)) == .text([0x1b, UInt8(ascii: "b")]))
+  // Nothing bound for shift+arrow, so it takes the local encoder like any other chord.
+  #expect(keymap.resolve(press(.arrowUp, .shift)) == .unbound)
 }
 
 @Test("which side of the keyboard a modifier came from does not change the chord")
