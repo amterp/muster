@@ -12,7 +12,8 @@ use std::hint::black_box;
 use std::path::{Path, PathBuf};
 
 use muster_core::input::{Key, KeyEvent, Keymap, Modifiers, Resolution, TerminalModeProfile};
-use muster_herdr::{FrameDecoder, PaneFrame, PaneStreamEvent};
+use muster_core::mirror::{BackendEvent, Mirror};
+use muster_herdr::{EventDecoder, FrameDecoder, PaneFrame, PaneStreamEvent};
 use muster_perf::{Baseline, Cost, compare, measure, pending, table, verdict};
 use muster_vt::{KeyEncoder, Terminal};
 use prost::Message;
@@ -28,19 +29,13 @@ Measures the per-unit costs on Muster's hot paths and compares them to a baselin
   --tolerance    how many times the recorded cost still passes (default 2.0)";
 
 /// The desiderata name four budgets - per byte, per event, per render - at 1 and 15 panes.
-/// Two of them have no code to measure yet. They are printed rather than omitted, because a
+/// One of them has no code to measure yet. It is printed rather than omitted, because a
 /// budget nobody wrote down reads the same as a budget nobody exceeded.
-const PENDING: [(&str, &str); 2] = [
-    (
-        "mirror.apply (ns/event)",
-        "the control plane's per-event cost. Lands with the mirror, kan a_26DAm1Zt0.",
-    ),
-    (
-        "render at 15 panes",
-        "per-byte cost is linear and already covered; what 15 panes actually tests is \
-         aggregate scheduling across surfaces, which needs splits. Kan a_26BJGL7VZ.",
-    ),
-];
+const PENDING: [(&str, &str); 1] = [(
+    "render at 15 panes",
+    "per-byte cost is linear and already covered; what 15 panes actually tests is \
+     aggregate scheduling across surfaces, which needs splits. Kan a_26BJGL7VZ.",
+)];
 
 fn main() {
     let options = Options::parse();
@@ -201,6 +196,34 @@ fn measure_everything(streams: &[Vec<u8>]) -> Vec<Cost> {
         }
     }
 
+    // The control plane's per-event cost, which is the half of "fast is a feature" that had
+    // never had a number. Measurable at all because the mirror has no I/O in it: this is the
+    // same fold a live subscription runs, with the socket left out.
+    //
+    // The stream is the recorded lifecycle capture rather than one shape repeated, so what
+    // is timed is the mix a real session produces - mostly upserts that change nothing,
+    // because the daemon replays and re-announces far more often than it changes anything.
+    let events =
+        recorded_backend_events(&PathBuf::from("corpus/herdr-0.8.0/lifecycle/events.ndjson"));
+    if events.is_empty() {
+        eprintln!(
+            "muster-perf: skipping mirror.apply - no recorded events under \
+             corpus/herdr-0.8.0/lifecycle/"
+        );
+    } else {
+        costs.push(measure("mirror.apply", "ns/event", events.len() * 20, 20, 5, || {
+            // A fresh mirror per iteration, because applying into one that already holds
+            // the session measures convergence rather than the first build, and the two
+            // differ by every insert.
+            let mut mirror = Mirror::new();
+            for _ in 0..20 {
+                for event in &events {
+                    black_box(mirror.apply(event.clone()).len());
+                }
+            }
+        }));
+    }
+
     // What the shell/core boundary costs per keystroke: encode a request, decode it, answer,
     // encode the answer. MIP-1 argued this seam can afford protobuf because it carries
     // events at human rates rather than bytes - around ten keystrokes a second - and this is
@@ -216,6 +239,15 @@ fn measure_everything(streams: &[Vec<u8>]) -> Vec<Cost> {
     }));
 
     costs
+}
+
+/// Every event in a recorded subscription, already translated.
+///
+/// Decoded once, outside the timing loop: this budget is the mirror's fold, and the
+/// decoder that feeds it is a separate cost that would otherwise be folded in silently.
+fn recorded_backend_events(path: &Path) -> Vec<BackendEvent> {
+    let Ok(bytes) = std::fs::read(path) else { return Vec::new() };
+    EventDecoder::new().consume(&bytes)
 }
 
 /// One press, encoded the way the shell encodes one.

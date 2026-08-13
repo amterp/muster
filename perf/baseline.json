@@ -1,27 +1,34 @@
 {
-  "recorded": "2026-08-13T15:29:05.892Z",
+  "recorded": "2026-08-13T19:09:40.367Z",
   "machine": "arm64-Darwin 25.4.0",
   "costs": [
     {
       "name": "frame.decode",
       "unit": "ns/byte",
-      "best": 0.8032237863152449,
-      "median": 0.8644866174748822,
+      "best": 0.7964168050752852,
+      "median": 0.8304517112750838,
       "iterations": 50
     },
     {
       "name": "frame.vt_parse",
       "unit": "ns/byte",
-      "best": 3.913587977457733,
-      "median": 3.978047073557037,
+      "best": 3.8215035544587277,
+      "median": 3.9504217466573355,
       "iterations": 20
     },
     {
       "name": "input.encode",
       "unit": "ns/key",
-      "best": 35.0,
-      "median": 42.5,
+      "best": 37.5,
+      "median": 45.0,
       "iterations": 100
+    },
+    {
+      "name": "mirror.apply",
+      "unit": "ns/event",
+      "best": 194.44444444444446,
+      "median": 211.11111111111111,
+      "iterations": 20
     },
     {
       "name": "seam.dispatch",
