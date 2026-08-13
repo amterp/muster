@@ -17,6 +17,8 @@ args:
     format f bool  # Rewrite sources into canonical style.
     clean c bool   # Delete build artifacts.
     contract bool  # Run the app against a real herdr. Needs a GUI session; not in the gate.
+    perf bool      # Measure the per-unit budgets against perf/baseline.json. Not in the gate.
+    record bool    # With --perf, record this run as the new baseline instead of judging it.
 
 ZIG_VERSION = "0.16.0"
 GHOSTTY_REPO = "https://github.com/ghostty-org/ghostty"
@@ -39,6 +41,22 @@ fn fail_empty_suite():
     print_err("An empty suite passes, so this is a failure rather than a green run.")
     print_err("Usual causes: a test target dropped out of Package.swift, or tests moved")
     print_err("out of Tests/. Try: swift test list")
+    exit(1)
+
+// Exit 2 means the run could not judge itself - no baseline, no corpus - and exit 1 means
+// it judged and the answer was no. Collapsing the two would send someone hunting a
+// regression that never happened.
+fn fail_perf(stdout, stderr, code):
+    print(stdout.trim())
+    if code == 2:
+        print_err(red("The perf run could not judge itself, so nothing was verified."))
+        print_err(stderr.trim())
+        exit(1)
+    print_err(red("A per-unit budget regressed, or a benchmark stopped running."))
+    print_err(stderr.trim())
+    print_err("Either something on a hot path got slower, or the machine is busy - the")
+    print_err("median column says which. If the cost is deliberate and acceptable:")
+    print_err("  ./dev --perf --record")
     exit(1)
 
 fn read_pin():
@@ -103,7 +121,14 @@ fn build_deps():
 if contract:
     build = true
 
-if not (deps or build or test or lint or format or clean or contract):
+if record and not perf:
+    print_err(red("--record only means something with --perf."))
+    print_err("It records what a perf run measured, so on its own there is nothing to")
+    print_err("record and the baseline would be left untouched without saying so.")
+    print_err("Try: ./dev --perf --record")
+    exit(1)
+
+if not (deps or build or test or lint or format or clean or contract or perf):
     deps = true
     build = true
     test = true
@@ -163,6 +188,22 @@ if contract:
         print_err(stdout.trim())
         print_err(stderr.trim())
         exit(1)
+    print(stdout.trim())
+
+if perf:
+    announce("perf")
+    // Release, always. A debug Swift build runs several times slower than what ships, so
+    // a budget measured there describes a binary nobody uses - and it would report
+    // headroom the shipped binary does not have.
+    $`swift build -c release --product muster-perf`
+    bin_path = $`swift build -c release --product muster-perf --show-bin-path`
+    binary = bin_path.trim()
+    if record:
+        stdout, stderr, code = $`{binary}/muster-perf --record` catch:
+            fail_perf(stdout, stderr, code)
+    else:
+        stdout, stderr, code = $`{binary}/muster-perf` catch:
+            fail_perf(stdout, stderr, code)
     print(stdout.trim())
 
 if lint:

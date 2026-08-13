@@ -5,7 +5,7 @@
   "area": [
     "testing"
   ],
-  "column": "backlog-hi",
+  "column": "in-progress",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -18,11 +18,12 @@
   "creator": "Alexander Terp",
   "description": "The 'fast is a feature' desideratum needs a standing measurement, not a one-off. Measure at the same injected edges the test harness uses (architecture.md, seams and test hooks): input-to-glyph latency, per-event core work, per-frame render cost - at 1 and 15 panes, local and over SSH. Fails the build on regression once a baseline exists. Distinct from the stage-1 double-emulation spike, which answers 'is this viable at all'; this answers 'did we just make it worse'.",
   "id": "a_26JhGElAo",
-  "position": "UUUUUUUE",
+  "position": "UU",
   "title": "Perf harness: budget input-to-glyph at 1 and 15 panes",
   "type": "feature",
-  "updated_at_millis": 1786485319318,
+  "updated_at_millis": 1786621386398,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1786481782109}
+    {"field":"column","value":"backlog-hi","at":1786481782109},
+    {"field":"column","value":"in-progress","at":1786621386398}
   ]
 }

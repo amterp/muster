@@ -73,18 +73,26 @@ let package = Package(
     // entry point is top-level code cannot be imported by a test target, and this layer
     // has shipped bugs. A library keeps it reachable (docs/testing.md, thin shell).
     .target(name: "MusterMac", dependencies: ["MusterCore", "MusterRenderer"]),
+    // The perf harness's decidable half: what a measurement is, how a run is judged
+    // against a baseline, and how the verdict reads. Separated from the executable that
+    // runs the timing loops, so the part that decides whether to fail a build is tested.
+    .target(name: "MusterPerf", dependencies: ["MusterCore"]),
     // Spawned as a surface's command, one per visible pane. Its own executable because
     // that is the only shape libghostty can be fed by.
     .executableTarget(name: "muster-bridge", dependencies: ["MusterHerdr"]),
     .executableTarget(
       name: "muster",
       dependencies: ["MusterCore", "MusterHerdr", "MusterMac", "MusterRenderer", "MusterVT"]),
+    // Timing loops only. Everything it decides lives in MusterPerf.
+    .executableTarget(
+      name: "muster-perf", dependencies: ["MusterCore", "MusterHerdr", "MusterPerf", "MusterVT"]),
     // Test plumbing, shared rather than duplicated: the snapshot cases the grid oracle
     // writes and the ones the input path will write are the same mechanism.
     .target(name: "TestSupport", dependencies: ["MusterCore"], path: "Tests/Support"),
     .testTarget(name: "MusterCoreTests", dependencies: ["MusterCore", "TestSupport"]),
     .testTarget(name: "MusterHerdrTests", dependencies: ["MusterHerdr", "TestSupport"]),
     .testTarget(name: "MusterMacTests", dependencies: ["MusterMac", "MusterCore", "TestSupport"]),
+    .testTarget(name: "MusterPerfTests", dependencies: ["MusterPerf", "TestSupport"]),
     .testTarget(
       name: "MusterVTTests",
       dependencies: ["MusterVT", "MusterHerdr", "TestSupport"],

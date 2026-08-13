@@ -1,0 +1,27 @@
+{
+  "costs" : [
+    {
+      "best" : 5.9629155662047,
+      "iterations" : 50,
+      "median" : 6.037792359844256,
+      "name" : "frame.decode",
+      "unit" : "ns\/byte"
+    },
+    {
+      "best" : 3.720210689159822,
+      "iterations" : 20,
+      "median" : 3.8215035544587277,
+      "name" : "frame.vt_parse",
+      "unit" : "ns\/byte"
+    },
+    {
+      "best" : 162.5,
+      "iterations" : 100,
+      "median" : 175,
+      "name" : "input.encode",
+      "unit" : "ns\/key"
+    }
+  ],
+  "machine" : "arm64-Version 26.4.1 (Build 25E253)",
+  "recorded" : "2026-08-13T11:49:28Z"
+}
