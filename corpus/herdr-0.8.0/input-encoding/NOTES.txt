@@ -1,0 +1,5 @@
+[  2908ms] plain_a: cat -v printed 'a' (passthrough)
+[  3515ms] kitty_csi_u_a: cat -v printed '^[[97u' (passthrough)
+[  4122ms] bracketed_paste: cat -v printed '^[[200~x^[[201~' (passthrough)
+[  4728ms] ss3_cursor_up: cat -v printed '^[OA' (passthrough)
+[  5336ms] csi_cursor_up: cat -v printed '^[[A' (passthrough)

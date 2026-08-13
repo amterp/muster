@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "mouse-buttons-and",
+  "alias_explicit": false,
+  "area": [
+    "shell",
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1786612340848,
+  "creator": "Alexander Terp",
+  "description": "The wheel is already safe and already right: terminal.scroll is structured, and the daemon encodes it against the pane's real state (wheel_routing, encode_mouse_wheel, alternate scroll, or its own scrollback). Muster sends scroll intents and gets correct behavior knowing nothing.\n\nButtons and motion have no equivalent command. Encoding them client-side means writing SGR sequences into the PTY blind, and a program that never enabled mouse reporting receives them as typed text - garbage in a shell, a corrupted prompt in an agent. A mis-encoded key is a wrong key; a mis-sent click is injected input.\n\nSo this waits on the mode exposure tracked in a_27CTRluw7. When InputState is readable, mouse_protocol_mode and mouse_protocol_encoding say both whether to send and which encoding to use, and the encoder itself comes from libghostty-vt's mouse/encoder.h rather than being hand-rolled.\n\nStaging: the mode profile seam in the core is where this switches on, so the work is a flag plus an encoder, not a redesign.",
+  "id": "a_27CTgqqdv",
+  "position": "UUUUUUUUUUUUU",
+  "title": "Mouse buttons and motion: blocked on pane mode exposure",
+  "type": "feature",
+  "updated_at_millis": 1786612340848,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1786612340848}
+  ]
+}

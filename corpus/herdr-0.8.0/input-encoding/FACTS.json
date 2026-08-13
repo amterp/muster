@@ -1,0 +1,12 @@
+{
+  "cat_v_started": true,
+  "control_stream_passes_bytes_through": true,
+  "control_stream_reencodes_input": false,
+  "probe_verdicts": {
+    "bracketed_paste": "passthrough",
+    "csi_cursor_up": "passthrough",
+    "kitty_csi_u_a": "passthrough",
+    "plain_a": "passthrough",
+    "ss3_cursor_up": "passthrough"
+  }
+}

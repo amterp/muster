@@ -19,6 +19,12 @@
       "body": "The renderer half is now settled too, and it lands better than expected: herdr re-encodes input with libghostty-vt's own key encoder (src/ghostty/mod.rs:2547 and :2552 call ghostty_key_encoder_setopt_from_terminal and _encode). Muster can encode with the same library, so the path is ghostty-encode, herdr's crossterm parse, ghostty-encode - one foreign step between two runs of one engine, not two implementations that have to agree.\n\nCorrecting the plan's wording: do NOT encode at maximal fidelity. herdr's TUI enables exactly three kitty flags - disambiguate, report event types, report alternate keys (src/input/model.rs:219) - and the function is called ime_compatible_keyboard_enhancement_flags because reporting all keys as escape codes breaks IME. src/input/model.rs:427 asserts REPORT_ALL_KEYS stays out. Match those three.\n\nStill needs the Swift surface: IME composition, AltGr, dead keys. The key event struct carries a 'composing' flag, so the shape is there.",
       "created_at_millis": 1786516942542,
       "id": "c_26YRwcHTS"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "The premise both earlier comments rest on is wrong, and the card is more open than it looked.\n\nterminal.input on a control stream does not get parsed and re-encoded. It is a raw write to the pane's PTY: src/server/headless.rs:2852 routes TerminalAttach clients to apply_terminal_attach_input (:403), which is runtime.try_send_bytes and nothing else. The raw_input.rs re-encoding is real but belongs to ClientConnectionMode::App - herdr's own TUI - and reading that branch as if it covered both is how this got recorded backwards.\n\nCaptured decisively: corpus/herdr-0.8.0/input-encoding/ runs cat -v in a pane with no kitty keyboard, no bracketed paste and no application cursor mode, and every probe arrives byte-identical. CSI 97 u stays CSI 97 u where a re-encode would deliver 'a'; bracketed paste markers reach the program as text. Findings rewritten in docs/observations/herdr-0.8.0.md section 5.\n\nSo encoding is ours and we cannot see what to encode for - no pane mode is exposed anywhere in the API, and section 2 already showed the frame stream eats the sequences that set them. What this card now has to settle is not where encoding lives but how much a guess costs against a real agent. Upstream ask split out to a_27CTRluw7; mouse buttons to a_27CTgqqdv.\n\nStill needing the Swift surface, unchanged: IME composition, AltGr, dead keys.",
+      "created_at_millis": 1786612350609,
+      "id": "c_27CTwaHFo"
     }
   ],
   "created_at_millis": 1786461765245,
@@ -31,7 +37,7 @@
   "position": "UUU",
   "title": "Input path: prove daemon-side-correct encoding",
   "type": "chore",
-  "updated_at_millis": 1786516942542,
+  "updated_at_millis": 1786612350609,
   "history": [
     {"field":"column","value":"next","at":1786461765245}
   ]

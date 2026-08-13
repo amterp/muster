@@ -153,29 +153,77 @@ TUI layout, not its PTY size. Nothing in the pane object exposes the PTY dimensi
 
 Evidence: `corpus/herdr-0.8.0/geometry/`.
 
-## 5. The input path - partly settled
+## 5. The input path - overturned
 
-Enough to decide where encoding lives; not enough to close the kill-criterion card.
+Recorded 2026-08-11 as "encoding stays daemon-side". Re-recorded 2026-08-13, and it is
+the other way around: **`terminal.input` on a control stream is a raw write to the pane's
+PTY.** herdr does not parse those bytes and does not re-encode them.
 
-`pane.send_keys` takes named keys and accepted 24 of 31 probed names. It refused
-`home`, `end`, `pageup`, `pagedown`, `insert`, `delete`, and `ctrl+alt+delete` with
-`invalid_key`. A semantic key API missing the whole navigation cluster cannot carry a
-terminal's keyboard.
+`cat -v` running in a pane with no kitty keyboard, no bracketed paste and no application
+cursor mode, fed each sequence through `terminal.input`:
 
-`terminal.input` on a control stream accepts raw bytes (base64, or `text`). That is
-the channel herdr's own TUI uses: it forwards what its host terminal gave it, and the
-server parses those bytes in `raw_input.rs` and re-encodes them for the pane's current
-modes.
+| Sent | Printed | A re-encode would print |
+|---|---|---|
+| `a` | `a` | `a` |
+| `\x1b[97u` | `^[[97u` | `a` |
+| `\x1b[200~x\x1b[201~` | `^[[200~x^[[201~` | `x` |
+| `\x1bOA` | `^[OA` | `^[[A` |
+| `\x1b[A` | `^[[A` | `^[[A` |
 
-No pane terminal mode is readable anywhere in the API - not on the pane object, not in
-`pane.process_info`. Combined with section 2, that settles it: **an adapter cannot
-encode input itself, and encoding must stay daemon-side.** Muster reports bytes, herdr
-encodes. This is the same answer `architecture.md` reached, by a firmer route.
+The bytes arrive exactly as sent.
 
-Still open, and needing the Swift surface: IME composition, AltGr, dead keys, and
-whether byte-level reporting preserves enough for the kitty protocol in practice.
+The re-encoding in `raw_input.rs` is real, and belongs to a different connection. Input
+forks on the client's mode (`src/server/headless.rs:2852`):
 
-Evidence: `corpus/herdr-0.8.0/input-path/`.
+- `ClientConnectionMode::App` - herdr's own TUI. Bytes go through `client.raw_input.push`,
+  become structured events, and the runtime re-encodes them for the pane's modes with
+  libghostty-vt's key encoder (`src/ghostty/mod.rs:2547`).
+- `ClientConnectionMode::TerminalAttach` - what `herdr terminal session control <pane>`
+  is, and the only input channel the JSON API offers. Bytes go to
+  `apply_terminal_attach_input` (`:403`), which is `runtime.try_send_bytes` and nothing
+  else.
+
+Reading the first branch and taking it for both is how this got recorded backwards.
+
+`pane.send_keys` is unchanged, and still cannot stand in: it accepted 24 of 31 probed key
+names, refusing `home`, `end`, `pageup`, `pagedown`, `insert`, `delete` and
+`ctrl+alt+delete` with `invalid_key`. A semantic key API missing the whole navigation
+cluster cannot carry a terminal's keyboard.
+
+**So encoding is the client's job, and the client cannot see what to encode for.** No pane
+terminal mode is readable anywhere in the API - not on `PaneInfo`, not in
+`pane.process_info` - and section 2 showed the frame stream consumes the sequences that
+set them. Muster has to encode against a guess: application cursor keys decide `\x1bOA`
+against `\x1b[A`, kitty flags decide whether shift+enter is distinguishable at all,
+bracketed paste decides whether paste markers reach the program as text, and mouse
+reporting decides whether an SGR click is input or garbage.
+
+Two things bound the damage.
+
+**`terminal.scroll` is the counter-example, and the shape the ask should take.** It is
+structured rather than bytes, and the server answers it against the pane's real state
+(`apply_terminal_attach_scroll`, `:340`): it reads `wheel_routing()` and either encodes an
+SGR wheel event for a mouse-reporting program, sends alternate-scroll keys, or scrolls its
+own scrollback. A control-stream client gets the wheel right while knowing nothing. Keys
+and mouse buttons have no equivalent.
+
+**herdr already holds the state Muster is missing, in one serializable struct.**
+`crate::pane::InputState` (`src/pane/terminal.rs:113`) carries `application_cursor`,
+`bracketed_paste`, `alternate_screen`, `focus_reporting`, `mouse_protocol_mode`,
+`mouse_protocol_encoding` and `modify_other_keys`; it derives `Serialize`; and the runtime
+hands it out as `input_state()`. Kitty flags are tracked alongside it
+(`src/pane/kitty_keyboard.rs`). Publishing that struct on the pane object, or taking
+structured key events the way `terminal.scroll` already takes scrolls, is a smaller change
+than it sounds - which is what the upstream ask should say.
+
+Still open, and needing the Swift surface: IME composition, AltGr, dead keys, and how much
+the guess costs against an agent that negotiates the kitty protocol.
+
+Evidence: `corpus/herdr-0.8.0/input-encoding/` for this section,
+`corpus/herdr-0.8.0/input-path/` for the `send_keys` vocabulary and the mode-exposure
+probes. The `raw-input-echo.json` in `input-path/` supports no claim about encoding: its
+`stty raw -echo; cat -v` never ran - leftover bytes from the `send_keys` probe corrupted
+the command line - so what it captured is a cooked-mode shell echo.
 
 ## 6. Protocol facts nothing had written down
 

@@ -77,18 +77,24 @@ between "bytes" and "control":
   anyone is watching it, so a hidden pane keeps reporting its agent state. The core never sits in this path;
   per-byte work in the core is a defect (desiderata: fast is a feature).
 - **Everything else rides the control plane, through the core** - daemon events (structure, agent states, bells,
-  titles), intents, configuration, and *input*. Key encoding needs the pane's terminal modes (kitty keyboard,
-  bracketed paste, mouse reporting), those modes live in the daemon's VT, they are not replayed in the frame
-  stream, and herdr exposes none of them on its API. So surfaces do not encode input and neither does the adapter:
-  the shell reports key, mouse, and text events with full fidelity, the core routes them, and the daemon encodes.
-  Muster sends raw bytes on the pane's control stream, which is what herdr's own TUI client does - report maximal
-  key information, encode where the modes live. herdr's named-key API is not an option: it has no navigation
-  cluster.
+  titles), intents, configuration, and *input*. Input is the awkward one, because nobody in this picture is in a
+  position to encode it well. Key encoding needs the pane's terminal modes (kitty keyboard, bracketed paste,
+  application cursor keys); those modes live in the daemon's VT, they are not replayed in the frame stream, and
+  herdr exposes none of them on its API. The daemon does not encode either: `terminal.input` on a control stream
+  is a raw write to the pane's PTY (`observations/herdr-0.8.0.md` section 5). So Muster encodes, blind. The shell
+  reports key, mouse and text events with full fidelity, the core routes them, and the core encodes with
+  libghostty-vt - the same engine the daemon's own VT runs - against a **declared mode profile** standing in for
+  state we cannot read. That profile is the one place the guess lives, and the seam that gets fed from truth the
+  day herdr publishes its `InputState`. herdr's named-key API is not an option: it has no navigation cluster.
 - **The control plane is not one connection.** herdr answers a request and closes the socket, so each intent costs a
   connect; only subscriptions are long-lived. Nothing may assume a persistent request/response channel, and the
   per-intent connect is a cost the perf budget has to carry.
 - **Scroll belongs to the daemon.** A frame stream has no history, so surfaces hold no scrollback and never handle
-  the wheel: scroll is an intent, answered by the daemon repainting the viewport.
+  the wheel: scroll is an intent, answered by the daemon repainting the viewport - or, when the pane's program is
+  reporting mouse, by the daemon encoding a wheel event for it. `terminal.scroll` is the one input-shaped thing
+  herdr answers against a pane's real modes, and it is the shape the rest of input should eventually take. Mouse
+  buttons and motion have no such command, and Muster does not send them: an SGR click encoded blind is garbage
+  on the program's stdin, where a mis-encoded key is merely a wrong key.
 
 ## Ownership of truth
 
@@ -196,5 +202,5 @@ Left to implementing agents with better information at build time:
 - Reconciliation cadence and the liveness probe.
 - Per-view tab selection: default to the daemon's focused tab, or remember per view.
 
-Project-level undecideds - the language split, where input encoding lands, optimistic UI, reproducible presentation
+Project-level undecideds - the language split, optimistic UI, reproducible presentation
 state - are tracked on the kan board.

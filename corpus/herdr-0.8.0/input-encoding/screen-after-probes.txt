@@ -1,0 +1,6 @@
+sh-3.2$ stty raw -echo; cat -v
+a
+ ^[[97u
+       ^[[200~x^[[201~
+                      ^[OA
+                          ^[[A

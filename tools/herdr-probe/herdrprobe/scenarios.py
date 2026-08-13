@@ -422,6 +422,91 @@ def input_path(daemon, rec: Recorder) -> None:
     rec.fact("focus_related_method_probe", availability)
 
 
+# --------------------------------------------------------------------------- 5b
+
+# Each probe is a sequence a client would only send if it believed the pane's program
+# had the matching mode on. The pane runs a plain shell, which has none of them. So a
+# daemon that re-encodes for the pane's real modes must rewrite every one of these,
+# and a daemon that passes bytes through must deliver them untouched.
+ENCODING_PROBES: list[tuple[str, bytes, str, str]] = [
+    ("plain_a", b"a", "a", "a"),
+    ("kitty_csi_u_a", b"\x1b[97u", "^[[97u", "a"),
+    ("bracketed_paste", b"\x1b[200~x\x1b[201~", "^[[200~x^[[201~", "x"),
+    ("ss3_cursor_up", b"\x1bOA", "^[OA", "^[[A"),
+    ("csi_cursor_up", b"\x1b[A", "^[[A", "^[[A"),
+]
+
+
+def input_encoding(daemon, rec: Recorder) -> None:
+    """Does the control stream re-encode input for the pane's modes, or pass bytes through?
+
+    The whole input architecture turns on this. If herdr re-encodes, a client reports
+    whatever its host terminal gave it and stays out of the modes business. If it does
+    not, the client must encode for modes herdr exposes nowhere.
+
+    The earlier input-path scenario tried to answer this and could not: its `stty raw
+    -echo; cat -v` line was corrupted by leftover bytes from the send_keys vocabulary
+    probe, so every echo it recorded is a cooked-mode shell echo rather than the bytes
+    the program received. This scenario keeps the pane clean and reads `cat -v`.
+    """
+    client = RecordingClient(daemon.client(), rec)
+    _new_workspace(client)
+    time.sleep(0.4)
+
+    stream = PaneStream(daemon, "w1:p1", "control", cols=80, rows=24)
+    try:
+        stream.wait_for_frames(1, timeout=5.0)
+
+        # cat -v renders every byte it receives as printable text: ESC as ^[, and
+        # nothing else touched. Raw mode with echo off keeps the line discipline from
+        # adding a second, differently-mangled copy of the same bytes.
+        stream.send_input_text("stty raw -echo; cat -v\n")
+        time.sleep(1.5)
+        screen_before = _read_visible(client, "w1:p1")
+        rec.write_text("screen-before-probes.txt", screen_before)
+        # A shell that never ran cat -v would echo the probes itself, which looks
+        # similar enough to mislead a reader of the transcript.
+        started = "command not found" not in screen_before
+        rec.fact("cat_v_started", started)
+        if not started:
+            rec.note("cat -v did not start; the transcript below is a shell echo and proves nothing")
+
+        results = {}
+        for name, payload, if_raw, if_reencoded in ENCODING_PROBES:
+            stream.send_input_bytes(payload)
+            # LF alone, so cat -v ends the line without printing a ^M of its own.
+            stream.send_input_bytes(b"\n")
+            time.sleep(0.6)
+            line = _read_visible(client, "w1:p1").splitlines()[-1].strip()
+            results[name] = {
+                "sent": payload.decode("latin-1"),
+                "received": line,
+                "raw_passthrough_would_print": if_raw,
+                "reencode_would_print": if_reencoded,
+                "verdict": ("passthrough" if line == if_raw
+                            else "reencoded" if line == if_reencoded
+                            else "neither"),
+            }
+            rec.note(f"{name}: cat -v printed {line!r} ({results[name]['verdict']})")
+
+        rec.write_json("cat-v-probes.json", results)
+        rec.write_text("screen-after-probes.txt", _read_visible(client, "w1:p1"))
+        verdicts = {name: r["verdict"] for name, r in results.items()}
+        rec.fact("probe_verdicts", verdicts)
+        # plain_a is the control: it reads the same either way, so it says the channel
+        # works without saying anything about encoding.
+        decisive = {n: v for n, v in verdicts.items() if n != "plain_a"}
+        rec.fact("control_stream_reencodes_input", all(v == "reencoded" for v in decisive.values()))
+        rec.fact("control_stream_passes_bytes_through", all(v == "passthrough" for v in decisive.values()))
+    finally:
+        stream.close()
+
+
+def _read_visible(client, pane_id: str) -> str:
+    read = client.request("pane.read", {"pane_id": pane_id, "source": "visible", "strip_ansi": True})
+    return read["read"]["text"]
+
+
 def detection(daemon, rec: Recorder) -> None:
     """Does screen-based agent detection need a client viewing the pane?
 
@@ -476,4 +561,5 @@ ALL = {
     "detection": detection,
     "geometry": geometry,
     "input-path": input_path,
+    "input-encoding": input_encoding,
 }
