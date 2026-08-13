@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "record-a-nested",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "next",
+  "created_at_millis": 1786648302883,
+  "creator": "Alexander Terp",
+  "description": "Chunk E cannot be planned against the corpus as it stands: the deepest recorded layout is three panes at two levels, captured as a side effect of the lifecycle scenario. Deciding where geometry comes from - session.snapshot rects, layout.export's BSP tree, or a reconstruction - needs a recording with mixed directions and real nesting to check any design against.\n\nBlocks a_26BJGL7VZ more than it looks: a design checked against one split level is a design checked against nothing.",
+  "id": "a_27RZE8ywI",
+  "position": "UUUUUUUUU",
+  "title": "🌲 Record a nested layout deeper than one split",
+  "type": "chore",
+  "updated_at_millis": 1786648302883,
+  "history": [
+    {"field":"column","value":"next","at":1786648302883}
+  ]
+}

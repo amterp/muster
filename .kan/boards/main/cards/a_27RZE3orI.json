@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "budget-the-per-pane-agent",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1786648302839,
+  "creator": "Alexander Terp",
+  "description": "Agent state costs one held-open connection and one thread per pane (observations/herdr-0.8.0.md section 11). At 15 panes that is 16 of each, and nothing has measured what it costs in memory, file descriptors or scheduling.\n\nThe number decides two things: whether the upstream ask (a_27N6pklkl) is worth pressing, and whether the current thread-per-watcher shape should become one thread polling many sockets. Needs the splits work first, since that is what puts 15 panes in a window.",
+  "id": "a_27RZE3orI",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "title": "📊 Budget the per-pane agent connections at 15 panes",
+  "type": "chore",
+  "updated_at_millis": 1786648302839,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1786648302839}
+  ]
+}

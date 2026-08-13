@@ -6,26 +6,33 @@
     "backend",
     "testing"
   ],
-  "column": "in-progress",
+  "column": "done",
   "comments": [
     {
       "author": "Alexander Terp",
       "body": "Two shapes the adapter has to absorb, from the 0.8.0 observation pass:\n\nThe API socket is connection-per-request - herdr answers and closes, so the adapter cannot hold one channel for intents. Only events.subscribe persists, and subscribing replays the current session as synthetic events, so a client that snapshots then subscribes sees every entity twice.\n\nEvent names are spelled two ways. Most arrive snake_cased (pane_created, tab_focused); the three parameterized subscriptions keep their dotted names in the event (pane.agent_status_changed, pane.output_matched, pane.scroll_changed). The corpus recorder silently returned an empty result over this before it was caught, which is exactly the failure the contract tier exists to prevent.",
       "created_at_millis": 1786485319281,
       "id": "c_26LBHMKNE"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Done. The core holds a live, convergent picture of a daemon: Muster's own vocabulary in crates/muster-core/src/mirror/, herdr's wire confined to muster-herdr's decoder and snapshot reader, and a held-open subscription that rebuilds rather than resumes.\n\nJudged by three corpus concepts - mirror.json for the fold, backend-events.json and backend-snapshot.json for the translation - so a herdr change and a Muster bug fail different files. Ten daemon-backed tests cover what only a socket can answer, in 0.4s total.\n\nFour things the work settled that the plan had wrong or open:\n- state_change_seq is snapshot-only, so the gap check is an attention signal rather than a consistency one.\n- Agent state must have one writer. herdr carries agent_status on replayed pane payloads too, which would roll a working agent back on every reconnect.\n- Subscriptions are requested dotted, answered snake.\n- Half-closing the write side ends a subscription, though it is how every other herdr call signals completion.\n\nmirror.apply measured at 231 ns/event and recorded in the baseline.",
+      "created_at_millis": 1786648265217,
+      "id": "c_27RYFNhv7"
     }
   ],
   "created_at_millis": 1786466233620,
   "creator": "Alexander Terp",
   "description": "The core speaks a Muster-owned contract - pane tree, pane byte streams, agent states, intents - and everything herdr-shaped lives in a single adapter module. The contract corpus doubles as the spec any replacement backend (fork or wholesale) must pass. Exit lanes and rationale: docs/origin.md, 'The decision'.",
   "id": "a_26DAm1Zt0",
-  "position": "UUU",
+  "position": "6",
   "title": "Define the backend seam: Muster's vocabulary, herdr in one adapter",
   "type": "feature",
-  "updated_at_millis": 1786636530731,
+  "updated_at_millis": 1786648265217,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786466233620},
     {"field":"column","value":"next","at":1786635165968},
-    {"field":"column","value":"in-progress","at":1786636530731}
+    {"field":"column","value":"in-progress","at":1786636530731},
+    {"field":"column","value":"done","at":1786648265166}
   ]
 }

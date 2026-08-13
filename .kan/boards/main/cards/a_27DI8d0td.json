@@ -18,6 +18,12 @@
       "body": "Retitled: this said 'contract tier' because the default gate was not allowed a daemon. It is now, so this moves into the ordinary suite rather than a tier beside it.\n\nThe shape is unchanged and the recipe from the previous comment still holds - attach, spawn the bridge at the returned socket, send keys, read the pane back - but it is a Rust integration test spawning the pinned daemon, not a Python script run out of band. The daemon harness it needs is the same one the mirror's connection tests need, so they should be built together and it should not land before that harness exists.",
       "created_at_millis": 1786640015747,
       "id": "c_27O5dmyhJ"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "The daemon harness this needed now exists: crates/herdr-harness, built for the mirror's ten daemon-backed tests. One daemon per test, killed on drop, isolated by pointing XDG at a scratch root. What is left here is the input-path half - a program in the pane, encoded keys sent, the grid snapshotted - which is the oracle this card always described.",
+      "created_at_millis": 1786648272091,
+      "id": "c_27RYQTyBc"
     }
   ],
   "created_at_millis": 1786614280073,
@@ -27,7 +33,7 @@
   "position": "UUUU",
   "title": "Run the input path against a real herdr, in the gate",
   "type": "feature",
-  "updated_at_millis": 1786640015747,
+  "updated_at_millis": 1786648272091,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786614280073},
     {"field":"column","value":"next","at":1786635166002},

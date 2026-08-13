@@ -18,6 +18,12 @@
       "body": "Half landed. ./dev --perf measures and gates the per-byte and per-key budgets in release, against a checked-in baseline, with a 2x tolerance and a loud failure when a benchmark stops running. Verified it fails by doctoring the baseline: regression, vanished benchmark and new benchmark all reported correctly.\n\nStill open, and now printed by the harness itself rather than left implicit:\n- mirror.apply (ns/event), the control plane's per-event cost - needs the mirror (a_26DAm1Zt0).\n- render at 15 panes - per-byte cost is linear and covered; what 15 panes actually tests is aggregate scheduling across surfaces, which needs splits (a_26BJGL7VZ).\n\nThe input-to-glyph half is answered separately by ./dev --latency and a_26BIX28HG.",
       "created_at_millis": 1786622535031,
       "id": "c_27Gkt5MfX"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "mirror.apply is measured and in the baseline at 231 ns/event. Remaining debt is render at 15 panes, which needs splits (a_26BJGL7VZ) and is printed as not-measured rather than dropped.\n\nNew cost worth budgeting when splits land: agent state costs one held-open connection per pane, so 15 panes is 16 connections and 16 threads. Nothing measures that yet.",
+      "created_at_millis": 1786648272132,
+      "id": "c_27RYQXnDB"
     }
   ],
   "created_at_millis": 1786481782109,
@@ -27,7 +33,7 @@
   "position": "UU",
   "title": "Perf harness: budget input-to-glyph at 1 and 15 panes",
   "type": "feature",
-  "updated_at_millis": 1786622535031,
+  "updated_at_millis": 1786648272132,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786481782109},
     {"field":"column","value":"in-progress","at":1786621386398}
