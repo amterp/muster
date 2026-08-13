@@ -81,10 +81,10 @@ let package = Package(
       dependencies: ["MusterCore", "MusterHerdr", "MusterMac", "MusterRenderer", "MusterVT"]),
     // Test plumbing, shared rather than duplicated: the snapshot cases the grid oracle
     // writes and the ones the input path will write are the same mechanism.
-    .target(name: "TestSupport", path: "Tests/Support"),
-    .testTarget(name: "MusterCoreTests", dependencies: ["MusterCore"]),
-    .testTarget(name: "MusterHerdrTests", dependencies: ["MusterHerdr"]),
-    .testTarget(name: "MusterMacTests", dependencies: ["MusterMac", "MusterCore"]),
+    .target(name: "TestSupport", dependencies: ["MusterCore"], path: "Tests/Support"),
+    .testTarget(name: "MusterCoreTests", dependencies: ["MusterCore", "TestSupport"]),
+    .testTarget(name: "MusterHerdrTests", dependencies: ["MusterHerdr", "TestSupport"]),
+    .testTarget(name: "MusterMacTests", dependencies: ["MusterMac", "MusterCore", "TestSupport"]),
     .testTarget(
       name: "MusterVTTests",
       dependencies: ["MusterVT", "MusterHerdr", "TestSupport"],

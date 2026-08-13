@@ -48,10 +48,19 @@ public final class SurfaceView: NSView {
 
   public func attach(_ surface: Surface, pane: PaneInput?) {
     self.surface = surface
-    self.pane = pane
+    attach(pane: pane)
     surface.setSize(
       width: UInt32(bounds.width * (window?.backingScaleFactor ?? 2)),
       height: UInt32(bounds.height * (window?.backingScaleFactor ?? 2)))
+  }
+
+  /// Points this view at a pane, independently of what renders it.
+  ///
+  /// Separate because the two are separate: a view will eventually be re-pointed at a
+  /// different pane without its surface changing. It also lets a test drive the whole
+  /// keystroke path with no GPU, no window and no daemon behind it.
+  public func attach(pane: PaneInput?) {
+    self.pane = pane
   }
 
   public override func setFrameSize(_ newSize: NSSize) {

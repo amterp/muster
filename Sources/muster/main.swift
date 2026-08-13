@@ -163,12 +163,10 @@ func paneCommand(controlSocketPath: String?) -> String? {
   guard CommandLine.arguments.count > 1 else {
     return ProcessInfo.processInfo.environment["SHELL"]
   }
-  let paneID = CommandLine.arguments[1]
-  let bridge = URL(fileURLWithPath: CommandLine.arguments[0])
-    .deletingLastPathComponent()
-    .appendingPathComponent("muster-bridge")
-  guard let controlSocketPath else { return "\(bridge.path) \(paneID)" }
-  return "\(bridge.path) \(paneID) --control-socket \(controlSocketPath)"
+  return PaneCommand.bridge(
+    executable: CommandLine.arguments[0],
+    paneID: CommandLine.arguments[1],
+    controlSocketPath: controlSocketPath)
 }
 
 let app = NSApplication.shared
