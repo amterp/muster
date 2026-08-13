@@ -114,6 +114,18 @@ final class FramePump: @unchecked Sendable {
   /// pane that never began.
   private var rendered = false
 
+  /// Repaints since the last summary, and when that was.
+  ///
+  /// Frames are the answer to "did the pane react to what I typed", which is the first
+  /// question anyone asks of this log and the one it could not answer: per-frame records
+  /// sit at trace, off by default, because at repaint rates they bury everything else. A
+  /// periodic count is legible at any rate and still lands within a second of the
+  /// keystroke that caused it.
+  private var framesSinceSummary = 0
+  private var bytesSinceSummary = 0
+  private var lastSummary = DispatchTime.now()
+  private static let summaryInterval: UInt64 = 1_000_000_000
+
   func consume(_ chunk: Data) {
     for event in decoder.consume(chunk) {
       switch event {
@@ -123,6 +135,9 @@ final class FramePump: @unchecked Sendable {
         if !rendered { Log.info("bridge.frame.first", ["bytes": String(frame.bytes.count)]) }
         rendered = true
         Log.trace("bridge.frame", ["bytes": String(frame.bytes.count)])
+        framesSinceSummary += 1
+        bytesSinceSummary += frame.bytes.count
+        summarizeIfDue()
         out.write(frame.bytes)
       case .closed(let reason):
         finish(reason: reason)
@@ -136,6 +151,24 @@ final class FramePump: @unchecked Sendable {
   /// ever sees it. Exiting silently made a mistyped pane id and a pane the user closed
   /// into the same event: an empty window and ghostty's own "failed to launch" box, which
   /// blames the command rather than naming the pane that does not exist.
+  /// Emits a repaint count at most once a second, and only when there was one.
+  ///
+  /// Silence is information here: a second with no summary is a second the pane did not
+  /// change, which is exactly what "I pressed a key and nothing happened" looks like from
+  /// the outside.
+  private func summarizeIfDue() {
+    let now = DispatchTime.now()
+    guard now.uptimeNanoseconds - lastSummary.uptimeNanoseconds >= Self.summaryInterval else {
+      return
+    }
+    Log.debug(
+      "bridge.frames",
+      ["frames": String(framesSinceSummary), "bytes": String(bytesSinceSummary)])
+    framesSinceSummary = 0
+    bytesSinceSummary = 0
+    lastSummary = now
+  }
+
   func finish(reason: String?) -> Never {
     let why = reason ?? "herdr gave no reason"
     Log.info("bridge.closed", ["pane": paneID, "reason": why, "rendered": String(rendered)])
