@@ -6,17 +6,26 @@
     "shell",
     "backend"
   ],
-  "column": "in-progress",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Landed in 938b713. Composition is records in crates/muster-core/src/composition.rs, judged by corpus/conformance/composition.json - 16 cases, and all nine deliberate breakages of the implementation were caught.\n\nBoth inversions the card named are done: one mirror and one subscription per daemon, and the control socket is per pane. The attached-pane map is nested by daemon rather than keyed by a (daemon, pane) pair, because building a pair key means cloning both ids on a path that runs per keystroke.\n\nTwo things went further than the card asked, both because the shape forced the question:\n\n- Attach asks the daemon where a pane lives before building anything. A region shows a tab and only the daemon knows which tab a pane is in, so the alternative was a region in a pending state that landings 4 and 5 would each have to handle. It costs one local round trip on the launch path and buys a refusal by name: 'muster w9:p9' used to open a window that rendered nothing and dropped every keystroke.\n- reconcile trims the attached-pane map as well as the regions. Each entry owns a bound socket and the thread waiting on it, so a window whose panes churn would have collected both.\n\nDeliberately left out: nothing here is emitted to the shell yet, and composition grew no change vocabulary. ViewChanged in landing 4 is whole-view and idempotent, so a diff vocabulary would be a guess at what a reader wants rather than an answer to one.",
+      "created_at_millis": 1786658727388,
+      "id": "c_27VwPq7pS"
+    }
+  ],
   "created_at_millis": 1786654132582,
   "creator": "Alexander Terp",
   "description": "The core owns composition and does not have one yet. Two things in the\ncode already say so in their own comments: the mirror is a static\nbecause there is one window and one daemon, and its subscription hangs\noff the attached pane rather than off the daemon it describes.\n\nWhat this needs to become is which daemons are attached, and which\n(daemon, workspace, tab) shows in which window region - plus view-local\nfocus, meaning which pane Muster's keyboard feeds, which is never read\nback from the daemon's own cursor.\n\nKeep it plain records (a_27QcqNxRB). This is the only durable state\nMuster has and it is a few hundred bytes; written as records it can be\nsaved later for nothing, and written as a graph of view objects it\ncannot be saved at all.\n\nAlso here: the control socket is one per process today and has to\nbecome one per pane.",
   "id": "a_27U0srTyw",
-  "position": "E",
+  "position": "!E",
   "title": "🗂️ Composition: which daemon, which tab, which region",
   "type": "feature",
-  "updated_at_millis": 1786655820077,
+  "updated_at_millis": 1786658727432,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786654132582},
-    {"field":"column","value":"in-progress","at":1786655820077}
+    {"field":"column","value":"in-progress","at":1786655820077},
+    {"field":"column","value":"done","at":1786658727432}
   ]
 }
