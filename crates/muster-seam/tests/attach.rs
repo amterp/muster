@@ -14,8 +14,14 @@
 //! this points the whole process at a scratch daemon through the environment; a second test
 //! here would race both.
 
+use std::collections::BTreeSet;
+use std::sync::Mutex;
+
 use herdr_harness::Daemon;
-use muster::proto::{AttachPane, Paste, Request, Response, Startup, request, response};
+use muster::proto::{
+    AttachPane, Event, Paste, Request, Response, Startup, ViewChanged, ViewNode, event, request,
+    response, view_node,
+};
 use prost::Message;
 use serde_json::{Value, json};
 
@@ -37,6 +43,7 @@ fn attaching_places_a_pane_where_the_keyboard_can_find_it() {
     // own, which reads no environment. The module docs say why it stays that way.
     unsafe { std::env::set_var("HERDR_SOCKET_PATH", daemon.socket_path()) };
     assert_ok(&answer(request::Payload::Startup(Startup::default())));
+    muster::ffi::muster_set_event_callback(Some(note_view));
 
     // Before any attach, so this is the state a window is in on the way up rather than one
     // it fell back to.
@@ -86,16 +93,113 @@ fn attaching_places_a_pane_where_the_keyboard_can_find_it() {
     // daemon to encode. Everything else leaves over the pane's own socket, which needs a
     // bridge process on the far end - that path has its own test, and standing one up here
     // would make this one about two things.
-    let typed = "muster-attached-here";
+    // Both shells first. A pane's program is spawned when the pane is created, so text
+    // pasted before its shell has drawn a prompt races the program's own first output -
+    // which is how this passed alone and failed under a loaded suite.
+    until(
+        "both panes' shells to come up",
+        || !screen(&daemon, &first).is_empty() && !screen(&daemon, &second).is_empty(),
+        || {
+            format!(
+                "{first}: {:?}\n{second}: {:?}",
+                screen(&daemon, &first),
+                screen(&daemon, &second)
+            )
+        },
+    );
+
+    // Short enough to fit a split pane's width beside a shell prompt.
+    let typed = "mstr-here";
     assert_ok(&answer(request::Payload::Paste(Paste { text: typed.to_string() })));
-    until("the text to appear in the pane that has the keyboard", || {
-        screen(&daemon, &second).contains(typed)
-    });
+    until(
+        "the text to appear in the pane that has the keyboard",
+        || screen(&daemon, &second).contains(typed),
+        || {
+            format!(
+                "{first}: {:?}\n{second}: {:?}",
+                screen(&daemon, &first),
+                screen(&daemon, &second)
+            )
+        },
+    );
     assert!(
         !screen(&daemon, &first).contains(typed),
         "the keyboard should follow the pane just attached, and the text landed in {first} \
          as well as, or instead of, {second}"
     );
+
+    // Both panes in one region, because a region shows a tab and both panes are in it. A
+    // second region here would mean attaching a pane opened a second copy of its tab.
+    //
+    // Waited for rather than read once: a tab's tree is published on its own event, and
+    // herdr publishes a one-pane tree in between while a split settles. Every assertion
+    // about a tree is therefore about the one it settles on.
+    until(
+        "the tab's tree to settle at two leaves",
+        || settled(2).is_some(),
+        || format!("the last view the core published: {:?}", latest_view()),
+    );
+    let view = latest_view().expect("attaching publishes what the window is showing");
+    assert_eq!(view.regions.len(), 1, "one tab, one region: {view:?}");
+    assert_eq!(view.focused_region, view.regions[0].region_id);
+    assert_eq!(view.regions[0].pane_id, second, "the keyboard is on the pane just attached");
+
+    // A split made from another client. Nothing here asked Muster for it, which is the
+    // point twice over: the view follows the daemon rather than Muster's own record of what
+    // it did, and the pane it grew gets a channel although nobody attached to it. Without
+    // that, a shell rendering a surface per leaf would build one it can never type into.
+    daemon.call("pane.split", &json!({ "pane_id": second, "direction": "down" }));
+    until(
+        "a third leaf, with a socket of its own, to reach the window",
+        || settled(3).is_some(),
+        || format!("the last view the core published: {:?}", latest_view()),
+    );
+}
+
+/// The published view's one region, once its tree has exactly `leaves` panes and each of
+/// them names a socket of its own.
+///
+/// Everything this test asserts about a tree asks for it this way. A tree arrives on its own
+/// event and a split publishes an intermediate one, so reading the latest view at an
+/// arbitrary instant is asking what the window looked like mid-blink.
+fn settled(count: usize) -> Option<Vec<(String, String)>> {
+    let root = latest_view()?.regions.into_iter().next()?.root?;
+    let panes = leaves(&root);
+    let sockets: BTreeSet<&String> = panes.iter().map(|(_, socket)| socket).collect();
+    (panes.len() == count && sockets.len() == count && !sockets.contains(&String::new()))
+        .then_some(panes)
+}
+
+/// The last view the core published, from the callback the shell would register.
+///
+/// The push direction is the whole point of this message: a daemon-side split reaches the
+/// window because the core said so, not because anything asked.
+static VIEW: Mutex<Option<ViewChanged>> = Mutex::new(None);
+
+extern "C" fn note_view(bytes: *const u8, len: usize) {
+    // SAFETY: the core guarantees `len` readable bytes for the duration of this call, which
+    // is the contract in include/muster.h.
+    let bytes = unsafe { std::slice::from_raw_parts(bytes, len) };
+    if let Ok(Event { payload: Some(event::Payload::ViewChanged(view)) }) = Event::decode(bytes) {
+        *VIEW.lock().expect("a panicking reader poisoned the view") = Some(view);
+    }
+}
+
+fn latest_view() -> Option<ViewChanged> {
+    VIEW.lock().expect("a panicking reader poisoned the view").clone()
+}
+
+/// Every pane in a tree, as (id, socket path), in reading order.
+fn leaves(node: &ViewNode) -> Vec<(String, String)> {
+    match &node.node {
+        Some(view_node::Node::Pane(pane)) => {
+            vec![(pane.pane_id.clone(), pane.control_socket_path.clone())]
+        }
+        Some(view_node::Node::Split(split)) => {
+            split.first.iter().chain(split.second.iter()).flat_map(|child| leaves(child)).collect()
+        }
+        None => Vec::new(),
+    }
 }
 
 fn answer(payload: request::Payload) -> Response {
@@ -150,8 +254,12 @@ fn only_pane(daemon: &Daemon) -> String {
 ///
 /// A daemon renders every pane whether or not anything is attached to it, which is what
 /// makes this a usable oracle here: no surface, no bridge, and a screen to read anyway.
+///
+/// Unwrapped, because a pane in a split is about two dozen columns wide and a line that
+/// wraps comes back with a newline through the middle of it - which is a wrong answer to
+/// "did this text arrive" and a confusing one to read.
 fn screen(daemon: &Daemon, pane: &str) -> String {
-    let read = daemon.call("pane.read", &json!({ "pane_id": pane, "source": "visible" }));
+    let read = daemon.call("pane.read", &json!({ "pane_id": pane, "source": "recent_unwrapped" }));
     read.get("read")
         .and_then(|read| read.get("text"))
         .and_then(Value::as_str)
@@ -159,11 +267,12 @@ fn screen(daemon: &Daemon, pane: &str) -> String {
         .to_string()
 }
 
-/// Polls a condition rather than sleeping on it.
+/// Polls a condition rather than sleeping on it, and says what it saw when it gives up.
 ///
 /// herdr answers in under a millisecond, so a sleep long enough to be safe makes the suite
-/// unpleasant and one short enough to be pleasant is flaky on a loaded machine.
-fn until(what: &str, mut ready: impl FnMut() -> bool) {
+/// unpleasant and one short enough to be pleasant is flaky on a loaded machine. The third
+/// argument is what turns a timeout from "something did not happen" into something readable.
+fn until(what: &str, mut ready: impl FnMut() -> bool, on_failure: impl FnOnce() -> String) {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
     while std::time::Instant::now() < deadline {
         if ready() {
@@ -171,5 +280,5 @@ fn until(what: &str, mut ready: impl FnMut() -> bool) {
         }
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
-    panic!("timed out after 15s waiting for {what}");
+    panic!("timed out after 15s waiting for {what}.\n{}", on_failure());
 }

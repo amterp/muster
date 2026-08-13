@@ -157,14 +157,9 @@ fn attach_pane(pane_id: &str) -> Response {
              so if this id is one of them the problem is a herdr whose payload has moved \
              rather than a pane that is missing."
         )),
-        Err(AttachError::NoSocket(detail)) => Response::failure(format!(
-            "the core could not open the socket a pane's bridge dials back on ({detail}), so \
-             this pane can never be typed into - it will render and ignore the keyboard. \
-             Usual causes: a full or read-only temporary directory."
-        )),
-        Err(AttachError::NoEncoder(detail)) => Response::failure(format!(
-            "the core could not build a key encoder ({detail}), so nothing typed into this \
-             pane would reach it. libghostty-vt is behind this; check that ./dev built it."
+        Err(AttachError::NoChannel(detail)) => Response::failure(format!(
+            "the core could not open a channel to this pane: {detail} Nothing typed into it \
+             would reach it, so it would render and ignore the keyboard."
         )),
     }
 }

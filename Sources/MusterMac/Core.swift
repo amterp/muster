@@ -186,6 +186,14 @@ public enum Core {
       chrome?.apply(paneID: changed.paneID, state: changed.state)
     case .backendHealth(let backend):
       chrome?.apply(health: backend.state, detail: backend.detail)
+    case .viewChanged(let view):
+      // Noted, not yet rendered: this window still stands up one surface for one pane, and
+      // laying a region's tree out is the next card (kan a_27U1FBqTg). The shape the core
+      // published is already in the run log beside this line, written by the core, so this
+      // says only that it crossed - which is the part the core cannot see.
+      info(
+        "view.received",
+        ["regions": String(view.regions.count), "focused": view.focusedRegion])
     case nil:
       break
     }

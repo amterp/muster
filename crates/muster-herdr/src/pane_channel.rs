@@ -106,7 +106,11 @@ impl PaneChannel for HerdrPaneChannel {
                 // a_26BIX28HG).
                 log::debug(
                     "server_channel.sent",
-                    fields! { "intent" => label(intent), "ms" => format!("{elapsed_ms:.2}") },
+                    fields! {
+                        "pane" => &self.pane_id,
+                        "intent" => label(intent),
+                        "ms" => format!("{elapsed_ms:.2}"),
+                    },
                 );
                 true
             }
@@ -114,6 +118,7 @@ impl PaneChannel for HerdrPaneChannel {
                 log::warn(
                     "server_channel.failed",
                     fields! {
+                        "pane" => &self.pane_id,
                         "intent" => label(intent),
                         "error" => failure.to_string(),
                         "ms" => format!("{elapsed_ms:.2}"),

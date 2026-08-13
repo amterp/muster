@@ -189,7 +189,80 @@ message Event {
     PaneTypeable pane_typeable = 1;
     PaneStateChanged pane_state_changed = 2;
     BackendHealth backend_health = 3;
+    ViewChanged view_changed = 4;
   }
+}
+
+// Everything this window is showing, as one message.
+//
+// The whole view every time, absolute and idempotent, in the same discipline as the
+// daemon's own events. That is what lets the shell stay dumb: it renders what it is handed
+// and keeps no picture of its own to patch, so there is no state up there to drift.
+//
+// Structure and identity only. What an agent is doing travels on PaneStateChanged, because
+// a pane's state moves far more often than the arrangement it sits in and carrying it here
+// would repaint the tree every time an agent blinked - and because that field already has
+// exactly one writer, which is the property that keeps it correct.
+message ViewChanged {
+  // In the order they are laid out. Muster owns no split tree over regions; side by side,
+  // in this order, is the whole arrangement.
+  repeated ViewRegion regions = 1;
+
+  // Which region's pane the keyboard feeds. Empty when none does, which is what a window
+  // with no daemon behind it looks like.
+  string focused_region = 2;
+}
+
+// One region, showing one tab's pane tree.
+message ViewRegion {
+  string region_id = 1;
+  string daemon_id = 2;
+  string tab_id = 3;
+
+  // The pane in this region the keyboard feeds while the region is focused. Empty when the
+  // daemon has not yet said what is in this tab.
+  string pane_id = 4;
+
+  // Absent while the daemon has not said how this tab is arranged, which is an ordinary
+  // moment rather than a failure - the tree arrives on its own event. Absent and "no panes"
+  // are different answers: a shell told this leaves its surfaces alone, where a shell told
+  // the tab is empty would tear down surfaces that are about to be described.
+  ViewNode root = 5;
+
+  // Whether `root` is one pane filling the region rather than the tab's whole tree. Already
+  // resolved, so a shell that ignores this renders the right thing; it exists so the chrome
+  // can say so, because a zoomed tab and a one-pane tab are otherwise identical on screen.
+  bool zoomed = 6;
+}
+
+message ViewNode {
+  oneof node {
+    ViewPane pane = 1;
+    ViewSplit split = 2;
+  }
+}
+
+message ViewSplit {
+  // columns (children side by side, first is left) or rows (first is upper). Muster's
+  // spelling, not a backend's: herdr says right and down, which describe the moment of
+  // splitting rather than how to lay two children out long afterwards.
+  string axis = 1;
+
+  // The first child's share of the region, between 0 and 1. Proportions rather than cells,
+  // because a backend sizes its rectangles for a viewport of its own.
+  float ratio = 2;
+
+  ViewNode first = 3;
+  ViewNode second = 4;
+}
+
+message ViewPane {
+  string pane_id = 1;
+
+  // Where this pane's bridge should dial the core. Empty means no channel is open for this
+  // pane yet, and a surface built from it would render and never be typeable - so a shell
+  // must not spawn a bridge pointed at it.
+  string control_socket_path = 2;
 }
 
 // What the agent in a pane is doing now.

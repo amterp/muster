@@ -8,11 +8,15 @@
       "name": "a fresh composition is attached to nothing",
       "why": "The starting state has to be distinguishable from a window that is set up and showing nothing. No focus at all is the honest answer before a daemon is attached, and the input path reads it as 'this keystroke has nowhere to go' rather than sending it to a pane it invented.",
       "given": {
-        "steps": []
+        "steps": [],
+        "attached": [
+          "w1:p1"
+        ]
       },
       "expect": {
         "daemons": [],
-        "regions": []
+        "regions": [],
+        "view": []
       }
     },
     {
@@ -26,11 +30,15 @@
             "workspace": "w1",
             "tab": "w1:t1"
           }
+        ],
+        "attached": [
+          "w1:p1"
         ]
       },
       "expect": {
         "daemons": [],
-        "regions": []
+        "regions": [],
+        "view": []
       }
     },
     {
@@ -49,6 +57,9 @@
             "workspace": "w1",
             "tab": "w1:t1"
           }
+        ],
+        "attached": [
+          "w1:p1"
         ]
       },
       "expect": {
@@ -58,7 +69,8 @@
         "regions": [
           "r0 daemon=local workspace=w1 tab=w1:t1"
         ],
-        "focusedRegion": "r0"
+        "focusedRegion": "r0",
+        "view": []
       }
     },
     {
@@ -138,6 +150,9 @@
             "daemon": "local",
             "world": "three panes"
           }
+        ],
+        "attached": [
+          "w1:p1"
         ]
       },
       "expect": {
@@ -148,7 +163,10 @@
           "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p1"
         ],
         "focusedRegion": "r0",
-        "focusedPane": "w1:p1"
+        "focusedPane": "w1:p1",
+        "view": [
+          "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
+        ]
       }
     },
     {
@@ -228,6 +246,9 @@
             "daemon": "local",
             "world": "reordered"
           }
+        ],
+        "attached": [
+          "w1:p1"
         ]
       },
       "expect": {
@@ -238,7 +259,10 @@
           "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p3"
         ],
         "focusedRegion": "r0",
-        "focusedPane": "w1:p3"
+        "focusedPane": "w1:p3",
+        "view": [
+          "r0 tab=w1:t1 columns(w1:p3, columns(w1:p1*, w1:p2@0.5)@0.5)"
+        ]
       }
     },
     {
@@ -296,6 +320,9 @@
             "daemon": "local",
             "world": "no tree yet"
           }
+        ],
+        "attached": [
+          "w1:p1"
         ]
       },
       "expect": {
@@ -306,7 +333,10 @@
           "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p1"
         ],
         "focusedRegion": "r0",
-        "focusedPane": "w1:p1"
+        "focusedPane": "w1:p1",
+        "view": [
+          "r0 tab=w1:t1 (no tree)"
+        ]
       }
     },
     {
@@ -367,6 +397,9 @@
             "daemon": "local",
             "world": "tree ran ahead"
           }
+        ],
+        "attached": [
+          "w1:p1"
         ]
       },
       "expect": {
@@ -377,7 +410,10 @@
           "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p2"
         ],
         "focusedRegion": "r0",
-        "focusedPane": "w1:p2"
+        "focusedPane": "w1:p2",
+        "view": [
+          "r0 tab=w1:t1 columns(w1:p1*, w1:p2@0.5)"
+        ]
       }
     },
     {
@@ -467,6 +503,9 @@
             "daemon": "local",
             "world": "three panes"
           }
+        ],
+        "attached": [
+          "w1:p1"
         ]
       },
       "expect": {
@@ -477,7 +516,10 @@
           "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p2"
         ],
         "focusedRegion": "r0",
-        "focusedPane": "w1:p2"
+        "focusedPane": "w1:p2",
+        "view": [
+          "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
+        ]
       }
     },
     {
@@ -604,6 +646,9 @@
             "daemon": "local",
             "world": "p2 exited"
           }
+        ],
+        "attached": [
+          "w1:p1"
         ]
       },
       "expect": {
@@ -614,7 +659,10 @@
           "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p1"
         ],
         "focusedRegion": "r0",
-        "focusedPane": "w1:p1"
+        "focusedPane": "w1:p1",
+        "view": [
+          "r0 tab=w1:t1 columns(w1:p1*, w1:p3@0.5)"
+        ]
       }
     },
     {
@@ -710,13 +758,17 @@
             "daemon": "local",
             "world": "tab closed"
           }
+        ],
+        "attached": [
+          "w1:p1"
         ]
       },
       "expect": {
         "daemons": [
           "local local=/tmp/herdr-local.sock"
         ],
-        "regions": []
+        "regions": [],
+        "view": []
       }
     },
     {
@@ -828,6 +880,9 @@
             "daemon": "local",
             "world": "tab closed"
           }
+        ],
+        "attached": [
+          "w1:p1"
         ]
       },
       "expect": {
@@ -839,7 +894,10 @@
           "r1 daemon=devenv workspace=w1 tab=w1:t1 pane=w1:p1"
         ],
         "focusedRegion": "r1",
-        "focusedPane": "w1:p1"
+        "focusedPane": "w1:p1",
+        "view": [
+          "r1 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
+        ]
       }
     },
     {
@@ -939,6 +997,9 @@
             "do": "detachDaemon",
             "daemon": "local"
           }
+        ],
+        "attached": [
+          "w1:p1"
         ]
       },
       "expect": {
@@ -949,7 +1010,10 @@
           "r1 daemon=devenv workspace=w1 tab=w1:t1 pane=w1:p1"
         ],
         "focusedRegion": "r1",
-        "focusedPane": "w1:p1"
+        "focusedPane": "w1:p1",
+        "view": [
+          "r1 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
+        ]
       }
     },
     {
@@ -1043,6 +1107,9 @@
             "do": "closeRegion",
             "region": "r1"
           }
+        ],
+        "attached": [
+          "w1:p1"
         ]
       },
       "expect": {
@@ -1053,7 +1120,10 @@
           "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p1"
         ],
         "focusedRegion": "r0",
-        "focusedPane": "w1:p1"
+        "focusedPane": "w1:p1",
+        "view": [
+          "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
+        ]
       }
     },
     {
@@ -1147,6 +1217,9 @@
             "do": "focusRegion",
             "region": "r1"
           }
+        ],
+        "attached": [
+          "w1:p1"
         ]
       },
       "expect": {
@@ -1157,7 +1230,10 @@
           "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p1"
         ],
         "focusedRegion": "r0",
-        "focusedPane": "w1:p1"
+        "focusedPane": "w1:p1",
+        "view": [
+          "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
+        ]
       }
     },
     {
@@ -1247,6 +1323,9 @@
             "daemon": "local",
             "world": "three panes"
           }
+        ],
+        "attached": [
+          "w1:p1"
         ]
       },
       "expect": {
@@ -1257,7 +1336,10 @@
           "r1 daemon=local workspace=w1 tab=w1:t1 pane=w1:p1"
         ],
         "focusedRegion": "r1",
-        "focusedPane": "w1:p1"
+        "focusedPane": "w1:p1",
+        "view": [
+          "r1 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
+        ]
       }
     },
     {
@@ -1342,6 +1424,9 @@
             "daemon": "local",
             "socketPath": "/tmp/herdr-restarted.sock"
           }
+        ],
+        "attached": [
+          "w1:p1"
         ]
       },
       "expect": {
@@ -1352,7 +1437,366 @@
           "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p1"
         ],
         "focusedRegion": "r0",
-        "focusedPane": "w1:p1"
+        "focusedPane": "w1:p1",
+        "view": [
+          "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
+        ]
+      }
+    },
+    {
+      "name": "a tree that has not caught up does not move the keyboard",
+      "why": "The pane list and the tree are published separately, so a tab that is mid-split briefly has a tree naming fewer panes than it holds. Reading the tree as evidence that a pane is gone hands the keyboard to another pane and keeps it there, because the tree that arrives a moment later makes the wrong answer valid. It cost an afternoon as a test that passed alone and failed in the suite; the real symptom is a keyboard that jumps to the first pane when you split, sometimes.",
+      "given": {
+        "attached": [
+          "w1:p1"
+        ],
+        "worlds": {
+          "three panes": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "w1"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ],
+            "layouts": [
+              {
+                "tab": "w1:t1",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p1",
+                  "second": {
+                    "axis": "columns",
+                    "ratio": 0.5,
+                    "first": "w1:p2",
+                    "second": "w1:p3"
+                  }
+                }
+              }
+            ]
+          },
+          "tree behind": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "w1"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ],
+            "layouts": [
+              {
+                "tab": "w1:t1",
+                "root": "w1:p1"
+              }
+            ]
+          }
+        },
+        "steps": [
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/herdr-local.sock"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "three panes"
+          },
+          {
+            "do": "focusPane",
+            "region": "r0",
+            "pane": "w1:p2"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "tree behind"
+          }
+        ]
+      },
+      "expect": {
+        "daemons": [
+          "local local=/tmp/herdr-local.sock"
+        ],
+        "regions": [
+          "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p2"
+        ],
+        "focusedRegion": "r0",
+        "focusedPane": "w1:p2",
+        "view": [
+          "r0 tab=w1:t1 w1:p1*"
+        ]
+      }
+    },
+    {
+      "name": "a zoomed tab shows the one pane, not the tree",
+      "why": "herdr spells zoom as a flag and keeps publishing every pane at its ordinary unzoomed rect, so a renderer handed the tree paints all of them while the daemon is showing one. Resolving it here rather than flagging it for the shell is what keeps the shell renderable-as-told; the flag survives only so the chrome can say so, because a zoomed tab and a one-pane tab look identical.",
+      "given": {
+        "attached": [
+          "w1:p1",
+          "w1:p2"
+        ],
+        "worlds": {
+          "zoomed on p2": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "w1"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ],
+            "layouts": [
+              {
+                "tab": "w1:t1",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p1",
+                  "second": {
+                    "axis": "columns",
+                    "ratio": 0.5,
+                    "first": "w1:p2",
+                    "second": "w1:p3"
+                  }
+                },
+                "zoomed": "w1:p2"
+              }
+            ]
+          }
+        },
+        "steps": [
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/herdr-local.sock"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "zoomed on p2"
+          }
+        ]
+      },
+      "expect": {
+        "daemons": [
+          "local local=/tmp/herdr-local.sock"
+        ],
+        "regions": [
+          "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p1"
+        ],
+        "focusedRegion": "r0",
+        "focusedPane": "w1:p1",
+        "view": [
+          "r0 tab=w1:t1 w1:p2* zoomed"
+        ]
+      }
+    },
+    {
+      "name": "a view spans daemons, in the order the regions sit",
+      "why": "One window showing a laptop and a devenv side by side is the desideratum this whole layer exists for, and the view is where it becomes one answer rather than two. Order matters because it is the only part of the arrangement Muster owns - a view that sorted its regions would silently rearrange somebody's window.",
+      "given": {
+        "attached": [
+          "w1:p1"
+        ],
+        "worlds": {
+          "three panes": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "w1"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ],
+            "layouts": [
+              {
+                "tab": "w1:t1",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p1",
+                  "second": {
+                    "axis": "columns",
+                    "ratio": 0.5,
+                    "first": "w1:p2",
+                    "second": "w1:p3"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "steps": [
+          {
+            "do": "attachDaemon",
+            "daemon": "devenv",
+            "socketPath": "/tmp/herdr-devenv.sock"
+          },
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/herdr-local.sock"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "devenv",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "devenv",
+            "world": "three panes"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "three panes"
+          }
+        ]
+      },
+      "expect": {
+        "daemons": [
+          "devenv local=/tmp/herdr-devenv.sock",
+          "local local=/tmp/herdr-local.sock"
+        ],
+        "regions": [
+          "r0 daemon=devenv workspace=w1 tab=w1:t1 pane=w1:p1",
+          "r1 daemon=local workspace=w1 tab=w1:t1 pane=w1:p1"
+        ],
+        "focusedRegion": "r0",
+        "focusedPane": "w1:p1",
+        "view": [
+          "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)",
+          "r1 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
+        ]
       }
     }
   ]

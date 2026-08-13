@@ -11,9 +11,9 @@
 //! answer for another's.
 
 use std::collections::BTreeMap;
-use std::sync::{Arc, LazyLock, Mutex};
+use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 
-use muster_core::composition::{Composition, Daemon, DaemonId, Endpoint};
+use muster_core::composition::{Composition, Daemon, DaemonId, Endpoint, View};
 use muster_core::diagnostics::log;
 use muster_core::fields;
 use muster_core::input::{Keymap, PaneInput, TerminalModeProfile};
@@ -23,8 +23,8 @@ use muster_herdr::subscription::{Notice, Subscription};
 use muster_herdr::{HerdrPaneChannel, PaneControlChannel, discover_socket_path, fetch_snapshot};
 use muster_vt::KeyEncoder;
 
-use crate::ffi;
 use crate::proto::{BackendHealth, Event, PaneStateChanged, PaneTypeable, event};
+use crate::{convert, ffi};
 
 /// What Muster calls the daemon it found for itself.
 ///
@@ -101,18 +101,136 @@ impl Session {
 
     /// Brings composition, and what this process holds open, in line with one daemon.
     ///
-    /// The pane map is trimmed here as well as the regions, because every entry in it owns a
-    /// bound socket and the thread waiting on it. A window whose panes come and go all day
-    /// would otherwise collect both, and neither shows up as anything but a process that
-    /// grows.
+    /// A channel per pane in every region this daemon shows, not only the one the keyboard
+    /// is on: the view names a socket for each leaf and a shell renders a surface per leaf,
+    /// so a pane the daemon added is one Muster has to be ready to be typed into before
+    /// anyone looks at it.
+    ///
+    /// The same pass drops channels for panes that are gone, because each one owns a bound
+    /// socket and the thread waiting on it. A window whose panes come and go all day would
+    /// otherwise collect both, and neither shows up as anything but a process that grows.
     fn reconcile(&mut self, daemon: &DaemonId) {
-        let Some(backend) = self.backends.get(daemon) else { return };
-        let Ok(mirror) = backend.mirror.lock() else { return };
+        // In two passes, because opening a channel needs the whole session and reading the
+        // mirror borrows one daemon out of it. Nothing can change in between: the caller
+        // holds the session across both.
+        let wanted: Vec<PaneId> = {
+            let Some(backend) = self.backends.get(daemon) else { return };
+            let Ok(mirror) = backend.mirror.lock() else { return };
 
-        self.composition.reconcile(daemon, &mirror);
-        if let Some(attached) = self.panes.get_mut(daemon) {
+            self.composition.reconcile(daemon, &mirror);
+            let attached = self.panes.entry(daemon.clone()).or_default();
             attached.retain(|pane, _| mirror.pane(pane).is_some());
+
+            self.composition
+                .regions()
+                .filter(|region| &region.daemon == daemon)
+                .filter_map(|region| mirror.layout(&region.tab))
+                .flat_map(|layout| layout.root.panes())
+                .filter(|pane| !attached.contains_key(pane) && mirror.pane(pane).is_some())
+                .cloned()
+                .collect()
+        };
+
+        for pane in wanted {
+            if let Err(refusal) = self.open_channel(daemon, &pane) {
+                // Logged rather than returned: nothing called this to attach that pane, and
+                // the pane still renders. What it costs is that one pane's keyboard, so the
+                // line has to name it.
+                log::error(
+                    "pane.channel.unavailable",
+                    fields! {
+                        "daemon" => daemon.to_string(),
+                        "pane" => pane.to_string(),
+                        "detail" => refusal,
+                        "impact" => "this pane renders and ignores the keyboard; every other \
+                                     pane in the window is unaffected",
+                    },
+                );
+            }
         }
+    }
+
+    /// Binds a pane's socket and builds its input path.
+    ///
+    /// The socket is bound before this returns, and so before the shell is told about the
+    /// pane it belongs to - which is what stops a bridge losing a race against its own
+    /// listener.
+    fn open_channel(&mut self, daemon: &DaemonId, pane: &PaneId) -> Result<(), String> {
+        if self.panes.get(daemon).is_some_and(|held| held.contains_key(pane)) {
+            return Ok(());
+        }
+        let path = self.next_socket_path();
+        let announced = pane.clone();
+        let control = PaneControlChannel::bind(path.clone(), move || typeable(&announced))
+            .map_err(|error| {
+                format!(
+                    "could not bind the socket this pane's bridge dials back on ({error}). \
+                     Usual causes: a full or read-only temporary directory."
+                )
+            })?;
+        let control = Arc::new(control);
+
+        // The second channel, for the keys and text whose correct encoding depends on modes
+        // the control stream cannot show us.
+        let server = HerdrPaneChannel::discover(pane.as_str());
+        if server.is_none() {
+            log::warn(
+                "app.server_channel.unavailable",
+                fields! {
+                    "pane" => pane.to_string(),
+                    "impact" => "arrow keys and paste fall back to a guessed encoding, which \
+                                 pagers reject and multi-line pastes run as commands",
+                },
+            );
+        }
+        let server_encoded = server.is_some();
+
+        // The pane's modes are not readable, so this is the documented guess. One day it is
+        // fed from the daemon; nothing above here changes when it is.
+        let encoder = KeyEncoder::new(TerminalModeProfile::UNKNOWN_PANE).map_err(|error| {
+            format!(
+                "could not build a key encoder ({error}), so nothing typed into this pane \
+                 would reach it. libghostty-vt is behind this; check that ./dev built it."
+            )
+        })?;
+
+        self.panes.entry(daemon.clone()).or_default().insert(
+            pane.clone(),
+            Arc::new(AttachedPane {
+                input: PaneInput::new(
+                    Arc::clone(&control) as Arc<_>,
+                    server.map(|channel| Arc::new(channel) as Arc<_>),
+                    Arc::new(encoder),
+                    Keymap::default(),
+                ),
+                control_socket_path: path,
+                server_encoded,
+                _control: control,
+            }),
+        );
+        Ok(())
+    }
+
+    fn channel(&self, daemon: &DaemonId, pane: &PaneId) -> Option<&Arc<AttachedPane>> {
+        self.panes.get(daemon)?.get(pane)
+    }
+
+    /// What this window is showing, right now.
+    ///
+    /// Every daemon's mirror is locked for the length of it, in the map's own order. That
+    /// order is what makes it safe: the only other path taking two of these locks takes them
+    /// one at a time and lets go of the mirror before it asks for the session.
+    fn view(&self) -> View {
+        let mirrors: BTreeMap<&DaemonId, MutexGuard<'_, Mirror>> = self
+            .backends
+            .iter()
+            .filter_map(|(id, backend)| Some((id, backend.mirror.lock().ok()?)))
+            .collect();
+        View::of(
+            &self.composition,
+            |daemon| mirrors.get(daemon).map(|held| &**held),
+            |daemon, pane| self.channel(daemon, pane).map(|held| held.control_socket_path.clone()),
+        )
     }
 
     /// The pane this window's keyboard feeds.
@@ -144,8 +262,7 @@ pub(crate) enum AttachError {
     NoDaemon,
     Unreachable(String),
     NoSuchPane { pane: String, held: usize, dropped: usize },
-    NoSocket(String),
-    NoEncoder(String),
+    NoChannel(String),
 }
 
 /// Shows a daemon-owned pane in this window, and points the keyboard at it.
@@ -155,10 +272,6 @@ pub(crate) enum AttachError {
 /// knows which tab a pane is in - and a window that attaches to a pane no daemon holds is
 /// the failure that has cost this project the most time, because it looks exactly like a
 /// window that renders and ignores the keyboard.
-///
-/// The socket is bound before this returns, and so before the shell creates the surface
-/// that spawns the bridge - which is what stops the bridge losing a race against its own
-/// listener.
 pub(crate) fn attach(pane_id: &str) -> Result<Arc<AttachedPane>, AttachError> {
     let pane = PaneId::new(pane_id);
     let socket_path =
@@ -176,60 +289,70 @@ pub(crate) fn attach(pane_id: &str) -> Result<Arc<AttachedPane>, AttachError> {
     let (workspace, tab) = (placed.workspace.clone(), placed.tab.clone());
 
     let daemon = DaemonId::new(LOCAL);
-    let mut session = SESSION.lock().expect("a panicking sender poisoned the session");
-    session.follow(&daemon, &socket_path, snapshot);
+    let attached = {
+        let mut session = SESSION.lock().expect("a panicking sender poisoned the session");
+        session.follow(&daemon, &socket_path, snapshot);
 
-    let path = session.next_socket_path();
-    let announced = pane.clone();
-    let control = PaneControlChannel::bind(path.clone(), move || typeable(&announced))
-        .map_err(|error| AttachError::NoSocket(error.to_string()))?;
-    let control = Arc::new(control);
+        // This pane's channel by hand, before the rest. The reconcile below opens one for
+        // every other pane in the tab and logs whatever refuses; this one has a caller
+        // waiting on an answer, so its refusal is returned rather than written down.
+        session.open_channel(&daemon, &pane).map_err(AttachError::NoChannel)?;
 
-    // The second channel, for the keys and text whose correct encoding depends on modes the
-    // control stream cannot show us.
-    let server = HerdrPaneChannel::discover(pane_id);
-    if server.is_none() {
-        log::warn(
-            "app.server_channel.unavailable",
+        // One region per tab, not per pane. A tab's panes are the tab's own tree and they
+        // are rendered inside one region; attaching a second pane from a tab already on
+        // screen is asking for the keyboard, not for a second copy of the tab.
+        let region = match session.composition.region_showing(&daemon, &tab) {
+            Some(region) => region,
+            None => session
+                .composition
+                .open_region(&daemon, workspace, tab)
+                .expect("the daemon was attached a few lines above this"),
+        };
+        session.composition.focus_pane(region, pane.clone());
+        session.reconcile(&daemon);
+
+        session
+            .channel(&daemon, &pane)
+            .map(Arc::clone)
+            .ok_or_else(|| AttachError::NoChannel("the channel opened and then went".to_string()))?
+    };
+
+    // Outside the lock, because emitting reaches the shell and a shell reacting to an event
+    // by dispatching a request is ordinary.
+    publish();
+    Ok(attached)
+}
+
+/// Tells the shell what this window is showing.
+///
+/// The whole view rather than what moved. A shell handed the whole answer holds no picture
+/// of its own to patch, and the message is a few hundred bytes for a window nobody can fill
+/// past about fifteen panes.
+fn publish() {
+    let view = {
+        let session = SESSION.lock().expect("a panicking sender poisoned the session");
+        session.view()
+    };
+
+    // The shape, not the fact. "the view changed" is useless in a bug report and what it
+    // changed to is the whole answer - a window rendering the wrong thing and a window
+    // rendering nothing are one line apart here (`architecture.md`, the diagnostic log).
+    for region in &view.regions {
+        log::info(
+            "view.region",
             fields! {
-                "impact" => "arrow keys and paste fall back to a guessed encoding, which \
-                             pagers reject and multi-line pastes run as commands",
+                "region" => region.id.to_string(),
+                "daemon" => region.daemon.to_string(),
+                "tab" => region.tab.to_string(),
+                "tree" => match &region.root {
+                    Some(root) => root.to_string(),
+                    None => "(not yet published)".to_string(),
+                },
+                "focused" => view.focused == Some(region.id),
             },
         );
     }
-    let server_encoded = server.is_some();
-
-    // The pane's modes are not readable, so this is the documented guess. One day it is fed
-    // from the daemon; nothing above here changes when it is.
-    let encoder = KeyEncoder::new(TerminalModeProfile::UNKNOWN_PANE)
-        .map_err(|error| AttachError::NoEncoder(error.to_string()))?;
-
-    let attached = Arc::new(AttachedPane {
-        input: PaneInput::new(
-            Arc::clone(&control) as Arc<_>,
-            server.map(|channel| Arc::new(channel) as Arc<_>),
-            Arc::new(encoder),
-            Keymap::default(),
-        ),
-        control_socket_path: path,
-        server_encoded,
-        _control: control,
-    });
-    session.panes.entry(daemon.clone()).or_default().insert(pane.clone(), Arc::clone(&attached));
-
-    // One region per tab, not per pane. A tab's panes are the tab's own tree and they are
-    // rendered inside one region; attaching a second pane from a tab already on screen is
-    // asking for the keyboard, not for a second copy of the tab.
-    let region = match session.composition.region_showing(&daemon, &tab) {
-        Some(region) => region,
-        None => session
-            .composition
-            .open_region(&daemon, workspace, tab)
-            .expect("the daemon was attached one line above this"),
-    };
-    session.composition.focus_pane(region, pane);
-
-    Ok(attached)
+    ffi::emit(&Event { payload: Some(event::Payload::ViewChanged(convert::view(&view))) });
 }
 
 /// Applies what a daemon just said to what Muster is holding open.
@@ -274,6 +397,7 @@ fn announce(daemon: &DaemonId, notice: Notice) {
             // A bootstrap replaces the whole picture, so anything composition names may have
             // gone in the gap it was rebuilt across.
             reconcile(daemon);
+            publish();
             health("connected", "");
             for change in changes {
                 report(&change);
@@ -282,6 +406,7 @@ fn announce(daemon: &DaemonId, notice: Notice) {
         Notice::Changed(change) => {
             if moves_structure(&change) {
                 reconcile(daemon);
+                publish();
             }
             report(&change);
         }

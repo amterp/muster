@@ -1,23 +1,4 @@
-//! What Muster itself decided: which daemons are attached, and what each region shows.
-//!
-//! The only thing Muster owns rather than mirrors, and so the only thing worth writing
-//! down: everything else it holds is derived from a daemon and can be asked for again
-//! (`docs/architecture.md`, durability). That is why this is records and nothing else - no
-//! closures, no handles, no view objects, nothing a file cannot hold. It is a few hundred
-//! bytes, and its smallness is the point.
-//!
-//! It is also the one piece nobody else can save. A daemon's own export is scoped to
-//! itself and structurally cannot describe a window spanning a laptop and a devenv, because
-//! neither daemon knows the other exists.
-//!
-//! Regions sit in a list rather than a tree. A region shows one tab, whose pane tree is
-//! daemon truth; Muster owns no outer tree over those, because owning one is what would
-//! make it a multiplexer (a non-goal). Side by side, in this order, is the whole
-//! arrangement.
-//!
-//! One window's worth of regions, because there is one window. A second window wraps the
-//! list and leaves the daemons where they are - which daemons are attached is not a
-//! window's business.
+//! The records themselves: daemons, regions, and which pane the keyboard feeds.
 
 use std::collections::BTreeMap;
 
@@ -281,15 +262,26 @@ impl Composition {
         self.regions.retain(|region| &region.daemon != daemon || mirror.tab(&region.tab).is_some());
 
         for region in self.regions.iter_mut().filter(|region| &region.daemon == daemon) {
-            let panes = panes_of(mirror, &region.tab);
-            if region.pane.as_ref().is_some_and(|pane| panes.contains(pane)) {
+            // The pane list decides whether the keyboard's pane is still there, and the tree
+            // never does. They are published separately, so a tab mid-split briefly has a
+            // tree naming fewer panes than it holds - and a rule that read the tree as
+            // evidence would hand the keyboard to another pane and keep it there, because
+            // the tree that arrives a moment later makes the wrong answer a valid one.
+            // Measured, not guessed: splitting a two-pane tab publishes a one-pane tree in
+            // between.
+            let held = region
+                .pane
+                .as_ref()
+                .and_then(|pane| mirror.pane(pane))
+                .is_some_and(|pane| pane.tab == region.tab);
+            if held {
                 continue;
             }
             // The first pane rather than the closed one's neighbour. Naming the neighbour
             // needs the order as it stood before the change, and that is a cache of daemon
             // truth - which is exactly what this layer must not keep. A rule someone can
             // predict beats one that is usually nicer and occasionally inexplicable.
-            region.pane = panes.into_iter().next();
+            region.pane = panes_of(mirror, &region.tab).into_iter().next();
         }
         self.settle_focus();
     }

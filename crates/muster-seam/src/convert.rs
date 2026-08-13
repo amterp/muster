@@ -6,9 +6,56 @@
 //! few keys quietly do nothing, which is the failure mode this whole vocabulary exists to
 //! avoid.
 
+use muster_core::composition::{View, ViewNode};
 use muster_core::input::{Key, KeyAction, KeyEvent, Modifiers};
+use muster_core::mirror::backend::SplitAxis;
 
 use crate::proto;
+
+/// What the window is showing, on its way out to the shell.
+///
+/// Ids and paths become strings and absence becomes the empty string, which is proto3's own
+/// spelling for a field nobody set. The one place that is not good enough is the tree: a tab
+/// whose arrangement has not arrived is a different answer from a tab with no panes, so
+/// `root` is an absent message rather than an empty one.
+pub(crate) fn view(view: &View) -> proto::ViewChanged {
+    proto::ViewChanged {
+        regions: view
+            .regions
+            .iter()
+            .map(|region| proto::ViewRegion {
+                region_id: region.id.to_string(),
+                daemon_id: region.daemon.to_string(),
+                tab_id: region.tab.to_string(),
+                pane_id: region.pane.as_ref().map(ToString::to_string).unwrap_or_default(),
+                root: region.root.as_ref().map(node),
+                zoomed: region.zoomed,
+            })
+            .collect(),
+        focused_region: view.focused.map(|id| id.to_string()).unwrap_or_default(),
+    }
+}
+
+fn node(node: &ViewNode) -> proto::ViewNode {
+    let payload = match node {
+        ViewNode::Pane(pane) => proto::view_node::Node::Pane(proto::ViewPane {
+            pane_id: pane.id.to_string(),
+            control_socket_path: pane.control_socket_path.clone().unwrap_or_default(),
+        }),
+        ViewNode::Split { axis, ratio, first, second } => {
+            proto::view_node::Node::Split(Box::new(proto::ViewSplit {
+                axis: match axis {
+                    SplitAxis::Columns => "columns".to_string(),
+                    SplitAxis::Rows => "rows".to_string(),
+                },
+                ratio: *ratio,
+                first: Some(Box::new(self::node(first))),
+                second: Some(Box::new(self::node(second))),
+            }))
+        }
+    };
+    proto::ViewNode { node: Some(payload) }
+}
 
 pub(crate) fn key(event: &proto::KeyEvent) -> Result<KeyEvent, String> {
     let action = KeyAction::parse(&event.action).ok_or_else(|| {

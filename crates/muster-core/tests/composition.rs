@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
 use conformance::{CaseError, Conformance, fields};
-use muster_core::composition::{Composition, Daemon, DaemonId, Endpoint, Region, RegionId};
+use muster_core::composition::{Composition, Daemon, DaemonId, Endpoint, Region, RegionId, View};
 use muster_core::mirror::Mirror;
 use muster_core::mirror::backend::{PaneId, TabId, WorkspaceId};
 use serde_json::{Value, json};
@@ -23,9 +23,13 @@ fn composition_conformance() {
     let ran = corpus.run(|given| {
         let worlds = read_worlds(given);
         let mut composition = Composition::new();
+        // Which world each daemon has most recently said is true. A view is computed
+        // against whatever each daemon last published, and a daemon that has said nothing
+        // yet is a real state - one attached whose subscription has not bootstrapped.
+        let mut current: BTreeMap<DaemonId, String> = BTreeMap::new();
 
         for step in given.get("steps").and_then(Value::as_array).into_iter().flatten() {
-            act(&mut composition, step, &worlds)?;
+            act(&mut composition, step, &worlds, &mut current)?;
         }
 
         // Every field, every case. What a region shows and which pane the keyboard feeds
@@ -40,6 +44,7 @@ fn composition_conformance() {
                 composition.focused_region().map(|region| json!(region.id.to_string())),
             ),
             ("focusedPane", composition.focused_pane().map(|pane| json!(pane.as_str()))),
+            ("view", Some(json!(describe_view(&composition, given, &worlds, &current)))),
         ]))
     });
 
@@ -55,6 +60,7 @@ fn act(
     composition: &mut Composition,
     step: &Value,
     worlds: &BTreeMap<String, Mirror>,
+    current: &mut BTreeMap<DaemonId, String>,
 ) -> Result<(), CaseError> {
     match text(step, "do").as_str() {
         "attachDaemon" => composition.attach_daemon(Daemon {
@@ -80,6 +86,7 @@ fn act(
                 ))
             })?;
             composition.reconcile(&daemon(step), world);
+            current.insert(daemon(step), name);
         }
         // Loudly, because a step this driver cannot run would otherwise pass by doing
         // nothing at all.
@@ -122,6 +129,58 @@ fn read_worlds(given: &Value) -> BTreeMap<String, Mirror> {
         worlds.insert(name.clone(), mirror);
     }
     worlds
+}
+
+/// The view each case's composition adds up to, one line per region.
+///
+/// Asserted alongside the records rather than in a corpus of its own, because the view is a
+/// projection of exactly these records and nothing else: a case that moved a region and
+/// asserted only the record would leave what a window shows unstated.
+///
+/// `attached` in the given names the panes a channel is open for, spelled by pane alone -
+/// good enough here, where no case needs two daemons to differ in which of their panes are
+/// attached.
+fn describe_view(
+    composition: &Composition,
+    given: &Value,
+    worlds: &BTreeMap<String, Mirror>,
+    current: &BTreeMap<DaemonId, String>,
+) -> Vec<String> {
+    let attached: Vec<String> = given
+        .get("attached")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|pane| pane.as_str())
+        .map(str::to_string)
+        .collect();
+
+    let view = View::of(
+        composition,
+        |daemon| worlds.get(current.get(daemon)?),
+        |daemon, pane| {
+            attached.contains(&pane.to_string()).then(|| format!("/tmp/{daemon}-{pane}.sock"))
+        },
+    );
+
+    view.regions
+        .iter()
+        .map(|region| {
+            let mut described = format!("{} tab={}", region.id, region.tab);
+            match &region.root {
+                // Distinct from a region with no panes, and the corpus says so: a shell
+                // told this leaves its surfaces alone rather than tearing them down.
+                None => described.push_str(" (no tree)"),
+                Some(root) => {
+                    let _ = write!(described, " {root}");
+                    if region.zoomed {
+                        described.push_str(" zoomed");
+                    }
+                }
+            }
+            described
+        })
+        .collect()
 }
 
 fn describe_daemons(composition: &Composition) -> Vec<String> {
