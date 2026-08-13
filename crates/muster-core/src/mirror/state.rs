@@ -358,6 +358,10 @@ impl Mirror {
         self.panes.values()
     }
 
+    pub fn tab(&self, id: &TabId) -> Option<&Tab> {
+        self.tabs.get(id)
+    }
+
     pub fn tabs(&self) -> impl Iterator<Item = &Tab> {
         self.tabs.values()
     }

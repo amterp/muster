@@ -24,5 +24,5 @@ pub use events::EventDecoder;
 pub use frame::{FrameDecoder, PaneFrame, PaneStreamEvent};
 pub use layout::read_layout;
 pub use pane_channel::HerdrPaneChannel;
-pub use snapshot::read_snapshot;
+pub use snapshot::{fetch_snapshot, read_snapshot};
 pub use subscription::{Notice, Subscription};

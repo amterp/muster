@@ -141,6 +141,11 @@ codegen - a surface that cannot express an action is a missing message, visible 
   window region. Mixing is at tab granularity: a region displays one tab's pane tree, rendered from daemon truth;
   regions from different daemons sit side by side. Muster does not own an outer split tree over panes - that would
   make it a multiplexer (non-goal) - and a pane can never move between daemons: the process lives where it lives.
+- **Composition is resolved against the mirror, never patched by events.** It names daemon things - a tab, a
+  pane - and those go away without asking: a tab closed from another client, a pane whose program exited. Every
+  such way ends in a window that ignores the keyboard and cannot say why, so composition is brought back into line
+  with a daemon's mirror whenever that daemon's structure moves. A region whose tab is gone closes; view-local
+  focus falls to a pane that exists.
 - **Cursors are written, not read.** Daemon focus (focused workspace, tab, pane) is a single value per daemon,
   shared with every client including the herdr TUI. Muster's input routing - which pane its keyboard feeds - is
   view-local. Interacting writes daemon focus (which also feeds seen-ness); Muster never *routes* input by reading

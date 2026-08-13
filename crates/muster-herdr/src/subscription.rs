@@ -22,9 +22,8 @@ use muster_core::mirror::backend::PaneId;
 use muster_core::mirror::{Change, Mirror};
 use serde_json::{Value, json};
 
-use crate::client::HerdrClient;
 use crate::events::EventDecoder;
-use crate::snapshot::read_snapshot;
+use crate::snapshot::fetch_snapshot;
 
 /// What the subscription tells its owner, as it happens.
 ///
@@ -162,7 +161,6 @@ fn run(
     running: &Arc<AtomicBool>,
     shared_stream: &Arc<Mutex<Option<UnixStream>>>,
 ) {
-    let client = HerdrClient::new(socket_path.to_string());
     let mut attempt = 0usize;
     let mut connected_before = false;
 
@@ -186,7 +184,7 @@ fn run(
                 // nobody, and it is invisible: the mirror would be wrong in a way no
                 // counter reports. Subscribing first makes the overlap a duplicate
                 // instead, which upsert already absorbs.
-                bootstrap(&client, mirror, report);
+                bootstrap(socket_path, mirror, report);
                 agents.follow();
                 let detail = stream_events(stream, mirror, report, running, &mut agents);
 
@@ -274,9 +272,8 @@ fn read_line(stream: &mut UnixStream) -> Option<Vec<u8>> {
     Some(line)
 }
 
-fn bootstrap(client: &HerdrClient, mirror: &Arc<Mutex<Mirror>>, report: &Report) {
-    let Ok(result) = client.request("session.snapshot", &json!({})) else { return };
-    let (snapshot, dropped) = read_snapshot(result.get("snapshot").unwrap_or(&Value::Null));
+fn bootstrap(socket_path: &str, mirror: &Arc<Mutex<Mirror>>, report: &Report) {
+    let Ok((snapshot, dropped)) = fetch_snapshot(socket_path) else { return };
     let changes = match mirror.lock() {
         Ok(mut mirror) => mirror.bootstrap(snapshot),
         Err(_) => return,

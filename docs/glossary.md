@@ -10,7 +10,8 @@ One name per concept; docs and code use these terms. Alphabetical.
 - **backend session** - one live connection to one daemon.
 - **bridge** - the subprocess a surface runs to deliver a pane channel; output only.
 - **composition** - the Muster-owned arrangement: which daemons are attached, and which (daemon, workspace, tab)
-  shows in which window region.
+  shows in which window region. Not an input method's composition, which is a different thing with the same name
+  and lives under `input::` wherever it appears in the code.
 - **control plane** - everything except output: events, state, intents, input. Flows through the core.
 - **core** - the headless, OS-free view-model: mirror, dispatcher, keymap, attention, config.
 - **daemon** - one running backend server instance owning PTYs and sessions, local or remote.

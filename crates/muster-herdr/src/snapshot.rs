@@ -10,9 +10,26 @@ use muster_core::AgentState;
 use muster_core::mirror::backend::{
     Focus, Pane, PaneId, Snapshot, Tab, TabId, Workspace, WorkspaceId,
 };
-use serde_json::Value;
+use serde_json::{Value, json};
 
+use crate::client::{Failure, HerdrClient};
 use crate::layout::read_layout;
+
+/// Asks a daemon for its whole session, once.
+///
+/// The subscription makes the same call on every connect and reconnect, so this is the
+/// second caller rather than a second mechanism. It exists because attaching needs an
+/// answer before it can say anything: a window that does not yet know which tab its pane is
+/// in has nowhere to put it, and the subscription's own bootstrap arrives on another thread
+/// some milliseconds later.
+///
+/// Asking twice costs nothing. Bootstrap replaces rather than merges, and replacing a
+/// picture with the same picture reports no changes at all.
+pub fn fetch_snapshot(socket_path: &str) -> Result<(Snapshot, usize), Failure> {
+    let client = HerdrClient::new(socket_path.to_string());
+    let result = client.request("session.snapshot", &json!({}))?;
+    Ok(read_snapshot(result.get("snapshot").unwrap_or(&Value::Null)))
+}
 
 /// Reads the `snapshot` object out of a `session.snapshot` result.
 ///

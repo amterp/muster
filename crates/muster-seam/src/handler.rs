@@ -13,7 +13,7 @@ use muster_core::input::{CompositionOutcome, ScrollDirection, composition_outcom
 
 use crate::convert;
 use crate::proto::{self, Request, Response, request, response};
-use crate::session::{self, AttachError, Pane};
+use crate::session::{self, AttachError, AttachedPane};
 use prost::Message;
 
 /// Answers one encoded request.
@@ -82,7 +82,7 @@ fn handle(request: Request) -> Response {
 /// The arbitration happens here rather than in the shell because it is a decision, and
 /// exactly one thing may come of a press: the text a composition produced, or the key
 /// itself, or nothing at all.
-fn key_down(pane: &Pane, down: &proto::KeyDown) -> Response {
+fn key_down(pane: &AttachedPane, down: &proto::KeyDown) -> Response {
     match composition_outcome(down.was_composing, down.committed.as_deref(), down.still_composing) {
         CompositionOutcome::SendNothing => Response::ok(),
         CompositionOutcome::SendText(text) => {
@@ -93,7 +93,7 @@ fn key_down(pane: &Pane, down: &proto::KeyDown) -> Response {
     }
 }
 
-fn send_key(pane: &Pane, key: Option<&proto::KeyEvent>) -> Response {
+fn send_key(pane: &AttachedPane, key: Option<&proto::KeyEvent>) -> Response {
     let Some(key) = key else {
         return Response::failure(
             "the core was handed a keystroke with no key in it, so nothing reached the pane. \
@@ -110,33 +110,53 @@ fn send_key(pane: &Pane, key: Option<&proto::KeyEvent>) -> Response {
     }
 }
 
-/// Runs something against the attached pane, or explains why there is not one.
+/// Runs something against the pane the keyboard feeds, or explains why there is not one.
 ///
 /// A bare `muster` legitimately has no pane - it is the renderer check - so this is a
 /// refusal rather than an error, and it says which input went nowhere so a log reads as
 /// something other than silence.
-fn with_pane(what: &str, act: impl FnOnce(&Pane) -> Response) -> Response {
-    let pane = session::PANE.lock().expect("a panicking sender poisoned the pane");
-    match pane.as_ref() {
-        Some(pane) => act(pane),
+///
+/// The session's lock is released before `act` runs. Sending can be a round trip to a
+/// daemon, and holding the session across one would stall every event arriving from every
+/// other daemon behind a wedged one.
+fn with_pane(what: &str, act: impl FnOnce(&AttachedPane) -> Response) -> Response {
+    match session::keyboard_pane() {
+        Some(pane) => act(&pane),
         None => Response::failure(format!(
-            "no pane is attached, so {what} went nowhere. A window with no pane named is the \
-             renderer check and this is expected there; anywhere else it means the attach \
-             failed earlier, and that failure is the one worth reading."
+            "no pane has this window's keyboard, so {what} went nowhere. A window with no \
+             pane named is the renderer check and this is expected there; anywhere else it \
+             means the attach failed earlier, or the pane it succeeded on has since exited, \
+             and that is the event worth reading."
         )),
     }
 }
 
 fn attach_pane(pane_id: &str) -> Response {
     match session::attach(pane_id) {
-        Ok(pane) => {
-            let attached = proto::Attached {
+        Ok(pane) => Response {
+            payload: Some(response::Payload::Attached(proto::Attached {
                 control_socket_path: pane.control_socket_path.clone(),
                 server_encoded: pane.server_encoded,
-            };
-            *session::PANE.lock().expect("a panicking sender poisoned the pane") = Some(pane);
-            Response { payload: Some(response::Payload::Attached(attached)) }
-        }
+            })),
+        },
+        Err(AttachError::NoDaemon) => Response::failure(
+            "no herdr daemon could be found, so there is no pane to attach to and this \
+             window will render nothing. Every pane Muster shows is owned by a daemon; \
+             check that one is running, and that HERDR_SOCKET_PATH or the default socket \
+             path points at it.",
+        ),
+        Err(AttachError::Unreachable(detail)) => Response::failure(format!(
+            "the daemon did not answer ({detail}), so nothing is known about this pane and \
+             the window will render nothing. The socket exists, which usually means a \
+             daemon that is wedged or shutting down rather than one that is absent."
+        )),
+        Err(AttachError::NoSuchPane { pane, held, dropped }) => Response::failure(format!(
+            "no daemon holds a pane called {pane}, so this window has nothing to show and \
+             would render and ignore the keyboard. The daemon answered with {held} pane(s); \
+             `herdr pane list` names them. {dropped} entries in that answer did not read, \
+             so if this id is one of them the problem is a herdr whose payload has moved \
+             rather than a pane that is missing."
+        )),
         Err(AttachError::NoSocket(detail)) => Response::failure(format!(
             "the core could not open the socket a pane's bridge dials back on ({detail}), so \
              this pane can never be typed into - it will render and ignore the keyboard. \

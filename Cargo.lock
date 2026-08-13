@@ -393,12 +393,14 @@ dependencies = [
 name = "muster-seam"
 version = "0.1.0"
 dependencies = [
+ "herdr-harness",
  "muster-core",
  "muster-herdr",
  "muster-vt",
  "prost",
  "prost-build",
  "protox",
+ "serde_json",
 ]
 
 [[package]]

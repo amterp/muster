@@ -6,10 +6,12 @@
 //! cases it answers to live in `corpus/conformance/` rather than in this language.
 
 pub mod agent_state;
+pub mod composition;
 pub mod diagnostics;
 pub mod input;
 pub mod mirror;
 
 pub use agent_state::AgentState;
+pub use composition::Composition;
 pub use input::{Key, KeyEvent, Keymap, Modifiers, PaneInput};
 pub use mirror::{BackendEvent, Change, Mirror};
