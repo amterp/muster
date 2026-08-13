@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "directional-focus-between",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "next",
+  "created_at_millis": 1786663774500,
+  "creator": "Alexander Terp",
+  "description": "cmd-opt-arrows to move the keyboard left, right, up or down. Next and previous already work and reach every pane, so this is ergonomics rather than reachability - but it is the movement a terminal user expects, and every other multiplexer has it.\n\nThe design question is where the answer comes from. herdr already has pane.neighbor, pane.edges and pane.focus_direction, so the daemon owns the geometry and would answer well. But BackendChannel::submit is write-only by design - it returns an Outcome and never state - so asking the daemon means the backend seam grows a read, which every future backend then has to provide.\n\nThe alternative is a pure walk over the tree Muster already holds: up to the first ancestor split whose axis matches the direction and whose child you did not come from, then down the near side. No new seam, no round trip, and it lives beside View::step where the ordering decision already is. It can disagree with herdr's answer in odd shapes, and a user driving both Muster and the herdr TUI would notice.\n\nLean towards the walk unless the disagreement turns out to matter. Decide before writing.",
+  "id": "a_27Y3iLkil",
+  "position": "6",
+  "title": "🧭 Directional focus between panes, and where the neighbour comes from",
+  "type": "feature",
+  "updated_at_millis": 1786663802152,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1786663774500},
+    {"field":"column","value":"next","at":1786663802152}
+  ]
+}

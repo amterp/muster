@@ -5,18 +5,27 @@
   "area": [
     "shell"
   ],
-  "column": "in-progress",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Landed. The window lays out whatever the core publishes: a surface, a border and a bridge per leaf, dividers between them, regions side by side. Splits, closes, focus moves and divider drags all go out as intents through the core dispatcher and come back as an arrangement the daemon agreed to; nothing is rendered optimistically.\n\nDeliberately not NSSplitView - it owns its divider positions and would argue with every event the daemon sends. A container computing frames from ratios is small and testable with no GPU.\n\nKeybindings are menu items (Ghostty's own shortcuts: cmd-D, shift-cmd-D, cmd-W, cmd-] and cmd-[), because on macOS that is where a key equivalent is dispatched and where the user rebinds it.\n\nTwo edges per pane now: the outer is the agent's state, the inner says which pane has the keyboard. One edge carrying both would make a working pane and the focused pane indistinguishable. The title drops agent state - fifteen panes have fifteen of those - and keeps health, zoom, and which pane the keyboard feeds.\n\nThree bugs found by ./dev --contract, which now builds a nested tab and asserts a surface, a channel and a painted frame per pane:\n- a tree that disagreed with its tab was published, so a bootstrap replaying old layout events tore down two of three panes and their bridges\n- a pane's control socket accepted one connection, so a rebuilt surface could never be typed into again\n- a refused request reached stderr and not the run log, so a mistyped pane id was an empty window and a silent file\n\nDeferred, with reasons: directional focus (cmd-opt-arrows) - herdr has pane.neighbor and pane.focus_direction, so this wants the backend seam to grow a read, which is a decision worth making deliberately rather than in passing. Region sizing - regions get equal widths, and dragging the line between a laptop and a devenv is its own thing.",
+      "created_at_millis": 1786663741390,
+      "id": "c_27Y2qxrSE"
+    }
+  ],
   "created_at_millis": 1786654146412,
   "creator": "Alexander Terp",
   "description": "main.swift stands up one of everything and says so in its own header.\nThis is where it stops: a surface, a chrome and a bridge per leaf of\nthe tree, created and destroyed as the tree changes, with focus\nfollowing the view-local cursor rather than the daemon's.\n\nLay children out from the tree's ratios rather than reaching for\nNSSplitView. NSSplitView owns its divider positions, which is a fight\nwith view = f(daemon state) on every event; a container computing\nframes from ratios is small, and a divider drag becomes an intent\nrather than local state that then disagrees with the daemon.\n\nThe window title also stops carrying agent state once every pane has\nits own border. It keeps health, which is per-window.\n\nThis is the landing where 15 panes becomes a thing that can be\nmeasured, so a_26JhGElAo closes behind it.",
   "id": "a_27U1FBqTg",
-  "position": "E",
+  "position": "!2",
   "title": "🪟 The shell renders splits, and a drag is an intent",
   "type": "feature",
-  "updated_at_millis": 1786660839777,
+  "updated_at_millis": 1786663754351,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786654146412},
     {"field":"column","value":"next","at":1786655828126},
-    {"field":"column","value":"in-progress","at":1786660839777}
+    {"field":"column","value":"in-progress","at":1786660839777},
+    {"field":"column","value":"done","at":1786663754351}
   ]
 }

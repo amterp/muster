@@ -7,6 +7,14 @@
     "testing"
   ],
   "column": "next",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Bigger than a transient. Measured while running the app against a real daemon: a subscription that has just bootstrapped replays layout events, so a tab walks backwards through arrangements it had minutes ago - a three-pane tab published one pane, then two, then three again, each as though it were current. The transient during a split is the same behavior on a shorter timescale.\n\nThe core now withholds any tree that disagrees with its tab's pane list, which covers both, but the probe should record it so docs/observations/herdr-0.8.0.md can cite a transcript rather than a test log. Two scenarios: split a two-pane tab and capture the tree in between, and open a subscription against an already-split tab and capture what it replays.",
+      "created_at_millis": 1786663791275,
+      "id": "c_27Y49PYaV"
+    }
+  ],
   "created_at_millis": 1786660212393,
   "creator": "Alexander Terp",
   "description": "Splitting a two-pane tab publishes a layout naming only one pane before publishing the settled tree. Composition now treats the pane list as the authority on what exists and the tree as an ordering only (corpus/conformance/composition.json, 'a tree that has not caught up does not move the keyboard'), which is the right rule regardless - but the herdr behavior behind it was observed in a test log rather than recorded.\n\nAdd it to tools/herdr-probe's layout scenario: split a two-pane tab with a subscription open, capture every layout_updated in order, and write the sequence into corpus/herdr-0.8.0/layout/. Then docs/observations/herdr-0.8.0.md section 13 can state it with a citation instead of the claim resting on a comment.\n\nWorth doing because the same shape probably applies to close and move, and because anything else that reads a tree as evidence will hit it too.",
@@ -14,7 +22,7 @@
   "position": "E",
   "title": "🔬 Record herdr's transient one-pane tree during a split",
   "type": "chore",
-  "updated_at_millis": 1786660846566,
+  "updated_at_millis": 1786663791275,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786660212393},
     {"field":"column","value":"next","at":1786660846566}

@@ -79,8 +79,9 @@ reads its run log to see what connected, so it needs a daemon on PATH and a logg
 the default suite is allowed to require.
 
 `./dev --perf` and `./dev --latency` are the other two out-of-gate tiers: the first measures the per-unit budgets
-against a checked-in baseline and fails on regression, the second times input-to-glyph against a real daemon. A
-functional green is never a performance claim, so neither runs by default.
+against a checked-in baseline and fails on regression, the second times input-to-glyph against a real daemon, at one
+pane and at a full window of fifteen with fourteen of them printing. A functional green is never a performance
+claim, so neither runs by default.
 
 Two toolchains, one door: the gate builds, tests and lints the Rust core and the Swift shell together, and a suite
 that discovers zero tests fails in either language rather than reporting green.

@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-pane-that-never",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1786663802120,
+  "creator": "Alexander Terp",
+  "description": "Every failure this arc turned up ended the same way: a pane renders, paints, and swallows every keystroke. The bridge fails to dial, the socket path moved, the channel could not be opened - three different causes, one symptom, and the symptom is invisible until somebody types.\n\nThe core knows: it binds the socket and is told when a bridge connects. So a pane whose channel has been open for some seconds with nothing on the other end is a state Muster can report rather than one a user discovers. Wants a per-pane deadline after the surface is created, an error record naming the pane and what to check, and something on screen - the chrome already has an edge to spend.\n\nWould have caught all three of this arc's bugs without a contract run.",
+  "id": "a_27Y4QtzyK",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "title": "🧪 A pane that never becomes typeable should say so",
+  "type": "chore",
+  "updated_at_millis": 1786663802120,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1786663802120}
+  ]
+}

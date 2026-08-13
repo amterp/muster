@@ -6,16 +6,25 @@
     "shell",
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "The arc landed across six commits: layout in the vocabulary, composition as records, the seam's view and write path, the shell rendering it, and the 15-pane budgets. ./dev --contract builds a nested tab against a real daemon and asserts a surface, a channel and a painted frame per pane.\n\nRemaining work that came out of it has its own cards: directional focus (a_27Y3iLkil), region sizing (a_27Y3iQCxI), and recording herdr's layout replay (a_27WZ30MO1).",
+      "created_at_millis": 1786663791314,
+      "id": "c_27Y49TPqA"
+    }
+  ],
   "created_at_millis": 1786461793373,
   "creator": "Alexander Terp",
   "description": "Mirror herdr structure from session.snapshot + events (layout.export is a portable restore tree, not live state); render each tab's pane tree as real native splits; splits/resizes go back through the socket API. Event application must be idempotent and absolute-valued - no exposed sequence numbers upstream (see architecture.md, event model).",
   "id": "a_26BJGL7VZ",
-  "position": "UUUUUU",
+  "position": "!!U",
   "title": "Stage 2: render the mirrored pane tree as native splits",
   "type": "feature",
-  "updated_at_millis": 1786481774590,
+  "updated_at_millis": 1786663791349,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1786461793373}
+    {"field":"column","value":"backlog-hi","at":1786461793373},
+    {"field":"column","value":"done","at":1786663791349}
   ]
 }

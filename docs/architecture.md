@@ -149,7 +149,16 @@ codegen - a surface that cannot express an action is a missing message, visible 
 - **Cursors are written, not read.** Daemon focus (focused workspace, tab, pane) is a single value per daemon,
   shared with every client including the herdr TUI. Muster's input routing - which pane its keyboard feeds - is
   view-local. Interacting writes daemon focus (which also feeds seen-ness); Muster never *routes* input by reading
-  it, so another client moving daemon focus never yanks Muster's keyboard.
+  it, so another client moving daemon focus never yanks Muster's keyboard. Both halves are one action to whoever
+  clicked, so one request does both: the keyboard moves whatever the daemon answers, and a refused write is worth a
+  log line rather than undoing a focus move the user watched happen.
+- **A tree that disagrees with its tab is not an arrangement.** A tab's pane list and its pane tree arrive as
+  separate events with no order between them, so the tree can name fewer panes than the tab holds or more, and a
+  subscription that has just bootstrapped replays layout events - walking a tab backwards through arrangements it
+  had minutes ago. Both measured against herdr 0.8.0. The pane list decides what exists; the tree decides only
+  order, and one that disagrees is withheld rather than repaired. Repairing means inventing a place for a pane
+  nobody placed; publishing it drops every pane it omits, and a dropped pane costs its surface and the bridge that
+  feeds it. Withheld is a state the shell already answers correctly, by leaving what it is showing alone.
 - **Geometry follows the controller.** Pane cell dimensions are daemon truth; the shell converts pixels to cells
   and sends resize intents. While Muster controls a pane, the pane's PTY is held at Muster's geometry. Other clients
   are not dragged to that size - the daemon re-renders the screen into each viewer's own requested viewport - so
@@ -220,6 +229,17 @@ Every operation - keybinding, menu, CLI, socket API - dispatches the same action
 invocation surfaces carry no logic of their own (desiderata: parity by construction). The Muster CLI talks to the
 running app over a local IPC endpoint and covers view-layer operations; backend-level operations remain the backend
 CLI's job (herdr already has a good one).
+
+On macOS a keybinding *is* a menu item, because that is where the platform dispatches a key equivalent. Matching
+chords before the pane sees them would take shortcuts the user rebound in System Settings and make them mean
+something else, and would hide from every menu what the app can do. So the menu is where Muster's own actions live,
+and each item does nothing but dispatch.
+
+Nothing renders an intent optimistically. A split, a close, a focus and a divider drag are all requests, and what
+came of them arrives as the next published view - so a window can never show an arrangement no daemon agreed to. The
+one thing an intent may settle locally is where Muster's own keyboard lands, because that is Muster's state and not
+the daemon's: a split hands back the pane it made, and that pane takes the keyboard, because that is what pressing
+the key meant.
 
 ## The renderer seam
 
