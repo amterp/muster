@@ -167,11 +167,25 @@ public enum Core {
     return decoded.payload
   }
 
+  /// Where the window's chrome hangs, set once by the shell at launch.
+  ///
+  /// A single observer rather than a broadcast, because there is one window. It becomes a
+  /// lookup by pane when composition means there are several, and every event already
+  /// names its pane so nothing here has to change shape for that.
+  @MainActor public static weak var chrome: PaneChrome?
+
   /// An event the core sent unasked, already back on the main thread.
-  fileprivate static func deliver(_ event: Muster_Event) {
+  ///
+  /// Annotated rather than merely called from a main-actor task, so that touching a view
+  /// from here is checked rather than assumed. The hop happens in `coreEventArrived`.
+  @MainActor fileprivate static func deliver(_ event: Muster_Event) {
     switch event.payload {
     case .paneTypeable(let typeable):
       info("pane.typeable", ["pane": typeable.paneID])
+    case .paneStateChanged(let changed):
+      chrome?.apply(paneID: changed.paneID, state: changed.state)
+    case .backendHealth(let backend):
+      chrome?.apply(health: backend.state, detail: backend.detail)
     case nil:
       break
     }

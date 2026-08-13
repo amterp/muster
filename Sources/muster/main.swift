@@ -14,6 +14,7 @@ import MusterRenderer
 final class AppDelegate: NSObject, NSApplicationDelegate {
   private var window: NSWindow?
   private var renderer: Renderer?
+  private var chrome: PaneChrome?
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     // First, so that everything after it is on the record - including the failures that
@@ -34,14 +35,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     installMenu()
     let view = SurfaceView(frame: NSRect(x: 0, y: 0, width: 960, height: 600))
+    let chrome = PaneChrome(frame: view.frame, surface: view)
+    Core.chrome = chrome
+    self.chrome = chrome
 
     let window = NSWindow(
-      contentRect: view.frame,
+      contentRect: chrome.frame,
       styleMask: [.titled, .closable, .resizable, .miniaturizable],
       backing: .buffered,
       defer: false)
     window.title = "muster (spike)"
-    window.contentView = view
+    window.contentView = chrome
     window.center()
     window.makeKeyAndOrderFront(nil)
     self.window = window
@@ -84,7 +88,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   /// comes from a daemon.
   private func attachPane() -> String? {
     guard CommandLine.arguments.count > 1 else {
-      window?.title = "muster (renderer check - keyboard not connected)"
+      chrome?.attach(paneID: nil)
       FileHandle.standardError.write(
         Data(
           """
@@ -98,7 +102,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     let paneID = CommandLine.arguments[1]
-    window?.title = "muster - \(paneID)"
+    chrome?.attach(paneID: paneID)
     // Everything about what a keystroke means is behind this call: the socket, the daemon
     // lookup, the keymap and the encoder all belong to the core, and the shell's remaining
     // job is to report that a key was pressed.

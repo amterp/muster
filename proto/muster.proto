@@ -187,7 +187,40 @@ message Scroll {
 message Event {
   oneof payload {
     PaneTypeable pane_typeable = 1;
+    PaneStateChanged pane_state_changed = 2;
+    BackendHealth backend_health = 3;
   }
+}
+
+// What the agent in a pane is doing now.
+//
+// One pane per message rather than a picture of the session, because the shell renders
+// chrome and owns nothing. When splits need the whole tree, that is a message for the
+// tree, and this stays what it is.
+//
+// Sent for every pane the daemon holds, not only the one this window is attached to: a
+// window showing one pane still logs the others, and the sidebar that displays them is the
+// same feed with somewhere to put it.
+message PaneStateChanged {
+  string pane_id = 1;
+
+  // working, blocked, idle, done, or unknown. Never empty - a pane whose harness the
+  // backend cannot classify is `unknown`, which renders as itself. An agent we failed to
+  // read is not an agent that finished.
+  string state = 2;
+}
+
+// How much of the backend's truth the core currently has.
+//
+// A state rather than an error, because a stale mirror still renders and should say so.
+// The window that silently shows an hour-old session is worse than the one that admits it,
+// and both look identical without this.
+message BackendHealth {
+  // connected, stale, or disconnected.
+  string state = 1;
+
+  // Why, for the title bar and the log. Empty when connected.
+  string detail = 2;
 }
 
 // A pane's bridge dialed back, so keystrokes now have somewhere to go.
