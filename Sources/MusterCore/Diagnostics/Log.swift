@@ -128,6 +128,9 @@ public enum LogLevel: String, Sendable, Comparable, CaseIterable {
 /// how it was worded.
 public struct LogRecord: Sendable, Equatable {
   public let time: Date
+  /// A machine-wide monotonic reading, so two records subtract even across processes.
+  /// `time` is for a human lining this up against a wall clock; this is for arithmetic.
+  public let mono: UInt64
   public let level: LogLevel
   public let process: String
   public let pid: Int32
@@ -135,10 +138,11 @@ public struct LogRecord: Sendable, Equatable {
   public let fields: [String: String]
 
   public init(
-    time: Date, level: LogLevel, process: String, pid: Int32, event: String,
-    fields: [String: String]
+    time: Date, mono: UInt64 = MonotonicClock.now(), level: LogLevel, process: String, pid: Int32,
+    event: String, fields: [String: String]
   ) {
     self.time = time
+    self.mono = mono
     self.level = level
     self.process = process
     self.pid = pid

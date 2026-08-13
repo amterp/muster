@@ -10,16 +10,17 @@ import Testing
 @Test("a record reads as JSON, identity first and fields sorted")
 func recordEncoding() throws {
   let record = LogRecord(
-    time: Date(timeIntervalSince1970: 0), level: .warn, process: "app", pid: 42,
-    event: "input.dropped", fields: ["socket": "/tmp/x.sock", "impact": "nothing arrived"])
+    time: Date(timeIntervalSince1970: 0), mono: 1_234_567_890, level: .warn, process: "app",
+    pid: 42, event: "input.dropped",
+    fields: ["socket": "/tmp/x.sock", "impact": "nothing arrived"])
 
   let line = JSONLinesSink.encode(record)
 
-  // Identity before payload: the four things you scan a log with come first.
+  // Identity before payload: the things you scan a log with come first.
   #expect(
     line.hasPrefix(
-      "{\"time\":\"1970-01-01T00:00:00.000Z\",\"level\":\"warn\",\"process\":\"app\",\"pid\":42,"
-        + "\"event\":\"input.dropped\""))
+      "{\"time\":\"1970-01-01T00:00:00.000Z\",\"mono_ns\":1234567890,\"level\":\"warn\","
+        + "\"process\":\"app\",\"pid\":42,\"event\":\"input.dropped\""))
   // Sorted, so the same code twice produces the same bytes.
   #expect(line.hasSuffix("\"impact\":\"nothing arrived\",\"socket\":\"/tmp/x.sock\"}"))
 
@@ -42,6 +43,23 @@ func quotingIsSafe() throws {
   #expect(!line.contains("\n"))
   let parsed = try JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any]
   #expect(parsed?["encoded"] as? String == nasty)
+}
+
+@Test("the monotonic reading advances, and resolves finer than the wall clock")
+func monotonicClockResolvesTheHopsWeMeasure() {
+  // The point of carrying a second clock: `time` is milliseconds, and the hops the perf
+  // harness times are tenths of one. A clock that cannot see them makes the log useless
+  // as a perf oracle while still looking like it works.
+  let start = MonotonicClock.now()
+  #expect(start > 0)
+
+  var later = MonotonicClock.now()
+  while later == start { later = MonotonicClock.now() }
+
+  #expect(later > start)
+  // Two readings taken back to back are microseconds apart at most. If this clock only
+  // ticked per millisecond, the loop above would have spun for one.
+  #expect(later - start < 1_000_000)
 }
 
 @Test("levels order from noise to alarm")

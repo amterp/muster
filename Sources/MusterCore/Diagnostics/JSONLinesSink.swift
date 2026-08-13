@@ -58,8 +58,13 @@ public final class JSONLinesSink: LogSink, @unchecked Sendable {
   /// Hand-built rather than `JSONEncoder` so the key order is the one a human reads well:
   /// when, how bad, who, what - then the details, sorted so two runs of the same code
   /// produce the same bytes.
+  ///
+  /// Both clocks, on every line. `time` is what a person reads; `mono_ns` is what the perf
+  /// harness subtracts, and it has to be on the ordinary records rather than on a separate
+  /// timing channel, because the hops worth measuring are the ones already being logged.
   static func encode(_ record: LogRecord) -> String {
     var out = "{\"time\":\"\(timestamp.format(record.time))\""
+    out += ",\"mono_ns\":\(record.mono)"
     out += ",\"level\":\"\(record.level.rawValue)\""
     out += ",\"process\":\"\(record.process)\""
     out += ",\"pid\":\(record.pid)"
