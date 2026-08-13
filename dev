@@ -142,7 +142,7 @@ fn herdr_binary():
     if override != "":
         check_herdr_version(override, version, "MUSTER_HERDR")
         print(dim("using MUSTER_HERDR={override} instead of the pinned build"))
-        return override
+        return get_path(override).full_path
 
     want = pinned.checksums[asset] catch:
         print_err(red("{HERDR_PIN} has no checksum for {asset}."))
@@ -156,7 +156,10 @@ fn herdr_binary():
     verify_herdr_checksum(want, cached)
     check_herdr_version(cached, version, cached)
     check_herdr_schema(cached, version)
-    return cached
+    // Absolute, because the tests that read this run from wherever cargo puts them: an
+    // integration test's working directory is its own package root, so a repo-relative
+    // path resolves under crates/<name>/ and every daemon-backed test dies at startup.
+    return get_path(cached).full_path
 
 // The release assets are named for platform, and there is one binary per pair.
 fn herdr_asset_name():
