@@ -177,15 +177,26 @@ if let encoder {
     Data("muster-perf: skipping input.encode - the key encoder would not build\n".utf8))
 }
 
-// MARK: - Per event: the control plane
-//
-// The mirror's application cost belongs here, and the benchmark lands with the mirror
-// (kan a_26DAm1Zt0). Declared as an absence rather than left out, because a budget nobody
-// wrote down reads the same as a budget nobody exceeded.
-
 // MARK: - Report
 
+// The desiderata name four budgets - per byte, per event, per render - at 1 and 15 panes.
+// Two of them have no code to measure yet. They are printed rather than omitted, because
+// a budget nobody wrote down reads the same as a budget nobody exceeded.
+let pending = [
+  (
+    name: "mirror.apply (ns/event)",
+    why: "the control plane's per-event cost. Lands with the mirror, kan a_26DAm1Zt0."
+  ),
+  (
+    name: "render at 15 panes",
+    why: "per-byte cost is linear and already covered; what 15 panes actually tests is "
+      + "aggregate scheduling across surfaces, which needs splits. Kan a_26BJGL7VZ."
+  ),
+]
+
 print(Report.table(costs))
+print("")
+print(Report.pending(pending))
 print("")
 
 if recording {

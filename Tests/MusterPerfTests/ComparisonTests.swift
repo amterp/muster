@@ -106,3 +106,21 @@ func baselineRoundTrips() throws {
 
   #expect(try JSONDecoder().decode(Baseline.self, from: data) == original)
 }
+
+@Test("a budget with no code behind it is named, not omitted")
+func pendingBudgetsAreVisible() {
+  // The whole point: an unmeasured budget must not look like a met one.
+  let text = Report.pending([
+    (name: "mirror.apply (ns/event)", why: "lands with the mirror"),
+    (name: "render at 15 panes", why: "needs splits"),
+  ])
+
+  #expect(text.contains("mirror.apply (ns/event)"))
+  #expect(text.contains("render at 15 panes"))
+  #expect(text.contains("needs splits"))
+}
+
+@Test("nothing pending prints nothing")
+func noPendingBudgetsPrintsNothing() {
+  #expect(Report.pending([]).isEmpty)
+}

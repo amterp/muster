@@ -23,6 +23,17 @@ public enum Report {
     return lines.joined(separator: "\n")
   }
 
+  /// Budgets the desiderata name that this run cannot yet measure.
+  ///
+  /// Printed rather than left out. A budget nobody wrote down reads exactly like a budget
+  /// nobody exceeded, which is the shape of cmux's CI passing with every test skipped
+  /// (docs/testing.md). Naming the gap keeps the harness honest about its own coverage.
+  public static func pending(_ budgets: [(name: String, why: String)]) -> String {
+    guard !budgets.isEmpty else { return "" }
+    return (["not measured yet:"] + budgets.map { "  \($0.name) - \($0.why)" })
+      .joined(separator: "\n")
+  }
+
   /// The verdict, written so that a failure says what to do about it.
   public static func verdict(_ comparison: Comparison, tolerance: Double) -> String {
     var lines: [String] = []
