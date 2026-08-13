@@ -122,6 +122,71 @@ def check_healthy_launch(daemon: IsolatedDaemon, pane: str) -> None:
         raise Failure("the app logged nothing after startup, so nothing was running")
 
 
+def check_agent_state_reaches_the_app(daemon: IsolatedDaemon, pane: str) -> None:
+    """The founding desideratum, end to end, against a real daemon.
+
+    Everything below this is verified elsewhere - the fold by corpus cases, the
+    subscription by tests that spawn their own daemon - and every one of those could pass
+    with the app wired up wrong. This is the only check that runs the whole chain the user
+    does: daemon, subscription, mirror, seam, window.
+
+    The transition is driven through pane.report_agent rather than by running an agent,
+    because herdr's own detection screen-scrapes on a two-second timer and this is not a
+    test of herdr's detection.
+    """
+    log_path = ROOT / "agentstate.jsonl"
+    log_path.unlink(missing_ok=True)
+    env = {**daemon.env, "MUSTER_LOG_FILE": str(log_path)}
+
+    app = subprocess.Popen(
+        [str(APP), pane], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    )
+    try:
+        deadline = time.time() + 10.0
+        while time.time() < deadline:
+            if any(r["event"] == "mirror.bootstrap" for r in read_log(log_path)):
+                break
+            if app.poll() is not None:
+                break
+            time.sleep(0.2)
+
+        client = daemon.client()
+        for state in ("working", "blocked", "idle"):
+            client.request(
+                "pane.report_agent",
+                {"pane_id": pane, "agent": "probe", "source": "probe", "state": state},
+            )
+            time.sleep(0.3)
+        time.sleep(1.0)
+        records = read_log(log_path)
+    finally:
+        app.terminate()
+        try:
+            app.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            app.kill()
+
+    expect(
+        records,
+        "mirror.bootstrap",
+        "the app never built a picture of the daemon, so it knows no agent states at all",
+    )
+    transitions = [r for r in records if r["event"] == "agent.state"]
+    if not transitions:
+        raise Failure(
+            "no `agent.state` record - the agent changed state three times and the app "
+            "noticed none of it. Every pane shows what its agent is doing is the one thing "
+            "this product is for.\n    the app logged: "
+            + (", ".join(sorted({r["event"] for r in records})) or "(nothing at all)")
+        )
+    saw = [r.get("to") for r in transitions]
+    for state in ("working", "blocked"):
+        if state not in saw:
+            raise Failure(
+                f"the agent went {state} and the app never logged it. Saw: {saw}"
+            )
+
+
 def check_bad_pane(daemon: IsolatedDaemon) -> None:
     """A pane that does not exist must say so rather than showing a blank window."""
     records = launch(daemon.env, ["w9:p99"], "badpane")
@@ -166,6 +231,10 @@ def main() -> int:
 
         checks = [
             ("a named pane comes up and paints", lambda: check_healthy_launch(daemon, pane)),
+            (
+                "an agent's state reaches the window",
+                lambda: check_agent_state_reaches_the_app(daemon, pane),
+            ),
             ("a pane that does not exist says why", lambda: check_bad_pane(daemon)),
             ("a window with no pane admits it", lambda: check_bare_launch(daemon)),
         ]
@@ -188,7 +257,7 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-    print("\nsmoke: the app launches, connects and paints.")
+    print("\nsmoke: the app launches, connects, paints, and shows what its agent is doing.")
     return 0
 
 
