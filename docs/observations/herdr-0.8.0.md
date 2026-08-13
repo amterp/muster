@@ -477,3 +477,41 @@ Confirmed again on a smaller session: 7 events for one workspace, one tab, one p
 `pane_focused`, `layout_updated`. Section 1 saw 9 for a three-pane session. The replay is
 the current session described as synthetic creation events, so snapshot-then-subscribe
 sees everything twice and convergent application is not optional.
+
+## 11. Agent state is only delivered to a subscriber that names the pane
+
+Added 2026-08-13, and it constrains the founding desideratum rather than an
+implementation detail. Evidence: `corpus/herdr-0.8.0/lifecycle/`, facts
+`agent_state_change_events_without_naming_the_pane` and
+`agent_state_change_events_when_naming_the_pane`.
+
+Of herdr's 27 subscription types, 24 take no parameters. Three do, and
+`pane.agent_status_changed` is one of them - it requires a `pane_id`.
+
+The question was whether some unparameterized subscription carries the same information,
+`pane.updated` being the obvious candidate. Measured against one daemon, with a client
+subscribed to all 24 unparameterized types:
+
+| driven | what that client received |
+|---|---|
+| agent -> working | `pane_agent_detected` (once, naming the agent, not its state) |
+| agent -> idle | nothing |
+| agent -> blocked | nothing |
+
+A second client on the same daemon, subscribed only to
+`{"type": "pane.agent_status_changed", "pane_id": "w1:p1"}`, received
+`pane.agent_status_changed` for the same transition.
+
+So there is no session-wide agent-state event. "Every pane shows working / blocked / done
+/ idle at a glance" costs one subscription per pane, and each is a held-open connection,
+started when the pane appears and dropped when it goes. At fifteen panes that is fifteen
+connections plus one for structure, and the alternative is polling `session.snapshot`,
+which pays a connect per poll and picks its own staleness.
+
+Worth an upstream ask, and the strongest one Muster has found: an unparameterized
+`pane.agent_status_changed` would cost herdr one subscription kind and would save every
+client that wants an overview from opening a connection per pane. `pane_updated` already
+exists and is unparameterized, which suggests the plumbing is there.
+
+Not a blocker for one pane, which is what the app shows today. It is a blocker for the
+sidebar, and the number of connections it implies should be settled before that is built.

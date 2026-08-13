@@ -709,6 +709,44 @@ def lifecycle(daemon, rec: Recorder) -> None:
         _wait_for_kind(stream, "workspace_closed", "workspace.closed")
         time.sleep(0.3)
 
+        # Does an agent state change reach a client that did not name the pane?
+        #
+        # pane.agent_status_changed is one of the three subscriptions that require a
+        # pane_id, so watching every pane's agent means one subscription per pane - unless
+        # the unparameterized pane.updated also fires. Which of those is true decides
+        # whether the sidebar costs one connection or N.
+        rounds = []
+        for state in ("working", "idle", "blocked"):
+            before_agent = len(stream.snapshot())
+            client.request("pane.report_agent",
+                           {"pane_id": "w1:p1", "source": "probe", "agent": "probe",
+                            "state": state})
+            time.sleep(1.2)
+            rounds.append([state, [e.get("event") for e in stream.snapshot()[before_agent:]]])
+        # The first round also announces the agent itself, which is a one-off. What
+        # matters is the rounds after it, when the agent is already known and only its
+        # state is moving.
+        settled = [events for _, events in rounds[1:]]
+        rec.fact("agent_state_change_events_without_naming_the_pane", rounds)
+        rec.fact("agent_state_visible_to_unparameterized_subscriber",
+                 any(events for events in settled))
+        rec.note(f"agent state changes, watched without naming the pane: {rounds}")
+
+        # Compare against a subscriber that does name it, on the same daemon.
+        with daemon.client().subscribe(
+            [{"type": "pane.agent_status_changed", "pane_id": "w1:p1"}]
+        ) as named:
+            time.sleep(0.4)
+            base = len(named.snapshot())
+            client.request("pane.report_agent",
+                           {"pane_id": "w1:p1", "source": "probe", "agent": "probe",
+                            "state": "idle"})
+            time.sleep(1.2)
+            named_events = [e.get("event") for e in named.snapshot()[base:]]
+        rec.fact("agent_state_change_events_when_naming_the_pane", named_events)
+        rec.note(f"the same change, watched by a subscriber that named the pane: "
+                 f"{named_events or 'NOTHING ARRIVED'}")
+
         # A pane whose program ends on its own, rather than one a client closed.
         client.request("pane.send_text", {"pane_id": "w1:p2", "text": "exit\n"})
         exited = _wait_for_kind(stream, "pane_exited", "pane.exited", timeout=8.0)
@@ -735,6 +773,23 @@ def lifecycle(daemon, rec: Recorder) -> None:
     exited_at = order.index("pane_exited") if "pane_exited" in order else None
     rec.fact("pane_exit_also_emits_pane_closed",
              "pane_closed" in order[exited_at + 1:] if exited_at is not None else None)
+
+    # The sharpest trap of the three. Closing a tab or a workspace announces only itself:
+    # the panes underneath it are simply gone, with no pane event of any kind. A mirror
+    # that removes only what it is told about leaks them, and they are panes the user
+    # cannot see any way to close.
+    created = [e["data"]["pane"]["pane_id"] for e in events
+               if e.get("event") == "pane_created" and isinstance(e["data"].get("pane"), dict)]
+    announced = [e["data"]["pane_id"] for e in events
+                 if e.get("event") in ("pane_closed", "pane_exited")]
+    surviving = [p["pane_id"] for p in _panes(client)]
+    rec.fact("panes_created", created)
+    rec.fact("panes_whose_removal_was_announced", announced)
+    rec.fact("panes_still_alive", surviving)
+    rec.fact("panes_removed_with_no_pane_event",
+             sorted(set(created) - set(announced) - set(surviving)))
+    rec.note(f"created {len(created)} pane(s), {len(announced)} announced their removal, "
+             f"{len(set(created) - set(announced) - set(surviving))} vanished with a parent")
 
     layouts = [e for e in events if e.get("event") == "layout_updated"]
     rec.fact("layout_updated_count", len(layouts))

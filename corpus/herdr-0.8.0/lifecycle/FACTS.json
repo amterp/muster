@@ -1,22 +1,42 @@
 {
+  "agent_state_change_events_when_naming_the_pane": [
+    "pane.agent_status_changed"
+  ],
+  "agent_state_change_events_without_naming_the_pane": [
+    [
+      "working",
+      [
+        "pane_agent_detected"
+      ]
+    ],
+    [
+      "idle",
+      []
+    ],
+    [
+      "blocked",
+      []
+    ]
+  ],
   "agent_state_change_seq_final": {
-    "w1:p1": 6,
-    "w1:p5": 4
+    "w1:p1": 10,
+    "w1:p5": 8
   },
   "agent_state_change_seq_progression": [
     {
-      "w1:p1": 2
-    },
-    {
-      "w1:p1": 2,
-      "w1:p5": 4
+      "w1:p1": 6
     },
     {
       "w1:p1": 6,
-      "w1:p5": 4
+      "w1:p5": 8
+    },
+    {
+      "w1:p1": 10,
+      "w1:p5": 8
     }
   ],
   "agent_state_change_seq_unique_across_panes": true,
+  "agent_state_visible_to_unparameterized_subscriber": false,
   "layout_updated_count": 7,
   "layout_updated_is_whole_tab_absolute": true,
   "layout_updated_payload_keys": [
@@ -30,6 +50,7 @@
   ],
   "lifecycle_event_kinds_delivered": [
     "layout_updated",
+    "pane_agent_detected",
     "pane_closed",
     "pane_created",
     "pane_exited",
@@ -92,6 +113,24 @@
   "pane_revision_bumped_by_agent_state": false,
   "pane_revision_bumped_by_title": true,
   "pane_revision_start": 0,
+  "panes_created": [
+    "w1:p1",
+    "w1:p2",
+    "w1:p3",
+    "w1:p4",
+    "w2:p1"
+  ],
+  "panes_removed_with_no_pane_event": [
+    "w1:p4",
+    "w2:p1"
+  ],
+  "panes_still_alive": [
+    "w1:p1"
+  ],
+  "panes_whose_removal_was_announced": [
+    "w1:p3",
+    "w1:p2"
+  ],
   "removal_kinds_seen": [
     "pane_closed",
     "pane_exited",

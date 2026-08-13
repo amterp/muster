@@ -1,0 +1,27 @@
+{
+  "_v": 3,
+  "alias": "upstream-agent-state",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Measured, not inferred: docs/observations/herdr-0.8.0.md section 11, evidence in corpus/herdr-0.8.0/lifecycle/.\n\nA client subscribed to all 24 unparameterized subscription types sees nothing when a pane's agent goes working -\u003e idle -\u003e blocked. A second client on the same daemon, subscribed to pane.agent_status_changed with a pane_id, sees every one of them.\n\nSo the sidebar costs one held-open connection per pane, opened as panes appear and dropped as they go. The ask: make pane.agent_status_changed work unparameterized, the way pane.updated already does.",
+      "created_at_millis": 1786637699032,
+      "id": "c_27N7N9BGP"
+    }
+  ],
+  "created_at_millis": 1786637678329,
+  "creator": "Alexander Terp",
+  "id": "a_27N6pklkl",
+  "position": "UUUUUUUUUUUUUUUUUUUU",
+  "title": "🔌 Upstream: agent state needs a subscription per pane",
+  "type": "chore",
+  "updated_at_millis": 1786637699032,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1786637678329}
+  ]
+}
