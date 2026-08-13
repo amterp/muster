@@ -977,6 +977,318 @@ def durability(daemon, rec: Recorder) -> None:
              f"{len(restored_layout.get('splits', []))} split(s)")
 
 
+# --------------------------------------------------------------------------- 12
+
+
+def _rect_key(rect) -> tuple:
+    return (rect["x"], rect["y"], rect["width"], rect["height"])
+
+
+def _union(first, second):
+    if first is None or second is None:
+        return first or second
+    left = min(first["x"], second["x"])
+    top = min(first["y"], second["y"])
+    right = max(first["x"] + first["width"], second["x"] + second["width"])
+    bottom = max(first["y"] + first["height"], second["y"] + second["height"])
+    return {"x": left, "y": top, "width": right - left, "height": bottom - top}
+
+
+def _covered_rect(node, pane_rects):
+    """The rect a subtree covers, built only from the pane rects the snapshot lists.
+
+    The question behind this: a client holding rects and no tree wants to know which
+    node contains which, and containment is the only relationship rects have. If a
+    split's own rect is exactly the union of the panes beneath it, the tree can be
+    rebuilt from geometry. If it is not, it cannot.
+    """
+    if not isinstance(node, dict):
+        return None
+    if node.get("type") == "pane":
+        return pane_rects.get(node.get("pane_id"))
+    return _union(_covered_rect(node.get("first"), pane_rects),
+                  _covered_rect(node.get("second"), pane_rects))
+
+
+def _split_nodes(node, path=()):
+    """Every split in an exported tree, with the turns that reach it.
+
+    A path of booleans is herdr's own way of naming a divider - layout.set_split_ratio
+    takes exactly this - so it is the address a resize would be sent back on.
+    """
+    if not isinstance(node, dict) or node.get("type") != "split":
+        return []
+    return ([(list(path), node)]
+            + _split_nodes(node.get("first"), path + (False,))
+            + _split_nodes(node.get("second"), path + (True,)))
+
+
+def _tree_shape(node):
+    """The tree as one readable line, so a corpus reader can see it without walking JSON."""
+    if not isinstance(node, dict):
+        return "?"
+    if node.get("type") == "pane":
+        return node.get("pane_id", "?")
+    return (f"{node.get('direction')}({_tree_shape(node.get('first'))}, "
+            f"{_tree_shape(node.get('second'))}@{node.get('ratio')})")
+
+
+def _tab_layout(snapshot, tab_id="w1:t1"):
+    return next((l for l in snapshot.get("layouts", []) if l.get("tab_id") == tab_id), {})
+
+
+def _id_path(split_id):
+    """The path a border id spells, if it spells one.
+
+    herdr names them `split_<n>_<turns>`, where the turns are `root` for the top and a
+    string of 0s and 1s below it. Read rather than trusted: this exists to be compared
+    against the export's own paths, not to be relied on before they agree.
+    """
+    if not split_id:
+        return None
+    turns = split_id.rsplit("_", 1)[-1]
+    if turns == "root":
+        return []
+    return [c == "1" for c in turns] if set(turns) <= {"0", "1"} else None
+
+
+def _crowd(client, until_panes: int = 16):
+    """Splits until the pane rects run out of room, and reports where rebuilding stops.
+
+    Muster budgets fifteen panes, and herdr sizes these rects for a fixed area of its
+    own. A width that reaches zero is a rect that no longer says which node contains
+    which, so this finds the pane count where geometry stops being an answer instead of
+    discovering it in a window later.
+    """
+    steps = []
+    last_good = 0
+    while True:
+        snapshot = client.request("session.snapshot")["snapshot"]
+        tab = _tab_layout(snapshot)
+        rects = {p["pane_id"]: p["rect"] for p in tab.get("panes", [])}
+        export = client.request("layout.export", {})
+        root = export.get("layout", {}).get("root")
+        borders = {(_rect_key(s["rect"]), s["direction"]): s for s in tab.get("splits", [])}
+
+        matched, distinct = 0, set()
+        nodes = _split_nodes(root)
+        for _path, node in nodes:
+            covered = _covered_rect(node, rects)
+            if covered:
+                distinct.add((_rect_key(covered), node.get("direction")))
+                if borders.get((_rect_key(covered), node.get("direction"))):
+                    matched += 1
+        # Two subtrees covering one rect in one direction are two nodes a client cannot
+        # tell apart, which is the failure this is looking for - and it is not the same
+        # as a border simply going missing.
+        rebuildable = matched == len(nodes) and len(distinct) == len(nodes)
+        steps.append({
+            "panes": len(rects),
+            "splits": len(nodes),
+            "borders_matched": matched,
+            "rects_distinct": len(distinct) == len(nodes),
+            "smallest_rect": min(
+                (min(r["width"], r["height"]) for r in rects.values()), default=None),
+            "rebuildable": rebuildable,
+        })
+        if not rebuildable or len(rects) >= until_panes:
+            return {
+                "steps": steps,
+                "last_good_pane_count": last_good,
+                "verdict": ("held to the end" if rebuildable
+                            else f"broke at {len(rects)} panes"),
+            }
+        last_good = len(rects)
+
+        # Split the pane with the most room left, which is what a person does and what
+        # keeps the tree from degenerating into one deep spine.
+        biggest = max(rects.items(), key=lambda item: item[1]["width"] * item[1]["height"])[0]
+        direction = "right" if rects[biggest]["width"] >= rects[biggest]["height"] else "down"
+        ok, _ = client.try_request(
+            "pane.split", {"direction": direction, "target_pane_id": biggest, "cwd": "/tmp"})
+        if not ok:
+            steps.append({"panes": len(rects), "split_refused": True})
+            return {"steps": steps, "last_good_pane_count": last_good,
+                    "verdict": f"herdr refused a split at {len(rects)} panes"}
+        time.sleep(0.35)
+
+
+def layout(daemon, rec: Recorder) -> None:
+    """Where a window's splits come from, and how far the rects can be trusted.
+
+    The corpus's deepest tree is three panes at two levels, nested only ever to the
+    right, recorded as a side effect of the lifecycle scenario. A reconstruction
+    checked against that is checked against nothing: it would pass while getting
+    `first`-side nesting, alternating directions and any depth beyond two wrong.
+
+    So this builds five panes at three levels with splits on both sides of the root,
+    and records the three things that describe it - the snapshot's rects, the live
+    layout_updated events, and layout.export's tree - in one run, so they can be
+    compared rather than believed.
+
+    Two other questions decide the design and have no recording at all. Whose window
+    the rects describe: herdr computes them for a client's terminal area, and if they
+    move when a client attaches at another size then only ratios survive. And which
+    changes announce themselves: a divider dragged by another client is a change
+    Muster has to follow, and a client that never hears about it renders a stale tree
+    that looks perfectly healthy.
+    """
+    client = RecordingClient(daemon.client(), rec)
+    _new_workspace(client)
+    time.sleep(0.5)
+
+    with daemon.client().subscribe(STRUCTURE_SUBSCRIPTIONS) as stream:
+        time.sleep(0.8)
+
+        # Five panes, three levels, and splits under both sides of the root:
+        #   right( down(p1, right(p3, p4)), down(p2, p5) )
+        #
+        # Splitting a pane puts it on the `first` side and the new pane on `second`, so
+        # splitting p1 after it already has a sibling is what produces nesting under
+        # `first` - the case the existing recording does not have, and the one a
+        # reconstruction written against that recording would get wrong.
+        for target, direction in (
+            ("w1:p1", "right"),   # root: p1 | p2
+            ("w1:p1", "down"),    # p1 becomes p1 / p3, under the root's first child
+            ("w1:p3", "right"),   # p3 becomes p3 | p4, three levels deep
+            ("w1:p2", "down"),    # p2 becomes p2 / p5, so both root children are splits
+        ):
+            client.request("pane.split",
+                           {"direction": direction, "target_pane_id": target, "cwd": "/tmp"})
+            time.sleep(0.4)
+        time.sleep(0.6)
+
+        deep_snapshot = client.request("session.snapshot")["snapshot"]
+        deep_export = client.request("layout.export", {})
+        rec.write_json("deep-session.snapshot.json", deep_snapshot)
+        rec.write_json("deep-layout.export.json", deep_export)
+
+        root = deep_export.get("layout", {}).get("root")
+        tab = _tab_layout(deep_snapshot)
+        pane_rects = {p["pane_id"]: p["rect"] for p in tab.get("panes", [])}
+        rec.fact("deep_tree_shape", _tree_shape(root))
+        rec.fact("deep_tree_depth", _tree_depth(root))
+        rec.fact("deep_tree_directions", sorted(_directions(root)))
+        rec.fact("deep_pane_count", len(pane_rects))
+        rec.fact("deep_area", tab.get("area"))
+        rec.fact("deep_pane_rects", pane_rects)
+        rec.fact("deep_split_ids", [s.get("id") for s in tab.get("splits", [])])
+        rec.note(f"built {_tree_shape(root)}")
+
+        # Can the tree be rebuilt from rects alone? For every split the export names,
+        # is there a border in the snapshot covering exactly the panes beneath it, with
+        # the same direction and ratio?
+        borders = {(_rect_key(s["rect"]), s["direction"]): s for s in tab.get("splits", [])}
+        pairings = []
+        for path, node in _split_nodes(root):
+            covered = _covered_rect(node, pane_rects)
+            border = borders.get((_rect_key(covered), node.get("direction"))) if covered else None
+            pairings.append({
+                "path": path,
+                "direction": node.get("direction"),
+                "export_ratio": node.get("ratio"),
+                "covered_rect": covered,
+                "matched_split_id": border.get("id") if border else None,
+                "matched_ratio": border.get("ratio") if border else None,
+            })
+        rec.fact("split_pairings", pairings)
+        rec.fact("every_split_has_a_border_covering_exactly_its_panes",
+                 all(p["matched_split_id"] for p in pairings))
+        rec.fact("border_ratios_match_the_export",
+                 all(p["matched_ratio"] == p["export_ratio"] for p in pairings))
+        rec.note("rect union identifies every split border: "
+                 f"{all(p['matched_split_id'] for p in pairings)}")
+
+        # A second, independent route to the same tree. The border ids look like
+        # `split_2_01`, which reads as a path of first/second turns - so if they agree
+        # with the export's paths, geometry is not the only way to rebuild the tree and
+        # a disagreement between the two would be a herdr change worth noticing.
+        rec.fact("split_id_paths_match_the_export_paths",
+                 all(_id_path(p["matched_split_id"]) == p["path"] for p in pairings
+                     if p["matched_split_id"]))
+        rec.note("split ids spell the same paths as the export tree: "
+                 f"{all(_id_path(p['matched_split_id']) == p['path'] for p in pairings if p['matched_split_id'])}")
+
+        # Whose window do these rects describe? Nothing was attached above, so if they
+        # move now, they are about a viewer rather than about the session - and a client
+        # rendering at its own size can use ratios and nothing else.
+        before_attach = _tab_layout(client.request("session.snapshot")["snapshot"])
+        with PaneStream(daemon, "w1:p1", cols=200, rows=50) as _viewer:
+            time.sleep(1.2)
+            during_attach = _tab_layout(client.request("session.snapshot")["snapshot"])
+        time.sleep(0.6)
+        after_detach = _tab_layout(client.request("session.snapshot")["snapshot"])
+        rec.fact("area_with_no_client", before_attach.get("area"))
+        rec.fact("area_with_a_200x50_client", during_attach.get("area"))
+        rec.fact("area_after_that_client_left", after_detach.get("area"))
+        rec.fact("area_follows_an_attached_client",
+                 before_attach.get("area") != during_attach.get("area"))
+        rec.note(f"area with no client {before_attach.get('area')}, "
+                 f"with a 200x50 client {during_attach.get('area')}")
+
+        # A divider moved by somebody else. If this is silent, a client's tree is stale
+        # the moment another client drags, with nothing to say so.
+        before_ratio = len(stream.snapshot())
+        ok, _ = client.try_request("layout.set_split_ratio",
+                                   {"tab_id": "w1:t1", "path": [], "ratio": 0.3})
+        time.sleep(1.0)
+        ratio_events = [e.get("event") for e in stream.snapshot()[before_ratio:]]
+        after_ratio = _tab_layout(client.request("session.snapshot")["snapshot"])
+        rec.fact("set_split_ratio_accepted", ok)
+        rec.fact("set_split_ratio_events", ratio_events)
+        rec.fact("root_ratio_after_setting_it_to_0_3",
+                 next((s["ratio"] for s in after_ratio.get("splits", [])
+                       if s.get("id", "").endswith("root")), None))
+        rec.note(f"a divider moved by another client announces: {ratio_events or 'NOTHING'}")
+
+        # Zoom, which is a layout state rather than a change of tree: a view that
+        # ignores it renders every pane while the daemon shows one.
+        before_zoom = len(stream.snapshot())
+        zoom_ok, _ = client.try_request("pane.zoom", {"pane_id": "w1:p4", "mode": "on"})
+        time.sleep(1.0)
+        zoomed = _tab_layout(client.request("session.snapshot")["snapshot"])
+        rec.fact("zoom_accepted", zoom_ok)
+        rec.fact("zoom_events", [e.get("event") for e in stream.snapshot()[before_zoom:]])
+        rec.fact("zoomed_flag", zoomed.get("zoomed"))
+        rec.fact("pane_rects_while_zoomed",
+                 {p["pane_id"]: p["rect"] for p in zoomed.get("panes", [])})
+        rec.note(f"zoomed={zoomed.get('zoomed')}, "
+                 f"{len(zoomed.get('panes', []))} pane(s) still listed")
+        client.try_request("pane.zoom", {"pane_id": "w1:p4", "mode": "off"})
+        time.sleep(0.8)
+
+        # And the collapse: closing a pane takes its parent split with it, so a client
+        # that applies the removal without re-reading the tree renders a divider with
+        # one side.
+        before_close = len(stream.snapshot())
+        client.request("pane.close", {"pane_id": "w1:p4"})
+        _wait_for_kind(stream, "pane_closed", "pane.closed")
+        time.sleep(0.8)
+        collapsed_export = client.request("layout.export", {})
+        collapsed = _tab_layout(client.request("session.snapshot")["snapshot"])
+        rec.write_json("collapsed-layout.export.json", collapsed_export)
+        rec.fact("close_events", [e.get("event") for e in stream.snapshot()[before_close:]])
+        rec.fact("collapsed_tree_shape", _tree_shape(collapsed_export.get("layout", {}).get("root")))
+        rec.fact("collapsed_split_ids", [s.get("id") for s in collapsed.get("splits", [])])
+        rec.note(f"after closing one pane: {_tree_shape(collapsed_export.get('layout', {}).get('root'))}")
+
+        # Last, because it leaves the session crowded: how far rects scale. The area
+        # above is fixed at 54x23 whoever is watching, Muster budgets fifteen panes, and
+        # a rect that collapses to nothing no longer says which node contains which.
+        crowded = _crowd(client)
+        rec.fact("crowded", crowded)
+        rec.note(f"rects rebuild the tree up to {crowded['last_good_pane_count']} pane(s); "
+                 f"{crowded['verdict']}")
+
+        events = stream.snapshot()
+
+    rec.write_text("events.ndjson", "".join(json.dumps(e, sort_keys=True) + "\n" for e in events))
+    updates = [e for e in events if e.get("event") == "layout_updated"]
+    rec.fact("layout_updated_count", len(updates))
+    rec.fact("event_kinds", sorted({e["event"] for e in events if "event" in e}))
+    rec.note(f"{len(updates)} layout_updated event(s) across {len(events)} in total")
+
+
 ALL = {
     "snapshot": snapshot,
     "frames": frames,
@@ -987,5 +1299,6 @@ ALL = {
     "input-encoding": input_encoding,
     "frame-fidelity": frame_fidelity,
     "lifecycle": lifecycle,
+    "layout": layout,
     "durability": durability,
 }

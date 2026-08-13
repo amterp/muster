@@ -568,3 +568,54 @@ reconciling one.
 That is the right primitive and the wrong verb for a restore button. Anything built on it
 has to decide what it is applying *into* - a fresh workspace, most likely - because
 running it twice against the same session silently doubles the panes.
+
+## 13. The tree can be rebuilt from rects, and the rects are about nobody's window
+
+Section 10 recorded the first layout deeper than one split and said so as a limitation:
+three panes, two levels, one direction, nested only ever to the right. Anything designed
+against that would have been designed against a shape too small to be wrong in an
+interesting way. So this builds five panes at three levels, with both directions and a
+split under each side of the root, and records the three descriptions of it in one run.
+
+    right( down(p1, right(p3, p4)), down(p2, p5) )
+
+**Every split has a border covering exactly the panes beneath it.** For each split in
+`layout.export`'s tree, the union of its descendants' rects appears in the snapshot's
+`splits` with the same direction and the same ratio, for all four. So the tree is
+recoverable from `layout_updated` alone, which is the event that already fires on every
+pane change. Nothing has to ask `layout.export` for structure, which matters because that
+call carries none of the live fields and would be a second request per change.
+
+**The border ids spell the same paths, and so does the resize API.** They are named
+`split_<n>_<turns>`, where the turns are `root` at the top and a string of `0`s and `1`s
+below it: the split at `first`-then-`second` is `split_2_01`. Those paths agree with the
+export tree's own, for every border. And `layout.set_split_ratio` takes `path: [bool]`,
+which is that same address. herdr thinks in tree paths, so a client that rebuilds the tree
+has also derived the name it needs to move a divider back.
+
+**The rects describe herdr's own terminal, not a viewer's.** The area is 54x23 at (26,1)
+with nothing attached, which is a herdr window minus its sidebar. Attaching a control
+stream at 200x50 did not move it, and neither did detaching. So the cell numbers are a
+fixed fiction to any client rendering at its own size: what transfers is the structure and
+the ratios, and the numbers are useful only for deciding which node contains which.
+
+**It survives the budget.** Splitting the roomiest pane repeatedly to sixteen panes, every
+subtree's covering rect stayed distinct and every border still matched. The smallest rect
+dimension at sixteen panes was 5 cells, so the reconstruction is not near the edge where
+two siblings collapse onto one rect and become indistinguishable. Recorded step by step,
+because the fixed area above means this could have failed and the failure would have
+arrived as a scrambled window at some pane count nobody had tried.
+
+**A divider someone else drags announces itself.** `layout.set_split_ratio` emits
+`layout_updated`, and the new ratio is in the snapshot afterwards. A view that follows this
+event follows a drag made in herdr's own TUI.
+
+**Zoom is a flag and changes nothing else.** With a pane zoomed, all five panes are still
+listed with their ordinary unzoomed rects, and only `zoomed` moves. A client that renders
+the rects it is given paints every pane while the daemon is showing one, so honoring the
+flag is not optional.
+
+**Closing collapses the parent.** A `pane_closed` is followed by `layout_updated`, and the
+split that held the closed pane is gone from the tree rather than left with one side.
+
+Evidence: `corpus/herdr-0.8.0/layout/`, recorded with `tools/herdr-probe/probe layout`.

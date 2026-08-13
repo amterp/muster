@@ -1,0 +1,9 @@
+[  3954ms] built right(down(w1:p1, right(w1:p3, w1:p4@0.5)@0.5), down(w1:p2, w1:p5@0.5)@0.5)
+[  3954ms] rect union identifies every split border: True
+[  3954ms] split ids spell the same paths as the export tree: True
+[  5789ms] area with no client {'x': 26, 'y': 1, 'width': 54, 'height': 23}, with a 200x50 client {'x': 26, 'y': 1, 'width': 54, 'height': 23}
+[  6798ms] a divider moved by another client announces: ['layout_updated']
+[  7814ms] zoomed=True, 5 pane(s) still listed
+[  9471ms] after closing one pane: right(down(w1:p1, w1:p3@0.5), down(w1:p2, w1:p5@0.5)@0.3)
+[ 14008ms] rects rebuild the tree up to 15 pane(s); held to the end
+[ 14010ms] 21 layout_updated event(s) across 50 in total
