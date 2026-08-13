@@ -92,3 +92,42 @@ public struct Modifiers: OptionSet, Hashable, Sendable {
   public static let altIsRight = Modifiers(rawValue: 1 << 8)
   public static let superIsRight = Modifiers(rawValue: 1 << 9)
 }
+
+extension Modifiers {
+  /// The wire names for each bit, in bit order.
+  ///
+  /// Muster's vocabulary has to survive leaving this process - into the conformance
+  /// corpus, into the log, and into the schema the shell and core speak (MIP-1). A
+  /// bitmask does none of that legibly: `520` in a case file tells a reader nothing, and
+  /// silently means something different if the bits are ever renumbered.
+  public static let allNames: [(name: String, bit: Modifiers)] = [
+    ("shift", .shift),
+    ("control", .control),
+    ("alt", .alt),
+    ("super", .`super`),
+    ("capsLock", .capsLock),
+    ("numLock", .numLock),
+    ("shiftIsRight", .shiftIsRight),
+    ("controlIsRight", .controlIsRight),
+    ("altIsRight", .altIsRight),
+    ("superIsRight", .superIsRight),
+  ]
+
+  /// The names of the bits that are set, in bit order so two runs agree.
+  public var names: [String] {
+    Self.allNames.filter { contains($0.bit) }.map(\.name)
+  }
+
+  /// Reads a set of names, or nil if any is not a modifier.
+  ///
+  /// Fails rather than ignoring the unknown one: a case file that says `"comand"` should
+  /// say so, not quietly test an unmodified key and pass.
+  public init?(names: [String]) {
+    var result = Modifiers()
+    for name in names {
+      guard let match = Self.allNames.first(where: { $0.name == name }) else { return nil }
+      result.insert(match.bit)
+    }
+    self = result
+  }
+}

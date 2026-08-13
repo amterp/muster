@@ -1,0 +1,98 @@
+{
+  "concept": "keymap.resolve",
+  "source": "authored",
+  "citation": "ghostty src/config/Config.zig, macOS keybind defaults - the five 'natural text editing' binds. The arrow routing is measured, see docs/observations/herdr-0.8.0.md section 5.",
+  "why": "Input precedence is fixed (architecture.md): the keymap gets first refusal on every chord, and only what it declines is reported toward the pane. The chords here are the ones people press without thinking in a terminal that is not a text field, and getting one wrong is not a crash - it is a key that quietly does something close to right, which is the kind of bug that survives for months. These are Muster's own policy, so the citation is the whole oracle: there is nothing external to record against.",
+  "cases": [
+    {
+      "name": "cmd+backspace is unix-line-discard",
+      "why": "The chord that prompted the whole table. Without it ⌘⌫ deletes a single character and a person holds the key down instead, which looks broken. Readline's 0x15 does the same job, and being a control code it means the same thing whatever the pane has negotiated.",
+      "given": { "key": "Backspace", "modifiers": ["super"] },
+      "expect": { "kind": "text", "bytes_hex": "15" }
+    },
+    {
+      "name": "cmd+left is start of line",
+      "why": "macOS line motion, mapped to readline's ctrl+A. Same reasoning as ⌘⌫: the platform's chord, the terminal's control code.",
+      "given": { "key": "ArrowLeft", "modifiers": ["super"] },
+      "expect": { "kind": "text", "bytes_hex": "01" }
+    },
+    {
+      "name": "cmd+right is end of line",
+      "why": "The pair of cmd+left, mapped to readline's ctrl+E.",
+      "given": { "key": "ArrowRight", "modifiers": ["super"] },
+      "expect": { "kind": "text", "bytes_hex": "05" }
+    },
+    {
+      "name": "alt+left is word motion",
+      "why": "Word motion is an escape prefix rather than a control code, because that is what readline binds it to. ESC b.",
+      "given": { "key": "ArrowLeft", "modifiers": ["alt"] },
+      "expect": { "kind": "text", "bytes_hex": "1b62" }
+    },
+    {
+      "name": "alt+right is word motion forward",
+      "why": "The pair of alt+left. ESC f.",
+      "given": { "key": "ArrowRight", "modifiers": ["alt"] },
+      "expect": { "kind": "text", "bytes_hex": "1b66" }
+    },
+    {
+      "name": "a bare arrow is handed to the daemon",
+      "why": "The measured loss. Application cursor mode decides between SS3 and CSI, Muster cannot see which is on, and a program that trusts terminfo rejects the wrong one - `less` calls smkx on startup and then rings the bell instead of scrolling. The daemon knows the pane's real modes, so it encodes these four.",
+      "given": { "key": "ArrowUp", "modifiers": [] },
+      "expect": { "kind": "serverEncoded", "key": "up" }
+    },
+    {
+      "name": "bare arrow down is handed to the daemon",
+      "why": "Same as arrow up. Named separately because a table that only covers one direction has been wrong before.",
+      "given": { "key": "ArrowDown", "modifiers": [] },
+      "expect": { "kind": "serverEncoded", "key": "down" }
+    },
+    {
+      "name": "bare arrow left is handed to the daemon",
+      "why": "Same as arrow up, and the one that collides with cmd+left below - so the pair proves the modifier is what selects between them.",
+      "given": { "key": "ArrowLeft", "modifiers": [] },
+      "expect": { "kind": "serverEncoded", "key": "left" }
+    },
+    {
+      "name": "bare arrow right is handed to the daemon",
+      "why": "Same as arrow up.",
+      "given": { "key": "ArrowRight", "modifiers": [] },
+      "expect": { "kind": "serverEncoded", "key": "right" }
+    },
+    {
+      "name": "shift+arrow is unbound and takes the local encoder",
+      "why": "Only unmodified arrows are routed. herdr's key vocabulary does accept chords like shift+up, but a modified arrow is not what a pager reads, and every routed key costs a socket round trip. So this falls through to the encoder like any other chord.",
+      "given": { "key": "ArrowUp", "modifiers": ["shift"] },
+      "expect": { "kind": "unbound" }
+    },
+    {
+      "name": "an unmodified ordinary key is the pane's",
+      "why": "The keymap takes only what it has a reason to take. Anything else belongs to the program in the pane, and a keymap that swallowed plain keys would be a terminal that cannot type.",
+      "given": { "key": "KeyA", "modifiers": [] },
+      "expect": { "kind": "unbound" }
+    },
+    {
+      "name": "an unmodified backspace is the pane's",
+      "why": "Only the cmd-modified form is bound. Plain backspace has to reach the program, which is what deletes the character.",
+      "given": { "key": "Backspace", "modifiers": [] },
+      "expect": { "kind": "unbound" }
+    },
+    {
+      "name": "cmd+a is not bound here",
+      "why": "Guards the shape of the table rather than a chord anyone presses: `super` is bound with backspace and the arrows, and a lookup that keyed on the modifier alone would swallow every cmd chord on the keyboard.",
+      "given": { "key": "KeyA", "modifiers": ["super"] },
+      "expect": { "kind": "unbound" }
+    },
+    {
+      "name": "which side of the keyboard a modifier came from does not change the chord",
+      "why": "The encoder needs to know left command from right; a binding does not. A keymap that matched on the side bits would work on one half of the keyboard and not the other, which is the kind of bug a right-handed developer never sees.",
+      "given": { "key": "Backspace", "modifiers": ["super", "superIsRight"] },
+      "expect": { "kind": "text", "bytes_hex": "15" }
+    },
+    {
+      "name": "a key release never fires a binding",
+      "why": "Under a kitty profile that reports releases, firing on both edges sends everything twice - the same shape as the doubling bug that made typing `hello` produce `hheelllloo`.",
+      "given": { "key": "Backspace", "modifiers": ["super"], "action": "release" },
+      "expect": { "kind": "unbound" }
+    }
+  ]
+}

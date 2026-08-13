@@ -1,78 +1,59 @@
+import TestSupport
 import Testing
 
 @testable import MusterCore
 
-// The chords here are the ones people press without thinking, in a terminal that is not a
-// text field. Getting one wrong is not a crash - it is a key that quietly does something
-// close to right, which is the kind of bug that survives for months.
+// A driver. The cases live in corpus/conformance/keymap.json - see that file for what each
+// chord protects and why Muster binds it at all.
 
-@Test("the macOS line-editing chords become their readline control codes")
-func naturalTextEditing() {
+@Test("keymap resolution")
+func keymapConformance() throws {
+  let corpus = try Conformance.load("keymap.json")
   let keymap = Keymap()
 
-  // ⌘⌫ is the one that prompted this: without it, backspace deletes one character and a
-  // person holds it down instead.
-  #expect(keymap.resolve(press(.backspace, .`super`)) == .text([0x15]))
-  #expect(keymap.resolve(press(.arrowLeft, .`super`)) == .text([0x01]))
-  #expect(keymap.resolve(press(.arrowRight, .`super`)) == .text([0x05]))
-  #expect(keymap.resolve(press(.arrowLeft, .alt)) == .text([0x1b, UInt8(ascii: "b")]))
-  #expect(keymap.resolve(press(.arrowRight, .alt)) == .text([0x1b, UInt8(ascii: "f")]))
+  let ran = corpus.run { given in
+    let event = try keyEvent(from: given)
+
+    return switch keymap.resolve(event) {
+    case .unbound: .fields(["kind": "unbound"])
+    case .text(let bytes): .fields(["kind": "text", "bytes_hex": .string(hex(bytes))])
+    case .serverEncoded(let name): .fields(["kind": "serverEncoded", "key": .string(name)])
+    case .action: .fields(["kind": "action"])
+    }
+  }
+
+  #expect(ran == corpus.cases.count)
+  #expect(ran > 0)
 }
 
-@Test("an unmodified key is the pane's, not the keymap's")
-func unmodifiedKeysPassThrough() {
-  let keymap = Keymap()
-  #expect(keymap.resolve(press(.backspace, [])) == .unbound)
-  #expect(keymap.resolve(press(.keyA, [])) == .unbound)
-  #expect(keymap.resolve(press(.keyA, .`super`)) == .unbound)
+/// Reads the corpus's spelling of a keystroke.
+///
+/// Strict about names it does not recognize. A case file saying `"comand"` should fail
+/// loudly, not quietly test an unmodified key and pass.
+private func keyEvent(from given: JSONValue) throws -> KeyEvent {
+  guard let name = given["key"]?.stringValue, let key = Key(rawValue: name) else {
+    throw CaseError("`key` is missing or not a W3C key name")
+  }
+  guard let modifiers = Modifiers(names: given.strings("modifiers")) else {
+    throw CaseError("`modifiers` names something that is not a modifier")
+  }
+  let action: KeyEvent.Action =
+    switch given["action"]?.stringValue {
+    case nil, "press": .press
+    case "release": .release
+    case let other: throw CaseError("`action` is \(other ?? "nil"), not press or release")
+    }
+
+  return KeyEvent(
+    action: action, key: key, modifiers: modifiers, consumedModifiers: [],
+    text: given["text"]?.stringValue ?? "", unshiftedCodepoint: nil, isComposing: false)
 }
 
-@Test("bare arrows are handed to the daemon to encode")
-func arrowsAreServerEncoded() {
-  // The measured loss: application cursor mode decides between SS3 and CSI, Muster cannot
-  // see which is on, and a program that trusts terminfo rejects the wrong one - `less`
-  // rings the bell rather than scrolling. The daemon knows, so it encodes these.
-  let keymap = Keymap()
-  #expect(keymap.resolve(press(.arrowUp, [])) == .serverEncoded("up"))
-  #expect(keymap.resolve(press(.arrowDown, [])) == .serverEncoded("down"))
-  #expect(keymap.resolve(press(.arrowLeft, [])) == .serverEncoded("left"))
-  #expect(keymap.resolve(press(.arrowRight, [])) == .serverEncoded("right"))
+private struct CaseError: Error, CustomStringConvertible {
+  let description: String
+  init(_ description: String) { self.description = description }
 }
 
-@Test("a modified arrow keeps its local binding rather than a round trip")
-func modifiedArrowsStayLocal() {
-  // ⌘← and ⌥← are line and word motion, which are control codes that mean the same thing
-  // in every mode. Routing them would buy nothing and cost a socket round trip each.
-  let keymap = Keymap()
-  #expect(keymap.resolve(press(.arrowLeft, .`super`)) == .text([0x01]))
-  #expect(keymap.resolve(press(.arrowLeft, .alt)) == .text([0x1b, UInt8(ascii: "b")]))
-  // Nothing bound for shift+arrow, so it takes the local encoder like any other chord.
-  #expect(keymap.resolve(press(.arrowUp, .shift)) == .unbound)
-}
-
-@Test("which side of the keyboard a modifier came from does not change the chord")
-func sideBitsAreIgnored() {
-  // The encoder needs to know left command from right; a binding does not, and a keymap
-  // that missed right-command would work on one half of the keyboard.
-  let keymap = Keymap()
-  #expect(keymap.resolve(press(.backspace, [.`super`, .superIsRight])) == .text([0x15]))
-}
-
-@Test("a key release never fires a binding")
-func releasesDoNotFire() {
-  // Under a kitty profile that reports releases, firing on both edges sends everything
-  // twice - the same shape of bug that made typing `hello` produce `hheelllloo`.
-  let keymap = Keymap()
-  var event = press(.backspace, .`super`)
-  event = KeyEvent(
-    action: .release, key: event.key, modifiers: event.modifiers,
-    consumedModifiers: event.consumedModifiers, text: event.text,
-    unshiftedCodepoint: event.unshiftedCodepoint, isComposing: event.isComposing)
-  #expect(keymap.resolve(event) == .unbound)
-}
-
-private func press(_ key: Key, _ modifiers: Modifiers) -> KeyEvent {
-  KeyEvent(
-    action: .press, key: key, modifiers: modifiers, consumedModifiers: [], text: "",
-    unshiftedCodepoint: nil, isComposing: false)
+private func hex(_ bytes: [UInt8]) -> String {
+  bytes.map { String(format: "%02x", $0) }.joined()
 }

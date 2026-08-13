@@ -154,6 +154,15 @@ if build:
 if test:
     announce("test")
 
+    // Before the suite, because the corpus is what most of the suite asserts against. A
+    // file nobody loads is checked in, never run, and indistinguishable from coverage -
+    // and no driver can catch that, since the check is about the file it never opened.
+    stdout, stderr, code = $`python3 tools/corpus-lint.py` catch:
+        print_err(stdout.trim())
+        print_err(stderr.trim())
+        exit(1)
+    print(dim(stdout.trim()))
+
     // A suite that quietly stops running is worse than a red one: it reports green
     // forever. cmux shipped CI passing with "Executed 0 tests" for a while, and
     // docs/testing.md takes that as a standing hazard, so ask what the runner can see

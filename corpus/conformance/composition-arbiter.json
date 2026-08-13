@@ -1,0 +1,44 @@
+{
+  "concept": "composition.outcome",
+  "source": "ported",
+  "citation": "Tests/MusterCoreTests/CompositionArbiterTests.swift, and the bug that prompted the type",
+  "why": "Exactly one thing may reach the pane per key press. This type exists because of a bug that reached a user: every printable key arrived twice, because AppKit's insertText sent the committed text and the key encoder sent the keystroke, and nothing decided between them. Typing `hello` produced `hheelllloo`. The property worth pinning is not any single case below - it is that there is one outcome per press, always.",
+  "cases": [
+    {
+      "name": "plain key is not also its text",
+      "why": "The regression itself. AppKit calls insertText(\"h\") for a plain `h` with no input method involved, so a committed string is present here - and it must still lose to the keystroke, or every printable character is sent twice.",
+      "given": { "wasComposing": false, "committed": "h", "stillComposing": false },
+      "expect": { "outcome": "sendKey" }
+    },
+    {
+      "name": "a finished composition is its text, not the key that finished it",
+      "why": "option+e then e: the second press ends the composition and produces `é`, which has no relationship to the `e` that was pressed. Sending the keystroke here would put a bare `e` in the pane.",
+      "given": { "wasComposing": true, "committed": "é", "stillComposing": false },
+      "expect": { "outcome": "sendText", "text": "é" }
+    },
+    {
+      "name": "a press that opens a composition reaches nothing",
+      "why": "option+e alone: a preedit opens and the pane must not see the keystroke sitting behind it. The input method owns the key until it commits.",
+      "given": { "wasComposing": false, "committed": null, "stillComposing": true },
+      "expect": { "outcome": "sendNothing" }
+    },
+    {
+      "name": "a commit that re-marks in the same press reaches nothing",
+      "why": "Candidate selection in a CJK input method commits text and opens a new preedit in one press. Still the method's business, so the pane sees nothing - the committed text will arrive with whatever eventually ends the composition.",
+      "given": { "wasComposing": true, "committed": "か", "stillComposing": true },
+      "expect": { "outcome": "sendNothing" }
+    },
+    {
+      "name": "an empty commit falls back to the keystroke",
+      "why": "Escaping out of a preedit ends the composition without producing text. Treating that as sendText(\"\") would silently eat the key, so escape would appear to do nothing at all.",
+      "given": { "wasComposing": true, "committed": "", "stillComposing": false },
+      "expect": { "outcome": "sendKey" }
+    },
+    {
+      "name": "a composition that commits nothing at all falls back to the keystroke",
+      "why": "Same as the empty commit, reached by the other route: the method ends the composition without calling insertText. Both spellings of `produced no text` have to behave alike, or the outcome depends on which method the user has installed.",
+      "given": { "wasComposing": true, "committed": null, "stillComposing": false },
+      "expect": { "outcome": "sendKey" }
+    }
+  ]
+}
