@@ -11,7 +11,7 @@ import MusterCore
 /// what a release build does unless `MUSTER_LOG=1` asks otherwise: a log that records
 /// what a person types is not something to switch on for them.
 @discardableResult
-func startLogging() -> String? {
+public func startLogging() -> String? {
   let environment = ProcessInfo.processInfo.environment
   // An explicit file wins, so a bug report can be captured to a path of its own.
   if let path = environment["MUSTER_LOG_FILE"], !path.isEmpty {

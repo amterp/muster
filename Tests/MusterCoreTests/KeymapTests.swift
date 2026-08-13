@@ -23,8 +23,17 @@ func naturalTextEditing() {
 func unmodifiedKeysPassThrough() {
   let keymap = Keymap()
   #expect(keymap.resolve(press(.backspace, [])) == .unbound)
-  #expect(keymap.resolve(press(.arrowLeft, [])) == .unbound)
+  #expect(keymap.resolve(press(.keyA, [])) == .unbound)
   #expect(keymap.resolve(press(.keyA, .`super`)) == .unbound)
+}
+
+@Test("a modified arrow keeps its local binding rather than a round trip")
+func modifiedArrowsStayLocal() {
+  // ⌘← and ⌥← are line and word motion, which are control codes that mean the same thing
+  // in every mode. Routing them would buy nothing and cost a socket round trip each.
+  let keymap = Keymap()
+  #expect(keymap.resolve(press(.arrowLeft, .`super`)) == .text([0x01]))
+  #expect(keymap.resolve(press(.arrowLeft, .alt)) == .text([0x1b, UInt8(ascii: "b")]))
 }
 
 @Test("which side of the keyboard a modifier came from does not change the chord")

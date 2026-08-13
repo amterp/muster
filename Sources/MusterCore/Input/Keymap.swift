@@ -10,9 +10,12 @@
 public struct Keymap: Sendable {
   private let bindings: [Binding: Resolution]
 
-  public init(bindings: [Binding: Resolution] = Keymap.macOSTextEditing) {
+  public init(bindings: [Binding: Resolution] = Keymap.defaults) {
     self.bindings = bindings
   }
+
+  /// What Muster binds out of the box.
+  public static let defaults = macOSTextEditing
 
   /// A chord: which key, under which modifiers.
   public struct Binding: Hashable, Sendable {
@@ -31,6 +34,11 @@ public struct Keymap: Sendable {
     case action(Action)
     /// Muster substitutes these bytes for whatever the encoder would have produced.
     case text([UInt8])
+    /// The backend encodes this one, under this name.
+    ///
+    /// For the keys where encoding locally is known to be wrong. Muster guesses the pane's
+    /// terminal modes and the daemon does not have to.
+    case serverEncoded(String)
     /// Not bound. Report it to the pane.
     case unbound
   }
@@ -75,5 +83,23 @@ public struct Keymap: Sendable {
     // Word motion, as an escape prefix rather than a control code.
     Binding(.arrowLeft, .alt): .text([0x1b, UInt8(ascii: "b")]),
     Binding(.arrowRight, .alt): .text([0x1b, UInt8(ascii: "f")]),
+  ]
+
+  /// The keys whose correct encoding depends on a mode Muster cannot see.
+  ///
+  /// The arrows, and only the arrows, for a measured reason. Application cursor mode
+  /// decides between `\u{1b}OA` and `\u{1b}[A`, and a program that trusts terminfo accepts
+  /// only the first: `less` calls `smkx` on startup and then rings the bell at anything
+  /// else. `vim` accepts both, which is why one program is not a survey. Nothing else in
+  /// the guess was measured to break - shift+enter, dead keys and control chords all
+  /// survive - so nothing else is routed the slow way.
+  ///
+  /// Unmodified only. herdr's key vocabulary does accept chords like `shift+up`, but a
+  /// modified arrow is not what a pager reads, and every routed key costs a round trip.
+  public static let modeSensitiveKeys: [Binding: Resolution] = [
+    Binding(.arrowUp, []): .serverEncoded("up"),
+    Binding(.arrowDown, []): .serverEncoded("down"),
+    Binding(.arrowLeft, []): .serverEncoded("left"),
+    Binding(.arrowRight, []): .serverEncoded("right"),
   ]
 }

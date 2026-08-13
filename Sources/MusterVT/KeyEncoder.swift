@@ -128,3 +128,7 @@ extension KeyEvent.Action {
     }
   }
 }
+
+// The encoder the core asks for. Declared here rather than on the protocol's own side
+// because the dependency runs this way: the core must not know libghostty-vt exists.
+extension KeyEncoder: KeyEncoding {}
