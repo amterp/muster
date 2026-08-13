@@ -7,6 +7,14 @@
     "backend"
   ],
   "column": "backlog-hi",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Source read (herdr v0.8.0) settles two things this card was guessing at.\n\nThere IS a structured mouse channel, and it is reachable. ClientMessage::InputEvents carries ClientInputEvent::Mouse (src/protocol/wire.rs:113-134, :416) - button, motion, wheel, column, row, modifiers - and the gate is the message type, not the client mode: the transport converts it with no mode check (src/server/client_transport.rs:731), and the dispatch arm rejects only TerminalObserve (src/server/headless.rs:2892-2917). A TerminalAttach connection can send it. Today it is only emitted by herdr's Windows client, whose console gives structured records rather than a VT byte stream.\n\nIt is still the wrong channel for Muster, and now for a concrete reason rather than a hunch. It routes into herdr's own TUI application layer: route_client_events_from (src/app/mod.rs:1670) -\u003e handle_pane_mouse_only (src/app/input/mouse.rs:73), which requires Mode::Terminal, hit-tests pane_at(column, row) against herdr's live pane layout, and can be intercepted first by popups, mouse capture, sidebar, launcher or the global menu. Our coordinates are a surface's own grid; herdr would resolve them against its TUI screen and deliver to whichever pane sits at that point - not necessarily the pane we attached to. Using it means giving up the raw-pipe property entirely.\n\nSo the ask in a_27CTRluw7 stands as the way in. Once InputState is readable, encoding is free: herdr's own mouse encoding is libghostty-vt's (src/pane/terminal.rs:1736 -\u003e ghostty_mouse_encoder_setopt_from_terminal), the same library Muster already links, and mouse/encoder.h is in our headers.\n\nTrap for whoever reads this next: src/input/encode.rs:78 and :96 are a complete hand-rolled Rust mouse encoder (SGR/Default/UTF8) and are dead code, annotated as such, with zero call sites outside their own unit tests. It is not what herdr runs.",
+      "created_at_millis": 1786614445451,
+      "id": "c_27DMRNi5f"
+    }
+  ],
   "created_at_millis": 1786612340848,
   "creator": "Alexander Terp",
   "description": "The wheel is already safe and already right: terminal.scroll is structured, and the daemon encodes it against the pane's real state (wheel_routing, encode_mouse_wheel, alternate scroll, or its own scrollback). Muster sends scroll intents and gets correct behavior knowing nothing.\n\nButtons and motion have no equivalent command. Encoding them client-side means writing SGR sequences into the PTY blind, and a program that never enabled mouse reporting receives them as typed text - garbage in a shell, a corrupted prompt in an agent. A mis-encoded key is a wrong key; a mis-sent click is injected input.\n\nSo this waits on the mode exposure tracked in a_27CTRluw7. When InputState is readable, mouse_protocol_mode and mouse_protocol_encoding say both whether to send and which encoding to use, and the encoder itself comes from libghostty-vt's mouse/encoder.h rather than being hand-rolled.\n\nStaging: the mode profile seam in the core is where this switches on, so the work is a flag plus an encoder, not a redesign.",
@@ -14,7 +22,7 @@
   "position": "UUUUUUUUUUUUU",
   "title": "Mouse buttons and motion: blocked on pane mode exposure",
   "type": "feature",
-  "updated_at_millis": 1786612340848,
+  "updated_at_millis": 1786614445451,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786612340848}
   ]

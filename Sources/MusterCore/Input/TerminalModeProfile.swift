@@ -94,7 +94,10 @@ public struct TerminalModeProfile: Equatable, Sendable {
   /// and less, and `bracketedPaste`, which decides whether a paste arrives as text or as
   /// text wrapped in visible markers.
   ///
-  /// Replace it with truth, not with a better guess.
+  /// Replace it with truth, not with a better guess. Both of those losses also have a
+  /// fallback that needs no upstream change: `pane.send_input` encodes text and named
+  /// keys server-side against the pane's real modes, at the cost of a socket connect per
+  /// call. Whether that trade is worth making waits on the latency measurement.
   public static let unknownPane = TerminalModeProfile()
 
   /// What herdr's own TUI negotiates with its host terminal.

@@ -198,7 +198,18 @@ against `\x1b[A`, kitty flags decide whether shift+enter is distinguishable at a
 bracketed paste decides whether paste markers reach the program as text, and mouse
 reporting decides whether an SGR click is input or garbage.
 
-Two things bound the damage.
+Three things bound the damage.
+
+**The daemon will encode for us, on a different channel.** `pane.send_input`
+(`{pane_id, text, keys}`) encodes text with bracketed paste applied from the pane's real
+`input_state()` (`src/app/api_helpers.rs:25`) and named keys with the same ghostty
+encoder herdr's TUI uses (`:37`). So mode-aware encoding is not missing from herdr - it
+is missing from the *control stream*, which is the channel a client holds open. Two
+things keep this from simply being the answer: the JSON socket is one request per
+connection, so every keystroke would pay a `connect()` on the latency path, and the key
+vocabulary cannot name the navigation cluster (section 5's `send_keys` result). It is a
+usable fallback for the cases where the guess is known wrong - paste above all - rather
+than a replacement for local encoding.
 
 **`terminal.scroll` is the counter-example, and the shape the ask should take.** It is
 structured rather than bytes, and the server answers it against the pane's real state
