@@ -6,16 +6,17 @@
     "shell",
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "next",
   "created_at_millis": 1786654146356,
   "creator": "Alexander Terp",
   "description": "The seam pushes one pane's agent state and takes one pane's input. A\nwindow showing a tree needs to be told the tree, and a person who wants\na split needs somewhere to ask for one.\n\nOut: the whole region tree, absolute and idempotent, in the same\ndiscipline the daemon's own events follow - split nodes with direction\nand ratio, pane leaves carrying id, agent state and that pane's control\nsocket. Whole-view rather than incremental is what keeps the shell\ndumb. proto/muster.proto already anticipates this in a comment on\nPaneStateChanged.\n\nIn: split, close, focus and set-split-ratio. herdr answers all four\nalready (pane.split, pane.close, pane.focus, layout.set_split_ratio),\nso what this adds is the core dispatching them - which is where \"one\naction path\" stops being a principle and becomes the thing a CLI and an\nagent-facing API will reuse verbatim.",
   "id": "a_27U1F57rx",
-  "position": "UUUUUUM",
+  "position": "E",
   "title": "🔌 The seam grows a view, and a way to act on it",
   "type": "feature",
-  "updated_at_millis": 1786654146356,
+  "updated_at_millis": 1786655828096,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1786654146356}
+    {"field":"column","value":"backlog-hi","at":1786654146356},
+    {"field":"column","value":"next","at":1786655828096}
   ]
 }
