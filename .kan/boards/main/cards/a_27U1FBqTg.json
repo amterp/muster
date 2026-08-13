@@ -5,17 +5,18 @@
   "area": [
     "shell"
   ],
-  "column": "next",
+  "column": "in-progress",
   "created_at_millis": 1786654146412,
   "creator": "Alexander Terp",
   "description": "main.swift stands up one of everything and says so in its own header.\nThis is where it stops: a surface, a chrome and a bridge per leaf of\nthe tree, created and destroyed as the tree changes, with focus\nfollowing the view-local cursor rather than the daemon's.\n\nLay children out from the tree's ratios rather than reaching for\nNSSplitView. NSSplitView owns its divider positions, which is a fight\nwith view = f(daemon state) on every event; a container computing\nframes from ratios is small, and a divider drag becomes an intent\nrather than local state that then disagrees with the daemon.\n\nThe window title also stops carrying agent state once every pane has\nits own border. It keeps health, which is per-window.\n\nThis is the landing where 15 panes becomes a thing that can be\nmeasured, so a_26JhGElAo closes behind it.",
   "id": "a_27U1FBqTg",
-  "position": "6",
+  "position": "E",
   "title": "🪟 The shell renders splits, and a drag is an intent",
   "type": "feature",
-  "updated_at_millis": 1786655828126,
+  "updated_at_millis": 1786660839777,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786654146412},
-    {"field":"column","value":"next","at":1786655828126}
+    {"field":"column","value":"next","at":1786655828126},
+    {"field":"column","value":"in-progress","at":1786660839777}
   ]
 }

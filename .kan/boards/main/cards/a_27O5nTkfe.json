@@ -5,7 +5,7 @@
   "area": [
     "testing"
   ],
-  "column": "backlog-hi",
+  "column": "next",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -18,11 +18,12 @@
   "creator": "Alexander Terp",
   "description": "The README says CI runs exactly what ./dev runs, and there is no CI - no .github/workflows at all. The claim should be true or the sentence should go.\n\nMost of the cost is already paid: deps/herdr.pin fetches and checksums the daemon, deps/ghostty.pin builds libghostty, and ./dev with no flags is the whole gate. What a workflow adds is caching those two (libghostty is minutes cold) and choosing which platforms to run - macOS is where the shell builds, and the Linux container is where the herdr corpus gets diffed (a_26BJG8nDs).",
   "id": "a_27O5nTkfe",
-  "position": "UUUUUUUUUUUUUUUUUUUUUU",
+  "position": "6",
   "title": "🏗️ CI: run the gate on every push",
   "type": "chore",
-  "updated_at_millis": 1786654109372,
+  "updated_at_millis": 1786660846600,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1786640021758}
+    {"field":"column","value":"backlog-hi","at":1786640021758},
+    {"field":"column","value":"next","at":1786660846600}
   ]
 }

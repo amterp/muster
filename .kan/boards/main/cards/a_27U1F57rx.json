@@ -6,18 +6,27 @@
     "shell",
     "backend"
   ],
-  "column": "in-progress",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Landed in c5eb21b (the view out) and ed30a27 (the four requests in).\n\nDeviated from the plan on one point: the view carries structure and identity, not agent state. A pane's state moves far more often than the arrangement it sits in, so carrying it in the view would repaint the tree every time an agent blinked - and agent state already has exactly one writer, which is the property keeping it correct. PaneStateChanged keeps it.\n\nThree things this turned up:\n\n- herdr's pane.split takes target_pane_id, not pane_id, and an unknown key is ignored rather than refused. The wrong name reads as splits landing in arbitrary places. Every other pane verb takes pane_id. Caught only because the test asserts which pane ended up under which axis; counting panes was satisfied by the wrong answer.\n- A tab's pane list and its tree are published separately, and splitting a two-pane tab publishes a one-pane tree in between. Composition had been reading the tree as evidence a pane was gone, which moved the keyboard and kept it moved. Fixed in c5eb21b; the herdr behavior itself still needs recording (a_27WZ30MO1).\n- pane.read is a usable screen oracle with no client attached, which is what let the seam test assert 'the text landed in this pane and not that one' without a bridge.\n\nLeft for the shell card: nothing renders the view yet. Core.swift logs that it arrived and says which card renders it.",
+      "created_at_millis": 1786660839710,
+      "id": "c_27WpMpKVC"
+    }
+  ],
   "created_at_millis": 1786654146356,
   "creator": "Alexander Terp",
   "description": "The seam pushes one pane's agent state and takes one pane's input. A\nwindow showing a tree needs to be told the tree, and a person who wants\na split needs somewhere to ask for one.\n\nOut: the whole region tree, absolute and idempotent, in the same\ndiscipline the daemon's own events follow - split nodes with direction\nand ratio, pane leaves carrying id, agent state and that pane's control\nsocket. Whole-view rather than incremental is what keeps the shell\ndumb. proto/muster.proto already anticipates this in a comment on\nPaneStateChanged.\n\nIn: split, close, focus and set-split-ratio. herdr answers all four\nalready (pane.split, pane.close, pane.focus, layout.set_split_ratio),\nso what this adds is the core dispatching them - which is where \"one\naction path\" stops being a principle and becomes the thing a CLI and an\nagent-facing API will reuse verbatim.",
   "id": "a_27U1F57rx",
-  "position": "E",
+  "position": "!6",
   "title": "🔌 The seam grows a view, and a way to act on it",
   "type": "feature",
-  "updated_at_millis": 1786658727473,
+  "updated_at_millis": 1786660839744,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786654146356},
     {"field":"column","value":"next","at":1786655828096},
-    {"field":"column","value":"in-progress","at":1786658727473}
+    {"field":"column","value":"in-progress","at":1786658727473},
+    {"field":"column","value":"done","at":1786660839744}
   ]
 }
