@@ -16,6 +16,7 @@ holding your sessions.
 from __future__ import annotations
 
 import argparse
+import json
 import shutil
 import subprocess
 import sys
@@ -32,6 +33,26 @@ from herdrprobe.remote import RemoteDaemon
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CORPUS = REPO_ROOT / "corpus"
+HERDR_PIN = REPO_ROOT / "deps/herdr.pin"
+
+
+def pinned_herdr() -> str:
+    """The same binary the suite runs against, not whatever is on PATH.
+
+    The corpus is the oracle the tests are judged by, so recording it with a different
+    daemon than the tests use would reintroduce exactly the drift the pin exists to
+    remove - and it would do it silently, since both daemons answer.
+    """
+    pin = json.loads(HERDR_PIN.read_text())
+    binary = REPO_ROOT / "deps/herdr" / pin["version"] / "herdr"
+    if not binary.is_file():
+        sys.exit(
+            f"no pinned herdr at {binary}.\n"
+            f"  Impact: a recording made with another daemon would become the oracle the\n"
+            f"  suite is judged against, while looking like a normal corpus.\n"
+            f"  Fix: ./dev -t downloads and verifies it, or pass --herdr explicitly."
+        )
+    return str(binary)
 
 
 def herdr_identity(herdr_bin: str) -> tuple[str, int]:
@@ -63,7 +84,8 @@ def main() -> int:
                         help=f"scratch dir for the probe's daemon (default: {DEFAULT_ROOT})")
     parser.add_argument("--corpus", type=Path, default=None,
                         help="where transcripts land (default: <repo>/corpus/herdr-<version>)")
-    parser.add_argument("--herdr", default="herdr", help="herdr binary to observe")
+    parser.add_argument("--herdr", default=None,
+                        help="herdr binary to observe (default: the one deps/herdr.pin names)")
     parser.add_argument("--keep", action="store_true", help="leave the daemon running afterwards")
     parser.add_argument("--remote", action="store_true",
                         help="observe the devenv container's daemon over SSH instead of a local one")
@@ -93,8 +115,9 @@ def main() -> int:
         version, protocol = remote_identity(key, args.remote_port)
         suffix = "-linux"
     else:
-        probe_daemon = lambda: IsolatedDaemon(args.root, herdr_bin=args.herdr)
-        version, protocol = herdr_identity(args.herdr)
+        herdr_bin = args.herdr or pinned_herdr()
+        probe_daemon = lambda: IsolatedDaemon(args.root, herdr_bin=herdr_bin)
+        version, protocol = herdr_identity(herdr_bin)
         suffix = ""
 
     corpus = args.corpus or (DEFAULT_CORPUS / f"herdr-{version}{suffix}")

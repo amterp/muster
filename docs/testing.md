@@ -23,10 +23,17 @@ Muster's principles, adapted to that evidence:
   failures. The seconds-per-test cost worth fearing belongs to agent *detection*, which screen-scrapes on a
   hardcoded two-second timer; tests that report agent state through the API never touch it.
 
-  So the backend seam is not faked at all. `deps/herdr.pin` names a release, `./dev` refuses to run without it, and
-  tests that need a daemon spawn a real one under a scratch config directory. What this buys is the removal of a
-  whole category: there is no hand-written herdr in this repo, so there is nothing to drift, and "a drifted fake
-  daemon is Muster's top false-green risk" stops being a risk we manage and becomes one we do not have.
+  So the backend seam is not faked at all. Tests that need a daemon spawn a real one under a scratch config
+  directory. What this buys is the removal of a whole category: there is no hand-written herdr in this repo, so
+  there is nothing to drift, and "a drifted fake daemon is Muster's top false-green risk" stops being a risk we
+  manage and becomes one we do not have.
+
+  The daemon is pinned rather than found. `deps/herdr.pin` carries a version and a checksum per platform, `./dev`
+  fetches that binary into `deps/herdr/` once and verifies it, and the path is handed down to the tests through
+  the environment. Nothing consults PATH, for two reasons: a contributor's own herdr should be free to be any
+  version, and a test that resolved its own daemon could quietly run against one nobody verified. The probe that
+  records the corpus uses the same pinned binary, so the oracle and the code being judged always come from one
+  daemon.
 - **Detect wire drift mechanically, not by waiting for a test to fail.** herdr generates a canonical JSON Schema of
   its whole API from its own request types, fails its own build when the two disagree, and embeds it in the binary
   (`herdr api schema --json`). A copy sits in `corpus/herdr-<version>/api-schema.json`, and `./dev` diffs the two
