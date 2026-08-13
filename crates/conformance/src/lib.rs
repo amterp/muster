@@ -244,6 +244,19 @@ pub fn fields<const N: usize>(entries: [(&str, Option<Value>); N]) -> Value {
     Value::Object(map)
 }
 
+/// Bytes as the corpus spells them: lowercase hex, no separators.
+///
+/// Here rather than in each driver because `bytes_hex` is corpus vocabulary - three files
+/// use it - and two drivers rendering it two ways would be a disagreement about the format
+/// rather than about the behavior.
+pub fn hex(bytes: &[u8]) -> String {
+    use std::fmt::Write as _;
+    bytes.iter().fold(String::with_capacity(bytes.len() * 2), |mut out, byte| {
+        let _ = write!(out, "{byte:02x}");
+        out
+    })
+}
+
 /// The strings at `key`, or none. Absent and empty are the same answer here, as in Swift.
 pub fn strings(value: &Value, key: &str) -> Vec<String> {
     value
