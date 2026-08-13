@@ -1,0 +1,311 @@
+//! A held-open connection that keeps a mirror current.
+//!
+//! Thin on purpose. Everything decidable is in `events.rs` and `snapshot.rs`, judged by
+//! recorded cases with no daemon in sight; what is left here is the part that genuinely
+//! needs a socket - dial, notice a hang-up, back off, and rebuild rather than resume.
+//!
+//! Rebuild rather than resume because herdr offers no replay. A client that reconnects and
+//! carries on has patched across a gap it cannot see the size of, and structural gaps leave
+//! no evidence at all (`observations/herdr-0.8.0.md` section 10). Convergent application
+//! makes the rebuild cheap: the replayed session upserts onto what is already there, and
+//! only the genuine differences come out as changes.
+
+use std::io::{Read, Write};
+use std::net::Shutdown;
+use std::os::unix::net::UnixStream;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+use muster_core::mirror::{Change, Mirror};
+use serde_json::{Value, json};
+
+use crate::client::HerdrClient;
+use crate::events::EventDecoder;
+use crate::snapshot::read_snapshot;
+
+/// What the subscription tells its owner, as it happens.
+///
+/// A callback rather than a channel because the shell's job is to react to a change, and a
+/// queue nobody drains is a mirror that renders late. Fired with the mirror's lock
+/// released, so a reaction that reads the mirror does not deadlock against the thread that
+/// wrote it.
+pub type Report = Box<dyn Fn(Notice) + Send>;
+
+/// One thing worth telling the run log or the window about.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Notice {
+    /// The mirror was rebuilt from an authoritative snapshot. Carries what that changed,
+    /// which on a first connection is the whole session and on a reconnect is usually
+    /// nothing.
+    Bootstrapped {
+        changes: Vec<Change>,
+        dropped: usize,
+    },
+    Changed(Change),
+    /// The connection dropped. The mirror is still the best answer available and is now a
+    /// guess about the present.
+    Stale {
+        detail: String,
+    },
+    Reconnected,
+    /// herdr sent an event name this build does not read. One line per name, ever.
+    UnknownEvent {
+        kind: String,
+    },
+}
+
+/// Every session-wide subscription herdr offers that Muster reads.
+///
+/// Dotted here and snake on the way back: a client subscribes to `pane.created` and is
+/// answered with `pane_created`. The two lists have to be kept in step by hand, and the
+/// failure when they are not is silence rather than an error - herdr accepts a
+/// subscription and simply never sends anything, which reads as a daemon with nothing
+/// happening in it.
+///
+/// Not `pane.agent_status_changed`, which is the one that matters most: it takes a
+/// `pane_id` and no unparameterized subscription carries the same information
+/// (`observations/herdr-0.8.0.md` section 11), so agent state costs a connection per pane
+/// and is subscribed separately.
+pub const STRUCTURE: [&str; 15] = [
+    "workspace.created",
+    "workspace.updated",
+    "workspace.renamed",
+    "workspace.closed",
+    "workspace.focused",
+    "tab.created",
+    "tab.renamed",
+    "tab.closed",
+    "tab.focused",
+    "pane.created",
+    "pane.updated",
+    "pane.closed",
+    "pane.exited",
+    "pane.focused",
+    "pane.agent_detected",
+];
+
+/// A subscription's control handle.
+///
+/// Dropping it ends the connection and the thread. Held rather than detached so that a
+/// window closing does not leave a daemon streaming into nothing.
+#[derive(Debug)]
+pub struct Subscription {
+    running: Arc<AtomicBool>,
+    stream: Arc<Mutex<Option<UnixStream>>>,
+}
+
+impl Subscription {
+    /// Starts a thread that keeps `mirror` current until this handle is dropped.
+    ///
+    /// Returns immediately, before the first snapshot: the window should come up saying
+    /// `disconnected` rather than blocking on a daemon that may not be there. `Health`
+    /// already carries that state, and the first `Bootstrapped` replaces it.
+    pub fn start(
+        socket_path: impl Into<String>,
+        mirror: Arc<Mutex<Mirror>>,
+        report: Report,
+    ) -> Subscription {
+        let socket_path = socket_path.into();
+        let running = Arc::new(AtomicBool::new(true));
+        let stream = Arc::new(Mutex::new(None));
+
+        let handle = Subscription { running: running.clone(), stream: stream.clone() };
+        std::thread::Builder::new()
+            .name("muster-subscription".to_string())
+            .spawn(move || run(&socket_path, &mirror, &report, &running, &stream))
+            .expect("could not start the subscription thread");
+        handle
+    }
+}
+
+impl Drop for Subscription {
+    fn drop(&mut self) {
+        self.running.store(false, Ordering::Relaxed);
+        // Shut the socket down rather than waiting for the read to return. The thread is
+        // parked in `read` with no timeout, and a flag alone would not be noticed until
+        // the daemon happened to say something.
+        if let Ok(stream) = self.stream.lock()
+            && let Some(stream) = stream.as_ref()
+        {
+            let _ = stream.shutdown(Shutdown::Both);
+        }
+    }
+}
+
+/// Backoff between attempts, and then every attempt after.
+///
+/// Short at first because the overwhelmingly common drop is a daemon restarting under a
+/// developer's hands, and a window that takes eight seconds to notice it is back feels
+/// broken. Capped low for the same reason - this is a socket on the same machine, or an
+/// SSH tunnel to one, and there is no server to protect from a stampede.
+const BACKOFF: [Duration; 4] = [
+    Duration::from_millis(50),
+    Duration::from_millis(200),
+    Duration::from_millis(500),
+    Duration::from_secs(1),
+];
+
+fn run(
+    socket_path: &str,
+    mirror: &Arc<Mutex<Mirror>>,
+    report: &Report,
+    running: &Arc<AtomicBool>,
+    shared_stream: &Arc<Mutex<Option<UnixStream>>>,
+) {
+    let client = HerdrClient::new(socket_path.to_string());
+    let mut attempt = 0usize;
+    let mut connected_before = false;
+
+    while running.load(Ordering::Relaxed) {
+        match connect(socket_path) {
+            Ok(stream) => {
+                if let Ok(mut slot) = shared_stream.lock() {
+                    *slot = Some(stream.try_clone().expect("could not share the subscription"));
+                }
+                if connected_before {
+                    report(Notice::Reconnected);
+                }
+                connected_before = true;
+                attempt = 0;
+
+                // Snapshot after subscribing, never before. Between a snapshot and a
+                // later subscribe there is a window in which an event fires and reaches
+                // nobody, and it is invisible: the mirror would be wrong in a way no
+                // counter reports. Subscribing first makes the overlap a duplicate
+                // instead, which upsert already absorbs.
+                bootstrap(&client, mirror, report);
+                let detail = stream_events(stream, mirror, report, running);
+
+                if let Ok(mut slot) = shared_stream.lock() {
+                    *slot = None;
+                }
+                if !running.load(Ordering::Relaxed) {
+                    return;
+                }
+                if let Ok(mut mirror) = mirror.lock() {
+                    mirror.mark_stale();
+                }
+                report(Notice::Stale { detail });
+            }
+            Err(detail) => {
+                if let Ok(mut mirror) = mirror.lock() {
+                    // Disconnected rather than stale on a failed dial: nothing has been
+                    // reached, so there is no last good answer to label as aging.
+                    if connected_before { mirror.mark_stale() } else { mirror.mark_disconnected() }
+                }
+                report(Notice::Stale { detail });
+            }
+        }
+
+        let wait = BACKOFF[attempt.min(BACKOFF.len() - 1)];
+        attempt += 1;
+        // Slept in slices so that dropping the handle is noticed within a frame rather
+        // than at the end of the current backoff.
+        let mut slept = Duration::ZERO;
+        while slept < wait && running.load(Ordering::Relaxed) {
+            std::thread::sleep(Duration::from_millis(10));
+            slept += Duration::from_millis(10);
+        }
+    }
+}
+
+/// Dials, subscribes, and waits for the daemon to say it worked.
+///
+/// The write side stays open, unlike every other request this crate sends. An ordinary
+/// herdr call is one line answered with one line, and half-closing is what tells the
+/// daemon the request is complete - do the same here and it treats the subscription as
+/// finished and hangs up immediately, which looks exactly like a daemon with nothing
+/// happening in it.
+///
+/// The acknowledgement is read rather than fed to the decoder. It is the only place a
+/// rejected subscription is visible: a name herdr does not know is refused here and
+/// otherwise costs nothing but silence on that event for as long as the app runs.
+fn connect(socket_path: &str) -> Result<UnixStream, String> {
+    let mut stream = UnixStream::connect(socket_path).map_err(|error| error.to_string())?;
+    let subscriptions: Vec<Value> = STRUCTURE.iter().map(|kind| json!({ "type": kind })).collect();
+    let request = json!({
+        "id": "muster:subscribe",
+        "method": "events.subscribe",
+        "params": { "subscriptions": subscriptions },
+    });
+    let mut payload = request.to_string().into_bytes();
+    payload.push(b'\n');
+    stream.write_all(&payload).map_err(|error| error.to_string())?;
+
+    let acknowledgement = read_line(&mut stream)
+        .ok_or_else(|| "the daemon hung up without answering the subscription".to_string())?;
+    let acknowledgement: Value = serde_json::from_slice(&acknowledgement).map_err(|_| {
+        "the daemon answered the subscription with something unreadable".to_string()
+    })?;
+    if let Some(error) = acknowledgement.get("error") {
+        return Err(format!("the daemon refused the subscription: {error}"));
+    }
+    Ok(stream)
+}
+
+/// Reads one newline-terminated line, for the acknowledgement only.
+///
+/// A byte at a time because the next byte after the newline belongs to the stream, and
+/// reading it into a buffer this function owns would drop the first event of every
+/// connection.
+fn read_line(stream: &mut UnixStream) -> Option<Vec<u8>> {
+    let mut line = Vec::new();
+    let mut byte = [0u8; 1];
+    while line.len() < 1 << 16 {
+        match stream.read(&mut byte) {
+            Ok(1) if byte[0] == b'\n' => return Some(line),
+            Ok(1) => line.push(byte[0]),
+            _ => return None,
+        }
+    }
+    Some(line)
+}
+
+fn bootstrap(client: &HerdrClient, mirror: &Arc<Mutex<Mirror>>, report: &Report) {
+    let Ok(result) = client.request("session.snapshot", &json!({})) else { return };
+    let (snapshot, dropped) = read_snapshot(result.get("snapshot").unwrap_or(&Value::Null));
+    let changes = match mirror.lock() {
+        Ok(mut mirror) => mirror.bootstrap(snapshot),
+        Err(_) => return,
+    };
+    report(Notice::Bootstrapped { changes, dropped });
+}
+
+/// Reads until the daemon hangs up, and says why it stopped.
+fn stream_events(
+    mut stream: UnixStream,
+    mirror: &Arc<Mutex<Mirror>>,
+    report: &Report,
+    running: &Arc<AtomicBool>,
+) -> String {
+    let mut decoder = EventDecoder::new();
+    let mut buffer = [0u8; 8192];
+
+    loop {
+        let read = match stream.read(&mut buffer) {
+            Ok(0) => return "the daemon closed the connection".to_string(),
+            Ok(read) => read,
+            Err(error) => return error.to_string(),
+        };
+        if !running.load(Ordering::Relaxed) {
+            return "shutting down".to_string();
+        }
+
+        let events = decoder.consume(&buffer[..read]);
+        for kind in decoder.take_unknown_kinds() {
+            report(Notice::UnknownEvent { kind });
+        }
+
+        // Applied under the lock, reported outside it. A report that reads the mirror -
+        // which is what rendering a change means - would otherwise deadlock against the
+        // thread that is still holding it.
+        let changes: Vec<Change> = match mirror.lock() {
+            Ok(mut mirror) => events.into_iter().flat_map(|event| mirror.apply(event)).collect(),
+            Err(_) => return "the mirror was poisoned".to_string(),
+        };
+        for change in changes {
+            report(Notice::Changed(change));
+        }
+    }
+}

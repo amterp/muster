@@ -12,6 +12,8 @@ pub mod discovery;
 pub mod events;
 pub mod frame;
 pub mod pane_channel;
+pub mod snapshot;
+pub mod subscription;
 
 pub use client::HerdrClient;
 pub use control_socket::PaneControlChannel;
@@ -20,3 +22,5 @@ pub use discovery::discover_socket_path;
 pub use events::EventDecoder;
 pub use frame::{FrameDecoder, PaneFrame, PaneStreamEvent};
 pub use pane_channel::HerdrPaneChannel;
+pub use snapshot::read_snapshot;
+pub use subscription::{Notice, Subscription};

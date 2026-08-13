@@ -1,0 +1,105 @@
+//! Turns a herdr `session.snapshot` into the mirror's picture of a session.
+//!
+//! The other half of the translation in `events.rs`, and the one that runs first: a
+//! subscription describes changes to a world, and this is where the world comes from. Also
+//! the only route by which the mirror learns it missed something, since herdr's transition
+//! counter reaches a client here and nowhere else
+//! (`observations/herdr-0.8.0.md` section 10).
+
+use muster_core::AgentState;
+use muster_core::mirror::backend::{
+    Focus, Pane, PaneId, Snapshot, Tab, TabId, Workspace, WorkspaceId,
+};
+use serde_json::Value;
+
+/// Reads the `snapshot` object out of a `session.snapshot` result.
+///
+/// Absent lists read as empty rather than as a refusal. A daemon with no workspaces is a
+/// daemon someone just started, and it is a session Muster should render as empty rather
+/// than as broken - the difference between the two is `Health`, which the caller owns.
+///
+/// Entries that will not read are skipped rather than failing the whole snapshot, for the
+/// same reason a bad line does not kill a stream: one unreadable pane should cost that
+/// pane, not the session. `dropped` says how many, so a caller can say so out loud rather
+/// than rendering a quietly smaller world.
+pub fn read_snapshot(snapshot: &Value) -> (Snapshot, usize) {
+    let mut dropped = 0;
+
+    let workspaces = collect(snapshot, "workspaces", &mut dropped, |value| {
+        Some(Workspace {
+            id: WorkspaceId::new(id(value, "workspace_id")?),
+            label: text(value, "label").to_string(),
+        })
+    });
+    let tabs = collect(snapshot, "tabs", &mut dropped, |value| {
+        Some(Tab {
+            id: TabId::new(id(value, "tab_id")?),
+            workspace: WorkspaceId::new(id(value, "workspace_id")?),
+            label: text(value, "label").to_string(),
+        })
+    });
+    // From `panes`, not from `agents`. The two overlap - `agents` is the subset running
+    // one, carrying the same fields plus the counter - and reading the world from the
+    // subset would lose every pane that has no agent, which is most of them.
+    let panes = collect(snapshot, "panes", &mut dropped, |value| {
+        Some(Pane {
+            id: PaneId::new(id(value, "pane_id")?),
+            tab: TabId::new(id(value, "tab_id")?),
+            workspace: WorkspaceId::new(id(value, "workspace_id")?),
+            agent_state: AgentState::from_backend(text(value, "agent_status")),
+            agent: value.get("agent").and_then(Value::as_str).map(str::to_string),
+            cwd: text(value, "cwd").to_string(),
+        })
+    });
+
+    // The highest stamp, not the count of agents: it is one session-wide counter, so the
+    // highest value is what the session has run in total, and a pane that has never had an
+    // agent contributes nothing to it.
+    let agent_state_seq = snapshot
+        .get("agents")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|agent| agent.get("state_change_seq").and_then(Value::as_u64))
+        .max();
+
+    let snapshot = Snapshot {
+        workspaces,
+        tabs,
+        panes,
+        focus: Focus {
+            workspace: id(snapshot, "focused_workspace_id").map(WorkspaceId::new),
+            tab: id(snapshot, "focused_tab_id").map(TabId::new),
+            pane: id(snapshot, "focused_pane_id").map(PaneId::new),
+        },
+        agent_state_seq,
+    };
+    (snapshot, dropped)
+}
+
+fn collect<T>(
+    snapshot: &Value,
+    key: &str,
+    dropped: &mut usize,
+    read: impl Fn(&Value) -> Option<T>,
+) -> Vec<T> {
+    let mut out = Vec::new();
+    for value in snapshot.get(key).and_then(Value::as_array).into_iter().flatten() {
+        match read(value) {
+            Some(item) => out.push(item),
+            None => *dropped += 1,
+        }
+    }
+    out
+}
+
+/// A required identifier: present, a string, and not empty. Empty is refused for the same
+/// reason as on the event path - it is a lookup key that finds nothing while looking like
+/// an entity nobody created.
+fn id(value: &Value, key: &str) -> Option<String> {
+    value.get(key).and_then(Value::as_str).filter(|id| !id.is_empty()).map(str::to_string)
+}
+
+fn text<'a>(value: &'a Value, key: &str) -> &'a str {
+    value.get(key).and_then(Value::as_str).unwrap_or_default()
+}

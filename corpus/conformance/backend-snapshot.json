@@ -1,0 +1,469 @@
+{
+  "concept": "backend-snapshot",
+  "source": "recorded",
+  "regenerate": "tools/herdr-probe/probe lifecycle agent-states",
+  "why": "session.snapshot is where the mirror's world comes from - the first thing a connection reads and the thing every reconnect rebuilds from, since herdr offers no replay. The twin of backend-events.json, split from it because a response and a stream fail differently and a failure should say which one moved. The payloads are recorded snapshots except where a case is about a shape we have not seen and want to survive.",
+  "cases": [
+    {
+      "name": "a three-pane session reads as three panes and one tab",
+      "why": "The shape a real snapshot arrives in, taken from the deepest layout the corpus has. Everything the mirror renders comes from here, and this is the case that would go red if herdr renamed any of it.",
+      "given": {
+        "snapshot": {
+          "agents": [],
+          "focused_pane_id": "w1:p1",
+          "focused_tab_id": "w1:t1",
+          "focused_workspace_id": "w1",
+          "layouts": [
+            {
+              "area": {
+                "height": 23,
+                "width": 54,
+                "x": 26,
+                "y": 1
+              },
+              "focused_pane_id": "w1:p1",
+              "panes": [
+                {
+                  "focused": true,
+                  "pane_id": "w1:p1",
+                  "rect": {
+                    "height": 23,
+                    "width": 27,
+                    "x": 26,
+                    "y": 1
+                  }
+                },
+                {
+                  "focused": false,
+                  "pane_id": "w1:p2",
+                  "rect": {
+                    "height": 12,
+                    "width": 27,
+                    "x": 53,
+                    "y": 1
+                  }
+                },
+                {
+                  "focused": false,
+                  "pane_id": "w1:p3",
+                  "rect": {
+                    "height": 11,
+                    "width": 27,
+                    "x": 53,
+                    "y": 13
+                  }
+                }
+              ],
+              "splits": [
+                {
+                  "direction": "right",
+                  "id": "split_0_root",
+                  "ratio": 0.5,
+                  "rect": {
+                    "height": 23,
+                    "width": 54,
+                    "x": 26,
+                    "y": 1
+                  }
+                },
+                {
+                  "direction": "down",
+                  "id": "split_1_1",
+                  "ratio": 0.5,
+                  "rect": {
+                    "height": 23,
+                    "width": 27,
+                    "x": 53,
+                    "y": 1
+                  }
+                }
+              ],
+              "tab_id": "w1:t1",
+              "workspace_id": "w1",
+              "zoomed": false
+            }
+          ],
+          "panes": [
+            {
+              "agent_status": "unknown",
+              "cwd": "/private/tmp",
+              "focused": true,
+              "foreground_cwd": "/private/tmp",
+              "pane_id": "w1:p1",
+              "revision": 0,
+              "scroll": {
+                "max_offset_from_bottom": 0,
+                "offset_from_bottom": 0,
+                "viewport_rows": 23
+              },
+              "tab_id": "w1:t1",
+              "terminal_id": "term_658f07c3ea9a21",
+              "workspace_id": "w1"
+            },
+            {
+              "agent_status": "unknown",
+              "cwd": "/private/tmp",
+              "focused": false,
+              "foreground_cwd": "/private/tmp",
+              "pane_id": "w1:p2",
+              "revision": 0,
+              "scroll": {
+                "max_offset_from_bottom": 0,
+                "offset_from_bottom": 0,
+                "viewport_rows": 23
+              },
+              "tab_id": "w1:t1",
+              "terminal_id": "term_658f07c55ea8a2",
+              "workspace_id": "w1"
+            },
+            {
+              "agent_status": "unknown",
+              "cwd": "/private/tmp",
+              "focused": false,
+              "foreground_cwd": "/private/tmp",
+              "pane_id": "w1:p3",
+              "revision": 0,
+              "scroll": {
+                "max_offset_from_bottom": 0,
+                "offset_from_bottom": 0,
+                "viewport_rows": 23
+              },
+              "tab_id": "w1:t1",
+              "terminal_id": "term_658f07c5c37923",
+              "workspace_id": "w1"
+            }
+          ],
+          "protocol": 19,
+          "tabs": [
+            {
+              "agent_status": "unknown",
+              "focused": true,
+              "label": "1",
+              "number": 1,
+              "pane_count": 3,
+              "tab_id": "w1:t1",
+              "workspace_id": "w1"
+            }
+          ],
+          "version": "0.8.0",
+          "workspaces": [
+            {
+              "active_tab_id": "w1:t1",
+              "agent_status": "unknown",
+              "focused": true,
+              "label": "tmp",
+              "number": 1,
+              "pane_count": 3,
+              "tab_count": 1,
+              "workspace_id": "w1"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "workspaces": [
+          "w1"
+        ],
+        "tabs": [
+          "w1:t1"
+        ],
+        "panes": [
+          "w1:p1",
+          "w1:p2",
+          "w1:p3"
+        ],
+        "agentStates": {
+          "w1:p1": "unknown",
+          "w1:p2": "unknown",
+          "w1:p3": "unknown"
+        },
+        "agents": {},
+        "focus": {
+          "workspace": "w1",
+          "tab": "w1:t1",
+          "pane": "w1:p1"
+        },
+        "agentStateSeq": null,
+        "dropped": 0
+      }
+    },
+    {
+      "name": "panes are read from panes, never from agents",
+      "why": "The two lists overlap: agents is the subset running one, carrying the same fields plus the counter. Reading the world from that subset would drop every pane without an agent, which is most of them, and would look like a session that lost its panes rather than like a translation bug.",
+      "given": {
+        "snapshot": {
+          "agents": [
+            {
+              "agent": "probe",
+              "agent_status": "working",
+              "cwd": "/private/tmp",
+              "focused": true,
+              "foreground_cwd": "/private/tmp",
+              "pane_id": "w1:p1",
+              "revision": 0,
+              "state_change_seq": 5,
+              "tab_id": "w1:t1",
+              "terminal_id": "term_658cc79740b221",
+              "workspace_id": "w1"
+            }
+          ],
+          "focused_pane_id": "w1:p1",
+          "focused_tab_id": "w1:t1",
+          "focused_workspace_id": "w1",
+          "layouts": [
+            {
+              "area": {
+                "height": 23,
+                "width": 54,
+                "x": 26,
+                "y": 1
+              },
+              "focused_pane_id": "w1:p1",
+              "panes": [
+                {
+                  "focused": true,
+                  "pane_id": "w1:p1",
+                  "rect": {
+                    "height": 23,
+                    "width": 54,
+                    "x": 26,
+                    "y": 1
+                  }
+                }
+              ],
+              "splits": [],
+              "tab_id": "w1:t1",
+              "workspace_id": "w1",
+              "zoomed": false
+            }
+          ],
+          "panes": [
+            {
+              "agent": "probe",
+              "agent_status": "working",
+              "cwd": "/private/tmp",
+              "focused": true,
+              "foreground_cwd": "/private/tmp",
+              "pane_id": "w1:p1",
+              "revision": 0,
+              "scroll": {
+                "max_offset_from_bottom": 0,
+                "offset_from_bottom": 0,
+                "viewport_rows": 23
+              },
+              "tab_id": "w1:t1",
+              "terminal_id": "term_658cc79740b221",
+              "workspace_id": "w1"
+            }
+          ],
+          "protocol": 19,
+          "tabs": [
+            {
+              "agent_status": "working",
+              "focused": true,
+              "label": "1",
+              "number": 1,
+              "pane_count": 1,
+              "tab_id": "w1:t1",
+              "workspace_id": "w1"
+            }
+          ],
+          "version": "0.8.0",
+          "workspaces": [
+            {
+              "active_tab_id": "w1:t1",
+              "agent_status": "working",
+              "focused": true,
+              "label": "tmp",
+              "number": 1,
+              "pane_count": 1,
+              "tab_count": 1,
+              "workspace_id": "w1"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "workspaces": [
+          "w1"
+        ],
+        "tabs": [
+          "w1:t1"
+        ],
+        "panes": [
+          "w1:p1"
+        ],
+        "agentStates": {
+          "w1:p1": "working"
+        },
+        "agents": {
+          "w1:p1": "probe"
+        },
+        "focus": {
+          "workspace": "w1",
+          "tab": "w1:t1",
+          "pane": "w1:p1"
+        },
+        "agentStateSeq": 5,
+        "dropped": 0
+      }
+    },
+    {
+      "name": "the transition counter is the highest stamp, not the number of agents",
+      "why": "It is one session-wide counter (herdr src/app/actions.rs:2973), so panes carry interleaved values and the highest is what the session has run in total. Counting agents instead would make the gap check compare a total against a population and report a missed notification on every reconnect.",
+      "given": {
+        "snapshot": {
+          "panes": [],
+          "agents": [
+            {
+              "pane_id": "w1:p1",
+              "state_change_seq": 2
+            },
+            {
+              "pane_id": "w1:p5",
+              "state_change_seq": 9
+            },
+            {
+              "pane_id": "w1:p7",
+              "state_change_seq": 4
+            }
+          ]
+        }
+      },
+      "expect": {
+        "workspaces": [],
+        "tabs": [],
+        "panes": [],
+        "agentStates": {},
+        "agents": {},
+        "focus": {},
+        "agentStateSeq": 9,
+        "dropped": 0
+      }
+    },
+    {
+      "name": "a daemon with nothing open is an empty session, not a failure",
+      "why": "What a freshly started herdr answers. Rendering it as broken would send someone debugging a connection that is working perfectly; whether the daemon is reachable is Health, and this is not that.",
+      "given": {
+        "snapshot": {
+          "protocol": 19,
+          "version": "0.8.0"
+        }
+      },
+      "expect": {
+        "workspaces": [],
+        "tabs": [],
+        "panes": [],
+        "agentStates": {},
+        "agents": {},
+        "focus": {},
+        "agentStateSeq": null,
+        "dropped": 0
+      }
+    },
+    {
+      "name": "one unreadable pane costs that pane and is counted",
+      "why": "Same principle as a bad line on the stream: a session should survive one entry herdr changed. Counting them is what stops the survival from being silent - a mirror quietly one pane short looks exactly like a user who closed one.",
+      "given": {
+        "snapshot": {
+          "panes": [
+            {
+              "pane_id": "w1:p1",
+              "tab_id": "w1:t1",
+              "workspace_id": "w1",
+              "agent_status": "idle"
+            },
+            {
+              "pane_id": "w1:p2",
+              "workspace_id": "w1",
+              "agent_status": "idle"
+            },
+            {
+              "pane_id": "",
+              "tab_id": "w1:t1",
+              "workspace_id": "w1",
+              "agent_status": "idle"
+            }
+          ],
+          "tabs": [
+            {
+              "tab_id": "w1:t1",
+              "workspace_id": "w1",
+              "label": "1"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "workspaces": [],
+        "tabs": [
+          "w1:t1"
+        ],
+        "panes": [
+          "w1:p1"
+        ],
+        "agentStates": {
+          "w1:p1": "idle"
+        },
+        "agents": {},
+        "focus": {},
+        "agentStateSeq": null,
+        "dropped": 2
+      }
+    },
+    {
+      "name": "a focus cursor herdr did not state is unset, not empty",
+      "why": "The mirror reads an unset cursor as saying nothing about that level. An empty string would be a cursor naming a pane that cannot exist, and every reader would have to handle the dangling case that the one who forgets renders as a missing pane.",
+      "given": {
+        "snapshot": {
+          "panes": [],
+          "focused_workspace_id": "w1",
+          "focused_tab_id": "",
+          "focused_pane_id": null
+        }
+      },
+      "expect": {
+        "workspaces": [],
+        "tabs": [],
+        "panes": [],
+        "agentStates": {},
+        "agents": {},
+        "focus": {
+          "workspace": "w1"
+        },
+        "agentStateSeq": null,
+        "dropped": 0
+      }
+    },
+    {
+      "name": "an agent status herdr invented since this build reads as unknown",
+      "why": "The snapshot path needs the same failing-closed as the event path, because a reconnect runs through here. Reading a new state as idle would tell the user nothing needs them, which is the one answer worse than showing nothing.",
+      "given": {
+        "snapshot": {
+          "panes": [
+            {
+              "pane_id": "w1:p1",
+              "tab_id": "w1:t1",
+              "workspace_id": "w1",
+              "agent_status": "compacting"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "workspaces": [],
+        "tabs": [],
+        "panes": [
+          "w1:p1"
+        ],
+        "agentStates": {
+          "w1:p1": "unknown"
+        },
+        "agents": {},
+        "focus": {},
+        "agentStateSeq": null,
+        "dropped": 0
+      }
+    }
+  ]
+}

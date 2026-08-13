@@ -160,23 +160,23 @@ impl Mirror {
                 }
             }
             BackendEvent::TabRemoved(id) => self.remove_tab(&id),
-            BackendEvent::PaneUpserted(pane) => {
+            // Structure only, on a pane that already exists. A backend that carries agent
+            // state on its structure events is a second writer for it, and the older of
+            // the two: herdr replays the session as it stood when the subscription opened,
+            // so a replayed pane would roll a live agent state back to whatever it was
+            // then, with nothing arriving afterwards to correct it - agent state comes on
+            // its own per-pane subscription. That channel owns the field, and a pane's
+            // first appearance is the only thing taken from here.
+            BackendEvent::PaneUpserted(mut pane) => {
                 let id = pane.id.clone();
-                match self.panes.insert(id.clone(), pane) {
-                    None => vec![Change::PaneAdded(id)],
-                    Some(before) => {
-                        let now = self.panes[&id].agent_state;
-                        if before.agent_state == now {
-                            Vec::new()
-                        } else {
-                            vec![Change::AgentStateChanged {
-                                pane: id,
-                                from: before.agent_state,
-                                to: now,
-                            }]
-                        }
-                    }
-                }
+                let Some(before) = self.panes.get(&id) else {
+                    self.panes.insert(id.clone(), pane);
+                    return vec![Change::PaneAdded(id)];
+                };
+                pane.agent_state = before.agent_state;
+                pane.agent = pane.agent.or_else(|| before.agent.clone());
+                self.panes.insert(id, pane);
+                Vec::new()
             }
             BackendEvent::PaneRemoved(id) => self.remove_pane(&id, false),
             BackendEvent::AgentStateChanged { pane, state } => {

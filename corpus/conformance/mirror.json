@@ -442,6 +442,52 @@
       }
     },
     {
+      "name": "a replayed pane does not roll back a live agent state",
+      "why": "herdr replays the session as it stood when the subscription opened, and its pane payloads carry agent_status. Letting a structure event write that field makes the backend two writers for it, the replay being the older one, and nothing arrives afterwards to correct the rollback - agent state comes on its own per-pane subscription. A pane stuck showing idle while its agent works is this product failing at the one thing it is for.",
+      "given": {
+        "snapshot": {
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "agentStateChanged",
+            "pane": "w1:p1",
+            "state": "working"
+          },
+          {
+            "kind": "paneUpserted",
+            "id": "w1:p1",
+            "tab": "w1:t1",
+            "workspace": "w1",
+            "agentState": "idle",
+            "cwd": "/tmp"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1"
+        ],
+        "tabs": [],
+        "workspaces": [],
+        "agentStates": {
+          "w1:p1": "working"
+        },
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "agentStateChanged:w1:p1:idle->working"
+        ]
+      }
+    },
+    {
       "name": "an agent state for an unknown pane is dropped, not invented",
       "why": "An agent event carries a pane id and nothing else - no tab, no workspace. A mirror that created a pane from one would hold an orphan the view cannot place in any tab, which is worse than missing it: the pane would appear nowhere and never leave. The snapshot after a reconnect is what fills real gaps.",
       "given": {
