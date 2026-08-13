@@ -1,132 +1,132 @@
-kan_schema = "board/12"
-id = "b_26BH4D7J4"
-name = "main"
 default_column = "backlog-lo"
+id = "b_26BH4D7J4"
+kan_schema = "board/13"
+name = "main"
+
+[card_display]
+  badges = ["labels", "area"]
+  type_indicator = "type"
 
 [[columns]]
-  name = "uncommitted"
   color = "#a1a1aa"
   description = "Open questions and ideas not yet committed to. When one settles, the why lands in a commit message or a MIP, and the card moves on or dies."
   limit = 0
+  name = "uncommitted"
 
 [[columns]]
-  name = "backlog-lo"
   color = "#6b7280"
   description = "Worth doing eventually. Nice-to-haves, speculative ideas, and anything that can wait until the core proves itself."
   limit = 0
+  name = "backlog-lo"
 
 [[columns]]
-  name = "backlog-hi"
   color = "#3b82f6"
   description = "Committed work on the path to a daily-drivable muster. Not scheduled yet, but not optional either."
   limit = 0
+  name = "backlog-hi"
 
 [[columns]]
-  name = "next"
   color = "#f59e0b"
   description = "Ready to pick up now: scoped, unblocked, and understood well enough to start without further design. Agents: when finishing work empties this column, refill it from the backlog by priority and natural sequencing."
   limit = 8
+  name = "next"
 
 [[columns]]
-  name = "in-progress"
   color = "#10b981"
   description = "Actively being worked on, agents in parallel included. What matters is movement, not count: a card sitting here untouched is stalled work, not work in flight."
   limit = 6
+  name = "in-progress"
 
 [[columns]]
-  name = "done"
   color = "#9333ea"
   description = "Finished and verified: code merged, tests green, docs updated where the change needed them."
   limit = 0
+  name = "done"
 
 [custom_fields]
   [custom_fields.area]
-    type = "enum-set"
     description = "Which part of muster the card touches"
+    type = "enum-set"
 
     [[custom_fields.area.options]]
-      value = "shell"
       color = "#8b5cf6"
       description = "The native app layer: windows, split UI, keymap, sidebar"
+      value = "shell"
 
     [[custom_fields.area.options]]
-      value = "renderer"
       color = "#06b6d4"
       description = "libghostty embedding and surface management"
+      value = "renderer"
 
     [[custom_fields.area.options]]
-      value = "backend"
       color = "#f59e0b"
       description = "herdr protocol, the pane bridge, daemons, SSH transport"
+      value = "backend"
 
     [[custom_fields.area.options]]
-      value = "testing"
       color = "#22c55e"
       description = "Harness, fakes, corpora, snapshots, CI"
+      value = "testing"
 
     [[custom_fields.area.options]]
-      value = "devenv"
       color = "#64748b"
       description = "The Linux devenv container and local tooling"
+      value = "devenv"
   [custom_fields.labels]
-    type = "enum-set"
     description = "Workflow flags that cut across areas"
+    type = "enum-set"
 
     [[custom_fields.labels.options]]
-      value = "ai-hi"
       color = "#22c55e"
       description = "Well-suited to autonomous AI work: scoped, mechanical, little judgment needed"
+      value = "ai-hi"
 
     [[custom_fields.labels.options]]
-      value = "ai-lo"
       color = "#eab308"
       description = "Probably suitable for AI, but needs review of the judgment calls"
+      value = "ai-lo"
 
     [[custom_fields.labels.options]]
-      value = "blocked"
       color = "#71717a"
       description = "Waiting on a decision or on another card"
+      value = "blocked"
 
     [[custom_fields.labels.options]]
-      value = "kill-criterion"
       color = "#dc2626"
       description = "A stage-gate check from docs/origin.md: failing it questions the whole approach"
+      value = "kill-criterion"
   [custom_fields.type]
+    description = "The kind of work this card represents"
     type = "enum"
     wanted = true
-    description = "The kind of work this card represents"
 
     [[custom_fields.type.options]]
-      value = "bug"
       color = "#dc2626"
       description = "A defect: wrong behavior, a crash, or a rendering/input infidelity"
+      value = "bug"
 
     [[custom_fields.type.options]]
-      value = "feature"
       color = "#16a34a"
       description = "New capability muster does not have yet"
+      value = "feature"
 
     [[custom_fields.type.options]]
-      value = "enhancement"
       color = "#2563eb"
       description = "An improvement to something that already works"
+      value = "enhancement"
 
     [[custom_fields.type.options]]
-      value = "docs"
       color = "#0891b2"
       description = "README, origin, design notes, or agent guidance"
+      value = "docs"
 
     [[custom_fields.type.options]]
-      value = "chore"
       color = "#4b5563"
       description = "Maintenance, tooling, measurement, or a decision to make"
-
-[card_display]
-  type_indicator = "type"
-  badges = ["labels", "area"]
+      value = "chore"
 
 [[pattern_hooks]]
+  command = ".kan/hooks/type-shortcut.rad"
   name = "type-shortcut"
   pattern_title = "![a-zA-Z]+"
-  command = ".kan/hooks/type-shortcut.rad"
   timeout = 0

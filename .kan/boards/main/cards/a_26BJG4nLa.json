@@ -5,7 +5,15 @@
   "area": [
     "testing"
   ],
-  "column": "backlog-hi",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Not building this, and the reason is measured rather than a change of taste.\n\nThe fake existed because a real daemon was assumed too slow for the default gate. It is not: 25 ms to spawn and answer, 0.7 ms for a snapshot, 0.7 ms for a full mirror bootstrap, 30 repeat runs with no flakes. The seconds-per-test cost belongs to agent detection, which screen-scrapes on a hardcoded 2s timer, and tests set agent state through the API instead.\n\nSo there is no hand-written herdr anywhere in this repo, and the top false-green risk testing.md names stops being one we manage. See docs/testing.md and commit ac48039.\n\nWhat replaced its two jobs: realism comes from a pinned real daemon (deps/herdr.pin, fetched and checksummed by ./dev); fault injection comes from the code's own shape - the event parser takes a reader so a recorded stream can be cut anywhere, and killing a real daemon ends a subscription in 0.8 ms. A proxy that corrupted real traffic was considered and rejected: it would put byte-level protocol emulation back.",
+      "created_at_millis": 1786639999955,
+      "id": "c_27O5EJK57"
+    }
+  ],
   "created_at_millis": 1786461793201,
   "creator": "Alexander Terp",
   "description": "In-process fake speaking the published herdr-api.schema.json at the socket seam: layout.export, events.subscribe, terminal session control streams. The IT edge for everything above the wire.",
@@ -13,11 +21,12 @@
   "labels": [
     "ai-hi"
   ],
-  "position": "UU",
+  "position": "E",
   "title": "Fake herdr daemon for the test harness",
   "type": "feature",
-  "updated_at_millis": 1786461793201,
+  "updated_at_millis": 1786639999988,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1786461793201}
+    {"field":"column","value":"backlog-hi","at":1786461793201},
+    {"field":"column","value":"done","at":1786639999988}
   ]
 }

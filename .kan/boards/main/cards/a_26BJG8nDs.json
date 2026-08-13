@@ -1,20 +1,28 @@
 {
   "_v": 3,
-  "alias": "contract-tests",
+  "alias": "run-the-corpus",
   "alias_explicit": false,
   "area": [
     "testing",
     "devenv"
   ],
   "column": "backlog-hi",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Rewritten: there is no fake to audit any more, so the original framing (replay the fake's corpus against real herdr) has no subject.\n\nTwo of its three jobs are already done. The corpus is recorded from a real daemon rather than written, and drift is caught mechanically - the gate diffs 'herdr api schema --json' against corpus/herdr-0.8.0/api-schema.json before running anything, so a changed wire is named with the command that shows what moved.\n\nWhat is left is the cross-platform half: run the same recordings against the Linux daemon in the devenv container and diff, which tools/herdr-probe/diff-corpus already does and section 8 of the observations doc last did at 0 differences. Worth re-running on every herdr re-pin, and worth wiring into CI once CI exists.",
+      "created_at_millis": 1786640007894,
+      "id": "c_27O5R7LV3"
+    }
+  ],
   "created_at_millis": 1786461793244,
   "creator": "Alexander Terp",
   "description": "The same recorded exchanges run against a real daemon (local + devenv container) so the fake cannot drift from reality. Fakes preserve the real edge's contract - this is what enforces it.",
   "id": "a_26BJG8nDs",
   "position": "UUU",
-  "title": "Contract tests: replay the fake's corpus against real herdr",
+  "title": "Run the corpus against a Linux herdr in the devenv container",
   "type": "feature",
-  "updated_at_millis": 1786461793244,
+  "updated_at_millis": 1786640007894,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786461793244}
   ]

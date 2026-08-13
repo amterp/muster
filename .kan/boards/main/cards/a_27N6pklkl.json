@@ -20,7 +20,7 @@
   "position": "UUUUUUUUUUUUUUUUUUUU",
   "title": "🔌 Upstream: agent state needs a subscription per pane",
   "type": "chore",
-  "updated_at_millis": 1786637699032,
+  "updated_at_millis": 1786640025621,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786637678329}
   ]

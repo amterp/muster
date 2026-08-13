@@ -1,6 +1,6 @@
 {
   "_v": 3,
-  "alias": "contract-tier-run",
+  "alias": "run-the-input-path",
   "alias_explicit": false,
   "area": [
     "testing"
@@ -12,6 +12,12 @@
       "body": "Proven possible headlessly during the seam work: load target/debug/libmuster.dylib, dispatch Startup + AttachPane, spawn muster-bridge at the returned socket path, dispatch KeyDown, then read the pane back with herdr's pane.read. `echo hi` echoed. Worth writing as a Rust integration test against muster-seam rather than in Python - the probe used to prove it hand-rolled protobuf, which would rot.",
       "created_at_millis": 1786635157719,
       "id": "c_27M3GFJHy"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Retitled: this said 'contract tier' because the default gate was not allowed a daemon. It is now, so this moves into the ordinary suite rather than a tier beside it.\n\nThe shape is unchanged and the recipe from the previous comment still holds - attach, spawn the bridge at the returned socket, send keys, read the pane back - but it is a Rust integration test spawning the pinned daemon, not a Python script run out of band. The daemon harness it needs is the same one the mirror's connection tests need, so they should be built together and it should not land before that harness exists.",
+      "created_at_millis": 1786640015747,
+      "id": "c_27O5dmyhJ"
     }
   ],
   "created_at_millis": 1786614280073,
@@ -19,9 +25,9 @@
   "description": "The input path is verified end to end today by a throwaway script: isolated daemon, cat -v in a pane, muster-bridge relaying, assert the bytes that arrive. That check is worth keeping and is not in the suite, because the default tier must stay offline and deterministic (docs/testing.md).\n\nShape: the contract tier docs/testing.md already describes - real version-pinned herdr, isolated config dir, throwaway session per test, synchronized by event waits rather than sleeps. The oracle is the grid harness that already exists: put a program in the pane, send encoded keys, snapshot what the screen becomes.\n\nWorth doing once there is a second thing to verify this way, so the tier is built for two cases rather than shaped around one.",
   "id": "a_27DI8d0td",
   "position": "UUUU",
-  "title": "Contract tier: run the input path against a real herdr",
+  "title": "Run the input path against a real herdr, in the gate",
   "type": "feature",
-  "updated_at_millis": 1786636530762,
+  "updated_at_millis": 1786640015747,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786614280073},
     {"field":"column","value":"next","at":1786635166002},
