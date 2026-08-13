@@ -71,12 +71,19 @@ let package = Package(
     // Spawned as a surface's command, one per visible pane. Its own executable because
     // that is the only shape libghostty can be fed by.
     .executableTarget(name: "muster-bridge", dependencies: ["MusterHerdr"]),
-    .executableTarget(name: "muster", dependencies: ["MusterCore", "MusterRenderer", "MusterVT"]),
+    .executableTarget(
+      name: "muster", dependencies: ["MusterCore", "MusterHerdr", "MusterRenderer", "MusterVT"]),
     // Test plumbing, shared rather than duplicated: the snapshot cases the grid oracle
     // writes and the ones the input path will write are the same mechanism.
     .target(name: "TestSupport", path: "Tests/Support"),
     .testTarget(name: "MusterCoreTests", dependencies: ["MusterCore"]),
     .testTarget(name: "MusterHerdrTests", dependencies: ["MusterHerdr"]),
-    .testTarget(name: "MusterVTTests", dependencies: ["MusterVT", "MusterHerdr", "TestSupport"]),
+    .testTarget(
+      name: "MusterVTTests",
+      dependencies: ["MusterVT", "MusterHerdr", "TestSupport"],
+      // Snapshots are read from the source tree by path, not from a bundle, so that
+      // regenerating one and reading its diff are the same file. Declared here because
+      // SwiftPM otherwise warns about them as unhandled resources.
+      exclude: ["snapshots"]),
   ]
 )
