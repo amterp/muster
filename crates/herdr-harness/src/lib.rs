@@ -204,7 +204,12 @@ impl Drop for Daemon {
 /// `deps/herdr.pin`, verifies its checksum, and passes the path down, so a suite that
 /// passed did so against the daemon the corpus was recorded with - while the herdr on the
 /// developer's PATH stays whatever version their own work wants.
-fn binary() -> String {
+///
+/// Public because a test may have to hand this to a subprocess of its own. `muster-bridge`
+/// runs `herdr terminal session control` off PATH, which is right in production and would
+/// otherwise reach for a version nobody verified here, so a test that spawns one puts this
+/// binary's directory on the PATH it hands over.
+pub fn binary() -> String {
     std::env::var("MUSTER_HERDR").unwrap_or_else(|_| {
         panic!(
             "MUSTER_HERDR is not set.\n  Impact: this test needs a real daemon and has no \

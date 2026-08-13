@@ -13,5 +13,15 @@ libc.workspace = true
 muster-core.workspace = true
 muster-herdr.workspace = true
 
+# The end-to-end input test lives here rather than beside the seam it drives, because
+# cargo only hands `CARGO_BIN_EXE_<name>` to tests in the package that owns the binary -
+# and the whole point of that test is that a real bridge process is in the middle.
+[dev-dependencies]
+herdr-harness.workspace = true
+muster-seam.workspace = true
+muster-vt.workspace = true
+prost.workspace = true
+serde_json.workspace = true
+
 [lints]
 workspace = true
