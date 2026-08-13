@@ -28,9 +28,10 @@ shape.
   simplifies; we never let one own our contract.
 - **Green suite means it works.** Muster is built largely by AI agents, so the suite carries the confidence an
   author's memory cannot. What makes that achievable here: a thin shell over a thick headless core, so no logic hides
-  in the untestable layer; the world faked only at the two seams, with the fakes audited against real herdr; oracles
-  recorded from reality - terminal grids via libghostty-vt, intent on the wire - never pixels or internals;
-  deterministic and offline.
+  in the untestable layer; a real, version-pinned herdr behind the backend seam rather than a stand-in, because a
+  stand-in is Muster's own guess at a daemon and a wrong guess passes; oracles recorded from reality - terminal grids
+  via libghostty-vt, intent on the wire - never pixels or internals; deterministic, and offline in the sense that
+  nothing reaches the network.
 - **Every run explains itself.** Muster is several processes, often on several machines, and a symptom in one usually
   has its cause in another: a window that ignores the keyboard is a bridge that never started, or one that started and
   could not dial back. Each run leaves a single machine-readable timeline spanning all of them, so a bug report is a
@@ -80,10 +81,17 @@ functional green is never a performance claim, so neither runs by default.
 Two toolchains, one door: the gate builds, tests and lints the Rust core and the Swift shell together, and a suite
 that discovers zero tests fails in either language rather than reporting green.
 
-Requires a Swift 6.2 toolchain, [Rad](https://github.com/amterp/rad), and Zig 0.16 on your PATH; a missing `rad`
-shows up as `env: rad: No such file or directory`. Rust installs itself - `rust-toolchain.toml` pins the version and
-rustup fetches it on the first `cargo` call, the same way `deps/ghostty.pin` decides which libghostty gets built.
-libclang, which the libghostty-vt bindings are generated with, comes from the Xcode command line tools.
+Requires a Swift 6.2 toolchain, [Rad](https://github.com/amterp/rad), Zig 0.16, and the herdr release named in
+`deps/herdr.pin` on your PATH; a missing `rad` shows up as `env: rad: No such file or directory`. Rust installs
+itself - `rust-toolchain.toml` pins the version and rustup fetches it on the first `cargo` call, the same way
+`deps/ghostty.pin` decides which libghostty gets built. libclang, which the libghostty-vt bindings are generated
+with, comes from the Xcode command line tools.
+
+herdr is a test dependency as well as a runtime one, and `./dev -t` checks both its version and its wire schema
+before running anything. Tests that need a daemon spawn a real one under a scratch config directory: it costs 25 ms
+to start, and no hand-written stand-in has to be kept honest. A daemon that reports a different schema than
+`corpus/herdr-<version>/api-schema.json` fails the run with the diff, rather than being discovered later as a
+confusing test failure.
 
 The seam's types are generated from `proto/muster.proto` on both sides and committed on neither, so a checkout
 cannot hold a shell and a core that disagree. Neither generator is a thing you install: Rust compiles the schema

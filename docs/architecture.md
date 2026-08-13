@@ -243,10 +243,12 @@ Where the file lives is an OS question and therefore the shell's; nothing in the
 
 ## Seams and test hooks
 
-The injected edges, matching `testing.md`: the backend connection (a fake daemon speaks the same
-vocabulary), the clock, and the renderer seam (tests feed pane channels through libghostty-vt and assert the
-resulting grid). The contract corpus sits at the adapter seam; it audits the fake against a real, version-pinned
-herdr. The perf harness measures at the same edges, at 1 and 15 panes (desiderata budgets).
+The injected edges, matching `testing.md`: the clock, and the renderer seam (tests feed pane channels through
+libghostty-vt and assert the resulting grid). The backend connection is deliberately *not* one of them - tests
+spawn a real, version-pinned herdr rather than a stand-in, so the adapter is judged against the daemon itself.
+What is injectable there is narrower and lives in the code's own shape: the event parser takes a reader rather
+than a socket, so a recorded stream can be cut anywhere, and the connection loop takes a socket path, so a killed
+daemon is the disconnect case. The perf harness measures at the same edges, at 1 and 15 panes (desiderata budgets).
 
 ## Deliberately open
 

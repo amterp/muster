@@ -16,14 +16,30 @@ Muster's principles, adapted to that evidence:
   tracking, intent - lives in a headless core with no I/O, no clock, no OS types. The shell only wires OS events in
   and surfaces out, so its failure modes are wiring failures, covered by a small smoke layer. If something is hard
   to test, it is in the wrong layer: move it, don't mock around it.
-- **Fake only the seams, and fake them honestly.** The outside world enters at the backend connection and the
-  renderer seam, plus the clock. Tests run the real core against fakes only there, and the fakes keep the contract's
-  awkward parts - frame batching, disconnects mid-stream, out-of-order events, resize races. A polite fake is false
-  confidence.
-- **Audit the fakes against reality.** We do not own the backend, and its API is explicitly unstable; a drifted fake
-  daemon is Muster's top false-green risk. One contract corpus replays against both the fake and a real herdr -
-  local and the devenv container in CI. When herdr changes behavior the corpus fails loudly; that is the upgrade
-  gate, not a production surprise.
+- **Do not fake the backend. Run a real one.** This started as "fake only the seams, and audit the fakes against
+  reality," on the reasoning that a real daemon would be too slow for the default gate. Measured, that reasoning was
+  wrong: a herdr daemon costs 25 ms to spawn and answer, a session snapshot 0.7 ms, and a full mirror bootstrap -
+  snapshot, subscribe, first event - 0.7 ms. Thirty repeated runs across serial and parallel execution produced no
+  failures. The seconds-per-test cost worth fearing belongs to agent *detection*, which screen-scrapes on a
+  hardcoded two-second timer; tests that report agent state through the API never touch it.
+
+  So the backend seam is not faked at all. `deps/herdr.pin` names a release, `./dev` refuses to run without it, and
+  tests that need a daemon spawn a real one under a scratch config directory. What this buys is the removal of a
+  whole category: there is no hand-written herdr in this repo, so there is nothing to drift, and "a drifted fake
+  daemon is Muster's top false-green risk" stops being a risk we manage and becomes one we do not have.
+- **Detect wire drift mechanically, not by waiting for a test to fail.** herdr generates a canonical JSON Schema of
+  its whole API from its own request types, fails its own build when the two disagree, and embeds it in the binary
+  (`herdr api schema --json`). A copy sits in `corpus/herdr-<version>/api-schema.json`, and `./dev` diffs the two
+  before running anything. A daemon that changed its wire is named as such, with the diff, instead of surfacing as
+  a puzzling failure three layers up.
+- **Inject at the seams the code already has, not by impersonating a daemon.** Three different things get called
+  fault injection, and only one needs machinery. *Daemon state* - a blocked agent, fifteen panes, a pane whose
+  program died - is driven through herdr's own API, which can produce all of it on request. *Daemon-internal
+  timing* is not injectable at all, so nothing may depend on it. *Transport faults* are the real case, and they
+  enter at two places: a parser that takes a reader rather than a socket, fed recorded bytes cut wherever a test
+  wants, covers truncation, split reads and malformed lines offline; and process control covers the rest, since
+  killing a real daemon ends a held-open subscription in 0.8 ms. A proxy that corrupted real traffic was
+  considered and rejected - it would reintroduce byte-level protocol emulation, which is the thing being deleted.
 - **Record reality, replay it as data.** Oracles come from capture, not belief: ANSI streams from real agent
   sessions, key encodings from real terminals, daemon event logs. Cases are text files a reviewer can read, in the
   style of [go-snap](https://github.com/amterp/go-snap); adding coverage means adding data, not test code.
@@ -43,13 +59,16 @@ Muster's principles, adapted to that evidence:
   in the harness by libghostty-vt - the production engine. The daemon-facing oracle is the exact intent messages on
   the wire. Never pixels (GPU-flaky), never internal structures (false confidence in both directions).
 - **Deterministic or it does not merge.** Injected clock, event-driven waits (`events.subscribe`,
-  `pane.output_matched`), no sleeps, suite passes offline. Async byte streams are replayed, never raced.
-- **Tiered for speed.** Slow tests get run less, so the default suite runs against the fake: milliseconds, offline,
-  authoritative for iteration. The contract tier runs against a real, version-pinned herdr - spawned headless with
-  an isolated config dir, one daemon shared per run, a throwaway session per test, panes running scripted fake
-  agents, synchronized by event waits - and stays small enough to finish in seconds. It runs on herdr upgrades, on
-  adapter or fake changes, and in CI, not on every save. The SSH tier (devenv container) is smaller still. Trust in
-  the fast tier is earned by the slow tiers; that is what keeps iteration fast without going blind.
+  `pane.output_matched`), no sleeps, nothing reaches the network. Async byte streams are replayed, never raced. A
+  real daemon does not weaken this: what makes a test flaky is waiting on wall-clock time, not talking to a
+  process, and herdr's own integration suite is built the same way.
+- **Tiered by what a tier can reach, not by what it fakes.** Most of the core is pure - a keymap, a fold over
+  events, a byte-stream parser - and needs no daemon in any tier, so those stay microseconds. Tests that need a
+  daemon spawn one and stay in the default gate, because 25 ms is not a tier boundary. What remains genuinely out
+  of the gate is what needs something a developer's machine cannot be assumed to have: `--contract` needs a
+  logged-in GUI session to launch the app, `--latency` and `--perf` measure timing and would be flaky as
+  assertions, and the SSH tier needs the devenv container. That is the real line, and it is narrower than the one
+  drawn when the backend was going to be faked.
 - **The suite proves itself.** A bug fix lands as a failing test first, then the fix - two commits, so CI shows red
   then green (cmux's discipline). Guard against silently skipped tests. Performance is measured against cardinality
   budgets separately; a functional green is never a performance claim.

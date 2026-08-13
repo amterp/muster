@@ -34,6 +34,10 @@ DEP_ARTIFACTS = [
     "deps/ghostty/zig-out/lib/libghostty-vt.dylib",
     "deps/ghostty/zig-out/include/ghostty/vt.h",
 ]
+// The session backend is a runtime dependency of the suite, not just of the app. Tests
+// that speak to a daemon speak to a real one: a hand-written stand-in would be Muster's
+// own guess at herdr's behavior, and a wrong guess passes (docs/testing.md).
+HERDR_PIN = "deps/herdr.pin"
 PROTO = "proto/muster.proto"
 PROTO_OUT = "Sources/MusterMac/Generated"
 // Gitignored, beside the code it describes: the hash of the schema that produced it. The
@@ -103,6 +107,57 @@ fn generate_proto():
     // other protoc-gen-swift that happens to be installed.
     $`{bin}/protoc --plugin=protoc-gen-swift={bin}/protoc-gen-swift --swift_out={PROTO_OUT} --proto_path=proto {PROTO}`
     write_file(PROTO_STAMP, proto_hash())
+
+// herdr is consumed as a binary rather than as source - it publishes no library target -
+// so the pin names a released version and the check asks the binary itself.
+//
+// Two questions, because they fail differently. A version mismatch is a person running
+// the wrong daemon and is fixed by installing the right one. A schema mismatch on the
+// right version means herdr changed its wire without changing its version, which is a
+// finding rather than a setup error.
+fn check_herdr():
+    pin = read_file(HERDR_PIN) catch:
+        print_err(red("{HERDR_PIN} is missing or unreadable."))
+        print_err("It names the herdr release the suite runs against. Restore it from git.")
+        exit(1)
+    want = pin.content.trim()
+
+    stdout, stderr, code = $`herdr --version` catch:
+        print_err(red("herdr is not on PATH, so every test that needs a daemon cannot run."))
+        print_err("Impact: the suite would report green having verified none of the backend")
+        print_err("adapter, the mirror, or the input path - the layers most likely to break.")
+        print_err("Fix: install herdr {want}. See https://github.com/herdrdev/herdr.")
+        exit(1)
+    found = stdout.trim().split(" ")[-1]
+    if found != want:
+        print_err(red("herdr {want} is required; found {found}."))
+        print_err("Impact: herdr's API is explicitly unstable, so a different daemon can")
+        print_err("answer differently and the suite would be judging the wrong contract.")
+        print_err("Fix: install herdr {want}, or re-pin deliberately - change {HERDR_PIN},")
+        print_err("re-record with tools/herdr-probe/probe, and read what moved.")
+        exit(1)
+
+    // herdr generates this from its own request types and fails its own build when the
+    // two disagree, so it is the daemon's account of its wire rather than ours. Comparing
+    // it costs a subprocess and catches a whole class of drift before any test runs.
+    recorded_path = "corpus/herdr-{want}/api-schema.json"
+    recorded = read_file(recorded_path) catch:
+        print_err(red("{recorded_path} is missing, so nothing pins herdr's wire format."))
+        print_err("Impact: a daemon that changed its API would be discovered by a confusing")
+        print_err("test failure rather than by a diff naming the method that moved.")
+        print_err("Fix: herdr api schema --json > {recorded_path}")
+        exit(1)
+    live = $`herdr api schema --json`
+    if live.trim() != recorded.content.trim():
+        print_err(red("herdr {found} reports a different API schema than the one recorded."))
+        print_err("Impact: this daemon's wire is not the wire the corpus was recorded")
+        print_err("against, so passing tests would prove less than they appear to.")
+        print_err("Look at what moved - the schema is one JSON object per method:")
+        print_err("  herdr api schema --json | diff {recorded_path} -")
+        print_err("If the change is real and wanted, re-record the corpus in the same")
+        print_err("commit so the two never disagree.")
+        exit(1)
+    print(dim("herdr {found} matches the pin, schema unchanged"))
 
 fn read_pin():
     result = read_file("deps/ghostty.pin") catch:
@@ -208,6 +263,10 @@ if build:
 
 if test:
     announce("test")
+
+    // Before anything, because a missing or mismatched daemon invalidates the run rather
+    // than failing one test in it.
+    check_herdr()
 
     // Before the suite, because the corpus is what most of the suite asserts against. A
     // file nobody loads is checked in, never run, and indistinguishable from coverage -
