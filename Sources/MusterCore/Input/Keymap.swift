@@ -15,7 +15,10 @@ public struct Keymap: Sendable {
   }
 
   /// What Muster binds out of the box.
-  public static let defaults = macOSTextEditing
+  ///
+  /// Local bindings win a collision: a chord someone chose to bind should not lose to a
+  /// key that merely wants encoding help.
+  public static let defaults = macOSTextEditing.merging(modeSensitiveKeys) { local, _ in local }
 
   /// A chord: which key, under which modifiers.
   public struct Binding: Hashable, Sendable {
