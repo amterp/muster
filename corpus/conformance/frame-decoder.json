@@ -1,0 +1,87 @@
+{
+  "concept": "frameDecoder.consume",
+  "source": "recorded",
+  "regenerate": "tools/herdr-probe/probe frames  (envelope shape from corpus/herdr-0.8.0/frames/frames.ndjson; the payloads below are shortened by hand so a reader can see what each case is about)",
+  "citation": "docs/observations/herdr-0.8.0.md section 2",
+  "why": "The only decidable logic on an otherwise I/O-shaped path, and the one place a pane's whole stream can be lost. Frames arrive split across arbitrary reads - a 35 KB attach repaint is routinely several - so a decoder that trusts read boundaries works in every test and fails on the first real screen. Lines are written out literally rather than assembled by the driver, because what is being pinned is what herdr actually puts on the wire, and a driver that built its own input would only be testing itself.\n\n`given.chunks` are fed to the decoder in order. `given.split: \"bytes\"` re-splits them into single bytes first.",
+  "cases": [
+    {
+      "name": "a whole frame decodes to its ANSI payload",
+      "why": "The base case. The payload here is ESC [ 2 J then `hello` - a clear-screen and some text - and what must come back is those bytes, the full flag, and the sequence number, none of which the envelope's other fields may disturb.",
+      "given": {
+        "chunks": [
+          "{\"type\":\"terminal.frame\",\"seq\":7,\"encoding\":\"ansi\",\"full\":true,\"width\":80,\"height\":24,\"bytes\":\"G1sySmhlbGxv\"}\n"
+        ]
+      },
+      "expect": {
+        "events": [{ "kind": "frame", "bytes_hex": "1b5b324a68656c6c6f", "full": true, "seq": 7 }]
+      }
+    },
+    {
+      "name": "a frame split across reads is held until it is whole",
+      "why": "Fed one byte at a time, which is the worst case a 35 KB repaint can hit and the one that catches a decoder trusting read boundaries. Exactly one frame must come out, at the end - not several partial ones, and not none.",
+      "given": {
+        "split": "bytes",
+        "chunks": [
+          "{\"type\":\"terminal.frame\",\"seq\":1,\"encoding\":\"ansi\",\"full\":false,\"width\":80,\"height\":24,\"bytes\":\"G1sxOzFIeA==\"}\n"
+        ]
+      },
+      "expect": {
+        "events": [{ "kind": "frame", "bytes_hex": "1b5b313b314878", "full": false, "seq": 1 }]
+      }
+    },
+    {
+      "name": "several frames in one read all come back, in order",
+      "why": "The daemon batches when a pane is busy, so one read routinely carries several frames. Order is the thing that matters: applied out of order they paint the screen backwards.",
+      "given": {
+        "chunks": [
+          "{\"type\":\"terminal.frame\",\"seq\":1,\"encoding\":\"ansi\",\"full\":false,\"width\":80,\"height\":24,\"bytes\":\"YQ==\"}\n{\"type\":\"terminal.frame\",\"seq\":2,\"encoding\":\"ansi\",\"full\":false,\"width\":80,\"height\":24,\"bytes\":\"Yg==\"}\n{\"type\":\"terminal.frame\",\"seq\":3,\"encoding\":\"ansi\",\"full\":false,\"width\":80,\"height\":24,\"bytes\":\"Yw==\"}\n"
+        ]
+      },
+      "expect": {
+        "events": [
+          { "kind": "frame", "bytes_hex": "61", "full": false, "seq": 1 },
+          { "kind": "frame", "bytes_hex": "62", "full": false, "seq": 2 },
+          { "kind": "frame", "bytes_hex": "63", "full": false, "seq": 3 }
+        ]
+      }
+    },
+    {
+      "name": "a trailing partial line yields nothing until its newline arrives",
+      "why": "Half a JSON object must decode to nothing rather than to something wrong. The first chunk here stops five bytes short of the newline; only when the rest arrives does a frame come out.",
+      "given": {
+        "chunks": [
+          "{\"type\":\"terminal.frame\",\"seq\":1,\"encoding\":\"ansi\",\"full\":false,\"width\":80,\"height\":24,\"bytes\":\"eg==\"",
+          "}\n"
+        ]
+      },
+      "expect": { "events": [{ "kind": "frame", "bytes_hex": "7a", "full": false, "seq": 1 }] }
+    },
+    {
+      "name": "a close ends the stream and carries its reason",
+      "why": "The reason is the whole value of this message. A bridge that discarded it exited silently on a mistyped pane id, which reached a user as a blank window - so the reason has to survive decoding to be reported.",
+      "given": { "chunks": ["{\"type\":\"terminal.closed\",\"reason\":\"detached\"}\n"] },
+      "expect": { "events": [{ "kind": "closed", "reason": "detached" }] }
+    },
+    {
+      "name": "a close with no reason is still a close",
+      "why": "herdr does not always say why. Absent must decode as a close carrying nothing, rather than as an unparseable line the decoder skips - a stream that ended would otherwise look like a stream still running.",
+      "given": { "chunks": ["{\"type\":\"terminal.closed\"}\n"] },
+      "expect": { "events": [{ "kind": "closed" }] }
+    },
+    {
+      "name": "a message we do not know is skipped, not fatal",
+      "why": "herdr ships weekly and may add message types. Dropping the pane's whole stream over one unknown line is far worse than ignoring it, so an unknown type and outright garbage both pass through and the good frame behind them still arrives.",
+      "given": {
+        "chunks": [
+          "{\"type\":\"terminal.something_new\"}\nnot json at all\n{\"type\":\"terminal.frame\",\"seq\":9,\"encoding\":\"ansi\",\"full\":false,\"width\":80,\"height\":24,\"bytes\":\"c3RpbGwgaGVyZQ==\"}\n"
+        ]
+      },
+      "expect": {
+        "events": [
+          { "kind": "frame", "bytes_hex": "7374696c6c2068657265", "full": false, "seq": 9 }
+        ]
+      }
+    }
+  ]
+}

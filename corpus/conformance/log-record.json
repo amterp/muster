@@ -1,0 +1,95 @@
+{
+  "concept": "log.encodeRecord",
+  "source": "ported",
+  "citation": "docs/architecture.md, 'The diagnostic log'",
+  "why": "The log is what gets read when something has already gone wrong, so its quiet failures are the expensive ones: a line that will not parse takes the record either side of it with it, and a run several processes wrote becomes unreadable at exactly the moment it was supposed to earn its keep. It is also an assertion surface - the launch smoke check and the perf harness both read it - so its shape is a contract rather than a formatting preference.\n\nTwo properties, both here as data. Identity comes first (when, how precisely, how bad, who, what) because those are what a reader scans by, and payload fields are sorted so the same code twice produces the same bytes. And nothing in a payload may break out of its line: this log carries terminal bytes, which are full of quotes, escapes and control characters.",
+  "cases": [
+    {
+      "name": "identity first, payload sorted",
+      "why": "The key order is what makes a raw log readable without a tool, and the sort is what makes two runs of the same code diffable. Fields arriving in hash order would make every run look different from the last.",
+      "given": {
+        "time": "1970-01-01T00:00:00.000Z",
+        "mono": 1234567890,
+        "level": "warn",
+        "process": "app",
+        "pid": 42,
+        "event": "input.dropped",
+        "fields": {
+          "socket": "/tmp/x.sock",
+          "impact": "nothing arrived"
+        }
+      },
+      "expect": {
+        "line": "{\"time\":\"1970-01-01T00:00:00.000Z\",\"mono_ns\":1234567890,\"level\":\"warn\",\"process\":\"app\",\"pid\":42,\"event\":\"input.dropped\",\"impact\":\"nothing arrived\",\"socket\":\"/tmp/x.sock\"}"
+      }
+    },
+    {
+      "name": "a record with no fields is still a whole object",
+      "why": "Most records carry only their identity. A trailing comma or a dangling brace here would make the commonest line in the file the one that does not parse.",
+      "given": {
+        "time": "1970-01-01T00:00:00.000Z",
+        "mono": 0,
+        "level": "info",
+        "process": "bridge:w1:p1",
+        "pid": 7,
+        "event": "bridge.frame.first",
+        "fields": {}
+      },
+      "expect": {
+        "line": "{\"time\":\"1970-01-01T00:00:00.000Z\",\"mono_ns\":0,\"level\":\"info\",\"process\":\"bridge:w1:p1\",\"pid\":7,\"event\":\"bridge.frame.first\"}"
+      }
+    },
+    {
+      "name": "a payload cannot break out of its line",
+      "why": "Terminal bytes are exactly what this log carries, and they are full of escapes, quotes and control characters. One unescaped newline splits a record into two unparseable halves - and it would do so only for the records describing whatever went wrong, which are the ones being read.",
+      "given": {
+        "time": "1970-01-01T00:00:00.000Z",
+        "mono": 5,
+        "level": "debug",
+        "process": "app",
+        "pid": 1,
+        "event": "input.key",
+        "fields": {
+          "encoded": "a\"b\\c\nd\te\u001b[97u\u0000"
+        }
+      },
+      "expect": {
+        "line": "{\"time\":\"1970-01-01T00:00:00.000Z\",\"mono_ns\":5,\"level\":\"debug\",\"process\":\"app\",\"pid\":1,\"event\":\"input.key\",\"encoded\":\"a\\\"b\\\\c\\nd\\te\\u001b[97u\\u0000\"}"
+      }
+    },
+    {
+      "name": "a field name is escaped like a value",
+      "why": "Field names come from call sites rather than from a fixed list, so nothing structurally prevents one containing a quote. An escaped value beside an unescaped key would produce a line that parses as something other than what was logged.",
+      "given": {
+        "time": "1970-01-01T00:00:00.000Z",
+        "mono": 5,
+        "level": "error",
+        "process": "app",
+        "pid": 1,
+        "event": "channel.send.failed",
+        "fields": {
+          "a\"b": "x"
+        }
+      },
+      "expect": {
+        "line": "{\"time\":\"1970-01-01T00:00:00.000Z\",\"mono_ns\":5,\"level\":\"error\",\"process\":\"app\",\"pid\":1,\"event\":\"channel.send.failed\",\"a\\\"b\":\"x\"}"
+      }
+    },
+    {
+      "name": "the event name is escaped too",
+      "why": "Event names are dotted identifiers by convention, not by enforcement. The convention is worth relying on for grepping and not for parsing.",
+      "given": {
+        "time": "1970-01-01T00:00:00.000Z",
+        "mono": 5,
+        "level": "trace",
+        "process": "app",
+        "pid": 1,
+        "event": "odd\"name",
+        "fields": {}
+      },
+      "expect": {
+        "line": "{\"time\":\"1970-01-01T00:00:00.000Z\",\"mono_ns\":5,\"level\":\"trace\",\"process\":\"app\",\"pid\":1,\"event\":\"odd\\\"name\"}"
+      }
+    }
+  ]
+}

@@ -1,0 +1,74 @@
+{
+  "concept": "keyEncoder.encode",
+  "source": "ported",
+  "citation": "libghostty-vt is the encoder; ghostty src/input/function_keys.zig:199 for the shift+enter entry. Cross-checkable against herdr tests/fixtures/keyboard_protocol_corpus.tsv, which encodes the same protocol from Rust.",
+  "why": "The encoder is libghostty-vt's, so these do not test escape-sequence generation - upstream does that, and a second implementation written to agree with it would be the bug. What they pin is everything around it that is ours: that the modifier bits still line up with the ABI they are cast to, that a mode profile actually reaches the encoder, that a composing keystroke stays out of the pane, and what the conservative default costs in bytes.\n\nThe broad survey of common keys lives as a rendered snapshot (Tests/MusterVTTests/snapshots/keys-*.txt) rather than as cases here, because it is one matrix with one reason rather than nineteen behaviors, and its oracle is upstream. A port reproduces the same rendering. Kan a_27Haa38Gp carries moving its keystroke list into data.",
+  "cases": [
+    {
+      "name": "enter is a carriage return under the conservative default",
+      "why": "The baseline for the case below. Enter is submit in every agent harness, so if these bytes are wrong the pane is unusable rather than degraded.",
+      "given": { "profile": "unknownPane", "key": "Enter" },
+      "expect": { "bytes_hex": "0d" }
+    },
+    {
+      "name": "shift+enter survives the conservative default",
+      "why": "The distinction an agent needs most - newline versus submit - and the one the plan assumed would be the first casualty of guessing low. It is not: ghostty encodes shift+enter as a fixterms sequence in every mode, not only under kitty (function_keys.zig:199, an entry with no mode qualifier). So an agent can still tell them apart through a pane Muster knows nothing about, which is why the mode guess was acceptable to ship.",
+      "given": { "profile": "unknownPane", "key": "Enter", "modifiers": ["shift"] },
+      "expect": { "bytes_hex": "1b5b32373b323b31337e" }
+    },
+    {
+      "name": "an arrow without application cursor mode is a CSI sequence",
+      "why": "Half of the one guess that breaks a program rather than degrading it. This is what a power-on terminal expects.",
+      "given": { "profile": "unknownPane", "key": "ArrowUp" },
+      "expect": { "bytes_hex": "1b5b41" }
+    },
+    {
+      "name": "application cursor mode changes what an arrow sends",
+      "why": "The other half, and the reason bare arrows are routed to the daemon instead of encoded here. vim and less put the cursor keys in application mode - less calls smkx on startup - and a client that guesses wrong sends a sequence the program does not recognize. That the profile changes the output at all is what this pins: a profile that never reached the encoder would produce CSI here and look fine in every other case.",
+      "given": { "profile": { "applicationCursorKeys": true }, "key": "ArrowUp" },
+      "expect": { "bytes_hex": "1b4f41" }
+    },
+    {
+      "name": "a composing keystroke never reaches the pane",
+      "why": "Mid-composition the keystroke belongs to the input method. Sending it too would deliver the romaji alongside whatever it composes into - the same doubling shape as the bug that made typing `hello` produce `hheelllloo`.",
+      "given": {
+        "profile": "unknownPane",
+        "key": "KeyA",
+        "text": "a",
+        "unshiftedCodepoint": "a",
+        "isComposing": true
+      },
+      "expect": { "bytes_hex": "" }
+    },
+    {
+      "name": "ctrl+c is the interrupt byte",
+      "why": "Modifiers is declared to match the encoder's ABI so the seam is a cast rather than a translation. If a dependency bump renumbers those bits, every chord silently encodes as a different one - and ctrl+c becoming something else is the failure a user hits within a minute.",
+      "given": { "profile": "unknownPane", "key": "KeyC", "modifiers": ["control"], "unshiftedCodepoint": "c" },
+      "expect": { "bytes_hex": "03" }
+    },
+    {
+      "name": "ctrl+a is its own control byte",
+      "why": "The pair of ctrl+c. One chord could match by luck after a bit renumbering; two adjacent ones passing means the bits line up rather than collide.",
+      "given": { "profile": "unknownPane", "key": "KeyA", "modifiers": ["control"], "unshiftedCodepoint": "a" },
+      "expect": { "bytes_hex": "01" }
+    },
+    {
+      "name": "option composes text rather than sending alt, by default",
+      "why": "The macOS default, and the reason this is not simply `alt sends escape`. Option is a composing key on this platform, so a Mac user pressing option+e expects an accent rather than a meta chord. With the setting off, the alt bit is dropped and the text the layout produced stands alone.",
+      "given": { "profile": "unknownPane", "key": "KeyB", "modifiers": ["alt"], "text": "b", "unshiftedCodepoint": "b" },
+      "expect": { "bytes_hex": "62" }
+    },
+    {
+      "name": "option configured as alt sends the escape prefix instead",
+      "why": "What a user who lives in readline turns on. The same keystroke has to produce a different answer under a different profile, which is the second proof that profile settings reach the encoder rather than being stored and ignored.",
+      "given": {
+        "profile": { "optionActsAsAlt": "always" },
+        "key": "KeyB",
+        "modifiers": ["alt"],
+        "text": "b",
+        "unshiftedCodepoint": "b"
+      },
+      "expect": { "bytes_hex": "1b62" }
+    }
+  ]
+}

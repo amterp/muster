@@ -48,7 +48,10 @@ public struct TerminalModeProfile: Equatable, Sendable {
   /// composing.
   public let optionActsAsAlt: OptionAsAlt
 
-  public enum OptionAsAlt: Sendable {
+  /// Spelled out as strings because this is configuration a person writes in a file and a
+  /// value that has to survive the corpus, the log and the shell/core schema. An enum
+  /// without names travels as an integer nobody can read.
+  public enum OptionAsAlt: String, Sendable, CaseIterable {
     case never
     case always
     case leftOnly

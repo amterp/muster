@@ -3,14 +3,16 @@ import MusterVT
 import TestSupport
 import Testing
 
-/// What Muster puts on a pane's input for a given keystroke.
+/// The survey: what Muster puts on a pane's input for the keys people press constantly.
 ///
-/// The encoder is libghostty-vt's, so these do not test escape-sequence generation -
-/// upstream does that. What they pin is everything around it that is ours: that the
-/// modifier bits line up with the ABI, that a mode profile reaches the encoder, that a
-/// composing keystroke stays out of the pane, and what the conservative default actually
-/// costs. That last one is a kill-criterion question, and it is answered here in bytes
-/// rather than in prose.
+/// One matrix with one reason rather than nineteen behaviors, and its oracle is upstream,
+/// so it stays a rendered snapshot instead of becoming conformance cases with nineteen
+/// manufactured justifications. A port reproduces the same rendering from the same list.
+///
+/// Everything this file used to assert about *our* decisions - that the modifier bits line
+/// up with the ABI, that a mode profile reaches the encoder, that a composing keystroke
+/// stays out of the pane - is now corpus/conformance/key-encoder.json, run by
+/// KeyEncoderConformanceTests.
 
 /// The matrix, as one readable file. Every row is a keystroke a user makes constantly.
 private let commonKeystrokes: [(name: String, event: KeyEvent)] = [
@@ -80,66 +82,4 @@ func kittyEncodingMatrix() throws {
   // ask is worth.
   try Snapshot.expect(
     renderMatrix(profile: .herdrTUI), named: "keys-herdr-tui.txt")
-}
-
-@Test("shift+enter survives the conservative default")
-func shiftEnterSurvivesTheDefault() throws {
-  // The distinction an agent needs most, and the one this plan assumed would be the
-  // first casualty of guessing low. It is not: ghostty encodes shift+enter as a
-  // fixterms sequence in every mode, not only under kitty
-  // (`src/input/function_keys.zig:199`, an entry with no mode qualifier). So an agent
-  // that treats shift+enter as newline and enter as submit can still tell them apart
-  // through a pane Muster knows nothing about.
-  let legacy = try KeyEncoder(profile: .unknownPane)
-
-  #expect(try legacy.encode(KeyEvent(key: .enter)) == Array("\r".utf8))
-  #expect(
-    try legacy.encode(KeyEvent(key: .enter, modifiers: .shift)) == Array("\u{1b}[27;2;13~".utf8))
-}
-
-@Test("application cursor mode changes what the arrow keys send")
-func applicationCursorKeysChangeArrows() throws {
-  // The one guess that breaks a program rather than degrading it: vim and less put the
-  // cursor keys in application mode, and a client that guesses wrong sends a sequence
-  // the program does not recognize.
-  let normal = try KeyEncoder(profile: .unknownPane)
-  #expect(try normal.encode(KeyEvent(key: .arrowUp)) == Array("\u{1b}[A".utf8))
-
-  let application = try KeyEncoder(profile: TerminalModeProfile(applicationCursorKeys: true))
-  #expect(try application.encode(KeyEvent(key: .arrowUp)) == Array("\u{1b}OA".utf8))
-}
-
-@Test("a composing keystroke never reaches the pane")
-func composingKeystrokesAreWithheld() throws {
-  let encoder = try KeyEncoder(profile: .unknownPane)
-
-  // Mid-composition, the keystroke belongs to the input method. Sending it too would
-  // deliver the romaji alongside whatever it composes into.
-  let composing = KeyEvent(key: .keyA, text: "a", unshiftedCodepoint: "a", isComposing: true)
-  #expect(try encoder.encode(composing).isEmpty)
-}
-
-@Test("modifier bits agree with the ABI they are cast to")
-func modifierBitsMatchTheABI() throws {
-  // Modifiers is declared to match GhosttyMods so the seam is a cast. If a pin bump
-  // renumbers those bits, every chord silently encodes as a different one - so the
-  // check is that a known chord still produces its known bytes.
-  let encoder = try KeyEncoder(profile: .unknownPane)
-
-  #expect(try encoder.encode(KeyEvent(key: .keyC, modifiers: .control)) == [0x03])
-  #expect(try encoder.encode(KeyEvent(key: .keyA, modifiers: .control)) == [0x01])
-}
-
-@Test("the option key composes text unless it is configured to act as alt")
-func optionActsAsAltChangesWhatAltProduces() throws {
-  let event = KeyEvent(key: .keyB, modifiers: .alt, text: "b", unshiftedCodepoint: "b")
-
-  // The macOS default, and the reason it is not simply "alt sends escape": option is a
-  // composing key on this platform, so a Mac user pressing option+e expects an accent
-  // rather than a meta chord. With it off, alt is dropped and the text stands alone.
-  let composing = try KeyEncoder(profile: .unknownPane)
-  #expect(try composing.encode(event) == Array("b".utf8))
-
-  let asAlt = try KeyEncoder(profile: TerminalModeProfile(optionActsAsAlt: .always))
-  #expect(try asAlt.encode(event) == Array("\u{1b}b".utf8))
 }

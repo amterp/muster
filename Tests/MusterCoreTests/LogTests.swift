@@ -1,4 +1,5 @@
 import Foundation
+import TestSupport
 import Testing
 
 @testable import MusterCore
@@ -7,42 +8,51 @@ import Testing
 // it can quietly fail are expensive: a line that will not parse, a field that leaks what
 // someone typed, a level that hides the record that mattered.
 
-@Test("a record reads as JSON, identity first and fields sorted")
-func recordEncoding() throws {
-  let record = LogRecord(
-    time: Date(timeIntervalSince1970: 0), mono: 1_234_567_890, level: .warn, process: "app",
-    pid: 42, event: "input.dropped",
-    fields: ["socket": "/tmp/x.sock", "impact": "nothing arrived"])
+@Test("log record encoding")
+func logRecordConformance() throws {
+  let corpus = try Conformance.load("log-record.json")
 
-  let line = JSONLinesSink.encode(record)
+  let ran = corpus.run { given in
+    guard let level = LogLevel(rawValue: given["level"]?.stringValue ?? "") else {
+      throw CaseError("`level` is missing or not a level")
+    }
+    var fields: [String: String] = [:]
+    if case .object(let raw)? = given["fields"] {
+      for (name, value) in raw { fields[name] = value.stringValue ?? "" }
+    }
+    let record = LogRecord(
+      // Fixed rather than read from the case: the timestamp's rendering is Foundation's,
+      // and a corpus that pinned it would be testing a date formatter in each language
+      // instead of this encoder. Every case uses the epoch, so the text is constant.
+      time: Date(timeIntervalSince1970: 0),
+      mono: UInt64(given["mono"]?.intValue ?? 0), level: level,
+      process: given["process"]?.stringValue ?? "", pid: Int32(given["pid"]?.intValue ?? 0),
+      event: given["event"]?.stringValue ?? "", fields: fields)
 
-  // Identity before payload: the things you scan a log with come first.
-  #expect(
-    line.hasPrefix(
-      "{\"time\":\"1970-01-01T00:00:00.000Z\",\"mono_ns\":1234567890,\"level\":\"warn\","
-        + "\"process\":\"app\",\"pid\":42,\"event\":\"input.dropped\""))
-  // Sorted, so the same code twice produces the same bytes.
-  #expect(line.hasSuffix("\"impact\":\"nothing arrived\",\"socket\":\"/tmp/x.sock\"}"))
+    return .fields(["line": .string(JSONLinesSink.encode(record))])
+  }
 
-  let parsed = try JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any]
-  #expect(parsed?["event"] as? String == "input.dropped")
+  #expect(ran == corpus.cases.count)
+  #expect(ran > 0)
 }
 
-@Test("a payload cannot break out of its line")
-func quotingIsSafe() throws {
-  // Terminal bytes are exactly what this log carries, and they are full of escapes,
-  // quotes and control characters. One unescaped newline splits a record into two
-  // unparseable halves.
-  let nasty = "a\"b\\c\nd\te\u{1b}[97u\u{0}"
-  let record = LogRecord(
-    time: Date(timeIntervalSince1970: 0), level: .debug, process: "app", pid: 1,
-    event: "input.key", fields: ["encoded": nasty])
+@Test("every encoded record is parseable JSON")
+func encodedRecordsParse() throws {
+  // The corpus pins the exact bytes; this pins that those bytes mean what they look like.
+  // A rendering that agreed with itself in both languages and parsed in neither would
+  // satisfy the cases above and still be useless.
+  let corpus = try Conformance.load("log-record.json")
+  for testCase in corpus.cases {
+    let line = try #require(testCase.expect["line"]?.stringValue)
+    #expect(
+      (try? JSONSerialization.jsonObject(with: Data(line.utf8))) != nil,
+      "\(testCase.name): the expected line is not JSON")
+  }
+}
 
-  let line = JSONLinesSink.encode(record)
-
-  #expect(!line.contains("\n"))
-  let parsed = try JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any]
-  #expect(parsed?["encoded"] as? String == nasty)
+private struct CaseError: Error, CustomStringConvertible {
+  let description: String
+  init(_ description: String) { self.description = description }
 }
 
 @Test("the monotonic reading advances, and resolves finer than the wall clock")

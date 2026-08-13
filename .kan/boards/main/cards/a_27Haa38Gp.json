@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "move-the-key-encoder",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1786624522119,
+  "creator": "Alexander Terp",
+  "description": "The broad matrix of common keys (Tests/MusterVTTests/KeyEncoderTests.swift) is a rendered snapshot rather than conformance cases, deliberately: it is one matrix with one reason rather than nineteen behaviors, and its oracle is libghostty upstream, so nineteen per-case 'why' fields would be manufactured rationale.\n\nBut the keystroke *list* still lives in Swift, which means a Rust port hand-copies nineteen entries - exactly the drift the corpus exists to prevent. Low risk, because the snapshot cross-checks it: if Rust renders the same file, the list matched. Worth closing anyway.\n\nShape: a 'survey' section in corpus/conformance/key-encoder.json carrying the profiles and the keystroke list, with each language's driver rendering it to the same snapshot. Needs corpus-lint to know that section is legitimate and still enforce the why rule on 'cases'.",
+  "id": "a_27Haa38Gp",
+  "position": "UUUUUUUUUUUUUUUUUUU",
+  "title": "Move the key-encoder survey's keystroke list into data",
+  "type": "chore",
+  "updated_at_millis": 1786624522119,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1786624522119}
+  ]
+}
