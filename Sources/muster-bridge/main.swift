@@ -14,17 +14,24 @@ import MusterHerdr
 // The one thing this does write back is geometry.
 
 let usage = """
-  usage: muster-bridge <pane-id>
+  usage: muster-bridge <pane-id> [--control-socket <path>]
 
   Runs `herdr terminal session control <pane-id>` and unwraps its frames onto stdout.
   Sized from the PTY on stdout, which is the surface's own geometry.
+
+  With --control-socket, dials that socket and relays whatever the app sends onto
+  herdr's control stream verbatim - input and scroll. Without it, the pane renders but
+  cannot be typed into.
   """
 
-guard CommandLine.arguments.count == 2 else {
+guard CommandLine.arguments.count == 2 || CommandLine.arguments.count == 4,
+  CommandLine.arguments.count == 2 || CommandLine.arguments[2] == "--control-socket"
+else {
   FileHandle.standardError.write(Data((usage + "\n").utf8))
   exit(2)
 }
 let paneID = CommandLine.arguments[1]
+let controlSocketPath = CommandLine.arguments.count == 4 ? CommandLine.arguments[3] : nil
 
 /// The surface's grid, read from the PTY libghostty gave us.
 ///
@@ -114,6 +121,29 @@ fromHerdr.fileHandleForReading.readabilityHandler = { handle in
     exit(0)
   }
   pump.consume(chunk)
+}
+
+// The app's end of the pane: whatever it sends is already herdr control-stream JSON, so
+// relaying it is a copy. Keeping the bridge free of any vocabulary of its own is what
+// lets the adapter stay in one place (architecture.md, the backend seam).
+// Held for the life of the process: a released socket stops relaying.
+let controlSocket = controlSocketPath.flatMap(ControlSocket.init(path:))
+if let controlSocketPath {
+  if let controlSocket {
+    controlSocket.relay { line in
+      toHerdr.fileHandleForWriting.write(line)
+    }
+  } else {
+    FileHandle.standardError.write(
+      Data(
+        """
+        muster-bridge: could not reach the app on \(controlSocketPath)
+        This pane will render but swallow every keystroke, which otherwise looks like a \
+        dead terminal rather than a broken channel. Usual cause: the app closed the \
+        socket, or this bridge outlived the window that spawned it.
+
+        """.utf8))
+  }
 }
 
 // Stdin is the surface's PTY. Nothing reads it - input takes the control plane - but the

@@ -1,0 +1,256 @@
+#!/usr/bin/env python3
+"""Generate the key tables Muster's input path needs, from the pinned ghostty.
+
+Two tables, and neither can be hand-maintained. `Key` is the physical-key vocabulary
+Muster speaks in its own core, so nothing libghostty-shaped reaches the keymap or the
+tests. `Key.ghosttyKey` maps it onto libghostty-vt's enum at the encoder seam. Both are
+derived from ghostty's own source at the pinned commit, so a pin bump that renames or
+renumbers a key fails the drift test instead of producing a keyboard where a few keys
+quietly do nothing.
+
+    tools/gen-keycodes/gen-keycodes    # rewrites both generated files
+
+Sources, both read-only:
+  deps/ghostty/src/input/keycodes.zig                   macOS keycode <-> W3C DOM code
+  deps/ghostty/zig-out/include/ghostty/vt/key/event.h   the GhosttyKey enum
+
+Naming: a DOM code (`ArrowUp`, `Digit0`) names its GhosttyKey member (`GHOSTTY_KEY_ARROW_UP`,
+`GHOSTTY_KEY_DIGIT_0`) by splitting at lowercase-to-uppercase and lowercase-to-digit
+boundaries and upper-casing the pieces - except `Key<Letter>`, which collapses to just the
+letter (`KeyA` -> `GHOSTTY_KEY_A`), because the enum's own prefix already says "key".
+
+That name is derived straight from the DOM code rather than read out of ghostty's own
+`code_to_key` map in keycodes.zig, because that map is a hand-curated subset: it has no
+entry for `AudioVolumeMute`, `IntlBackslash`, `IntlRo`, `IntlYen`, or `NumpadComma`, all of
+which have real macOS keycodes and real GhosttyKey members. Trusting the map would carry
+that gap into Muster as dead keys. Every derived name is instead validated against the
+enum parsed from event.h, so a pin bump that breaks the naming rule fails this script
+loudly instead of shipping a keyboard with keys that silently do nothing.
+"""
+
+from __future__ import annotations
+
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parents[2]
+KEYCODES_ZIG = REPO / "deps/ghostty/src/input/keycodes.zig"
+EVENT_H = REPO / "deps/ghostty/zig-out/include/ghostty/vt/key/event.h"
+PIN = REPO / "deps/ghostty.pin"
+CORE_OUT = REPO / "Sources/MusterCore/Input/Key.generated.swift"
+VT_OUT = REPO / "Sources/MusterVT/KeyMapping.generated.swift"
+
+# Swift keywords that cannot be bare case names.
+RESERVED = {"return", "default", "in", "for", "switch", "case", "break", "continue"}
+
+# DOM codes with a real macOS keycode but no matching GhosttyKey member: Lang1 and Lang2
+# are kVK_JIS_Kana and kVK_JIS_Eisu, keys that exist only on JIS keyboards. Chromium's DOM
+# code table (which keycodes.zig is drawn from) carries them; ghostty's GhosttyKey enum
+# does not, so there is no key identity to map them to. Excluded here on purpose, not
+# because validation failed to notice them - re-check this set on every ghostty upgrade,
+# since a pin bump that finally adds a matching GhosttyKey member should start using it.
+KNOWN_UNMAPPABLE_MAC_CODES = {"Lang1", "Lang2"}
+
+
+def die(message: str) -> None:
+    print(f"gen-keycodes: {message}", file=sys.stderr)
+    sys.exit(1)
+
+
+def c_enum_names() -> list[str]:
+    """Every GhosttyKey member, in declaration order, prefix included."""
+    text = EVENT_H.read_text()
+    body = re.search(r"GHOSTTY_KEY_UNIDENTIFIED = 0,(.*?)GHOSTTY_KEY_MAX_VALUE", text, re.S)
+    if not body:
+        die(f"could not find the GhosttyKey enum in {EVENT_H}")
+    names = ["GHOSTTY_KEY_UNIDENTIFIED"]
+    names += re.findall(r"^\s*(GHOSTTY_KEY_[A-Z0-9_]+),\s*$", body.group(1), re.M)
+    if len(names) < 100:
+        die(f"only {len(names)} keys parsed from {EVENT_H}; the enum shape must have changed")
+    if len(names) != len(set(names)):
+        die(f"duplicate GhosttyKey member parsed from {EVENT_H}")
+    return names
+
+
+def raw_entries() -> list[tuple[str, str]]:
+    """(macOS keycode hex, W3C DOM code) for every row in raw_entries, unfiltered.
+
+    Column 4 is the Mac keycode; 0xffff means the platform has no code for that key.
+    Filtering happens downstream, and differently for the two tables that need it: the
+    macOS switch only wants rows with a real keycode, but a key's DOM code (for Key's raw
+    value) is worth capturing even on rows where macOS has none, e.g. PrintScreen.
+    """
+    text = KEYCODES_ZIG.read_text()
+    block = re.search(r"pub const raw_entries: \[\]const RawEntry = &\.\{(.*?)\n\};", text, re.S)
+    if not block:
+        die(f"could not find raw_entries in {KEYCODES_ZIG}")
+
+    # Drop commented-out rows before matching, so a documentation example with a real-
+    # looking code (there are several, all currently empty-coded) can never leak in.
+    live_lines = (line for line in block.group(1).splitlines() if not line.strip().startswith("//"))
+    body = "\n".join(live_lines)
+
+    pattern = (
+        r"\.\{\s*0x[0-9a-fA-F]+,\s*0x[0-9a-fA-F]+,\s*0x[0-9a-fA-F]+,\s*0x[0-9a-fA-F]+,\s*"
+        r"(0x[0-9a-fA-F]+),\s*\"([^\"]*)\"\s*\}"
+    )
+    rows = re.findall(pattern, body)
+    if len(rows) < 200:
+        die(f"only {len(rows)} raw_entries rows parsed; the table shape must have changed")
+    return rows
+
+
+def derive_c_name(dom_code: str) -> str:
+    """The GhosttyKey member a DOM code should name, by ghostty's own convention.
+
+    See the module docstring for the rule. `KeyA` -> `GHOSTTY_KEY_A`, `Digit0` ->
+    `GHOSTTY_KEY_DIGIT_0`, `AudioVolumeMute` -> `GHOSTTY_KEY_AUDIO_VOLUME_MUTE`.
+    """
+    if re.fullmatch(r"Key[A-Z]", dom_code):
+        suffix = dom_code[3:]
+    else:
+        suffix = re.sub(r"(?<=[a-z])(?=[A-Z])", "_", dom_code)
+        suffix = re.sub(r"(?<=[a-z])(?=[0-9])", "_", suffix)
+        suffix = suffix.upper()
+    return f"GHOSTTY_KEY_{suffix}"
+
+
+def dom_codes_for_known_keys(rows: list[tuple[str, str]], known: set[str]) -> dict[str, str]:
+    """DOM code for every GhosttyKey member that has one, keyed by full C name.
+
+    A code whose derived name is not a real GhosttyKey member is one of the DOM codes
+    ghostty never modeled at all (media/legacy codes like `Hyper` or `Open`, which have no
+    macOS keycode either - see mac_keycode_table) and is dropped here without complaint.
+    Only mac_keycode_table treats an unresolved name as an error, because only there does
+    it mean an actual physical key with nowhere to go.
+    """
+    dom_for_c: dict[str, str] = {}
+    for _mac, code in rows:
+        if not code:
+            continue
+        c_name = derive_c_name(code)
+        if c_name not in known:
+            continue
+        if c_name in dom_for_c and dom_for_c[c_name] != code:
+            die(f"DOM codes {dom_for_c[c_name]!r} and {code!r} both derive {c_name}")
+        dom_for_c[c_name] = code
+    return dom_for_c
+
+
+def mac_keycode_table(rows: list[tuple[str, str]], known: set[str]) -> dict[int, str]:
+    """macOS virtual keycode -> GhosttyKey C name, for every key macOS names."""
+    table: dict[int, str] = {}
+    for mac_hex, code in rows:
+        if not code or mac_hex.lower() == "0xffff":
+            continue
+        c_name = derive_c_name(code)
+        if c_name not in known:
+            if code in KNOWN_UNMAPPABLE_MAC_CODES:
+                continue
+            die(
+                f"DOM code {code!r} has macOS keycode {mac_hex} and derives {c_name}, which "
+                f"is not in the GhosttyKey enum parsed from event.h. If this key genuinely "
+                f"has no GhosttyKey identity, add {code!r} to KNOWN_UNMAPPABLE_MAC_CODES with "
+                f"a comment saying why; otherwise derive_c_name() is naming it wrong."
+            )
+            continue
+        mac = int(mac_hex, 16)
+        if mac in table and table[mac] != c_name:
+            die(f"macOS keycode {mac_hex} maps to both {table[mac]} and {c_name}")
+        table[mac] = c_name
+    if len(table) < 80:
+        die(f"only {len(table)} macOS keycodes resolved; the table shape must have changed")
+    return table
+
+
+def swift_name(c_name: str) -> str:
+    """lowerCamelCase of a C enum member, minus its prefix.
+
+    GHOSTTY_KEY_ARROW_UP -> arrowUp, GHOSTTY_KEY_DIGIT_0 -> digit0. The single letters
+    become keyA..keyZ rather than a..z, matching ghostty's own zig spelling and keeping
+    them readable at a call site.
+    """
+    stem = c_name.removeprefix("GHOSTTY_KEY_").lower()
+    if len(stem) == 1 and stem.isalpha():
+        stem = f"key_{stem}"
+    head, *rest = stem.split("_")
+    name = head + "".join(part.capitalize() for part in rest)
+    return f"`{name}`" if name in RESERVED else name
+
+
+def header(pin: str) -> str:
+    return (
+        "// Generated by tools/gen-keycodes/gen-keycodes from libghostty at\n"
+        f"// {pin}. Do not edit by hand: re-run the generator.\n"
+    )
+
+
+def main() -> int:
+    pin = PIN.read_text().strip()
+    names = c_enum_names()
+    known = set(names)
+    rows = raw_entries()
+
+    dom_for_c = dom_codes_for_known_keys(rows, known)
+    mac_table = mac_keycode_table(rows, known)
+
+    core = [
+        header(pin),
+        "",
+        "/// A physical key, named as the W3C UI Events code standard names it.",
+        "///",
+        "/// Layout-independent: this is the key's place on the keyboard, not the character",
+        "/// it produces. The `a` key on a US layout and the `ф` key on a Russian one are",
+        "/// both `keyA`, and what the layout produced travels separately as text.",
+        "public enum Key: String, Sendable, CaseIterable {",
+    ]
+    for c_name in names:
+        raw = dom_for_c.get(c_name, c_name.removeprefix("GHOSTTY_KEY_").lower())
+        core.append(f'  case {swift_name(c_name)} = "{raw}"')
+    core.append("}")
+    core += [
+        "",
+        "extension Key {",
+        "  /// The key a macOS virtual keycode identifies, if macOS names one.",
+        "  public init?(macOSKeycode: UInt16) {",
+        "    switch macOSKeycode {",
+    ]
+    for mac in sorted(mac_table):
+        core.append(f"    case {mac:#04x}: self = .{swift_name(mac_table[mac])}")
+    core += [
+        "    default: return nil",
+        "    }",
+        "  }",
+        "}",
+        "",
+    ]
+
+    vt = [header(pin), "", "import CGhosttyVt", "import MusterCore", "", "extension Key {"]
+    vt += [
+        "  /// This key as libghostty-vt names it.",
+        "  ///",
+        "  /// The encoder seam, and the only place the two vocabularies meet.",
+        "  public var ghosttyKey: GhosttyKey {",
+        "    switch self {",
+    ]
+    for c_name in names:
+        vt.append(f"    case .{swift_name(c_name)}: {c_name}")
+    vt += ["    }", "  }", "}", ""]
+
+    CORE_OUT.parent.mkdir(parents=True, exist_ok=True)
+    VT_OUT.parent.mkdir(parents=True, exist_ok=True)
+    CORE_OUT.write_text("\n".join(core))
+    VT_OUT.write_text("\n".join(vt))
+
+    subprocess.run(
+        ["swift", "format", "--in-place", str(CORE_OUT), str(VT_OUT)], check=True, cwd=REPO
+    )
+
+    print(f"{len(names)} keys, {len(mac_table)} macOS keycodes -> {CORE_OUT.name}, {VT_OUT.name}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

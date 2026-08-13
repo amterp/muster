@@ -1,0 +1,19 @@
+a                a
+shift+a          ESC [ 9 7 : 6 5 ; 2 u
+ctrl+c           ESC [ 9 9 ; 5 u
+enter            ^M
+shift+enter      ESC [ 1 3 ; 2 u
+tab              ^I
+shift+tab        ESC [ 9 ; 2 u
+escape           ESC [ 2 7 u
+backspace        DEL
+arrow up         ESC [ 1 ; 1 : 1 A
+arrow down       ESC [ 1 ; 1 : 1 B
+home             ESC [ 1 ; 1 : 1 H
+end              ESC [ 1 ; 1 : 1 F
+page up          ESC [ 5 ~
+delete           ESC [ 3 ~
+f1               ESC [ 1 ; 1 : 1 P
+f12              ESC [ 2 4 ~
+alt+b            ESC [ 9 8 ; 3 u
+ctrl+alt+delete  ESC [ 3 ; 7 ~
