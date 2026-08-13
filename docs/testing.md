@@ -24,9 +24,16 @@ Muster's principles, adapted to that evidence:
   hardcoded two-second timer; tests that report agent state through the API never touch it.
 
   So the backend seam is not faked at all. Tests that need a daemon spawn a real one under a scratch config
-  directory. What this buys is the removal of a whole category: there is no hand-written herdr in this repo, so
-  there is nothing to drift, and "a drifted fake daemon is Muster's top false-green risk" stops being a risk we
-  manage and becomes one we do not have.
+  directory, through `crates/herdr-harness` - one daemon per test, killed on drop including on a panic, isolated by
+  pointing XDG at a scratch root because that is where herdr resolves its config and keeps its socket. What this
+  buys is the removal of a whole category: there is no hand-written herdr in this repo, so there is nothing to
+  drift, and "a drifted fake daemon is Muster's top false-green risk" stops being a risk we manage and becomes one
+  we do not have.
+
+  It also catches what a stand-in cannot. Building the subscription against a real daemon turned up two facts no
+  invented one would have contradicted: a subscription is requested by a dotted name and answered with a snake one,
+  and half-closing the write side - which is how every other herdr call signals it is finished - ends a subscription
+  on the spot. Both fail as silence rather than as an error, which is the shape of bug a fake is worst at.
 
   The daemon is pinned rather than found. `deps/herdr.pin` carries a version and a checksum per platform, `./dev`
   fetches that binary into `deps/herdr/` once and verifies it, and the path is handed down to the tests through

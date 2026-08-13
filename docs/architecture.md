@@ -161,15 +161,27 @@ model:
   synthetic events, so a client sees every existing entity twice and cannot ask for what it missed. Every event is
   therefore applied idempotently and carries absolute values, never deltas, so snapshot-plus-events converges
   regardless of what raced the bootstrap.
-- **Gaps are detectable for agent state, and not for structure.** Measured rather than assumed
+- **Gaps are quantifiable for agent state in arrears, and never for structure.** Measured rather than assumed
   (`observations/herdr-0.8.0.md` section 10). An agent's `state_change_seq` is stamped from one session-wide
-  counter, so a client that remembers the highest value it has seen can tell that transitions happened while it was
-  not listening, including on panes it has never heard of. A pane's `revision` cannot be used this way: it tracks
-  terminal titles and metadata tokens, and does not move when an agent changes state. Nothing reports a pane created
-  and closed inside a gap, so structure has no evidence-based detector and periodic reconciliation against a fresh
-  snapshot is the only one. Cadence is a separate decision.
+  counter, so comparing two of them says how many transitions ran in between, including on panes the client has
+  never heard of. In arrears because the stamp reaches a client in exactly one place - a snapshot's agent list - and
+  is on no event: what a client learns, it learns at the moment it re-snapshots, which is the moment the snapshot
+  has already made it correct. So the number is not a consistency signal but an attention one, and Muster reports it
+  as such: an agent may have asked for the user while nobody was listening. A pane's `revision` answers none of
+  this - it tracks terminal titles and metadata tokens and does not move when an agent changes state. Nothing at all
+  reports a pane created and closed inside a gap, so structure has no evidence-based detector and periodic
+  reconciliation against a fresh snapshot is the only one. Cadence is a separate decision.
 - **Removal has two spellings.** A pane a client closes emits `pane_closed`; a pane whose program ends emits
   `pane_exited` and no `pane_closed`. Both must drop the pane, or an exited pane renders forever.
+- **Agent state has one writer.** herdr carries `agent_status` on its pane payloads as well as on its agent events,
+  and the payloads are replayed as of when a subscription opened - so letting structure write that field means a
+  reconnect can roll a working agent back with nothing following to correct it. The agent channel owns the field;
+  structure sets it only for a pane it is seeing for the first time.
+- **Agent state costs a connection per pane.** `pane.agent_status_changed` takes a `pane_id` and no session-wide
+  subscription carries the same information (`observations/herdr-0.8.0.md` section 11), so an overview of N panes is
+  N held-open connections plus one for structure. Muster subscribes for every pane the mirror holds rather than only
+  the attached one, because showing them all is the point and measuring the cheap arrangement would tell us nothing
+  about the one that ships. What this costs at fifteen panes decides whether the upstream ask is worth pressing.
 - **Cross-daemon order is core order.** Streams from different daemons have no mutual order. Composition and
   attention are ordered by the core's own application sequence, and nothing may depend on cross-daemon event order
   for correctness.
