@@ -5,17 +5,26 @@
   "area": [
     "backend"
   ],
-  "column": "next",
+  "column": "uncommitted",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Parked rather than dropped, and the reason it is not urgent is on a new\ncard: `done` is idle on a pane nobody saw, and Muster holds both halves\nof that - the core sees every working -\u003e idle transition, and the shell\nknows whether its own window had focus. See a_27TdrJVUb. This card is\nthe upstream ask, worth making only if we ever approach the herdr team.",
+      "created_at_millis": 1786654109421,
+      "id": "c_27U0HWlAv"
+    }
+  ],
   "created_at_millis": 1786485304542,
   "creator": "Alexander Terp",
   "description": "herdr computes 'done' as idle-on-an-unseen-pane, and seen-ness depends on the foreground client's outer_terminal_focus. A client feeds that only by sending DEC focus sequences (CSI I / CSI O) in its raw input stream, or the equivalent client-protocol message - the JSON API has no method, and sending those bytes through terminal.input reaches the pane's program instead (verified: docs/observations/herdr-0.8.0.md section 3).\n\nConsequence: an agent that finishes while a Muster window sits unfocused gets marked seen by nobody, so it reads idle instead of done. Attention routing is the reason this project exists, so a false idle is not cosmetic.\n\nMuster can drive the daemon's active tab via pane.focus, which covers the common case. The gap is window-level focus. Options: speak herdr's client protocol alongside the JSON API, or ask upstream for a method - herdr's own guardrail says shared runtime facts belong in server state behind the JSON API, so the ask rides their stated direction.",
   "id": "a_26LAtaO6T",
-  "position": "UUUUU",
+  "position": "6",
   "title": "Upstream: no API for reporting client window focus",
   "type": "chore",
-  "updated_at_millis": 1786486563544,
+  "updated_at_millis": 1786654109421,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786485304542},
-    {"field":"column","value":"next","at":1786486563544}
+    {"field":"column","value":"next","at":1786486563544},
+    {"field":"column","value":"uncommitted","at":1786653226193}
   ]
 }

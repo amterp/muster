@@ -5,7 +5,7 @@
   "area": [
     "backend"
   ],
-  "column": "next",
+  "column": "uncommitted",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -18,12 +18,13 @@
   "creator": "Alexander Terp",
   "description": "herdr's JSON API gives a client one input channel - terminal.input on a control stream - and it is a raw write to the pane's PTY (src/server/headless.rs:2852 -\u003e apply_terminal_attach_input at :403 -\u003e runtime.try_send_bytes). The re-encoding in raw_input.rs belongs to herdr's own App-mode client, not to this one. Captured: corpus/herdr-0.8.0/input-encoding/, findings in docs/observations/herdr-0.8.0.md section 5.\n\nConsequence: Muster must encode for the pane's real modes, and no pane terminal mode is readable anywhere in the API. Application cursor keys, kitty flags, bracketed paste and mouse reporting are all guesses at the moment a key is pressed.\n\nThe ask has two shapes, and herdr already has the parts for both. Publish crate::pane::InputState (src/pane/terminal.rs:113 - already derives Serialize, already reachable as runtime.input_state()) plus the kitty flags from src/pane/kitty_keyboard.rs on the pane object; or take structured key events on the control stream the way terminal.scroll already takes scrolls and encode them server-side. terminal.scroll (apply_terminal_attach_scroll, :340) is the precedent: structured in, mode-aware encoding inside the daemon.\n\nSibling to a_26LAtaO6T - same argument, same guardrail: shared runtime facts belong in server state behind the JSON API.",
   "id": "a_27CTRluw7",
-  "position": "UUUUUUUU",
+  "position": "2",
   "title": "Upstream: control-stream input is raw, and modes are invisible",
   "type": "chore",
-  "updated_at_millis": 1786614525457,
+  "updated_at_millis": 1786653226224,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786612331500},
-    {"field":"column","value":"next","at":1786614292251}
+    {"field":"column","value":"next","at":1786614292251},
+    {"field":"column","value":"uncommitted","at":1786653226224}
   ]
 }

@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "composition-which",
+  "alias_explicit": false,
+  "area": [
+    "shell",
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1786654132582,
+  "creator": "Alexander Terp",
+  "description": "The core owns composition and does not have one yet. Two things in the\ncode already say so in their own comments: the mirror is a static\nbecause there is one window and one daemon, and its subscription hangs\noff the attached pane rather than off the daemon it describes.\n\nWhat this needs to become is which daemons are attached, and which\n(daemon, workspace, tab) shows in which window region - plus view-local\nfocus, meaning which pane Muster's keyboard feeds, which is never read\nback from the daemon's own cursor.\n\nKeep it plain records (a_27QcqNxRB). This is the only durable state\nMuster has and it is a few hundred bytes; written as records it can be\nsaved later for nothing, and written as a graph of view objects it\ncannot be saved at all.\n\nAlso here: the control socket is one per process today and has to\nbecome one per pane.",
+  "id": "a_27U0srTyw",
+  "position": "UUUUUU6",
+  "title": "🗂️ Composition: which daemon, which tab, which region",
+  "type": "feature",
+  "updated_at_millis": 1786654132582,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1786654132582}
+  ]
+}

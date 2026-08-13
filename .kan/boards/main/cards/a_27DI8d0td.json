@@ -5,7 +5,7 @@
   "area": [
     "testing"
   ],
-  "column": "in-progress",
+  "column": "done",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -24,19 +24,26 @@
       "body": "The daemon harness this needed now exists: crates/herdr-harness, built for the mirror's ten daemon-backed tests. One daemon per test, killed on drop, isolated by pointing XDG at a scratch root. What is left here is the input-path half - a program in the pane, encoded keys sent, the grid snapshotted - which is the oracle this card always described.",
       "created_at_millis": 1786648272091,
       "id": "c_27RYQTyBc"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Done. crates/muster-bridge/tests/input_path.rs runs in the ordinary\ngate: a real daemon from herdr-harness, a real muster-bridge process,\n`cat -v` in the pane, and the screen as libghostty-vt computes it.\n\nBoth routes are covered, which needed one trick worth remembering. In a\npane's default mode the local encoder and the daemon both turn Up into\nESC [ A, so an arrow test there passes whether or not the server route\nworked at all. The pane is put into application cursor mode first: the\nright answer becomes ESC O A while Muster's blind profile still says\nESC [ A, so a fallback is visible. Verified by forcing the fallback -\nthe test failed with ^[[A on screen.\n\nIt lives beside the bridge rather than beside the seam because cargo\nhands CARGO_BIN_EXE_\u003cname\u003e only to the owning package's tests, and one\ntest per binary because the seam's attached pane is a process global.",
+      "created_at_millis": 1786654100727,
+      "id": "c_27U03UbpP"
     }
   ],
   "created_at_millis": 1786614280073,
   "creator": "Alexander Terp",
   "description": "The input path is verified end to end today by a throwaway script: isolated daemon, cat -v in a pane, muster-bridge relaying, assert the bytes that arrive. That check is worth keeping and is not in the suite, because the default tier must stay offline and deterministic (docs/testing.md).\n\nShape: the contract tier docs/testing.md already describes - real version-pinned herdr, isolated config dir, throwaway session per test, synchronized by event waits rather than sleeps. The oracle is the grid harness that already exists: put a program in the pane, send encoded keys, snapshot what the screen becomes.\n\nWorth doing once there is a second thing to verify this way, so the tier is built for two cases rather than shaped around one.",
   "id": "a_27DI8d0td",
-  "position": "UUUU",
+  "position": "2",
   "title": "Run the input path against a real herdr, in the gate",
   "type": "feature",
-  "updated_at_millis": 1786648272091,
+  "updated_at_millis": 1786654100758,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786614280073},
     {"field":"column","value":"next","at":1786635166002},
-    {"field":"column","value":"in-progress","at":1786636530762}
+    {"field":"column","value":"in-progress","at":1786636530762},
+    {"field":"column","value":"done","at":1786654100758}
   ]
 }

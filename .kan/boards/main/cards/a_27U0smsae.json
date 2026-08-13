@@ -1,0 +1,22 @@
+{
+  "_v": 3,
+  "alias": "layout-in-the",
+  "alias_explicit": false,
+  "area": [
+    "backend",
+    "testing"
+  ],
+  "column": "next",
+  "created_at_millis": 1786654132528,
+  "creator": "Alexander Terp",
+  "description": "The mirror knows a pane's tab and workspace and nothing about where it\nsits, so there is no tree for a window to render. This is the noun that\nis missing.\n\n`layout_updated` is the source: it carries a whole tab's layout in\nabsolute values, so applying it twice is applying it once, and it fires\non every pane event (observations/herdr-0.8.0.md). What it does not\nfire for is tab and workspace events, so it must not become the only\nstructural signal.\n\nThe catch is that its rects live in herdr's own TUI coordinate space -\nthe recorded area is 54x23 at (26,1), herdr's window minus its sidebar.\nOnly structure and ratios mean anything to Muster; the cell numbers are\nfor reconstructing which node contains which, and nothing else. A tree\nrebuilt that way is also how a divider is named back to the daemon,\nsince `layout.set_split_ratio` addresses one by a path of booleans.\n\nBlocked on a_27RZE8ywI: a reconstruction checked against the one\nrecorded layout is a reconstruction checked against nothing.",
+  "id": "a_27U0smsae",
+  "position": "E",
+  "title": "🧱 Layout in the vocabulary: a tab's tree, in Muster's words",
+  "type": "feature",
+  "updated_at_millis": 1786654146475,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1786654132528},
+    {"field":"column","value":"next","at":1786654146475}
+  ]
+}
