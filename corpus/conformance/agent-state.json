@@ -1,0 +1,50 @@
+{
+  "concept": "agentState.fromBackend",
+  "source": "authored",
+  "citation": "docs/architecture.md, agent states; herdr's five states observed in docs/observations/herdr-0.8.0.md section 3",
+  "why": "Agent states are the reason this project exists, so reading one wrongly is not a display bug. Five states, not four: `unknown` is a state an agent can genuinely be in - a pane whose harness we cannot classify - and it renders as itself. The names are listed one per case rather than looped over, so that the set is pinned as data: a language that spelled one of them differently would otherwise pass a round-trip test while disagreeing with the daemon.",
+  "cases": [
+    {
+      "name": "working",
+      "why": "The state an agent spends most of its time in, and the one whose absence would make a busy pane look idle.",
+      "given": { "backendValue": "working" },
+      "expect": { "state": "working" }
+    },
+    {
+      "name": "blocked",
+      "why": "The state attention routing exists for: an agent that needs a person. Misreading it as idle is the failure that makes the whole feature pointless.",
+      "given": { "backendValue": "blocked" },
+      "expect": { "state": "blocked" }
+    },
+    {
+      "name": "idle",
+      "why": "Nothing running. Distinct from done, which herdr derives as idle-on-an-unseen-pane rather than storing.",
+      "given": { "backendValue": "idle" },
+      "expect": { "state": "idle" }
+    },
+    {
+      "name": "done",
+      "why": "Never stored by a backend - it is idle on a pane nobody has seen. Muster reads the derived value rather than computing it, so the name still has to survive the wire.",
+      "given": { "backendValue": "done" },
+      "expect": { "state": "done" }
+    },
+    {
+      "name": "unknown",
+      "why": "A state in its own right, not an error. An agent we failed to read is not an agent that finished.",
+      "given": { "backendValue": "unknown" },
+      "expect": { "state": "unknown" }
+    },
+    {
+      "name": "a state we have never heard of fails closed onto unknown",
+      "why": "herdr's API is explicitly unstable and ships weekly, so a state we have never heard of is a thing it may add next week. Failing closed shows an honest 'we don't know' instead of crashing or - far worse - quietly reading a novel state as idle and telling the user nothing needs them.",
+      "given": { "backendValue": "hibernating" },
+      "expect": { "state": "unknown" }
+    },
+    {
+      "name": "an empty state reads as unknown",
+      "why": "The shape a missing field takes after a permissive decode. Same reasoning as an unrecognized name, reached by the more likely route.",
+      "given": { "backendValue": "" },
+      "expect": { "state": "unknown" }
+    }
+  ]
+}

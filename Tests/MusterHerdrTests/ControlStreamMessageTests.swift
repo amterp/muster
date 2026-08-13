@@ -1,65 +1,87 @@
 import Darwin
 import Foundation
+import TestSupport
 import Testing
 
 @testable import MusterHerdr
 
-/// The daemon-facing oracle `docs/testing.md` asks for: the exact bytes a message puts
-/// on the wire. herdr parses these with serde, so a wrong key name is a silently ignored
-/// command rather than an error anyone would see.
+// A driver, plus the one case that cannot be data: whether the app's channel actually
+// delivers a whole message to a bridge that has connected. That needs a socket and a
+// race, not a table.
 
-private func wire(_ message: ControlStreamMessage) throws -> [String: Any] {
-  let data = message.wireFormat
-  #expect(data.last == UInt8(ascii: "\n"), "herdr reads its stdin as newline-delimited JSON")
-  return try #require(
-    JSONSerialization.jsonObject(with: data.dropLast()) as? [String: Any])
+@Test("control stream wire format")
+func controlStreamConformance() throws {
+  let corpus = try Conformance.load("control-stream-message.json")
+
+  let ran = corpus.run { given in
+    let data = try message(from: given).wireFormat
+
+    // Asserted for every case rather than in one of them: herdr reads its stdin as
+    // newline-delimited JSON and blocks forever without the terminator, which looks
+    // exactly like a pane that ignores the keyboard.
+    let terminated = data.last == UInt8(ascii: "\n")
+    guard let object = try? JSONSerialization.jsonObject(with: data.dropLast()) else {
+      throw CaseError("the message is not JSON once its newline is removed")
+    }
+
+    guard case .object(var fields) = JSONValue(object) else {
+      throw CaseError("the message is not a JSON object")
+    }
+    fields["newline_terminated"] = .bool(terminated)
+    return .object(fields)
+  }
+
+  #expect(ran == corpus.cases.count)
+  #expect(ran > 0)
 }
 
-@Test("input carries its bytes as base64 under the key herdr reads")
-func inputMessageShape() throws {
-  let object = try wire(.input(Array("\u{1b}[97u".utf8)))
-
-  #expect(object["type"] as? String == "terminal.input")
-  #expect(object["bytes"] as? String == "G1s5N3U=")
-  // text and bytes together is an error herdr returns rather than a field it ignores.
-  #expect(object["text"] == nil)
+private func message(from given: JSONValue) throws -> ControlStreamMessage {
+  switch given["intent"]?.stringValue {
+  case "input":
+    guard let bytes = bytes(fromHex: given["bytes_hex"]?.stringValue ?? "") else {
+      throw CaseError("`bytes_hex` is missing or not hex")
+    }
+    return .input(bytes)
+  case "resize":
+    guard let columns = given["columns"]?.intValue, let rows = given["rows"]?.intValue else {
+      throw CaseError("resize needs `columns` and `rows`")
+    }
+    return .resize(columns: UInt16(columns), rows: UInt16(rows))
+  case "scroll":
+    guard let name = given["direction"]?.stringValue,
+      let direction = ControlStreamMessage.ScrollDirection(rawValue: name),
+      let lines = given["lines"]?.intValue
+    else {
+      throw CaseError("scroll needs a known `direction` and `lines`")
+    }
+    return .scroll(direction: direction, lines: UInt16(lines))
+  case let other:
+    throw CaseError("unknown intent \(other ?? "nil")")
+  }
 }
 
-@Test("arbitrary bytes survive the round trip")
-func inputSurvivesArbitraryBytes() throws {
-  // Escape sequences and high bytes are the normal case here, not an edge one: this
-  // channel exists to carry encoded keys, and herdr writes whatever arrives straight to
-  // the pane's PTY.
-  let bytes: [UInt8] = [0x1b, 0x00, 0xff, 0x0a, 0x7f, 0xc3, 0xa9]
-  let object = try wire(.input(bytes))
-
-  let encoded = try #require(object["bytes"] as? String)
-  let decoded = try #require(Data(base64Encoded: encoded))
-  #expect(Array(decoded) == bytes)
+private func bytes(fromHex hex: String) -> [UInt8]? {
+  guard hex.count.isMultiple(of: 2) else { return nil }
+  var out: [UInt8] = []
+  var index = hex.startIndex
+  while index < hex.endIndex {
+    let next = hex.index(index, offsetBy: 2)
+    guard let byte = UInt8(hex[index..<next], radix: 16) else { return nil }
+    out.append(byte)
+    index = next
+  }
+  return out
 }
 
-@Test("resize names its dimensions the way herdr does")
-func resizeMessageShape() throws {
-  let object = try wire(.resize(columns: 120, rows: 40))
-
-  #expect(object["type"] as? String == "terminal.resize")
-  #expect(object["cols"] as? Int == 120)
-  #expect(object["rows"] as? Int == 40)
-}
-
-@Test("scroll goes out as an intent, not as bytes")
-func scrollMessageShape() throws {
-  let object = try wire(.scroll(direction: .up, lines: 3))
-
-  #expect(object["type"] as? String == "terminal.scroll")
-  #expect(object["direction"] as? String == "up")
-  #expect(object["lines"] as? Int == 3)
+private struct CaseError: Error, CustomStringConvertible {
+  let description: String
+  init(_ description: String) { self.description = description }
 }
 
 @Test("the app's channel delivers whole messages to a connected bridge")
 func channelDeliversMessages() throws {
-  // The bridge is a subprocess in production; here it is a socket, because what is worth
-  // testing is the framing and the connect race, not spawning.
+  // Stays native: what is worth testing here is framing across a real socket and the
+  // connect race, neither of which a case file can express.
   let path = FileManager.default.temporaryDirectory
     .appendingPathComponent("muster-test-\(getpid())-\(UInt32.random(in: 0...999_999)).sock")
     .path

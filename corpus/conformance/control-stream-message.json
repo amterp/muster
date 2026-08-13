@@ -1,0 +1,45 @@
+{
+  "concept": "controlStream.wireFormat",
+  "source": "recorded",
+  "regenerate": "tools/herdr-probe/probe input-path  (field names read off herdr src/client/mod.rs and confirmed on the wire; see corpus/herdr-0.8.0/input-path/)",
+  "citation": "docs/observations/herdr-0.8.0.md section 5",
+  "why": "The daemon-facing oracle docs/testing.md asks for: the exact bytes a message puts on the wire. herdr parses these with serde, so a wrong key name is a silently ignored command rather than an error anyone would see - a pane that renders perfectly and never receives a keystroke. Every case also pins the trailing newline, because herdr reads its stdin as newline-delimited JSON and blocks without one.",
+  "cases": [
+    {
+      "name": "input carries its bytes as base64",
+      "why": "The field herdr reads is `bytes`, not `data` or `input`. A wrong name here is the failure this whole corpus exists for: serde ignores it, the daemon reports nothing, and the pane silently swallows every key.",
+      "given": { "intent": "input", "bytes_hex": "1b5b393775" },
+      "expect": { "type": "terminal.input", "bytes": "G1s5N3U=", "newline_terminated": true }
+    },
+    {
+      "name": "text and bytes are never sent together",
+      "why": "herdr returns an error for a message carrying both, rather than ignoring one. So the encoder must pick, and for input it always picks bytes - the channel exists to carry already-encoded keys.",
+      "given": { "intent": "input", "bytes_hex": "68" },
+      "expect": { "type": "terminal.input", "bytes": "aA==", "newline_terminated": true }
+    },
+    {
+      "name": "arbitrary bytes survive the round trip",
+      "why": "Escape sequences, nulls, high bytes and UTF-8 continuation bytes are the normal case on this channel, not an edge one. herdr writes whatever arrives straight to the pane's PTY, so anything mangled here is mangled in the program the user is typing into.",
+      "given": { "intent": "input", "bytes_hex": "1b00ff0a7fc3a9" },
+      "expect": { "type": "terminal.input", "bytes": "GwD/Cn/DqQ==", "newline_terminated": true }
+    },
+    {
+      "name": "resize names its dimensions the way herdr does",
+      "why": "`cols` and `rows`, not `columns` and `rows`. The abbreviation is herdr's, and a pane held at the wrong geometry reflows every program in it.",
+      "given": { "intent": "resize", "columns": 120, "rows": 40 },
+      "expect": { "type": "terminal.resize", "cols": 120, "rows": 40, "newline_terminated": true }
+    },
+    {
+      "name": "scroll goes out as an intent, not as bytes",
+      "why": "A frame stream has no history, so surfaces hold no scrollback and never handle the wheel. terminal.scroll is the one input-shaped thing herdr answers against a pane's real modes, which is the shape the rest of input should eventually take.",
+      "given": { "intent": "scroll", "direction": "up", "lines": 3 },
+      "expect": { "type": "terminal.scroll", "direction": "up", "lines": 3, "newline_terminated": true }
+    },
+    {
+      "name": "scrolling down is a different direction, not a negative count",
+      "why": "Named directions rather than signed lines, because that is what herdr accepts. A negative count would be ignored as out of range and the viewport would sit still.",
+      "given": { "intent": "scroll", "direction": "down", "lines": 1 },
+      "expect": { "type": "terminal.scroll", "direction": "down", "lines": 1, "newline_terminated": true }
+    }
+  ]
+}
