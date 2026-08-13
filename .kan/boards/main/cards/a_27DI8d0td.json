@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "contract-tier-run",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1786614280073,
+  "creator": "Alexander Terp",
+  "description": "The input path is verified end to end today by a throwaway script: isolated daemon, cat -v in a pane, muster-bridge relaying, assert the bytes that arrive. That check is worth keeping and is not in the suite, because the default tier must stay offline and deterministic (docs/testing.md).\n\nShape: the contract tier docs/testing.md already describes - real version-pinned herdr, isolated config dir, throwaway session per test, synchronized by event waits rather than sleeps. The oracle is the grid harness that already exists: put a program in the pane, send encoded keys, snapshot what the screen becomes.\n\nWorth doing once there is a second thing to verify this way, so the tier is built for two cases rather than shaped around one.",
+  "id": "a_27DI8d0td",
+  "position": "UUUUUUUUUUUUUU",
+  "title": "Contract tier: run the input path against a real herdr",
+  "type": "feature",
+  "updated_at_millis": 1786614280073,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1786614280073}
+  ]
+}
