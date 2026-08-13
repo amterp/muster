@@ -116,6 +116,23 @@ final class SurfaceView: NSView {
     pane.scroll(direction: event.scrollingDeltaY > 0 ? .up : .down, lines: lines)
   }
 
+  /// The clipboard, on its way to the pane.
+  ///
+  /// Reached through the responder chain from the Edit menu's ⌘V rather than by matching
+  /// the chord in `keyDown`, because that is how macOS decides what ⌘V means - it honors
+  /// a remapped shortcut, and it keeps working when the key equivalent is not the one we
+  /// assumed. Muster's own keymap will take precedence over this later; the seam for that
+  /// already exists in `PaneInput`.
+  /// Not an override: `paste(_:)` is an action `NSResponder` dispatches by selector rather
+  /// than a method `NSView` declares, so this declares it.
+  @objc func paste(_ sender: Any?) {
+    guard let text = NSPasteboard.general.string(forType: .string) else {
+      Log.debug("input.paste.empty", ["impact": "nothing was sent; the clipboard has no text"])
+      return
+    }
+    pane?.paste(text: text)
+  }
+
   override func becomeFirstResponder() -> Bool {
     surface?.setFocus(true)
     return true
@@ -209,9 +226,11 @@ final class PaneInput {
   private let channel: PaneControlChannel
   private let encoder: KeyEncoder
   private let keymap = Keymap()
+  private let profile: TerminalModeProfile
   private var warnedAboutDroppedInput = false
 
   init(channel: PaneControlChannel, profile: TerminalModeProfile) throws {
+    self.profile = profile
     self.channel = channel
     self.encoder = try KeyEncoder(profile: profile)
   }
@@ -256,6 +275,36 @@ final class PaneInput {
         "text": Log.includesInput ? text.debugDescription : "",
       ])
     deliver(.input(Array(text.utf8)))
+  }
+
+  /// Sends the clipboard to the pane.
+  ///
+  /// Separate from typed text because a paste is a thing a program can be told about: a
+  /// program that enabled DEC 2004 wants the text fenced by paste markers, so that it can
+  /// tell "the user pasted this" from "the user typed this very fast". Agents use exactly
+  /// that distinction, and shells use it to stop a multi-line paste from running as it
+  /// arrives.
+  ///
+  /// The fence is currently never applied, because `unknownPane` cannot know the mode and
+  /// markers sent to a program that never asked for them arrive as literal `[200~` on its
+  /// input. Guessing wrong is worse here than guessing low. Card a_27DO80J34 fixes this
+  /// properly: paste is the ideal first user of herdr's own `pane.send_input`, which
+  /// encodes against the pane's real modes, because one socket connect per paste costs
+  /// nothing - unlike one per keystroke, which is what makes that trade hard elsewhere.
+  func paste(text: String) {
+    guard !text.isEmpty else { return }
+    Log.info(
+      "input.paste",
+      [
+        "characters": String(text.count),
+        "bracketed": String(profile.bracketedPaste),
+        "text": Log.includesInput ? text.debugDescription : "",
+      ])
+    guard profile.bracketedPaste else {
+      deliver(.input(Array(text.utf8)))
+      return
+    }
+    deliver(.input(Array("\u{1b}[200~\(text)\u{1b}[201~".utf8)))
   }
 
   func scroll(direction: ControlStreamMessage.ScrollDirection, lines: UInt16) {
@@ -322,6 +371,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         "input_recorded": String(Log.includesInput),
       ])
 
+    installMenu()
     let view = SurfaceView(frame: NSRect(x: 0, y: 0, width: 960, height: 600))
 
     let window = NSWindow(
@@ -393,6 +443,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // The pane's modes are not readable, so this is the documented guess. One day it is
     // fed from the daemon; nothing above here changes when it is.
     return try PaneInput(channel: channel, profile: .unknownPane)
+  }
+
+  /// The smallest menu bar that makes the platform's shortcuts work.
+  ///
+  /// Not decoration: on macOS a key equivalent is dispatched from the main menu, so
+  /// without this ⌘V and ⌘Q are inert no matter what the view implements. An app with no
+  /// menu at all is also one a person cannot quit normally.
+  ///
+  /// Copy is deliberately absent - it needs a selection, and the pane's selection lives in
+  /// the daemon where Muster cannot yet reach it. A menu item that silently does nothing
+  /// would be worse than its absence.
+  private func installMenu() {
+    let menu = NSMenu()
+
+    let appItem = NSMenuItem()
+    let appMenu = NSMenu()
+    appMenu.addItem(
+      withTitle: "Quit muster", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+    appItem.submenu = appMenu
+    menu.addItem(appItem)
+
+    let editItem = NSMenuItem()
+    let editMenu = NSMenu(title: "Edit")
+    // nil target: AppKit walks the responder chain, which lands on the focused surface.
+    editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+    editItem.submenu = editMenu
+    menu.addItem(editItem)
+
+    NSApp.mainMenu = menu
   }
 
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
