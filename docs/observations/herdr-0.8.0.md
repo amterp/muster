@@ -236,8 +236,8 @@ feared and exactly one thing more than expected.
 | shift+enter in Claude Code | works - `CSI 27;2;13~` is understood without kitty negotiation |
 | Dead keys (`option+e`, `e` → `é`) | works |
 | Arrows in `vim` | works |
-| Arrows in `less` | **broken** |
-| Paste | sent unfenced; single-line correct, multi-line runs line by line |
+| Arrows in `less` | was broken; now correct, see below |
+| Paste | was unfenced; now correct, see below |
 
 `less` is the case that fails, and it fails loudly rather than subtly. It calls terminfo's
 `smkx` (`\E[?1h\E=`) on startup, which turns application cursor mode on, and then decodes
@@ -250,6 +250,28 @@ produces 99 bytes of scrolled content and no bell.
 single-program check would have concluded the loss was theoretical. It is not: the split is
 between programs that trust terminfo and programs that hedge, and the ones that trust
 terminfo are the ones a guess breaks.
+
+**Both losses are recovered, by `pane.send_input`.** The earlier reading of that API said
+its key vocabulary could not name the navigation cluster. That was drawn from a
+`ctrl+alt+delete` rejection and was too broad: `up`, `down`, `left` and `right` are all
+accepted. What is genuinely missing is `pageup`, `pagedown`, `home`, `end`, `insert` and
+`delete` - `parse_key_combo` (`src/config/keybinds.rs:1201`) never got string aliases for
+those `KeyCode`s, though herdr's terminal handles them everywhere else. Keys may also
+carry modifiers as `+`-joined strings, so `shift+up` and `ctrl+left` are expressible.
+
+So Muster routes bare arrows and paste through `pane.send_input` and encodes everything
+else locally. `less` scrolls. A multi-line paste arrives as text to edit rather than as
+commands to run.
+
+The cost was the objection to doing this, and it does not survive measurement: **0.09ms
+median, 1.6ms worst over 20 samples**, against the 33ms a key repeat allows. A raw client
+pays one connection per request where the CLI pays two - `cli::send_request` opens a
+separate connection to `ping` for a version check first (`src/cli.rs:759`).
+
+One thing this arrangement has to get right that a single channel would not: ordering.
+Control-stream bytes reach the PTY through the bridge, a routed key reaches it directly,
+and the two race - so Muster serializes, and a routed key completes its round trip before
+the next byte goes out.
 
 Still open, and needing more of the Swift surface: full IME composition with a candidate
 window, AltGr on a non-US layout, and mouse.

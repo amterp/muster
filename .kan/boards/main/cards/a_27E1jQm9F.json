@@ -6,16 +6,17 @@
     "testing",
     "shell"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "created_at_millis": 1786616032684,
   "creator": "Alexander Terp",
   "description": "Nothing exercises the app's own launch path. The end-to-end input check that exists reimplements the app's half in Python - it opens the socket and spawns the bridge itself - so it proved the transport while the app's actual wiring stayed unrun. A test that substitutes for the component under test verifies the substitute.\n\nTwo bugs went out through that hole: a mistyped pane id produced an empty window and a silent exit(0), throwing away the reason herdr had already stated in the closing frame; and bare 'muster' dropped every keystroke by construction with nothing said.\n\nThe diagnostic log now makes this assertable without driving AppKit. Spawn the real muster binary against an isolated daemon, wait, and read the log: channel.connected must appear, bridge.frame.first must appear, no error record may. Both bugs above fail that test.\n\nOpen question worth settling first: whether an NSApplication with .regular activation policy will run on a CI runner with no GUI session, and whether .accessory is enough.",
   "id": "a_27E1jQm9F",
-  "position": "M",
+  "position": "UUUUUUUUUU",
   "title": "Launch smoke test: assert on the run log",
   "type": "feature",
-  "updated_at_millis": 1786616032684,
+  "updated_at_millis": 1786619446338,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1786616032684}
+    {"field":"column","value":"backlog-hi","at":1786616032684},
+    {"field":"column","value":"done","at":1786619446338}
   ]
 }
