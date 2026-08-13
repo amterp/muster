@@ -16,6 +16,7 @@ args:
     lint l bool    # Report style violations, changing nothing.
     format f bool  # Rewrite sources into canonical style.
     clean c bool   # Delete build artifacts.
+    contract bool  # Run the app against a real herdr. Needs a GUI session; not in the gate.
 
 ZIG_VERSION = "0.16.0"
 GHOSTTY_REPO = "https://github.com/ghostty-org/ghostty"
@@ -96,7 +97,13 @@ fn build_deps():
     $`cd {GHOSTTY_DIR} && zig build -Doptimize=ReleaseFast -Demit-lib-vt=true`
     write_file(BUILT_STAMP, pin)
 
-if not (deps or build or test or lint or format or clean):
+// The contract tier is opt-in and never part of the gate: it needs a real herdr on PATH
+// and a logged-in GUI session, and the default suite must stay offline and deterministic
+// (docs/testing.md). Asking for it alone should not also take the whole gate.
+if contract:
+    build = true
+
+if not (deps or build or test or lint or format or clean or contract):
     deps = true
     build = true
     test = true
@@ -145,6 +152,18 @@ if test:
 
     print(dim("{len(tests)} test(s) discovered"))
     $`swift test`
+
+if contract:
+    announce("contract")
+    // The only check that runs the app itself. Everything else fakes one side or the
+    // other; this spawns a real herdr, launches the real binary against it, and reads the
+    // run log to see what actually connected.
+    stdout, stderr, code = $`python3 tools/smoke-launch.py` catch:
+        print_err(red("The app did not launch cleanly against a real daemon."))
+        print_err(stdout.trim())
+        print_err(stderr.trim())
+        exit(1)
+    print(stdout.trim())
 
 if lint:
     announce("lint")

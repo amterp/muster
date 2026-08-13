@@ -65,6 +65,10 @@ how you run your agents.
 CI runs, so a contributor's green and a merge gate's green cannot drift apart. Flags narrow it and cluster: `./dev -t`
 tests, `./dev -tl` tests and lints, `./dev -h` lists them all.
 
+`./dev --contract` is the exception that stays out of the gate. It launches the real app against a real herdr and
+reads its run log to see what connected, so it needs a daemon on PATH and a logged-in GUI session - neither of which
+the default suite is allowed to require.
+
 Requires a Swift 6.2 toolchain and [Rad](https://github.com/amterp/rad) on your PATH; a missing `rad` shows up as
 `env: rad: No such file or directory`.
 
