@@ -1,6 +1,12 @@
 [workspace]
 resolver = "3"
-members = ["crates/conformance", "crates/muster-core", "crates/muster-herdr", "crates/muster-vt"]
+members = [
+    "crates/conformance",
+    "crates/muster-core",
+    "crates/muster-bridge",
+    "crates/muster-herdr",
+    "crates/muster-vt",
+]
 
 [workspace.package]
 version = "0.1.0"
@@ -13,6 +19,7 @@ base64 = "0.22"
 conformance = { path = "crates/conformance" }
 libc = "0.2"
 muster-core = { path = "crates/muster-core" }
+muster-herdr = { path = "crates/muster-herdr" }
 serde_json = "1"
 
 # Lints live here rather than in a CI flag, so that `cargo build`, rust-analyzer and the

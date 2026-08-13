@@ -1,0 +1,17 @@
+[package]
+name = "muster-bridge"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "muster-bridge"
+path = "src/main.rs"
+
+[dependencies]
+libc.workspace = true
+muster-core.workspace = true
+muster-herdr.workspace = true
+
+[lints]
+workspace = true

@@ -59,6 +59,16 @@ fn fail_perf(stdout, stderr, code):
     print_err("  ./dev --perf --record")
     exit(1)
 
+// A surface spawns its bridge by path, looking beside the running executable - right for a
+// shipped bundle, and wrong for two build systems with two output directories. Rather than
+// teach the app where cargo puts things, the build puts the bridge where the app already
+// looks. The awkwardness stays here instead of in the code that has cost the most time
+// when it was wrong.
+fn stage_bridge():
+    stdout = $`swift build --show-bin-path`
+    swift_bin = stdout.trim()
+    $`cp target/debug/muster-bridge {swift_bin}/muster-bridge`
+
 fn read_pin():
     result = read_file("deps/ghostty.pin") catch:
         print_err(red("deps/ghostty.pin is missing or unreadable."))
@@ -154,6 +164,7 @@ if build:
     // ones a contributor can act on without a window.
     $`cargo build --workspace --all-targets`
     $`swift build`
+    stage_bridge()
 
 if test:
     announce("test")

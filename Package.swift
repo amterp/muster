@@ -11,6 +11,9 @@ import PackageDescription
 // GhosttyKit is not in the repo: `./dev -d` builds it from the commit in
 // deps/ghostty.pin. A missing xcframework surfaces here as a SwiftPM error naming the
 // path.
+//
+// muster-bridge is not here either: it moved to the Rust workspace (MIP-1), and `./dev`
+// stages the built binary beside these so a surface still finds it next to the app.
 let package = Package(
   name: "muster",
   platforms: [.macOS(.v14)],
@@ -77,9 +80,6 @@ let package = Package(
     // against a baseline, and how the verdict reads. Separated from the executable that
     // runs the timing loops, so the part that decides whether to fail a build is tested.
     .target(name: "MusterPerf", dependencies: ["MusterCore"]),
-    // Spawned as a surface's command, one per visible pane. Its own executable because
-    // that is the only shape libghostty can be fed by.
-    .executableTarget(name: "muster-bridge", dependencies: ["MusterHerdr"]),
     .executableTarget(
       name: "muster",
       dependencies: ["MusterCore", "MusterHerdr", "MusterMac", "MusterRenderer", "MusterVT"]),
