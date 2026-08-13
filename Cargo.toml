@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
     "crates/conformance",
+    "crates/herdr-harness",
     "crates/muster-core",
     "crates/muster-bridge",
     "crates/muster-herdr",
@@ -19,6 +20,7 @@ publish = false
 [workspace.dependencies]
 base64 = "0.22"
 conformance = { path = "crates/conformance" }
+herdr-harness = { path = "crates/herdr-harness" }
 libc = "0.2"
 muster-core = { path = "crates/muster-core" }
 muster-herdr = { path = "crates/muster-herdr" }
