@@ -70,9 +70,10 @@ how you run your agents.
 
 ## Building
 
-`./dev` is the only supported way to build, test, and lint. With no flags it takes the full gate, which is also all
-CI runs, so a contributor's green and a merge gate's green cannot drift apart. Flags narrow it and cluster: `./dev -t`
-tests, `./dev -tl` tests and lints, `./dev -h` lists them all.
+`./dev` is the only supported way to build, test, and lint. With no flags it takes the full gate, and
+`.github/workflows/gate.yml` runs that one command on every push and pull request - so a contributor's green and a
+merge gate's green cannot drift apart. Flags narrow it and cluster: `./dev -t` tests, `./dev -tl` tests and lints,
+`./dev -h` lists them all.
 
 `./dev --contract` is the exception that stays out of the gate. It launches the real app against a real herdr and
 reads its run log to see what connected, so it needs a daemon on PATH and a logged-in GUI session - neither of which
@@ -90,6 +91,10 @@ Requires a Swift 6.2 toolchain, [Rad](https://github.com/amterp/rad), and Zig 0.
 shows up as `env: rad: No such file or directory`. Rust installs itself - `rust-toolchain.toml` pins the version and
 rustup fetches it on the first `cargo` call, the same way `deps/ghostty.pin` decides which libghostty gets built.
 libclang, which the libghostty-vt bindings are generated with, comes from the Xcode command line tools.
+
+`deps/rad.pin` names the Rad the gate is written against, and is the one pin `./dev` cannot act on - it is already
+running under Rad by the time it could look. CI installs exactly that build; your own `rad` is free to be any
+version, and one too old to parse `./dev` says which line it could not read.
 
 herdr is a test dependency as well as a runtime one, because tests that need a daemon spawn a real one rather than
 a stand-in. It is deliberately **not** taken from your PATH: `deps/herdr.pin` names a release and a checksum per

@@ -1,0 +1,10 @@
+{
+  "_comment": "The Rad that ./dev is written in. Unlike the other two pins, ./dev cannot fetch this one - it is already running under it by the time it could look - so this file is read by CI, which installs exactly this build before taking the gate, and by anyone reproducing that. A contributor's own rad is free to be any version: a rad too old to parse ./dev fails at the first line it cannot read, and says which. Checksums are upstream's, copied from the release's checksums.txt.",
+  "version": "0.11.0",
+  "checksums": {
+    "rad_darwin_arm64.tar.gz": "acb143da267b76e0a79ece49f7b1e3873fd16020517b651edcd1f8a2edea469e",
+    "rad_darwin_amd64.tar.gz": "9ab85ceed6445f6fafb4fefa2be5ddf5ba8de91cb082d7267a79b4e3b4428bb6",
+    "rad_linux_arm64.tar.gz": "d1e78750b9d78d4699882ca99da6fb7d8f14334a318bf295dd96ddb4e68770b8",
+    "rad_linux_amd64.tar.gz": "38d9195ae810263ea2956cded2d7f597cf33e792e51ab8c6756aa05a1cd97055"
+  }
+}

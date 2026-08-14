@@ -7,10 +7,12 @@ CLAUDE.md
 
 # Dependency builds and downloads. The pins are what we track; ./dev reproduces
 # everything else from them - libghostty built from source, herdr fetched as a release
-# binary and checksummed.
+# binary and checksummed. rad.pin is the exception ./dev cannot act on, since ./dev is
+# written in it; CI reads that one.
 deps/*
 !deps/ghostty.pin
 !deps/herdr.pin
+!deps/rad.pin
 
 # Python bytecode (tools/herdr-probe)
 __pycache__/

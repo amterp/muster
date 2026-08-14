@@ -1,0 +1,138 @@
+# Muster's gate, on every push.
+#
+# One job, running `./dev` with no flags. That is the whole gate, and anything else run
+# here is how a contributor's green and a merge gate's green start to drift apart. Every
+# step above it exists only to put a toolchain or a pinned dependency where `./dev`
+# expects to find one.
+#
+# Three tiers stay out, for the reasons docs/testing.md gives: `--contract` needs a
+# logged-in GUI session to launch the app, and `--perf` and `--latency` are timing
+# measurements that would be flaky as assertions. A functional green is never a
+# performance claim.
+#
+# The Linux half - replaying the recorded corpus against the devenv container's daemon -
+# is not here yet. It arrives with the SSH tier that teaches `./dev` about the container.
+
+name: gate
+
+on:
+  push:
+  pull_request:
+
+# A run whose commit has already been superseded is answering a question nobody is asking.
+concurrency:
+  group: gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    # Pinned rather than macos-latest: the image chooses the Xcode, and so the Swift, that
+    # the shell is built with. A floating label moves the toolchain under us with no commit
+    # to blame it on.
+    runs-on: macos-26
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # First, so a runner image without a new enough Swift fails in seconds with a
+      # sentence - rather than five minutes later inside a manifest error that reads as
+      # anything but "wrong Xcode".
+      - name: Check the Swift toolchain
+        run: |
+          set -euo pipefail
+          swift --version
+          required=6.2
+          found=$(swift --version 2>&1 | sed -n 's/.*Swift version \([0-9][0-9.]*\).*/\1/p' | head -1)
+          if [ -z "$found" ]; then
+            echo "::error::Could not read a Swift version out of 'swift --version'."
+            echo "Impact: the shell cannot be built or tested, so this run proves nothing."
+            echo "Check whether this runner image ships Swift at all, and whether the output"
+            echo "format above has changed under the sed that parses it."
+            exit 1
+          fi
+          if [ "$(printf '%s\n%s\n' "$required" "$found" | sort -V | head -1)" != "$required" ]; then
+            echo "::error::Package.swift declares swift-tools-version $required; this runner has $found."
+            echo "Impact: SwiftPM refuses the manifest, so nothing in Sources/ is built or tested."
+            echo "Either the runner image regressed its default Xcode, or macos-26 is no longer"
+            echo "the image that carries Swift $required. Select a newer Xcode with"
+            echo "xcode-select, or move the runs-on label."
+            exit 1
+          fi
+
+      # Pinned like the daemon and the renderer are, and for the same reason. ./dev cannot
+      # fetch this one itself: it is written in Rad, so it is already running by the time it
+      # could look.
+      - name: Install the pinned Rad
+        run: |
+          set -euo pipefail
+          version=$(python3 -c 'import json; print(json.load(open("deps/rad.pin"))["version"])')
+          case "$(uname -m)" in
+            arm64|aarch64) arch=arm64 ;;
+            *) arch=amd64 ;;
+          esac
+          asset="rad_darwin_${arch}.tar.gz"
+          want=$(python3 -c "import json; print(json.load(open('deps/rad.pin'))['checksums']['$asset'])")
+          # -f so an HTML error page never lands on disk looking like a tarball.
+          curl -fsSL -o "$RUNNER_TEMP/$asset" \
+            "https://github.com/amterp/rad/releases/download/v$version/$asset"
+          echo "$want  $RUNNER_TEMP/$asset" | shasum -a 256 -c -
+          tar -xzf "$RUNNER_TEMP/$asset" -C "$RUNNER_TEMP" rad
+          mkdir -p "$HOME/.local/bin"
+          mv "$RUNNER_TEMP/rad" "$HOME/.local/bin/rad"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/rad" --version
+
+      # The one third-party action here. ./dev requires Zig 0.16.0 exactly, because that is
+      # what the pinned libghostty builds under, and every other route onto a runner floats.
+      # This one also carries Zig's global cache between runs, which the libghostty build is
+      # the heaviest user of.
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+
+      # Six minutes cold, and the only step here that is. `./dev -d` skips the build outright
+      # when deps/.built names the pinned commit and all three artifacts exist, so this
+      # restores exactly those - not the 135 MB checkout or the 1.1 GB Zig cache that
+      # produced them. No restore-keys: a near-miss would restore a .built naming a different
+      # commit, which ./dev detects and rebuilds anyway.
+      - name: Cache the built libghostty
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps/.built
+            deps/ghostty/macos/GhosttyKit.xcframework
+            deps/ghostty/zig-out
+          key: ghostty-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('deps/ghostty.pin') }}
+
+      # Small, and it saves a GitHub release round trip. ./dev re-verifies the checksum on
+      # every run, so a cache that came back truncated is caught rather than trusted.
+      - name: Cache the pinned herdr
+        uses: actions/cache@v4
+        with:
+          path: deps/herdr
+          key: herdr-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('deps/herdr.pin') }}
+
+      - name: Cache the Rust build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: cargo-${{ runner.os }}-${{ runner.arch }}-
+
+      # Keyed on the resolved dependencies alone. The seam's Swift types are generated into
+      # a gitignored directory that is deliberately not cached, so they are rebuilt from
+      # proto/muster.proto every run; what this cache is really carrying is the protoc that
+      # swift-protobuf vendors, which is a 30-second build of its own.
+      - name: Cache the SwiftPM build
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: swiftpm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Package.resolved') }}
+          restore-keys: swiftpm-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: The gate
+        run: ./dev
