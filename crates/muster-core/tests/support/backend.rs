@@ -4,7 +4,10 @@
 //! the same JSON mean two things - which is the failure the whole conformance arrangement
 //! exists to prevent (`crates/conformance/src/lib.rs`).
 
+use std::fmt::Write as _;
+
 use muster_core::AgentState;
+use muster_core::composition::{Daemon, Endpoint};
 use muster_core::mirror::backend::{
     Focus, Layout, LayoutNode, Pane, PaneId, Snapshot, SplitAxis, Tab, TabId, Workspace,
     WorkspaceId,
@@ -13,6 +16,33 @@ use serde_json::Value;
 
 pub(crate) fn text(value: &Value, key: &str) -> String {
     value.get(key).and_then(Value::as_str).unwrap_or_default().to_string()
+}
+
+/// One attached daemon, as a line.
+///
+/// Here rather than in either driver because two corpora expect these strings - a config
+/// file produces daemons and a composition holds them - and two renderings would let the
+/// same line mean two things in two files.
+pub(crate) fn describe_daemon(daemon: &Daemon) -> String {
+    let mut line = daemon.id.to_string();
+    match &daemon.endpoint {
+        Endpoint::Local { socket_path } => {
+            line.push_str(" local");
+            if let Some(path) = socket_path {
+                let _ = write!(line, "={path}");
+            }
+        }
+        Endpoint::Ssh { host, options, socket_path } => {
+            let _ = write!(line, " ssh={host}");
+            if let Some(path) = socket_path {
+                let _ = write!(line, " socket={path}");
+            }
+            if !options.is_empty() {
+                let _ = write!(line, " options={}", options.join(" "));
+            }
+        }
+    }
+    line
 }
 
 pub(crate) fn optional(value: &Value, key: &str) -> Option<String> {

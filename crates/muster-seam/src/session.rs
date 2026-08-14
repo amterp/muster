@@ -83,11 +83,12 @@ impl Session {
     /// subscription takes its own moments later and replaces this one; doing it in the other
     /// order would let the older answer land last and stick, since a mirror with nothing
     /// happening in it is never corrected.
-    fn follow(&mut self, daemon: &DaemonId, socket_path: &str, seed: Snapshot) {
-        self.composition.attach_daemon(Daemon {
-            id: daemon.clone(),
-            endpoint: Endpoint::Local { socket_path: socket_path.to_string() },
-        });
+    ///
+    /// The endpoint and the socket path are both passed because they are different things.
+    /// The endpoint is what someone asked for and is what composition writes down; the path
+    /// is where this run found it, and is worth nothing to a later one.
+    fn follow(&mut self, daemon: &DaemonId, endpoint: Endpoint, socket_path: &str, seed: Snapshot) {
+        self.composition.attach_daemon(Daemon { id: daemon.clone(), endpoint });
         if self.backends.contains_key(daemon) {
             return;
         }
@@ -438,7 +439,9 @@ pub(crate) fn attach(pane_id: &str) -> Result<Arc<AttachedPane>, AttachError> {
     let daemon = DaemonId::new(LOCAL);
     let attached = {
         let mut session = SESSION.lock().expect("a panicking sender poisoned the session");
-        session.follow(&daemon, &socket_path, snapshot);
+        // Nothing named this daemon, so nothing to record but the wish that produced it:
+        // find whatever is on this machine. A config file naming a socket says so instead.
+        session.follow(&daemon, Endpoint::Local { socket_path: None }, &socket_path, snapshot);
 
         // This pane's channel by hand, before the rest. The reconcile below opens one for
         // every other pane in the tab and logs whatever refuses; this one has a caller

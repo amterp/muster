@@ -38,13 +38,28 @@ impl From<&str> for DaemonId {
 
 /// How a daemon is reached.
 ///
-/// One variant today, and an enum anyway: the second is an SSH target, which is the whole
-/// of "local and remote in one window" at this layer. A composition read back from a file
-/// has to be able to tell the two apart, and a bare path cannot.
+/// The wish rather than the resolution. What is written here is what someone asked for -
+/// this host, or whatever daemon is on this machine - and never what was found, because a
+/// discovered socket path is an observation and observations are meaningless after the
+/// thing they observed restarted (`architecture.md`, durability: persist intent, never
+/// observation). Where a path was actually found is the runtime's business and lives beside
+/// the connection it opened.
+///
+/// That is why both variants take an optional path. Absent means "the daemon herdr's own
+/// client would find", which is what someone running one daemon means and the only thing
+/// they should have to say.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Endpoint {
     /// A daemon on this machine, reached by its control socket.
-    Local { socket_path: String },
+    Local { socket_path: Option<String> },
+    /// A daemon on another machine, reached by ssh.
+    ///
+    /// `options` are handed to `ssh` verbatim. Connection details belong in the user's own
+    /// `~/.ssh/config`, where ProxyJump, IdentityFile and the rest already live and where
+    /// every other tool looks - restating any of that here would be a worse copy that is
+    /// always missing something. This is the escape hatch for what a host alias cannot
+    /// cover, and for a test fixture whose key is in the repo.
+    Ssh { host: String, options: Vec<String>, socket_path: Option<String> },
 }
 
 /// One daemon Muster is attached to.

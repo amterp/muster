@@ -1,0 +1,201 @@
+{
+  "concept": "config",
+  "source": "authored",
+  "citation": "README.md desiderata (AI-native surface: configuration is files) and docs/architecture.md, the shape (config lives in the core). The format and every refusal here are Muster's own policy; there is no oracle above them.",
+  "why": "This is the file a person types, and almost everything that can go wrong in it goes wrong silently. A daemon that never appears looks exactly like a daemon that is down, and a misspelled key looks exactly like a key that did nothing - so half of these cases are about what a refusal says rather than about what parses. The refusals are expected in full, not as codes, because the sentence is the deliverable: a taxonomy of error kinds would let the wording rot while every case still passed. Two policies are pinned here and are worth stating outright. A file is applied whole or not at all, because keeping the daemons that parsed would make a window's contents depend on which line had the typo. And an unknown key is refused rather than ignored, which is the opposite of what herdr's own socket API does - ignoring unknown params is why a `pane_id` misspelled for `target_pane_id` silently splits the wrong pane (docs/observations/herdr-0.8.0.md section 6).",
+  "cases": [
+    {
+      "name": "a file with nothing in it names no daemons",
+      "why": "An empty config is not an error, and will be the ordinary case the day this file holds only a keymap. It has to be distinguishable from a file that failed to parse, because the caller's answer to those differs: one means find the local daemon, the other means find the local daemon and say loudly that a file was ignored.",
+      "given": { "file": [] },
+      "expect": { "daemons": [] }
+    },
+    {
+      "name": "a daemon needs only a name",
+      "why": "Someone running one herdr should have to say one thing. The socket is absent rather than defaulted here, because what gets written down is the wish - find whatever is on this machine - and a path found today is worth nothing to a run tomorrow (architecture.md, durability: persist intent, never observation).",
+      "given": {
+        "file": [
+          "[[daemon]]",
+          "id = \"local\""
+        ]
+      },
+      "expect": { "daemons": ["local local"] }
+    },
+    {
+      "name": "a socket path names one daemon out of several on a machine",
+      "why": "Two herdr daemons on one machine differ only by socket path, so this is the only way to say which. It is also the escape hatch for a daemon started with HERDR_SOCKET_PATH, which Muster's own discovery would otherwise have to be running under to find.",
+      "given": {
+        "file": [
+          "[[daemon]]",
+          "id = \"scratch\"",
+          "socket = \"/tmp/herdr-scratch.sock\""
+        ]
+      },
+      "expect": { "daemons": ["scratch local=/tmp/herdr-scratch.sock"] }
+    },
+    {
+      "name": "a host makes a daemon remote",
+      "why": "Presence of `host` is the whole of local-versus-remote, and it is a destination ssh accepts rather than a hostname Muster parses. Everything about how to reach that destination - port, user, key, ProxyJump - belongs in the user's own ~/.ssh/config, where it already is for every other tool.",
+      "given": {
+        "file": [
+          "[[daemon]]",
+          "id = \"devenv\"",
+          "host = \"devenv\""
+        ]
+      },
+      "expect": { "daemons": ["devenv ssh=devenv"] }
+    },
+    {
+      "name": "ssh options are carried verbatim, for what a host alias cannot cover",
+      "why": "The escape hatch, and the reason the test fixture works: the devenv container's key lives in the repo rather than in anybody's ssh config. Passed through untouched because the moment Muster starts interpreting these it owns a worse copy of ssh's own option parsing.",
+      "given": {
+        "file": [
+          "[[daemon]]",
+          "id = \"devenv\"",
+          "host = \"dev@localhost\"",
+          "socket = \"/home/dev/.config/herdr/herdr.sock\"",
+          "ssh_options = [\"-p\", \"2222\", \"-i\", \"devenv/.ssh/id_ed25519\"]"
+        ]
+      },
+      "expect": {
+        "daemons": [
+          "devenv ssh=dev@localhost socket=/home/dev/.config/herdr/herdr.sock options=-p 2222 -i devenv/.ssh/id_ed25519"
+        ]
+      }
+    },
+    {
+      "name": "the order daemons are listed in is kept",
+      "why": "Regions are laid out in the order composition holds them and Muster owns no tree over them, so the file's order is the window's order left to right. A map keyed by name would lose it, and there would be nothing else to recover it from.",
+      "given": {
+        "file": [
+          "[[daemon]]",
+          "id = \"local\"",
+          "",
+          "[[daemon]]",
+          "id = \"devenv\"",
+          "host = \"devenv\""
+        ]
+      },
+      "expect": { "daemons": ["local local", "devenv ssh=devenv"] }
+    },
+    {
+      "name": "a misspelled key is named rather than skipped",
+      "why": "The case this whole policy exists for. `hosts` for `host` produces a daemon that is silently local, which then fails to hold any of the panes the user expected, at a distance of several minutes from the typo. Refusing names the key while the file is still in front of them.",
+      "given": {
+        "file": [
+          "[[daemon]]",
+          "id = \"devenv\"",
+          "hosts = \"devenv\""
+        ]
+      },
+      "expect": {
+        "refused": "the first `[[daemon]]` block has a key called \"hosts\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: id, socket, host, ssh_options."
+      }
+    },
+    {
+      "name": "a key nobody has written yet is still refused",
+      "why": "A `[keymap]` block is a config from a version that does not exist. Skipping it would let someone write a keymap, see nothing happen, and have no way to tell that from a keymap that was read and did nothing. This case is expected to change the day the keymap lands here, and changing it is the point.",
+      "given": {
+        "file": [
+          "[keymap]",
+          "\"cmd+d\" = \"split_right\""
+        ]
+      },
+      "expect": {
+        "refused": "the config file has a key called \"keymap\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: daemon."
+      }
+    },
+    {
+      "name": "one bracket instead of two is the mistake worth catching by name",
+      "why": "`[daemon]` and `[[daemon]]` differ by one character and mean a table versus a list of them, and TOML accepts both. Without this the file parses, names no daemons, and looks exactly like an empty config.",
+      "given": {
+        "file": [
+          "[daemon]",
+          "id = \"local\""
+        ]
+      },
+      "expect": {
+        "refused": "the config file's `daemon` is not a list of blocks, so no daemon in it was applied. Each one is its own `[[daemon]]` block, with the double brackets - a single `[daemon]` declares one table and is the usual way to arrive here."
+      }
+    },
+    {
+      "name": "a daemon with no name has nothing to be referred to by",
+      "why": "The id is not a fact about the daemon - herdr has no notion of its own identity - it is the name a region, a log line and a pane are attributed to. A daemon without one cannot be talked about, so there is no useful thing to do with the block.",
+      "given": {
+        "file": [
+          "[[daemon]]",
+          "host = \"devenv\""
+        ]
+      },
+      "expect": {
+        "refused": "the first `[[daemon]]` block has no `id`, so there is no name to refer to it by and none of the file was applied. An id is Muster's own name for a daemon rather than anything the daemon knows about itself - `local` and `devenv` read well in a log line, which is where they are met."
+      }
+    },
+    {
+      "name": "two daemons cannot share a name, and the refusal says which two",
+      "why": "Names are how everything downstream tells daemons apart, including the pane ids that collide between them. Saying only that a name repeats leaves someone scrolling a file to find the second one, so the refusal describes both.",
+      "given": {
+        "file": [
+          "[[daemon]]",
+          "id = \"work\"",
+          "",
+          "[[daemon]]",
+          "id = \"work\"",
+          "host = \"devenv\""
+        ]
+      },
+      "expect": {
+        "refused": "two daemons are called `work`, and a name is how everything else refers to one - a region, a log line, a pane that belongs to it. None of the file was applied. Rename one: the first is a daemon on this machine, the second is a daemon on devenv."
+      }
+    },
+    {
+      "name": "ssh options with no host describe something that does not exist",
+      "why": "A local daemon reached over ssh is not a thing, and the likely intent is a `host` line that was deleted or never typed. Silently ignoring the options would attach a local daemon under a name the user expects to be remote.",
+      "given": {
+        "file": [
+          "[[daemon]]",
+          "id = \"devenv\"",
+          "ssh_options = [\"-p\", \"2222\"]"
+        ]
+      },
+      "expect": {
+        "refused": "the first `[[daemon]]` block sets `ssh_options` and no `host`, so it describes a daemon on this machine reached over ssh, which is not a thing. None of the file was applied. Add the `host` this was meant for, or drop the options."
+      }
+    },
+    {
+      "name": "a value of the wrong type says what it found",
+      "why": "TOML makes 2222 a number and \"2222\" a string, and a port typed without quotes is the way into this. Naming what was found rather than only what was wanted is the difference between one edit and a guess.",
+      "given": {
+        "file": [
+          "[[daemon]]",
+          "id = \"devenv\"",
+          "host = 2222"
+        ]
+      },
+      "expect": {
+        "refused": "the first `[[daemon]]` block sets `host` to a number, and it has to be a string. None of the file was applied."
+      }
+    },
+    {
+      "name": "the block that is wrong is the block that is named",
+      "why": "A file with several daemons in it has several places a key can be wrong, and only one of them is. The ordinal is how someone finds it without counting blocks themselves.",
+      "given": {
+        "file": [
+          "[[daemon]]",
+          "id = \"local\"",
+          "",
+          "[[daemon]]",
+          "id = \"devenv\"",
+          "host = \"devenv\"",
+          "",
+          "[[daemon]]",
+          "id = \"other\"",
+          "sock = \"/tmp/herdr.sock\""
+        ]
+      },
+      "expect": {
+        "refused": "the third `[[daemon]]` block has a key called \"sock\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: id, socket, host, ssh_options."
+      }
+    }
+  ]
+}

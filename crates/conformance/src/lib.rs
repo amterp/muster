@@ -1,10 +1,11 @@
 //! A corpus of cases, and the Rust driver that runs them.
 //!
-//! The twin of `Tests/Support/Conformance.swift`, deliberately: the core's behavior is
-//! defined by data rather than by either language's tests, so a core rewritten in another
-//! language is verified by cases a working implementation already passed (MIP-1,
-//! `docs/testing.md`). Two drivers that validate differently would let a corpus mean two
-//! things, which is the failure this whole arrangement exists to prevent.
+//! The core's behavior is defined by data rather than by any language's tests, so a core
+//! rewritten in another language is verified by cases a working implementation already
+//! passed (MIP-1, `docs/testing.md`). There was briefly a Swift twin of this file, and the
+//! rule it existed under still holds for the next one: two drivers that validate differently
+//! would let a corpus mean two things, which is the failure this whole arrangement exists to
+//! prevent.
 //!
 //! Everything it refuses to load is deliberate. A corpus that silently accepts a case with
 //! no stated reason, or a file that does not say where its expectations came from, is a

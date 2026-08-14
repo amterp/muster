@@ -342,7 +342,7 @@ fn full_window(panes: usize) -> (Composition, Mirror) {
     let mut composition = Composition::new();
     composition.attach_daemon(Daemon {
         id: daemon.clone(),
-        endpoint: Endpoint::Local { socket_path: "/tmp/herdr-perf.sock".to_string() },
+        endpoint: Endpoint::Local { socket_path: Some("/tmp/herdr-perf.sock".to_string()) },
     });
     composition.open_region(&daemon, workspace, tab);
     composition.reconcile(&daemon, &mirror);

@@ -16,7 +16,7 @@ use muster_core::composition::{
 use muster_core::mirror::Mirror;
 use muster_core::mirror::backend::{PaneId, TabId, WorkspaceId};
 use serde_json::{Value, json};
-use support::backend::{read_snapshot, text};
+use support::backend::{describe_daemon, optional, read_snapshot, text};
 
 #[test]
 fn composition_conformance() {
@@ -66,10 +66,9 @@ fn act(
     current: &mut BTreeMap<DaemonId, String>,
 ) -> Result<(), CaseError> {
     match text(step, "do").as_str() {
-        "attachDaemon" => composition.attach_daemon(Daemon {
-            id: daemon(step),
-            endpoint: Endpoint::Local { socket_path: text(step, "socketPath") },
-        }),
+        "attachDaemon" => {
+            composition.attach_daemon(Daemon { id: daemon(step), endpoint: endpoint(step) });
+        }
         "detachDaemon" => composition.detach_daemon(&daemon(step)),
         "openRegion" => {
             composition.open_region(
@@ -120,6 +119,29 @@ fn act(
 
 fn daemon(step: &Value) -> DaemonId {
     DaemonId::new(text(step, "daemon"))
+}
+
+/// How a case says a daemon is reached.
+///
+/// A `host` makes it remote, exactly as it does in the config file this mirrors. Cases that
+/// name neither get a local daemon nobody has told where to look, which is what a config
+/// naming one daemon and no socket produces.
+fn endpoint(step: &Value) -> Endpoint {
+    let socket_path = optional(step, "socketPath");
+    match optional(step, "host") {
+        Some(host) => Endpoint::Ssh {
+            host,
+            options: step
+                .get("sshOptions")
+                .and_then(Value::as_array)
+                .map(|options| {
+                    options.iter().filter_map(Value::as_str).map(str::to_string).collect()
+                })
+                .unwrap_or_default(),
+            socket_path,
+        },
+        None => Endpoint::Local { socket_path },
+    }
 }
 
 /// A region as a case names it: `r0`, the way it renders.
@@ -211,12 +233,7 @@ fn describe_view(
 }
 
 fn describe_daemons(composition: &Composition) -> Vec<String> {
-    composition
-        .daemons()
-        .map(|daemon| match &daemon.endpoint {
-            Endpoint::Local { socket_path } => format!("{} local={socket_path}", daemon.id),
-        })
-        .collect()
+    composition.daemons().map(describe_daemon).collect()
 }
 
 /// Regions render as readable lines rather than as nested objects.
