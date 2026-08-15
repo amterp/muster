@@ -49,6 +49,24 @@ other platform pays nothing.
 **Backend adapters** (herdr today). Translate the Muster vocabulary to a concrete backend. One adapter per backend;
 nothing herdr-shaped escapes it.
 
+**Muster ships its daemon and runs it, and talks to no other.** Not for convenience, though it is convenient: a
+person using Muster should not have to learn what herdr is. It is what makes the rest of this document mean
+anything. The corpus is recorded from one pinned build, so a Muster attached to some other daemon is a Muster whose
+every behaviour is unverified - and the daemon on herdr's default socket is whatever the user last started. So the
+bundle carries the binary named in `deps/herdr.pin`, the app finds it beside its own executable rather than on PATH,
+and it runs it under a herdr session of its own. A stranger is then not something to detect; it is something that
+cannot arise.
+
+Started, never stopped, because sessions outliving the app is the point. What it costs is the escape hatch - a
+terminal's `herdr pane list` does not see Muster's panes - and `herdr --session muster` buys it back, since the
+session is herdr's own concept rather than one invented here. Naming a `socket` in Muster's config file is the way
+to ask for a particular daemon on purpose; nothing else in the environment is read, so an exported
+`HERDR_SOCKET_PATH` meant for somebody's own CLI cannot quietly redirect a window.
+
+The guarantee stops at the machine's edge. An SSH endpoint runs a platform this bundle carries no binary for, so a
+remote daemon is still whatever is installed over there. Closing that means putting an agent on the far machine on
+first connection, the way mutagen does.
+
 **Reaching a remote daemon is a transport concern and stops there.** A remote herdr speaks the same socket a local
 one does, so an SSH master forwards that socket onto a path on this machine and the adapter is handed a path like
 any other - the client, the snapshot, the subscription, the agent watchers and the server-side encoder are

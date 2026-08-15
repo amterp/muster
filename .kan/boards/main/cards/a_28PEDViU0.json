@@ -5,17 +5,18 @@
   "area": [
     "shell"
   ],
-  "column": "next",
+  "column": "done",
   "created_at_millis": 1786790492063,
   "creator": "Alexander Terp",
   "description": "`muster` with no argument is a renderer check: it runs your shell, paints what it prints, and drops every keystroke. To get a usable window you must know a pane id and pass it - `muster w1:p1`, after `herdr pane list`. There is no \"open the app\" path at all, which makes this the first thing standing between the current state and using Muster for real work.\n\nThe config is already read at startup and its daemons are already followed. What does not happen is a region opening for any of them: `open_remaining_regions()` runs only inside `attach()` (crates/muster-seam/src/session.rs), so it is reached by naming a pane and no other way. The no-argument branch in Sources/muster/main.swift calls `showRendererCheck()` instead.\n\nSo the shape is probably small: a bare launch opens a region per configured daemon on whatever tab that daemon is focused on, which is exactly what attaching already does for every daemon other than the one it named. The keyboard lands somewhere sensible in the first.\n\nThe renderer check is still worth being able to reach - it is the only thing that isolates \"the renderer works\" from \"the daemon works\" - but behind a flag rather than as what happens when you double-click.\n\nOpen: what a window should say when the config names no daemon and none is running. That is a real first-run state and it is not the renderer check.",
   "id": "a_28PEDViU0",
-  "position": "UUUUUUUUUU",
+  "position": "!!!!!U",
   "title": "🚀 Open the app without naming a pane",
   "type": "feature",
-  "updated_at_millis": 1786790570738,
+  "updated_at_millis": 1786796735307,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786790492063},
-    {"field":"column","value":"next","at":1786790570738}
+    {"field":"column","value":"next","at":1786790570738},
+    {"field":"column","value":"done","at":1786796735307}
   ]
 }
