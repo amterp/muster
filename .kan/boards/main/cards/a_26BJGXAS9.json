@@ -5,25 +5,32 @@
   "area": [
     "shell"
   ],
-  "column": "next",
+  "column": "done",
   "comments": [
     {
       "author": "Alexander Terp",
       "body": "From the developer: \"I have some custom ghostty keybindings under ~/.config/ghostty/config, I will want those for muster.\"\n\nThat config, read 2026-08-15:\n\n    cmd+shift+alt+h/j/k/l   new_split:left / down / up / right\n    cmd+[ / cmd+]           goto_split:previous / next\n    cmd+shift+h/j/k/l       resize_split:left/down/up/right,150\n    shift+enter             text:\\n\n\nMuster already matches `cmd+[` and `cmd+]` exactly, and `shift+enter` maps onto the SendText message that exists. The rest turns out not to be a config-format problem - three of these name actions Muster has no way to express at all:\n\n- **Splitting left or up.** SplitPane says columns or rows and the new pane goes beside or below, because herdr's `pane.split` takes `right` or `down` and nothing else. Splitting the other way means putting the new pane first, which is a rearrangement rather than a split. Worth checking whether herdr can move a pane within a tab, and if not this is a fifth upstream ask.\n- **Resizing by a keyboard amount.** SetSplitRatio carries a ratio, because it is built for a drag that knows where the pointer is. `resize_split:left,150` is a nudge of 150 points, which needs either a delta the core turns into a ratio against a size only the shell knows, or a \"nudge\" the shell resolves itself.\n- **Sending literal text on a chord.** Expressible - SendText - but nothing today lets a binding name it.\n\nThe design question the card was already carrying, now with a concrete case: does Muster read ghostty's `keybind` lines, or does its keymap live in Muster's own config? Reading ghostty's has real pull - the renderer already loads that file for fonts and colours (`ghostty_config_load_default_files`), the shortcuts here were deliberately chosen to be Ghostty's, and duplicating a keymap is duplicating the thing most likely to drift. Against it: the actions are ghostty's vocabulary and some of them do not map, so a silently ignored binding would be a dead key - the failure this project has spent the most time on. If they are read, an unmappable one has to say so out loud.\n\narchitecture.md says the keymap is data in the config file rather than code. It does not say whose config file.",
       "created_at_millis": 1786790532798,
       "id": "c_28PFHDBDs"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Done across 802028b (the two missing actions) and ba77c17 (rebindable).\n\nParity: resize on cmd+ctrl+shift+arrow and zoom on cmd+shift+return, both of which herdr already had methods for. They name a pane and a direction rather than a divider - which divider moves is a question about a tree nobody pressing the key is looking at, and only the daemon holds the rectangles to answer it. Resize sits one finger above focus so moving to a pane and growing it are the same hand position.\n\nRebindable: the core owns the table and the shell builds its menu from it, so a `[keymap]` block moves the menu item. The menu stayed the dispatcher rather than the core growing a chord matcher, because on macOS a key equivalent on a menu item *is* how the platform decides what a chord means - which is also what keeps System Settings working.\n\nThe file is action-keyed (`split_right = \"cmd+d\"`), partial, and takes both words for every modifier. An empty chord unbinds outright, which is different from not mentioning it. Documented in the README.\n\nWhat is pinned where follows the layering: `corpus/conformance/bindings.json` holds which chords are the defaults, `chord.json` holds how a chord is read, and the Swift tests hold the translation into something AppKit dispatches. Drift between the core's action list and the shell's is caught by the contract tier - building the menu logs `menu.action.unknown` and a contract run fails on any warning it did not expect.",
+      "created_at_millis": 1786805248916,
+      "id": "c_28VQ6tQlG"
     }
   ],
   "created_at_millis": 1786461793497,
   "creator": "Alexander Terp",
   "description": "cmd+d splits, cmd+opt+arrow focus, cmd+ctrl+shift+arrow resize (the one even cmux lacks), cmd+shift+return zoom. File-based config; every action rebindable.",
   "id": "a_26BJGXAS9",
-  "position": "UUUUUUUUUUUUUUUU",
+  "position": "!!!!!!E",
   "title": "Stage 3: Ghostty-parity keymap, fully rebindable",
   "type": "feature",
-  "updated_at_millis": 1786790571081,
+  "updated_at_millis": 1786805248916,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786461793497},
-    {"field":"column","value":"next","at":1786787768134}
+    {"field":"column","value":"next","at":1786787768134},
+    {"field":"column","value":"done","at":1786805248868}
   ]
 }
