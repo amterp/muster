@@ -5,17 +5,26 @@
   "area": [
     "shell"
   ],
-  "column": "next",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Done, and the card's open decision went to the client side - but not to the tree walk it leaned towards.\n\nAsking herdr was rejected for the reason the card gives: BackendChannel::submit is write-only by design, and every future backend would then owe us a read to answer a question about an arrangement Muster is already holding.\n\nThe walk was rejected too, which the card did not anticipate. Up to the first matching-axis ancestor and back down the near side has to pick a child by its position in the tree whenever it descends through a perpendicular split - so in any arrangement that is not symmetric it lands somewhere the user did not point at. The view already carries every ratio, and after region weights (a_27Y3iQCxI) it carries the arrangement over regions too, so the whole window is one normalized space and the honest answer is a rectangle comparison. Same inputs, no seam read, and it agrees with the screen.\n\nA candidate has to be on the far side and overlap the source across the direction of travel, so nothing diagonal is reachable in one move, and it does not wrap. Both are affordable because next and previous already reach every pane - reachability is their job, so this one gets to be predictable.\n\nTwo corpus cases pin the disagreement specifically: an asymmetric layout where the pane actually to the left is the second child of its subtree, and a tie broken by shared edge rather than by tree order.",
+      "created_at_millis": 1786787736735,
+      "id": "c_28O4XR7fo"
+    }
+  ],
   "created_at_millis": 1786663774500,
   "creator": "Alexander Terp",
   "description": "cmd-opt-arrows to move the keyboard left, right, up or down. Next and previous already work and reach every pane, so this is ergonomics rather than reachability - but it is the movement a terminal user expects, and every other multiplexer has it.\n\nThe design question is where the answer comes from. herdr already has pane.neighbor, pane.edges and pane.focus_direction, so the daemon owns the geometry and would answer well. But BackendChannel::submit is write-only by design - it returns an Outcome and never state - so asking the daemon means the backend seam grows a read, which every future backend then has to provide.\n\nThe alternative is a pure walk over the tree Muster already holds: up to the first ancestor split whose axis matches the direction and whose child you did not come from, then down the near side. No new seam, no round trip, and it lives beside View::step where the ordering decision already is. It can disagree with herdr's answer in odd shapes, and a user driving both Muster and the herdr TUI would notice.\n\nLean towards the walk unless the disagreement turns out to matter. Decide before writing.",
   "id": "a_27Y3iLkil",
-  "position": "6",
+  "position": "!!!!U",
   "title": "🧭 Directional focus between panes, and where the neighbour comes from",
   "type": "feature",
-  "updated_at_millis": 1786663802152,
+  "updated_at_millis": 1786787736772,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786663774500},
-    {"field":"column","value":"next","at":1786663802152}
+    {"field":"column","value":"next","at":1786663802152},
+    {"field":"column","value":"done","at":1786787736772}
   ]
 }

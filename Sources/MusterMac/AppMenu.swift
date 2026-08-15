@@ -39,6 +39,23 @@ public enum AppMenu {
     Item(
       title: "Previous Pane", action: #selector(MusterWindow.focusPreviousPane(_:)), key: "[",
       modifiers: [.command]),
+    // The movement a terminal user expects, and the one every other multiplexer has. Next and
+    // previous already reach every pane, so these are ergonomics rather than reachability -
+    // which is why they are allowed to go nowhere at an edge instead of wrapping.
+    //
+    // Arrow keys as key equivalents, spelled by the unicode codepoints AppKit wants for them.
+    Item(
+      title: "Select Pane Left", action: #selector(MusterWindow.focusPaneLeft(_:)),
+      key: "\u{F702}", modifiers: [.command, .option]),
+    Item(
+      title: "Select Pane Right", action: #selector(MusterWindow.focusPaneRight(_:)),
+      key: "\u{F703}", modifiers: [.command, .option]),
+    Item(
+      title: "Select Pane Above", action: #selector(MusterWindow.focusPaneUp(_:)),
+      key: "\u{F700}", modifiers: [.command, .option]),
+    Item(
+      title: "Select Pane Below", action: #selector(MusterWindow.focusPaneDown(_:)),
+      key: "\u{F701}", modifiers: [.command, .option]),
   ]
 
   /// Builds the smallest menu bar that makes the platform's shortcuts work.

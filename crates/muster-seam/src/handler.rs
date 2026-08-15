@@ -100,8 +100,8 @@ fn handle(request: Request) -> Response {
             Some(direction) => answer(session::step(direction)),
             None => Response::failure(format!(
                 "the core does not know a step called {:?}, so the keyboard stayed where it \
-                 was. Only next and previous exist; the shell builds this from a fixed set, \
-                 so this is a bug there.",
+                 was. Only next, previous, left, right, up and down exist; the shell builds \
+                 this from a fixed set, so this is a bug there.",
                 step.direction
             )),
         },

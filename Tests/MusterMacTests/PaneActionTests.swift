@@ -158,6 +158,23 @@ struct PaneActionTests {
 
     #expect(recorder.requests.map { $0.focusRelative.direction } == ["next", "previous"])
   }
+
+  @MainActor
+  @Test("every direction the core knows is a word the shell can send")
+  func everyDirectionCrossesTheSeam() {
+    // The core refuses a direction it does not know, by name, and a refused focus is a dead
+    // key - the failure this project has spent the most time on. Asserted as the words rather
+    // than a count so that a spelling drifting on one side shows up here.
+    let recorder = recorder()
+
+    for direction in ["next", "previous", "left", "right", "up", "down"] {
+      Core.focus(step: direction)
+    }
+
+    #expect(
+      recorder.requests.map { $0.focusRelative.direction }
+        == ["next", "previous", "left", "right", "up", "down"])
+  }
 }
 
 @Suite("the menu is where a macOS keybinding lives")
@@ -174,6 +191,13 @@ struct AppMenuTests {
       #expect(MusterWindow.instancesRespond(to: item.action))
       _ = window
     }
+    // And no two items are the same action. Four directional items written one after another
+    // is exactly where a copy-paste points two titles at one selector, and the symptom is a
+    // key that quietly moves the wrong way rather than a key that does nothing.
+    let actions = Set(AppMenu.paneItems.map { NSStringFromSelector($0.action) })
+    #expect(actions.count == AppMenu.paneItems.count)
+    let chords = Set(AppMenu.paneItems.map { "\($0.modifiers.rawValue):\($0.key)" })
+    #expect(chords.count == AppMenu.paneItems.count)
   }
 
   @MainActor

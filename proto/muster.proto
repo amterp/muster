@@ -126,7 +126,15 @@ message FocusPane {
 // is the tab's tree, which is daemon truth. Resolved in the core so that a keybinding, the
 // CLI and an agent all reach the same answer.
 message FocusRelative {
-  // next or previous, in reading order across every region, wrapping at the ends.
+  // Two kinds of answer under one word.
+  //
+  // `next` and `previous` walk reading order across every region and wrap at the ends, so
+  // between them they reach every pane - which is what makes them the guarantee.
+  //
+  // `left`, `right`, `up` and `down` are geometric: the core lays the whole window out from
+  // the ratios it already publishes and picks the pane actually in that direction. They do
+  // not wrap, because falling off one edge and reappearing at the other is disorienting in a
+  // way stepping through an order is not, and reachability is already covered.
   string direction = 1;
 }
 

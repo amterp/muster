@@ -181,6 +181,9 @@ impl View {
     /// because the order is the tab's tree, and composition holds no tree - it is daemon truth
     /// (`architecture.md`, one action path).
     pub fn step(&self, direction: Step) -> Option<(RegionId, PaneId)> {
+        if let Some(axis) = direction.axis() {
+            return self.neighbour(axis, direction.towards_start());
+        }
         let order: Vec<(RegionId, PaneId)> = self
             .regions
             .iter()
@@ -198,9 +201,10 @@ impl View {
         });
         match at {
             Some(at) => {
+                // Only the two ordinal steps reach here; the four directions returned above.
                 let step = match direction {
-                    Step::Next => 1,
                     Step::Previous => order.len().checked_sub(1)?,
+                    _ => 1,
                 };
                 order.get((at + step) % order.len()).cloned()
             }
@@ -208,18 +212,188 @@ impl View {
             // than a bug: a tab mid-split publishes its panes and its tree separately. A step
             // from nowhere goes to the end it came from rather than refusing.
             None => match direction {
-                Step::Next => order.first().cloned(),
                 Step::Previous => order.last().cloned(),
+                _ => order.first().cloned(),
             },
+        }
+    }
+
+    /// The pane in a given direction from the one with the keyboard.
+    ///
+    /// Geometric rather than a walk up the tree, and that is the decision worth recording.
+    /// Walking up to the first ancestor split on the matching axis and back down the near
+    /// side is cheaper and disagrees with the screen: on a perpendicular split it has to pick
+    /// a child by position in the tree rather than by where it actually is, so in any
+    /// arrangement that is not symmetric it lands somewhere the user did not point at.
+    ///
+    /// The ratios are already here, and after region weights so is the arrangement over
+    /// regions, so the whole window is one normalized space and the honest answer is a
+    /// rectangle comparison. Asking the daemon was the other option and was rejected:
+    /// `BackendChannel::submit` is write-only by design, and every future backend would owe
+    /// us a read to answer a question about an arrangement Muster is already holding.
+    ///
+    /// A candidate has to be on the far side and overlap the source across the direction of
+    /// travel, so nothing diagonal is reachable in one move. That is deliberate: next and
+    /// previous already reach every pane and wrap, so this one can afford to be predictable
+    /// instead. It does not wrap either - falling off the edge of a window and reappearing on
+    /// the other side is disorienting in a way stepping through an order is not.
+    fn neighbour(&self, axis: Axis, towards_start: bool) -> Option<(RegionId, PaneId)> {
+        let places = self.places();
+        let focused = self.focused?;
+        let pane = self.region(focused)?.pane.as_ref()?;
+        let from = places
+            .iter()
+            .find(|(region, held, _)| *region == focused && held == pane)
+            .map(|(_, _, rect)| *rect)?;
+
+        places
+            .iter()
+            .enumerate()
+            .filter(|(_, (region, held, _))| !(*region == focused && held == pane))
+            .filter_map(|(index, (region, held, rect))| {
+                let gap = from.gap_to(*rect, axis, towards_start)?;
+                let overlap = from.overlap(*rect, axis.across())?;
+                Some((gap, overlap, index, (*region, held.clone())))
+            })
+            // Nearest first; then the one sharing the most edge with where the keyboard was,
+            // which is what "straight on" means when two panes are the same distance away.
+            // Reading order last, so the answer is the same every time rather than whichever
+            // pane the tree happened to yield first.
+            .min_by(|left, right| {
+                left.0
+                    .total_cmp(&right.0)
+                    .then(right.1.total_cmp(&left.1))
+                    .then(left.2.cmp(&right.2))
+            })
+            .map(|(_, _, _, found)| found)
+    }
+
+    /// Where every pane on screen sits, as fractions of the window.
+    ///
+    /// Normalized rather than in points, because the core has no window and needs none: which
+    /// pane is to the left of which is the same answer at any size.
+    fn places(&self) -> Vec<(RegionId, PaneId, Rect)> {
+        let total: f32 = self
+            .regions
+            .iter()
+            .map(|region| region.weight.max(0.0))
+            .filter(|w| w.is_finite())
+            .sum();
+        if total <= 0.0 {
+            return Vec::new();
+        }
+        let mut found = Vec::new();
+        let mut x = 0.0;
+        for region in &self.regions {
+            let weight = if region.weight.is_finite() { region.weight.max(0.0) } else { 0.0 };
+            let width = weight / total;
+            if let Some(root) = &region.root {
+                place(root, Rect { x, y: 0.0, width, height: 1.0 }, region.id, &mut found);
+            }
+            x += width;
+        }
+        found
+    }
+}
+
+/// Which way a rectangle is being measured.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Axis {
+    Horizontal,
+    Vertical,
+}
+
+impl Axis {
+    fn across(self) -> Axis {
+        match self {
+            Axis::Horizontal => Axis::Vertical,
+            Axis::Vertical => Axis::Horizontal,
+        }
+    }
+}
+
+/// A pane's place in the window, as fractions of it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Rect {
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+}
+
+/// How close two rectangles have to be before they count as touching.
+///
+/// Every number here is arrived at by dividing, so two edges that are the same line come out
+/// a few bits apart. Small enough that no real arrangement is inside it: a window would have
+/// to hold ten thousand panes across before two of them were this close by accident.
+const TOUCHING: f32 = 1e-4;
+
+impl Rect {
+    fn span(self, axis: Axis) -> (f32, f32) {
+        match axis {
+            Axis::Horizontal => (self.x, self.x + self.width),
+            Axis::Vertical => (self.y, self.y + self.height),
+        }
+    }
+
+    /// The distance to a rectangle lying in the given direction, or `None` if it does not.
+    fn gap_to(self, other: Rect, axis: Axis, towards_start: bool) -> Option<f32> {
+        let (start, end) = self.span(axis);
+        let (other_start, other_end) = other.span(axis);
+        let gap = if towards_start { start - other_end } else { other_start - end };
+        (gap >= -TOUCHING).then_some(gap.max(0.0))
+    }
+
+    /// How much of an edge two rectangles share, or `None` when they share none.
+    fn overlap(self, other: Rect, axis: Axis) -> Option<f32> {
+        let (start, end) = self.span(axis);
+        let (other_start, other_end) = other.span(axis);
+        let shared = end.min(other_end) - start.max(other_start);
+        (shared > TOUCHING).then_some(shared)
+    }
+}
+
+/// Cuts a rectangle up the way a tree says, down to one per pane.
+fn place(node: &ViewNode, rect: Rect, region: RegionId, found: &mut Vec<(RegionId, PaneId, Rect)>) {
+    match node {
+        ViewNode::Pane(pane) => found.push((region, pane.id.clone(), rect)),
+        ViewNode::Split { axis, ratio, first, second } => {
+            // A ratio is a backend's number and is not this core's to trust. An unusable one
+            // splits evenly rather than collapsing a pane to nothing, on the same terms as
+            // the shell's own geometry.
+            let ratio = if ratio.is_finite() { ratio.clamp(0.0, 1.0) } else { 0.5 };
+            match axis {
+                SplitAxis::Columns => {
+                    let width = rect.width * ratio;
+                    place(first, Rect { width, ..rect }, region, found);
+                    let beyond = Rect { x: rect.x + width, width: rect.width - width, ..rect };
+                    place(second, beyond, region, found);
+                }
+                SplitAxis::Rows => {
+                    let height = rect.height * ratio;
+                    place(first, Rect { height, ..rect }, region, found);
+                    let beyond = Rect { y: rect.y + height, height: rect.height - height, ..rect };
+                    place(second, beyond, region, found);
+                }
+            }
         }
     }
 }
 
 /// Which way a step through the window's panes goes.
+///
+/// Two kinds in one word, deliberately. Next and previous walk the reading order and wrap, so
+/// between them they reach every pane - that is what makes them the guarantee. The four
+/// directions are geometric and do not wrap, so they can be predictable instead: they go where
+/// the user pointed or nowhere.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Step {
     Next,
     Previous,
+    Left,
+    Right,
+    Up,
+    Down,
 }
 
 impl Step {
@@ -227,8 +401,40 @@ impl Step {
         match name {
             "next" => Some(Step::Next),
             "previous" => Some(Step::Previous),
+            "left" => Some(Step::Left),
+            "right" => Some(Step::Right),
+            "up" => Some(Step::Up),
+            "down" => Some(Step::Down),
             _ => None,
         }
+    }
+
+    /// Every step there is, so a test can assert nothing has been left unspelled.
+    pub const ALL: [Step; 6] =
+        [Step::Next, Step::Previous, Step::Left, Step::Right, Step::Up, Step::Down];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Step::Next => "next",
+            Step::Previous => "previous",
+            Step::Left => "left",
+            Step::Right => "right",
+            Step::Up => "up",
+            Step::Down => "down",
+        }
+    }
+
+    /// The axis a direction travels along, or `None` for the two that walk an order instead.
+    fn axis(self) -> Option<Axis> {
+        match self {
+            Step::Left | Step::Right => Some(Axis::Horizontal),
+            Step::Up | Step::Down => Some(Axis::Vertical),
+            Step::Next | Step::Previous => None,
+        }
+    }
+
+    fn towards_start(self) -> bool {
+        matches!(self, Step::Left | Step::Up)
     }
 }
 

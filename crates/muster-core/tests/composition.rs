@@ -54,6 +54,31 @@ fn composition_conformance() {
     assert!(ran > 0);
 }
 
+#[test]
+fn every_direction_is_in_the_corpus() {
+    // A direction added to the enum and not here is a key that does something nothing
+    // decided. Both halves matter and fail differently: an unspelled ordinal step reaches
+    // every pane in some order nobody chose, and an unspelled arrow lands wherever the
+    // geometry happens to put it.
+    let corpus = Conformance::load("composition.json");
+    let stepped: Vec<String> = corpus
+        .cases
+        .iter()
+        .filter_map(|case| case.given.get("steps").and_then(Value::as_array))
+        .flatten()
+        .filter(|step| text(step, "do") == "step")
+        .map(|step| text(step, "direction"))
+        .collect();
+
+    for direction in Step::ALL {
+        assert!(
+            stepped.iter().any(|named| named == direction.as_str()),
+            "no corpus case steps `{}`, so nothing pins where it lands",
+            direction.as_str()
+        );
+    }
+}
+
 /// Runs one step against the composition.
 ///
 /// Steps rather than a single call, because nothing interesting here happens in one: the

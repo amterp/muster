@@ -283,6 +283,22 @@ extension MusterWindow {
   @objc public func focusPreviousPane(_ sender: Any?) {
     Core.focus(step: "previous")
   }
+
+  @objc public func focusPaneLeft(_ sender: Any?) {
+    Core.focus(step: "left")
+  }
+
+  @objc public func focusPaneRight(_ sender: Any?) {
+    Core.focus(step: "right")
+  }
+
+  @objc public func focusPaneUp(_ sender: Any?) {
+    Core.focus(step: "up")
+  }
+
+  @objc public func focusPaneDown(_ sender: Any?) {
+    Core.focus(step: "down")
+  }
 }
 
 /// The sidebar down the left, and everything else to the right of it.

@@ -255,6 +255,15 @@ it. Order and label are decisions and live in the core, so the sidebar, the CLI 
 Structure only, like the view: what an agent is doing keeps its own per-pane message, because a roster is stable and
 a state blinks.
 
+**Moving the keyboard comes in two kinds.** Next and previous walk reading order across every region and wrap, so
+between them they reach every pane - that is the guarantee. The four directions are geometric: the core lays the whole
+window out from the ratios it already publishes plus the region weights, and picks the pane actually in that
+direction, requiring it to overlap the source across the direction of travel. They do not wrap, because reachability
+is already covered and predictability is worth more. Asking the daemon was rejected: `BackendChannel::submit` is
+write-only by design, and every future backend would owe us a read to answer a question about an arrangement Muster
+already holds. A tree walk was rejected too - on a perpendicular split it has to pick a child by position in the tree
+rather than by where it is, so in any asymmetric arrangement it lands somewhere the user did not point at.
+
 **The arrangement over regions is Muster's, and only Muster's.** Each region carries a weight and the window divides
 its width by their sum, so equal shares are what a window that has never been dragged looks like. A weight per region
 rather than a ratio per boundary, because regions are a list and not a tree - owning a tree over them is what would

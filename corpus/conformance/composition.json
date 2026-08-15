@@ -3465,6 +3465,811 @@
         "focusedRegion": "r1",
         "view": []
       }
+    },
+    {
+      "name": "right goes to the pane on the right",
+      "why": "In a plain grid every rule agrees, which is the point of having this case: it is the one a reader checks their understanding against before reading the ones where the rules come apart.",
+      "given": {
+        "worlds": {
+          "grid": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "w1"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p4",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ],
+            "layouts": [
+              {
+                "tab": "w1:t1",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": {
+                    "axis": "rows",
+                    "ratio": 0.5,
+                    "first": "w1:p1",
+                    "second": "w1:p3"
+                  },
+                  "second": {
+                    "axis": "rows",
+                    "ratio": 0.5,
+                    "first": "w1:p2",
+                    "second": "w1:p4"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "steps": [
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/herdr-local.sock"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "grid"
+          },
+          {
+            "do": "focusPane",
+            "region": "r0",
+            "pane": "w1:p1"
+          },
+          {
+            "do": "step",
+            "direction": "right"
+          }
+        ],
+        "attached": []
+      },
+      "expect": {
+        "daemons": [
+          "local local=/tmp/herdr-local.sock"
+        ],
+        "regions": [
+          "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p2"
+        ],
+        "focusedRegion": "r0",
+        "focusedPane": "w1:p2",
+        "view": [
+          "r0 tab=w1:t1 columns(rows(w1:p1, w1:p3@0.5), rows(w1:p2, w1:p4@0.5)@0.5)"
+        ]
+      }
+    },
+    {
+      "name": "left comes back",
+      "why": "Reversible, so a user who overshoots can undo it with the opposite key rather than having to work out where they are.",
+      "given": {
+        "worlds": {
+          "grid": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "w1"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p4",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ],
+            "layouts": [
+              {
+                "tab": "w1:t1",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": {
+                    "axis": "rows",
+                    "ratio": 0.5,
+                    "first": "w1:p1",
+                    "second": "w1:p3"
+                  },
+                  "second": {
+                    "axis": "rows",
+                    "ratio": 0.5,
+                    "first": "w1:p2",
+                    "second": "w1:p4"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "steps": [
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/herdr-local.sock"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "grid"
+          },
+          {
+            "do": "focusPane",
+            "region": "r0",
+            "pane": "w1:p2"
+          },
+          {
+            "do": "step",
+            "direction": "left"
+          }
+        ],
+        "attached": []
+      },
+      "expect": {
+        "daemons": [
+          "local local=/tmp/herdr-local.sock"
+        ],
+        "regions": [
+          "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p1"
+        ],
+        "focusedRegion": "r0",
+        "focusedPane": "w1:p1",
+        "view": [
+          "r0 tab=w1:t1 columns(rows(w1:p1, w1:p3@0.5), rows(w1:p2, w1:p4@0.5)@0.5)"
+        ]
+      }
+    },
+    {
+      "name": "down goes to the pane below",
+      "why": "The vertical half, which a rule written only for columns would silently fail - and failing silently is what a dead key looks like.",
+      "given": {
+        "worlds": {
+          "grid": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "w1"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p4",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ],
+            "layouts": [
+              {
+                "tab": "w1:t1",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": {
+                    "axis": "rows",
+                    "ratio": 0.5,
+                    "first": "w1:p1",
+                    "second": "w1:p3"
+                  },
+                  "second": {
+                    "axis": "rows",
+                    "ratio": 0.5,
+                    "first": "w1:p2",
+                    "second": "w1:p4"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "steps": [
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/herdr-local.sock"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "grid"
+          },
+          {
+            "do": "focusPane",
+            "region": "r0",
+            "pane": "w1:p1"
+          },
+          {
+            "do": "step",
+            "direction": "down"
+          }
+        ],
+        "attached": []
+      },
+      "expect": {
+        "daemons": [
+          "local local=/tmp/herdr-local.sock"
+        ],
+        "regions": [
+          "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p3"
+        ],
+        "focusedRegion": "r0",
+        "focusedPane": "w1:p3",
+        "view": [
+          "r0 tab=w1:t1 columns(rows(w1:p1, w1:p3@0.5), rows(w1:p2, w1:p4@0.5)@0.5)"
+        ]
+      }
+    },
+    {
+      "name": "up comes back",
+      "why": "Same argument as left, one axis over.",
+      "given": {
+        "worlds": {
+          "grid": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "w1"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p4",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ],
+            "layouts": [
+              {
+                "tab": "w1:t1",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": {
+                    "axis": "rows",
+                    "ratio": 0.5,
+                    "first": "w1:p1",
+                    "second": "w1:p3"
+                  },
+                  "second": {
+                    "axis": "rows",
+                    "ratio": 0.5,
+                    "first": "w1:p2",
+                    "second": "w1:p4"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "steps": [
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/herdr-local.sock"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "grid"
+          },
+          {
+            "do": "focusPane",
+            "region": "r0",
+            "pane": "w1:p3"
+          },
+          {
+            "do": "step",
+            "direction": "up"
+          }
+        ],
+        "attached": []
+      },
+      "expect": {
+        "daemons": [
+          "local local=/tmp/herdr-local.sock"
+        ],
+        "regions": [
+          "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p1"
+        ],
+        "focusedRegion": "r0",
+        "focusedPane": "w1:p1",
+        "view": [
+          "r0 tab=w1:t1 columns(rows(w1:p1, w1:p3@0.5), rows(w1:p2, w1:p4@0.5)@0.5)"
+        ]
+      }
+    },
+    {
+      "name": "a direction with nothing in it moves nothing",
+      "why": "No wrapping. Falling off the left of the window and reappearing on the right is disorienting in a way stepping through an order is not - and next and previous already wrap, so this one can afford to be predictable. The keyboard stays where it was.",
+      "given": {
+        "worlds": {
+          "grid": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "w1"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p4",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ],
+            "layouts": [
+              {
+                "tab": "w1:t1",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": {
+                    "axis": "rows",
+                    "ratio": 0.5,
+                    "first": "w1:p1",
+                    "second": "w1:p3"
+                  },
+                  "second": {
+                    "axis": "rows",
+                    "ratio": 0.5,
+                    "first": "w1:p2",
+                    "second": "w1:p4"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "steps": [
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/herdr-local.sock"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "grid"
+          },
+          {
+            "do": "focusPane",
+            "region": "r0",
+            "pane": "w1:p1"
+          },
+          {
+            "do": "step",
+            "direction": "left"
+          }
+        ],
+        "attached": []
+      },
+      "expect": {
+        "daemons": [
+          "local local=/tmp/herdr-local.sock"
+        ],
+        "regions": [
+          "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p1"
+        ],
+        "focusedRegion": "r0",
+        "focusedPane": "w1:p1",
+        "view": [
+          "r0 tab=w1:t1 columns(rows(w1:p1, w1:p3@0.5), rows(w1:p2, w1:p4@0.5)@0.5)"
+        ]
+      }
+    },
+    {
+      "name": "the neighbour is the one actually beside you, not the first in the tree",
+      "why": "The case the geometric rule exists for. The left column is split near its top and the right near its bottom, so the pane to the left of the bottom-right one is the tall lower-left pane - which is the second child of that subtree. A walk up to the matching-axis ancestor and back down the near side has no way to know that and takes the first child, landing on a thin strip at the top of the screen that the user was not pointing at.",
+      "given": {
+        "worlds": {
+          "skew": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "w1"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p4",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ],
+            "layouts": [
+              {
+                "tab": "w1:t1",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": {
+                    "axis": "rows",
+                    "ratio": 0.2,
+                    "first": "w1:p1",
+                    "second": "w1:p4"
+                  },
+                  "second": {
+                    "axis": "rows",
+                    "ratio": 0.8,
+                    "first": "w1:p2",
+                    "second": "w1:p3"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "steps": [
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/herdr-local.sock"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "skew"
+          },
+          {
+            "do": "focusPane",
+            "region": "r0",
+            "pane": "w1:p3"
+          },
+          {
+            "do": "step",
+            "direction": "left"
+          }
+        ],
+        "attached": []
+      },
+      "expect": {
+        "daemons": [
+          "local local=/tmp/herdr-local.sock"
+        ],
+        "regions": [
+          "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p4"
+        ],
+        "focusedRegion": "r0",
+        "focusedPane": "w1:p4",
+        "view": [
+          "r0 tab=w1:t1 columns(rows(w1:p1, w1:p4@0.2), rows(w1:p2, w1:p3@0.8)@0.5)"
+        ]
+      }
+    },
+    {
+      "name": "overlap decides between two panes the same distance away",
+      "why": "Both panes on the right start at the same line, so distance cannot separate them. The one sharing more edge with where the keyboard was is the one straight ahead, which is what a person means by right.",
+      "given": {
+        "worlds": {
+          "skew": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "w1"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p4",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ],
+            "layouts": [
+              {
+                "tab": "w1:t1",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": {
+                    "axis": "rows",
+                    "ratio": 0.2,
+                    "first": "w1:p1",
+                    "second": "w1:p4"
+                  },
+                  "second": {
+                    "axis": "rows",
+                    "ratio": 0.8,
+                    "first": "w1:p2",
+                    "second": "w1:p3"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "steps": [
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/herdr-local.sock"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "skew"
+          },
+          {
+            "do": "focusPane",
+            "region": "r0",
+            "pane": "w1:p4"
+          },
+          {
+            "do": "step",
+            "direction": "right"
+          }
+        ],
+        "attached": []
+      },
+      "expect": {
+        "daemons": [
+          "local local=/tmp/herdr-local.sock"
+        ],
+        "regions": [
+          "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p2"
+        ],
+        "focusedRegion": "r0",
+        "focusedPane": "w1:p2",
+        "view": [
+          "r0 tab=w1:t1 columns(rows(w1:p1, w1:p4@0.2), rows(w1:p2, w1:p3@0.8)@0.5)"
+        ]
+      }
     }
   ]
 }
