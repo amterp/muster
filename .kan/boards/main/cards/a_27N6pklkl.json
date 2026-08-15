@@ -5,7 +5,7 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "uncommitted",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -23,11 +23,12 @@
   "created_at_millis": 1786637678329,
   "creator": "Alexander Terp",
   "id": "a_27N6pklkl",
-  "position": "UUUUUUUUUUUUUUUUUUUU",
+  "position": "0",
   "title": "🔌 Upstream: agent state needs a subscription per pane",
   "type": "chore",
-  "updated_at_millis": 1786785046349,
+  "updated_at_millis": 1786806598137,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1786637678329}
+    {"field":"column","value":"backlog-hi","at":1786637678329},
+    {"field":"column","value":"uncommitted","at":1786806598137}
   ]
 }
