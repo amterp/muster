@@ -165,6 +165,33 @@ public enum Core {
     send(request)
   }
 
+  /// Grows the focused pane against its neighbour, by the daemon's own step.
+  ///
+  /// A direction rather than a divider: which one moves is a question about a tree the person
+  /// pressing the key is not looking at, and only the daemon holds the rectangles to answer it.
+  public static func resize(
+    direction: String, amount: Float = 0, daemonID: String = "", paneID: String = ""
+  ) {
+    var resize = Muster_ResizePane()
+    resize.daemonID = daemonID
+    resize.paneID = paneID
+    resize.direction = direction
+    resize.amount = amount
+    var request = Muster_Request()
+    request.resizePane = resize
+    send(request)
+  }
+
+  /// Makes the focused pane fill its tab, or puts it back.
+  public static func zoom(daemonID: String = "", paneID: String = "") {
+    var zoom = Muster_ZoomPane()
+    zoom.daemonID = daemonID
+    zoom.paneID = paneID
+    var request = Muster_Request()
+    request.zoomPane = zoom
+    send(request)
+  }
+
   public static func closePane(daemonID: String = "", paneID: String = "") {
     var close = Muster_ClosePane()
     close.daemonID = daemonID
@@ -340,6 +367,8 @@ public enum Core {
     case .windowFocus: return "window_focus"
     case .setRegionBoundary: return "set_region_boundary"
     case .bridgeExited: return "bridge_exited"
+    case .resizePane: return "resize_pane"
+    case .zoomPane: return "zoom_pane"
     case nil: return "(none)"
     }
   }

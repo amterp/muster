@@ -99,6 +99,17 @@ pub fn request(intent: &BackendIntent) -> (&'static str, Value) {
             }
             ("workspace.create", params)
         }
+        BackendIntent::ResizePane { pane, direction, amount } => {
+            let mut params = json!({ "pane_id": pane.as_str(), "direction": direction.as_str() });
+            if let Some(amount) = amount {
+                params["amount"] = json!(amount);
+            }
+            ("pane.resize", params)
+        }
+        // `mode` is left to its default, which herdr documents as toggle. Sending it would be
+        // Muster restating a default it agrees with, and the day herdr changes that default
+        // is the day this should notice rather than silently keep the old one.
+        BackendIntent::ZoomPane { pane } => ("pane.zoom", json!({ "pane_id": pane.as_str() })),
         BackendIntent::ClosePane { pane } => ("pane.close", json!({ "pane_id": pane.as_str() })),
         BackendIntent::FocusPane { pane } => ("pane.focus", json!({ "pane_id": pane.as_str() })),
         BackendIntent::SetSplitRatio { tab, path, ratio } => (

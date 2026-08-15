@@ -61,6 +61,28 @@ public enum AppMenu {
     Item(
       title: "Select Pane Below", action: #selector(MusterWindow.focusPaneDown(_:)),
       key: "\u{F701}", modifiers: [.command, .option]),
+    // Resizing, on the chord Ghostty uses. A direction and not a divider: which one moves is
+    // a question about a tree nobody pressing this is looking at, and the daemon answers it.
+    //
+    // Ctrl on top of the focus chord, so moving to a pane and growing it are the same hand
+    // position with one more finger - and so a mistyped focus does not resize.
+    Item(
+      title: "Resize Pane Left", action: #selector(MusterWindow.resizePaneLeft(_:)),
+      key: "\u{F702}", modifiers: [.command, .control, .shift]),
+    Item(
+      title: "Resize Pane Right", action: #selector(MusterWindow.resizePaneRight(_:)),
+      key: "\u{F703}", modifiers: [.command, .control, .shift]),
+    Item(
+      title: "Resize Pane Up", action: #selector(MusterWindow.resizePaneUp(_:)),
+      key: "\u{F700}", modifiers: [.command, .control, .shift]),
+    Item(
+      title: "Resize Pane Down", action: #selector(MusterWindow.resizePaneDown(_:)),
+      key: "\u{F701}", modifiers: [.command, .control, .shift]),
+    // The one that matters at fifteen panes: read one properly without rearranging anything,
+    // and press it again to have the arrangement back exactly as it was.
+    Item(
+      title: "Zoom Pane", action: #selector(MusterWindow.zoomPane(_:)), key: "\r",
+      modifiers: [.command, .shift]),
   ]
 
   /// Builds the smallest menu bar that makes the platform's shortcuts work.

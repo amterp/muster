@@ -289,6 +289,26 @@ extension MusterWindow {
     Core.closePane()
   }
 
+  @objc public func resizePaneLeft(_ sender: Any?) {
+    Core.resize(direction: "left")
+  }
+
+  @objc public func resizePaneRight(_ sender: Any?) {
+    Core.resize(direction: "right")
+  }
+
+  @objc public func resizePaneUp(_ sender: Any?) {
+    Core.resize(direction: "up")
+  }
+
+  @objc public func resizePaneDown(_ sender: Any?) {
+    Core.resize(direction: "down")
+  }
+
+  @objc public func zoomPane(_ sender: Any?) {
+    Core.zoom()
+  }
+
   @objc public func focusNextPane(_ sender: Any?) {
     Core.focus(step: "next")
   }

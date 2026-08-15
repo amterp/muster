@@ -12,6 +12,41 @@
 
 use crate::mirror::backend::{PaneId, SplitAxis, TabId, WorkspaceId};
 
+/// A direction on screen, as a person means it.
+///
+/// Muster's own word rather than a backend's, on the same terms as `SplitAxis`: herdr spells
+/// these the same way today, and a second backend spelling them `west` costs one match arm in
+/// its adapter rather than a rename through the core.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Side {
+    Left,
+    Right,
+    Up,
+    Down,
+}
+
+impl Side {
+    /// The name a chord, a menu item and a CLI all spell it with.
+    pub fn parse(name: &str) -> Option<Side> {
+        match name {
+            "left" => Some(Side::Left),
+            "right" => Some(Side::Right),
+            "up" => Some(Side::Up),
+            "down" => Some(Side::Down),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Side::Left => "left",
+            Side::Right => "right",
+            Side::Up => "up",
+            Side::Down => "down",
+        }
+    }
+}
+
 /// Which child a step down a tree takes.
 ///
 /// A tree is addressed by the turns taken to reach a node, because the nodes have no names -
@@ -79,6 +114,34 @@ pub enum BackendIntent {
         /// which is meaningless to whoever is looking at the window.
         cwd: Option<String>,
     },
+    /// Grows or shrinks a pane against its neighbour, in cells.
+    ///
+    /// Unlike `SetSplitRatio`, which names a divider by the turns down to it and says exactly
+    /// where it should sit, this names a pane and a direction. That is what a keystroke means:
+    /// somebody holding a chord down wants this pane bigger, and which divider moves to
+    /// achieve that is a question about a tree they are not looking at.
+    ///
+    /// The backend resolves it, and it is the only verb here that could not be built from the
+    /// mirror - deciding which divider a direction refers to needs the rects, which are the
+    /// daemon's own and change under a viewport this window does not control.
+    ResizePane {
+        pane: PaneId,
+        direction: Side,
+        /// How much, in cells. `None` takes the backend's own step, which is what a
+        /// keybinding wants.
+        amount: Option<f32>,
+    },
+
+    /// Makes one pane fill its tab, or puts it back.
+    ///
+    /// A toggle rather than a state, because that is what one key does. What is zoomed is
+    /// daemon truth and arrives on the mirror; asking for `on` or `off` would mean reading it
+    /// back first, which is a round trip to answer a question the daemon is about to answer
+    /// anyway.
+    ZoomPane {
+        pane: PaneId,
+    },
+
     /// Moves one divider in a tab's tree.
     SetSplitRatio {
         tab: TabId,

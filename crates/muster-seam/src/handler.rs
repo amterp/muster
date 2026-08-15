@@ -12,7 +12,7 @@ use muster_core::fields;
 use muster_core::composition::{DaemonId, RegionId, Step};
 use muster_core::config;
 use muster_core::input::{CompositionOutcome, ScrollDirection, composition_outcome};
-use muster_core::intent::{BackendIntent, Branch};
+use muster_core::intent::{BackendIntent, Branch, Side};
 use muster_core::mirror::backend::{PaneId, TabId};
 
 use crate::convert;
@@ -87,6 +87,10 @@ fn handle(request: Request) -> Response {
         },
         request::Payload::ClosePane(close) => {
             act(&close.daemon_id, &close.pane_id, |pane| BackendIntent::ClosePane { pane })
+        }
+        request::Payload::ResizePane(resize) => resize_pane(&resize),
+        request::Payload::ZoomPane(zoom) => {
+            act(&zoom.daemon_id, &zoom.pane_id, |pane| BackendIntent::ZoomPane { pane })
         }
         request::Payload::FocusPane(focus) if focus.pane_id.is_empty() => Response::failure(
             "a focus request named no pane, so the keyboard stayed where it was. Unlike every \
@@ -332,6 +336,24 @@ fn open_window() -> Response {
              ignores the keyboard."
         )),
     }
+}
+
+/// Grows a pane against its neighbour, by a step.
+fn resize_pane(resize: &proto::ResizePane) -> Response {
+    let Some(direction) = Side::parse(&resize.direction) else {
+        return Response::failure(format!(
+            "the core does not know a direction called {:?}, so nothing was resized. They are \
+             left, right, up and down.",
+            resize.direction
+        ));
+    };
+    act(&resize.daemon_id, &resize.pane_id, |pane| BackendIntent::ResizePane {
+        pane,
+        direction,
+        // Zero is proto3's unset, and resizing a pane by nothing is not a thing anyone asks
+        // for, so the two are safely the same answer.
+        amount: (resize.amount > 0.0).then_some(resize.amount),
+    })
 }
 
 /// The shell saying nothing is painting one of its panes any more.

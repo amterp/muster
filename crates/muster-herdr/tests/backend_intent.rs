@@ -9,7 +9,7 @@
 use std::collections::BTreeSet;
 
 use conformance::{CaseError, Conformance, fields, repo_root};
-use muster_core::intent::{BackendIntent, Branch};
+use muster_core::intent::{BackendIntent, Branch, Side};
 use muster_core::mirror::backend::{PaneId, SplitAxis, TabId, WorkspaceId};
 use muster_herdr::request;
 use serde_json::{Value, json};
@@ -76,6 +76,12 @@ fn every_intent() -> Vec<BackendIntent> {
             cwd: Some("/src/muster".into()),
         },
         BackendIntent::ClosePane { pane: PaneId::new("p1") },
+        BackendIntent::ResizePane {
+            pane: PaneId::new("p1"),
+            direction: Side::Left,
+            amount: Some(2.0),
+        },
+        BackendIntent::ZoomPane { pane: PaneId::new("p1") },
         BackendIntent::FocusPane { pane: PaneId::new("p1") },
         BackendIntent::CreateTab {
             workspace: WorkspaceId::new("w1"),
@@ -93,6 +99,8 @@ fn every_intent() -> Vec<BackendIntent> {
         // keys unchecked, and the whole point of this test is that herdr will not complain.
         match intent {
             BackendIntent::SplitPane { .. }
+            | BackendIntent::ResizePane { .. }
+            | BackendIntent::ZoomPane { .. }
             | BackendIntent::ClosePane { .. }
             | BackendIntent::FocusPane { .. }
             | BackendIntent::CreateTab { .. }
@@ -147,6 +155,13 @@ fn intent(given: &Value) -> Result<BackendIntent, CaseError> {
             cwd,
         }),
         "close" => Ok(BackendIntent::ClosePane { pane: PaneId::new(&text(given, "pane")?) }),
+        "resize" => Ok(BackendIntent::ResizePane {
+            pane: PaneId::new(&text(given, "pane")?),
+            direction: Side::parse(&text(given, "direction")?)
+                .ok_or_else(|| CaseError::new("that is not a direction"))?,
+            amount: ratio(given),
+        }),
+        "zoom" => Ok(BackendIntent::ZoomPane { pane: PaneId::new(&text(given, "pane")?) }),
         "focus" => Ok(BackendIntent::FocusPane { pane: PaneId::new(&text(given, "pane")?) }),
         "tab" => Ok(BackendIntent::CreateTab {
             workspace: WorkspaceId::new(&text(given, "workspace")?),
@@ -176,7 +191,7 @@ fn intent(given: &Value) -> Result<BackendIntent, CaseError> {
     }
 }
 
-/// A case's ratio, at the width the wire carries. Through serde rather than a cast, which is
+/// A case's ratio or amount, at the width the wire carries. Through serde rather than a cast, which is
 /// the same narrowing without a lint about it.
 fn ratio(given: &Value) -> Option<f32> {
     serde_json::from_value(given.get("ratio")?.clone()).ok()

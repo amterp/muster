@@ -35,7 +35,38 @@ message Request {
     OpenWindow open_window = 16;
     CreateTab create_tab = 17;
     BridgeExited bridge_exited = 18;
+    ResizePane resize_pane = 19;
+    ZoomPane zoom_pane = 20;
   }
+}
+
+// Grows a pane against its neighbour, by a step.
+//
+// What a chord held down means: this pane bigger, in that direction. Unlike SetSplitRatio,
+// which names a divider by the turns down to it and says where it should sit, nothing here
+// mentions a divider - which one moves is a question about a tree the person pressing the key
+// is not looking at, and only the daemon holds the rectangles that answer it.
+message ResizePane {
+  string daemon_id = 1;
+  string pane_id = 2;
+
+  // left, right, up or down.
+  string direction = 3;
+
+  // How many cells. Zero means the daemon's own step, which is what a keybinding wants; a CLI
+  // or an agent placing a divider exactly says.
+  float amount = 4;
+}
+
+// Makes one pane fill its tab, or puts it back.
+//
+// A toggle rather than a state, because that is what one key does. What is currently zoomed
+// arrives on the view like everything else the daemon owns, so a message that asked for `on`
+// would mean reading it back first - a round trip to answer a question the daemon is about to
+// answer anyway.
+message ZoomPane {
+  string daemon_id = 1;
+  string pane_id = 2;
 }
 
 // The subprocess painting a pane has ended.

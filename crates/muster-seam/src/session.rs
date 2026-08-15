@@ -601,6 +601,8 @@ pub(crate) fn submit(daemon: &DaemonId, intent: &BackendIntent) -> Result<(), St
             BackendIntent::CreateWorkspace { .. } | BackendIntent::CreateTab { .. } => None,
             BackendIntent::SplitPane { pane, .. }
             | BackendIntent::ClosePane { pane }
+            | BackendIntent::ResizePane { pane, .. }
+            | BackendIntent::ZoomPane { pane }
             | BackendIntent::FocusPane { pane } => {
                 Some(session.region_holding(daemon, pane).ok_or_else(|| not_showing(daemon))?)
             }
