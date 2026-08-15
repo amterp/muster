@@ -12,7 +12,7 @@ import MusterRenderer
 /// with no app, window or run loop behind it, so what happens when you type is assertable
 /// here - which is how the bug that sent every key twice would have been caught.
 @MainActor
-public final class SurfaceView: NSView {
+public final class SurfaceView: NSView, NSMenuItemValidation {
   private var surface: Surface?
 
   /// Whether this view has a pane to type into. A bare `muster` does not - it is the
@@ -125,8 +125,41 @@ public final class SurfaceView: NSView {
   /// again to pick the pane - a papercut on every switch back.
   public override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
+  // A drag makes a selection, and a selection is the surface's own.
+  //
+  // Nothing here reaches the daemon. libghostty has already painted this grid, so the range
+  // of cells a drag covers is answerable from what is on screen - which is why copy works
+  // while reporting mouse buttons to the program in the pane does not (kan a_27CTgqqdv):
+  // that needs the pane's mouse mode, and frame diffs consume mode changes before this
+  // surface ever sees one (`observations/herdr-0.8.0.md` section 2). The consequence worth
+  // knowing is that this surface believes mouse reporting is always off, which is exactly
+  // what makes a drag mean "select" here and never "click" over there.
+
   public override func mouseDown(with event: NSEvent) {
     onClick?()
+    reportMouse(event, pressed: true)
+  }
+
+  public override func mouseDragged(with event: NSEvent) {
+    reportMousePosition(event)
+  }
+
+  public override func mouseUp(with event: NSEvent) {
+    reportMouse(event, pressed: false)
+  }
+
+  private func reportMouse(_ event: NSEvent, pressed: Bool) {
+    // The position first, because a button event is about wherever the pointer already is
+    // and libghostty holds that separately - a press reported without one starts the
+    // selection at the last place the pointer was seen.
+    reportMousePosition(event)
+    surface?.leftMouse(pressed: pressed, modifiers: event.modifierFlags)
+  }
+
+  private func reportMousePosition(_ event: NSEvent) {
+    surface?.mouseMoved(
+      to: convert(event.locationInWindow, from: nil), viewHeight: frame.height,
+      modifiers: event.modifierFlags)
   }
 
   public override func scrollWheel(with event: NSEvent) {
@@ -153,6 +186,44 @@ public final class SurfaceView: NSView {
       return
     }
     Core.paste(text: text)
+  }
+
+  /// What is selected in this pane, on its way to the clipboard.
+  ///
+  /// Reached through the responder chain from the Edit menu, for the reason paste is: that is
+  /// how macOS decides what ⌘C means, and it keeps working when somebody has rebound it.
+  ///
+  /// A pane with nothing selected copies nothing rather than clearing the clipboard, which is
+  /// what every other terminal does and what anyone who mistyped the chord expects.
+  @objc public func copy(_ sender: Any?) {
+    guard let selected = surface?.selectedText, !selected.isEmpty else {
+      Core.debug(
+        "selection.empty",
+        ["impact": "nothing was copied; the clipboard still holds whatever it held"])
+      return
+    }
+    NSPasteboard.general.clearContents()
+    NSPasteboard.general.setString(selected, forType: .string)
+    Core.debug("selection.copied", ["bytes": String(selected.utf8.count)])
+  }
+
+  /// Greys out an Edit item that would do nothing.
+  ///
+  /// AppKit enables an item as soon as something in the responder chain implements it, so
+  /// without this Copy looks available in a pane with nothing selected and then does nothing
+  /// when pressed. A menu that lies about what it can do is the same failure as a window that
+  /// lies about being typeable, one order of magnitude smaller.
+  public func validateMenuItem(_ item: NSMenuItem) -> Bool {
+    switch item.action {
+    case #selector(copy(_:)):
+      return surface?.selectedText?.isEmpty == false
+    case #selector(paste(_:)):
+      return NSPasteboard.general.string(forType: .string) != nil
+    default:
+      // Anything else in the chain answers for itself; a view that claimed on their behalf
+      // would grey out items it knows nothing about.
+      return true
+    }
   }
 
   public override func becomeFirstResponder() -> Bool {

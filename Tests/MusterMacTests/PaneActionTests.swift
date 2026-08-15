@@ -235,7 +235,7 @@ struct AppMenuTests {
   }
 
   @MainActor
-  @Test("the menu carries quit, paste and the panes")
+  @Test("the menu carries quit, copy, paste and the panes")
   func theMenuBarIsComplete() {
     // Without a menu at all, ⌘V is inert no matter what any view implements and the app
     // cannot be quit normally.
@@ -245,6 +245,23 @@ struct AppMenuTests {
     #expect(titles.contains("Quit muster"))
     #expect(titles.contains("Paste"))
     #expect(titles.contains("Split Right"))
+    // Copy went missing for as long as a pane's selection was believed to live in the
+    // daemon. Reading a terminal's output back out is an hourly need, and without this the
+    // answer was retyping it.
+    #expect(titles.contains("Copy"))
+  }
+
+  @MainActor
+  @Test("copy and paste go through the responder chain, not to a target")
+  func editItemsWalkTheChain() {
+    // A target here would be whichever object built the menu, and the selection belongs to
+    // the focused surface. Nil is what makes AppKit walk down to it.
+    let menu = AppMenu.build(target: NSApp)
+    let edit = menu.items.compactMap(\.submenu).first { $0.title == "Edit" }
+
+    let items = edit?.items.filter { ["Copy", "Paste"].contains($0.title) } ?? []
+    #expect(items.count == 2)
+    #expect(items.allSatisfy { $0.target == nil })
   }
 }
 

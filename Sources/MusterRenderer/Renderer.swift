@@ -177,4 +177,58 @@ public final class Surface {
     let size = ghostty_surface_size(surface)
     return (size.columns, size.rows)
   }
+
+  // Selection, which is the surface's own business and nobody else's.
+  //
+  // Unlike a keystroke, a drag over a pane never reaches the daemon: the selection is made
+  // against the grid libghostty has already painted here, so no mode has to be guessed and no
+  // daemon has to agree. That is what makes copy possible while reporting mouse buttons to
+  // the program in the pane is still blocked (kan a_27CTgqqdv).
+
+  /// Reports where the pointer is, in the view's own coordinates.
+  ///
+  /// The y axis is flipped here rather than by the caller, because the reason is
+  /// libghostty's: AppKit measures a view from the bottom left and a surface measures itself
+  /// from the top left, so an unflipped position selects the mirror image of the drag.
+  public func mouseMoved(to point: NSPoint, viewHeight: CGFloat, modifiers: NSEvent.ModifierFlags) {
+    ghostty_surface_mouse_pos(
+      surface, Double(point.x), Double(viewHeight - point.y), ghosttyModifiers(modifiers))
+  }
+
+  /// Presses or releases the left button, which is what starts and ends a selection.
+  ///
+  /// Only the left one. The others mean nothing to a selection, and a right-click that
+  /// reached the surface would be a context menu Muster has not built.
+  public func leftMouse(pressed: Bool, modifiers: NSEvent.ModifierFlags) {
+    ghostty_surface_mouse_button(
+      surface, pressed ? GHOSTTY_MOUSE_PRESS : GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT,
+      ghosttyModifiers(modifiers))
+  }
+
+  /// What is selected in this pane, or nil when nothing is.
+  ///
+  /// Copied out rather than handed back as a pointer: libghostty owns the buffer and wants it
+  /// freed before this returns, and a String is what every caller wanted anyway.
+  public var selectedText: String? {
+    guard ghostty_surface_has_selection(surface) else { return nil }
+    var text = ghostty_text_s()
+    guard ghostty_surface_read_selection(surface, &text) else { return nil }
+    defer { ghostty_surface_free_text(surface, &text) }
+    guard let bytes = text.text, text.text_len > 0 else { return nil }
+    return String(
+      decoding: UnsafeRawBufferPointer(start: bytes, count: Int(text.text_len)), as: UTF8.self)
+  }
+}
+
+/// AppKit's modifier flags, in libghostty's spelling.
+///
+/// Only the four that mean something to a selection. Caps lock and the left/right variants
+/// exist in the enum and change nothing about dragging out a range of cells.
+private func ghosttyModifiers(_ flags: NSEvent.ModifierFlags) -> ghostty_input_mods_e {
+  var mods: UInt32 = GHOSTTY_MODS_NONE.rawValue
+  if flags.contains(.shift) { mods |= GHOSTTY_MODS_SHIFT.rawValue }
+  if flags.contains(.control) { mods |= GHOSTTY_MODS_CTRL.rawValue }
+  if flags.contains(.option) { mods |= GHOSTTY_MODS_ALT.rawValue }
+  if flags.contains(.command) { mods |= GHOSTTY_MODS_SUPER.rawValue }
+  return ghostty_input_mods_e(mods)
 }

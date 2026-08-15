@@ -68,9 +68,10 @@ public enum AppMenu {
   /// An app with no menu at all is one a person cannot quit normally, and one whose ⌘V does
   /// nothing.
   ///
-  /// Copy is deliberately absent - it needs a selection, and a pane's selection lives in the
-  /// daemon where Muster cannot yet reach it. A menu item that silently does nothing would be
-  /// worse than its absence.
+  /// Copy is here beside paste, and both go through the responder chain rather than through a
+  /// chord matched in `keyDown`: that is how macOS decides what these mean, so a person who
+  /// has rebound either gets what they bound. A pane's selection is the surface's own - made
+  /// against the grid libghostty already painted - so neither needs a daemon to agree.
   public static func build(target: AnyObject) -> NSMenu {
     let menu = NSMenu()
 
@@ -84,6 +85,7 @@ public enum AppMenu {
     let editItem = NSMenuItem()
     let editMenu = NSMenu(title: "Edit")
     // nil target: AppKit walks the responder chain, which lands on the focused surface.
+    editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
     editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
     editItem.submenu = editMenu
     menu.addItem(editItem)
