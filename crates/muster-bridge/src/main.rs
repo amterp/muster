@@ -93,6 +93,11 @@ fn main() {
         move || {
             for () in resizes {
                 let (columns, rows) = pty::terminal_size();
+                // Logged because a resize that goes nowhere is invisible otherwise: the pane
+                // keeps rendering at its old geometry and a full-screen program redraws into
+                // a grid the wrong shape, which reads as a broken TUI rather than as a
+                // message that never arrived.
+                log::info("bridge.resize", fields! { "cols" => columns, "rows" => rows });
                 send(&input, &ControlStreamMessage::Resize { columns, rows });
             }
         }

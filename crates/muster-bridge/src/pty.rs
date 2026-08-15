@@ -39,18 +39,30 @@ pub(crate) fn make_stdin_raw() {
 pub(crate) fn watch_for_resize() -> Receiver<()> {
     let (sender, receiver) = channel();
 
-    // SAFETY: sigemptyset and sigaddset initialize a set we own; pthread_sigmask changes
-    // only this thread's mask, and every thread spawned after this inherits it.
+    // SAFETY: sigemptyset and sigaddset initialize a set we own; signal installs a handler
+    // that does nothing and touches nothing; pthread_sigmask changes only this thread's
+    // mask, and every thread spawned after this inherits it.
     unsafe {
         let mut blocked: libc::sigset_t = std::mem::zeroed();
         libc::sigemptyset(&raw mut blocked);
         libc::sigaddset(&raw mut blocked, libc::SIGWINCH);
+
+        // A handler that will never run, and without which none of this works. SIGWINCH's
+        // default disposition is to be ignored, and a signal that is ignored is discarded
+        // where it is generated rather than left pending - so the `sigwait` below waits
+        // forever and every resize is dropped in silence. Installing any handler takes the
+        // disposition off SIG_IGN; blocking it then keeps the handler from ever being
+        // reached, and the signal becomes pending for `sigwait` to collect.
+        libc::signal(libc::SIGWINCH, handle_nothing as *const () as libc::sighandler_t);
         libc::pthread_sigmask(libc::SIG_BLOCK, &raw const blocked, std::ptr::null_mut());
         std::thread::spawn(move || wait_for_signals(blocked, &sender));
     }
 
     receiver
 }
+
+/// Never called. It exists to be a disposition rather than to be run - see above.
+extern "C" fn handle_nothing(_signal: libc::c_int) {}
 
 fn wait_for_signals(blocked: libc::sigset_t, sender: &Sender<()>) {
     loop {
