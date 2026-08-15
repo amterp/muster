@@ -1,0 +1,19 @@
+{
+  "_v": 3,
+  "alias": "a-pane-whose-bridge",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "next",
+  "created_at_millis": 1786800261226,
+  "creator": "Alexander Terp",
+  "description": "When a bridge cannot attach, the surface shows Ghostty's own `failed to launch the requested command` screen, ending in `Press any key to close the window.` No key does. Clicking it does not move the keyboard there either, so the pane cannot be focused, cannot be closed, and cannot be dismissed - it just sits there taking half the window.\n\nTwo reasons, both ours. Keystrokes in a pane go to the core and out to that pane's channel; nothing is ever sent to the libghostty surface itself, so the surface never sees the key it is asking for. And a click asks the core to focus that pane, which refuses when the daemon does not hold it - so the request that would move the keyboard is exactly the one that fails.\n\nWhat a person needs here is a way out that does not depend on the pane being alive: closing it should work on Muster's side even when the daemon refuses, since a pane the daemon denies is one that is not coming back.\n\nFound alongside the phantom-pane card, and worth fixing separately - a failed bridge for any reason lands here.\n\nReported from a real window, 2026-08-15.",
+  "id": "a_28TKMEc6T",
+  "position": "UUUUUUUUUUUUUUUUUU",
+  "title": "🧯 A pane whose bridge failed is a dead square you cannot dismiss",
+  "updated_at_millis": 1786800261226,
+  "history": [
+    {"field":"column","value":"next","at":1786800261226}
+  ]
+}

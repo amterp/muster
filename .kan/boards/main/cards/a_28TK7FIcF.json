@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-pane-the-daemon",
+  "alias_explicit": false,
+  "area": [
+    "shell",
+    "backend"
+  ],
+  "column": "next",
+  "created_at_millis": 1786800251939,
+  "creator": "Alexander Terp",
+  "description": "After a session where a pane's terminal died, relaunching Muster against the same daemon renders that pane anyway. The daemon's own `pane list` holds one pane; the window shows two, and the second cannot be focused, closed, or typed into. Every attempt is refused with `pane_not_found` and logged, and the window keeps showing it.\n\nHow it gets there, from the run log: the snapshot at attach says one pane, and 100ms later the subscription replays a `pane_created` for the second, so the mirror ends up holding a pane the snapshot did not have. The daemon then denies it exists - the bridge fails with `terminal target w1:p2 not found`, and `pane.focus` is refused `pane_not_found` - but no removal event ever arrives, so nothing takes it back out.\n\nTwo things worth separating. The mirror trusting a replayed create over a newer snapshot is one; the other is that Muster is told twice, in plain words, that the pane is gone and does nothing with either. A refusal naming `pane_not_found` is the daemon's own account of its state and could remove the pane, which self-heals every path rather than one.\n\nBefore fixing, record what herdr actually replays on subscribe when a pane's terminal has died - corpus/herdr-0.8.0/snapshot/subscribe-replay.json shows a replay of live panes only, which is not what happened here.\n\nReported from a real window, 2026-08-15.",
+  "id": "a_28TK7FIcF",
+  "position": "A",
+  "title": "👻 A pane the daemon has dropped stays on screen forever",
+  "updated_at_millis": 1786800251939,
+  "history": [
+    {"field":"column","value":"next","at":1786800251939}
+  ]
+}
