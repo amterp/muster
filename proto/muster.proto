@@ -33,6 +33,7 @@ message Request {
     WindowFocus window_focus = 14;
     SetRegionBoundary set_region_boundary = 15;
     OpenWindow open_window = 16;
+    CreateTab create_tab = 17;
   }
 }
 
@@ -117,6 +118,34 @@ message SplitPane {
   // The existing pane's share afterwards, between 0 and 1. Zero means the daemon's own
   // default, which is what a keybinding wants; a drag-to-split would say.
   float ratio = 3;
+
+  // Where the new pane starts. Empty takes the daemon's own rule, which is the directory the
+  // split came from - what somebody splitting a pane mid-task means, and why a keybinding
+  // sends nothing here. A CLI or an agent placing a pane somewhere particular says.
+  string cwd = 5;
+}
+
+// Makes a tab beside a pane, with one pane in it, and shows it.
+//
+// The unit somebody reaches for several times an hour, and until now the one thing that
+// meant dropping to the herdr CLI: splitting was the only way to make a pane, so anything
+// that did not belong in the tab you were in had nowhere to go.
+//
+// A workspace is deliberately not here. It is herdr's unit for a whole project rather than
+// something a window makes several times an hour, and Muster makes one only when it would
+// otherwise have nothing at all to show.
+message CreateTab {
+  string daemon_id = 1;
+
+  // The pane whose workspace the tab joins. Empty means the one this window's keyboard is
+  // on, which is what a keybinding means.
+  string pane_id = 2;
+
+  // Where its pane starts. Empty means that pane's own directory, which is the useful answer
+  // mid-flow and the one a split already gives. Unlike a split this is resolved by the core
+  // rather than left to the daemon: a new tab has nothing to inherit from, and herdr's own
+  // answer is a home directory nobody asked for.
+  string cwd = 3;
 }
 
 message ClosePane {

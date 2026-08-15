@@ -33,6 +33,26 @@ private func recorder() -> RecordingDispatcher {
 @Suite("pane actions cross the seam")
 struct PaneActionTests {
   @MainActor
+  @Test("a new tab names neither a pane nor a directory, and means both")
+  func aNewTabMeansHere() {
+    // Everything empty is the message a keybinding sends: the pane the keyboard is on, and
+    // the directory that pane is in. Both are resolved in the core, so a menu item, the CLI
+    // and an agent get the same answer rather than three.
+    let recorder = recorder()
+
+    Core.createTab()
+
+    #expect(recorder.requests.count == 1)
+    guard case .createTab(let create) = recorder.requests.first?.payload else {
+      Issue.record("a new tab sent \(String(describing: recorder.requests.first?.payload))")
+      return
+    }
+    #expect(create.paneID.isEmpty)
+    #expect(create.cwd.isEmpty)
+    #expect(create.daemonID.isEmpty)
+  }
+
+  @MainActor
   @Test("clicking a pane asks for the keyboard rather than taking it")
   func aClickIsARequest() {
     // Which pane the keyboard feeds is the core's answer, so a click asks and the view that

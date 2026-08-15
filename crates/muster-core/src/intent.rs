@@ -10,7 +10,7 @@
 //! a column or a row, because that is the question a person answered when they pressed the
 //! key.
 
-use crate::mirror::backend::{PaneId, SplitAxis, TabId};
+use crate::mirror::backend::{PaneId, SplitAxis, TabId, WorkspaceId};
 
 /// Which child a step down a tree takes.
 ///
@@ -34,6 +34,10 @@ pub enum BackendIntent {
         /// The existing pane's share afterwards. `None` takes the backend's own default,
         /// which is what a keybinding wants; a drag-to-split would say.
         ratio: Option<f32>,
+        /// Where the new pane starts. `None` takes the backend's own rule, which for herdr
+        /// means the directory the split came from - what somebody splitting a pane mid-task
+        /// means, and the reason this is not resolved here.
+        cwd: Option<String>,
     },
     ClosePane {
         pane: PaneId,
@@ -45,6 +49,24 @@ pub enum BackendIntent {
     /// cursors are written, not read).
     FocusPane {
         pane: PaneId,
+    },
+    /// Makes a tab in a workspace, with one pane in it.
+    ///
+    /// A tab rather than a workspace, because a workspace is herdr's unit for a whole project
+    /// and a tab is the unit somebody reaches for several times an hour.
+    ///
+    /// The workspace is named outright, unlike every other verb here, which names a pane. It
+    /// has to be: herdr's `tab.create` takes a workspace and nothing else, and it ignores
+    /// keys it does not know - so a pane id sent hopefully would be dropped in silence and
+    /// the tab would appear in whichever workspace that daemon happened to have focused
+    /// (`observations/herdr-0.8.0.md` section 6). Which workspace a pane is in is the
+    /// mirror's answer, and it is given before this is built.
+    CreateTab {
+        workspace: WorkspaceId,
+        /// Where its pane starts. Unlike a split, this is resolved before it is sent - a new
+        /// tab has nothing to inherit from, and the backend's own answer is a home directory
+        /// nobody asked for.
+        cwd: Option<String>,
     },
     /// Makes a workspace, with one tab and one pane in it.
     ///
@@ -78,6 +100,13 @@ pub enum BackendIntent {
 pub struct Outcome {
     /// The pane a split made, when the request made one.
     pub created: Option<PaneId>,
+    /// The tab a request made, when it made one.
+    ///
+    /// Needed for the same reason and by a different part of the window: a new tab is
+    /// somewhere no region is looking, and Muster decides what a region shows without ever
+    /// reading the daemon's own focus (`architecture.md`, cursors are written, not read). So
+    /// the answer has to come back with the request that caused it.
+    pub created_tab: Option<TabId>,
 }
 
 /// A way to ask one backend for a change.

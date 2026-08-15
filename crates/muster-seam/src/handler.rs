@@ -53,6 +53,7 @@ fn handle(request: Request) -> Response {
         request::Payload::LogRecord(record) => write(record),
         request::Payload::AttachPane(attach) => attach_pane(&attach.pane_id),
         request::Payload::OpenWindow(_) => open_window(),
+        request::Payload::CreateTab(create) => create_tab(&create),
         request::Payload::KeyDown(down) => with_pane("a keystroke", |pane| key_down(pane, &down)),
         request::Payload::KeyUp(up) => {
             with_pane("a key release", |pane| send_key(pane, up.key.as_ref()))
@@ -72,6 +73,9 @@ fn handle(request: Request) -> Response {
                 // Zero is proto3's unset, and a divider at the very edge is not a thing
                 // anyone asks for, so the two are safely the same answer here.
                 ratio: (split.ratio > 0.0).then_some(split.ratio),
+                // Empty is the daemon's own rule rather than this process's directory, and
+                // for a split that rule is "wherever the pane you split was".
+                cwd: (!split.cwd.is_empty()).then(|| split.cwd.clone()),
             }),
             None => Response::failure(format!(
                 "the core does not know a split axis called {:?}, so nothing was split. \
@@ -218,6 +222,45 @@ fn act(daemon_id: &str, pane_id: &str, build: impl FnOnce(PaneId) -> BackendInte
         PaneId::new(pane_id)
     };
     submit(&daemon, &build(pane))
+}
+
+/// Makes a tab beside a pane, in the directory that pane is in.
+///
+/// The directory is resolved here rather than left to the daemon. A new tab has nothing to
+/// inherit from, so herdr would start it in a home directory - and the answer somebody
+/// pressing the key means is "where I already am", which the mirror already knows.
+///
+/// Which workspace, too, and that one is not a nicety: `tab.create` takes a workspace and
+/// ignores keys it does not know, so a request that named the pane instead would be accepted
+/// and put the tab wherever that daemon last had focus.
+fn create_tab(create: &proto::CreateTab) -> Response {
+    let daemon = match resolve_daemon(&create.daemon_id) {
+        Ok(daemon) => daemon,
+        Err(refusal) => return refusal,
+    };
+    let pane = if create.pane_id.is_empty() {
+        match session::focused_pane() {
+            Some(pane) => pane,
+            None => {
+                return Response::failure(
+                    "no pane has this window's keyboard, so there is no workspace to make a \
+                     tab in. A request that names no pane means the focused one, and this \
+                     window has none.",
+                );
+            }
+        }
+    } else {
+        PaneId::new(&create.pane_id)
+    };
+
+    let Some((workspace, inherited)) = session::workspace_of(&daemon, &pane) else {
+        return Response::failure(format!(
+            "the daemon {daemon} holds no pane called {pane}, so there is no workspace to put \
+             a tab in and nothing was made. Most likely it closed while this was in flight."
+        ));
+    };
+    let cwd = if create.cwd.is_empty() { inherited } else { Some(create.cwd.clone()) };
+    submit(&daemon, &BackendIntent::CreateTab { workspace, cwd })
 }
 
 /// The daemon a request means, given what it named.

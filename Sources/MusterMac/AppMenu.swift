@@ -24,6 +24,11 @@ public enum AppMenu {
   /// What Muster does to panes. Every one goes to the core; none of them changes a window
   /// directly.
   @MainActor public static let paneItems: [Item] = [
+    // First, because it is the one that makes something out of nothing. Everything below
+    // needs a pane to already be there.
+    Item(
+      title: "New Tab", action: #selector(MusterWindow.newTab(_:)), key: "t",
+      modifiers: [.command]),
     Item(
       title: "Split Right", action: #selector(MusterWindow.splitRight(_:)), key: "d",
       modifiers: [.command]),

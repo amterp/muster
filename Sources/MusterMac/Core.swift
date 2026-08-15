@@ -150,6 +150,20 @@ public enum Core {
     send(request)
   }
 
+  /// Makes a tab beside a pane, with one pane in it, and shows it.
+  ///
+  /// An empty cwd means that pane's own directory, which is what somebody pressing the key
+  /// mid-task means. The core resolves it, so the CLI and an agent get the same default.
+  public static func createTab(daemonID: String = "", paneID: String = "", cwd: String = "") {
+    var create = Muster_CreateTab()
+    create.daemonID = daemonID
+    create.paneID = paneID
+    create.cwd = cwd
+    var request = Muster_Request()
+    request.createTab = create
+    send(request)
+  }
+
   public static func closePane(daemonID: String = "", paneID: String = "") {
     var close = Muster_ClosePane()
     close.daemonID = daemonID
@@ -296,6 +310,7 @@ public enum Core {
     case .logRecord: return "log"
     case .attachPane: return "attach_pane"
     case .openWindow: return "open_window"
+    case .createTab: return "create_tab"
     case .keyDown: return "key_down"
     case .keyUp: return "key_up"
     case .sendText: return "send_text"

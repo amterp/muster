@@ -10,7 +10,7 @@
 //! tree becomes an array of booleans, herdr's own spelling for the turns.
 
 use muster_core::intent::{BackendChannel, BackendIntent, Branch, Outcome};
-use muster_core::mirror::backend::{PaneId, SplitAxis};
+use muster_core::mirror::backend::{PaneId, SplitAxis, TabId};
 use serde_json::{Value, json};
 
 use crate::client::HerdrClient;
@@ -19,7 +19,7 @@ impl BackendChannel for HerdrClient {
     fn submit(&self, intent: &BackendIntent) -> Result<Outcome, String> {
         let (method, params) = request(intent);
         let result = self.request(method, &params).map_err(|failure| failure.to_string())?;
-        Ok(Outcome { created: created(&result) })
+        Ok(Outcome { created: created(&result), created_tab: created_tab(&result) })
     }
 
     fn description(&self) -> &str {
@@ -29,7 +29,7 @@ impl BackendChannel for HerdrClient {
 
 fn request(intent: &BackendIntent) -> (&'static str, Value) {
     match intent {
-        BackendIntent::SplitPane { pane, axis, ratio } => {
+        BackendIntent::SplitPane { pane, axis, ratio, cwd } => {
             let mut params = json!({
                 // `target_pane_id`, not `pane_id`, and the difference is silent: herdr
                 // ignores a key it does not know and splits whichever pane it has focused,
@@ -45,7 +45,20 @@ fn request(intent: &BackendIntent) -> (&'static str, Value) {
             if let Some(ratio) = ratio {
                 params["ratio"] = json!(ratio);
             }
+            if let Some(cwd) = cwd {
+                params["cwd"] = json!(cwd);
+            }
             ("pane.split", params)
+        }
+        BackendIntent::CreateTab { workspace, cwd } => {
+            // `workspace_id`, and nothing else names where this goes. herdr ignores a key it
+            // does not know, so a `pane_id` sent hopefully would be dropped in silence and
+            // the tab would land in whichever workspace that daemon had focused.
+            let mut params = json!({ "workspace_id": workspace.as_str(), "focus": true });
+            if let Some(cwd) = cwd {
+                params["cwd"] = json!(cwd);
+            }
+            ("tab.create", params)
         }
         BackendIntent::CreateWorkspace { cwd } => {
             let mut params = json!({
@@ -88,6 +101,15 @@ fn request(intent: &BackendIntent) -> (&'static str, Value) {
 fn created(result: &Value) -> Option<PaneId> {
     let pane = result.get("pane").or_else(|| result.get("root_pane"))?;
     Some(PaneId::new(pane.get("pane_id")?.as_str()?))
+}
+
+/// The tab a request made, if it made one.
+///
+/// `tab.create` answers with the tab under `tab`, and `workspace.create` with the one it
+/// started the workspace off with. Read for the same reason the pane is: a tab nothing is
+/// showing is a tab nobody asked for twice.
+fn created_tab(result: &Value) -> Option<TabId> {
+    Some(TabId::new(result.get("tab")?.get("tab_id")?.as_str()?))
 }
 
 /// herdr names a split for where the new pane goes; Muster names it for the arrangement it

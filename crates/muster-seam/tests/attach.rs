@@ -19,8 +19,8 @@ use std::sync::Mutex;
 
 use herdr_harness::Daemon;
 use muster::proto::{
-    AttachPane, ClosePane, Event, FocusPane, Paste, Request, Response, RosterChanged, SplitPane,
-    Startup, ViewChanged, ViewNode, WindowFocus, event, request, response, view_node,
+    AttachPane, ClosePane, CreateTab, Event, FocusPane, Paste, Request, Response, RosterChanged,
+    SplitPane, Startup, ViewChanged, ViewNode, WindowFocus, event, request, response, view_node,
 };
 use prost::Message;
 use serde_json::{Value, json};
@@ -28,45 +28,7 @@ use serde_json::{Value, json};
 #[test]
 fn attaching_places_a_pane_where_the_keyboard_can_find_it() {
     let daemon = Daemon::start();
-    daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "attach", "focus": true }));
-    let first = only_pane(&daemon);
-    daemon.call("pane.split", &json!({ "target_pane_id": first, "direction": "right" }));
-    let second = panes(&daemon)
-        .into_iter()
-        .find(|pane| pane != &first)
-        .expect("the split gives this tab a second pane");
-
-    // An agent already at work before Muster has heard of this session, which is the
-    // ordinary case: the daemon outlives the app, so most windows open onto panes whose
-    // agents have been running for a while. Reported here rather than later so that no
-    // transition of any kind happens after the core starts watching.
-    daemon.call(
-        "pane.report_agent",
-        &json!({ "pane_id": first, "agent": "probe", "source": "probe", "state": "working" }),
-    );
-
-    // And one that already finished, in a tab herdr is not showing - which is how herdr comes
-    // to call it `done` rather than `idle`. The second tab is created first so that it, and
-    // not this pane's tab, is the daemon's active one.
-    let finished = {
-        daemon.call("tab.create", &json!({ "cwd": "/tmp" }));
-        let elsewhere = panes(&daemon)
-            .into_iter()
-            .find(|pane| pane != &first && pane != &second)
-            .expect("the new tab holds a pane of its own");
-        for state in ["working", "idle"] {
-            daemon.call(
-                "pane.report_agent",
-                &json!({ "pane_id": elsewhere, "agent": "probe", "source": "probe", "state": state }),
-            );
-        }
-        elsewhere
-    };
-    until(
-        "herdr to settle the finished agent as done, which is what it calls one nobody saw",
-        || agent_status(&daemon, &finished) == "done",
-        || format!("herdr says {:?} about {finished}", agent_status(&daemon, &finished)),
-    );
+    let (first, second, finished) = a_session_with_work_already_in_it(&daemon);
 
     // A config file naming this daemon's socket, which is how a person points Muster at a
     // daemon it did not start - and the only way there is, since Muster runs its own herdr
@@ -182,6 +144,105 @@ fn attaching_places_a_pane_where_the_keyboard_can_find_it() {
     an_agent_finishing_unseen_waits_to_be_noticed(&daemon, &second);
     a_pane_no_region_shows_can_still_be_reached(&daemon);
     the_window_follows_and_drives_the_tree(&daemon, &second);
+    a_new_tab_is_made_and_then_shown(&daemon);
+}
+
+/// Making a tab, and the window moving onto it.
+///
+/// Two halves that fail differently. herdr's `tab.create` takes a workspace and ignores keys
+/// it does not know, so a request that named the pane instead would be accepted and put the
+/// tab in whichever workspace that daemon last focused - a tab that exists somewhere nobody
+/// asked for. And a region cannot be pointed at the new tab when the answer arrives, because
+/// the mirror has not heard of it yet and the next reconcile drops a region whose tab it does
+/// not know. So the tab is remembered and shown by the event that makes it true, and this is
+/// what says that actually happens.
+fn a_new_tab_is_made_and_then_shown(daemon: &Daemon) {
+    let before =
+        latest_view().expect("the window is showing something by now").regions[0].tab_id.clone();
+    let tabs_before = tab_count(daemon);
+
+    assert_ok(&answer(request::Payload::CreateTab(CreateTab {
+        daemon_id: String::new(),
+        pane_id: String::new(),
+        cwd: String::new(),
+    })));
+
+    until(
+        "the window to move onto the tab it just asked for",
+        || {
+            latest_view()
+                .and_then(|view| view.regions.into_iter().next())
+                .is_some_and(|region| region.tab_id != before && !region.pane_id.is_empty())
+        },
+        || {
+            format!(
+                "the region still shows {before}; the last view the core published: {:?}",
+                latest_view()
+            )
+        },
+    );
+    // One region, not two: a new tab is somewhere this window goes, not a second copy of the
+    // window beside the first.
+    assert_eq!(
+        latest_view().expect("just waited for it").regions.len(),
+        1,
+        "a new tab opened a second region instead of moving the one that asked for it"
+    );
+    assert_eq!(
+        tab_count(daemon),
+        tabs_before + 1,
+        "the daemon holds a different number of tabs than one more than before, so the tab \
+         was made somewhere else or made twice"
+    );
+}
+
+/// How many tabs this daemon holds, by its own account.
+fn tab_count(daemon: &Daemon) -> usize {
+    daemon.call("session.snapshot", &json!({}))["snapshot"]["tabs"].as_array().map_or(0, Vec::len)
+}
+
+/// The session this window opens onto, built before Muster has heard of any of it.
+///
+/// The ordinary case rather than a contrivance: the daemon outlives the app, so most windows
+/// open onto panes whose agents have been running for a while. Everything here happens before
+/// the core starts watching, so nothing below is explained by a transition it saw.
+///
+/// Returns two panes in one tab and one that finished in another.
+fn a_session_with_work_already_in_it(daemon: &Daemon) -> (String, String, String) {
+    daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "attach", "focus": true }));
+    let first = only_pane(daemon);
+    daemon.call("pane.split", &json!({ "target_pane_id": first, "direction": "right" }));
+    let second = panes(daemon)
+        .into_iter()
+        .find(|pane| pane != &first)
+        .expect("the split gives this tab a second pane");
+
+    daemon.call(
+        "pane.report_agent",
+        &json!({ "pane_id": first, "agent": "probe", "source": "probe", "state": "working" }),
+    );
+
+    // One that already finished, in a tab herdr is not showing - which is how herdr comes to
+    // call it `done` rather than `idle`. The second tab is created first so that it, and not
+    // this pane's tab, is the daemon's active one.
+    daemon.call("tab.create", &json!({ "cwd": "/tmp" }));
+    let finished = panes(daemon)
+        .into_iter()
+        .find(|pane| pane != &first && pane != &second)
+        .expect("the new tab holds a pane of its own");
+    for state in ["working", "idle"] {
+        daemon.call(
+            "pane.report_agent",
+            &json!({ "pane_id": finished, "agent": "probe", "source": "probe", "state": state }),
+        );
+    }
+    until(
+        "herdr to settle the finished agent as done, which is what it calls one nobody saw",
+        || agent_status(daemon, &finished) == "done",
+        || format!("herdr says {:?} about {finished}", agent_status(daemon, &finished)),
+    );
+
+    (first, second, finished)
 }
 
 /// Going to a pane in a tab this window is not showing.

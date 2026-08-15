@@ -189,6 +189,18 @@ pub(crate) struct Session {
     /// has about a hundred bytes to spend and the temporary directory has already spent half
     /// of them, and a backend is free to spell an id with characters a path cannot hold.
     next_socket: u64,
+    /// Tabs Muster has asked a daemon to make, until the daemon says they exist.
+    ///
+    /// Shown when the mirror knows them rather than on trust, because a region whose tab the
+    /// mirror has never heard of is dropped by the very next reconcile - so showing one
+    /// immediately is a race against the event that would have made it true. Muster does not
+    /// read a daemon's own focus to decide what a region shows (`architecture.md`, cursors
+    /// are written, not read), so what it asked for is the only record there is.
+    ///
+    /// One per daemon, replaced rather than queued: two new tabs in flight at once is
+    /// somebody pressing the key twice, and the second is the one they are looking for.
+    wanted_tabs: BTreeMap<DaemonId, TabId>,
+
     /// Which agents have been seen, and so which are `done`.
     ///
     /// Beside the mirrors rather than inside one, because it spans them: a window is focused
@@ -375,6 +387,23 @@ impl Session {
         mirror.agent_state(&pane.pane)
     }
 
+    /// Shows a tab Muster asked for, once the daemon has described it.
+    ///
+    /// Returns whether anything moved, so the caller knows whether to republish.
+    fn show_wanted_tab(&mut self, daemon: &DaemonId) -> bool {
+        let Some(tab) = self.wanted_tabs.get(daemon).cloned() else { return false };
+        let workspace = {
+            let Some(backend) = self.backends.get(daemon) else { return false };
+            let Ok(mirror) = backend.mirror.lock() else { return false };
+            // Not yet described. Left in place rather than dropped: the event is on its way,
+            // and forgetting it here is a new tab nothing ever shows.
+            let Some(held) = mirror.tab(&tab) else { return false };
+            held.workspace.clone()
+        };
+        self.wanted_tabs.remove(daemon);
+        self.composition.surface(daemon, workspace, tab).is_some()
+    }
+
     /// Puts a region onto the tab holding this pane, so that something can show it.
     ///
     /// The mirror is what knows which tab a pane is in, so the lookup is here and the policy
@@ -535,7 +564,7 @@ pub(crate) fn submit(daemon: &DaemonId, intent: &BackendIntent) -> Result<(), St
         // find for a workspace that does not exist yet, and the one it produces is opened by
         // the reconcile behind the daemon's own event.
         let region = match intent {
-            BackendIntent::CreateWorkspace { .. } => None,
+            BackendIntent::CreateWorkspace { .. } | BackendIntent::CreateTab { .. } => None,
             BackendIntent::SplitPane { pane, .. }
             | BackendIntent::ClosePane { pane }
             | BackendIntent::FocusPane { pane } => {
@@ -573,6 +602,14 @@ pub(crate) fn submit(daemon: &DaemonId, intent: &BackendIntent) -> Result<(), St
     // the one that was split rather than one looked up. Taking the pane on trust is what
     // `Composition::focus_pane` is for, and the reconcile behind the event that follows is
     // where daemon truth gets applied to it.
+    // A tab this request made is remembered rather than shown: the mirror has not heard of
+    // it yet, and a region pointed at a tab the mirror does not know is dropped by the next
+    // reconcile. The reconcile behind the daemon's own event is where it becomes visible.
+    if let Some(tab) = outcome.as_ref().ok().and_then(|outcome| outcome.created_tab.clone()) {
+        let mut session = SESSION.lock().expect("a panicking sender poisoned the session");
+        session.wanted_tabs.insert(daemon.clone(), tab);
+    }
+
     if let (Some(region), Some(created)) =
         (region, outcome.as_ref().ok().and_then(|outcome| outcome.created.clone()))
     {
@@ -892,6 +929,26 @@ fn panes_followed() -> usize {
         .sum()
 }
 
+/// Which workspace a pane is in, and the directory it is sitting in.
+///
+/// Both together because both come from the same mirror entry and the caller needs both to
+/// make a tab: the workspace is where it goes, and the directory is what it starts in.
+///
+/// `None` when the daemon does not hold the pane, which is a pane that closed while a
+/// keystroke was in flight rather than a state to recover from.
+pub(crate) fn workspace_of(
+    daemon: &DaemonId,
+    pane: &PaneId,
+) -> Option<(WorkspaceId, Option<String>)> {
+    let session = SESSION.lock().expect("a panicking sender poisoned the session");
+    let mirror = session.backends.get(daemon)?.mirror.lock().ok()?;
+    let held = mirror.pane(pane)?;
+    // An empty directory is the daemon saying it does not know, which is different from a
+    // directory somebody chose - and a tab started in "" would be started in `/`.
+    let cwd = (!held.cwd.is_empty()).then(|| held.cwd.clone());
+    Some((held.workspace.clone(), cwd))
+}
+
 /// Which followed daemon holds this pane, and where in it.
 ///
 /// The first that has it, and an ambiguity nobody can resolve when two do: `w1:p1` on a
@@ -1007,10 +1064,14 @@ fn publish() {
 /// shell, the shell reacts by dispatching, and a dispatch that arrived while this held the
 /// session would deadlock against it on the same thread.
 fn reconcile(daemon: &DaemonId) {
-    {
+    let showed = {
         let mut session = SESSION.lock().expect("a panicking sender poisoned the session");
         session.reconcile(daemon);
-    }
+        // A tab Muster asked for, now that the daemon has said what is in it. Here rather
+        // than at the moment it was asked for, because until this event a region showing it
+        // would be a region showing a tab the mirror has never heard of.
+        session.show_wanted_tab(daemon)
+    };
     // A standing rule rather than a launch-time one, because the states that produce a
     // daemon with nothing on screen keep arriving: a workspace Muster asked for a moment ago
     // and is waiting on, a daemon that came back after a restart with its tabs, a tab closed
@@ -1020,6 +1081,9 @@ fn reconcile(daemon: &DaemonId) {
     // this would reopen it on the next thing the daemon said, and the rule needs to learn the
     // difference between empty and dismissed.
     open_remaining_regions();
+    if showed {
+        publish();
+    }
 }
 
 /// Turns what one daemon said into a log line and, where the window renders it, an event.

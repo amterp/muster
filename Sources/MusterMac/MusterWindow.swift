@@ -275,6 +275,10 @@ extension MusterWindow {
     Core.split(axis: SplitAxis.rows.rawValue)
   }
 
+  @objc public func newTab(_ sender: Any?) {
+    Core.createTab()
+  }
+
   @objc public func closePane(_ sender: Any?) {
     Core.closePane()
   }
