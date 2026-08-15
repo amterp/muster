@@ -5,7 +5,7 @@
   "area": [
     "shell"
   ],
-  "column": "next",
+  "column": "done",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -18,18 +18,25 @@
       "body": "The wiring is now pinned rather than only compiled. `SurfaceView` drives a protocol the shell owns instead of a libghostty `Surface` directly, which moved the two decisions no test could reach into the layer the suite already covers: the AppKit-to-surface coordinate flip (unflipped, a drag selects its own mirror image), and copying nothing leaving the clipboard alone. Tests write to a pasteboard of their own.\n\nStill needs the eyeball, and only for the half no test can reach: whether a drag paints a visible highlight, and whether the text that lands is the text under the pointer. `./dev --bundle`, launch it, drag, ⌘C, paste.",
       "created_at_millis": 1786799140704,
       "id": "c_28SrCwz5Q"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Eyeballed and working - drag, ⌘C, paste. Closing.\n\nBoth open questions from the original card are still open and neither is blocking: whether double-click-to-word and triple-click-to-line come free from the surface, and whether keyboard selection is wanted. Worth a card each if they turn out to be missed.",
+      "created_at_millis": 1786805842813,
+      "id": "c_28VfYnqeo"
     }
   ],
   "created_at_millis": 1786790514531,
   "creator": "Alexander Terp",
   "description": "Paste works and copy does not, which for anything involving a terminal is an hourly need. Reading an error out of a pane and putting it somewhere means retyping it.\n\nTwo halves, and only one of them is the thing that is blocked upstream.\n\nMaking a selection. `SurfaceView.mouseDown` sends a focus request and returns; nothing reaches the libghostty surface, so there is currently no way to drag out a selection at all. This is *not* a_27CTgqqdv. That card is about mouse buttons and motion being reported to the program running in the pane, which needs herdr to expose the pane's modes and is genuinely stuck. A selection is the surface's own - it is made against the grid libghostty already painted, and no daemon has to agree to anything.\n\nReading it back. AppMenu.swift currently says a pane's selection lives in the daemon where Muster cannot yet reach it. That is wrong for the pinned libghostty: `ghostty_surface_has_selection` and `ghostty_surface_read_selection` are both in deps/ghostty/include/ghostty.h, and the header also carries clipboard read/write callbacks on the runtime config. Worth correcting the comment whichever way this lands.\n\nSo: an Edit menu item beside Paste, reading the focused surface's selection, and enough mouse handling for a drag to make one. Selection also wants a visible highlight, which libghostty draws itself once it knows a selection exists.\n\nOpen: whether keyboard selection is wanted too, and whether double-click-to-word and triple-click-to-line come for free from the surface or need wiring.",
   "id": "a_28PEnkL2J",
-  "position": "UUUUUUUUUUUUU",
+  "position": "!!!!!!6",
   "title": "📋 Copy what is selected in a pane",
   "type": "feature",
-  "updated_at_millis": 1786799140704,
+  "updated_at_millis": 1786805842813,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786790514531},
-    {"field":"column","value":"next","at":1786790570951}
+    {"field":"column","value":"next","at":1786790570951},
+    {"field":"column","value":"done","at":1786805842750}
   ]
 }
