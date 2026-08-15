@@ -121,10 +121,10 @@ public enum Core {
     send(request)
   }
 
-  public static func scroll(direction: String, lines: UInt32) {
+  public static func scroll(direction: String, delta: Double) {
     var scroll = Muster_Scroll()
     scroll.direction = direction
-    scroll.lines = lines
+    scroll.delta = delta
     var request = Muster_Request()
     request.scroll = scroll
     send(request)
@@ -190,6 +190,30 @@ public enum Core {
     var request = Muster_Request()
     request.zoomPane = zoom
     send(request)
+  }
+
+  /// How Muster's own chrome should look, as the config file decided.
+  ///
+  /// A value of the shell's own rather than the generated message, on the same terms as
+  /// `bindings()`: the seam's vocabulary stops at this module's edge.
+  public struct Style: Sendable {
+    /// The line between two regions, as `#rrggbb`, or nil for the platform's own separator.
+    public let dividerColor: String?
+
+    public init(dividerColor: String?) {
+      self.dividerColor = dividerColor
+    }
+  }
+
+  /// What Muster paints its own chrome with.
+  ///
+  /// Everything empty when the core did not answer, which is a core that failed to start -
+  /// the caller falls back to the platform's own colours rather than refusing to draw.
+  public static func style() -> Style {
+    var request = Muster_Request()
+    request.readStyle = Muster_ReadStyle()
+    guard case .style(let answer) = send(request) else { return Style(dividerColor: nil) }
+    return Style(dividerColor: answer.dividerColor.isEmpty ? nil : answer.dividerColor)
   }
 
   public static func toggleSidebar() {
@@ -428,6 +452,7 @@ public enum Core {
     case .windowFocus: return "window_focus"
     case .setRegionBoundary: return "set_region_boundary"
     case .readBindings: return "read_bindings"
+    case .readStyle: return "read_style"
     case .bridgeExited: return "bridge_exited"
     case .resizePane: return "resize_pane"
     case .zoomPane: return "zoom_pane"

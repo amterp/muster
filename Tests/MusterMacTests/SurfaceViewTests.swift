@@ -86,6 +86,9 @@ private func view(_ recorder: RecordingDispatcher) -> SurfaceView {
 }
 
 @Test @MainActor func aWheelBecomesAScrollIntent() {
+  // The device's own delta, unscaled and unrounded. How many lines that is worth depends on
+  // `scroll_multiplier`, so the core decides it - a shell that turned a delta into lines here
+  // would be a second place that answer lives, and the two would drift.
   let recorder = RecordingDispatcher()
   let surface = view(recorder)
   guard let wheel = scroll(deltaY: 3) else { return }
@@ -94,7 +97,7 @@ private func view(_ recorder: RecordingDispatcher) -> SurfaceView {
 
   #expect(recorder.requests.count == 1)
   #expect(recorder.requests[0].scroll.direction == "up")
-  #expect(recorder.requests[0].scroll.lines == 3)
+  #expect(recorder.requests[0].scroll.delta == 3)
 }
 
 @Test @MainActor func aViewWithNoPaneSendsNothingRatherThanRefusalsPerKeystroke() {

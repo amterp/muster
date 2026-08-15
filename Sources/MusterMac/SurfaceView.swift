@@ -204,9 +204,12 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
     // Scroll never becomes bytes here. It goes out as an intent, and the daemon answers it
     // against the pane's real modes - the one input-shaped thing Muster does not have to
     // guess about.
+    // The device's own number, unscaled and unrounded. How many lines it is worth is the
+    // core's answer, because it depends on a config key and a shell deciding it here would
+    // be a second place that lives.
     guard isTypeable, event.scrollingDeltaY != 0 else { return }
-    let lines = max(1, UInt32(abs(event.scrollingDeltaY).rounded()))
-    Core.scroll(direction: event.scrollingDeltaY > 0 ? "up" : "down", lines: lines)
+    Core.scroll(
+      direction: event.scrollingDeltaY > 0 ? "up" : "down", delta: abs(event.scrollingDeltaY))
   }
 
   /// The clipboard, on its way to the pane.

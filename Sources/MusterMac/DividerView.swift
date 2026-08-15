@@ -37,8 +37,24 @@ final class DividerView: NSView {
   override init(frame: NSRect) {
     super.init(frame: frame)
     wantsLayer = true
-    layer?.backgroundColor = NSColor.separatorColor.cgColor
+    layer?.backgroundColor = DividerView.color.cgColor
   }
+
+  /// What the line between two regions is painted with.
+  ///
+  /// The config file's answer when it gave one, and the platform's separator otherwise. Read
+  /// once, because a divider is built per region boundary and the answer cannot change while
+  /// the app runs - and asking the core per divider would be a round trip per line on every
+  /// relayout.
+  ///
+  /// Muster's own chrome rather than libghostty's, so this is the one piece of the window's
+  /// appearance no terminal config can reach and none ever will.
+  static let color: NSColor = {
+    guard let named = Core.style().dividerColor, let parsed = NSColor(hex: named) else {
+      return .separatorColor
+    }
+    return parsed
+  }()
 
   required init?(coder: NSCoder) {
     fatalError("muster builds its views in code")
@@ -59,5 +75,26 @@ final class DividerView: NSView {
     guard asked.map({ abs(ratio - $0) >= DividerView.sensitivity }) ?? true else { return }
     asked = ratio
     onDrag?(ratio)
+  }
+}
+
+extension NSColor {
+  /// Reads `#rrggbb`, which is the one spelling the core hands out.
+  ///
+  /// Parsed rather than trusted blindly: the core already refused anything malformed when it
+  /// read the file, so a value that fails here means the two sides disagree about the format
+  /// rather than that a user typed something odd - and falling back to the platform's own
+  /// separator is better than a black line nobody asked for.
+  ///
+  /// `deviceRGB` rather than `sRGB`, so the colour lands the same way the platform's own
+  /// chrome colours do on a wide-gamut display.
+  convenience init?(hex: String) {
+    let digits = hex.hasPrefix("#") ? String(hex.dropFirst()) : hex
+    guard digits.count == 6, let value = UInt32(digits, radix: 16) else { return nil }
+    self.init(
+      deviceRed: CGFloat((value >> 16) & 0xff) / 255,
+      green: CGFloat((value >> 8) & 0xff) / 255,
+      blue: CGFloat(value & 0xff) / 255,
+      alpha: 1)
   }
 }

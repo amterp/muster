@@ -19,7 +19,7 @@ use muster_core::composition::{
     Composition, Daemon, DaemonId, Endpoint, PaneKey, Presentation, RegionId, Saved, Step, TabKey,
     Transport, View, saved,
 };
-use muster_core::config::Config;
+use muster_core::config::{Config, Feel};
 use muster_core::diagnostics::log;
 use muster_core::fields;
 use muster_core::input::{Bindings, PaneInput, PaneInputSettings};
@@ -114,6 +114,22 @@ pub(crate) fn pane_input() -> PaneInputSettings {
         .expect("a panicking sender poisoned the input settings")
         .clone()
         .unwrap_or_default()
+}
+
+/// The three knobs, held for whatever asks about them next.
+///
+/// Beside [`BINDINGS`] and [`PANE_INPUT`], for the same reason: a resize arrives from a
+/// keystroke, a scroll from a wheel, and a colour from a shell building a divider, and none
+/// of those three callers has a config file in hand.
+static FEEL: Mutex<Option<Feel>> = Mutex::new(None);
+
+pub(crate) fn set_feel(feel: Feel) {
+    *FEEL.lock().expect("a panicking sender poisoned the settings") = Some(feel);
+}
+
+/// The knobs in force, which with no config file is what Muster ships.
+pub(crate) fn feel() -> Feel {
+    FEEL.lock().expect("a panicking sender poisoned the settings").unwrap_or_default()
 }
 
 pub(crate) fn set_state_path(path: &str) {

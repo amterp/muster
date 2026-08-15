@@ -12,6 +12,26 @@ use muster_core::input::{Action, Bindings, Chord, Modifiers};
 use serde_json::{Value, json};
 use support::backend::describe_daemon;
 
+/// The knobs a file set, as lines, leaving out the ones it left alone.
+///
+/// Exact equality against the default, which is what is wanted: the question is whether the
+/// file named this key at all, and a file that wrote the default value did name it. A
+/// tolerance here would hide a case asserting a multiplier a hair off the one it meant.
+#[allow(clippy::float_cmp)]
+fn feel(feel: &config::Feel) -> Vec<String> {
+    let mut set = Vec::new();
+    if let Some(step) = feel.resize_step {
+        set.push(format!("resize_step={step}"));
+    }
+    if feel.scroll_multiplier != config::Feel::default().scroll_multiplier {
+        set.push(format!("scroll_multiplier={}", feel.scroll_multiplier));
+    }
+    if let Some(color) = feel.divider_color {
+        set.push(format!("divider_color={color}"));
+    }
+    set
+}
+
 #[test]
 fn config_conformance() {
     let corpus = Conformance::load("config.json");
@@ -19,28 +39,39 @@ fn config_conformance() {
     let ran = corpus.run(|given| {
         let text = file(given);
         Ok(match config::parse(&text) {
-            Ok(parsed) => json!({
-                "daemons": parsed.daemons.iter().map(describe_daemon).collect::<Vec<_>>(),
-                // What the file changed, rather than all fifteen bindings in every case. A
-                // keymap is partial by design, so what a case is about is the difference.
-                "keymap": rebound(&parsed.bindings),
-                "option_as_alt": parsed.input.option_as_alt.as_str(),
+            Ok(parsed) => conformance::fields([
+                (
+                    "daemons",
+                    Some(json!(parsed.daemons.iter().map(describe_daemon).collect::<Vec<_>>())),
+                ),
+                // What the file changed, rather than every binding in every case. A keymap is
+                // partial by design, so what a case is about is the difference.
+                ("keymap", Some(json!(rebound(&parsed.bindings)))),
+                ("option_as_alt", Some(json!(parsed.input.option_as_alt.as_str()))),
                 // The bytes, not the string, because deciding exactly what reaches a pane is
                 // the whole of what this setting is for. A case expecting "\n" would pass on
                 // a parser that sent the two characters backslash and n.
-                "text": parsed
-                    .input
-                    .text
-                    .iter()
-                    .map(|(binding, bytes)| {
-                        format!(
-                            "{}={}",
-                            spell(Chord::new(binding.key, binding.modifiers)),
-                            conformance::hex(bytes),
-                        )
-                    })
-                    .collect::<Vec<_>>(),
-            }),
+                (
+                    "text",
+                    Some(json!(
+                        parsed
+                            .input
+                            .text
+                            .iter()
+                            .map(|(binding, bytes)| {
+                                format!(
+                                    "{}={}",
+                                    spell(Chord::new(binding.key, binding.modifiers)),
+                                    conformance::hex(bytes),
+                                )
+                            })
+                            .collect::<Vec<_>>()
+                    )),
+                ),
+                // Only what the file set, so the two dozen cases about daemons and keymaps do
+                // not each carry three knobs they say nothing about.
+                ("feel", Some(json!(feel(&parsed.feel))).filter(|set| set != &json!([]))),
+            ]),
             // The refusal itself, not a code. Whether the sentence names the key somebody
             // mistyped is the whole of what this file is protecting, and a taxonomy of error
             // kinds would let the wording rot while every case still passed.

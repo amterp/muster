@@ -41,6 +41,7 @@ message Request {
     ToggleSidebar toggle_sidebar = 22;
     FocusTabRelative focus_tab_relative = 23;
     FocusTabAt focus_tab_at = 24;
+    ReadStyle read_style = 25;
   }
 }
 
@@ -52,6 +53,25 @@ message Request {
 // means. Nothing is dispatched through here: what a shell does with a chord is the shell's,
 // and what a chord is called is Muster's.
 message ReadBindings {}
+
+// Asks how Muster's own chrome should look.
+//
+// Only what Muster draws itself, which today is the line between two regions. Everything
+// inside a pane is the renderer's, painted from whatever config libghostty finds - so a
+// shell asking this is asking about the few pixels no terminal config can reach.
+//
+// A read like ReadBindings rather than an event, because it is answered once at launch and
+// does not change while the app runs. When it can change, it becomes an event.
+message ReadStyle {}
+
+// How Muster's own chrome should look.
+message Style {
+  // The line between two regions, as `#rrggbb`. Empty means the shell's own platform
+  // default, which is the honest answer when the config file named none: only the shell
+  // knows what a separator looks like on this OS, and a colour invented here would be one
+  // more thing to keep in step with a system theme.
+  string divider_color = 1;
+}
 
 // Grows a pane against its neighbour, by a step.
 //
@@ -306,6 +326,7 @@ message Response {
     Failure failure = 2;
     Attached attached = 3;
     Bindings bindings = 4;
+    Style style = 5;
   }
 }
 
@@ -505,9 +526,16 @@ message Paste {
 
 // A wheel movement, which the daemon routes against the pane's mouse mode. Never encoded
 // here: a frame stream has no history, so surfaces hold no scrollback.
+// A wheel notch or a trackpad gesture, as the device reported it.
+//
+// The magnitude is the device's own number and stays that way across the seam: a trackpad
+// reports many small deltas and a wheel mouse a few large ones, and how many lines that is
+// worth is a decision - `scroll_multiplier` scales it and the core rounds it. A shell that
+// turned a delta into lines for itself would be a second place that answer lives, and the
+// two would drift the moment either changed.
 message Scroll {
   string direction = 1;  // up or down
-  uint32 lines = 2;
+  double delta = 2;
 }
 
 // What the core tells the shell without being asked.

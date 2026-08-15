@@ -76,6 +76,9 @@ Muster's own actions, and the rest decides what a keystroke becomes on its way t
 
 ```toml
 option_as_alt = "left"         # never (the default) | always | left | right
+resize_step = 2                # cells per resize chord; omit for the daemon's own step
+scroll_multiplier = 1.5        # scales what the trackpad or wheel reported
+divider_color = "#4a4a4a"      # the line between two regions; omit for the platform's
 
 [keymap]
 split_right = "cmd+d"          # the default; Ghostty's, wherever Ghostty has one
@@ -108,6 +111,15 @@ hatch beneath all of that: a chord bound there sends exactly those bytes and no 
 consulted. It is keyed by chord where `[keymap]` is keyed by action, because an action has
 one chord and text has no name to key on. Both are read once at launch, so changing either
 means relaunching.
+
+The last three are the small answers a terminal is expected to let you change, and each is
+one line because each is one value. `resize_step` is how many cells a resize chord moves a
+divider; omit it and the daemon decides, which is what a chord meant before the key existed.
+`scroll_multiplier` scales whatever your trackpad or wheel reported, so `1` is the device's
+own answer and `0.5` is half of it - a multiplier rather than a line count, because how big
+one notch is belongs to the device. `divider_color` is the line between two regions, and it
+is the one piece of Muster's appearance no terminal config can reach: everything inside a
+pane is libghostty's, and this line is Muster's own.
 
 Two things Muster does not decide. Fonts, colors and cursor style come from whatever config
 libghostty finds on disk, which today means a Ghostty config if you have one - a loan rather

@@ -73,6 +73,7 @@ fn handle(request: Request) -> Response {
             act(&close.daemon_id, &close.pane_id, |pane| BackendIntent::ClosePane { pane })
         }
         request::Payload::ReadBindings(_) => read_bindings(),
+        request::Payload::ReadStyle(_) => read_style(),
         request::Payload::ResizePane(resize) => resize_pane(&resize),
         request::Payload::ToggleSidebar(_) => {
             session::toggle_sidebar();
@@ -124,7 +125,7 @@ fn handle(request: Request) -> Response {
         request::Payload::Scroll(scroll) => {
             with_pane("a scroll", |pane| match ScrollDirection::parse(&scroll.direction) {
                 Some(direction) => {
-                    pane.input.scroll(direction, scroll.lines.try_into().unwrap_or(u16::MAX));
+                    pane.input.scroll(direction, lines(scroll.delta));
                     Response::ok()
                 }
                 None => Response::failure(format!(
@@ -277,6 +278,44 @@ fn resolve_daemon(daemon_id: &str) -> Result<DaemonId, Response> {
     })
 }
 
+/// How Muster's own chrome should look, which today is one line between two regions.
+///
+/// Empty means the shell's own platform default, and that is the honest answer when the
+/// config file named no colour: only the shell knows what a separator looks like on this OS,
+/// and one invented here would be a second thing to keep in step with a system theme.
+fn read_style() -> Response {
+    Response {
+        payload: Some(response::Payload::Style(proto::Style {
+            divider_color: session::feel()
+                .divider_color
+                .map(|color| color.to_string())
+                .unwrap_or_default(),
+        })),
+    }
+}
+
+/// How many lines one scroll gesture is worth.
+///
+/// The device's delta, scaled by what the config file asked for and rounded up to at least
+/// one - a gesture small enough to round to zero is still a gesture somebody made, and a
+/// wheel that sometimes does nothing reads as a broken wheel rather than as a small notch.
+/// Here rather than in the shell because it is a decision, and a decision in the shell is
+/// one no test can reach (`docs/testing.md`, thin shell).
+fn lines(delta: f64) -> u16 {
+    let scaled = delta.abs() * session::feel().scroll_multiplier;
+    if !scaled.is_finite() {
+        return 1;
+    }
+    // Clamped before the cast rather than after, so nothing is ever converted out of range.
+    // Truncation is what `as` does to a float past the ceiling, and truncation of a scroll
+    // wraps an enormous gesture to a tiny one - a wheel that goes the wrong distance for no
+    // visible reason. After the clamp the value is a whole number in `1..=u16::MAX`, so the
+    // cast is exact and the lint has nothing left to warn about.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let lines = scaled.round().clamp(1.0, f64::from(u16::MAX)) as u16;
+    lines
+}
+
 /// Moves the keyboard one tab along the window's tab order.
 fn step_tab(direction: &str) -> Response {
     match TabStep::parse(direction) {
@@ -418,12 +457,19 @@ fn resize_pane(resize: &proto::ResizePane) -> Response {
             resize.direction
         ));
     };
+    // Zero is proto3's unset, and resizing a pane by nothing is not a thing anyone asks for,
+    // so the two are safely the same answer. What a keystroke means by "unset" is the config
+    // file's `resize_step`, and what that means by absent is the daemon's own step - resolved
+    // here rather than in the shell, so a CLI asking for the same thing gets the same answer.
+    // Widened here rather than stored wide: the seam's field is a float so a CLI can place a
+    // divider exactly, and a chord's step is whole cells. Every u16 is a float exactly.
+    let amount = (resize.amount > 0.0)
+        .then_some(resize.amount)
+        .or_else(|| session::feel().resize_step.map(f32::from));
     act(&resize.daemon_id, &resize.pane_id, |pane| BackendIntent::ResizePane {
         pane,
         direction,
-        // Zero is proto3's unset, and resizing a pane by nothing is not a thing anyone asks
-        // for, so the two are safely the same answer.
-        amount: (resize.amount > 0.0).then_some(resize.amount),
+        amount,
     })
 }
 
@@ -575,6 +621,7 @@ fn apply_config(path: &str) {
             );
             session::set_bindings(config.bindings.clone());
             session::set_pane_input(config.input.clone());
+            session::set_feel(config.feel);
             session::follow_configured(&config);
         }
         Err(refusal) => log::warn(

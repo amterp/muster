@@ -28,7 +28,10 @@ use crate::input::{Action, Binding, Bindings, Chord, OptionAsAlt, PaneInputSetti
 use crate::composition::{Daemon, DaemonId, Endpoint};
 
 /// Everything a config file says.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+///
+/// `Eq` is absent because of the feel's floats, on the same terms as `Composition`: a
+/// multiplier is a float, and a float has no total equality.
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct Config {
     /// In the order the file lists them, which is the order their regions are laid out.
     pub daemons: Vec<Daemon>,
@@ -38,13 +41,102 @@ pub struct Config {
     /// What the file says about keystrokes on their way to a pane, which is a different
     /// question from which chord Muster keeps for itself.
     pub input: PaneInputSettings,
+    /// The numbers and the one colour that decide how the window feels to drive.
+    pub feel: Feel,
+}
+
+/// The small answers a terminal is expected to let somebody change.
+///
+/// Grouped because they share a shape rather than a subject: each is one value, read once,
+/// with a defensible default, and none of them is a decision Muster wants to make on
+/// somebody's behalf. What they have in common is that getting them wrong is an irritation
+/// nobody can name - a resize that moves too far, a trackpad that scrolls too slowly, a
+/// divider you cannot see against your theme.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Feel {
+    /// How many cells a resize chord moves a divider.
+    ///
+    /// `None` leaves it to the daemon, which is what a keybinding meant before this existed
+    /// and remains the default: herdr sizes its own rectangles and has an answer already.
+    /// Naming a number is for somebody who finds that answer too coarse or too fine.
+    ///
+    /// Whole cells, unlike the `amount` it becomes at the seam. That field is a float so a
+    /// CLI can place a divider exactly; a chord cannot mean half a cell, and accepting `1.5`
+    /// here would be a number the terminal has nowhere to put.
+    pub resize_step: Option<u16>,
+
+    /// What one notch of the wheel is worth, in lines.
+    ///
+    /// A multiplier rather than a line count, because the thing being scaled is a delta whose
+    /// size is the input device's business: a trackpad reports many small ones and a wheel
+    /// mouse a few large ones, and only the person using them knows which needs adjusting.
+    pub scroll_multiplier: f64,
+
+    /// The line between two regions, as `#rrggbb`.
+    ///
+    /// `None` takes the platform's own separator colour, which is right on a system theme and
+    /// wrong beside a pane painted from somebody's Ghostty config. This is Muster's own chrome
+    /// rather than libghostty's, so no terminal config can reach it and none ever will - which
+    /// is why it is here rather than waiting on Muster's appearance vocabulary.
+    pub divider_color: Option<Rgb>,
+}
+
+impl Default for Feel {
+    fn default() -> Feel {
+        Feel { resize_step: None, scroll_multiplier: 1.0, divider_color: None }
+    }
+}
+
+/// A colour, as the config file spells one and as a shell can paint it.
+///
+/// Three bytes rather than a string, so that reading the file is where a bad colour is
+/// refused - a shell handed `"#gg0000"` would have to either fail or invent something, and
+/// both happen too far from the person who typed it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Rgb {
+    pub red: u8,
+    pub green: u8,
+    pub blue: u8,
+}
+
+impl Rgb {
+    /// Reads `#rrggbb`, or `rrggbb`, and says what it could not read.
+    ///
+    /// One spelling and its bare variant, rather than the whole CSS colour vocabulary. Names
+    /// and `rgb()` would be a second colour language to document and to keep, and hex is what
+    /// every terminal config in this space already uses.
+    pub fn parse(text: &str) -> Result<Rgb, String> {
+        let digits = text.strip_prefix('#').unwrap_or(text);
+        if digits.len() != 6 || !digits.chars().all(|c| c.is_ascii_hexdigit()) {
+            return Err(format!(
+                "`{text}` is not a colour Muster can read. Write six hex digits, with or \
+                 without a leading hash - `#4a4a4a`."
+            ));
+        }
+        let byte = |at: usize| u8::from_str_radix(&digits[at..at + 2], 16).unwrap_or_default();
+        Ok(Rgb { red: byte(0), green: byte(2), blue: byte(4) })
+    }
+}
+
+impl std::fmt::Display for Rgb {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "#{:02x}{:02x}{:02x}", self.red, self.green, self.blue)
+    }
 }
 
 /// The keys a `[[daemon]]` block may carry.
 const DAEMON_KEYS: [&str; 4] = ["id", "socket", "host", "ssh_options"];
 
 /// The keys the file itself may carry.
-const ROOT_KEYS: [&str; 4] = ["daemon", "keymap", "text", "option_as_alt"];
+const ROOT_KEYS: [&str; 7] = [
+    "daemon",
+    "keymap",
+    "text",
+    "option_as_alt",
+    "resize_step",
+    "scroll_multiplier",
+    "divider_color",
+];
 
 /// Reads a config file's text.
 ///
@@ -91,7 +183,78 @@ pub fn parse(text: &str) -> Result<Config, String> {
             option_as_alt: read_option_as_alt(root)?,
             text: read_text(root)?,
         },
+        feel: read_feel(root)?,
     })
+}
+
+/// The three knobs, each absent from the file more often than not.
+fn read_feel(root: &toml::Table) -> Result<Feel, String> {
+    let mut feel = Feel::default();
+
+    if let Some(value) = root.get("resize_step") {
+        let step = value
+            .as_integer()
+            .and_then(|step| u16::try_from(step).ok())
+            .filter(|step| *step > 0)
+            .ok_or_else(|| {
+                format!(
+                    "`resize_step` in the config file is {}, and it has to be a whole number \
+                     of cells, at least one. None of the file was applied. Leave it out to \
+                     keep the daemon's own step, which is what a chord meant before this key \
+                     existed.",
+                    written(value)
+                )
+            })?;
+        feel.resize_step = Some(step);
+    }
+
+    if let Some(value) = root.get("scroll_multiplier") {
+        let multiplier = number(value, "scroll_multiplier")?;
+        if !(multiplier.is_finite() && multiplier > 0.0) {
+            return Err(format!(
+                "`scroll_multiplier` in the config file is {multiplier}, so the wheel would \
+                 scroll nowhere or backwards. None of the file was applied. It scales what \
+                 the input device reports, so 1 is the device's own answer, 2 is twice as \
+                 far, and 0.5 is half."
+            ));
+        }
+        feel.scroll_multiplier = multiplier;
+    }
+
+    if let Some(value) = root.get("divider_color") {
+        let text = value.as_str().ok_or_else(|| {
+            format!(
+                "`divider_color` in the config file is {}, and it has to be a string of six \
+                 hex digits - `divider_color = \"#4a4a4a\"`. None of the file was applied.",
+                described(value)
+            )
+        })?;
+        feel.divider_color = Some(
+            Rgb::parse(text)
+                .map_err(|refusal| format!("{refusal} None of the file was applied."))?,
+        );
+    }
+
+    Ok(feel)
+}
+
+/// A number the file may have written as an integer or a float, since TOML tells them apart
+/// and nobody writing `resize_step = 2` means anything different from `2.0`.
+///
+/// Whole numbers are converted through `i32`, which is exact where `i64 as f64` is not. What
+/// that refuses is a knob past two billion, and every knob here is a handful of cells or a
+/// small multiplier - so the refusal lands on a value nobody meant, with the same sentence as
+/// any other unusable one.
+fn number(value: &Value, key: &str) -> Result<f64, String> {
+    value.as_float().or_else(|| i32::try_from(value.as_integer()?).ok().map(f64::from)).ok_or_else(
+        || {
+            format!(
+                "`{key}` in the config file is {}, and it has to be a number. None of the \
+                 file was applied.",
+                described(value)
+            )
+        },
+    )
 }
 
 /// Whether the option key means alt, as the file says.
@@ -366,6 +529,20 @@ fn strings(block: &toml::Table, key: &str, where_: &str) -> Result<Option<Vec<St
 }
 
 /// What a value is, for a message that has to say why it was refused.
+/// A value as the file wrote it, when that is more use than its type.
+///
+/// A refusal about `resize_step = 0` should say `0` - the type is not what is wrong with it,
+/// and "is a number, and it has to be a whole number" reads like a bug in Muster. Anything
+/// that is not a number falls back to naming the type, which is all there is to say about a
+/// string where a count belongs.
+fn written(value: &Value) -> String {
+    match value {
+        Value::Integer(whole) => whole.to_string(),
+        Value::Float(number) => number.to_string(),
+        other => described(other).to_string(),
+    }
+}
+
 fn described(value: &Value) -> &'static str {
     match value {
         Value::String(_) => "a string",

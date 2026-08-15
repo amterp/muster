@@ -6,6 +6,14 @@
     "shell"
   ],
   "column": "next",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "**Done** (2026-08-15). All three, as the card said: a config key and a plumb each.\n\n- **`resize_step`** - whole cells, at least one. Resolved in the core rather than the shell, so a CLI asking for the same thing gets the same answer, and it becomes `ResizePane.amount` on the way out. Whole rather than fractional even though the seam's field is a float: that float exists so a CLI can place a divider exactly, and a chord cannot mean half a cell.\n- **`scroll_multiplier`** - and this one moved a decision. `SurfaceView.scrollWheel` used to turn a delta into a line count itself; now it sends the device's own delta and the core scales and rounds it. A shell doing that arithmetic would be a second place the answer lives, and it was arithmetic no test could reach.\n- **`divider_color`** - `#rrggbb`, with or without the hash, parsed in the core so a malformed one is refused where the line number is. Reached the shell through a new `ReadStyle` request, symmetrical with `ReadBindings`: read once at launch, because it cannot change while the app runs. When it can, it becomes an event.\n\nEight conformance cases in `corpus/conformance/config.json` including the refusals, three Swift tests for the shell-side hex reading, and confirmed in the running app - a window launched with `divider_color = \"#ff5f00\"` draws an orange line between its panes.\n\nWorth noting for the appearance card (a_28Yi1hLyM): `ReadStyle` is now the shape a Muster appearance vocabulary would grow into, and `Style` has one field today.",
+      "created_at_millis": 1786819295134,
+      "id": "c_28bJW5OBf"
+    }
+  ],
   "created_at_millis": 1786811423908,
   "creator": "Alexander Terp",
   "description": "Left over from a_28WcHbHlb once the blocker (`option_as_alt`) and the escape hatch (`[text]`) shipped. All three are a config key and a plumb rather than a design, and none of them blocks daily driving - which is why they were deliberately not done with the rest.\n\n- **Resize step.** `resize_*` moves by an amount nobody can name. `ResizePane.amount` already crosses the seam and `muster-herdr`'s intent forwards it when non-zero, so the daemon's own step is what a zero means today.\n- **Scroll multiplier.** `SurfaceView.scrollWheel` turns a wheel delta into a line count with no scaling. A trackpad and a wheel mouse want different numbers.\n- **Divider colour.** `DividerView` picks its own. This one is Muster's own chrome rather than libghostty's, so it is *not* covered by the appearance loan described in `docs/architecture.md` - a Ghostty config cannot reach it and never will.",
@@ -13,7 +21,7 @@
   "position": "!2",
   "title": "🎚️ The small typing knobs: resize step, scroll speed, divider colour",
   "type": "chore",
-  "updated_at_millis": 1786815763089,
+  "updated_at_millis": 1786819295134,
   "history": [
     {"field":"column","value":"backlog-lo","at":1786811423908},
     {"field":"column","value":"backlog-hi","at":1786811428037},
