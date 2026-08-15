@@ -210,6 +210,7 @@ struct WindowContentsTests {
     split.second = .with { $0.pane = second }
     var region = Muster_ViewRegion()
     region.regionID = "r0"
+    region.daemonID = "devenv"
     region.tabID = "w1:t1"
     region.paneID = "w1:p2"
     region.root = .with { $0.split = split }
@@ -220,6 +221,10 @@ struct WindowContentsTests {
     let contents = WindowContents(changed)
 
     #expect(contents.keyboardPane == "w1:p2")
+    // The daemon has to survive the crossing. A region that arrived without one would send
+    // every click and every drag to whichever daemon the core was focused on, which is right
+    // exactly as often as the window shows one daemon.
+    #expect(contents.regions[0].daemon == "devenv")
     #expect(contents.regions[0].tree?.leaves.map(\.paneID) == ["w1:p1", "w1:p2"])
     #expect(contents.regions[0].tree?.leaves[0].controlSocketPath == "/tmp/muster-1-0.sock")
     guard case .split(let axis, let ratio, _, _) = contents.regions[0].tree else {

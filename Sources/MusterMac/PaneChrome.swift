@@ -44,8 +44,12 @@ public enum PaneAppearance {
   /// for `w9:p99` and got nothing must not be titled as the renderer check, which is what the
   /// same empty state means when nobody named a pane at all - those two look identical on
   /// screen and want opposite reactions.
+  /// `daemon` names whose health this is, because a window can show more than one and only
+  /// the unhealthiest reaches the title. Empty leaves it out, which is what a window with
+  /// nothing attached has to say.
   public static func title(
-    paneID: String?, zoomed: Bool, health: String, detail: String, problem: String? = nil
+    paneID: String?, zoomed: Bool, health: String, detail: String, daemon: String = "",
+    problem: String? = nil
   ) -> String {
     guard let paneID, !paneID.isEmpty else {
       if let problem { return "muster - \(problem)" }
@@ -55,13 +59,14 @@ public enum PaneAppearance {
     if zoomed {
       title += " · zoomed"
     }
+    let named = daemon.isEmpty ? "" : " \(daemon)"
     switch health {
     case "connected", "":
       break
     case "stale":
-      title += detail.isEmpty ? " · stale" : " · stale (\(detail))"
+      title += detail.isEmpty ? " · stale\(named)" : " · stale\(named) (\(detail))"
     default:
-      title += " · \(health)"
+      title += " · \(health)\(named)"
     }
     return title
   }

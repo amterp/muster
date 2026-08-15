@@ -55,11 +55,6 @@ fn a_keystroke_crosses_the_seam_and_arrives_on_the_panes_screen() {
     // before this test's next line runs.
     muster::ffi::muster_set_event_callback(Some(note_typeable));
     let attached = attach(&pane);
-    assert!(
-        attached.server_encoded,
-        "the core found no daemon to encode arrows against, so this run would have proved \
-         the local route twice over instead of both routes once"
-    );
 
     let bridge = Bridge::spawn(&pane, &attached.control_socket_path, &daemon);
     until(

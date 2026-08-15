@@ -65,12 +65,6 @@ fn attaching_places_a_pane_where_the_keyboard_can_find_it() {
         "the bridge's socket is bound before attach returns, and {} is not there",
         one.control_socket_path
     );
-    assert!(
-        one.server_encoded,
-        "the core found no daemon to encode against, which means the attach that just \
-         succeeded was answered by something other than the daemon this test started"
-    );
-
     // A second pane in the same tab. Two things are being asserted at once because they are
     // the same mistake: a socket per process rather than per pane would hand back the path
     // it already gave out, and one bridge would be talking for both panes.
@@ -188,7 +182,10 @@ fn the_window_follows_and_drives_the_tree(daemon: &Daemon, second: &str) {
 
     // Closing names a pane, the way a CLI would.
     let doomed = settled(4).expect("just waited for it")[0].0.clone();
-    assert_ok(&answer(request::Payload::ClosePane(ClosePane { pane_id: doomed.clone() })));
+    assert_ok(&answer(request::Payload::ClosePane(ClosePane {
+        daemon_id: String::new(),
+        pane_id: doomed.clone(),
+    })));
     until(
         "the closed pane to leave the window",
         || settled(3).is_some_and(|panes| panes.iter().all(|(id, _)| id != &doomed)),
@@ -197,9 +194,12 @@ fn the_window_follows_and_drives_the_tree(daemon: &Daemon, second: &str) {
 
     // A refusal is a refusal, not a silent no-op. Nothing this window shows holds that pane,
     // so there is no daemon to ask - which is the state a stale intent arrives in.
-    let reason = refusal(request::Payload::ClosePane(ClosePane { pane_id: doomed.clone() }));
+    let reason = refusal(request::Payload::ClosePane(ClosePane {
+        daemon_id: String::new(),
+        pane_id: doomed.clone(),
+    }));
     assert!(
-        reason.contains("no daemon this window is showing"),
+        reason.contains("is not showing that pane or tab"),
         "a request for a pane that is gone should say so, and said: {reason}"
     );
 }

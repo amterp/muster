@@ -10,6 +10,10 @@ import Foundation
 public struct WindowContents: Equatable {
   public struct Region: Equatable {
     public let id: String
+
+    /// Which daemon this region's tab lives on. Carried down to every pane in it rather than
+    /// repeated per pane, because a leaf only ever arrives inside the region that names it.
+    public let daemon: String
     public let tab: String
 
     /// The pane in this region Muster's keyboard feeds while the region is focused. Nil
@@ -26,8 +30,12 @@ public struct WindowContents: Equatable {
     /// Already resolved by the core, so a window that ignores this renders the right thing.
     public let zoomed: Bool
 
-    public init(id: String, tab: String, keyboardPane: String?, tree: PaneTree?, zoomed: Bool) {
+    public init(
+      id: String, daemon: String, tab: String, keyboardPane: String?, tree: PaneTree?,
+      zoomed: Bool
+    ) {
       self.id = id
+      self.daemon = daemon
       self.tab = tab
       self.keyboardPane = keyboardPane
       self.tree = tree
@@ -51,6 +59,22 @@ public struct WindowContents: Equatable {
   public var keyboardPane: String? {
     guard let focusedRegion else { return nil }
     return regions.first { $0.id == focusedRegion }?.keyboardPane
+  }
+}
+
+/// A pane, named the way a pane has to be named once a window shows two daemons.
+///
+/// Two daemons hand out the same ids, so anything the shell keys by pane alone - which agent
+/// state belongs to which border - would let one machine's `w1:p1` answer for the other's.
+/// Inside a single region the pane id is enough, because a region shows one daemon; this is
+/// for the maps that span them.
+public struct PaneKey: Hashable {
+  public let daemon: String
+  public let pane: String
+
+  public init(daemon: String, pane: String) {
+    self.daemon = daemon
+    self.pane = pane
   }
 }
 
@@ -222,6 +246,7 @@ extension WindowContents {
       regions: changed.regions.map { region in
         Region(
           id: region.regionID,
+          daemon: region.daemonID,
           tab: region.tabID,
           // Proto3 spells absence as the empty string, and here the two genuinely differ:
           // no pane named is a region whose tab the daemon has not described yet.

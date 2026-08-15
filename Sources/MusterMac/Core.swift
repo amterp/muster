@@ -119,8 +119,11 @@ public enum Core {
   ///
   /// A ratio of zero means the daemon's own default, which is what a keybinding wants; a
   /// drag-to-split would say.
-  public static func split(axis: String, ratio: Float = 0, paneID: String = "") {
+  public static func split(
+    axis: String, ratio: Float = 0, daemonID: String = "", paneID: String = ""
+  ) {
     var split = Muster_SplitPane()
+    split.daemonID = daemonID
     split.paneID = paneID
     split.axis = axis
     split.ratio = ratio
@@ -129,8 +132,9 @@ public enum Core {
     send(request)
   }
 
-  public static func closePane(paneID: String = "") {
+  public static func closePane(daemonID: String = "", paneID: String = "") {
     var close = Muster_ClosePane()
+    close.daemonID = daemonID
     close.paneID = paneID
     var request = Muster_Request()
     request.closePane = close
@@ -138,8 +142,9 @@ public enum Core {
   }
 
   /// Points this window's keyboard at a pane, and tells the daemon somebody looked.
-  public static func focus(paneID: String) {
+  public static func focus(daemonID: String, paneID: String) {
     var focus = Muster_FocusPane()
+    focus.daemonID = daemonID
     focus.paneID = paneID
     var request = Muster_Request()
     request.focusPane = focus
@@ -159,8 +164,9 @@ public enum Core {
   }
 
   /// Moves one divider, named by the turns from its tab's root.
-  public static func setSplitRatio(tab: String, path: [Bool], ratio: CGFloat) {
+  public static func setSplitRatio(daemonID: String, tab: String, path: [Bool], ratio: CGFloat) {
     var set = Muster_SetSplitRatio()
+    set.daemonID = daemonID
     set.tabID = tab
     set.path = path
     set.ratio = Float(ratio)
@@ -273,11 +279,12 @@ public enum Core {
   @MainActor fileprivate static func deliver(_ event: Muster_Event) {
     switch event.payload {
     case .paneTypeable(let typeable):
-      info("pane.typeable", ["pane": typeable.paneID])
+      info("pane.typeable", ["daemon": typeable.daemonID, "pane": typeable.paneID])
     case .paneStateChanged(let changed):
-      window?.apply(paneID: changed.paneID, state: changed.state)
+      window?.apply(
+        pane: PaneKey(daemon: changed.daemonID, pane: changed.paneID), state: changed.state)
     case .backendHealth(let backend):
-      window?.apply(health: backend.state, detail: backend.detail)
+      window?.apply(daemon: backend.daemonID, health: backend.state, detail: backend.detail)
     case .viewChanged(let changed):
       // The shape is already in the log beside this line, written by the core when it
       // published. What is recorded here is that it crossed, and how many surfaces the window

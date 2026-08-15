@@ -18,7 +18,7 @@ use muster_core::diagnostics::log;
 use muster_core::fields;
 use muster_core::input::{Keymap, PaneInput, TerminalModeProfile};
 use muster_core::intent::{BackendChannel, BackendIntent};
-use muster_core::mirror::backend::{PaneId, Snapshot, TabId};
+use muster_core::mirror::backend::{PaneId, Snapshot};
 use muster_core::mirror::{Change, Mirror};
 use muster_herdr::subscription::{Notice, Subscription};
 use muster_herdr::{
@@ -41,7 +41,6 @@ const LOCAL: &str = "local";
 pub(crate) struct AttachedPane {
     pub(crate) input: PaneInput,
     pub(crate) control_socket_path: String,
-    pub(crate) server_encoded: bool,
     /// Held because dropping it unlinks the socket and stops the listener.
     _control: Arc<PaneControlChannel>,
 }
@@ -50,6 +49,12 @@ pub(crate) struct AttachedPane {
 #[derive(Debug)]
 struct Backend {
     mirror: Arc<Mutex<Mirror>>,
+    /// Where this daemon was actually found, as opposed to how it was asked for.
+    ///
+    /// The resolution rather than the wish, which is why it lives here and not in the
+    /// composition record beside it: a path discovered from this run's environment, or
+    /// forwarded from another machine, describes nothing a later run could use.
+    socket_path: String,
     /// How this daemon is asked for changes. One per daemon rather than one per pane,
     /// because what these ask for is structure and structure belongs to the daemon.
     channel: Arc<dyn BackendChannel>,
@@ -107,6 +112,7 @@ impl Session {
             daemon.clone(),
             Backend {
                 mirror,
+                socket_path: socket_path.to_string(),
                 channel: Arc::new(HerdrClient::new(socket_path)),
                 _subscription: subscription,
             },
@@ -173,31 +179,36 @@ impl Session {
         if self.panes.get(daemon).is_some_and(|held| held.contains_key(pane)) {
             return Ok(());
         }
+        let socket_path =
+            self.backends.get(daemon).map(|backend| backend.socket_path.clone()).ok_or_else(
+                || {
+                    format!(
+                        "the daemon {daemon} is not being followed, so there is nowhere to send \
+                     this pane's input. This is a bug in the core rather than a state to \
+                     recover from: a channel is only ever opened for a daemon already \
+                     attached."
+                    )
+                },
+            )?;
         let path = self.next_socket_path();
-        let announced = pane.clone();
-        let control = PaneControlChannel::bind(path.clone(), move || typeable(&announced))
-            .map_err(|error| {
-                format!(
-                    "could not bind the socket this pane's bridge dials back on ({error}). \
+        let (announced_daemon, announced_pane) = (daemon.clone(), pane.clone());
+        let control = PaneControlChannel::bind(path.clone(), move || {
+            typeable(&announced_daemon, &announced_pane);
+        })
+        .map_err(|error| {
+            format!(
+                "could not bind the socket this pane's bridge dials back on ({error}). \
                      Usual causes: a full or read-only temporary directory."
-                )
-            })?;
+            )
+        })?;
         let control = Arc::new(control);
 
         // The second channel, for the keys and text whose correct encoding depends on modes
-        // the control stream cannot show us.
-        let server = HerdrPaneChannel::discover(pane.as_str());
-        if server.is_none() {
-            log::warn(
-                "app.server_channel.unavailable",
-                fields! {
-                    "pane" => pane.to_string(),
-                    "impact" => "arrow keys and paste fall back to a guessed encoding, which \
-                                 pagers reject and multi-line pastes run as commands",
-                },
-            );
-        }
-        let server_encoded = server.is_some();
+        // the control stream cannot show us. Pointed at the daemon this pane belongs to
+        // rather than at whatever the environment names: a remote pane asked of the local
+        // daemon is a pane whose arrows quietly go to the wrong machine, and the failure
+        // reads as a guessed encoding rather than as an error.
+        let server = HerdrPaneChannel::new(HerdrClient::new(socket_path), pane.as_str());
 
         // The pane's modes are not readable, so this is the documented guess. One day it is
         // fed from the daemon; nothing above here changes when it is.
@@ -213,12 +224,11 @@ impl Session {
             Arc::new(AttachedPane {
                 input: PaneInput::new(
                     Arc::clone(&control) as Arc<_>,
-                    server.map(|channel| Arc::new(channel) as Arc<_>),
+                    Some(Arc::new(server) as Arc<_>),
                     Arc::new(encoder),
                     Keymap::default(),
                 ),
                 control_socket_path: path,
-                server_encoded,
                 _control: control,
             }),
         );
@@ -257,24 +267,22 @@ impl Session {
         self.panes.get(&region.daemon)?.get(region.pane.as_ref()?).map(Arc::clone)
     }
 
-    /// Which region shows this pane, out of the ones this window is showing.
+    /// Which of one daemon's regions shows this pane.
     ///
-    /// Searched rather than assumed, because two daemons hand out the same pane ids and a
-    /// request naming `w1:p1` means the one in front of the user. A pane in no region is a
-    /// pane this window is not showing, and nothing here will act on it.
-    fn region_holding(&self, pane: &PaneId) -> Option<(RegionId, DaemonId)> {
-        self.composition.regions().find_map(|region| {
-            let backend = self.backends.get(&region.daemon)?;
-            let held = backend.mirror.lock().ok()?;
-            (held.pane(pane)?.tab == region.tab).then(|| (region.id, region.daemon.clone()))
-        })
-    }
-
-    fn daemon_showing(&self, tab: &TabId) -> Option<DaemonId> {
+    /// Scoped to a daemon rather than searched across all of them, because two daemons hand
+    /// out the same pane ids - `w1:p1` means something on each - and a search would let
+    /// whichever happened to be first answer for the other's pane. A pane in none of that
+    /// daemon's regions is one this window is not showing, and nothing here will act on it.
+    fn region_holding(&self, daemon: &DaemonId, pane: &PaneId) -> Option<RegionId> {
+        let backend = self.backends.get(daemon)?;
+        let held = backend.mirror.lock().ok()?;
         self.composition
             .regions()
-            .find(|region| &region.tab == tab)
-            .map(|region| region.daemon.clone())
+            .find(|region| {
+                &region.daemon == daemon
+                    && held.pane(pane).is_some_and(|held| held.tab == region.tab)
+            })
+            .map(|region| region.id)
     }
 
     fn channel_of(&self, daemon: &DaemonId) -> Option<Arc<dyn BackendChannel>> {
@@ -307,26 +315,25 @@ pub(crate) fn keyboard_pane() -> Option<Arc<AttachedPane>> {
 /// The channel is taken out from under the lock before the request goes, because a request
 /// is a round trip and holding the session across one would stall every event arriving from
 /// every other daemon behind a wedged one.
-pub(crate) fn submit(intent: &BackendIntent) -> Result<(), String> {
+pub(crate) fn submit(daemon: &DaemonId, intent: &BackendIntent) -> Result<(), String> {
     let (region, channel) = {
         let session = SESSION.lock().expect("a panicking sender poisoned the session");
         let found = match intent {
             BackendIntent::SplitPane { pane, .. }
             | BackendIntent::ClosePane { pane }
-            | BackendIntent::FocusPane { pane } => session.region_holding(pane),
+            | BackendIntent::FocusPane { pane } => session.region_holding(daemon, pane),
             BackendIntent::SetSplitRatio { tab, .. } => {
-                session.daemon_showing(tab).and_then(|daemon| {
-                    Some((session.composition.region_showing(&daemon, tab)?, daemon))
-                })
+                session.composition.region_showing(daemon, tab)
             }
         };
-        let (region, daemon) = found.ok_or_else(|| {
-            "no daemon this window is showing holds that pane or tab, so nothing was asked \
-             of anything. Either it closed while this was in flight, or the request names \
-             something in a session this window is not attached to."
-                .to_string()
+        let region = found.ok_or_else(|| {
+            format!(
+                "the daemon {daemon} is not showing that pane or tab in this window, so \
+                 nothing was asked of anything. Either it closed while this was in flight, \
+                 or the request names something in a session this window is not attached to."
+            )
         })?;
-        let channel = session.channel_of(&daemon).ok_or_else(|| {
+        let channel = session.channel_of(daemon).ok_or_else(|| {
             format!(
                 "the daemon {daemon} is in this window's composition and is not being \
                      followed, which is a bug in the core rather than a state to recover from"
@@ -368,41 +375,57 @@ pub(crate) fn submit(intent: &BackendIntent) -> Result<(), String> {
 /// the keyboard moves whatever the daemon says, because it is Muster's own cursor, and the
 /// daemon is told as a courtesy it may refuse. A refused write is worth a log line and not
 /// worth undoing a focus move the user can see happened.
-pub(crate) fn focus(pane: &PaneId) -> Result<(), String> {
+pub(crate) fn focus(daemon: &DaemonId, pane: &PaneId) -> Result<(), String> {
     {
         let mut session = SESSION.lock().expect("a panicking sender poisoned the session");
-        let (region, _) = session.region_holding(pane).ok_or_else(|| {
+        let region = session.region_holding(daemon, pane).ok_or_else(|| {
             format!(
-                "no region in this window is showing a pane called {pane}, so the keyboard \
-                 stayed where it was. Either the pane closed while this was in flight, or it \
-                 belongs to a tab this window is not showing."
+                "no region in this window is showing a pane called {pane} on {daemon}, so \
+                 the keyboard stayed where it was. Either the pane closed while this was in \
+                 flight, or it belongs to a tab this window is not showing."
             )
         })?;
         session.composition.focus_pane(region, pane.clone());
     }
     publish();
-    submit(&BackendIntent::FocusPane { pane: pane.clone() })
+    submit(daemon, &BackendIntent::FocusPane { pane: pane.clone() })
 }
 
 /// Moves the keyboard one pane along, in the window's own reading order.
+///
+/// The order crosses regions, so a step can land on another daemon - which is the point of
+/// showing two of them - and the daemon comes back with the region rather than being assumed
+/// to be the one the keyboard just left.
 pub(crate) fn step(direction: Step) -> Result<(), String> {
     let stepped = {
         let session = SESSION.lock().expect("a panicking sender poisoned the session");
-        session.view().step(direction)
+        session.view().step(direction).and_then(|(region, pane)| {
+            Some((session.composition.region(region)?.daemon.clone(), pane))
+        })
     };
-    let (_, pane) = stepped.ok_or_else(|| {
+    let (daemon, pane) = stepped.ok_or_else(|| {
         "this window is showing no panes to step through, so the keyboard stayed where it \
          was. A window with no daemon behind it looks like this, and so does one whose tabs \
          all closed."
             .to_string()
     })?;
-    focus(&pane)
+    focus(&daemon, &pane)
 }
 
 /// The pane this window's keyboard feeds, named.
 pub(crate) fn focused_pane() -> Option<PaneId> {
     let session = SESSION.lock().expect("a panicking sender poisoned the session");
     session.composition.focused_region()?.pane.clone()
+}
+
+/// The daemon this window's keyboard is on.
+///
+/// What a request naming no daemon means, for the same reason an empty pane id means the
+/// focused pane: a menu item is about what is in front of the user and has nothing else to
+/// say.
+pub(crate) fn focused_daemon() -> Option<DaemonId> {
+    let session = SESSION.lock().expect("a panicking sender poisoned the session");
+    session.composition.focused_region().map(|region| region.daemon.clone())
 }
 
 /// Why a pane could not be attached.
@@ -549,9 +572,9 @@ fn announce(daemon: &DaemonId, notice: Notice) {
             // gone in the gap it was rebuilt across.
             reconcile(daemon);
             publish();
-            health("connected", "");
+            health(daemon, "connected", "");
             for change in changes {
-                report(&change);
+                report(daemon, &change);
             }
         }
         Notice::Changed(change) => {
@@ -559,7 +582,7 @@ fn announce(daemon: &DaemonId, notice: Notice) {
                 reconcile(daemon);
                 publish();
             }
-            report(&change);
+            report(daemon, &change);
         }
         Notice::Stale { detail } => {
             // Deliberately not a detach. A stale daemon is one Muster expects back, and its
@@ -577,11 +600,11 @@ fn announce(daemon: &DaemonId, notice: Notice) {
                                 whether the tunnel is up",
                 },
             );
-            health("stale", &detail);
+            health(daemon, "stale", &detail);
         }
         Notice::Reconnected => {
             log::info("backend.reconnected", fields! { "daemon" => daemon.to_string() });
-            health("connected", "");
+            health(daemon, "connected", "");
         }
         Notice::UnknownEvent { kind } => log::warn(
             "backend.unknown_event",
@@ -611,11 +634,12 @@ fn moves_structure(change: &Change) -> bool {
     )
 }
 
-fn report(change: &Change) {
+fn report(daemon: &DaemonId, change: &Change) {
     if let Change::AgentStateChanged { pane, from, to } = change {
         log::info(
             "agent.state",
             fields! {
+                "daemon" => daemon.to_string(),
                 "pane" => pane.to_string(),
                 "from" => from.as_str(),
                 "to" => to.as_str(),
@@ -623,6 +647,7 @@ fn report(change: &Change) {
         );
         ffi::emit(&Event {
             payload: Some(event::Payload::PaneStateChanged(PaneStateChanged {
+                daemon_id: daemon.to_string(),
                 pane_id: pane.to_string(),
                 state: to.as_str().to_string(),
             })),
@@ -630,9 +655,15 @@ fn report(change: &Change) {
     }
 }
 
-fn health(state: &str, detail: &str) {
+/// How much of one daemon's truth the core currently has.
+///
+/// Per daemon, because health is per connection. A window showing a laptop and a devenv has
+/// two answers, and one of them going stale says nothing about the other - so a single
+/// window-wide state would let a dropped VPN read as though every session had gone.
+fn health(daemon: &DaemonId, state: &str, detail: &str) {
     ffi::emit(&Event {
         payload: Some(event::Payload::BackendHealth(BackendHealth {
+            daemon_id: daemon.to_string(),
             state: state.to_string(),
             detail: detail.to_string(),
         })),
@@ -640,8 +671,11 @@ fn health(state: &str, detail: &str) {
 }
 
 /// The moment the pane becomes typeable, on the thread that accepted the connection.
-fn typeable(pane: &PaneId) {
+fn typeable(daemon: &DaemonId, pane: &PaneId) {
     ffi::emit(&Event {
-        payload: Some(event::Payload::PaneTypeable(PaneTypeable { pane_id: pane.to_string() })),
+        payload: Some(event::Payload::PaneTypeable(PaneTypeable {
+            daemon_id: daemon.to_string(),
+            pane_id: pane.to_string(),
+        })),
     });
 }

@@ -24,12 +24,25 @@ public final class MusterWindow: NSObject {
   /// Held here rather than only in the chrome because the two arrive in either order: a pane
   /// created by a split is described by the daemon before its surface exists here, and a
   /// chrome built afterwards would otherwise render as `unknown` until that agent next moved.
-  private var states: [String: String] = [:]
+  ///
+  /// Keyed by daemon as well as pane, because this map spans regions and two daemons hand out
+  /// the same pane ids - one keyed by pane alone would let a devenv agent paint a border on
+  /// the laptop.
+  private var states: [PaneKey: String] = [:]
+
+  /// What each daemon last said about itself.
+  ///
+  /// Per daemon, because health is per connection: a devenv behind a dropped VPN says nothing
+  /// about the laptop beside it, and one window-wide state would report the loss of both.
+  private var health: [String: DaemonHealth] = [:]
+
+  private struct DaemonHealth {
+    let state: String
+    let detail: String
+  }
 
   private var keyboardPane: String?
   private var zoomed = false
-  private var health = "disconnected"
-  private var detail = ""
   private var problem: String?
 
   public init(renderer: Renderer, executable: String) {
@@ -74,16 +87,15 @@ public final class MusterWindow: NSObject {
     applyTitle()
   }
 
-  public func apply(paneID: String, state: String) {
-    states[paneID] = state
-    for region in regions.values {
-      region.chrome(for: paneID)?.apply(paneID: paneID, state: state)
+  public func apply(pane: PaneKey, state: String) {
+    states[pane] = state
+    for region in regions.values where region.daemonID == pane.daemon {
+      region.chrome(for: pane.pane)?.apply(paneID: pane.pane, state: state)
     }
   }
 
-  public func apply(health: String, detail: String) {
-    self.health = health
-    self.detail = detail
+  public func apply(daemon: String, health state: String, detail: String) {
+    health[daemon] = DaemonHealth(state: state, detail: detail)
     applyTitle()
   }
 
@@ -105,8 +117,8 @@ public final class MusterWindow: NSObject {
   }
 
   private func make(regionID: String) -> RegionView {
-    let region = RegionView(frame: strip.bounds) { [weak self] chrome, socketPath in
-      self?.start(chrome, socketPath: socketPath)
+    let region = RegionView(frame: strip.bounds) { [weak self] daemonID, chrome, socketPath in
+      self?.start(chrome, daemonID: daemonID, socketPath: socketPath)
     }
     strip.addSubview(region)
     regions[regionID] = region
@@ -114,9 +126,9 @@ public final class MusterWindow: NSObject {
   }
 
   /// Gives a pane's chrome a surface, and starts the bridge that paints it.
-  private func start(_ chrome: PaneChrome, socketPath: String?) {
+  private func start(_ chrome: PaneChrome, daemonID: String, socketPath: String?) {
     guard let paneID = chrome.paneID else { return }
-    if let state = states[paneID] {
+    if let state = states[PaneKey(daemon: daemonID, pane: paneID)] {
       chrome.apply(paneID: paneID, state: state)
     }
     guard let socketPath else {
@@ -126,6 +138,7 @@ public final class MusterWindow: NSObject {
       Core.warn(
         "pane.surface.deferred",
         [
+          "daemon": daemonID,
           "pane": paneID,
           "impact": "this pane is blank until the core opens its channel and republishes",
           "check": "a pane.channel.unavailable record above this, which says why one could "
@@ -170,9 +183,30 @@ public final class MusterWindow: NSObject {
     applyTitle()
   }
 
+  /// The daemon whose health the title should report, which is the unhappiest one.
+  ///
+  /// A window showing two daemons has two answers and one title bar. Reporting the worst
+  /// names a session that is not being kept up to date; reporting anything else would let a
+  /// stale devenv sit behind a title that says everything is fine, which is the failure the
+  /// health state exists to prevent.
+  ///
+  /// Nothing attached is disconnected rather than fine, because a window with no daemon
+  /// behind it is not a healthy window.
+  private var worstHealth: (daemon: String, state: String, detail: String) {
+    let ranked = ["connected": 0, "": 0, "stale": 1, "disconnected": 2]
+    guard
+      let worst = health.max(by: { (ranked[$0.value.state] ?? 3) < (ranked[$1.value.state] ?? 3) })
+    else {
+      return ("", "disconnected", "")
+    }
+    return (worst.key, worst.value.state, worst.value.detail)
+  }
+
   private func applyTitle() {
+    let (daemon, state, detail) = worstHealth
     window.title = PaneAppearance.title(
-      paneID: keyboardPane, zoomed: zoomed, health: health, detail: detail, problem: problem)
+      paneID: keyboardPane, zoomed: zoomed, health: state, detail: detail, daemon: daemon,
+      problem: problem)
   }
 }
 

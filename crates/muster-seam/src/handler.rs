@@ -9,7 +9,7 @@ use muster_core::diagnostics::log::{self, LogLevel};
 use muster_core::diagnostics::sink::JsonLinesSink;
 use muster_core::fields;
 
-use muster_core::composition::Step;
+use muster_core::composition::{DaemonId, Step};
 use muster_core::input::{CompositionOutcome, ScrollDirection, composition_outcome};
 use muster_core::intent::{BackendIntent, Branch};
 use muster_core::mirror::backend::{PaneId, TabId};
@@ -64,7 +64,7 @@ fn handle(request: Request) -> Response {
             Response::ok()
         }),
         request::Payload::SplitPane(split) => match convert::axis(&split.axis) {
-            Some(axis) => act(&split.pane_id, |pane| BackendIntent::SplitPane {
+            Some(axis) => act(&split.daemon_id, &split.pane_id, |pane| BackendIntent::SplitPane {
                 pane,
                 axis,
                 // Zero is proto3's unset, and a divider at the very edge is not a thing
@@ -79,14 +79,17 @@ fn handle(request: Request) -> Response {
             )),
         },
         request::Payload::ClosePane(close) => {
-            act(&close.pane_id, |pane| BackendIntent::ClosePane { pane })
+            act(&close.daemon_id, &close.pane_id, |pane| BackendIntent::ClosePane { pane })
         }
         request::Payload::FocusPane(focus) if focus.pane_id.is_empty() => Response::failure(
             "a focus request named no pane, so the keyboard stayed where it was. Unlike every \
              other pane request, an empty id has no useful meaning here - it would ask to \
              focus whatever is already focused - so the shell building this has a bug.",
         ),
-        request::Payload::FocusPane(focus) => answer(session::focus(&PaneId::new(focus.pane_id))),
+        request::Payload::FocusPane(focus) => match resolve_daemon(&focus.daemon_id) {
+            Ok(daemon) => answer(session::focus(&daemon, &PaneId::new(focus.pane_id))),
+            Err(refusal) => refusal,
+        },
         request::Payload::FocusRelative(step) => match Step::parse(&step.direction) {
             Some(direction) => answer(session::step(direction)),
             None => Response::failure(format!(
@@ -96,15 +99,21 @@ fn handle(request: Request) -> Response {
                 step.direction
             )),
         },
-        request::Payload::SetSplitRatio(set) => submit(&BackendIntent::SetSplitRatio {
-            tab: TabId::new(set.tab_id),
-            path: set
-                .path
-                .into_iter()
-                .map(|second| if second { Branch::Second } else { Branch::First })
-                .collect(),
-            ratio: set.ratio,
-        }),
+        request::Payload::SetSplitRatio(set) => match resolve_daemon(&set.daemon_id) {
+            Ok(daemon) => submit(
+                &daemon,
+                &BackendIntent::SetSplitRatio {
+                    tab: TabId::new(set.tab_id),
+                    path: set
+                        .path
+                        .into_iter()
+                        .map(|second| if second { Branch::Second } else { Branch::First })
+                        .collect(),
+                    ratio: set.ratio,
+                },
+            ),
+            Err(refusal) => refusal,
+        },
         request::Payload::Scroll(scroll) => {
             with_pane("a scroll", |pane| match ScrollDirection::parse(&scroll.direction) {
                 Some(direction) => {
@@ -178,10 +187,15 @@ fn with_pane(what: &str, act: impl FnOnce(&AttachedPane) -> Response) -> Respons
 
 /// Builds an intent about a pane and asks for it.
 ///
-/// An empty pane id means the one this window's keyboard feeds, because that is what a
-/// keybinding means and a keybinding is the common caller. A CLI that names a pane gets the
-/// pane it named.
-fn act(pane_id: &str, build: impl FnOnce(PaneId) -> BackendIntent) -> Response {
+/// An empty pane id means the one this window's keyboard feeds, and an empty daemon means
+/// the daemon that pane is on, because that is what a keybinding means and a keybinding is
+/// the common caller. A click sends both, having read them off the view it was rendered
+/// from; a CLI that names a pane gets the pane it named.
+fn act(daemon_id: &str, pane_id: &str, build: impl FnOnce(PaneId) -> BackendIntent) -> Response {
+    let daemon = match resolve_daemon(daemon_id) {
+        Ok(daemon) => daemon,
+        Err(refusal) => return refusal,
+    };
     let pane = if pane_id.is_empty() {
         match session::focused_pane() {
             Some(pane) => pane,
@@ -196,11 +210,29 @@ fn act(pane_id: &str, build: impl FnOnce(PaneId) -> BackendIntent) -> Response {
     } else {
         PaneId::new(pane_id)
     };
-    submit(&build(pane))
+    submit(&daemon, &build(pane))
 }
 
-fn submit(intent: &BackendIntent) -> Response {
-    answer(session::submit(intent))
+/// The daemon a request means, given what it named.
+///
+/// Empty is the ordinary case rather than an omission: every menu item sends it, because a
+/// menu item is about whatever is in front of the user. Only a window with nothing attached
+/// has no answer, and that is the renderer check.
+fn resolve_daemon(daemon_id: &str) -> Result<DaemonId, Response> {
+    if !daemon_id.is_empty() {
+        return Ok(DaemonId::new(daemon_id));
+    }
+    session::focused_daemon().ok_or_else(|| {
+        Response::failure(
+            "this window has no daemon its keyboard is on, so a request that named none had \
+             nothing to act on. A window with nothing attached looks like this, and so does \
+             one whose every region closed.",
+        )
+    })
+}
+
+fn submit(daemon: &DaemonId, intent: &BackendIntent) -> Response {
+    answer(session::submit(daemon, intent))
 }
 
 fn answer(outcome: Result<(), String>) -> Response {
@@ -219,7 +251,6 @@ fn attach_pane(pane_id: &str) -> Response {
         Ok(pane) => Response {
             payload: Some(response::Payload::Attached(proto::Attached {
                 control_socket_path: pane.control_socket_path.clone(),
-                server_encoded: pane.server_encoded,
             })),
         },
         Err(AttachError::NoDaemon) => Response::failure(

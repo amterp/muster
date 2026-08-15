@@ -40,10 +40,10 @@ struct PaneActionTests {
     // the moment the core refused - and then keystrokes would go somewhere else than the
     // ring says.
     let recorder = recorder()
-    let started = RegionView(frame: NSRect(x: 0, y: 0, width: 400, height: 300)) { _, _ in }
+    let started = RegionView(frame: NSRect(x: 0, y: 0, width: 400, height: 300)) { _, _, _ in }
     started.apply(
       WindowContents.Region(
-        id: "r0", tab: "w1:t1", keyboardPane: "w1:p1",
+        id: "r0", daemon: "devenv", tab: "w1:t1", keyboardPane: "w1:p1",
         tree: .pane(.init(paneID: "w1:p1", controlSocketPath: "/tmp/a.sock")), zoomed: false),
       focused: true)
     let before = recorder.requests.count
@@ -52,6 +52,37 @@ struct PaneActionTests {
 
     let sent = recorder.requests.dropFirst(before)
     #expect(sent.map { $0.focusPane.paneID } == ["w1:p1"])
+    // And it says which `w1:p1`. Both daemons hand out that id, so a click that named only
+    // the pane would be answered by whichever region the core searched first - which is a
+    // keyboard landing on the wrong machine, silently.
+    #expect(sent.map { $0.focusPane.daemonID } == ["devenv"])
+  }
+
+  @MainActor
+  @Test("a divider drag says which daemon's tab it is moving")
+  func aDragNamesItsDaemon() {
+    // Tabs collide across daemons exactly as panes do, and a ratio applied to the wrong tab
+    // resizes a split the user is not looking at.
+    let recorder = recorder()
+    let region = RegionView(frame: NSRect(x: 0, y: 0, width: 400, height: 300)) { _, _, _ in }
+    region.apply(
+      WindowContents.Region(
+        id: "r0", daemon: "devenv", tab: "w1:t1", keyboardPane: "w1:p1",
+        tree: .split(
+          axis: .columns, ratio: 0.5,
+          first: .pane(.init(paneID: "w1:p1", controlSocketPath: "/tmp/a.sock")),
+          second: .pane(.init(paneID: "w1:p2", controlSocketPath: "/tmp/b.sock"))),
+        zoomed: false),
+      focused: true)
+    let before = recorder.requests.count
+
+    region.layoutSubtreeIfNeeded()
+    let divider = region.subviews.compactMap { $0 as? DividerView }.first
+    divider?.onDrag?([false], 0.3)
+
+    let sent = recorder.requests.dropFirst(before)
+    #expect(sent.map { $0.setSplitRatio.daemonID } == ["devenv"])
+    #expect(sent.map { $0.setSplitRatio.tabID } == ["w1:t1"])
   }
 
   @MainActor
@@ -80,7 +111,7 @@ struct PaneActionTests {
     // is the whole address. A wrong one silently resizes a different split.
     let recorder = recorder()
 
-    Core.setSplitRatio(tab: "w1:t1", path: [true, false], ratio: 0.25)
+    Core.setSplitRatio(daemonID: "local", tab: "w1:t1", path: [true, false], ratio: 0.25)
 
     #expect(recorder.requests.count == 1)
     let set = recorder.requests[0].setSplitRatio

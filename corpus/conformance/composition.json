@@ -2709,6 +2709,121 @@
           "r1 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
         ]
       }
+    },
+    {
+      "name": "a daemon reached over ssh is a daemon like any other",
+      "why": "The whole bet of 'local and remote in one window' is that the transport stops at the adapter and nothing above it can tell the difference. This case is where that stops being an aspiration: an ssh endpoint opens a region, reconciles, holds the keyboard and renders the same way a local one does, and the only line anywhere that differs is the one describing how it is reached. If this case ever needs a branch, the bet was wrong. It carries a second thing worth pinning, because both daemons here hold a pane called w1:p1: the step lands on the other pane of the region it was already in, rather than on the identically named pane in the region before it. Position in the order is a (region, pane) pair, and a step that matched on the pane id alone would jump machines.",
+      "given": {
+        "worlds": {
+          "two panes": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "w1"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ],
+            "layouts": [
+              {
+                "tab": "w1:t1",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p1",
+                  "second": "w1:p2"
+                }
+              }
+            ]
+          }
+        },
+        "steps": [
+          {
+            "do": "attachDaemon",
+            "daemon": "local"
+          },
+          {
+            "do": "attachDaemon",
+            "daemon": "devenv",
+            "host": "dev@localhost",
+            "sshOptions": [
+              "-p",
+              "2222"
+            ]
+          },
+          {
+            "do": "openRegion",
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "devenv",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "two panes"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "devenv",
+            "world": "two panes"
+          },
+          {
+            "do": "focusRegion",
+            "region": "r1"
+          },
+          {
+            "do": "step",
+            "direction": "next"
+          }
+        ],
+        "attached": [
+          "w1:p1",
+          "w1:p2"
+        ]
+      },
+      "expect": {
+        "daemons": [
+          "devenv ssh=dev@localhost options=-p 2222",
+          "local local"
+        ],
+        "regions": [
+          "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p1",
+          "r1 daemon=devenv workspace=w1 tab=w1:t1 pane=w1:p2"
+        ],
+        "focusedRegion": "r1",
+        "focusedPane": "w1:p2",
+        "view": [
+          "r0 tab=w1:t1 columns(w1:p1*, w1:p2*@0.5)",
+          "r1 tab=w1:t1 columns(w1:p1*, w1:p2*@0.5)"
+        ]
+      }
     }
   ]
 }

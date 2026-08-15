@@ -43,8 +43,17 @@ message Request {
 // Muster never mutates. Each of these is a request to a daemon, and what actually happened
 // arrives afterwards as a ViewChanged - so a shell that renders its own optimistic answer is
 // a shell that can be wrong, and none of these carry one.
+// A pane is named by two things, and every message below that names one says both.
+//
+// Two daemons hand out the same ids - `w1:p1` means something on each - so a bare pane id
+// stops being an answer the moment a window shows more than one daemon. The daemon is
+// Muster's own name from the config file, because herdr has no notion of its own identity.
+//
+// Both halves spell absence as the empty string, and both mean "the one this window's
+// keyboard is on", because that is what a keybinding means. The pair is what a menu item
+// sends; a click sends what the view it was rendered from said.
 message SplitPane {
-  // Empty means the pane this window's keyboard feeds, which is what a keybinding means.
+  string daemon_id = 4;
   string pane_id = 1;
 
   // columns (the new pane goes beside it) or rows (below it).
@@ -56,7 +65,7 @@ message SplitPane {
 }
 
 message ClosePane {
-  // Empty means the pane this window's keyboard feeds.
+  string daemon_id = 2;
   string pane_id = 1;
 }
 
@@ -68,6 +77,7 @@ message ClosePane {
 // window's keyboard. It is still *written*, because a daemon deciding whether an agent was
 // seen is watching it (architecture.md, cursors are written, not read).
 message FocusPane {
+  string daemon_id = 2;
   string pane_id = 1;
 }
 
@@ -83,6 +93,9 @@ message FocusRelative {
 
 // Moves one divider in a tab's tree.
 message SetSplitRatio {
+  // Tabs collide across daemons for the same reason panes do. Empty means the daemon this
+  // window's keyboard is on.
+  string daemon_id = 4;
   string tab_id = 1;
 
   // The turns from the tab's root down to the divider: false takes the first child, true the
@@ -150,6 +163,10 @@ message LogRecord {
 // Everything about what a keystroke means lives behind this: the core opens the socket the
 // pane's bridge will dial, finds the daemon if there is one, and owns the keymap and the
 // encoder from here on. The shell's remaining job is to say that a key was pressed.
+// No daemon here either, and for the opposite reason: at attach nobody knows yet. This is
+// the bootstrap, before any daemon is being followed, so the core finds which one holds the
+// pane. It stops being unambiguous the day a window attaches several daemons that both hold
+// a `w1:p1`, and gains a daemon then rather than now.
 message AttachPane {
   string pane_id = 1;
 }
@@ -160,10 +177,6 @@ message Attached {
   // listener; the shell only relays it onto the bridge's command line.
   string control_socket_path = 1;
 
-  // Whether a daemon was found to encode arrows and paste against the pane's real modes.
-  // False means the pane still works, with a guess that pagers reject and that runs a
-  // multi-line paste as commands.
-  bool server_encoded = 2;
 }
 
 // A keystroke, with the fidelity a terminal encoder needs and nothing else.
@@ -322,6 +335,9 @@ message ViewSplit {
   ViewNode second = 4;
 }
 
+// No daemon here, deliberately, though a pane needs one to be named unambiguously: a
+// ViewPane only ever arrives inside the ViewRegion that carries it, so a shell walking the
+// tree already has the answer and repeating it would be a second copy to disagree with.
 message ViewPane {
   string pane_id = 1;
 
@@ -341,6 +357,10 @@ message ViewPane {
 // window showing one pane still logs the others, and the sidebar that displays them is the
 // same feed with somewhere to put it.
 message PaneStateChanged {
+  // Unlike a ViewPane, which arrives inside the region that names its daemon, this travels
+  // on its own - so it carries the daemon rather than leaving the shell to guess which
+  // `w1:p1` went to work.
+  string daemon_id = 3;
   string pane_id = 1;
 
   // working, blocked, idle, done, or unknown. Never empty - a pane whose harness the
@@ -355,6 +375,11 @@ message PaneStateChanged {
 // The window that silently shows an hour-old session is worse than the one that admits it,
 // and both look identical without this.
 message BackendHealth {
+  // Which daemon this is about. Health is per-connection and there is one of these per
+  // daemon: a window showing a laptop and a devenv has two answers, and reporting one for
+  // the window would let a dropped VPN read as though everything had gone.
+  string daemon_id = 3;
+
   // connected, stale, or disconnected.
   string state = 1;
 
@@ -368,5 +393,6 @@ message BackendHealth {
 // direction exists at all: it becomes true on a socket accept, long after the shell
 // finished asking about it.
 message PaneTypeable {
+  string daemon_id = 2;
   string pane_id = 1;
 }

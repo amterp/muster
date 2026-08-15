@@ -5,16 +5,25 @@
   "area": [
     "shell"
   ],
-  "column": "in-progress",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Landed in 4cb3643, with one deviation from the plan worth recording: the seam wiring - Startup gaining a config path, the app reading the file - is not here. A config path the core accepts and does nothing with is a promise the app does not keep, and a log line saying 'two daemons' beside a window showing one is worse than no line. It lands with the card that opens a region per daemon.\n\nAlso deferred deliberately: no timeout knob. The SSH endpoint will want one, since 500 ms was tuned for a local socket and sits on the input path - but the default belongs with the code that reads it, and a config field with no behavior behind it is a lie to whoever reads the docs.",
+      "created_at_millis": 1786705002141,
+      "id": "c_27pMEYVX3"
+    }
+  ],
   "created_at_millis": 1786704320018,
   "creator": "Alexander Terp",
   "description": "There is no config layer at all today. `DaemonId(\"local\")` is a constant (crates/muster-seam/src/session.rs) already commented as a placeholder for configuration, and `Keymap::default()` is a hardcoded table. The README's 'Configuration is files' is aspirational.\n\nThe remote arc forces the daemon half: naming a second daemon is exactly what a config file is for, and `Endpoint` has been a one-variant enum waiting for it since composition landed.\n\nSplit so the core stays honest about I/O: parsing is pure and lives in muster-core (text in, a Config out), conformance-tested like every other decidable thing; reading the file happens at the edge, in the seam's Startup handler, from a path the shell chooses - the same division `discover_socket_path` already uses by taking an environment map rather than reading one.\n\nThe keymap half is a different card (a_26BJGXAS9) and should not be pulled in here: `Action` in the core keymap is an empty enum, so binding chords is real work rather than a second table.\n\nA missing or unparseable config is not fatal. It falls back to discovering the local daemon from the environment, and says so in a line that names what was lost.",
   "id": "a_27p4ULm2O",
-  "position": "U",
+  "position": "!!6",
   "title": "⚙️ Config is a file, and the daemon list is its first citizen",
   "type": "chore",
-  "updated_at_millis": 1786704320018,
+  "updated_at_millis": 1786705002141,
   "history": [
-    {"field":"column","value":"in-progress","at":1786704320018}
+    {"field":"column","value":"in-progress","at":1786704320018},
+    {"field":"column","value":"done","at":1786704994751}
   ]
 }

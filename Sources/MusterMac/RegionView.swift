@@ -23,7 +23,7 @@ public final class RegionView: NSView {
   /// handed a view and sizes its surface from it: a surface created against a zero-sized view
   /// is a PTY told it has no columns.
   public typealias StartPane =
-    @MainActor (_ chrome: PaneChrome, _ controlSocketPath: String?) -> Void
+    @MainActor (_ daemonID: String, _ chrome: PaneChrome, _ controlSocketPath: String?) -> Void
 
   private struct Held {
     let chrome: PaneChrome
@@ -40,6 +40,14 @@ public final class RegionView: NSView {
   private var tree: PaneTree?
 
   public private(set) var regionID: String = ""
+
+  /// Which daemon this region's tab lives on.
+  ///
+  /// Held rather than passed around because every intent this region raises names it, and
+  /// because the window above keys agent state by it: pane ids repeat across daemons, so a
+  /// click or a state that travelled without this would land on whichever `w1:p1` was found
+  /// first.
+  public private(set) var daemonID: String = ""
   private var tab: String = ""
 
   public init(frame: NSRect, startPane: @escaping StartPane) {
@@ -70,6 +78,7 @@ public final class RegionView: NSView {
   /// every split.
   public func apply(_ region: WindowContents.Region, focused: Bool) {
     regionID = region.id
+    daemonID = region.daemon
     tab = region.tab
     guard let tree = region.tree else { return }
     self.tree = tree
@@ -80,7 +89,7 @@ public final class RegionView: NSView {
     layoutSubtreeIfNeeded()
     for leaf in fresh {
       guard let chrome = held[leaf.paneID]?.chrome else { continue }
-      startPane(chrome, leaf.controlSocketPath)
+      startPane(daemonID, chrome, leaf.controlSocketPath)
     }
     apply(keyboardPane: focused ? region.keyboardPane : nil)
   }
@@ -107,7 +116,9 @@ public final class RegionView: NSView {
       }
       let chrome = PaneChrome(frame: bounds, surface: SurfaceView(frame: bounds))
       chrome.attach(paneID: leaf.paneID)
-      chrome.onFocusRequested = { Core.focus(paneID: $0) }
+      chrome.onFocusRequested = { [weak self] paneID in
+        Core.focus(daemonID: self?.daemonID ?? "", paneID: paneID)
+      }
       addSubview(chrome)
       held[leaf.paneID] = Held(chrome: chrome, controlSocketPath: leaf.controlSocketPath)
       fresh.append(leaf)
@@ -149,7 +160,7 @@ public final class RegionView: NSView {
       let divider = DividerView(frame: .zero)
       divider.onDrag = { [weak self] path, ratio in
         guard let self else { return }
-        Core.setSplitRatio(tab: self.tab, path: path, ratio: ratio)
+        Core.setSplitRatio(daemonID: self.daemonID, tab: self.tab, path: path, ratio: ratio)
       }
       addSubview(divider)
       dividers.append(divider)

@@ -44,6 +44,18 @@ struct PaneChromeTests {
     #expect(title.contains("stale"))
   }
 
+  @Test("a title says which daemon went stale")
+  func staleNamesItsDaemon() {
+    // A window showing a laptop and a devenv has two answers and one title bar. Saying only
+    // "stale" leaves the reader to guess whether their local shell or their VPN is the
+    // problem, and those are very different next actions.
+    let title = PaneAppearance.title(
+      paneID: "w1:p1", zoomed: false, health: "stale", detail: "the connection dropped",
+      daemon: "devenv")
+    #expect(title.contains("stale devenv"))
+    #expect(title.contains("the connection dropped"))
+  }
+
   @Test("a healthy window says nothing about its health")
   func connectedIsQuiet() {
     let title = PaneAppearance.title(

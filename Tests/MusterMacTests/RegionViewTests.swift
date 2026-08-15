@@ -21,8 +21,9 @@ private final class Started {
 @MainActor
 private func region(width: CGFloat = 800, height: CGFloat = 600) -> (RegionView, Started) {
   let started = Started()
-  let view = RegionView(frame: NSRect(x: 0, y: 0, width: width, height: height)) { chrome, socket in
-    started.panes.append("\(chrome.paneID ?? "")@\(socket ?? "-")")
+  let view = RegionView(frame: NSRect(x: 0, y: 0, width: width, height: height)) {
+    daemon, chrome, socket in
+    started.panes.append("\(daemon):\(chrome.paneID ?? "")@\(socket ?? "-")")
   }
   return (view, started)
 }
@@ -33,7 +34,7 @@ private func leaf(_ id: String, socket: String? = "/tmp/\(0).sock") -> PaneTree 
 
 private func contents(_ tree: PaneTree?, keyboard: String? = nil) -> WindowContents.Region {
   WindowContents.Region(
-    id: "r0", tab: "w1:t1", keyboardPane: keyboard, tree: tree, zoomed: false)
+    id: "r0", daemon: "local", tab: "w1:t1", keyboardPane: keyboard, tree: tree, zoomed: false)
 }
 
 @Suite("a region renders a tree")
@@ -56,7 +57,7 @@ struct RegionViewTests {
       focused: true)
 
     #expect(view.chrome(for: "w1:p1") === before)
-    #expect(started.panes == ["w1:p1@/tmp/a.sock", "w1:p2@/tmp/b.sock"])
+    #expect(started.panes == ["local:w1:p1@/tmp/a.sock", "local:w1:p2@/tmp/b.sock"])
   }
 
   @MainActor
@@ -87,7 +88,7 @@ struct RegionViewTests {
 
     view.apply(contents(leaf("w1:p1", socket: "/tmp/opened.sock")), focused: true)
 
-    #expect(started.panes == ["w1:p1@-", "w1:p1@/tmp/opened.sock"])
+    #expect(started.panes == ["local:w1:p1@-", "local:w1:p1@/tmp/opened.sock"])
   }
 
   @MainActor
