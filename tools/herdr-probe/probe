@@ -131,6 +131,10 @@ def main() -> int:
         daemon = probe_daemon()
         daemon.prepare()
         rec = Recorder(corpus, name, version, protocol)
+        # A traceback from a run that has since been fixed sits beside a good recording
+        # and reads as if the recording were the broken one. Cleared before the attempt
+        # rather than after, so a crash mid-write cannot leave one behind either.
+        (rec.dir / "FAILURE.txt").unlink(missing_ok=True)
         try:
             daemon.start()
             print(f"    daemon: {daemon.socket_path}", flush=True)
