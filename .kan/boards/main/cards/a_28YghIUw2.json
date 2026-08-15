@@ -5,17 +5,26 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "next",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "**The method exists: `server.stop`.** This card records that \"a `server.shutdown` guess was already tried and refused as an unknown method\" - the real spelling is `server.stop`, and it is in `corpus/herdr-0.8.0/api-schema.json` beside `server.reload_config` and `server.live_handoff`. Found while writing `crates/muster-herdr/tests/daemon_isolation.rs`, which uses it to tear its daemon down; it works, and the daemon exits.\n\nSo \"what close-sessions even means\" has an upstream answer to design around rather than a gap. Still worth checking what herdr does to a pane's processes on the way out before promising anything - a clean stop that still SIGKILLs the shells is a different promise from one that does not.\n\nTwo other things from today's daemon work that touch this card:\n\n- **`server.live_handoff` is also there**, which sounds like the mechanism behind `herdr update --handoff`. Worth a look for the \"quit and leave sessions running\" half: if a daemon can hand its session to a successor, that is a better answer than never stopping one.\n- **The environment card is closed** (a_28YgGqYq7), and its fix strengthens the case for a lifecycle: the daemon now carries a deliberately chosen environment, which makes a long-lived daemon more defensible - and makes \"which daemon am I looking at, and what is it holding\" the remaining question. `daemon.starting` and `daemon.environment` in the run log name the socket, the config file and what was scrubbed, which is the beginning of the inventory this card says should be built first.",
+      "created_at_millis": 1786819407903,
+      "id": "c_28bMRyUNl"
+    }
+  ],
   "created_at_millis": 1786813036371,
   "creator": "Alexander Terp",
   "description": "There is no lifecycle at all today. `daemon.rs` says \"Started, never stopped\" and puts the daemon in its own process group so quitting Muster cannot touch it; the shell's only quit handling is `applicationShouldTerminateAfterLastWindowClosed: true`. So the daemon leaks forward forever, and the only way to end one is to find it with `pgrep` and kill it - which also destroys whatever is running in its panes, as happened once already this week.\n\n**The default is right and should stay.** Sessions outliving the app is a founding desideratum: quit Muster, come back, and every pane is where you left it. Nothing here proposes changing that.\n\nWhat is missing is that it is the *only* behaviour, and it is invisible. Somebody who is finished for the day has no way to say so. Somebody who has accumulated daemons from a week of launches has no way to know, and no way to tidy up that does not risk killing live work.\n\nWorth deciding rather than defaulting:\n\n- **What quit offers, and where.** A menu item (\"Quit and leave sessions running\" beside \"Quit and close sessions\") is discoverable; a modifier on ⌘Q is not. Consider that the destructive one is the one that needs confirming, and that a person with three agents mid-task must not be able to end them by reflex.\n- **What \"close sessions\" even means.** Ending the daemon kills processes that have no way to save; ending it *cleanly* means asking herdr, which may or may not have an answer worth relying on. Check what herdr offers before designing around it - a `server.shutdown` guess was already tried and refused as an unknown method.\n- **How you find out what is still running.** Nothing today lists Muster's daemons or what they hold. That is the piece that makes tidying up safe rather than a `pgrep` gamble, and it is probably the first half to build.\n- **Whether a daemon nobody has attached to in weeks should say so**, rather than being reaped automatically. Automatic reaping of a process holding somebody's work is the wrong default in a tool built on the promise that it will not.\n\nRelated: the isolation card - a daemon that outlives the app is exactly why the environment it was started with matters so much.",
   "id": "a_28YghIUw2",
-  "position": "!!!U",
+  "position": "!E",
   "title": "🔌 Quitting Muster should decide what happens to its daemons",
   "type": "feature",
-  "updated_at_millis": 1786813094493,
+  "updated_at_millis": 1786819407958,
   "history": [
     {"field":"column","value":"backlog-lo","at":1786813036371},
-    {"field":"column","value":"backlog-hi","at":1786813094493}
+    {"field":"column","value":"backlog-hi","at":1786813094493},
+    {"field":"column","value":"next","at":1786819407958}
   ]
 }
