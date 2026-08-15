@@ -867,6 +867,27 @@ fn report(daemon: &DaemonId, change: &Change) {
         );
     }
 
+    // The one change that is about an interval rather than a pane, and the only evidence
+    // there will ever be that something happened while Muster was not listening. herdr's
+    // counter is session-wide and reaches a client only in a snapshot, so nothing says
+    // which panes moved or what they moved to - and after this line, nothing ever can.
+    if let Change::AgentTransitionsMissed { expected, saw } = change {
+        log::warn(
+            "agent.transitions_missed",
+            fields! {
+                "daemon" => daemon.to_string(),
+                "expected" => expected.to_string(),
+                "saw" => saw.to_string(),
+                "missed" => saw.saturating_sub(*expected).to_string(),
+                "impact" => "the states shown are right, but an agent may have asked for a \
+                             person while this window was disconnected and gone back to work \
+                             since - so a request for attention was never routed",
+                "check" => "the backend.stale record above this, for how long the gap was, and \
+                            whether any pane on this daemon is waiting on somebody",
+            },
+        );
+    }
+
     let Some(pane) = change.announces_agent_state() else { return };
     // Read back rather than taken from the change, because one of the two changes that
     // announce a pane carries no state at all: a pane that appears already running is the
