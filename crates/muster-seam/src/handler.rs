@@ -54,6 +54,7 @@ fn handle(request: Request) -> Response {
         request::Payload::AttachPane(attach) => attach_pane(&attach.pane_id),
         request::Payload::OpenWindow(_) => open_window(),
         request::Payload::CreateTab(create) => create_tab(&create),
+        request::Payload::BridgeExited(exited) => bridge_exited(&exited),
         request::Payload::KeyDown(down) => with_pane("a keystroke", |pane| key_down(pane, &down)),
         request::Payload::KeyUp(up) => {
             with_pane("a key release", |pane| send_key(pane, up.key.as_ref()))
@@ -331,6 +332,20 @@ fn open_window() -> Response {
              ignores the keyboard."
         )),
     }
+}
+
+/// The shell saying nothing is painting one of its panes any more.
+///
+/// Answered by asking that daemon what it holds, because the commonest reason a bridge ends
+/// is that the pane it was painting is gone - and herdr can drop a pane without an event, so
+/// this is sometimes the only notice there is. A pane the daemon still holds survives the
+/// re-read unchanged and keeps its dead surface, which is the honest outcome: the shell can
+/// say the bridge died, and it cannot say the pane did.
+///
+/// Always `Ok`. Nothing was asked for, so there is nothing to refuse.
+fn bridge_exited(exited: &proto::BridgeExited) -> Response {
+    session::bridge_exited(&exited.daemon_id, &exited.pane_id, exited.process_alive);
+    Response::ok()
 }
 
 fn attach_pane(pane_id: &str) -> Response {

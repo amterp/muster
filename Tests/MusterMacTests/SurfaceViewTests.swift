@@ -120,6 +120,7 @@ private final class RecordingSurface: PaneSurface {
   var positions: [NSPoint] = []
   var buttons: [Bool] = []
   var selectedText: String?
+  var onProcessExited: (@MainActor (Bool) -> Void)?
 
   init(selection: String? = nil) { selectedText = selection }
 
@@ -219,6 +220,41 @@ private func scratchClipboard(_ name: String) -> NSPasteboard {
   let selected = view(surface: RecordingSurface(selection: "picked"), clipboard: clipboard)
   #expect(selected.validateMenuItem(copyItem))
   #expect(selected.validateMenuItem(pasteItem))
+}
+
+@Test @MainActor func aPaneWhoseBridgeDiedStopsTakingKeystrokes() {
+  // The dead square: libghostty paints its own "press any key to close the window" over a
+  // surface whose command exited, and no key here will ever reach that - so a view that kept
+  // sending them would put one refusal per keystroke into the log for a pane nobody can
+  // reach. Reported once, and to the core, which is the only thing that can find out whether
+  // the pane itself is gone.
+  let recorder = RecordingDispatcher()
+  let surface = RecordingSurface()
+  let pane = view(surface: surface, clipboard: scratchClipboard("exited"), recorder: recorder)
+  var reported: [Bool] = []
+  pane.onProcessExited = { reported.append($0) }
+
+  surface.onProcessExited?(false)
+  pane.keyDown(with: key("h", keyCode: 0x04))
+
+  #expect(reported == [false])
+  let keys = recorder.requests.filter { if case .keyDown = $0.payload { true } else { false } }
+  #expect(keys.isEmpty)
+}
+
+@Test @MainActor func aBridgeThatDiesTwiceIsReportedOnce() {
+  // libghostty may call this more than once for one surface, and a window that asked the
+  // daemon to re-read its whole session per call would turn one dead pane into a round trip
+  // per callback.
+  let surface = RecordingSurface()
+  let pane = view(surface: surface, clipboard: scratchClipboard("twice"))
+  var reported = 0
+  pane.onProcessExited = { _ in reported += 1 }
+
+  surface.onProcessExited?(false)
+  surface.onProcessExited?(false)
+
+  #expect(reported == 1)
 }
 
 @Test @MainActor func pasteSendsWhatIsOnTheClipboardAndNothingWhenItIsEmpty() {

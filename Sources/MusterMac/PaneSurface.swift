@@ -12,9 +12,14 @@ import MusterRenderer
 /// the app - which is how copy shipped with nothing asserting that a drag reaches the grid or
 /// that ⌘C reaches the clipboard.
 @MainActor
-public protocol PaneSurface {
+public protocol PaneSurface: AnyObject {
   func setSize(width: UInt32, height: UInt32)
   func setFocus(_ focused: Bool)
+
+  /// Called when the command this surface is running exits, which for a pane means its
+  /// bridge is gone. Settable rather than reported once, because whoever owns the surface is
+  /// not who needs to know.
+  var onProcessExited: (@MainActor (Bool) -> Void)? { get set }
 
   /// Where the pointer is, in the surface's own coordinates - measured from its top left,
   /// which is not where AppKit measures from. The caller converts.

@@ -34,7 +34,27 @@ message Request {
     SetRegionBoundary set_region_boundary = 15;
     OpenWindow open_window = 16;
     CreateTab create_tab = 17;
+    BridgeExited bridge_exited = 18;
   }
+}
+
+// The subprocess painting a pane has ended.
+//
+// An observation rather than a request: a bridge is the shell's own subprocess and its death
+// says nothing on its own about whether the daemon still holds the pane. What makes it worth
+// sending is that the commonest reason for one to end is that the daemon does not - a pane
+// whose terminal has gone - and herdr does not always say so on its own. So this is the
+// shell handing over the one piece of evidence it has, and the core decides what it means by
+// asking the daemon what it holds.
+//
+// The pane is named because the shell knows which surface died, and the daemon because two
+// daemons hand out the same pane ids.
+message BridgeExited {
+  string daemon_id = 1;
+  string pane_id = 2;
+  // Whether libghostty saw a process still alive when it gave up on the surface. Carried for
+  // the log rather than branched on: either way nothing is painting this pane.
+  bool process_alive = 3;
 }
 
 // Show whatever there is to show.

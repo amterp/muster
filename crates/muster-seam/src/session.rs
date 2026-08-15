@@ -651,6 +651,25 @@ pub(crate) fn submit(daemon: &DaemonId, intent: &BackendIntent) -> Result<(), St
     outcome.map(|_| ()).map_err(|refusal| refusal.to_string())
 }
 
+/// Takes the shell's word that nothing is painting a pane, and checks what that means.
+///
+/// The shell knows one thing the core cannot see - its own subprocess ended - and the core
+/// knows the one place to look it up. A pane the daemon has dropped disappears from the
+/// window here; a pane it still holds stays, with a surface that has stopped painting, which
+/// is all anybody can honestly say about it.
+pub(crate) fn bridge_exited(daemon: &str, pane: &str, process_alive: bool) {
+    let daemon = DaemonId::new(if daemon.is_empty() { LOCAL } else { daemon });
+    log::info(
+        "bridge.exited.reported",
+        fields! {
+            "daemon" => daemon.to_string(),
+            "pane" => pane.to_string(),
+            "process_alive" => process_alive.to_string(),
+        },
+    );
+    resnapshot(&daemon, &format!("nothing is painting {pane} any more"));
+}
+
 /// Asks a daemon what it actually holds, and shows that instead.
 ///
 /// The whole picture rather than the one thing that was refused, because the refusal only

@@ -48,7 +48,20 @@ private func rendererWriteClipboard(
   _ content: UnsafePointer<ghostty_clipboard_content_s>?, _ len: Int, _ confirm: Bool
 ) {}
 
-private func rendererCloseSurface(_ userdata: UnsafeMutableRawPointer?, _ processAlive: Bool) {}
+/// The surface's command has exited, which for Muster means the pane's bridge is gone.
+///
+/// Worth having rather than declining, because a surface whose process ended keeps rendering
+/// the last thing it painted - libghostty's own "press any key to close the window" screen,
+/// among others - and nothing else in the app can tell that apart from a live pane. Every
+/// keystroke after this reaches a channel with nobody on the other end.
+///
+/// `userdata` is the token the surface was created with, resolved on the main actor rather
+/// than dereferenced here: this arrives on libghostty's thread, and a pointer to a Surface
+/// that has since been freed is exactly the crash this indirection avoids.
+private func rendererCloseSurface(_ userdata: UnsafeMutableRawPointer?, _ processAlive: Bool) {
+  let token = UInt(bitPattern: userdata)
+  Task { @MainActor in Surface.reportExit(token: token, processAlive: processAlive) }
+}
 
 /// One libghostty runtime. Owns the app handle every surface hangs off.
 ///
@@ -121,6 +134,11 @@ public final class Renderer {
   /// is why the pane bridge is a subprocess rather than a function call.
   public func makeSurface(in view: NSView, command: String?) throws -> Surface {
     var config = ghostty_surface_config_new()
+    let token = Surface.nextToken()
+    // A token rather than a pointer to the Surface, which does not exist yet and would
+    // outlive nothing if it did: libghostty hands this back on its own thread, after the
+    // surface may already have been freed.
+    config.userdata = UnsafeMutableRawPointer(bitPattern: token)
     config.platform_tag = GHOSTTY_PLATFORM_MACOS
     config.platform = ghostty_platform_u(
       macos: ghostty_platform_macos_s(nsview: Unmanaged.passUnretained(view).toOpaque()))
@@ -139,7 +157,7 @@ public final class Renderer {
       }
 
     guard let surface else { throw RendererError.surfaceCreationFailed }
-    return Surface(surface)
+    return Surface(surface, token: token)
   }
 }
 
@@ -147,13 +165,47 @@ public final class Renderer {
 @MainActor
 public final class Surface {
   private let surface: ghostty_surface_t
+  private let token: UInt
 
-  init(_ surface: ghostty_surface_t) {
+  /// Called when the command this surface is running exits.
+  ///
+  /// Its argument is whether a process is somehow still alive, which libghostty reports and
+  /// Muster has no use for beyond putting it in the log: either way this pane is not one
+  /// anybody can type into any more.
+  public var onProcessExited: (@MainActor (Bool) -> Void)?
+
+  init(_ surface: ghostty_surface_t, token: UInt) {
     self.surface = surface
+    self.token = token
+    Surface.living[token] = Held(surface: self)
   }
 
   isolated deinit {
+    Surface.living.removeValue(forKey: token)
     ghostty_surface_free(surface)
+  }
+
+  /// A way back to a surface somebody else owns.
+  ///
+  /// Weak, because a strong entry here would keep every pane ever opened alive for the life
+  /// of the app - and worse, would stop the `deinit` that removes it from ever running.
+  private struct Held {
+    weak var surface: Surface?
+  }
+
+  // Surfaces that could still be told their process exited, by the token libghostty carries
+  // for them.
+  private static var living: [UInt: Held] = [:]
+  private static var tokens: UInt = 0
+
+  static func nextToken() -> UInt {
+    // From one, because zero is what a null userdata reads as and the two must not collide.
+    tokens += 1
+    return tokens
+  }
+
+  static func reportExit(token: UInt, processAlive: Bool) {
+    living[token]?.surface?.onProcessExited?(processAlive)
   }
 
   public func setSize(width: UInt32, height: UInt32) {

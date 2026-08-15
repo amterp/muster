@@ -177,6 +177,12 @@ public final class MusterWindow: NSObject {
         ])
       return
     }
+    // Reported rather than acted on here: the core is what can find out whether a bridge
+    // ending means the daemon has dropped the pane, which is the commonest reason and the
+    // one herdr does not always announce.
+    chrome.surface.onProcessExited = { processAlive in
+      Core.bridgeExited(daemonID: daemonID, paneID: paneID, processAlive: processAlive)
+    }
     start(
       chrome,
       command: PaneCommand.bridge(

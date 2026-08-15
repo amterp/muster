@@ -64,8 +64,18 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
 
   public override var acceptsFirstResponder: Bool { true }
 
+  /// Called when this pane's bridge exits, so the window can report which pane it was.
+  ///
+  /// Separate from stopping the keystrokes, which happens here regardless: a view that kept
+  /// sending them would fill the log with one refusal per key for a pane nobody can reach.
+  /// Which pane and which daemon this was is the window's to know, not a surface's.
+  public var onProcessExited: (@MainActor (Bool) -> Void)?
+
   public func attach(_ surface: any PaneSurface, typeable: Bool) {
     self.surface = surface
+    surface.onProcessExited = { [weak self] processAlive in
+      self?.paneEnded(processAlive: processAlive)
+    }
     attach(typeable: typeable)
     surface.setSize(
       width: UInt32(bounds.width * (window?.backingScaleFactor ?? 2)),
@@ -79,6 +89,28 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
   /// keystroke path with no GPU, no window and no daemon behind it.
   public func attach(typeable: Bool) {
     isTypeable = typeable
+  }
+
+  /// What this view does about its own bridge having exited.
+  ///
+  /// It stops typing into it. This surface is now a picture - libghostty paints its own
+  /// "press any key to close the window" over it, and no key here will ever reach that -
+  /// so every keystroke after this would reach a channel with nobody on the other end.
+  ///
+  /// Once, and only from typeable: a surface that was never a pane has nothing to stop.
+  private func paneEnded(processAlive: Bool) {
+    guard isTypeable else { return }
+    isTypeable = false
+    Core.warn(
+      "pane.bridge.exited",
+      [
+        "process_alive": processAlive ? "true" : "false",
+        "impact": "this pane renders whatever it last painted and takes no more keystrokes; "
+          + "every other pane in the window is unaffected",
+        "check": "a bridge.closed record from this pane's own bridge, which says why it "
+          + "ended - most often the daemon no longer holds the pane",
+      ])
+    onProcessExited?(processAlive)
   }
 
   public override func setFrameSize(_ newSize: NSSize) {

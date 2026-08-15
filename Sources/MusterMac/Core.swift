@@ -173,6 +173,21 @@ public enum Core {
     send(request)
   }
 
+  /// Reports that nothing is painting a pane any more.
+  ///
+  /// An observation rather than a request. The shell is the only thing that can see its own
+  /// subprocess end, and the core is the only thing that can find out what that means - most
+  /// often that the daemon no longer holds the pane, which it does not always announce.
+  public static func bridgeExited(daemonID: String, paneID: String, processAlive: Bool) {
+    var exited = Muster_BridgeExited()
+    exited.daemonID = daemonID
+    exited.paneID = paneID
+    exited.processAlive = processAlive
+    var request = Muster_Request()
+    request.bridgeExited = exited
+    send(request)
+  }
+
   /// Points this window's keyboard at a pane, and tells the daemon somebody looked.
   public static func focus(daemonID: String, paneID: String) {
     var focus = Muster_FocusPane()
@@ -323,6 +338,7 @@ public enum Core {
     case .setSplitRatio: return "set_split_ratio"
     case .windowFocus: return "window_focus"
     case .setRegionBoundary: return "set_region_boundary"
+    case .bridgeExited: return "bridge_exited"
     case nil: return "(none)"
     }
   }
