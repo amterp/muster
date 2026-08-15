@@ -1,0 +1,109 @@
+{
+  "concept": "muster.backendIntent.herdrEnvelope",
+  "source": "authored",
+  "citation": "corpus/herdr-0.8.0/api-schema.json, which herdr generates from its own request types and ./dev checks the running daemon against. Method names and every parameter here are declared there: PaneSplitParams (cwd, direction, env, focus, ratio, target_pane_id, workspace_id), TabCreateParams (cwd, env, focus, label, workspace_id), WorkspaceCreateParams (cwd, env, focus, label), LayoutSetSplitRatioParams (pane_id, path, ratio, tab_id). The direction pair is recorded in docs/observations/herdr-0.8.0.md.",
+  "why": "herdr ignores a parameter it does not recognise rather than refusing the request (`observations/herdr-0.8.0.md` section 6), so a misspelled key does not fail - it acts on whatever the daemon happened to have focused. `pane.split` is the sharp one: it takes `target_pane_id` where every other pane verb takes `pane_id`, and sending the wrong one splits an arbitrary pane. Against a real daemon holding one workspace and one pane, that is indistinguishable from correct, which is why these are pinned by name here rather than left to the daemon-backed tests. The second half is the direction pair: Muster names a split for the arrangement it produces and herdr for where the new pane goes, and `layout.rs` reads that same pair back in reverse - so getting it wrong here makes a column that reads back as a row.",
+  "cases": [
+    {
+      "name": "a split names the pane to split, in the key only pane.split uses",
+      "why": "The silent one. `pane_id` here is dropped without complaint and herdr splits whichever pane it has focused, which in a window with one pane looks exactly right. Also the absent half of the envelope: no ratio and no directory are asked for, because sending nulls would be Muster stating a preference it does not have. herdr's own default ratio is what a keybinding wants, and its default directory is the one the split came from - which is what somebody splitting a pane mid-task means.",
+      "given": { "intent": "split", "pane": "p1", "axis": "columns" },
+      "expect": {
+        "method": "pane.split",
+        "params": { "target_pane_id": "p1", "direction": "right", "focus": true }
+      }
+    },
+    {
+      "name": "a row is a split downwards",
+      "why": "Muster names a split for the arrangement it makes and herdr for where the pane went. layout.rs reads the same pair backwards, so a wrong mapping here produces a tree that disagrees with itself.",
+      "given": { "intent": "split", "pane": "p1", "axis": "rows" },
+      "expect": {
+        "method": "pane.split",
+        "params": { "target_pane_id": "p1", "direction": "down", "focus": true }
+      }
+    },
+    {
+      "name": "a dragged-out split states both",
+      "why": "The other half of the same rule: a drag has an opinion about the ratio, and a pane opened for a directory has one about where it starts.",
+      "given": {
+        "intent": "split",
+        "pane": "p1",
+        "axis": "columns",
+        "ratio": 0.25,
+        "cwd": "/src/muster"
+      },
+      "expect": {
+        "method": "pane.split",
+        "params": {
+          "target_pane_id": "p1",
+          "direction": "right",
+          "focus": true,
+          "ratio": 0.25,
+          "cwd": "/src/muster"
+        }
+      }
+    },
+    {
+      "name": "a tab names the workspace it goes in, because nothing else can",
+      "why": "tab.create takes a workspace and nothing else - there is no pane_id it would accept - so the workspace is resolved from the mirror before the intent is built. A hopeful pane_id would be ignored and the tab would land wherever that daemon was focused.",
+      "given": { "intent": "tab", "workspace": "w1", "cwd": "/src/muster" },
+      "expect": {
+        "method": "tab.create",
+        "params": { "workspace_id": "w1", "focus": true, "cwd": "/src/muster" }
+      }
+    },
+    {
+      "name": "a tab with nowhere named falls back to the daemon's own rule",
+      "why": "Reachable when the pane the keyboard is on has no directory yet. A home directory is a worse answer than the one somebody wanted, and a better one than refusing to make the tab.",
+      "given": { "intent": "tab", "workspace": "w1" },
+      "expect": {
+        "method": "tab.create",
+        "params": { "workspace_id": "w1", "focus": true }
+      }
+    },
+    {
+      "name": "a workspace names nothing, and lets herdr label it",
+      "why": "The intent asked for when there is nothing: a daemon Muster just started holds no panes. A label invented here would be a second naming scheme for something herdr already names, and the null is explicit because the key exists and Muster is declining it.",
+      "given": { "intent": "workspace" },
+      "expect": {
+        "method": "workspace.create",
+        "params": { "focus": true, "label": null }
+      }
+    },
+    {
+      "name": "closing and focusing a pane use the ordinary key",
+      "why": "The counterweight to the split case: `pane_id` is right everywhere except pane.split, so a reader who learns target_pane_id from that one case would spread it.",
+      "given": { "intent": "close", "pane": "p1" },
+      "expect": { "method": "pane.close", "params": { "pane_id": "p1" } }
+    },
+    {
+      "name": "focus names the pane the daemon should call looked-at",
+      "why": "Written rather than read: Muster routes input by its own cursor and tells the daemon so that whatever it computes from focus has been told (architecture.md, cursors are written, not read).",
+      "given": { "intent": "focus", "pane": "p1" },
+      "expect": { "method": "pane.focus", "params": { "pane_id": "p1" } }
+    },
+    {
+      "name": "a dragged divider is addressed by the turns down to it",
+      "why": "Dividers have no ids - a divider is a position in a shape that changes under it - so the path is how herdr names one. First is false and second is true, which is the same spelling layout.rs reads trees back with.",
+      "given": {
+        "intent": "ratio",
+        "tab": "t1",
+        "path": ["second", "first"],
+        "ratio": 0.75
+      },
+      "expect": {
+        "method": "layout.set_split_ratio",
+        "params": { "tab_id": "t1", "path": [true, false], "ratio": 0.75 }
+      }
+    },
+    {
+      "name": "the root divider is an empty path, not a missing one",
+      "why": "Dragging the only divider in a tab takes no turns to reach. An omitted path is a different request - herdr requires one - so this pins that zero turns is spelled as an empty array.",
+      "given": { "intent": "ratio", "tab": "t1", "path": [], "ratio": 0.5 },
+      "expect": {
+        "method": "layout.set_split_ratio",
+        "params": { "tab_id": "t1", "path": [], "ratio": 0.5 }
+      }
+    }
+  ]
+}

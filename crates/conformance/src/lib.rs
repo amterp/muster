@@ -306,11 +306,20 @@ fn malformed(file: &str, detail: &str) -> ! {
 /// By what it is looking for rather than by a marker file: the answer is the same from
 /// either language's tree, and it stays right if the build system underneath changes.
 fn corpus_dir() -> PathBuf {
+    repo_root().join("corpus/conformance")
+}
+
+/// The checkout this test is running inside.
+///
+/// Found by walking up from the crate rather than from the working directory, which cargo
+/// sets per-crate. Public because some drivers need the rest of the corpus: the cases that
+/// pin what Muster sends a daemon are only worth as much as the recorded schema they are
+/// checked against, and that lives beside `conformance/` rather than in it.
+pub fn repo_root() -> PathBuf {
     let mut directory: &Path = Path::new(env!("CARGO_MANIFEST_DIR"));
     loop {
-        let candidate = directory.join("corpus/conformance");
-        if candidate.is_dir() {
-            return candidate;
+        if directory.join("corpus/conformance").is_dir() {
+            return directory.to_path_buf();
         }
         directory = directory.parent().unwrap_or_else(|| {
             panic!(

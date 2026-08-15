@@ -27,7 +27,14 @@ impl BackendChannel for HerdrClient {
     }
 }
 
-fn request(intent: &BackendIntent) -> (&'static str, Value) {
+/// One intent as the method and parameters herdr wants for it.
+///
+/// Public so the corpus can pin it. herdr ignores a parameter it does not recognise, so a
+/// misspelled key is not a refusal - it is a request that acts on whatever the daemon had
+/// focused, which against a one-pane daemon is indistinguishable from the right answer. That
+/// is not something a test with a real daemon in it can catch, so the keys are checked here
+/// by name (`corpus/conformance/backend-intent.json`).
+pub fn request(intent: &BackendIntent) -> (&'static str, Value) {
     match intent {
         BackendIntent::SplitPane { pane, axis, ratio, cwd } => {
             let mut params = json!({
