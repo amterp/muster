@@ -1,0 +1,22 @@
+{
+  "_v": 3,
+  "alias": "muster-carries-the",
+  "alias_explicit": false,
+  "area": [
+    "backend",
+    "shell"
+  ],
+  "column": "next",
+  "created_at_millis": 1786793630949,
+  "creator": "Alexander Terp",
+  "description": "A user of Muster should not have to learn what herdr is, and today the first thing they learn is that they need one running. `muster` with no daemon is a window that renders nothing, and the advice it gives is to go install and start another program.\n\nThree decisions, and the third is the one that makes the other two mean something.\n\n**Carrying one.** `deps/herdr.pin` already names a version and a per-platform checksum, and `./dev` reproduces that binary into `deps/herdr/\u003cversion\u003e/` for the suite. The app bundle carries the same one, and the app finds it beside its own executable - the rule `PaneCommand.bridge` already uses for muster-bridge. Deliberately not PATH, for the reason the suite does not read PATH: the daemon Muster starts should be the one its corpus was recorded against, and the herdr somebody runs for their own work stays whatever version they want. `MUSTER_HERDR` overrides, as it already does for the suite.\n\n**Starting one.** In `reach()`, on the local branch, after the connect fails rather than before: we know where the socket would be, nothing answered, so start one there. Start only, never stop - sessions outliving the app is a desideratum, so the daemon goes into its own process group and quitting Muster costs it nothing.\n\n**On a socket Muster owns**, rather than herdr's default. This is what turns \"we ship a version\" into a guarantee instead of a hope: a daemon on the default socket is whatever the user last started, and a Muster attached to a herdr its corpus was never recorded against is a window whose every behaviour is unverified. Muster's own path means a foreign daemon is never met, so there is no compatibility question to answer and no version check to write.\n\nThe cost is the escape hatch: `herdr pane list` in a terminal will not see Muster's panes unless it is pointed at that socket. Two things pay it back - the reason to drop to the CLI shrinks as Muster grows tabs and panes of its own, and Muster can say what to export. Worth a card of its own once this lands.\n\nRemote daemons are out of scope here and get their own card: an ssh endpoint needs a binary for a platform this bundle does not carry. Until that lands, a remote endpoint keeps attaching to whatever herdr is installed on that machine - an asymmetry worth writing down rather than discovering.\n\nOne consequence to know before picking this up: bundling an Apache-2.0 binary is redistribution, which is what a_26JhGKdt3 was waiting for.",
+  "id": "a_28QXsEcYU",
+  "position": "E",
+  "title": "🧬 Muster carries the daemon, and starts one when none answers",
+  "type": "chore",
+  "updated_at_millis": 1786794488908,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1786793630949},
+    {"field":"column","value":"next","at":1786794488908}
+  ]
+}

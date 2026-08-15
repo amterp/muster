@@ -75,6 +75,10 @@ how you run your agents.
 merge gate's green cannot drift apart. Flags narrow it and cluster: `./dev -t` tests, `./dev -tl` tests and lints,
 `./dev -h` lists them all.
 
+`./dev --bundle` assembles `.build/muster.app` around the built binary - a thing you can double-click, keep in the
+Dock, or hand to somebody, with the pinned herdr and both dylibs inside it. Out of the gate because nothing in the
+gate needs one, and it is also the only way to meet the descriptor ceiling launchd imposes on a GUI-launched process.
+
 `./dev --contract` is the exception that stays out of the gate. It launches the real app against a real herdr and
 reads its run log to see what connected, so it needs a daemon on PATH and a logged-in GUI session - neither of which
 the default suite is allowed to require.
@@ -100,11 +104,14 @@ libclang, which the libghostty-vt bindings are generated with, comes from the Xc
 running under Rad by the time it could look. CI installs exactly that build; your own `rad` is free to be any
 version, and one too old to parse `./dev` says which line it could not read.
 
-herdr is a test dependency as well as a runtime one, because tests that need a daemon spawn a real one rather than
-a stand-in. It is deliberately **not** taken from your PATH: `deps/herdr.pin` names a release and a checksum per
-platform, and `./dev -t` downloads that binary into `deps/herdr/<version>/` once, verifies it, and hands the path
-down to the tests. So the herdr you run for your own work stays whatever version you want, and a suite that passed
-did so against the daemon the corpus was recorded with. `MUSTER_HERDR=/path/to/herdr` overrides it for anyone
+herdr is not something you install. Muster ships one: `deps/herdr.pin` names a release and a checksum per platform,
+`./dev` downloads that binary into `deps/herdr/<version>/` once and verifies it, and every place that needs a daemon
+gets that one - the tests spawn it, a build stages it beside the app, and `./dev --bundle` puts it inside
+`muster.app`, where the app starts it on a socket of its own. Deliberately **not** your PATH, and deliberately not
+the socket your own herdr uses: a Muster talking to a daemon its corpus was never recorded against is a window whose
+every behaviour is unverified. So the herdr you run for your own work stays whatever version you want, a suite that
+passed did so against the daemon the corpus was recorded with, and the app never meets either.
+`MUSTER_HERDR=/path/to/herdr` overrides it for anyone
 bisecting herdr itself, and the run says so when it does. A daemon whose wire schema differs from
 `corpus/herdr-<version>/api-schema.json` fails the run with the command that shows what moved, rather than
 surfacing later as a confusing test failure. The download is the one step that touches the network; everything

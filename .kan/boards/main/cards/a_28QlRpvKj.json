@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "put-our-own-daemon",
+  "alias_explicit": false,
+  "area": [
+    "backend",
+    "devenv"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1786794152740,
+  "creator": "Alexander Terp",
+  "description": "Once Muster carries its own herdr and runs it on a socket it owns (a_28QXsEcYU), a devenv is the one place that guarantee does not reach. An ssh endpoint attaches to whatever herdr somebody installed on that machine, at whatever version, and the bundle cannot help because it carries one platform's binary and the remote is usually another.\n\nThat asymmetry is worth closing rather than living with. It is also the difference between \"set up a devenv\" being a page of instructions and being a host in a config file.\n\nmutagen is the working prior art: on connect it probes the remote, looks for an agent of the matching version at a path it owns, and puts one there when it is absent. The same shape fits here - `uname -sm` over the ssh master Muster already opens, a version-named path like `~/.muster/herdr/\u003cversion\u003e/herdr`, and an install step only on the first connection to a given machine.\n\nWhere the remote binary comes from is the real question and is worth measuring before choosing. `deps/herdr.pin` already carries a checksum per platform, so either end can verify what it got. Copying it over the ssh master costs about 18 MB once per machine and needs nothing of the remote; having the remote fetch it costs nothing locally and assumes the remote can reach GitHub, which a devenv container may not. Whichever, the pin is what decides the version, and a checksum that does not match is a refusal rather than a warning.\n\nThe devenv container is the test bed and `./dev --ssh` is where this gets proven: a container with no herdr installed at all should end up with a working remote pane.",
+  "id": "a_28QlRpvKj",
+  "position": "!k",
+  "title": "🛰️ Put our own daemon on the devenv, without anybody installing one",
+  "type": "feature",
+  "updated_at_millis": 1786794152740,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1786794152740}
+  ]
+}

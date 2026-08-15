@@ -5,17 +5,18 @@
   "area": [
     "shell"
   ],
-  "column": "next",
+  "column": "done",
   "created_at_millis": 1786790492133,
   "creator": "Alexander Terp",
   "description": "Muster runs as a bare binary out of `.build/arm64-apple-macosx/debug/`. There is no Dock icon, nothing to keep in the Dock, no double-click, no `open -a muster`, and no way to hand somebody a thing they can run. Every launch is a shell invocation from the repo.\n\nIt is also where the descriptor ceiling from a_28MLhxLsn actually bites. launchd hands a GUI-launched process a soft `RLIMIT_NOFILE` of 256 and a developer's shell reports millions, so the limit that matters only appears once there is a bundle to launch. The two want doing together.\n\nSwiftPM has no bundle product, so `./dev` would grow a step that assembles `Contents/MacOS` and an `Info.plist` around the built binary. `app.setActivationPolicy(.regular)` is already set in Sources/muster/main.swift, so the app already behaves like a regular one once it is launched as one.\n\nOpen: whether the gate builds a bundle every time or only a release path does - the gate is meant to stay fast and nothing in it needs one.\n\nSigning and notarization are a separate question and belong with going public rather than here. This is about being able to launch it like an app on the machine that built it.",
   "id": "a_28PEDcNg9",
-  "position": "UUUUUUUUUUU",
+  "position": "!!!!6",
   "title": "📦 Ship as an app bundle, not a binary in .build",
   "type": "feature",
-  "updated_at_millis": 1786790570807,
+  "updated_at_millis": 1786794488823,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786790492133},
-    {"field":"column","value":"next","at":1786790570807}
+    {"field":"column","value":"next","at":1786790570807},
+    {"field":"column","value":"done","at":1786794488823}
   ]
 }
