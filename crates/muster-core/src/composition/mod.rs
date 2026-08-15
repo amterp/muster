@@ -36,6 +36,6 @@ pub mod saved;
 pub mod view;
 
 pub use presentation::Presentation;
-pub use record::{Composition, Daemon, DaemonId, Endpoint, PaneKey, Region, RegionId};
+pub use record::{Composition, Daemon, DaemonId, Endpoint, PaneKey, Region, RegionId, TabKey};
 pub use saved::{Restorable, Saved, SavedRegion};
 pub use view::{Step, Transport, View, ViewNode, ViewPane, ViewRegion};

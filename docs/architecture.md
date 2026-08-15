@@ -280,8 +280,23 @@ it. Order and label are decisions and live in the core, so the sidebar, the CLI 
 Structure only, like the view: what an agent is doing keeps its own per-pane message, because a roster is stable and
 a state blinks.
 
-**Moving the keyboard comes in two kinds.** Next and previous walk reading order across every region and wrap, so
-between them they reach every pane - that is the guarantee. The four directions are geometric: the core lays the whole
+**The roster is a tree, because a tab is what a person navigates between.** Daemon, then tab, then pane: a flat list
+of panes cannot say which of them sit side by side, and a region shows one tab, so "where has that agent got to" is a
+question about tabs. Each tab carries a place in one numbering that runs across every attached daemon, and that one
+number is what the list shows, what a numbered chord names, and what stepping walks - three ways to reach a tab that
+cannot disagree, because there is one order. A tab also says whether a region is showing it, which is not the same
+question as its panes being on screen: a zoomed tab is on screen while all but one of its panes are not. Naming is
+the core's, on the same terms as the ordering, and it drops what a backend's own label repeats - herdr names an
+unnamed tab after its position, and Muster already has a better position.
+
+**Moving the keyboard comes in two axes, and the second is what makes the first a guarantee at all.** Panes and
+tabs are different questions: the pane moves reach everything the window is *showing*, and the tab moves reach what
+is behind it. Without the second, a pane in a tab no region has is reachable only by clicking its row - and the list
+can be put away, which would leave those panes with no door. Tab moves have no geometry, because tabs are a list and
+nothing is to the left of a tab; both directions wrap, and a number goes straight to a place.
+
+**Within the panes on screen, moving comes in two kinds.** Next and previous walk reading order across every region
+and wrap, so between them they reach every pane - that is the guarantee. The four directions are geometric: the core lays the whole
 window out from the ratios it already publishes plus the region weights, and picks the pane actually in that
 direction, requiring it to overlap the source across the direction of travel. They do not wrap, because reachability
 is already covered and predictability is worth more. Asking the daemon was rejected: `BackendChannel::submit` is

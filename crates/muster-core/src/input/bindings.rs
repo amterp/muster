@@ -25,6 +25,15 @@ use super::{Key, Modifiers};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Action {
     NewTab,
+    NextTab,
+    PreviousTab,
+    /// Shows the tab at this place in the window's tab order, counting from one.
+    ///
+    /// One variant carrying a number rather than nine spelled out, because they differ only
+    /// by the digit and a list of nine near-identical arms is a list nobody keeps in step.
+    /// Only 1 to 9 are ever built - [`Action::ALL`] is the whole vocabulary - so the places
+    /// beyond that have no name, no chord and no menu item.
+    FocusTab(u8),
     SplitRight,
     SplitDown,
     ClosePane,
@@ -49,8 +58,19 @@ impl Action {
     /// Deliberately not alphabetical: a menu is read top to bottom, and the order here is what
     /// somebody scanning it expects - making something, then arranging it, then moving around
     /// it. A shell that sorted these would produce a menu nobody can find anything in.
-    pub const ALL: [Action; 17] = [
+    pub const ALL: [Action; 28] = [
         Action::NewTab,
+        Action::NextTab,
+        Action::PreviousTab,
+        Action::FocusTab(1),
+        Action::FocusTab(2),
+        Action::FocusTab(3),
+        Action::FocusTab(4),
+        Action::FocusTab(5),
+        Action::FocusTab(6),
+        Action::FocusTab(7),
+        Action::FocusTab(8),
+        Action::FocusTab(9),
         Action::SplitRight,
         Action::SplitDown,
         Action::ClosePane,
@@ -73,6 +93,15 @@ impl Action {
     pub fn as_str(self) -> &'static str {
         match self {
             Action::NewTab => "new_tab",
+            Action::NextTab => "next_tab",
+            Action::PreviousTab => "previous_tab",
+            // A table rather than a format, because the answer is a `&'static str` and a name
+            // built at a call site cannot be one. A place outside it comes back unnameable
+            // rather than borrowing another place's name, so `parse` refuses it and nothing
+            // silently binds ⌘4 to the wrong tab.
+            Action::FocusTab(place) => {
+                TAB_PLACES.get(usize::from(place).wrapping_sub(1)).copied().unwrap_or("focus_tab")
+            }
             Action::SplitRight => "split_right",
             Action::SplitDown => "split_down",
             Action::ClosePane => "close_pane",
@@ -109,6 +138,18 @@ impl Action {
         let resizing = Modifiers(Modifiers::SUPER.0 | Modifiers::CONTROL.0 | Modifiers::SHIFT.0);
         match self {
             Action::NewTab => Chord::new(Key::KeyT, command),
+            // Ghostty's, and one finger away from next and previous pane - which is what they
+            // are: the same walk, one level up. Muster's list crosses daemons where Ghostty's
+            // cannot, but the gesture is the one somebody already has.
+            Action::NextTab => Chord::new(Key::BracketRight, shifted),
+            Action::PreviousTab => Chord::new(Key::BracketLeft, shifted),
+            // ⌘1 to ⌘9, as every tabbed thing on this platform has them. The number is the
+            // place in the window's tab order, so it counts across daemons the way the
+            // sidebar does rather than restarting at each machine.
+            Action::FocusTab(place) => Chord::new(
+                TAB_DIGITS.get(usize::from(place).wrapping_sub(1)).copied().unwrap_or(Key::Digit1),
+                command,
+            ),
             Action::SplitRight => Chord::new(Key::KeyD, command),
             Action::SplitDown => Chord::new(Key::KeyD, shifted),
             Action::ClosePane => Chord::new(Key::KeyW, command),
@@ -134,6 +175,32 @@ impl Action {
         }
     }
 }
+
+/// What each numbered tab action is called, in place order.
+const TAB_PLACES: [&str; 9] = [
+    "focus_tab_1",
+    "focus_tab_2",
+    "focus_tab_3",
+    "focus_tab_4",
+    "focus_tab_5",
+    "focus_tab_6",
+    "focus_tab_7",
+    "focus_tab_8",
+    "focus_tab_9",
+];
+
+/// The digit key a numbered tab action sits on, in place order.
+const TAB_DIGITS: [Key; 9] = [
+    Key::Digit1,
+    Key::Digit2,
+    Key::Digit3,
+    Key::Digit4,
+    Key::Digit5,
+    Key::Digit6,
+    Key::Digit7,
+    Key::Digit8,
+    Key::Digit9,
+];
 
 /// A key under some modifiers, as a config file spells one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

@@ -274,6 +274,31 @@ public enum Core {
     send(request)
   }
 
+  /// Steps the keyboard one tab along: `next` or `previous`.
+  ///
+  /// The other axis to stepping panes. That one walks what the window is showing; this walks
+  /// every tab every attached daemon holds, which is the only keyboard path to a tab no region
+  /// has on screen.
+  public static func focus(tabStep: String) {
+    var relative = Muster_FocusTabRelative()
+    relative.direction = tabStep
+    var request = Muster_Request()
+    request.focusTabRelative = relative
+    send(request)
+  }
+
+  /// Shows the tab at a place in the window's tab order, counting from one.
+  ///
+  /// The place is the core's numbering, which is what the sidebar lists and what next-tab
+  /// walks - so ⌘3 and the third caption down are one tab.
+  public static func focus(tabPlace: Int) {
+    var at = Muster_FocusTabAt()
+    at.place = UInt32(max(0, tabPlace))
+    var request = Muster_Request()
+    request.focusTabAt = at
+    send(request)
+  }
+
   /// Reports whether this window has the OS's focus.
   ///
   /// The one thing about attention that only the shell can see. `done` is `idle` on a pane
@@ -407,6 +432,8 @@ public enum Core {
     case .resizePane: return "resize_pane"
     case .zoomPane: return "zoom_pane"
     case .toggleSidebar: return "toggle_sidebar"
+    case .focusTabRelative: return "focus_tab_relative"
+    case .focusTabAt: return "focus_tab_at"
     case nil: return "(none)"
     }
   }

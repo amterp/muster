@@ -498,8 +498,10 @@ fn listed(pane: &str) -> Option<bool> {
         .lock()
         .expect("a panicking reader poisoned the roster")
         .as_ref()?
-        .panes
+        .daemons
         .iter()
+        .flat_map(|daemon| daemon.tabs.iter())
+        .flat_map(|tab| tab.panes.iter())
         .find(|row| row.pane_id == pane)
         .map(|row| row.on_screen)
 }

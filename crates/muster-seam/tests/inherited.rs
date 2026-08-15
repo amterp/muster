@@ -90,7 +90,7 @@ fn a_window_opened_on_somebody_elses_session_can_reach_all_of_it() {
     // view cannot carry: the pane most likely to have finished unnoticed is the one no region
     // is showing, and here two of the four are in a tab nothing opened onto.
     let roster = latest_roster().expect("a window that published a view published a roster");
-    let listed: Vec<String> = roster.panes.iter().map(|pane| pane.pane_id.clone()).collect();
+    let listed: Vec<String> = roster_panes(&roster).map(|pane| pane.pane_id.clone()).collect();
     for pane in &held {
         assert!(
             listed.contains(pane),
@@ -115,9 +115,7 @@ fn a_window_opened_on_somebody_elses_session_can_reach_all_of_it() {
 
     // And reachable. Asking for a pane in the tab nothing is showing has to surface it, which
     // is what makes the roster a list of destinations rather than a report.
-    let (daemon_id, pane_id) = roster
-        .panes
-        .iter()
+    let (daemon_id, pane_id) = roster_panes(&roster)
         .find(|pane| !pane.on_screen)
         .map(|pane| (pane.daemon_id.clone(), pane.pane_id.clone()))
         .expect(
@@ -219,6 +217,11 @@ fn latest_view() -> Option<ViewChanged> {
 
 fn latest_roster() -> Option<RosterChanged> {
     ROSTER.lock().expect("a panicking test poisoned the roster").clone()
+}
+
+/// Every pane the roster lists, flattened out of the daemon-tab-pane nesting.
+fn roster_panes(roster: &RosterChanged) -> impl Iterator<Item = &muster::proto::RosterPane> {
+    roster.daemons.iter().flat_map(|daemon| daemon.tabs.iter()).flat_map(|tab| tab.panes.iter())
 }
 
 fn answer(payload: request::Payload) -> Response {

@@ -17,6 +17,7 @@ public enum MenuActions {
   /// where a menu bar puts it, and a menu bar is one platform's answer. So the grouping is
   /// here, and a shell without a menu bar ignores it.
   public enum Group: String, CaseIterable {
+    case tab = "Tab"
     case pane = "Pane"
     case view = "View"
     case help = "Help"
@@ -26,12 +27,42 @@ public enum MenuActions {
     public let title: String
     public let selector: Selector
     public let group: Group
+
+    /// Which of several near-identical items this is, for the actions that come numbered.
+    ///
+    /// Carried on the menu item so that going to the fourth tab is one method reading a number
+    /// rather than nine methods differing by a digit. Zero for everything else, which is
+    /// AppKit's own default and means nothing here.
+    public let tag: Int
+
+    public init(title: String, selector: Selector, group: Group, tag: Int = 0) {
+      self.title = title
+      self.selector = selector
+      self.group = group
+      self.tag = tag
+    }
   }
 
   /// Keyed by the core's own name for the action.
-  public static let byName: [String: Described] = [
+  public static let byName: [String: Described] = {
+    var table = fixed
+    // The numbered tab actions, built rather than written out: they differ only by the digit,
+    // and nine hand-written entries are nine chances for one of them to drift.
+    for place in 1...9 {
+      table["focus_tab_\(place)"] = Described(
+        title: "Tab \(place)", selector: #selector(MusterWindow.focusTabAtPlace(_:)),
+        group: .tab, tag: place)
+    }
+    return table
+  }()
+
+  private static let fixed: [String: Described] = [
     "new_tab": Described(
-      title: "New Tab", selector: #selector(MusterWindow.newTab(_:)), group: .pane),
+      title: "New Tab", selector: #selector(MusterWindow.newTab(_:)), group: .tab),
+    "next_tab": Described(
+      title: "Next Tab", selector: #selector(MusterWindow.focusNextTab(_:)), group: .tab),
+    "previous_tab": Described(
+      title: "Previous Tab", selector: #selector(MusterWindow.focusPreviousTab(_:)), group: .tab),
     "split_right": Described(
       title: "Split Right", selector: #selector(MusterWindow.splitRight(_:)), group: .pane),
     "split_down": Described(

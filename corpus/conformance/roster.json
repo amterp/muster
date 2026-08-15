@@ -2,7 +2,7 @@
   "concept": "roster.of",
   "source": "authored",
   "citation": "README.md desiderata, agent states are the point and attention routing; docs/architecture.md, ownership of truth and one action path",
-  "why": "The view says what is on screen. The roster says what exists, which is the other half of the founding desideratum - and the more important half for attention, because a pane no window is showing is the one most likely to have finished without anybody noticing.\n\nTwo decisions live here and both are why it is in the core rather than the sidebar. What order a person reads the panes in, and what a pane is called when `w1:p2` tells them nothing. A shell that sorted and named for itself would be a second place those answers live, and the CLI and the agent-facing API would each grow a third.\n\nThe rendering below is one line per pane, in list order, so a case that gets the order wrong reads as obviously wrong rather than as a set that happens to differ.",
+  "why": "The view says what is on screen. The roster says what exists, which is the other half of the founding desideratum - and the more important half for attention, because a pane no window is showing is the one most likely to have finished without anybody noticing.\n\nTwo decisions live here and both are why it is in the core rather than the sidebar. What order a person reads the panes in, and what a pane is called when `w1:p2` tells them nothing. A shell that sorted and named for itself would be a second place those answers live, and the CLI and the agent-facing API would each grow a third.\n\nThe list is a tree - daemon, then tab, then pane - because a flat list of panes cannot say which of them sit side by side in one tab, and a window shows one tab per region, so the tab is the thing a person navigates between. The numbering runs across the whole window rather than restarting at each machine, so that the third caption down the sidebar, ⌘3, and two presses of next-tab all mean one tab.\n\nThe rendering below is one line per tab and one line per pane, in list order, so a case that gets the order wrong reads as obviously wrong rather than as a set that happens to differ.",
   "cases": [
     {
       "name": "panes read in the order their tab lays them out",
@@ -10,11 +10,32 @@
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [{ "id": "w1", "label": "one" }],
-            "tabs": [{ "id": "w1:t1", "workspace": "w1", "label": "t1" }],
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
             "panes": [
-              { "id": "w1:p2", "tab": "w1:t1", "workspace": "w1", "cwd": "/src/beta" },
-              { "id": "w1:p1", "tab": "w1:t1", "workspace": "w1", "cwd": "/src/alpha" }
+              {
+                "id": "w1:p2",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/beta"
+              },
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/alpha"
+              }
             ],
             "layouts": [
               {
@@ -29,10 +50,24 @@
             ]
           }
         },
-        "daemons": [{ "id": "local", "world": "laptop" }],
-        "regions": [{ "daemon": "local", "workspace": "w1", "tab": "w1:t1" }]
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          }
+        ],
+        "regions": [
+          {
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          }
+        ]
       },
       "expect": {
+        "tabs": [
+          "local/w1:t1 place=1 label=\"t1\" on-screen"
+        ],
         "panes": [
           "local/w1:p2 tab=w1:t1 label=\"beta\" hidden",
           "local/w1:p1 tab=w1:t1 label=\"alpha\" hidden"
@@ -45,19 +80,54 @@
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [{ "id": "w1", "label": "one" }],
-            "tabs": [{ "id": "w1:t1", "workspace": "w1", "label": "t1" }],
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
             "panes": [
-              { "id": "w1:p1", "tab": "w1:t1", "workspace": "w1", "cwd": "/src/alpha" },
-              { "id": "w1:p2", "tab": "w1:t1", "workspace": "w1", "cwd": "/src/beta" }
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/alpha"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/beta"
+              }
             ],
             "layouts": []
           }
         },
-        "daemons": [{ "id": "local", "world": "laptop" }],
-        "regions": [{ "daemon": "local", "workspace": "w1", "tab": "w1:t1" }]
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          }
+        ],
+        "regions": [
+          {
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          }
+        ]
       },
       "expect": {
+        "tabs": [
+          "local/w1:t1 place=1 label=\"t1\" on-screen"
+        ],
         "panes": [
           "local/w1:p1 tab=w1:t1 label=\"alpha\" hidden",
           "local/w1:p2 tab=w1:t1 label=\"beta\" hidden"
@@ -70,19 +140,59 @@
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [{ "id": "w1", "label": "one" }],
-            "tabs": [{ "id": "w1:t1", "workspace": "w1", "label": "t1" }],
-            "panes": [
-              { "id": "w1:p1", "tab": "w1:t1", "workspace": "w1", "cwd": "/src/alpha" },
-              { "id": "w1:p2", "tab": "w1:t1", "workspace": "w1", "cwd": "/src/beta" }
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
             ],
-            "layouts": [{ "tab": "w1:t1", "root": "w1:p1" }]
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/alpha"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/beta"
+              }
+            ],
+            "layouts": [
+              {
+                "tab": "w1:t1",
+                "root": "w1:p1"
+              }
+            ]
           }
         },
-        "daemons": [{ "id": "local", "world": "laptop" }],
-        "regions": [{ "daemon": "local", "workspace": "w1", "tab": "w1:t1" }]
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          }
+        ],
+        "regions": [
+          {
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          }
+        ]
       },
       "expect": {
+        "tabs": [
+          "local/w1:t1 place=1 label=\"t1\" on-screen"
+        ],
         "panes": [
           "local/w1:p1 tab=w1:t1 label=\"alpha\" hidden",
           "local/w1:p2 tab=w1:t1 label=\"beta\" hidden"
@@ -95,8 +205,19 @@
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [{ "id": "w1", "label": "one" }],
-            "tabs": [{ "id": "w1:t1", "workspace": "w1", "label": "t1" }],
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
             "panes": [
               {
                 "id": "w1:p1",
@@ -109,10 +230,28 @@
             "layouts": []
           }
         },
-        "daemons": [{ "id": "local", "world": "laptop" }],
-        "regions": [{ "daemon": "local", "workspace": "w1", "tab": "w1:t1" }]
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          }
+        ],
+        "regions": [
+          {
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          }
+        ]
       },
-      "expect": { "panes": ["local/w1:p1 tab=w1:t1 label=\"muster · claude\" hidden"] }
+      "expect": {
+        "tabs": [
+          "local/w1:t1 place=1 label=\"t1\" on-screen"
+        ],
+        "panes": [
+          "local/w1:p1 tab=w1:t1 label=\"muster · claude\" hidden"
+        ]
+      }
     },
     {
       "name": "a pane running no agent is named by its directory alone",
@@ -120,18 +259,52 @@
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [{ "id": "w1", "label": "one" }],
-            "tabs": [{ "id": "w1:t1", "workspace": "w1", "label": "t1" }],
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
             "panes": [
-              { "id": "w1:p1", "tab": "w1:t1", "workspace": "w1", "cwd": "/Users/a/src/rad" }
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/Users/a/src/rad"
+              }
             ],
             "layouts": []
           }
         },
-        "daemons": [{ "id": "local", "world": "laptop" }],
-        "regions": [{ "daemon": "local", "workspace": "w1", "tab": "w1:t1" }]
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          }
+        ],
+        "regions": [
+          {
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          }
+        ]
       },
-      "expect": { "panes": ["local/w1:p1 tab=w1:t1 label=\"rad\" hidden"] }
+      "expect": {
+        "tabs": [
+          "local/w1:t1 place=1 label=\"t1\" on-screen"
+        ],
+        "panes": [
+          "local/w1:p1 tab=w1:t1 label=\"rad\" hidden"
+        ]
+      }
     },
     {
       "name": "a pane with no directory falls back to its id",
@@ -139,19 +312,54 @@
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [{ "id": "w1", "label": "one" }],
-            "tabs": [{ "id": "w1:t1", "workspace": "w1", "label": "t1" }],
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
             "panes": [
-              { "id": "w1:p1", "tab": "w1:t1", "workspace": "w1", "cwd": "" },
-              { "id": "w1:p2", "tab": "w1:t1", "workspace": "w1", "cwd": "/" }
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": ""
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/"
+              }
             ],
             "layouts": []
           }
         },
-        "daemons": [{ "id": "local", "world": "laptop" }],
-        "regions": [{ "daemon": "local", "workspace": "w1", "tab": "w1:t1" }]
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          }
+        ],
+        "regions": [
+          {
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          }
+        ]
       },
       "expect": {
+        "tabs": [
+          "local/w1:t1 place=1 label=\"t1\" on-screen"
+        ],
         "panes": [
           "local/w1:p1 tab=w1:t1 label=\"w1:p1\" hidden",
           "local/w1:p2 tab=w1:t1 label=\"w1:p2\" hidden"
@@ -164,16 +372,52 @@
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [{ "id": "w1", "label": "one" }],
-            "tabs": [{ "id": "w1:t1", "workspace": "w1", "label": "t1" }],
-            "panes": [{ "id": "w1:p1", "tab": "w1:t1", "workspace": "w1", "cwd": "/Users/a/src/" }],
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/Users/a/src/"
+              }
+            ],
             "layouts": []
           }
         },
-        "daemons": [{ "id": "local", "world": "laptop" }],
-        "regions": [{ "daemon": "local", "workspace": "w1", "tab": "w1:t1" }]
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          }
+        ],
+        "regions": [
+          {
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          }
+        ]
       },
-      "expect": { "panes": ["local/w1:p1 tab=w1:t1 label=\"src\" hidden"] }
+      "expect": {
+        "tabs": [
+          "local/w1:t1 place=1 label=\"t1\" on-screen"
+        ],
+        "panes": [
+          "local/w1:p1 tab=w1:t1 label=\"src\" hidden"
+        ]
+      }
     },
     {
       "name": "a pane a region is showing says so",
@@ -181,23 +425,63 @@
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [{ "id": "w1", "label": "one" }],
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
             "tabs": [
-              { "id": "w1:t1", "workspace": "w1", "label": "t1" },
-              { "id": "w1:t2", "workspace": "w1", "label": "t2" }
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              },
+              {
+                "id": "w1:t2",
+                "workspace": "w1",
+                "label": "t2"
+              }
             ],
             "panes": [
-              { "id": "w1:p1", "tab": "w1:t1", "workspace": "w1", "cwd": "/src/shown" },
-              { "id": "w1:p9", "tab": "w1:t2", "workspace": "w1", "cwd": "/src/elsewhere" }
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/shown"
+              },
+              {
+                "id": "w1:p9",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/elsewhere"
+              }
             ],
             "layouts": []
           }
         },
-        "daemons": [{ "id": "local", "world": "laptop" }],
-        "regions": [{ "daemon": "local", "workspace": "w1", "tab": "w1:t1" }],
-        "showing": ["local/w1:p1"]
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          }
+        ],
+        "regions": [
+          {
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          }
+        ],
+        "showing": [
+          "local/w1:p1"
+        ]
       },
       "expect": {
+        "tabs": [
+          "local/w1:t1 place=1 label=\"t1\" on-screen",
+          "local/w1:t2 place=2 label=\"t2\" hidden"
+        ],
         "panes": [
           "local/w1:p1 tab=w1:t1 label=\"shown\" on-screen",
           "local/w1:p9 tab=w1:t2 label=\"elsewhere\" hidden"
@@ -210,28 +494,82 @@
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [{ "id": "w1", "label": "one" }],
-            "tabs": [{ "id": "w1:t1", "workspace": "w1", "label": "t1" }],
-            "panes": [{ "id": "w1:p1", "tab": "w1:t1", "workspace": "w1", "cwd": "/src/here" }],
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/here"
+              }
+            ],
             "layouts": []
           },
           "box": {
-            "workspaces": [{ "id": "w1", "label": "one" }],
-            "tabs": [{ "id": "w1:t1", "workspace": "w1", "label": "t1" }],
-            "panes": [{ "id": "w1:p1", "tab": "w1:t1", "workspace": "w1", "cwd": "/src/there" }],
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/there"
+              }
+            ],
             "layouts": []
           }
         },
         "daemons": [
-          { "id": "local", "world": "laptop" },
-          { "id": "devenv", "world": "box" }
+          {
+            "id": "local",
+            "world": "laptop"
+          },
+          {
+            "id": "devenv",
+            "world": "box"
+          }
         ],
         "regions": [
-          { "daemon": "local", "workspace": "w1", "tab": "w1:t1" },
-          { "daemon": "devenv", "workspace": "w1", "tab": "w1:t1" }
+          {
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "daemon": "devenv",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          }
         ]
       },
       "expect": {
+        "tabs": [
+          "local/w1:t1 place=1 label=\"t1\" on-screen",
+          "devenv/w1:t1 place=2 label=\"t1\" on-screen"
+        ],
         "panes": [
           "local/w1:p1 tab=w1:t1 label=\"here\" hidden",
           "devenv/w1:p1 tab=w1:t1 label=\"there\" hidden"
@@ -244,25 +582,77 @@
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [{ "id": "w1", "label": "one" }],
-            "tabs": [{ "id": "w1:t1", "workspace": "w1", "label": "t1" }],
-            "panes": [{ "id": "w1:p1", "tab": "w1:t1", "workspace": "w1", "cwd": "/src/shown" }],
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/shown"
+              }
+            ],
             "layouts": []
           },
           "box": {
-            "workspaces": [{ "id": "w1", "label": "one" }],
-            "tabs": [{ "id": "w1:t1", "workspace": "w1", "label": "t1" }],
-            "panes": [{ "id": "w1:p1", "tab": "w1:t1", "workspace": "w1", "cwd": "/src/offscreen" }],
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/offscreen"
+              }
+            ],
             "layouts": []
           }
         },
         "daemons": [
-          { "id": "devenv", "world": "box" },
-          { "id": "local", "world": "laptop" }
+          {
+            "id": "devenv",
+            "world": "box"
+          },
+          {
+            "id": "local",
+            "world": "laptop"
+          }
         ],
-        "regions": [{ "daemon": "local", "workspace": "w1", "tab": "w1:t1" }]
+        "regions": [
+          {
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          }
+        ]
       },
       "expect": {
+        "tabs": [
+          "local/w1:t1 place=1 label=\"t1\" on-screen",
+          "devenv/w1:t1 place=2 label=\"t1\" hidden"
+        ],
         "panes": [
           "local/w1:p1 tab=w1:t1 label=\"shown\" hidden",
           "devenv/w1:p1 tab=w1:t1 label=\"offscreen\" hidden"
@@ -275,16 +665,55 @@
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [{ "id": "w1", "label": "one" }],
-            "tabs": [{ "id": "w1:t1", "workspace": "w1", "label": "t1" }],
-            "panes": [{ "id": "w1:p1", "tab": "w1:t1", "workspace": "w1", "cwd": "/src/here" }],
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/here"
+              }
+            ],
             "layouts": []
           }
         },
-        "daemons": [{ "id": "local", "world": "laptop" }, { "id": "devenv" }],
-        "regions": [{ "daemon": "local", "workspace": "w1", "tab": "w1:t1" }]
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          },
+          {
+            "id": "devenv"
+          }
+        ],
+        "regions": [
+          {
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          }
+        ]
       },
-      "expect": { "panes": ["local/w1:p1 tab=w1:t1 label=\"here\" hidden"] }
+      "expect": {
+        "tabs": [
+          "local/w1:t1 place=1 label=\"t1\" on-screen"
+        ],
+        "panes": [
+          "local/w1:p1 tab=w1:t1 label=\"here\" hidden"
+        ]
+      }
     },
     {
       "name": "two daemons that hand out the same pane id are two rows",
@@ -292,32 +721,1214 @@
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [{ "id": "w1", "label": "one" }],
-            "tabs": [{ "id": "w1:t1", "workspace": "w1", "label": "t1" }],
-            "panes": [{ "id": "w1:p1", "tab": "w1:t1", "workspace": "w1", "cwd": "/src/laptop" }],
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/laptop"
+              }
+            ],
             "layouts": []
           },
           "box": {
-            "workspaces": [{ "id": "w1", "label": "one" }],
-            "tabs": [{ "id": "w1:t1", "workspace": "w1", "label": "t1" }],
-            "panes": [{ "id": "w1:p1", "tab": "w1:t1", "workspace": "w1", "cwd": "/src/devenv" }],
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/devenv"
+              }
+            ],
             "layouts": []
           }
         },
         "daemons": [
-          { "id": "local", "world": "laptop" },
-          { "id": "devenv", "world": "box" }
+          {
+            "id": "local",
+            "world": "laptop"
+          },
+          {
+            "id": "devenv",
+            "world": "box"
+          }
         ],
         "regions": [
-          { "daemon": "local", "workspace": "w1", "tab": "w1:t1" },
-          { "daemon": "devenv", "workspace": "w1", "tab": "w1:t1" }
+          {
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "daemon": "devenv",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          }
         ],
-        "showing": ["devenv/w1:p1"]
+        "showing": [
+          "devenv/w1:p1"
+        ]
       },
       "expect": {
+        "tabs": [
+          "local/w1:t1 place=1 label=\"t1\" on-screen",
+          "devenv/w1:t1 place=2 label=\"t1\" on-screen"
+        ],
         "panes": [
           "local/w1:p1 tab=w1:t1 label=\"laptop\" hidden",
           "devenv/w1:p1 tab=w1:t1 label=\"devenv\" on-screen"
+        ]
+      }
+    },
+    {
+      "name": "tabs are numbered across the window, not within each daemon",
+      "why": "The number is the place in the list a person is looking at, and that list spans machines - a window showing a laptop beside a devenv is the arrangement this project exists for. Restarting at each daemon would give two tabs the same number, so ⌘2 would have to guess which machine was meant, and the sidebar would be showing a numbering the keyboard does not use.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              },
+              {
+                "id": "w1:t2",
+                "workspace": "w1",
+                "label": "t2"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/first"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/second"
+              }
+            ],
+            "layouts": []
+          },
+          "box": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              },
+              {
+                "id": "w1:t2",
+                "workspace": "w1",
+                "label": "t2"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/third"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/fourth"
+              }
+            ],
+            "layouts": []
+          }
+        },
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          },
+          {
+            "id": "devenv",
+            "world": "box"
+          }
+        ],
+        "regions": [
+          {
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "daemon": "devenv",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          }
+        ]
+      },
+      "expect": {
+        "tabs": [
+          "local/w1:t1 place=1 label=\"t1\" on-screen",
+          "local/w1:t2 place=2 label=\"t2\" hidden",
+          "devenv/w1:t1 place=3 label=\"t1\" on-screen",
+          "devenv/w1:t2 place=4 label=\"t2\" hidden"
+        ],
+        "panes": [
+          "local/w1:p1 tab=w1:t1 label=\"first\" hidden",
+          "local/w1:p2 tab=w1:t2 label=\"second\" hidden",
+          "devenv/w1:p1 tab=w1:t1 label=\"third\" hidden",
+          "devenv/w1:p2 tab=w1:t2 label=\"fourth\" hidden"
+        ]
+      }
+    },
+    {
+      "name": "a tab is on screen when a region shows it, whatever its panes are doing",
+      "why": "Two different questions, and a zoomed tab is where they come apart: the region is showing the tab, and the tree inside it renders one pane while the rest are not on screen. A tab marked hidden because its panes were would tell somebody to go somewhere they are already looking.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/zoomed"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/behind"
+              }
+            ],
+            "layouts": []
+          }
+        },
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          }
+        ],
+        "regions": [
+          {
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          }
+        ],
+        "showing": [
+          "local/w1:p1"
+        ]
+      },
+      "expect": {
+        "tabs": [
+          "local/w1:t1 place=1 label=\"t1\" on-screen"
+        ],
+        "panes": [
+          "local/w1:p1 tab=w1:t1 label=\"zoomed\" on-screen",
+          "local/w1:p2 tab=w1:t1 label=\"behind\" hidden"
+        ]
+      }
+    },
+    {
+      "name": "a tab in a daemon holding several workspaces is named by the workspace",
+      "why": "herdr labels a workspace with its directory and labels a tab with its number inside that workspace, so `1` on its own tells two projects' first tabs apart not at all. The workspace is the useful half of a tab's name and goes in front of it - but only when there is more than one, because repeating one project's name down every row of the list says nothing and costs a word off every label.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "muster"
+              },
+              {
+                "id": "w2",
+                "label": "rad"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "1"
+              },
+              {
+                "id": "w2:t1",
+                "workspace": "w2",
+                "label": "1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/muster"
+              },
+              {
+                "id": "w2:p1",
+                "tab": "w2:t1",
+                "workspace": "w2",
+                "cwd": "/src/rad"
+              }
+            ],
+            "layouts": []
+          }
+        },
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          }
+        ],
+        "regions": [
+          {
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          }
+        ]
+      },
+      "expect": {
+        "tabs": [
+          "local/w1:t1 place=1 label=\"muster\" on-screen",
+          "local/w2:t1 place=2 label=\"rad\" hidden"
+        ],
+        "panes": [
+          "local/w1:p1 tab=w1:t1 label=\"muster\" hidden",
+          "local/w2:p1 tab=w2:t1 label=\"rad\" hidden"
+        ]
+      }
+    },
+    {
+      "name": "a tab herdr has not named is its number and nothing else",
+      "why": "herdr labels an unnamed tab with its position inside its workspace, so the second tab's label is literally `2` - and Muster already draws a better number beside every row, one that counts across the whole window and is what the numbered chords use. A caption reading `2 · 2` was what passing herdr's through actually produced. So a name that is only digits is dropped, and so is an absent one: the row is never empty, because the place is always there.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": ""
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "7"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/nameless"
+              }
+            ],
+            "layouts": []
+          }
+        },
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          }
+        ],
+        "regions": [
+          {
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          }
+        ]
+      },
+      "expect": {
+        "tabs": [
+          "local/w1:t1 place=1 label=\"\" on-screen"
+        ],
+        "panes": [
+          "local/w1:p1 tab=w1:t1 label=\"nameless\" hidden"
+        ]
+      }
+    },
+    {
+      "name": "stepping forward from the last tab of one daemon lands on the first of the next",
+      "why": "The order spans machines, so this is the step that says so. A walk that stopped at a daemon boundary would leave the other machine's tabs unreachable whenever no region was on it - which is exactly the case this exists for, since a window showing a laptop beside a devenv is the arrangement the project is built around.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              },
+              {
+                "id": "w1:t2",
+                "workspace": "w1",
+                "label": "t2"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/first"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/second"
+              }
+            ],
+            "layouts": []
+          },
+          "box": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              },
+              {
+                "id": "w1:t2",
+                "workspace": "w1",
+                "label": "t2"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/third"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/fourth"
+              }
+            ],
+            "layouts": []
+          }
+        },
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          },
+          {
+            "id": "devenv",
+            "world": "box"
+          }
+        ],
+        "regions": [
+          {
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "daemon": "devenv",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          }
+        ],
+        "step": {
+          "from": "local/w1:t2",
+          "direction": "next"
+        }
+      },
+      "expect": {
+        "stepped": "devenv/w1:t1",
+        "tabs": [
+          "local/w1:t1 place=1 label=\"t1\" on-screen",
+          "local/w1:t2 place=2 label=\"t2\" hidden",
+          "devenv/w1:t1 place=3 label=\"t1\" on-screen",
+          "devenv/w1:t2 place=4 label=\"t2\" hidden"
+        ],
+        "panes": [
+          "local/w1:p1 tab=w1:t1 label=\"first\" hidden",
+          "local/w1:p2 tab=w1:t2 label=\"second\" hidden",
+          "devenv/w1:p1 tab=w1:t1 label=\"third\" hidden",
+          "devenv/w1:p2 tab=w1:t2 label=\"fourth\" hidden"
+        ]
+      }
+    },
+    {
+      "name": "stepping forward off the end of the list comes back to the start",
+      "why": "Between them, next and previous have to reach every tab - that reachability is the whole reason these exist, since a pane in a tab no region shows can otherwise be reached only by mouse and the mouse's list can be put away. A step that silently did nothing at the end is indistinguishable from a dead key.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              },
+              {
+                "id": "w1:t2",
+                "workspace": "w1",
+                "label": "t2"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/first"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/second"
+              }
+            ],
+            "layouts": []
+          },
+          "box": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              },
+              {
+                "id": "w1:t2",
+                "workspace": "w1",
+                "label": "t2"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/third"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/fourth"
+              }
+            ],
+            "layouts": []
+          }
+        },
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          },
+          {
+            "id": "devenv",
+            "world": "box"
+          }
+        ],
+        "regions": [
+          {
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "daemon": "devenv",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          }
+        ],
+        "step": {
+          "from": "devenv/w1:t2",
+          "direction": "next"
+        }
+      },
+      "expect": {
+        "stepped": "local/w1:t1",
+        "tabs": [
+          "local/w1:t1 place=1 label=\"t1\" on-screen",
+          "local/w1:t2 place=2 label=\"t2\" hidden",
+          "devenv/w1:t1 place=3 label=\"t1\" on-screen",
+          "devenv/w1:t2 place=4 label=\"t2\" hidden"
+        ],
+        "panes": [
+          "local/w1:p1 tab=w1:t1 label=\"first\" hidden",
+          "local/w1:p2 tab=w1:t2 label=\"second\" hidden",
+          "devenv/w1:p1 tab=w1:t1 label=\"third\" hidden",
+          "devenv/w1:p2 tab=w1:t2 label=\"fourth\" hidden"
+        ]
+      }
+    },
+    {
+      "name": "stepping back off the start of the list comes round to the end",
+      "why": "The same guarantee read the other way. Wrapping in one direction and stopping in the other would make the pair asymmetric for no reason a person could predict.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              },
+              {
+                "id": "w1:t2",
+                "workspace": "w1",
+                "label": "t2"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/first"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/second"
+              }
+            ],
+            "layouts": []
+          },
+          "box": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              },
+              {
+                "id": "w1:t2",
+                "workspace": "w1",
+                "label": "t2"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/third"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/fourth"
+              }
+            ],
+            "layouts": []
+          }
+        },
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          },
+          {
+            "id": "devenv",
+            "world": "box"
+          }
+        ],
+        "regions": [
+          {
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "daemon": "devenv",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          }
+        ],
+        "step": {
+          "from": "local/w1:t1",
+          "direction": "previous"
+        }
+      },
+      "expect": {
+        "stepped": "devenv/w1:t2",
+        "tabs": [
+          "local/w1:t1 place=1 label=\"t1\" on-screen",
+          "local/w1:t2 place=2 label=\"t2\" hidden",
+          "devenv/w1:t1 place=3 label=\"t1\" on-screen",
+          "devenv/w1:t2 place=4 label=\"t2\" hidden"
+        ],
+        "panes": [
+          "local/w1:p1 tab=w1:t1 label=\"first\" hidden",
+          "local/w1:p2 tab=w1:t2 label=\"second\" hidden",
+          "devenv/w1:p1 tab=w1:t1 label=\"third\" hidden",
+          "devenv/w1:p2 tab=w1:t2 label=\"fourth\" hidden"
+        ]
+      }
+    },
+    {
+      "name": "stepping from a tab that is not in the list goes to the end it came from",
+      "why": "An ordinary moment rather than a bug: nothing is focused yet, or the tab closed from another client while the keystroke was in flight. Refusing would leave a chord that does nothing and says nothing, so a step from nowhere enters the list at the end it was travelling from.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              },
+              {
+                "id": "w1:t2",
+                "workspace": "w1",
+                "label": "t2"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/first"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/second"
+              }
+            ],
+            "layouts": []
+          },
+          "box": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              },
+              {
+                "id": "w1:t2",
+                "workspace": "w1",
+                "label": "t2"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/third"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/fourth"
+              }
+            ],
+            "layouts": []
+          }
+        },
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          },
+          {
+            "id": "devenv",
+            "world": "box"
+          }
+        ],
+        "regions": [
+          {
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "daemon": "devenv",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          }
+        ],
+        "step": {
+          "from": "local/w9:t9",
+          "direction": "next"
+        }
+      },
+      "expect": {
+        "stepped": "local/w1:t1",
+        "tabs": [
+          "local/w1:t1 place=1 label=\"t1\" on-screen",
+          "local/w1:t2 place=2 label=\"t2\" hidden",
+          "devenv/w1:t1 place=3 label=\"t1\" on-screen",
+          "devenv/w1:t2 place=4 label=\"t2\" hidden"
+        ],
+        "panes": [
+          "local/w1:p1 tab=w1:t1 label=\"first\" hidden",
+          "local/w1:p2 tab=w1:t2 label=\"second\" hidden",
+          "devenv/w1:p1 tab=w1:t1 label=\"third\" hidden",
+          "devenv/w1:p2 tab=w1:t2 label=\"fourth\" hidden"
+        ]
+      }
+    },
+    {
+      "name": "stepping back from nowhere enters the list at its end",
+      "why": "The mirror of entering at the start. Whichever end a step from nowhere lands on, it has to be the one that direction came from, or the first press of a chord goes the opposite way to every press after it.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              },
+              {
+                "id": "w1:t2",
+                "workspace": "w1",
+                "label": "t2"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/first"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/second"
+              }
+            ],
+            "layouts": []
+          },
+          "box": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              },
+              {
+                "id": "w1:t2",
+                "workspace": "w1",
+                "label": "t2"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/third"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/fourth"
+              }
+            ],
+            "layouts": []
+          }
+        },
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          },
+          {
+            "id": "devenv",
+            "world": "box"
+          }
+        ],
+        "regions": [
+          {
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "daemon": "devenv",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          }
+        ],
+        "step": {
+          "direction": "previous"
+        }
+      },
+      "expect": {
+        "stepped": "devenv/w1:t2",
+        "tabs": [
+          "local/w1:t1 place=1 label=\"t1\" on-screen",
+          "local/w1:t2 place=2 label=\"t2\" hidden",
+          "devenv/w1:t1 place=3 label=\"t1\" on-screen",
+          "devenv/w1:t2 place=4 label=\"t2\" hidden"
+        ],
+        "panes": [
+          "local/w1:p1 tab=w1:t1 label=\"first\" hidden",
+          "local/w1:p2 tab=w1:t2 label=\"second\" hidden",
+          "devenv/w1:p1 tab=w1:t1 label=\"third\" hidden",
+          "devenv/w1:p2 tab=w1:t2 label=\"fourth\" hidden"
+        ]
+      }
+    },
+    {
+      "name": "a number names the tab at that place, counting from one",
+      "why": "What ⌘3 means. Counting from one rather than zero because the sidebar counts that way and the keyboard has no zero next to the one - and the number a person reads off a row has to be the number that takes them there.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              },
+              {
+                "id": "w1:t2",
+                "workspace": "w1",
+                "label": "t2"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/first"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/second"
+              }
+            ],
+            "layouts": []
+          },
+          "box": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              },
+              {
+                "id": "w1:t2",
+                "workspace": "w1",
+                "label": "t2"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/third"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/fourth"
+              }
+            ],
+            "layouts": []
+          }
+        },
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          },
+          {
+            "id": "devenv",
+            "world": "box"
+          }
+        ],
+        "regions": [
+          {
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "daemon": "devenv",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          }
+        ],
+        "at": 3
+      },
+      "expect": {
+        "at": "devenv/w1:t1",
+        "tabs": [
+          "local/w1:t1 place=1 label=\"t1\" on-screen",
+          "local/w1:t2 place=2 label=\"t2\" hidden",
+          "devenv/w1:t1 place=3 label=\"t1\" on-screen",
+          "devenv/w1:t2 place=4 label=\"t2\" hidden"
+        ],
+        "panes": [
+          "local/w1:p1 tab=w1:t1 label=\"first\" hidden",
+          "local/w1:p2 tab=w1:t2 label=\"second\" hidden",
+          "devenv/w1:p1 tab=w1:t1 label=\"third\" hidden",
+          "devenv/w1:p2 tab=w1:t2 label=\"fourth\" hidden"
+        ]
+      }
+    },
+    {
+      "name": "a number past the last tab names nothing",
+      "why": "Doing nothing beats landing somewhere. Clamping to the last tab would make ⌘9 mean a different tab every time one opened or closed, which is a chord nobody can build a habit on - and the honest answer to 'go to the ninth tab' in a window of four is that there isn't one.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              },
+              {
+                "id": "w1:t2",
+                "workspace": "w1",
+                "label": "t2"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/first"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/second"
+              }
+            ],
+            "layouts": []
+          },
+          "box": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              },
+              {
+                "id": "w1:t2",
+                "workspace": "w1",
+                "label": "t2"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/third"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/fourth"
+              }
+            ],
+            "layouts": []
+          }
+        },
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          },
+          {
+            "id": "devenv",
+            "world": "box"
+          }
+        ],
+        "regions": [
+          {
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "daemon": "devenv",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          }
+        ],
+        "at": 9
+      },
+      "expect": {
+        "at": null,
+        "tabs": [
+          "local/w1:t1 place=1 label=\"t1\" on-screen",
+          "local/w1:t2 place=2 label=\"t2\" hidden",
+          "devenv/w1:t1 place=3 label=\"t1\" on-screen",
+          "devenv/w1:t2 place=4 label=\"t2\" hidden"
+        ],
+        "panes": [
+          "local/w1:p1 tab=w1:t1 label=\"first\" hidden",
+          "local/w1:p2 tab=w1:t2 label=\"second\" hidden",
+          "devenv/w1:p1 tab=w1:t1 label=\"third\" hidden",
+          "devenv/w1:p2 tab=w1:t2 label=\"fourth\" hidden"
         ]
       }
     }

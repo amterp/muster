@@ -39,6 +39,8 @@ message Request {
     ZoomPane zoom_pane = 20;
     ReadBindings read_bindings = 21;
     ToggleSidebar toggle_sidebar = 22;
+    FocusTabRelative focus_tab_relative = 23;
+    FocusTabAt focus_tab_at = 24;
   }
 }
 
@@ -250,6 +252,32 @@ message FocusRelative {
   // not wrap, because falling off one edge and reappearing at the other is disorienting in a
   // way stepping through an order is not, and reachability is already covered.
   string direction = 1;
+}
+
+// Shows the next or previous tab, and puts the keyboard in it.
+//
+// The other axis to FocusRelative. That one reaches every pane the window is *showing*; this
+// one reaches the tabs behind them, which no chord could otherwise get to - clicking a
+// sidebar row was the only door, and the sidebar can be put away.
+//
+// The order is the roster's, so it crosses daemons: a window showing a laptop beside a devenv
+// has one list of tabs, and this walks all of it. Both directions wrap, because between them
+// they have to reach every tab and that reachability is the point.
+message FocusTabRelative {
+  // `next` or `previous`. Nothing geometric, because tabs are a list and not an arrangement -
+  // there is no tab to the left of a tab.
+  string direction = 1;
+}
+
+// Shows the tab at a given place in the window's tab order, and puts the keyboard in it.
+//
+// What ⌘1 to ⌘9 mean. The place is the roster's numbering, counting from one across every
+// attached daemon, so it agrees with what the sidebar lists and with where next_tab goes.
+message FocusTabAt {
+  // Counting from one. A place past the last tab does nothing, rather than landing on the
+  // last one: ⌘9 meaning something different every time a tab opened would be worse than ⌘9
+  // meaning nothing until there are nine tabs.
+  uint32 place = 1;
 }
 
 // Moves one divider in a tab's tree.
@@ -520,26 +548,57 @@ message PresentationChanged {
 // Whole list every time, absolute and idempotent. It is a few dozen short rows for a window
 // nobody can fill past about fifteen panes, and a shell handed the whole answer keeps no
 // picture of its own to patch.
+// Daemon, then tab, then pane, because a flat list of panes cannot say which of them sit
+// side by side in one tab - and a window shows one tab per region, so the tab is what a
+// person navigates between. The nesting is decided here rather than rebuilt by each reader,
+// on the same terms as the order and the labels.
 message RosterChanged {
-  // In the order to show them: daemons in the order their regions sit in the window, then
-  // any daemon with no region; within a tab, the order its tree lays the panes out.
-  repeated RosterPane panes = 1;
+  // Daemons in the order their regions sit in the window, then any daemon with no region.
+  repeated RosterDaemon daemons = 1;
+}
+
+message RosterDaemon {
+  string daemon_id = 1;
+
+  // In the order the daemon holds them, which is also the order they are numbered in.
+  repeated RosterTab tabs = 2;
+}
+
+message RosterTab {
+  string daemon_id = 1;
+  string tab_id = 2;
+
+  // Where this tab sits in the window's whole tab order, counting from one. The handle a
+  // numbered chord names and the order next_tab walks, counted across every daemon rather
+  // than within one - a window showing a laptop beside a devenv has one list, and a person
+  // reading it counts down the whole thing.
+  uint32 place = 3;
+
+  // What to call this tab to somebody who did not open it: the workspace it belongs to when
+  // the daemon holds more than one, and the tab's own name otherwise.
+  string label = 4;
+
+  // Whether a region is showing this tab right now. Not the same question as any of its
+  // panes being on screen: a zoomed tab is on screen while all but one of its panes are not.
+  bool on_screen = 5;
+
+  // In the order this tab's tree lays them out.
+  repeated RosterPane panes = 6;
 }
 
 message RosterPane {
   string daemon_id = 1;
   string pane_id = 2;
-  string tab_id = 3;
 
   // What to call this pane to somebody who did not open it - its directory, and the harness
   // detected in it when there is one. Decided in the core, because a shell naming panes for
   // itself would be a second place that decision lives.
-  string label = 4;
+  string label = 3;
 
   // Whether a region is showing it right now. Resolved here rather than left to a shell
   // comparing this against the view: the two arrive separately, and a shell joining them
   // would render a pane as hidden for as long as they disagreed.
-  bool on_screen = 5;
+  bool on_screen = 4;
 }
 
 // Everything this window is showing, as one message.

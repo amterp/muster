@@ -126,6 +126,30 @@ impl std::fmt::Display for PaneKey {
     }
 }
 
+/// One tab, named the way anything spanning daemons has to name one.
+///
+/// The same pair as [`PaneKey`] and for the same reason: two daemons both hand out `w1:t1`,
+/// so a tab named by id alone lets one machine's tab answer for the other's. What a keystroke
+/// asking for the third tab in the window resolves to, and what a sidebar row carries.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct TabKey {
+    pub daemon: DaemonId,
+    pub tab: TabId,
+}
+
+impl TabKey {
+    pub fn new(daemon: &DaemonId, tab: &TabId) -> TabKey {
+        TabKey { daemon: daemon.clone(), tab: tab.clone() }
+    }
+}
+
+impl std::fmt::Display for TabKey {
+    /// `local/w1:t1`, on the same terms as [`PaneKey`].
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}/{}", self.daemon, self.tab)
+    }
+}
+
 /// The part of a window showing one tab's pane tree.
 ///
 /// `Eq` is absent because of the weight, on the same terms as [`crate::mirror::backend::LayoutNode`]:

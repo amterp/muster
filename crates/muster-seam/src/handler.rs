@@ -14,6 +14,7 @@ use muster_core::config;
 use muster_core::input::{CompositionOutcome, Modifiers, ScrollDirection, composition_outcome};
 use muster_core::intent::{BackendIntent, Branch, Side};
 use muster_core::mirror::backend::{PaneId, TabId};
+use muster_core::roster::TabStep;
 
 use crate::convert;
 use crate::proto::{self, Request, Response, request, response};
@@ -103,6 +104,8 @@ fn handle(request: Request) -> Response {
                 step.direction
             )),
         },
+        request::Payload::FocusTabRelative(step) => step_tab(&step.direction),
+        request::Payload::FocusTabAt(at) => focus_tab_at(at.place),
         request::Payload::SetSplitRatio(set) => match resolve_daemon(&set.daemon_id) {
             Ok(daemon) => submit(
                 &daemon,
@@ -272,6 +275,38 @@ fn resolve_daemon(daemon_id: &str) -> Result<DaemonId, Response> {
              one whose every region closed.",
         )
     })
+}
+
+/// Moves the keyboard one tab along the window's tab order.
+fn step_tab(direction: &str) -> Response {
+    match TabStep::parse(direction) {
+        Some(direction) => answer(session::step_tab(direction)),
+        None => Response::failure(format!(
+            "the core does not know a tab step called {direction:?}, so the keyboard stayed \
+             where it was. Only next and previous exist - tabs are a list rather than an \
+             arrangement, so nothing is to the left of a tab. The shell builds this from a \
+             fixed set, so this is a bug there."
+        )),
+    }
+}
+
+/// Shows the tab at a place in the window's tab order, counting from one.
+fn focus_tab_at(place: u32) -> Response {
+    let Ok(place) = usize::try_from(place) else {
+        return Response::failure(format!(
+            "a tab was asked for at place {place}, which does not fit this machine's index \
+             type. Nothing moved. Places come from the roster and no window holds that many \
+             tabs, so this is a bug in whatever built the request."
+        ));
+    };
+    if place == 0 {
+        return Response::failure(
+            "a tab was asked for at place zero, so the keyboard stayed where it was. Places \
+             count from one, the way the sidebar lists them and the way ⌘1 reads - so the \
+             shell building this has an off-by-one.",
+        );
+    }
+    answer(session::focus_tab_at(place))
 }
 
 /// Moves the line between two regions of the window.

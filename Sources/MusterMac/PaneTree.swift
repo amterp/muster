@@ -99,12 +99,22 @@ extension Roster {
   /// The seam's roster, in the shell's own words.
   init(_ changed: Muster_RosterChanged) {
     self.init(
-      panes: changed.panes.map { pane in
-        Roster.Pane(
-          key: PaneKey(daemon: pane.daemonID, pane: pane.paneID),
-          tab: pane.tabID,
-          label: pane.label,
-          onScreen: pane.onScreen)
+      daemons: changed.daemons.map { daemon in
+        Roster.Daemon(
+          id: daemon.daemonID,
+          tabs: daemon.tabs.map { tab in
+            Roster.Tab(
+              key: TabKey(daemon: tab.daemonID, tab: tab.tabID),
+              place: Int(tab.place),
+              label: tab.label,
+              onScreen: tab.onScreen,
+              panes: tab.panes.map { pane in
+                Roster.Pane(
+                  key: PaneKey(daemon: pane.daemonID, pane: pane.paneID),
+                  label: pane.label,
+                  onScreen: pane.onScreen)
+              })
+          })
       })
   }
 }
@@ -122,6 +132,17 @@ public struct PaneKey: Hashable {
   public init(daemon: String, pane: String) {
     self.daemon = daemon
     self.pane = pane
+  }
+}
+
+/// A tab, named on the same terms as a pane and for the same reason.
+public struct TabKey: Hashable {
+  public let daemon: String
+  public let tab: String
+
+  public init(daemon: String, tab: String) {
+    self.daemon = daemon
+    self.tab = tab
   }
 }
 

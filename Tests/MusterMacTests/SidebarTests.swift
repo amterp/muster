@@ -9,33 +9,49 @@ import Testing
 
 @Suite("the sidebar lists what exists")
 struct SidebarTests {
-  private func pane(
-    _ daemon: String, _ id: String, label: String? = nil, tab: String = "w1:t1",
-    onScreen: Bool = false
-  ) -> Roster.Pane {
-    Roster.Pane(
-      key: PaneKey(daemon: daemon, pane: id), tab: tab, label: label ?? id, onScreen: onScreen)
+  private func pane(_ daemon: String, _ id: String, label: String? = nil, onScreen: Bool = false)
+    -> Roster.Pane
+  {
+    Roster.Pane(key: PaneKey(daemon: daemon, pane: id), label: label ?? id, onScreen: onScreen)
+  }
+
+  /// One tab, numbered as the core would have numbered it.
+  ///
+  /// The place is stated rather than counted here, because the core decides it - a helper that
+  /// numbered for itself would make these tests agree with a rule the shell does not follow.
+  private func tab(
+    _ daemon: String, _ id: String = "w1:t1", place: Int = 1, label: String? = nil,
+    onScreen: Bool = false, panes: [Roster.Pane]
+  ) -> Roster.Tab {
+    Roster.Tab(
+      key: TabKey(daemon: daemon, tab: id), place: place, label: label ?? id, onScreen: onScreen,
+      panes: panes)
   }
 
   @Test("each daemon's panes sit under a heading of their own")
   func daemonsAreGrouped() {
-    let roster = Roster(panes: [
-      pane("local", "w1:p1"), pane("local", "w1:p2"), pane("devenv", "w1:p1"),
+    let roster = Roster(daemons: [
+      Roster.Daemon(id: "local", tabs: [tab("local", panes: [pane("local", "w1:p1")])]),
+      Roster.Daemon(
+        id: "devenv", tabs: [tab("devenv", place: 2, panes: [pane("devenv", "w1:p1")])]),
     ])
     let rows = SidebarModel.rows(roster: roster, states: [:])
 
-    #expect(rows.map(\.isHeader) == [true, false, false, true, false])
-    #expect(rows.compactMap(\.daemon) == ["local", "devenv"])
+    #expect(rows.filter(\.isHeader).map(\.label) == ["local", "devenv"])
     // The core's order, not re-sorted here. A list that sorted for itself would disagree
     // with the window it sits beside for any arrangement but the alphabetical one.
-    #expect(rows.compactMap(\.pane?.daemon) == ["local", "local", "devenv"])
+    #expect(rows.compactMap(\.pane?.daemon) == ["local", "devenv"])
   }
 
   @Test("two daemons handing out one pane id are two rows")
   func paneIdsAreScopedToTheirDaemon() {
     // The whole reason a row is keyed by the pair. Collapsing these would put one machine's
     // agent state on the other's row, and clicking it would open the wrong pane.
-    let roster = Roster(panes: [pane("local", "w1:p1"), pane("devenv", "w1:p1")])
+    let roster = Roster(daemons: [
+      Roster.Daemon(id: "local", tabs: [tab("local", panes: [pane("local", "w1:p1")])]),
+      Roster.Daemon(
+        id: "devenv", tabs: [tab("devenv", place: 2, panes: [pane("devenv", "w1:p1")])]),
+    ])
     let rows = SidebarModel.rows(
       roster: roster,
       states: [
@@ -43,7 +59,7 @@ struct SidebarTests {
         PaneKey(daemon: "devenv", pane: "w1:p1"): "blocked",
       ])
 
-    let panes = rows.filter { !$0.isHeader }
+    let panes = rows.filter { $0.kind == .pane }
     #expect(panes.count == 2)
     #expect(panes.map(\.state) == ["working", "blocked"])
   }
@@ -53,7 +69,10 @@ struct SidebarTests {
     // The roster and the states are two messages and arrive in either order, so a list built
     // from the first alone has no state for anything. Reading that as idle would paint a
     // window full of running agents as a window with nothing to do.
-    let rows = SidebarModel.rows(roster: Roster(panes: [pane("local", "w1:p1")]), states: [:])
+    let roster = Roster(daemons: [
+      Roster.Daemon(id: "local", tabs: [tab("local", panes: [pane("local", "w1:p1")])])
+    ])
+    let rows = SidebarModel.rows(roster: roster, states: [:])
 
     #expect(rows.last?.state == "unknown")
     #expect(SidebarModel.dotColor(state: "unknown") != SidebarModel.dotColor(state: "idle"))
@@ -70,10 +89,18 @@ struct SidebarTests {
 
   @Test("a row says whether anything is showing its pane")
   func hiddenPanesAreMarked() {
-    let roster = Roster(panes: [
-      pane("local", "w1:p1", onScreen: true), pane("local", "w1:p9", onScreen: false),
+    let roster = Roster(daemons: [
+      Roster.Daemon(
+        id: "local",
+        tabs: [
+          tab(
+            "local",
+            panes: [
+              pane("local", "w1:p1", onScreen: true), pane("local", "w1:p9", onScreen: false),
+            ])
+        ])
     ])
-    let rows = SidebarModel.rows(roster: roster, states: [:]).filter { !$0.isHeader }
+    let rows = SidebarModel.rows(roster: roster, states: [:]).filter { $0.kind == .pane }
 
     #expect(rows.map(\.onScreen) == [true, false])
   }
@@ -82,7 +109,90 @@ struct SidebarTests {
   func nothingIsNothing() {
     // A window on the way up has an attached daemon and no panes yet. A heading over no rows
     // reads as a machine that lost its session.
-    #expect(SidebarModel.rows(roster: Roster(panes: []), states: [:]).isEmpty)
+    #expect(SidebarModel.rows(roster: Roster(daemons: []), states: [:]).isEmpty)
+    let bare = Roster(daemons: [Roster.Daemon(id: "local", tabs: [])])
+    #expect(SidebarModel.rows(roster: bare, states: [:]).isEmpty)
+  }
+
+  @Test("a window with one tab draws no caption for it")
+  func oneTabIsNotWorthALevel() {
+    // The common case, and the reason this rule exists: with nothing to navigate between, a
+    // row saying which tab you are in answers a question nobody has, and it costs a level of
+    // indentation off every label in a 200pt column.
+    let roster = Roster(daemons: [
+      Roster.Daemon(
+        id: "local", tabs: [tab("local", onScreen: true, panes: [pane("local", "w1:p1")])])
+    ])
+    let rows = SidebarModel.rows(roster: roster, states: [:])
+
+    #expect(rows.map(\.kind) == [.daemon, .pane])
+  }
+
+  @Test("a second tab anywhere in the window gives every tab a caption")
+  func tabsAppearTogetherOrNotAtAll() {
+    // Including the tabs on a daemon that only holds one. The numbering counts across the
+    // whole window, so showing it in patches would leave somebody counting rows that are not
+    // there to work out what ⌘3 does.
+    let roster = Roster(daemons: [
+      Roster.Daemon(
+        id: "local",
+        tabs: [
+          tab(
+            "local", "w1:t1", place: 1, label: "one", onScreen: true,
+            panes: [pane("local", "w1:p1")]),
+          tab("local", "w1:t2", place: 2, label: "two", panes: [pane("local", "w1:p2")]),
+        ]),
+      Roster.Daemon(
+        id: "devenv",
+        tabs: [tab("devenv", "w1:t1", place: 3, label: "three", panes: [pane("devenv", "w1:p1")])]),
+    ])
+    let rows = SidebarModel.rows(roster: roster, states: [:])
+
+    #expect(
+      rows.map(\.kind) == [
+        .daemon, .tab(place: 1), .pane, .tab(place: 2), .pane, .daemon, .tab(place: 3), .pane,
+      ])
+    #expect(rows.filter { $0.kind == .tab(place: 3) }.map(\.label) == ["three"])
+  }
+
+  @Test("a tab caption says whether a region is showing it")
+  func theTabOnScreenIsMarked() {
+    // Which tab you are looking at is a different question from which pane you are typing
+    // into, and in a two-region window they are two different tabs. The caption answers the
+    // first; the keyboard highlight answers the second.
+    let roster = Roster(daemons: [
+      Roster.Daemon(
+        id: "local",
+        tabs: [
+          tab("local", "w1:t1", place: 1, onScreen: true, panes: [pane("local", "w1:p1")]),
+          tab("local", "w1:t2", place: 2, onScreen: false, panes: [pane("local", "w1:p2")]),
+        ])
+    ])
+    let rows = SidebarModel.rows(roster: roster, states: [:]).filter {
+      if case .tab = $0.kind { return true }
+      return false
+    }
+
+    #expect(rows.map(\.onScreen) == [true, false])
+  }
+
+  @Test("a tab caption is somewhere to go, and a daemon heading is not")
+  func onlyTheReachableRowsSelect() {
+    // Clicking a caption shows that tab, which is the mouse's half of what ⌘N does. A daemon
+    // heading names no destination, and a highlight on one would suggest it had moved
+    // something.
+    let roster = Roster(daemons: [
+      Roster.Daemon(
+        id: "local",
+        tabs: [
+          tab("local", "w1:t1", place: 1, panes: [pane("local", "w1:p1")]),
+          tab("local", "w1:t2", place: 2, panes: [pane("local", "w1:p2")]),
+        ])
+    ])
+    let rows = SidebarModel.rows(roster: roster, states: [:])
+
+    #expect(rows.filter(\.isDestination).count == 4)
+    #expect(rows.filter { !$0.isDestination }.map(\.kind) == [.daemon])
   }
 
   @Test("the list takes a fixed width, and gives it up before squeezing the panes")
@@ -104,9 +214,15 @@ struct SidebarTests {
     // against the other is hard. Marking the same pane in both is what joins them.
     let local = PaneKey(daemon: "local", pane: "w1:p1")
     let devenv = PaneKey(daemon: "devenv", pane: "w1:p1")
-    let roster = Roster(panes: [
-      Roster.Pane(key: local, tab: "w1:t1", label: "rad", onScreen: true),
-      Roster.Pane(key: devenv, tab: "w1:t1", label: "rad", onScreen: true),
+    let roster = Roster(daemons: [
+      Roster.Daemon(
+        id: "local",
+        tabs: [tab("local", panes: [Roster.Pane(key: local, label: "rad", onScreen: true)])]),
+      Roster.Daemon(
+        id: "devenv",
+        tabs: [
+          tab("devenv", place: 2, panes: [Roster.Pane(key: devenv, label: "rad", onScreen: true)])
+        ]),
     ])
 
     let rows = SidebarModel.rows(roster: roster, states: [:], keyboard: devenv)
@@ -120,9 +236,17 @@ struct SidebarTests {
 
   @Test("with the keyboard nowhere, no row claims it")
   func noRegionMeansNoMark() {
-    let roster = Roster(panes: [
-      Roster.Pane(
-        key: PaneKey(daemon: "local", pane: "w1:p1"), tab: "w1:t1", label: "rad", onScreen: false)
+    let roster = Roster(daemons: [
+      Roster.Daemon(
+        id: "local",
+        tabs: [
+          tab(
+            "local",
+            panes: [
+              Roster.Pane(
+                key: PaneKey(daemon: "local", pane: "w1:p1"), label: "rad", onScreen: false)
+            ])
+        ])
     ])
     #expect(
       SidebarModel.rows(roster: roster, states: [:], keyboard: nil).allSatisfy { !$0.hasKeyboard })

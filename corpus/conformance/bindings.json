@@ -135,6 +135,40 @@
       }
     },
     {
+      "name": "stepping through tabs, one finger up from stepping through panes",
+      "why": "Ghostty's own chords, and the shape says what they do: stepping panes is ⌘[ and ⌘], so stepping tabs is the same gesture with shift. Somebody arriving from the terminal Muster embeds already has this in their hands, and the two pairs being one modifier apart is what makes the pair of them memorable rather than two arbitrary chords.",
+      "given": {
+        "actions": [
+          "next_tab",
+          "previous_tab"
+        ]
+      },
+      "expect": {
+        "chords": [
+          "next_tab=shift+super+BracketRight",
+          "previous_tab=shift+super+BracketLeft"
+        ]
+      }
+    },
+    {
+      "name": "the numbered tabs, where every tabbed application on this platform puts them",
+      "why": "⌘1 to ⌘9 is not a Ghostty convention so much as a platform one - browsers, editors and terminals all have it - so a chord Muster invented instead would be the one thing in the window somebody had to look up. The number is the place in the window's whole tab order, which is what the sidebar lists, so a row's number and the chord that reaches it are the same number.",
+      "given": {
+        "actions": [
+          "focus_tab_1",
+          "focus_tab_2",
+          "focus_tab_9"
+        ]
+      },
+      "expect": {
+        "chords": [
+          "focus_tab_1=super+Digit1",
+          "focus_tab_2=super+Digit2",
+          "focus_tab_9=super+Digit9"
+        ]
+      }
+    },
+    {
       "name": "every action has one, and no two share a chord",
       "why": "An action with no default is one nobody can reach without editing a config file, and two on the same chord is one of them silently never firing - which on macOS shows up as a menu item that looks bound and does nothing.",
       "given": {
@@ -143,8 +177,8 @@
         ]
       },
       "expect": {
-        "actions": 17,
-        "distinct_chords": 17
+        "actions": 28,
+        "distinct_chords": 28
       }
     }
   ]

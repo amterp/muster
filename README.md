@@ -89,10 +89,17 @@ close_pane = ""                # unbound - the action stays, the shortcut goes
 `[keymap]` is partial, so a file that names one action rebinds one action. Chords are
 modifiers and a key, in any order and any case, spelled the way you would say them: `cmd`,
 `opt`, `ctrl`, `shift`, and `left`, `return`, `f5`, `[`. The actions are `new_tab`,
-`split_right`, `split_down`, `close_pane`, `next_pane`, `previous_pane`, `focus_*` and
-`resize_*` for each direction, `zoom`, and `toggle_sidebar`. On macOS these become menu
-items, which is where the platform dispatches a key equivalent from - so a rebound action
-moves in the menu too, and System Settings can move it again.
+`next_tab`, `previous_tab`, `focus_tab_1` to `focus_tab_9`, `split_right`, `split_down`,
+`close_pane`, `next_pane`, `previous_pane`, `focus_*` and `resize_*` for each direction,
+`zoom`, `toggle_sidebar`, and `show_shortcuts`. On macOS these become menu items, which is
+where the platform dispatches a key equivalent from - so a rebound action moves in the menu
+too, and System Settings can move it again.
+
+The two ways of moving are different axes rather than two flavours of the same one.
+`next_pane` and the four directions reach every pane the window is **showing**; `next_tab` and
+`focus_tab_N` reach the tabs behind those, which nothing else can get to once the agent list
+is put away. Both cross machines: a window's tabs are one numbered list, so `cmd+3` is the
+third caption down the list whichever daemon holds it.
 
 `option_as_alt` is the one that decides whether `opt+t` reaches an agent. macOS treats option
 as a composing key, so by default it produces `†` and a program waiting for `alt+t` never

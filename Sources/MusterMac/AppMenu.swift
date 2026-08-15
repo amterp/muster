@@ -20,6 +20,9 @@ public enum AppMenu {
     public let key: String
     public let modifiers: NSEvent.ModifierFlags
     public let group: MenuActions.Group
+
+    /// Which of several near-identical items this is, for the actions that come numbered.
+    public let tag: Int
   }
 
   /// What Muster does, as the core says it is bound.
@@ -51,7 +54,7 @@ public enum AppMenu {
         title: described.title, action: described.selector,
         key: menuKeyEquivalent(forKeyNamed: binding.key) ?? "",
         modifiers: menuModifiers(binding.modifiers),
-        group: described.group)
+        group: described.group, tag: described.tag)
     }
   }
 
@@ -97,6 +100,7 @@ public enum AppMenu {
         // mean "close the window" the moment no pane has focus, which is not what it says.
         let entry = NSMenuItem(title: item.title, action: item.action, keyEquivalent: item.key)
         entry.keyEquivalentModifierMask = item.modifiers
+        entry.tag = item.tag
         entry.target = target
         groupMenu.addItem(entry)
       }

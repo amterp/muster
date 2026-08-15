@@ -8,7 +8,6 @@ import AppKit
 public struct Roster: Equatable {
   public struct Pane: Equatable {
     public let key: PaneKey
-    public let tab: String
 
     /// What to call this pane to somebody who did not open it.
     public let label: String
@@ -16,19 +15,58 @@ public struct Roster: Equatable {
     /// Whether a region is showing it right now.
     public let onScreen: Bool
 
-    public init(key: PaneKey, tab: String, label: String, onScreen: Bool) {
+    public init(key: PaneKey, label: String, onScreen: Bool) {
       self.key = key
-      self.tab = tab
       self.label = label
       self.onScreen = onScreen
     }
   }
 
-  public let panes: [Pane]
+  public struct Tab: Equatable {
+    public let key: TabKey
 
-  public init(panes: [Pane]) {
-    self.panes = panes
+    /// Where this tab sits in the window's whole tab order, counting from one. What ⌘N names.
+    public let place: Int
+
+    /// What to call this tab to somebody who did not open it.
+    public let label: String
+
+    /// Whether a region is showing this tab right now. Not the same question as any of its
+    /// panes being on screen - a zoomed tab is on screen while all but one of them are not.
+    public let onScreen: Bool
+
+    public let panes: [Pane]
+
+    public init(key: TabKey, place: Int, label: String, onScreen: Bool, panes: [Pane]) {
+      self.key = key
+      self.place = place
+      self.label = label
+      self.onScreen = onScreen
+      self.panes = panes
+    }
   }
+
+  public struct Daemon: Equatable {
+    public let id: String
+    public let tabs: [Tab]
+
+    public init(id: String, tabs: [Tab]) {
+      self.id = id
+      self.tabs = tabs
+    }
+  }
+
+  public let daemons: [Daemon]
+
+  public init(daemons: [Daemon]) {
+    self.daemons = daemons
+  }
+
+  /// Every tab in the window, in the order they are numbered.
+  public var tabs: [Tab] { daemons.flatMap(\.tabs) }
+
+  /// Every pane in the window, in the order they are listed.
+  public var panes: [Pane] { tabs.flatMap(\.panes) }
 }
 
 /// What the window shows of itself, as the core decided it.
@@ -55,19 +93,35 @@ public struct Presentation: Equatable {
 /// mostly stable and an agent state blinks, so they are two messages; the shell holds both
 /// and puts them together, which it already does to paint a pane's border.
 public enum SidebarModel {
+  /// What one line in the list is.
+  public enum Kind: Equatable {
+    /// A machine's name, over the tabs it holds.
+    case daemon
+    /// A tab, over the panes in it. Carries the place a numbered chord names.
+    case tab(place: Int)
+    case pane
+  }
+
   /// One line in the list.
   public struct Row: Equatable {
-    /// The daemon this row's group is under, or nil for a pane row.
-    public let daemon: String?
+    public let kind: Kind
+
+    /// The daemon this row belongs to, whichever kind it is.
+    public let daemon: String
+
+    /// The tab this row is or sits under. Nil only on a daemon heading.
+    public let tab: TabKey?
+
+    /// The pane this row is, on a pane row and nowhere else.
     public let pane: PaneKey?
     public let label: String
 
     /// The backend's spelling of what this pane's agent is doing, or `unknown` when the core
-    /// has said nothing about it yet.
+    /// has said nothing about it yet. Empty on the rows that are not panes.
     public let state: String
 
-    /// Whether a region is showing this pane. Rows for panes nobody is showing are the
-    /// reason the list exists, and they are drawn as reachable rather than as absent.
+    /// Whether a region is showing this row's subject. Rows for panes nobody is showing are
+    /// the reason the list exists, and they are drawn as reachable rather than as absent.
     public let onScreen: Bool
 
     /// Whether this is the pane the keyboard feeds.
@@ -77,41 +131,61 @@ public enum SidebarModel {
     /// hard to read back against; marking the same pane in both is what joins them.
     public let hasKeyboard: Bool
 
-    public var isHeader: Bool { daemon != nil && pane == nil }
+    public var isHeader: Bool { kind == .daemon }
+
+    /// Whether picking this row means something. A daemon heading names no destination.
+    public var isDestination: Bool { kind != .daemon }
   }
 
-  /// The rows to draw, in order, with a header before each daemon's panes.
+  /// The rows to draw, in order: a daemon heading, then a caption per tab, then its panes.
   ///
-  /// Headers are inserted here rather than by the view because where a group starts is a
-  /// property of the order the core chose, and the view should not have to re-derive it.
+  /// Inserted here rather than by the view because where a group starts is a property of the
+  /// order the core chose, and the view should not have to re-derive it.
   ///
-  /// A daemon holding no panes contributes no header. An attached daemon whose subscription
+  /// A daemon holding no tabs contributes no heading. An attached daemon whose subscription
   /// has not bootstrapped is an ordinary moment on the way up, and a heading over nothing
   /// reads as a machine that lost its session.
+  ///
+  /// **A window with one tab draws no caption.** There is nothing to navigate between, so a
+  /// row saying which tab you are in is a line that answers a question nobody has - and this
+  /// is the common case, so paying a level of nesting for it would make the list worse for
+  /// most people to make it better for some. The moment a second tab exists anywhere in the
+  /// window, every tab gets its caption and its number, including the tabs on a daemon that
+  /// only holds one: the numbering counts across the whole window, so showing it in patches
+  /// would be worse than not showing it.
+  ///
   /// `keyboard` is the pane the core's view says has the keyboard, or nil when no region
   /// does. Passed in rather than derived here: which pane that is arrives on the view, and
   /// the roster is a separate message - the same join the window already makes for states.
   public static func rows(roster: Roster, states: [PaneKey: String], keyboard: PaneKey? = nil)
     -> [Row]
   {
+    let captions = roster.tabs.count > 1
     var rows: [Row] = []
-    var current: String?
-    for pane in roster.panes {
-      if pane.key.daemon != current {
-        current = pane.key.daemon
-        rows.append(
-          Row(
-            daemon: pane.key.daemon, pane: nil, label: pane.key.daemon, state: "", onScreen: true,
-            hasKeyboard: false))
-      }
+    for daemon in roster.daemons where !daemon.tabs.isEmpty {
       rows.append(
         Row(
-          daemon: nil, pane: pane.key, label: pane.label,
-          // A pane the core has said nothing about is unknown, not idle. An agent we have
-          // not heard from is not an agent that finished (`corpus/conformance/agent-state.json`).
-          state: states[pane.key] ?? "unknown",
-          onScreen: pane.onScreen,
-          hasKeyboard: pane.key == keyboard))
+          kind: .daemon, daemon: daemon.id, tab: nil, pane: nil, label: daemon.id, state: "",
+          onScreen: true, hasKeyboard: false))
+      for tab in daemon.tabs {
+        if captions {
+          rows.append(
+            Row(
+              kind: .tab(place: tab.place), daemon: daemon.id, tab: tab.key, pane: nil,
+              label: tab.label, state: "", onScreen: tab.onScreen, hasKeyboard: false))
+        }
+        for pane in tab.panes {
+          rows.append(
+            Row(
+              kind: .pane, daemon: daemon.id, tab: tab.key, pane: pane.key, label: pane.label,
+              // A pane the core has said nothing about is unknown, not idle. An agent we have
+              // not heard from is not an agent that finished
+              // (`corpus/conformance/agent-state.json`).
+              state: states[pane.key] ?? "unknown",
+              onScreen: pane.onScreen,
+              hasKeyboard: pane.key == keyboard))
+        }
+      }
     }
     return rows
   }
@@ -162,6 +236,12 @@ public final class SidebarView: NSView {
   /// region is showing means, and the window changes when the view that comes back says so.
   public var onPanePicked: ((PaneKey) -> Void)?
 
+  /// Called when somebody picks a tab caption, meaning they want to be looking at that tab.
+  ///
+  /// The mouse's half of what ⌘N and next-tab do with the keyboard, and it goes through the
+  /// same core path: a place in the window's tab order, resolved there.
+  public var onTabPicked: ((Int) -> Void)?
+
   public private(set) var rows: [SidebarModel.Row] = []
 
   private let table = NSTableView()
@@ -200,8 +280,16 @@ public final class SidebarView: NSView {
 
   @objc private func rowClicked() {
     let clicked = table.clickedRow
-    guard rows.indices.contains(clicked), let pane = rows[clicked].pane else { return }
-    onPanePicked?(pane)
+    guard rows.indices.contains(clicked) else { return }
+    switch rows[clicked].kind {
+    case .pane:
+      guard let pane = rows[clicked].pane else { return }
+      onPanePicked?(pane)
+    case .tab(let place):
+      onTabPicked?(place)
+    case .daemon:
+      break
+    }
   }
 }
 
@@ -217,21 +305,28 @@ extension SidebarView: NSTableViewDataSource, NSTableViewDelegate {
     return SidebarRowView(row: rows[row])
   }
 
-  /// Headers are labels, not destinations. Selecting one would move the keyboard nowhere and
-  /// leave a highlight suggesting it had.
+  /// Daemon headings are labels, not destinations. Selecting one would move the keyboard
+  /// nowhere and leave a highlight suggesting it had. A tab caption is a destination, because
+  /// showing a tab is a thing this app does.
   public func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
-    rows.indices.contains(row) && !rows[row].isHeader
+    rows.indices.contains(row) && rows[row].isDestination
   }
 }
 
-/// One row: a state dot, a name, and whether anything is showing it.
+/// One row: a state dot or a tab number, a name, and whether anything is showing it.
 @MainActor
 final class SidebarRowView: NSView {
   private let dot = CALayer()
   private let name = NSTextField(labelWithString: "")
+  private let number = NSTextField(labelWithString: "")
   private let highlight = CALayer()
+  private let indented: Bool
 
   init(row: SidebarModel.Row) {
+    // Panes indent under their tab caption, and sit flush when there is none. The list is
+    // 200pt wide, so a level of nesting that buys nothing is a level that costs a word off
+    // every label.
+    indented = row.kind == .pane && row.tab != nil
     super.init(frame: .zero)
     wantsLayer = true
 
@@ -243,20 +338,39 @@ final class SidebarRowView: NSView {
       highlight.cornerRadius = 5
       layer?.addSublayer(highlight)
     }
-    name.font = .systemFont(
-      ofSize: row.isHeader ? 10 : 12, weight: row.isHeader ? .semibold : .regular)
-    name.stringValue = row.isHeader ? row.label.uppercased() : row.label
-    // A pane no region is showing is reachable, not absent - dimming it says "not here yet"
-    // rather than "gone", which is the difference between a row worth clicking and one that
-    // looks broken.
-    name.textColor = row.isHeader || row.onScreen ? .labelColor : .secondaryLabelColor
-    addSubview(name)
 
-    if !row.isHeader {
+    switch row.kind {
+    case .daemon:
+      name.font = .systemFont(ofSize: 10, weight: .semibold)
+      name.stringValue = row.label.uppercased()
+      name.textColor = .secondaryLabelColor
+    case .tab(let place):
+      // The tab on screen is named in full, and the ones behind it are quieter. This says a
+      // different thing from the keyboard highlight on purpose: one is where you are
+      // looking, the other is where you are typing, and in a two-region window those are
+      // two different tabs.
+      name.font = .systemFont(ofSize: 11, weight: row.onScreen ? .semibold : .regular)
+      name.stringValue = row.label
+      name.textColor = row.onScreen ? .labelColor : .secondaryLabelColor
+      // The number a chord names, drawn where a tab bar would put it. Only up to nine,
+      // because that is how far ⌘N goes - a tenth tab is reachable by next-tab and by
+      // clicking, and a number nothing is bound to would be a promise the keyboard breaks.
+      number.stringValue = place <= 9 ? String(place) : ""
+      number.font = .monospacedDigitSystemFont(ofSize: 10, weight: .regular)
+      number.textColor = .tertiaryLabelColor
+      addSubview(number)
+    case .pane:
+      name.font = .systemFont(ofSize: 12, weight: .regular)
+      name.stringValue = row.label
+      // A pane no region is showing is reachable, not absent - dimming it says "not here yet"
+      // rather than "gone", which is the difference between a row worth clicking and one that
+      // looks broken.
+      name.textColor = row.onScreen ? .labelColor : .secondaryLabelColor
       dot.backgroundColor = SidebarModel.dotColor(state: row.state).cgColor
       dot.cornerRadius = SidebarRowView.dotSize / 2
       layer?.addSublayer(dot)
     }
+    addSubview(name)
   }
 
   required init?(coder: NSCoder) {
@@ -265,17 +379,29 @@ final class SidebarRowView: NSView {
 
   static let dotSize: CGFloat = 7
   static let inset: CGFloat = 8
+  static let indent: CGFloat = 10
+  static let numberWidth: CGFloat = 12
 
   override func layout() {
     super.layout()
     if highlight.superlayer != nil {
       highlight.frame = bounds.insetBy(dx: 4, dy: 1)
     }
-    let hasDot = dot.superlayer != nil
-    let textLeft = hasDot ? SidebarRowView.inset * 2 + SidebarRowView.dotSize : SidebarRowView.inset
-    dot.frame = CGRect(
-      x: SidebarRowView.inset, y: (bounds.height - SidebarRowView.dotSize) / 2,
-      width: SidebarRowView.dotSize, height: SidebarRowView.dotSize)
+    let left = SidebarRowView.inset + (indented ? SidebarRowView.indent : 0)
+    var textLeft = left
+    if dot.superlayer != nil {
+      dot.frame = CGRect(
+        x: left, y: (bounds.height - SidebarRowView.dotSize) / 2,
+        width: SidebarRowView.dotSize, height: SidebarRowView.dotSize)
+      textLeft = left + SidebarRowView.inset + SidebarRowView.dotSize
+    }
+    if number.superview != nil {
+      let height = min(bounds.height, number.fittingSize.height)
+      number.frame = CGRect(
+        x: left, y: (bounds.height - height) / 2,
+        width: SidebarRowView.numberWidth, height: height)
+      textLeft = left + SidebarRowView.numberWidth + 4
+    }
     // Sized to the text and then centred, rather than given the whole row. A label draws its
     // text at the top of whatever frame it is handed, so a full-height frame puts the words
     // above the dot beside them - which reads as the dot being wrong rather than the text.

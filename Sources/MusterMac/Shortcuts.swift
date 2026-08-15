@@ -89,6 +89,7 @@ public enum Shortcuts {
   static let pointing: [Row] = [
     Row(title: "Focus a pane", chord: "", note: "click it"),
     Row(title: "Go to a pane nothing is showing", chord: "", note: "click its row in the list"),
+    Row(title: "Show a tab", chord: "", note: "click its caption in the list"),
     Row(title: "Resize panes", chord: "", note: "drag the divider between them"),
     Row(title: "Scroll back", chord: "", note: "the wheel, over the pane"),
   ]

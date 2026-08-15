@@ -16,7 +16,7 @@ use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 use muster_core::AgentState;
 use muster_core::attention::Attention;
 use muster_core::composition::{
-    Composition, Daemon, DaemonId, Endpoint, PaneKey, Presentation, RegionId, Saved, Step,
+    Composition, Daemon, DaemonId, Endpoint, PaneKey, Presentation, RegionId, Saved, Step, TabKey,
     Transport, View, saved,
 };
 use muster_core::config::Config;
@@ -26,7 +26,7 @@ use muster_core::input::{Bindings, PaneInput, PaneInputSettings};
 use muster_core::intent::{BackendChannel, BackendIntent, Refusal};
 use muster_core::mirror::backend::{PaneId, Snapshot, TabId, WorkspaceId};
 use muster_core::mirror::{Change, Mirror};
-use muster_core::roster::Roster;
+use muster_core::roster::{Roster, RosterTab, TabStep};
 use muster_herdr::subscription::{Notice, Subscription};
 use muster_herdr::{
     HerdrClient, HerdrPaneChannel, PaneControlChannel, daemon, discover_socket_path,
@@ -862,6 +862,75 @@ pub(crate) fn step(direction: Step) -> Result<(), String> {
     focus(&daemon, &pane)
 }
 
+/// Moves the keyboard one tab along, in the order the roster lists them.
+///
+/// The other axis to [`step`]. That one walks the panes the window is *showing*; this walks
+/// every tab every attached daemon holds, so it reaches the ones behind the regions - which
+/// no chord could otherwise get to, and which the sidebar was the only door to.
+///
+/// Crosses daemons for the same reason stepping panes does, and one more: a window's tabs are
+/// one list to the person reading them, and a walk that stopped at a machine boundary would
+/// leave the other machine's tabs unreachable whenever no region was on it.
+pub(crate) fn step_tab(direction: TabStep) -> Result<(), String> {
+    let stepped = {
+        let session = SESSION.lock().expect("a panicking sender poisoned the session");
+        let from = session
+            .composition
+            .focused_region()
+            .map(|region| TabKey::new(&region.daemon, &region.tab));
+        session.roster(&session.view()).step(from.as_ref(), direction).map(landing)
+    };
+    let (daemon, pane) = stepped.ok_or_else(|| {
+        "this window is attached to no tabs to step through, so the keyboard stayed where it \
+         was. A window whose daemons have not described a session yet looks like this, and so \
+         does one whose tabs all closed."
+            .to_string()
+    })??;
+    focus(&daemon, &pane)
+}
+
+/// Shows the tab at a given place in the window's tab order, counting from one.
+///
+/// What ⌘1 to ⌘9 mean. A place past the last tab is refused by name rather than clamped to
+/// the last one: a chord that lands somewhere different every time a tab opens is worse than
+/// a chord that does nothing until there is a tab to do it to.
+pub(crate) fn focus_tab_at(place: usize) -> Result<(), String> {
+    let found = {
+        let session = SESSION.lock().expect("a panicking sender poisoned the session");
+        let roster = session.roster(&session.view());
+        match roster.at(place) {
+            Some(tab) => landing(tab),
+            None => Err(format!(
+                "this window holds {} tabs, so there is no tab {place} to show and the \
+                 keyboard stayed where it was.",
+                roster.tabs().count()
+            )),
+        }
+    };
+    let (daemon, pane) = found?;
+    focus(&daemon, &pane)
+}
+
+/// Where the keyboard lands when a tab is shown.
+///
+/// The tab's first pane in the roster's own order, so that going to a tab and reading its
+/// rows agree about which one comes first. Not the daemon's focused pane: daemon focus is a
+/// single value shared with every client, so reading it back would let another client decide
+/// where this window's keyboard goes (`architecture.md`, cursors are written, not read).
+///
+/// Names the pane rather than focusing it, because [`focus`] takes the session lock and every
+/// caller here is holding it.
+fn landing(tab: &RosterTab) -> Result<(DaemonId, PaneId), String> {
+    let pane = tab.panes.first().ok_or_else(|| {
+        format!(
+            "{} holds no panes, so there is nothing for the keyboard to land on. Most likely \
+             they closed while this was in flight.",
+            tab.key
+        )
+    })?;
+    Ok((tab.key.daemon.clone(), pane.key.pane.clone()))
+}
+
 /// The pane this window's keyboard feeds, named.
 pub(crate) fn focused_pane() -> Option<PaneId> {
     let session = SESSION.lock().expect("a panicking sender poisoned the session");
@@ -1384,8 +1453,10 @@ fn publish() {
     log::info(
         "roster.published",
         fields! {
-            "panes" => roster.panes.len().to_string(),
-            "on_screen" => roster.panes.iter().filter(|pane| pane.on_screen).count().to_string(),
+            "tabs" => roster.tabs().count().to_string(),
+            "tabs_on_screen" => roster.tabs().filter(|tab| tab.on_screen).count().to_string(),
+            "panes" => roster.panes().count().to_string(),
+            "on_screen" => roster.panes().filter(|pane| pane.on_screen).count().to_string(),
         },
     );
     ffi::emit(&Event { payload: Some(event::Payload::ViewChanged(convert::view(&view))) });

@@ -52,15 +52,37 @@ pub(crate) fn view(view: &View) -> proto::ViewChanged {
 /// What exists, on its way out to the shell.
 pub(crate) fn roster(roster: &Roster) -> proto::RosterChanged {
     proto::RosterChanged {
-        panes: roster
-            .panes
+        daemons: roster
+            .daemons
             .iter()
-            .map(|pane| proto::RosterPane {
-                daemon_id: pane.key.daemon.to_string(),
-                pane_id: pane.key.pane.to_string(),
-                tab_id: pane.tab.to_string(),
-                label: pane.label.clone(),
-                on_screen: pane.on_screen,
+            .map(|daemon| proto::RosterDaemon {
+                daemon_id: daemon.id.to_string(),
+                tabs: daemon
+                    .tabs
+                    .iter()
+                    .map(|tab| proto::RosterTab {
+                        daemon_id: tab.key.daemon.to_string(),
+                        tab_id: tab.key.tab.to_string(),
+                        // Zero is proto3's own spelling for a field nobody set, and the
+                        // handler already reads it as no place at all - so a number too
+                        // large to send arrives as unnameable rather than as a different
+                        // tab. No window holds four billion tabs; this is a floor, not a
+                        // case anybody meets.
+                        place: u32::try_from(tab.place).unwrap_or_default(),
+                        label: tab.label.clone(),
+                        on_screen: tab.on_screen,
+                        panes: tab
+                            .panes
+                            .iter()
+                            .map(|pane| proto::RosterPane {
+                                daemon_id: pane.key.daemon.to_string(),
+                                pane_id: pane.key.pane.to_string(),
+                                label: pane.label.clone(),
+                                on_screen: pane.on_screen,
+                            })
+                            .collect(),
+                    })
+                    .collect(),
             })
             .collect(),
     }

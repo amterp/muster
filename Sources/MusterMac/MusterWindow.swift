@@ -27,7 +27,7 @@ public final class MusterWindow: NSObject {
   /// Held here rather than only in the sidebar because it is half of what the sidebar draws
   /// and the other half arrives separately: a roster and an agent state land in either
   /// order, and whichever is second has to be able to redraw with both.
-  private var roster = Roster(panes: [])
+  private var roster = Roster(daemons: [])
 
   /// Every pane's last known agent state, whether or not it is on screen.
   ///
@@ -77,6 +77,9 @@ public final class MusterWindow: NSObject {
     window.center()
     sidebar.onPanePicked = { pane in
       Core.focus(daemonID: pane.daemon, paneID: pane.pane)
+    }
+    sidebar.onTabPicked = { place in
+      Core.focus(tabPlace: place)
     }
     applyTitle()
   }
@@ -338,6 +341,23 @@ extension MusterWindow {
   /// list is built from what the core already publishes, and a window is a shell's to open.
   @objc public func showShortcuts(_ sender: Any?) {
     shortcuts.show(bindings: Core.bindings())
+  }
+
+  @objc public func focusNextTab(_ sender: Any?) {
+    Core.focus(tabStep: "next")
+  }
+
+  @objc public func focusPreviousTab(_ sender: Any?) {
+    Core.focus(tabStep: "previous")
+  }
+
+  /// Goes to the tab this item was numbered for.
+  ///
+  /// One method for all nine, reading the place off the item's tag. Nine methods differing by
+  /// a digit is nine places for one of them to drift, and the number is data anyway.
+  @objc public func focusTabAtPlace(_ sender: Any?) {
+    guard let item = sender as? NSMenuItem, item.tag > 0 else { return }
+    Core.focus(tabPlace: item.tag)
   }
 
   @objc public func focusNextPane(_ sender: Any?) {
