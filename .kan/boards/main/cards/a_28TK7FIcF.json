@@ -6,15 +6,24 @@
     "shell",
     "backend"
   ],
-  "column": "next",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Fixed in d808ec1, by acting on what the daemon was already saying rather than by chasing how the state arises.\n\nConfirmed from the run log that herdr never emitted a removal for the pane - not one change record for it across the whole session - while the daemon's own `pane list` had dropped it. So there is no event to wait for, and the only account Muster gets is the refusals: the bridge could not attach, and `pane.focus` came back `pane_not_found`. Both were flattened into prose for the log before anything could act on them.\n\nA refusal now has a shape - the backend declined, or it does not hold what was named - and the second triggers a re-read of that daemon's whole session. The whole session rather than the one pane, because a refusal only proves the picture is wrong somewhere and a pane that went may have taken its tab with it.\n\nWhat is pinned is the classification, in `corpus/conformance/daemon-refusal.json`. A renamed error code upstream would quietly turn the self-heal off, and the distinction worth protecting most is that unreachable and timed-out stay ordinary refusals: a daemon that did not answer has said nothing about what exists, and reading silence as loss would empty a window every time a socket hiccuped.\n\nNot covered: the self-heal end to end. Producing the state needs herdr to drop a pane without an event, which is exactly the behaviour we cannot make it perform on demand - and Muster refuses locally before sending a request about a pane its mirror does not hold, so the divergence cannot be faked from outside either. Worth revisiting when the contract tier starts failing on unexpected warnings, which would catch a regression here from the app side.",
+      "created_at_millis": 1786802084299,
+      "id": "c_28U5mfHQp"
+    }
+  ],
   "created_at_millis": 1786800251939,
   "creator": "Alexander Terp",
   "description": "After a session where a pane's terminal died, relaunching Muster against the same daemon renders that pane anyway. The daemon's own `pane list` holds one pane; the window shows two, and the second cannot be focused, closed, or typed into. Every attempt is refused with `pane_not_found` and logged, and the window keeps showing it.\n\nHow it gets there, from the run log: the snapshot at attach says one pane, and 100ms later the subscription replays a `pane_created` for the second, so the mirror ends up holding a pane the snapshot did not have. The daemon then denies it exists - the bridge fails with `terminal target w1:p2 not found`, and `pane.focus` is refused `pane_not_found` - but no removal event ever arrives, so nothing takes it back out.\n\nTwo things worth separating. The mirror trusting a replayed create over a newer snapshot is one; the other is that Muster is told twice, in plain words, that the pane is gone and does nothing with either. A refusal naming `pane_not_found` is the daemon's own account of its state and could remove the pane, which self-heals every path rather than one.\n\nBefore fixing, record what herdr actually replays on subscribe when a pane's terminal has died - corpus/herdr-0.8.0/snapshot/subscribe-replay.json shows a replay of live panes only, which is not what happened here.\n\nReported from a real window, 2026-08-15.",
   "id": "a_28TK7FIcF",
-  "position": "A",
+  "position": "!!!!!2",
   "title": "👻 A pane the daemon has dropped stays on screen forever",
-  "updated_at_millis": 1786800251939,
+  "updated_at_millis": 1786802084299,
   "history": [
-    {"field":"column","value":"next","at":1786800251939}
+    {"field":"column","value":"next","at":1786800251939},
+    {"field":"column","value":"done","at":1786802084237}
   ]
 }
