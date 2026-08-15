@@ -17,6 +17,7 @@ Run it with `./dev --contract`.
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -114,17 +115,75 @@ def expect(records: list[dict], event: str, why: str) -> dict:
     raise Failure(f"no `{event}` record - {why}\n    the app logged: {seen}")
 
 
-def expect_no_errors(records: list[dict]) -> None:
-    errors = [r for r in records if r["level"] == "error"]
-    if errors:
-        detail = "\n".join(f"      {r['event']}: {r}" for r in errors[:5])
-        raise Failure(f"{len(errors)} error record(s):\n{detail}")
+def expect_nothing_wrong(records: list[dict], expected: tuple[str, ...] = ()) -> None:
+    """Every warning and error the app raised, unless this scenario declared it.
+
+    Warnings count, and that is the point. Muster's log lines carry their own impact - a
+    `pane.surface.deferred` says "this pane is blank until the core opens its channel" in the
+    record itself - so a run that raises one has already diagnosed a bug nobody has to think
+    of in advance. The blank-window bug of 2026-08-15 logged exactly that, at warn, while
+    every check here passed.
+
+    Declared rather than filtered by level, so that a scenario about a refusal says which
+    refusal it is about and a second unrelated one still fails the run.
+    """
+    wrong = [r for r in records if r["level"] in ("warn", "error") and r["event"] not in expected]
+    if wrong:
+        detail = "\n".join(f"      {r['level']}: {r['event']}: {r}" for r in wrong[:5])
+        more = f"\n      ... and {len(wrong) - 5} more" if len(wrong) > 5 else ""
+        raise Failure(
+            f"{len(wrong)} record(s) the app itself called wrong:\n{detail}{more}\n"
+            "    If one of these is expected here, name it in this check's `expected`."
+        )
+
+
+def expect_every_pane_painted(records: list[dict]) -> None:
+    """Every pane the window was told to show got a surface, and something on it.
+
+    The gap this closes: `app.ready` with `typeable=true` is the core's answer to "is there a
+    pane the keyboard would go to", and it stays true while the window shows nothing at all.
+    What a person sees is a surface with bytes on it, and that has its own records.
+    """
+    view = [r for r in records if r["event"] == "view.region"]
+    if not view:
+        raise Failure("the core never published a view, so the window was never told anything")
+
+    # Read out of the published tree, which is the only place the shell's own list of panes
+    # appears in the log. Pane ids are `w<n>:p<n>` in every daemon Muster talks to.
+    wanted = set()
+    for region in view:
+        wanted |= set(re.findall(r"w\d+:p\d+", region.get("tree", "")))
+    if not wanted:
+        raise Failure(
+            "the core published a view naming no panes at all, so the window is empty and "
+            f"the last thing it said it was showing was {view[-1].get('tree')!r}"
+        )
+
+    surfaced = {r.get("pane") for r in records if r["event"] == "surface.create"}
+    if wanted - surfaced:
+        raise Failure(
+            f"the window was told to show {sorted(wanted)} and built a surface for "
+            f"{sorted(surfaced)}. {sorted(wanted - surfaced)} render as empty squares."
+        )
+
+    # A bridge names itself in `process` rather than repeating the pane on every record.
+    painted = {
+        r["process"].removeprefix("bridge:")
+        for r in records
+        if r["event"] == "bridge.frame.first"
+    }
+    if wanted - painted:
+        raise Failure(
+            f"{sorted(wanted - painted)} got a surface and never painted a frame, so they "
+            "are blank squares in a window that believes it is showing them"
+        )
 
 
 def check_healthy_launch(daemon: IsolatedDaemon, pane: str) -> None:
     """The whole chain: app binds, bridge starts, dials back, and paints."""
     records = launch(pointed_at(daemon), [pane], "healthy")
-    expect_no_errors(records)
+    expect_nothing_wrong(records)
+    expect_every_pane_painted(records)
     expect(records, "app.ready", "the app never finished launching")
     expect(
         records,
@@ -250,7 +309,8 @@ def check_a_split_tab_becomes_splits(daemon: IsolatedDaemon, pane: str) -> None:
         )
 
     records = launch(pointed_at(daemon), [pane], "splits", settle=10.0)
-    expect_no_errors(records)
+    expect_nothing_wrong(records)
+    expect_every_pane_painted(records)
 
     surfaced = {r.get("pane") for r in records if r["event"] == "surface.create"}
     missing = set(panes) - surfaced
@@ -317,6 +377,9 @@ def check_a_split_tab_becomes_splits(daemon: IsolatedDaemon, pane: str) -> None:
 def check_bad_pane(daemon: IsolatedDaemon) -> None:
     """A pane that does not exist must say so rather than showing a blank window."""
     records = launch(pointed_at(daemon), ["w9:p99"], "badpane")
+    # The one refusal this is about, and nothing else. A second unrelated warning here would
+    # be a real finding hiding inside a scenario whose whole subject is a refusal.
+    expect_nothing_wrong(records, expected=("core.refused",))
     refused = expect(
         records,
         "core.refused",
@@ -337,7 +400,8 @@ def check_bare_launch(daemon: IsolatedDaemon) -> None:
     the ordinary way to open the app.
     """
     records = launch(pointed_at(daemon), [], "bare")
-    expect_no_errors(records)
+    expect_nothing_wrong(records)
+    expect_every_pane_painted(records)
     ready = expect(records, "app.ready", "the app never finished launching")
     if ready.get("typeable") != "true":
         raise Failure(
@@ -386,7 +450,8 @@ def check_cold_start() -> None:
     try:
         # Longer than the rest: this one waits on a daemon starting from nothing.
         records = launch(env, [], "cold", settle=20.0)
-        expect_no_errors(records)
+        expect_nothing_wrong(records)
+        expect_every_pane_painted(records)
         expect(
             records,
             "daemon.started",
