@@ -13,7 +13,11 @@ import MusterRenderer
 /// here - which is how the bug that sent every key twice would have been caught.
 @MainActor
 public final class SurfaceView: NSView, NSMenuItemValidation {
-  private var surface: Surface?
+  private var surface: (any PaneSurface)?
+
+  /// Where copy and paste meet the rest of the machine. Settable so a test can hand the view
+  /// a pasteboard of its own rather than reaching into whatever the developer last copied.
+  public var pasteboard: NSPasteboard = .general
 
   /// Whether this view has a pane to type into. A bare `muster` does not - it is the
   /// renderer check - and a view that sent keystrokes anyway would fill the log with
@@ -60,7 +64,7 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
 
   public override var acceptsFirstResponder: Bool { true }
 
-  public func attach(_ surface: Surface, typeable: Bool) {
+  public func attach(_ surface: any PaneSurface, typeable: Bool) {
     self.surface = surface
     attach(typeable: typeable)
     surface.setSize(
@@ -157,9 +161,11 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
   }
 
   private func reportMousePosition(_ event: NSEvent) {
+    // AppKit measures this view from the bottom left and the surface measures itself from the
+    // top left, so an unflipped position selects the mirror image of the drag.
+    let point = convert(event.locationInWindow, from: nil)
     surface?.mouseMoved(
-      to: convert(event.locationInWindow, from: nil), viewHeight: frame.height,
-      modifiers: event.modifierFlags)
+      to: NSPoint(x: point.x, y: frame.height - point.y), modifiers: event.modifierFlags)
   }
 
   public override func scrollWheel(with event: NSEvent) {
@@ -181,7 +187,7 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
   /// Not an override: `paste(_:)` is an action `NSResponder` dispatches by selector rather
   /// than a method `NSView` declares, so this declares it.
   @objc public func paste(_ sender: Any?) {
-    guard let text = NSPasteboard.general.string(forType: .string) else {
+    guard let text = pasteboard.string(forType: .string) else {
       Core.debug("input.paste.empty", ["impact": "nothing was sent; the clipboard has no text"])
       return
     }
@@ -202,8 +208,8 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
         ["impact": "nothing was copied; the clipboard still holds whatever it held"])
       return
     }
-    NSPasteboard.general.clearContents()
-    NSPasteboard.general.setString(selected, forType: .string)
+    pasteboard.clearContents()
+    pasteboard.setString(selected, forType: .string)
     Core.debug("selection.copied", ["bytes": String(selected.utf8.count)])
   }
 
@@ -218,7 +224,7 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
     case #selector(copy(_:)):
       return surface?.selectedText?.isEmpty == false
     case #selector(paste(_:)):
-      return NSPasteboard.general.string(forType: .string) != nil
+      return pasteboard.string(forType: .string) != nil
     default:
       // Anything else in the chain answers for itself; a view that claimed on their behalf
       // would grey out items it knows nothing about.

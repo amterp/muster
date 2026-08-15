@@ -110,11 +110,153 @@ private func view(_ recorder: RecordingDispatcher) -> SurfaceView {
   #expect(recorder.requests.isEmpty)
 }
 
+// Selection and the clipboard, which is the one input path that never reaches the core: the
+// grid libghostty painted is where a drag lands, so the oracle here is the surface rather than
+// the seam.
+
+/// Records what the view asked of the thing rendering it, and answers with a fixed selection.
+@MainActor
+private final class RecordingSurface: PaneSurface {
+  var positions: [NSPoint] = []
+  var buttons: [Bool] = []
+  var selectedText: String?
+
+  init(selection: String? = nil) { selectedText = selection }
+
+  func setSize(width: UInt32, height: UInt32) {}
+  func setFocus(_ focused: Bool) {}
+  func mouseMoved(to point: NSPoint, modifiers: NSEvent.ModifierFlags) { positions.append(point) }
+  func leftMouse(pressed: Bool, modifiers: NSEvent.ModifierFlags) { buttons.append(pressed) }
+}
+
+@MainActor
+private func view(
+  surface: RecordingSurface, clipboard: NSPasteboard,
+  recorder: RecordingDispatcher = RecordingDispatcher()
+) -> SurfaceView {
+  Core.dispatcher = recorder
+  let view = SurfaceView(frame: NSRect(x: 0, y: 0, width: 100, height: 100))
+  view.pasteboard = clipboard
+  view.attach(surface, typeable: true)
+  return view
+}
+
+/// A pasteboard nobody else is using, so a test neither reads nor destroys what the developer
+/// running it last copied.
+private func scratchClipboard(_ name: String) -> NSPasteboard {
+  let board = NSPasteboard(name: NSPasteboard.Name("muster.tests.\(name)"))
+  board.clearContents()
+  return board
+}
+
+@Test @MainActor func aDragArrivesInTheSurfacesOwnCoordinates() {
+  // The y flip, which is the whole of what this view decides about a drag. Unflipped, a
+  // selection is the mirror image of the one that was dragged - visible instantly in the app
+  // and invisible in every green test, which is why it is asserted here.
+  let surface = RecordingSurface()
+  let pane = view(surface: surface, clipboard: scratchClipboard("drag"))
+
+  pane.mouseDown(with: click(at: NSPoint(x: 10, y: 90)))
+  pane.mouseDragged(with: drag(to: NSPoint(x: 50, y: 40)))
+  pane.mouseUp(with: release(at: NSPoint(x: 50, y: 40)))
+
+  #expect(
+    surface.positions == [
+      NSPoint(x: 10, y: 10), NSPoint(x: 50, y: 60), NSPoint(x: 50, y: 60),
+    ])
+  // Pressed, then released. A press with no release leaves the surface selecting forever.
+  #expect(surface.buttons == [true, false])
+}
+
+@Test @MainActor func aPressCarriesThePointerBeforeTheButton() {
+  // libghostty holds the pointer position separately from the button, so a press reported
+  // without one starts the selection wherever the pointer was last seen - which after a click
+  // in another pane is somewhere else entirely.
+  let surface = RecordingSurface()
+  let pane = view(surface: surface, clipboard: scratchClipboard("press"))
+
+  pane.mouseDown(with: click(at: NSPoint(x: 10, y: 90)))
+
+  #expect(surface.positions.count == 1)
+  #expect(surface.buttons.count == 1)
+}
+
+@Test @MainActor func copyPutsTheSelectionOnTheClipboard() {
+  let clipboard = scratchClipboard("copy")
+  let pane = view(surface: RecordingSurface(selection: "error: no such file"), clipboard: clipboard)
+
+  pane.copy(nil)
+
+  #expect(clipboard.string(forType: .string) == "error: no such file")
+}
+
+@Test @MainActor func copyingNothingLeavesTheClipboardAlone() {
+  // What every other terminal does, and what somebody who mistyped the chord expects. Clearing
+  // it would lose whatever they copied a moment ago, from a keystroke that did nothing else.
+  let clipboard = scratchClipboard("empty")
+  clipboard.setString("kept", forType: .string)
+  let pane = view(surface: RecordingSurface(selection: nil), clipboard: clipboard)
+
+  pane.copy(nil)
+
+  #expect(clipboard.string(forType: .string) == "kept")
+}
+
+@Test @MainActor func theEditMenuGreysOutWhatWouldDoNothing() {
+  // AppKit enables an item as soon as anything in the responder chain implements it, so
+  // without this Copy looks available in a pane with nothing selected and then does nothing.
+  let clipboard = scratchClipboard("validate")
+  let copyItem = NSMenuItem(
+    title: "Copy", action: #selector(SurfaceView.copy(_:)), keyEquivalent: "c")
+  let pasteItem = NSMenuItem(
+    title: "Paste", action: #selector(SurfaceView.paste(_:)), keyEquivalent: "v")
+
+  let empty = view(surface: RecordingSurface(selection: nil), clipboard: clipboard)
+  #expect(!empty.validateMenuItem(copyItem))
+  #expect(!empty.validateMenuItem(pasteItem))
+
+  clipboard.setString("something", forType: .string)
+  let selected = view(surface: RecordingSurface(selection: "picked"), clipboard: clipboard)
+  #expect(selected.validateMenuItem(copyItem))
+  #expect(selected.validateMenuItem(pasteItem))
+}
+
+@Test @MainActor func pasteSendsWhatIsOnTheClipboardAndNothingWhenItIsEmpty() {
+  let recorder = RecordingDispatcher()
+  let clipboard = scratchClipboard("paste")
+  let pane = view(surface: RecordingSurface(), clipboard: clipboard, recorder: recorder)
+
+  pane.paste(nil)
+  clipboard.setString("cargo test", forType: .string)
+  pane.paste(nil)
+
+  // By payload rather than by count: an empty clipboard still writes a log record explaining
+  // that nothing was sent, and that crosses the same seam.
+  let pastes = recorder.requests.compactMap { request -> String? in
+    guard case .paste(let paste) = request.payload else { return nil }
+    return paste.text
+  }
+  #expect(pastes == ["cargo test"])
+}
+
 private func key(_ characters: String, keyCode: UInt16) -> NSEvent {
   NSEvent.keyEvent(
     with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0,
     context: nil, characters: characters, charactersIgnoringModifiers: characters,
     isARepeat: false, keyCode: keyCode)!
+}
+
+private func click(at point: NSPoint) -> NSEvent { mouse(.leftMouseDown, at: point) }
+private func drag(to point: NSPoint) -> NSEvent { mouse(.leftMouseDragged, at: point) }
+private func release(at point: NSPoint) -> NSEvent { mouse(.leftMouseUp, at: point) }
+
+private func mouse(_ type: NSEvent.EventType, at point: NSPoint) -> NSEvent {
+  // Window coordinates, which is what AppKit hands a view. With no window behind this one and
+  // the view at the origin, the two spaces coincide - so what these assert on is the flip and
+  // nothing else.
+  NSEvent.mouseEvent(
+    with: type, location: point, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil,
+    eventNumber: 0, clickCount: 1, pressure: 1)!
 }
 
 private func scroll(deltaY: CGFloat) -> NSEvent? {

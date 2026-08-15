@@ -185,14 +185,14 @@ public final class Surface {
   // daemon has to agree. That is what makes copy possible while reporting mouse buttons to
   // the program in the pane is still blocked (kan a_27CTgqqdv).
 
-  /// Reports where the pointer is, in the view's own coordinates.
+  /// Reports where the pointer is, measured from this surface's top left.
   ///
-  /// The y axis is flipped here rather than by the caller, because the reason is
-  /// libghostty's: AppKit measures a view from the bottom left and a surface measures itself
-  /// from the top left, so an unflipped position selects the mirror image of the drag.
-  public func mouseMoved(to point: NSPoint, viewHeight: CGFloat, modifiers: NSEvent.ModifierFlags) {
+  /// Which is not where AppKit measures from, and an unflipped position selects the mirror
+  /// image of the drag. The conversion is the caller's because the caller is the only one a
+  /// test can reach - a surface needs a GPU and a window, and forwarding is all this does.
+  public func mouseMoved(to point: NSPoint, modifiers: NSEvent.ModifierFlags) {
     ghostty_surface_mouse_pos(
-      surface, Double(point.x), Double(viewHeight - point.y), ghosttyModifiers(modifiers))
+      surface, Double(point.x), Double(point.y), ghosttyModifiers(modifiers))
   }
 
   /// Presses or releases the left button, which is what starts and ends a selection.
