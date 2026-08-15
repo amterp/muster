@@ -337,6 +337,15 @@ impl Session {
         self.panes.get(daemon)?.get(pane)
     }
 
+    /// What one daemon's mirror says a pane's agent is doing.
+    ///
+    /// Scoped to the daemon rather than searched, for the reason every other lookup here is:
+    /// two daemons hand out `w1:p1`, and a search would let one answer for the other's pane.
+    fn agent_state(&self, pane: &PaneKey) -> Option<AgentState> {
+        let mirror = self.backends.get(&pane.daemon)?.mirror.lock().ok()?;
+        mirror.agent_state(&pane.pane)
+    }
+
     /// Puts a region onto the tab holding this pane, so that something can show it.
     ///
     /// The mirror is what knows which tab a pane is in, so the lookup is here and the policy
@@ -1001,9 +1010,22 @@ fn report(daemon: &DaemonId, change: &Change) {
     // Recorded before anything is announced, because it is what the announcement depends on:
     // whether this transition finished on a pane somebody was looking at is the difference
     // between `idle` and `done`.
-    if let Change::AgentStateChanged { pane, from, to } = change {
-        let mut session = SESSION.lock().expect("a panicking sender poisoned the session");
-        session.attention.observed(&PaneKey::new(daemon, pane), *from, *to);
+    match change {
+        Change::AgentStateChanged { pane, from, to } => {
+            let mut session = SESSION.lock().expect("a panicking sender poisoned the session");
+            session.attention.observed(&PaneKey::new(daemon, pane), *from, *to);
+        }
+        // A pane that was already finished when this window arrived. Muster saw no transition
+        // for it and the daemon did, so first sight takes the daemon's answer; everything
+        // after it is Muster's own (`muster_core::attention`).
+        Change::PaneAdded(pane) => {
+            let key = PaneKey::new(daemon, pane);
+            let mut session = SESSION.lock().expect("a panicking sender poisoned the session");
+            if let Some(backend) = session.agent_state(&key) {
+                session.attention.first_seen(&key, backend);
+            }
+        }
+        _ => {}
     }
 
     if let Some(pane) = change.announces_agent_state() {
@@ -1037,12 +1059,7 @@ fn announce_state(pane: &PaneKey) {
 /// cannot see this window (`attention`).
 fn presented(pane: &PaneKey) -> Option<AgentState> {
     let session = SESSION.lock().expect("a panicking sender poisoned the session");
-    let backend = {
-        // Scoped to the daemon rather than searched, for the reason every other lookup here
-        // is: two daemons hand out `w1:p1`, and a search would let one answer for the other.
-        let mirror = session.backends.get(&pane.daemon)?.mirror.lock().ok()?;
-        mirror.agent_state(&pane.pane)?
-    };
+    let backend = session.agent_state(pane)?;
     Some(session.attention.presented(pane, backend))
 }
 

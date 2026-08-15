@@ -77,6 +77,25 @@ impl Attention {
         }
     }
 
+    /// A pane this window is meeting for the first time, as the backend already had it.
+    ///
+    /// The one moment a backend's own `done` is worth taking, and the reason is that we have
+    /// nothing better. Muster witnessed no transition for a pane that finished before it
+    /// attached, and a daemon outlives the app, so quitting and coming back is the ordinary
+    /// case rather than a corner of one. The daemon does have evidence there: it knows the
+    /// pane's tab was in the background. Refusing that because we cannot personally vouch for
+    /// it would mean a window opened after a break reports that nothing needs anybody, at the
+    /// one moment several things do.
+    ///
+    /// The same shape as the rule the mirror already follows for the field itself: structure
+    /// sets agent state only for a pane it is seeing for the first time, and the agent channel
+    /// owns it from then on. Here, first sight adopts and every observation after it is ours.
+    pub fn first_seen(&mut self, pane: &PaneKey, backend: AgentState) {
+        if backend == AgentState::Done && !self.seen(pane) {
+            self.unseen.insert(pane.clone());
+        }
+    }
+
     /// What the window should show for a pane, given what the daemon says about it.
     ///
     /// The daemon's `done` is normalized away first. It is a guess about a client that never

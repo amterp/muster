@@ -156,6 +156,39 @@
       "expect": { "states": { "devenv/w1:p1": "done", "local/w1:p1": "idle" } }
     },
     {
+      "name": "a pane that finished before this window existed is still waiting",
+      "why": "The failure this whole module exists to prevent, reached from the other side. A daemon outlives the app, so quitting Muster and coming back is ordinary - and while it was gone, agents finished. Muster witnessed no transition, so it has no observation of its own; what it does have is the daemon's, which knows the pane's tab was in the background. Refusing that on the grounds that we cannot personally vouch for it means a window opened after a break says nothing needs you, at the one moment several things do.\n\nSo first sight takes what the backend already had, and every moment after it is ours. The same shape as the rule the mirror already follows for agent state: structure sets the field only for a pane it is seeing for the first time, and the agent channel owns it afterwards.",
+      "given": {
+        "focused": false,
+        "visible": [],
+        "events": [{ "appeared": "local/w1:p1", "state": "done" }]
+      },
+      "expect": { "states": { "local/w1:p1": "done" } }
+    },
+    {
+      "name": "a pane the daemon says nobody needs is not made into a request",
+      "why": "The other half of trusting first sight. Adopting the daemon's answer means adopting it when it says idle too - inventing a `done` for a pane it never raised one for would fill a fresh window with requests nobody made, which costs the state its meaning just as surely as never raising it.",
+      "given": {
+        "focused": false,
+        "visible": [],
+        "events": [{ "appeared": "local/w1:p1", "state": "idle" }]
+      },
+      "expect": { "states": { "local/w1:p1": "idle" } }
+    },
+    {
+      "name": "looking at a pane that arrived finished settles it",
+      "why": "An inherited `done` is a request for attention like any other, so attention has to be able to answer it. If the one Muster adopts on the way up could not be settled by looking, a window reopened after a break would keep it forever.",
+      "given": {
+        "focused": true,
+        "visible": [],
+        "events": [
+          { "appeared": "local/w1:p1", "state": "done" },
+          { "visible": ["local/w1:p1"] }
+        ]
+      },
+      "expect": { "states": { "local/w1:p1": "idle" } }
+    },
+    {
       "name": "a window that has never been told about focus has seen nothing",
       "why": "The starting state, and it is deliberately the pessimistic one. A core that assumed it was focused until told otherwise would mark every agent seen during startup - the window is not on screen yet, and startup is exactly when a session full of running agents is being read for the first time.",
       "given": {

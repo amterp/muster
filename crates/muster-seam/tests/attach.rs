@@ -45,6 +45,29 @@ fn attaching_places_a_pane_where_the_keyboard_can_find_it() {
         &json!({ "pane_id": first, "agent": "probe", "source": "probe", "state": "working" }),
     );
 
+    // And one that already finished, in a tab herdr is not showing - which is how herdr comes
+    // to call it `done` rather than `idle`. The second tab is created first so that it, and
+    // not this pane's tab, is the daemon's active one.
+    let finished = {
+        daemon.call("tab.create", &json!({ "cwd": "/tmp" }));
+        let elsewhere = panes(&daemon)
+            .into_iter()
+            .find(|pane| pane != &first && pane != &second)
+            .expect("the new tab holds a pane of its own");
+        for state in ["working", "idle"] {
+            daemon.call(
+                "pane.report_agent",
+                &json!({ "pane_id": elsewhere, "agent": "probe", "source": "probe", "state": state }),
+            );
+        }
+        elsewhere
+    };
+    until(
+        "herdr to settle the finished agent as done, which is what it calls one nobody saw",
+        || agent_status(&daemon, &finished) == "done",
+        || format!("herdr says {:?} about {finished}", agent_status(&daemon, &finished)),
+    );
+
     // The core discovers its daemon the way a person's would, from the environment, so this
     // is the only way to point it at a scratch one.
     //
@@ -95,6 +118,16 @@ fn attaching_places_a_pane_where_the_keyboard_can_find_it() {
         "the working agent that predates this window to reach the shell",
         || latest_state(&first).as_deref() == Some("working"),
         || format!("the core last said {:?} about {first}", latest_state(&first)),
+    );
+
+    // And the one that finished before this window existed is still asking for somebody.
+    // Muster saw no transition for it, so it has no observation of its own and the daemon
+    // does - and a window reopened after a break reporting that nothing needs anybody is the
+    // failure this whole thing exists to prevent, arrived at from the other side.
+    until(
+        "the agent that finished before this window to still be waiting",
+        || latest_state(&finished).as_deref() == Some("done"),
+        || format!("the core last said {:?} about {finished}", latest_state(&finished)),
     );
 
     // The keyboard follows the pane just attached, which is the whole of composition doing
@@ -482,6 +515,23 @@ fn attach(pane: &str) -> muster::proto::Attached {
         Some(response::Payload::Attached(attached)) => attached,
         other => panic!("expected an attachment for {pane}, got {other:?}"),
     }
+}
+
+/// What herdr itself says a pane's agent is doing, as opposed to what Muster presents.
+///
+/// The two are deliberately allowed to differ, so a test about the difference has to be able
+/// to read both.
+fn agent_status(daemon: &Daemon, pane: &str) -> String {
+    daemon
+        .call("pane.list", &json!({}))
+        .get("panes")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .find(|held| held["pane_id"].as_str() == Some(pane))
+        .and_then(|held| held["agent_status"].as_str())
+        .unwrap_or_default()
+        .to_string()
 }
 
 fn panes(daemon: &Daemon) -> Vec<String> {

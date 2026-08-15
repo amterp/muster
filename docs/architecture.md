@@ -92,6 +92,13 @@ a seen pane is `idle`; anywhere else it is `done`, until somebody looks - gainin
 both settle it. Looking away does not un-see what was already seen. `pane.focus` is still written to the daemon,
 because it activates the pane's tab and other clients read that.
 
+**First sight is the exception, and it has to be.** A pane that finished before Muster attached produced no
+transition to observe, and a daemon outlives the app - so quitting and coming back is the ordinary case, not a corner
+one. There the daemon's own answer is the only evidence there is, and it is real evidence: it knows the pane's tab was
+in the background. So a pane arriving already `done` is adopted as unseen, and every observation after that is
+Muster's. The same shape the mirror already uses for the field itself: structure sets agent state only for a pane it
+is seeing for the first time, and the agent channel owns it from then on.
+
 What this cannot answer, stated rather than hidden: ours is the only focus we can observe, so `done` means "nobody
 *we know of* saw it". A second Muster window, or a herdr TUI open beside us, is outside it.
 

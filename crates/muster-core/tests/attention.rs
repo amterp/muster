@@ -38,6 +38,15 @@ fn attention_conformance() {
                 attention.showing(read_panes(event, "visible")?);
                 continue;
             }
+            // A pane this window is meeting for the first time, as the daemon already had
+            // it - which is what every pane looks like on the way up.
+            if event.get("appeared").is_some() {
+                let pane = read_pane(event, "appeared")?;
+                let state = read_state(event, "state")?;
+                attention.first_seen(&pane, state);
+                backend.insert(pane, state);
+                continue;
+            }
             let pane = read_pane(event, "pane")?;
             let from = read_state(event, "from")?;
             let to = read_state(event, "to")?;
