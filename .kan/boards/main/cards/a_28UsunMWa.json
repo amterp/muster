@@ -1,0 +1,19 @@
+{
+  "_v": 3,
+  "alias": "the-perf-tier-fails",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1786803972902,
+  "creator": "Alexander Terp",
+  "description": "Running `./dev --ssh` and then `./dev --perf` reports a regression that is not one. The ssh tier leaves its devenv containers running, and `frame.decode` measures 1.67 ns/byte against a 0.83 baseline with them up and 1.44 with them stopped - so the obvious thing to do, running the out-of-gate tiers in sequence, produces a false failure.\n\nTwo things behind it. The containers are left running deliberately, since a devenv is a thing you keep; nothing says so at the point where it matters. And `frame.decode` now sits close enough to its 2.00x tolerance that ordinary machine load crosses it, which means the baseline was recorded on a quieter machine than the one anybody runs this on.\n\nA perf tier that fails for reasons unrelated to the code is one people learn to skip, which costs more than the regression it was built to catch. Worth deciding between: measuring load and refusing to judge when the machine is busy, re-recording the baseline against a realistic machine, or having the ssh tier say what it left running.",
+  "id": "a_28UsunMWa",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "title": "📉 The perf tier fails if you ran the ssh tier first",
+  "updated_at_millis": 1786803972902,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1786803972902}
+  ]
+}
