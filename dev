@@ -17,6 +17,7 @@ args:
     format f bool  # Rewrite sources into canonical style.
     clean c bool   # Delete build artifacts.
     proto bool     # Regenerate the seam's Swift types, whether or not the schema changed.
+    bundle bool    # Assemble muster.app around the built binary. Not in the gate.
     contract bool  # Run the app against a real herdr. Needs a GUI session; not in the gate.
     ssh bool       # Run the remote tier against the devenv container. Needs docker; not in the gate.
     perf bool      # Measure the per-unit budgets against perf/baseline.json. Not in the gate.
@@ -41,6 +42,11 @@ DEP_ARTIFACTS = [
 HERDR_PIN = "deps/herdr.pin"
 HERDR_DIR = "deps/herdr"
 HERDR_RELEASES = "https://github.com/herdrdev/herdr/releases/download"
+// Short and outside the toolchain's output directories, because it is the one artifact a
+// person types the path of - and `swift package clean` still takes it with the rest.
+BUNDLE = ".build/muster.app"
+// The app's identity to the OS, and what a notification permission grant will attach to.
+BUNDLE_ID = "com.amterp.muster"
 PROTO = "proto/muster.proto"
 PROTO_OUT = "Sources/MusterMac/Generated"
 // Gitignored, beside the code it describes: the hash of the schema that produced it. The
@@ -136,15 +142,133 @@ fn run_ssh_tier():
         print_err("section 8 is where the answer belongs once it is understood.")
         exit(1)
 
-// A surface spawns its bridge by path, looking beside the running executable - right for a
-// shipped bundle, and wrong for two build systems with two output directories. Rather than
-// teach the app where cargo puts things, the build puts the bridge where the app already
+// The app finds its helpers beside its own executable - right for a shipped bundle, and
+// wrong for two build systems with two output directories and a downloaded daemon. Rather
+// than teach the app where cargo puts things, the build puts them where the app already
 // looks. The awkwardness stays here instead of in the code that has cost the most time
 // when it was wrong.
-fn stage_bridge():
+//
+// herdr is one of them now: the app starts its own daemon rather than asking somebody to,
+// and it starts the pinned one rather than whatever is on PATH, for the reason the suite
+// does not read PATH either. So a build that produced no daemon would produce an app that
+// opens an empty window - and this is the one step that touches the network.
+fn stage_helpers():
     stdout = $`swift build --show-bin-path`
     swift_bin = stdout.trim()
     $`cp target/debug/muster-bridge {swift_bin}/muster-bridge`
+    herdr = herdr_binary()
+    $`cp {herdr} {swift_bin}/herdr`
+
+// Assembles the built binary into something the platform can launch.
+//
+// SwiftPM has no bundle product, so this is hand-rolled, and it is out of the gate because
+// nothing in the gate needs one. What it buys is everything a bare binary in .build cannot
+// be: a Dock icon, a double-click, `open -a`, and the launchd descriptor ceiling that only
+// a GUI-launched process ever meets (DescriptorLimit.swift).
+//
+// Signing and notarization are a separate question and belong with going public. This is
+// about launching it like an app on the machine that built it.
+fn build_bundle():
+    stdout = $`swift build --show-bin-path`
+    swift_bin = stdout.trim()
+    contents = "{BUNDLE}/Contents"
+
+    // Assembled from nothing every time. A bundle that accumulated across builds could
+    // carry a stale dylib beside a fresh binary, which fails at launch with a dyld error
+    // naming a symbol rather than the build that produced it.
+    $`rm -rf {BUNDLE}`
+    $`mkdir -p {contents}/MacOS {contents}/Frameworks {contents}/Resources`
+
+    // Helpers in MacOS/ rather than Resources/, because PaneCommand.bridge resolves them
+    // beside the running executable and one rule has to cover the dev build and the bundle.
+    $`cp {swift_bin}/muster {contents}/MacOS/muster`
+    $`cp {swift_bin}/muster-bridge {contents}/MacOS/muster-bridge`
+    $`cp {swift_bin}/herdr {contents}/MacOS/herdr`
+    $`cp target/debug/libmuster.dylib {contents}/Frameworks/libmuster.dylib`
+    $`cp {GHOSTTY_DIR}/zig-out/lib/libghostty-vt.dylib {contents}/Frameworks/libghostty-vt.dylib`
+
+    // Bundling herdr is redistribution, and Apache-2.0 asks that its terms travel with the
+    // binary. The copy is checked in rather than downloaded so that assembling a bundle
+    // stays offline and so the text cannot silently stop matching what ships.
+    $`cp licenses/herdr/LICENSE {contents}/Resources/LICENSE-herdr.txt`
+    $`cp NOTICE {contents}/Resources/NOTICE.txt`
+
+    write_info_plist(contents)
+
+    // The rpaths compiled in are loader-relative to target/debug and to the ghostty
+    // checkout (Package.swift, .cargo/config.toml), and neither exists inside a bundle. So
+    // both binaries learn where their libraries now sit, and both are re-signed afterwards:
+    // editing a Mach-O invalidates its signature, and macOS refuses to launch the result.
+    $`install_name_tool -add_rpath @executable_path/../Frameworks {contents}/MacOS/muster`
+    $`install_name_tool -add_rpath @loader_path {contents}/Frameworks/libmuster.dylib`
+
+    sign_bundle(swift_bin, contents)
+    print("assembled {BUNDLE} - open it, or drag it to the Dock")
+
+// What Launch Services reads before anything of Muster's runs.
+//
+// The identifier is the app's identity to the OS, so it is what a notification permission
+// grant attaches to (a_28Q5b3oPA). Changing it later means every user re-grants.
+//
+// Sudden termination is refused because the app owns a bridge process per pane. The daemon
+// owns the PTYs and survives regardless, but a process killed without notice leaves its
+// bridges to be reaped rather than shut down, and the run log ends mid-sentence.
+fn write_info_plist(contents):
+    version = workspace_version()
+    plist = """
+    <?xml version="1.0" encoding="UTF-8"?>
+    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+    <plist version="1.0">
+    <dict>
+      <key>CFBundleName</key><string>Muster</string>
+      <key>CFBundleDisplayName</key><string>Muster</string>
+      <key>CFBundleExecutable</key><string>muster</string>
+      <key>CFBundleIdentifier</key><string>{BUNDLE_ID}</string>
+      <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+      <key>CFBundlePackageType</key><string>APPL</string>
+      <key>CFBundleShortVersionString</key><string>{version}</string>
+      <key>CFBundleVersion</key><string>{version}</string>
+      <key>LSMinimumSystemVersion</key><string>14.0</string>
+      <key>NSHighResolutionCapable</key><true/>
+      <key>NSSupportsAutomaticTermination</key><false/>
+      <key>NSSupportsSuddenTermination</key><false/>
+    </dict>
+    </plist>
+    """
+    write_file("{contents}/Info.plist", plist)
+
+// One version, read from where the workspace already declares it.
+//
+// sed rather than awk because a `{}` in a command is Rad interpolation, and an awk program
+// is mostly braces.
+fn workspace_version():
+    stdout = $`sed -n '/^\[workspace\.package\]/,$ s/^version *= *"\(.*\)"/\1/p' Cargo.toml | head -1`
+    version = stdout.trim()
+    if version == "":
+        print_err(red("Cargo.toml's [workspace.package] has no version, so the bundle has none."))
+        print_err("Impact: Launch Services shows the app as unversioned and an upgrade cannot")
+        print_err("be told from a downgrade. Restore the version key.")
+        exit(1)
+    return version
+
+// Ad-hoc, inner code first.
+//
+// Not a security measure - an ad-hoc signature asserts nothing about who built this. It is
+// what macOS requires before it will run a Mach-O at all, and everything here has just been
+// edited or copied out from under its old signature.
+fn sign_bundle(swift_bin, contents):
+    $`codesign -f -s - {contents}/Frameworks/libghostty-vt.dylib`
+    $`codesign -f -s - {contents}/Frameworks/libmuster.dylib`
+    $`codesign -f -s - {contents}/MacOS/muster-bridge`
+    $`codesign -f -s - {contents}/MacOS/herdr`
+
+    // The entitlement SwiftPM signs a debug build with: it is what lets a debugger attach,
+    // and re-signing without it would make the bundle the one build nobody can debug.
+    entitlements = "{swift_bin}/muster-entitlement.plist"
+    if get_path(entitlements).exists:
+        $`codesign -f -s - --entitlements {entitlements} {BUNDLE}`
+    else:
+        $`codesign -f -s - {BUNDLE}`
 
 // The seam's types are generated on both sides and committed on neither, so a checkout
 // cannot hold a shell and a core that disagree - it holds neither until something builds
@@ -385,7 +509,11 @@ if record and not perf:
 if proto:
     build = true
 
-if not (deps or build or test or lint or format or clean or contract or ssh or perf or latency):
+// There is nothing to wrap a bundle around until the binary exists.
+if bundle:
+    build = true
+
+if not (deps or build or test or lint or format or clean or bundle or contract or ssh or perf or latency):
     deps = true
     build = true
     test = true
@@ -426,7 +554,11 @@ if build:
     // ones a contributor can act on without a window.
     $`cargo build --workspace --all-targets`
     $`swift build`
-    stage_bridge()
+    stage_helpers()
+
+if bundle:
+    announce("bundle")
+    build_bundle()
 
 // Clippy is a compile, so it cannot move up with the rest of the style checks - but it
 // goes before the suite rather than after it. Which lints are on is declared in Cargo.toml,

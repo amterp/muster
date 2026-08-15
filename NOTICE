@@ -21,6 +21,12 @@ Muster also links libghostty and libghostty-vt from the same project. Those are
 built from source at the commit pinned in deps/ghostty.pin and are not vendored
 here.
 
+Muster's app bundle redistributes herdr (https://github.com/herdrdev/herdr),
+licensed under the Apache License, Version 2.0. The binary is the release named
+in deps/herdr.pin, unmodified; a copy of its license ships beside it in the
+bundle and is kept at licenses/herdr/LICENSE. Muster starts that daemon and
+speaks to it over its socket, and contains no herdr source.
+
 The MIT License text is reproduced below.
 
   Permission is hereby granted, free of charge, to any person obtaining a copy
