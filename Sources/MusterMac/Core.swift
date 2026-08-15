@@ -166,6 +166,19 @@ public enum Core {
     send(request)
   }
 
+  /// Reports whether this window has the OS's focus.
+  ///
+  /// The one thing about attention that only the shell can see. `done` is `idle` on a pane
+  /// nobody looked at, and no daemon can answer that for a window it has no view of - so the
+  /// shell says what happened and the core decides what it means.
+  public static func windowFocused(_ focused: Bool) {
+    var focus = Muster_WindowFocus()
+    focus.focused = focused
+    var request = Muster_Request()
+    request.windowFocus = focus
+    send(request)
+  }
+
   /// Moves one divider, named by the turns from its tab's root.
   public static func setSplitRatio(daemonID: String, tab: String, path: [Bool], ratio: CGFloat) {
     var set = Muster_SetSplitRatio()
@@ -264,6 +277,7 @@ public enum Core {
     case .focusPane: return "focus_pane"
     case .focusRelative: return "focus_relative"
     case .setSplitRatio: return "set_split_ratio"
+    case .windowFocus: return "window_focus"
     case nil: return "(none)"
     }
   }

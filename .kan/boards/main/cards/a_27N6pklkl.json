@@ -12,6 +12,12 @@
       "body": "Measured, not inferred: docs/observations/herdr-0.8.0.md section 11, evidence in corpus/herdr-0.8.0/lifecycle/.\n\nA client subscribed to all 24 unparameterized subscription types sees nothing when a pane's agent goes working -\u003e idle -\u003e blocked. A second client on the same daemon, subscribed to pane.agent_status_changed with a pane_id, sees every one of them.\n\nSo the sidebar costs one held-open connection per pane, opened as panes appear and dropped as they go. The ask: make pane.agent_status_changed work unparameterized, the way pane.updated already does.",
       "created_at_millis": 1786637699032,
       "id": "c_27N7N9BGP"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Measured before the sidebar was built (observations/herdr-0.8.0.md section 11). Sixteen watchers cost one thread and ~48 KB per pane, idle at zero CPU - so this drops from something to press for to something to mention. Muster ships the sidebar without it.",
+      "created_at_millis": 1786785046349,
+      "id": "c_28MwY6Ftw"
     }
   ],
   "created_at_millis": 1786637678329,
@@ -20,7 +26,7 @@
   "position": "UUUUUUUUUUUUUUUUUUUU",
   "title": "🔌 Upstream: agent state needs a subscription per pane",
   "type": "chore",
-  "updated_at_millis": 1786640025621,
+  "updated_at_millis": 1786785046349,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786637678329}
   ]

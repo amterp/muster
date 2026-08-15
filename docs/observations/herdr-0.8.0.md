@@ -113,6 +113,14 @@ does not cover a window that loses OS focus while its active tab holds a running
 agent, which is exactly when "did the user see it" stops being guessable from
 daemon-side state.
 
+Settled 2026-08-15, and not by herdr. Muster derives `done` itself, from the transitions
+the agent channel already delivers and a window focus the shell reports across its own
+seam - and normalizes herdr's answer back to `idle` on the way in, so there is one writer
+rather than two disagreeing. `pane.focus` is still called, for the tab activation other
+clients read. See `architecture.md` (agent state) and `corpus/conformance/attention.json`.
+What that leaves open is only what no client can answer: a second Muster window, or a
+herdr TUI beside us, is focus we cannot observe.
+
 Evidence: `corpus/herdr-0.8.0/agent-states/`.
 
 ## 4. A controlling client holds the pane's geometry - confirmed, and it does not let go

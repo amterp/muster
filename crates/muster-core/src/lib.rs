@@ -6,6 +6,7 @@
 //! cases it answers to live in `corpus/conformance/` rather than in this language.
 
 pub mod agent_state;
+pub mod attention;
 pub mod composition;
 pub mod config;
 pub mod diagnostics;
@@ -14,7 +15,8 @@ pub mod intent;
 pub mod mirror;
 
 pub use agent_state::AgentState;
-pub use composition::Composition;
+pub use attention::Attention;
+pub use composition::{Composition, PaneKey};
 pub use config::Config;
 pub use input::{Key, KeyEvent, Keymap, Modifiers, PaneInput};
 pub use intent::{BackendChannel, BackendIntent};

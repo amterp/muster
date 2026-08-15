@@ -1,0 +1,168 @@
+{
+  "concept": "attention.seenness",
+  "source": "authored",
+  "citation": "docs/architecture.md, agent state and seen-ness; docs/observations/herdr-0.8.0.md section 3, which measured herdr's own derivation and found architecture.md's account of the mechanism wrong",
+  "why": "`done` is the state attention routing is built on, and it is the only one of the five nobody observes - it is `idle` on a pane nobody looked at. herdr derives it from whether the pane's tab is active and whether the foreground client's window has OS focus, and there is no way to feed the second over its JSON API. So a Muster window sitting unfocused while an agent finishes is told `idle`, which reads as 'nothing needs you' at the exact moment something does.\n\nMuster computes it instead, from the transitions the agent channel delivers and the window focus only the shell can know. These cases are that rule. They are worth pinning as data rather than as tests because the rule is small, entirely about edges, and every edge is a way for the product's whole reason to exist to be quietly wrong: a `done` that never appears routes nobody, and a `done` that appears for a pane somebody watched finish trains the user to ignore it.\n\nThe events are a sequence on purpose. Seen-ness is a fold - what a transition means depends on what the window was showing when it arrived - so a case that set up state and asked one question would be pinning a snapshot rather than the rule.",
+  "cases": [
+    {
+      "name": "an agent that finishes in front of you is idle, not done",
+      "why": "The case that keeps `done` meaningful. If finishing on a pane somebody is looking at still raised `done`, every completed agent would raise it and the state would carry no information at all.",
+      "given": {
+        "focused": true,
+        "visible": ["local/w1:p1"],
+        "events": [{ "pane": "local/w1:p1", "from": "working", "to": "idle" }]
+      },
+      "expect": { "states": { "local/w1:p1": "idle" } }
+    },
+    {
+      "name": "an agent that finishes while the window is unfocused is done",
+      "why": "The reason this module exists, and the case herdr cannot answer: the pane is on screen and its tab is active, so every input herdr has says the user saw it. Only the window knows nobody was there.",
+      "given": {
+        "focused": false,
+        "visible": ["local/w1:p1"],
+        "events": [{ "pane": "local/w1:p1", "from": "working", "to": "idle" }]
+      },
+      "expect": { "states": { "local/w1:p1": "done" } }
+    },
+    {
+      "name": "an agent that finishes on a pane no window shows is done",
+      "why": "The other half of unseen, and the one that makes a roster worth having: a focused window says nothing about a pane it is not showing. Attention routing exists to surface these, so reading them as idle would hide exactly what it is for.",
+      "given": {
+        "focused": true,
+        "visible": ["local/w1:p2"],
+        "events": [{ "pane": "local/w1:p1", "from": "working", "to": "idle" }]
+      },
+      "expect": { "states": { "local/w1:p1": "done" } }
+    },
+    {
+      "name": "looking at a pane that finished unseen settles it",
+      "why": "`done` is a request for attention, so attention has to be able to answer it. A `done` that survived being looked at would sit there forever and become something the user learns to scroll past.",
+      "given": {
+        "focused": false,
+        "visible": ["local/w1:p1"],
+        "events": [
+          { "pane": "local/w1:p1", "from": "working", "to": "idle" },
+          { "focused": true }
+        ]
+      },
+      "expect": { "states": { "local/w1:p1": "idle" } }
+    },
+    {
+      "name": "bringing a pane on screen settles what finished while it was hidden",
+      "why": "The same settling reached the other way. Focus and visibility are two inputs to one question, and a rule that only watched focus would leave a pane surfaced from the sidebar still claiming nobody had seen it.",
+      "given": {
+        "focused": true,
+        "visible": ["local/w1:p2"],
+        "events": [
+          { "pane": "local/w1:p1", "from": "working", "to": "idle" },
+          { "visible": ["local/w1:p1"] }
+        ]
+      },
+      "expect": { "states": { "local/w1:p1": "idle" } }
+    },
+    {
+      "name": "a pane coming on screen in an unfocused window is still unseen",
+      "why": "Both inputs are required, and this is where a rule that treated either as sufficient would show it. A window rearranging itself in the background - a daemon reconnecting, a tab settling - is not somebody looking.",
+      "given": {
+        "focused": false,
+        "visible": [],
+        "events": [
+          { "pane": "local/w1:p1", "from": "working", "to": "idle" },
+          { "visible": ["local/w1:p1"] }
+        ]
+      },
+      "expect": { "states": { "local/w1:p1": "done" } }
+    },
+    {
+      "name": "looking away does not un-see what you already saw",
+      "why": "Seen-ness is written when an agent finishes and never taken back. If losing focus could resurrect `done`, every pane in the window would raise one the moment the user switched to a browser, which is the notification behaviour people disable products over.",
+      "given": {
+        "focused": true,
+        "visible": ["local/w1:p1"],
+        "events": [
+          { "pane": "local/w1:p1", "from": "working", "to": "idle" },
+          { "focused": false }
+        ]
+      },
+      "expect": { "states": { "local/w1:p1": "idle" } }
+    },
+    {
+      "name": "an agent that goes back to work is working, not done",
+      "why": "herdr's own rule, worth matching rather than improving on: anything that is not idle means the agent is doing something, so the pane is no longer waiting on anybody. A pane that kept its `done` while visibly working would be showing two states at once.",
+      "given": {
+        "focused": false,
+        "visible": [],
+        "events": [
+          { "pane": "local/w1:p1", "from": "working", "to": "idle" },
+          { "pane": "local/w1:p1", "from": "idle", "to": "working" }
+        ]
+      },
+      "expect": { "states": { "local/w1:p1": "working" } }
+    },
+    {
+      "name": "an agent that finishes unseen and then asks for a person is blocked",
+      "why": "Blocked is the state attention routing exists for, and it must not be masked by a stale `done` from the completion before it. Both are requests for a person; the newer one says what is actually wanted.",
+      "given": {
+        "focused": false,
+        "visible": [],
+        "events": [
+          { "pane": "local/w1:p1", "from": "working", "to": "idle" },
+          { "pane": "local/w1:p1", "from": "idle", "to": "blocked" }
+        ]
+      },
+      "expect": { "states": { "local/w1:p1": "blocked" } }
+    },
+    {
+      "name": "an idle that finished nothing leaves seen-ness alone",
+      "why": "Only a completion can leave a pane waiting. A pane whose harness could not be classified and then read as idle never finished anything, so raising `done` for it would be announcing work that was never done - which is worse than the `unknown` it came from, because it is confident.",
+      "given": {
+        "focused": false,
+        "visible": [],
+        "events": [{ "pane": "local/w1:p1", "from": "unknown", "to": "idle" }]
+      },
+      "expect": { "states": { "local/w1:p1": "idle" } }
+    },
+    {
+      "name": "the daemon's own done is not taken at its word",
+      "why": "herdr publishes a derived `done` from inputs it has about a client that never reported its focus. Taking it would mean two writers for one field with no way to tell whose answer is on screen. It is normalized back to idle on the way in, and this window's own answer decides - here, that somebody was looking.",
+      "given": {
+        "focused": true,
+        "visible": ["local/w1:p1"],
+        "events": [{ "pane": "local/w1:p1", "from": "working", "to": "done" }]
+      },
+      "expect": { "states": { "local/w1:p1": "idle" } }
+    },
+    {
+      "name": "the daemon's done still counts as finishing when nobody was looking",
+      "why": "The other side of normalizing it: refusing the daemon's derivation must not mean refusing the transition underneath it. herdr saying `done` is herdr saying the agent stopped, and the agent did stop.",
+      "given": {
+        "focused": false,
+        "visible": ["local/w1:p1"],
+        "events": [{ "pane": "local/w1:p1", "from": "working", "to": "done" }]
+      },
+      "expect": { "states": { "local/w1:p1": "done" } }
+    },
+    {
+      "name": "two daemons that hand out the same pane id are two panes",
+      "why": "Every daemon names its first pane `w1:p1`. A set keyed by pane alone would let the devenv's agent finishing unseen mark the laptop's pane as waiting, and the user would be sent to the wrong machine - which is the failure attention routing is least able to afford.",
+      "given": {
+        "focused": true,
+        "visible": ["local/w1:p1"],
+        "events": [
+          { "pane": "devenv/w1:p1", "from": "working", "to": "idle" },
+          { "pane": "local/w1:p1", "from": "working", "to": "idle" }
+        ]
+      },
+      "expect": { "states": { "devenv/w1:p1": "done", "local/w1:p1": "idle" } }
+    },
+    {
+      "name": "a window that has never been told about focus has seen nothing",
+      "why": "The starting state, and it is deliberately the pessimistic one. A core that assumed it was focused until told otherwise would mark every agent seen during startup - the window is not on screen yet, and startup is exactly when a session full of running agents is being read for the first time.",
+      "given": {
+        "visible": ["local/w1:p1"],
+        "events": [{ "pane": "local/w1:p1", "from": "working", "to": "idle" }]
+      },
+      "expect": { "states": { "local/w1:p1": "done" } }
+    }
+  ]
+}

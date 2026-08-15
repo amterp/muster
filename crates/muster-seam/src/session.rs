@@ -14,8 +14,9 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 
 use muster_core::AgentState;
+use muster_core::attention::Attention;
 use muster_core::composition::{
-    Composition, Daemon, DaemonId, Endpoint, RegionId, Step, Transport, View,
+    Composition, Daemon, DaemonId, Endpoint, PaneKey, RegionId, Step, Transport, View,
 };
 use muster_core::config::Config;
 use muster_core::diagnostics::log;
@@ -158,6 +159,11 @@ pub(crate) struct Session {
     /// has about a hundred bytes to spend and the temporary directory has already spent half
     /// of them, and a backend is free to spell an id with characters a path cannot hold.
     next_socket: u64,
+    /// Which agents have been seen, and so which are `done`.
+    ///
+    /// Beside the mirrors rather than inside one, because it spans them: a window is focused
+    /// or it is not, and that answers for a laptop's panes and a devenv's at once.
+    attention: Attention,
 }
 
 pub(crate) static SESSION: LazyLock<Mutex<Session>> =
@@ -736,9 +742,15 @@ fn open_remaining_regions() {
 /// of its own to patch, and the message is a few hundred bytes for a window nobody can fill
 /// past about fifteen panes.
 fn publish() {
-    let view = {
-        let session = SESSION.lock().expect("a panicking sender poisoned the session");
-        session.view()
+    // What the window is showing is also the answer to which agents have been seen, so the
+    // two are settled together rather than left to drift. `settled` is the panes that were
+    // waiting to be noticed and have now been - re-announced below, after the shell has been
+    // handed the arrangement they appear in.
+    let (view, settled) = {
+        let mut session = SESSION.lock().expect("a panicking sender poisoned the session");
+        let view = session.view();
+        let settled = session.attention.showing(view.showing());
+        (view, settled)
     };
 
     // The shape, not the fact. "the view changed" is useless in a bug report and what it
@@ -761,6 +773,12 @@ fn publish() {
         );
     }
     ffi::emit(&Event { payload: Some(event::Payload::ViewChanged(convert::view(&view))) });
+
+    // After the view, so that a pane surfaced by this very publish has somewhere to be
+    // painted before it is told it is no longer waiting on anyone.
+    for pane in &settled {
+        announce_state(pane);
+    }
 }
 
 /// Applies what a daemon just said to what Muster is holding open.
@@ -888,33 +906,69 @@ fn report(daemon: &DaemonId, change: &Change) {
         );
     }
 
-    let Some(pane) = change.announces_agent_state() else { return };
-    // Read back rather than taken from the change, because one of the two changes that
-    // announce a pane carries no state at all: a pane that appears already running is the
-    // case this exists for. The mirror was written before this ran, so for a transition it
-    // holds exactly what the transition moved to.
-    let Some(state) = agent_state(daemon, pane) else { return };
+    // Recorded before anything is announced, because it is what the announcement depends on:
+    // whether this transition finished on a pane somebody was looking at is the difference
+    // between `idle` and `done`.
+    if let Change::AgentStateChanged { pane, from, to } = change {
+        let mut session = SESSION.lock().expect("a panicking sender poisoned the session");
+        session.attention.observed(&PaneKey::new(daemon, pane), *from, *to);
+    }
+
+    if let Some(pane) = change.announces_agent_state() {
+        announce_state(&PaneKey::new(daemon, pane));
+    }
+}
+
+/// Tells the shell what to paint for one pane's agent.
+fn announce_state(pane: &PaneKey) {
+    // Resolved before emitting, and with the lock let go in between. Emitting reaches the
+    // shell, the shell reacts by dispatching, and a dispatch arriving while this held the
+    // session would deadlock against it on the same thread.
+    let Some(state) = presented(pane) else { return };
     ffi::emit(&Event {
         payload: Some(event::Payload::PaneStateChanged(PaneStateChanged {
-            daemon_id: daemon.to_string(),
-            pane_id: pane.to_string(),
+            daemon_id: pane.daemon.to_string(),
+            pane_id: pane.pane.to_string(),
             state: state.as_str().to_string(),
         })),
     });
 }
 
-/// What one daemon's mirror says a pane's agent is doing.
+/// What the window should show for a pane, which is not always what the daemon said.
 ///
-/// Scoped to the daemon rather than searched, for the reason every other lookup here is:
-/// two daemons hand out `w1:p1`, and a search would let one answer for the other's pane.
+/// The mirror is read back rather than the change being taken at its word, because one of
+/// the two changes that announce a pane carries no state at all - a pane that appears
+/// already running is the case that needs this. For a transition the mirror was written
+/// before this runs, so it holds exactly what the transition moved to.
 ///
-/// The session lock is released before the caller emits. Emitting reaches the shell, the
-/// shell reacts by dispatching, and a dispatch arriving while this held the session would
-/// deadlock against it on the same thread.
-fn agent_state(daemon: &DaemonId, pane: &PaneId) -> Option<AgentState> {
+/// Then `done` is decided here rather than accepted from the daemon, because the daemon
+/// cannot see this window (`attention`).
+fn presented(pane: &PaneKey) -> Option<AgentState> {
     let session = SESSION.lock().expect("a panicking sender poisoned the session");
-    let mirror = session.backends.get(daemon)?.mirror.lock().ok()?;
-    mirror.agent_state(pane)
+    let backend = {
+        // Scoped to the daemon rather than searched, for the reason every other lookup here
+        // is: two daemons hand out `w1:p1`, and a search would let one answer for the other.
+        let mirror = session.backends.get(&pane.daemon)?.mirror.lock().ok()?;
+        mirror.agent_state(&pane.pane)?
+    };
+    Some(session.attention.presented(pane, backend))
+}
+
+/// The window gained or lost the OS's focus.
+///
+/// The one thing about attention no daemon can tell the core and no core can observe. What
+/// it changes is which finished agents are still waiting to be noticed, so only those panes
+/// are re-announced - an agent-state change costs that change rather than a walk of every
+/// pane (`architecture.md`, fast is a feature).
+pub(crate) fn window_focused(focused: bool) {
+    log::info("window.focus", fields! { "focused" => focused });
+    let settled = {
+        let mut session = SESSION.lock().expect("a panicking sender poisoned the session");
+        session.attention.window_focused(focused)
+    };
+    for pane in &settled {
+        announce_state(pane);
+    }
 }
 
 /// How much of one daemon's truth the core currently has.

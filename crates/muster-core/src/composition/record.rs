@@ -99,6 +99,33 @@ impl std::fmt::Display for RegionId {
     }
 }
 
+/// One pane, named the way anything spanning daemons has to name one.
+///
+/// Two daemons both hand out `w1:p1`, so anything keyed by pane alone lets one machine's
+/// pane answer for the other's. Every message across the seam that names a pane already
+/// carries both halves; this is the same pair when it needs to be one value - a set, a map
+/// key, a log field.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct PaneKey {
+    pub daemon: DaemonId,
+    pub pane: PaneId,
+}
+
+impl PaneKey {
+    pub fn new(daemon: &DaemonId, pane: &PaneId) -> PaneKey {
+        PaneKey { daemon: daemon.clone(), pane: pane.clone() }
+    }
+}
+
+impl std::fmt::Display for PaneKey {
+    /// `local/w1:p1`, so a log line or a corpus case can name a pane unambiguously in one
+    /// token. Split at the first slash to read one back: a daemon id is Muster's own and
+    /// holds none, where a pane id is the backend's string and Muster never parses it.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}/{}", self.daemon, self.pane)
+    }
+}
+
 /// The part of a window showing one tab's pane tree.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Region {

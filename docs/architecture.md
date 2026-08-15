@@ -78,13 +78,22 @@ Agent states are working / blocked / idle / done / **unknown** - five, not four;
 success. State is daemon truth, but one of the five is computed from a client-side input, so the vocabulary has to
 carry that input.
 
-`done` is not stored: it is `idle` on a pane that has not been *seen*, and seen-ness is written only when an agent
-completes - a working or blocked pane going idle. At that moment the daemon asks two questions: is the pane's **tab**
-the active one, and does the foreground client's **window** have OS focus. Pane focus is not consulted. So Muster
-feeds seen-ness by driving the daemon's active tab, which `pane.focus` does as a side effect, and by reporting
-window focus - and the second has no method on herdr's JSON API today (see `observations/herdr-0.8.0.md`, and the
-kan card tracking the upstream ask). Until it does, a Muster window that loses OS focus while its active tab holds a
-running agent will mark that agent seen when nobody saw it.
+`done` is not stored anywhere: it is `idle` on a pane that has not been *seen*, and seen-ness is written only when an
+agent completes - a working or blocked pane going idle. **Muster derives it rather than reading it.** herdr derives
+one too, from whether the pane's tab is active and whether the foreground client's window has OS focus, and its JSON
+API has no method for the second (`observations/herdr-0.8.0.md` section 3). A daemon asked to decide this for a
+window it cannot see is answering from a client that never reported, so its `done` is normalized back to `idle` on
+the way in and Muster's own answer replaces it. Two writers for one field is the failure named below; of the two,
+only one can see the window.
+
+Muster's rule is the same shape with inputs it actually has. A pane is seen when it is on screen in a window that has
+the OS's focus, and the shell reports that focus across the seam because nothing else can observe it. A completion on
+a seen pane is `idle`; anywhere else it is `done`, until somebody looks - gaining focus and bringing a pane on screen
+both settle it. Looking away does not un-see what was already seen. `pane.focus` is still written to the daemon,
+because it activates the pane's tab and other clients read that.
+
+What this cannot answer, stated rather than hidden: ours is the only focus we can observe, so `done` means "nobody
+*we know of* saw it". A second Muster window, or a herdr TUI open beside us, is outside it.
 
 ## Control plane, data plane
 
@@ -168,7 +177,8 @@ codegen - a surface that cannot express an action is a missing message, visible 
   though every session had gone.
 - **Cursors are written, not read.** Daemon focus (focused workspace, tab, pane) is a single value per daemon,
   shared with every client including the herdr TUI. Muster's input routing - which pane its keyboard feeds - is
-  view-local. Interacting writes daemon focus (which also feeds seen-ness); Muster never *routes* input by reading
+  view-local. Interacting writes daemon focus (which activates the pane's tab, for the clients that read it); Muster
+  never *routes* input by reading
   it, so another client moving daemon focus never yanks Muster's keyboard. Both halves are one action to whoever
   clicked, so one request does both: the keyboard moves whatever the daemon answers, and a refused write is worth a
   log line rather than undoing a focus move the user watched happen.

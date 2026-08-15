@@ -13,7 +13,9 @@
 //! Derived and disposable, unlike the records next door. Nothing here is saved, and nothing
 //! here is authoritative: a view is correct exactly as long as the mirror behind it is.
 
-use crate::composition::record::{Composition, DaemonId, Region, RegionId};
+use std::collections::BTreeSet;
+
+use crate::composition::record::{Composition, DaemonId, PaneKey, Region, RegionId};
 use crate::mirror::Mirror;
 use crate::mirror::backend::{Layout, LayoutNode, PaneId, SplitAxis, TabId};
 
@@ -135,6 +137,29 @@ impl View {
 
     pub fn region(&self, id: RegionId) -> Option<&ViewRegion> {
         self.regions.iter().find(|region| region.id == id)
+    }
+
+    /// Every pane this window has on screen, named by its daemon.
+    ///
+    /// What seen-ness is answered against: a pane nobody is showing cannot have been seen,
+    /// however focused the window is. A tab's zoom needs no special case, because a zoomed
+    /// region publishes only the zoomed pane - the tree here already is what is visible.
+    ///
+    /// A region whose tree has not arrived contributes nothing, which is the honest answer.
+    /// Its panes may well be on screen from the last published tree, but this window has not
+    /// been told they are, and guessing would mark agents seen on the strength of a
+    /// arrangement the daemon has stopped describing.
+    pub fn showing(&self) -> BTreeSet<PaneKey> {
+        self.regions
+            .iter()
+            .flat_map(|region| {
+                region
+                    .root
+                    .iter()
+                    .flat_map(ViewNode::panes)
+                    .map(|pane| PaneKey::new(&region.daemon, &pane.id))
+            })
+            .collect()
     }
 
     /// Where the keyboard lands after stepping one pane.

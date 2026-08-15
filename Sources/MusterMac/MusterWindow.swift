@@ -55,6 +55,7 @@ public final class MusterWindow: NSObject {
       defer: false)
     super.init()
     window.contentView = strip
+    window.delegate = self
     window.center()
     applyTitle()
   }
@@ -212,6 +213,26 @@ public final class MusterWindow: NSObject {
     window.title = PaneAppearance.title(
       paneID: keyboardPane, zoomed: zoomed, health: state, detail: detail, daemon: daemon,
       problem: problem)
+  }
+}
+
+/// Whether anybody is looking at this window.
+///
+/// The only input to agent state that no daemon can supply. herdr derives `done` from the
+/// foreground client's window focus and has no API to be told it, so a window sitting behind
+/// a browser while an agent finishes is reported as `idle` - "nothing needs you", at the one
+/// moment something does. The core decides what this means; this only says it happened.
+///
+/// Key window rather than app activation, because the question is whether this window was
+/// being looked at. An app can be frontmost with this window behind its own settings sheet,
+/// and the agent that finished underneath was no more seen than if the app were hidden.
+extension MusterWindow: NSWindowDelegate {
+  public func windowDidBecomeKey(_ notification: Notification) {
+    Core.windowFocused(true)
+  }
+
+  public func windowDidResignKey(_ notification: Notification) {
+    Core.windowFocused(false)
   }
 }
 

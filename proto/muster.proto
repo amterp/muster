@@ -30,7 +30,24 @@ message Request {
     FocusPane focus_pane = 11;
     SetSplitRatio set_split_ratio = 12;
     FocusRelative focus_relative = 13;
+    WindowFocus window_focus = 14;
   }
+}
+
+// Whether this window has the OS's focus.
+//
+// The one input to the vocabulary that no daemon can supply and no core can observe. `done`
+// is `idle` on a pane nobody looked at, and herdr derives it from the foreground client's
+// window focus - which its JSON API has no method for, so a daemon deciding it for a Muster
+// window is answering from a client that never reported. The consequence is not cosmetic: an
+// agent finishing while this window sits behind a browser reads as `idle`, which says nothing
+// needs you at the moment something does.
+//
+// So the shell reports what only it can see and the core decides what it means. Nothing else
+// crosses this seam about focus: which pane the keyboard feeds is Muster's own cursor and
+// already travels on the view.
+message WindowFocus {
+  bool focused = 1;
 }
 
 // Splits a pane, putting the new one beside or below it.

@@ -91,6 +91,10 @@ fn handle(request: Request) -> Response {
             Ok(daemon) => answer(session::focus(&daemon, &PaneId::new(focus.pane_id))),
             Err(refusal) => refusal,
         },
+        request::Payload::WindowFocus(focus) => {
+            session::window_focused(focus.focused);
+            Response::ok()
+        }
         request::Payload::FocusRelative(step) => match Step::parse(&step.direction) {
             Some(direction) => answer(session::step(direction)),
             None => Response::failure(format!(

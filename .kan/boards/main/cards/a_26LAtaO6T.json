@@ -12,6 +12,12 @@
       "body": "Parked rather than dropped, and the reason it is not urgent is on a new\ncard: `done` is idle on a pane nobody saw, and Muster holds both halves\nof that - the core sees every working -\u003e idle transition, and the shell\nknows whether its own window had focus. See a_27TdrJVUb. This card is\nthe upstream ask, worth making only if we ever approach the herdr team.",
       "created_at_millis": 1786654109421,
       "id": "c_27U0HWlAv"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "No longer blocking anything. Muster derives `done` itself as of 2026-08-15: the shell reports its own window focus across the seam, the core holds seen-ness per pane, and herdr's derived answer is normalized back to idle on the way in so there is one writer rather than two.\n\nSo the ask is now a nicety rather than a need - it would let a herdr TUI and a Muster window agree about what has been seen, which nothing today requires. Worth keeping parked with that reframing rather than closed: if it ever lands, our seen-ness becomes something we could feed rather than only compute.",
+      "created_at_millis": 1786785046309,
+      "id": "c_28MwY2cPV"
     }
   ],
   "created_at_millis": 1786485304542,
@@ -21,7 +27,7 @@
   "position": "6",
   "title": "Upstream: no API for reporting client window focus",
   "type": "chore",
-  "updated_at_millis": 1786654109421,
+  "updated_at_millis": 1786785046309,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786485304542},
     {"field":"column","value":"next","at":1786486563544},

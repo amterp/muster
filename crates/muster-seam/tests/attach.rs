@@ -20,7 +20,7 @@ use std::sync::Mutex;
 use herdr_harness::Daemon;
 use muster::proto::{
     AttachPane, ClosePane, Event, Paste, Request, Response, SplitPane, Startup, ViewChanged,
-    ViewNode, event, request, response, view_node,
+    ViewNode, WindowFocus, event, request, response, view_node,
 };
 use prost::Message;
 use serde_json::{Value, json};
@@ -145,7 +145,51 @@ fn attaching_places_a_pane_where_the_keyboard_can_find_it() {
          as well as, or instead of, {second}"
     );
 
+    an_agent_finishing_unseen_waits_to_be_noticed(&daemon, &second);
     the_window_follows_and_drives_the_tree(&daemon, &second);
+}
+
+/// An agent that finishes while nobody is looking, and what happens when somebody looks.
+///
+/// The half of agent state no daemon can answer. herdr decides `done` from whether the
+/// pane's tab is active and whether the foreground client's window has OS focus, and its
+/// JSON API has no way to be told the second - so with the tab active and no client
+/// reporting, herdr's answer here is `idle`. That reads as "nothing needs you" at the exact
+/// moment something does, which is what this window's own focus is for.
+///
+/// The settling assertion is the one that cannot pass by accident. herdr never revises its
+/// answer when a Muster window gains focus, because it cannot see that happen at all, so a
+/// core relaying the daemon would leave this `done` forever.
+fn an_agent_finishing_unseen_waits_to_be_noticed(daemon: &Daemon, pane: &str) {
+    let report = |state: &str| {
+        daemon.call(
+            "pane.report_agent",
+            &json!({ "pane_id": pane, "agent": "probe", "source": "probe", "state": state }),
+        );
+    };
+
+    report("working");
+    until(
+        "the agent to reach the shell as working",
+        || latest_state(pane).as_deref() == Some("working"),
+        || format!("the core last said {:?} about {pane}", latest_state(pane)),
+    );
+
+    // Nothing has told the core this window is focused, which is where it starts and where a
+    // window that has not yet been looked at genuinely is.
+    report("idle");
+    until(
+        "the finished agent to be waiting for somebody",
+        || latest_state(pane).as_deref() == Some("done"),
+        || format!("the core last said {:?} about {pane}", latest_state(pane)),
+    );
+
+    assert_ok(&answer(request::Payload::WindowFocus(WindowFocus { focused: true })));
+    until(
+        "looking at the pane to settle what it was waiting for",
+        || latest_state(pane).as_deref() == Some("idle"),
+        || format!("the core last said {:?} about {pane}", latest_state(pane)),
+    );
 }
 
 /// The view the core publishes, and the two directions it moves in.
