@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "whose-file-is-it-the",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1786833856262,
+  "creator": "Alexander Terp",
+  "description": "Configuring Muster means editing up to three files owned by three different projects, and there is no stated rule for which one a given setting lives in. Each answer was arrived at on its own, and each is defensible on its own; nobody has ever looked at them together.\n\nWhere things stand today:\n\n- **`~/.config/muster/config.toml`** is Muster's own: `[[daemon]]`, `[keymap]`, `[text]`, `option_as_alt`, `resize_step`, `scroll_multiplier`, `divider_color`.\n- **A Ghostty config**, if you have one, decides fonts, colours and cursor style, because `Renderer.init` calls `ghostty_config_load_default_files` (a_28Yi1hLyM is the exit from that specific loan).\n- **Your herdr config** decides what a pane runs and how deep its scrollback is. Muster's own daemon reads it deliberately - it cannot be isolated from it without moving every pane's `XDG_CONFIG_HOME` too, which would change what shell your panes open.\n- **`~/.local/state/muster/window.toml`** is Muster's, and is state rather than configuration.\n\nThe question this card is for: is that the arrangement we want, and if so what is the *rule* - so that the next setting has an obvious home instead of being placed by whoever adds it.\n\nWhat prompted it. Muster borrows Ghostty's config for appearance and deliberately does not borrow it for keys, and somebody arriving with four `new_split` binds in their Ghostty config finds their panes look right and their chords do nothing. That asymmetry may well be correct - keys are Muster's actions and Ghostty knows nothing about tabs across daemons, agent lists or region dividers, whereas a font is a font - but it is currently an accident of two separate decisions rather than a position, and it is the first thing a Ghostty user runs into.\n\nThings worth having an answer to:\n\n- **Does inheriting from another app's config belong in the design at all**, or is it a bootstrap convenience that should become an explicit opt-in (`inherit_ghostty = true`) so that what Muster reads is something Muster names?\n- **Where is the line between \"ours\" and \"the daemon's\"?** Scrollback depth is herdr's because herdr owns the buffer, which is a real principle. Does it generalise, and does it survive a second backend?\n- **Is one file right?** `[[daemon]]` names machines, `[keymap]` names actions, `[text]` names bytes. Those are three different kinds of decision with three different audiences, and they change on three different timescales.\n- **What does an agent see?** \"Configuration is files\" is a desideratum, and a surface spread across three projects is one an agent has to be taught rather than discover.\n\nNot urgent and nothing is broken. Adjacent and deliberately separate: a_28Yi1hLyM (the appearance loan specifically) and a_28Yi1xGwp (a config that only takes effect on relaunch). This is the one that asks whether the shape is right before either of those is answered, since both answers depend on it.",
+  "id": "a_28hQJljMR",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "title": "⚙️ Whose file is it: the config surface has never been looked at whole",
+  "type": "chore",
+  "updated_at_millis": 1786833856262,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1786833856262}
+  ]
+}
