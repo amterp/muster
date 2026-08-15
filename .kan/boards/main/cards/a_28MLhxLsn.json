@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "raise-the-descriptor",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1786783630179,
+  "creator": "Alexander Terp",
+  "description": "Measured while budgeting the agent watchers (observations/herdr-0.8.0.md section 11): each watcher costs two descriptors, not one, because watch() clones the stream so Watcher::drop can unpark the thread. Fifteen panes on each of two daemons is 60 descriptors in watchers alone, before the structure subscriptions, the control socket per visible pane, and a bridge subprocess behind each.\n\nThe ceiling is lower than a developer ever sees. A shell reports a soft RLIMIT_NOFILE in the millions; a GUI-launched app inherits launchd's, which defaults to 256 soft and unlimited hard. So the number that matters is one nobody working on this will hit by accident, and the failure when it arrives is a pane that silently never opens - the exact shape a_27Y4QtzyK is already about.\n\nThe fix is small and belongs to the shell, which is where OS wiring lives: raise the soft limit toward the hard one at startup and log what was granted. What to ask for is the only real decision - enough for a full window on several daemons with bridges, not unlimited for its own sake.",
+  "id": "a_28MLhxLsn",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "title": "🔢 Raise the descriptor limit before the sidebar meets it",
+  "type": "chore",
+  "updated_at_millis": 1786783630179,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1786783630179}
+  ]
+}

@@ -18,5 +18,10 @@ serde = { version = "1", features = ["derive"] }
 prost.workspace = true
 serde_json.workspace = true
 
+# Only the watcher-cost example, which needs a real daemon to hold connections open
+# against. The budgets in src/main.rs deliberately spawn nothing.
+[dev-dependencies]
+herdr-harness.workspace = true
+
 [lints]
 workspace = true

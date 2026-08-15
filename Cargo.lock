@@ -380,6 +380,7 @@ dependencies = [
 name = "muster-perf"
 version = "0.1.0"
 dependencies = [
+ "herdr-harness",
  "libc",
  "muster-core",
  "muster-herdr",

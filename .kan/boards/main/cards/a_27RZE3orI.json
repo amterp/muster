@@ -5,17 +5,27 @@
   "area": [
     "testing"
   ],
-  "column": "next",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Settled. One thread and ~48 KB per pane, idle at zero CPU, measured at fifteen panes against a real daemon (observations/herdr-0.8.0.md section 11, 'What sixteen of them cost'). Both questions answered: thread-per-watcher stays, and the upstream ask (a_27N6pklkl) drops from need to courtesy - Muster ships the sidebar without it.\n\nWhat the measurement found that nobody asked for: a watcher costs two descriptors, not one, because watch() clones the stream so Drop can unpark the thread. Against the 256 a GUI-launched process inherits from launchd, fifteen panes on two daemons is a real fraction of the budget - raised as a_28MLhxLsn.\n\nThe rig is crates/muster-perf/examples/watcher-cost.rs: an example rather than a baseline entry, so the gate compiles it and never fails a build over a memory reading.",
+      "created_at_millis": 1786783695558,
+      "id": "c_28MNPPqWu"
+    }
+  ],
   "created_at_millis": 1786648302839,
   "creator": "Alexander Terp",
   "description": "Agent state costs one held-open connection and one thread per pane (observations/herdr-0.8.0.md section 11). At 15 panes that is 16 of each, and nothing has measured what it costs in memory, file descriptors or scheduling.\n\nThe number decides two things: whether the upstream ask (a_27N6pklkl) is worth pressing, and whether the current thread-per-watcher shape should become one thread polling many sockets. Needs the splits work first, since that is what puts 15 panes in a window.",
   "id": "a_27RZE3orI",
-  "position": "!E",
+  "position": "!!!E",
   "title": "📊 Budget the per-pane agent connections at 15 panes",
   "type": "chore",
-  "updated_at_millis": 1786779076519,
+  "updated_at_millis": 1786783699717,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786648302839},
-    {"field":"column","value":"next","at":1786779076519}
+    {"field":"column","value":"next","at":1786779076519},
+    {"field":"column","value":"in-progress","at":1786783271886},
+    {"field":"column","value":"done","at":1786783699717}
   ]
 }

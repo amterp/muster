@@ -551,6 +551,48 @@ exists and is unparameterized, which suggests the plumbing is there.
 Not a blocker for one pane, which is what the app shows today. It is a blocker for the
 sidebar, and the number of connections it implies should be settled before that is built.
 
+### What sixteen of them cost, measured
+
+Added 2026-08-15, macOS arm64, release build, growing one session from 1 pane to 15 with a
+subscription open. Regenerate with:
+
+```
+MUSTER_HERDR=deps/herdr/0.8.0/herdr cargo run --release -p muster-perf --example watcher-cost
+```
+
+|             | 1 pane  | 15 panes   | per added pane |
+|-------------|---------|------------|----------------|
+| RSS         | 2128 KB | 2784 KB    | 46-51 KB       |
+| threads     | 3       | 17         | 1              |
+| descriptors | 12      | 40         | 2              |
+
+Idle CPU over three seconds holding fifteen watchers: 0.0 ms. Threads parked in a blocking
+read cost nothing, so scheduling is not the problem here.
+
+Two descriptors per watcher rather than one, because `watch()` clones the stream so
+`Watcher::drop` can shut it down and unpark the thread. The clone is what makes that safe -
+the descriptor stays valid for as long as the watcher holds it - so this is the price of a
+shutdown that cannot race, not an oversight.
+
+**The upstream ask is worth less than this section claimed.** Under a megabyte and no
+measurable CPU at a full window does not justify asking another project to change its API.
+An unparameterized `pane.agent_status_changed` would still save every client a connection
+per pane, and it is still the cheapest thing herdr could do for clients like this one - but
+Muster ships the sidebar without it, and should say so if it asks.
+
+**Thread-per-watcher stays.** One thread and ~48 KB per pane, idle at zero, against a
+rewrite that would add a polling dependency or a hand-rolled `poll` to reclaim 700 KB. Not
+a trade worth making at this cardinality. Revisit if a window ever holds panes by the
+hundred.
+
+**Descriptors are the resource with a ceiling, and it is lower than it looks.** A
+developer's shell reports a soft `RLIMIT_NOFILE` in the millions, so measuring from one is
+misleading: a GUI-launched app inherits launchd's limit, which defaults to 256 soft and
+unlimited hard (`launchctl limit maxfiles`). Fifteen panes on each of two daemons is 60
+descriptors in watchers alone, before the structure subscriptions, the control socket per
+visible pane, and the bridge subprocess behind each. Muster should raise its own soft limit
+at startup rather than meet that ceiling as a pane which silently fails to open.
+
 ## 12. A daemon restart keeps the shape and loses the processes
 
 Added 2026-08-13. `architecture.md` promised sessions outlive quitting the app, dropping

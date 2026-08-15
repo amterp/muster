@@ -220,7 +220,9 @@ model:
   subscription carries the same information (`observations/herdr-0.8.0.md` section 11), so an overview of N panes is
   N held-open connections plus one for structure. Muster subscribes for every pane the mirror holds rather than only
   the attached one, because showing them all is the point and measuring the cheap arrangement would tell us nothing
-  about the one that ships. What this costs at fifteen panes decides whether the upstream ask is worth pressing.
+  about the one that ships. Measured at fifteen panes, that is one thread and ~48 KB each, idle at zero CPU - so the
+  arrangement stays, and the upstream ask is a courtesy rather than a need. What it does cost is two descriptors per
+  pane against the 256 a GUI-launched process inherits, so the shell must raise its own soft limit at startup.
 - **Cross-daemon order is core order.** Streams from different daemons have no mutual order. Composition and
   attention are ordered by the core's own application sequence, and nothing may depend on cross-daemon event order
   for correctness.
