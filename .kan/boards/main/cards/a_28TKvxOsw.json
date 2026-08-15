@@ -1,0 +1,19 @@
+{
+  "_v": 3,
+  "alias": "the-suite-is-green",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1786800283385,
+  "creator": "Alexander Terp",
+  "description": "Three bugs in one session were all found by launching the app, and the contract tier ran the same scenarios and passed. The gap is not that we lack an end-to-end tier - it is what that tier asserts.\n\nIt asserts what the core decided, not what the window showed. `a clean machine gets a daemon and a workspace` checked `daemon.started`, `workspace.creating` and `typeable == true`, every one of which was true while the pane was blank. The window logged `pane.surface.deferred` with an accurate impact line and nothing read it.\n\nThree fillers, cheapest first:\n\n1. Fail a contract run on any warn or error record the scenario did not declare it expects. Our logs already carry the diagnosis - the DIS convention means a warn line names the impact - and nothing consumes them. This turns every log line we have already written into an assertion, including for bugs nobody has thought of.\n\n2. Assert the shell's own outcome: for every pane a published view names, there is a `surface.create` and a `bridge.frame.first`. \"The core said yes\" and \"a pane painted\" are different claims and only the first is checked today.\n\n3. Prefer invariants to sequences in the daemon-backed tests. `cold_start.rs` asserts that every pane a view names has a socket a bridge can dial, over whatever the view settled on - it caught the bug it was written for and two other paths that were wrong for the same reason. A test that replays one expected sequence would have caught one.\n\nAlso worth noting what none of the daemon-backed tests do: start from a daemon in a state a user's daemon is actually in. They all build their world first, so the states that bite - a daemon holding nothing, a daemon holding a pane whose terminal died - had no coverage at all.",
+  "id": "a_28TKvxOsw",
+  "position": "!U",
+  "title": "🧪 The suite is green while the window is broken",
+  "updated_at_millis": 1786800283385,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1786800283385}
+  ]
+}
