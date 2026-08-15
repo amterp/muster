@@ -67,6 +67,10 @@ public enum MenuActions {
       title: "Split Right", selector: #selector(MusterWindow.splitRight(_:)), group: .pane),
     "split_down": Described(
       title: "Split Down", selector: #selector(MusterWindow.splitDown(_:)), group: .pane),
+    "split_left": Described(
+      title: "Split Left", selector: #selector(MusterWindow.splitLeft(_:)), group: .pane),
+    "split_up": Described(
+      title: "Split Up", selector: #selector(MusterWindow.splitUp(_:)), group: .pane),
     "close_pane": Described(
       title: "Close Pane", selector: #selector(MusterWindow.closePane(_:)), group: .pane),
     "next_pane": Described(

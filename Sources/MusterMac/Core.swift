@@ -134,17 +134,20 @@ public enum Core {
   // the window changes when the view that comes back says it did. An empty pane id means the
   // one this window's keyboard feeds, which is what a keybinding means.
 
-  /// Splits the focused pane, putting the new one beside it (`columns`) or below (`rows`).
+  /// Splits the focused pane, putting the new one on the named side of it.
+  ///
+  /// All four sides, whatever the daemon behind it offers: which of them cost one request and
+  /// which cost two is the core's problem and never this one's.
   ///
   /// A ratio of zero means the daemon's own default, which is what a keybinding wants; a
   /// drag-to-split would say.
   public static func split(
-    axis: String, ratio: Float = 0, daemonID: String = "", paneID: String = ""
+    side: String, ratio: Float = 0, daemonID: String = "", paneID: String = ""
   ) {
     var split = Muster_SplitPane()
     split.daemonID = daemonID
     split.paneID = paneID
-    split.axis = axis
+    split.side = side
     split.ratio = ratio
     var request = Muster_Request()
     request.splitPane = split

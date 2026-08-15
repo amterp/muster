@@ -195,6 +195,16 @@ codegen - a surface that cannot express an action is a missing message, visible 
   View = f(daemon state).
 - **The core owns a mirror**: a derived, disposable cache of daemon structure, bootstrapped from an authoritative
   snapshot plus event subscription, rebuilt after any gap, never patched across one.
+- **A daemon's answer is daemon truth, on the same terms as its events.** Not a prediction and not a patch: a
+  statement about a change the daemon has just made, arriving on the request channel instead of the broadcast one.
+  Both may be applied; neither may be assumed, and Muster still never writes anything it was not told. Timing is
+  why it is worth having two channels: herdr answers a swap or a resize with the settled arrangement in about a
+  millisecond and broadcasts the same arrangement about a hundred later, so a mirror that waits to be told twice
+  renders the arrangement it is moving away from (`observations/herdr-0.8.0.md`, section 14). Between the answer
+  and its broadcast the mirror is ahead of its own stream, so it remembers the arrangements the tab has passed
+  through and drops each one once when it arrives - matched by shape rather than by whole layout, because the
+  cursors beside a tree move on their own terms. Bounded by construction: an entry is spent on its first match,
+  so nothing is suppressed indefinitely and a wrong guess costs one frame rather than a stuck window.
 - **The core owns composition**: which daemons are attached, and which (daemon, workspace, tab) shows in which
   window region. Mixing is at tab granularity: a region displays one tab's pane tree, rendered from daemon truth;
   regions from different daemons sit side by side. Muster does not own an outer split tree over panes - that would

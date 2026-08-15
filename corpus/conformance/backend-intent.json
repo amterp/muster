@@ -1,7 +1,7 @@
 {
   "concept": "muster.backendIntent.herdrEnvelope",
   "source": "authored",
-  "citation": "corpus/herdr-0.8.0/api-schema.json, which herdr generates from its own request types and ./dev checks the running daemon against. Method names and every parameter here are declared there: PaneSplitParams (cwd, direction, env, focus, ratio, target_pane_id, workspace_id), TabCreateParams (cwd, env, focus, label, workspace_id), WorkspaceCreateParams (cwd, env, focus, label), LayoutSetSplitRatioParams (pane_id, path, ratio, tab_id), PaneResizeParams (amount, direction, pane_id), PaneZoomParams (mode, pane_id) whose mode defaults to toggle. The direction pair is recorded in docs/observations/herdr-0.8.0.md.",
+  "citation": "corpus/herdr-0.8.0/api-schema.json, which herdr generates from its own request types and ./dev checks the running daemon against. Method names and every parameter here are declared there: PaneSplitParams (cwd, direction, env, focus, ratio, target_pane_id, workspace_id), TabCreateParams (cwd, env, focus, label, workspace_id), WorkspaceCreateParams (cwd, env, focus, label), LayoutSetSplitRatioParams (pane_id, path, ratio, tab_id), PaneResizeParams (amount, direction, pane_id), PaneZoomParams (mode, pane_id) whose mode defaults to toggle. The direction pair, and the fact that herdr has only two of the four sides, are recorded in docs/observations/herdr-0.8.0.md section 14.",
   "why": "herdr ignores a parameter it does not recognise rather than refusing the request (`observations/herdr-0.8.0.md` section 6), so a misspelled key does not fail - it acts on whatever the daemon happened to have focused. `pane.split` is the sharp one: it takes `target_pane_id` where every other pane verb takes `pane_id`, and sending the wrong one splits an arbitrary pane. Against a real daemon holding one workspace and one pane, that is indistinguishable from correct, which is why these are pinned by name here rather than left to the daemon-backed tests. The second half is the direction pair: Muster names a split for the arrangement it produces and herdr for where the new pane goes, and `layout.rs` reads that same pair back in reverse - so getting it wrong here makes a column that reads back as a row.",
   "cases": [
     {
@@ -10,7 +10,7 @@
       "given": {
         "intent": "split",
         "pane": "p1",
-        "axis": "columns"
+        "side": "right"
       },
       "expect": {
         "method": "pane.split",
@@ -27,7 +27,7 @@
       "given": {
         "intent": "split",
         "pane": "p1",
-        "axis": "rows"
+        "side": "down"
       },
       "expect": {
         "method": "pane.split",
@@ -44,7 +44,7 @@
       "given": {
         "intent": "split",
         "pane": "p1",
-        "axis": "columns",
+        "side": "right",
         "ratio": 0.25,
         "cwd": "/src/muster"
       },
@@ -56,6 +56,59 @@
           "focus": true,
           "ratio": 0.25,
           "cwd": "/src/muster"
+        }
+      }
+    },
+    {
+      "name": "splitting leftward starts as a rightward split",
+      "why": "herdr's SplitDirection is right and down, and a split always puts the new pane on the second side, so a leftward split has no request behind it: it is this one followed by pane.swap of the pair. What is pinned here is the first half, which is the half that reaches the wire as a `pane.split` - identical to a rightward split, deliberately, because the side is not something herdr can be told. The pair is checked end to end against a real daemon in crates/muster-herdr/tests/split_sides.rs.",
+      "given": {
+        "intent": "split",
+        "pane": "p1",
+        "side": "left"
+      },
+      "expect": {
+        "method": "pane.split",
+        "params": {
+          "target_pane_id": "p1",
+          "direction": "right",
+          "focus": true
+        }
+      }
+    },
+    {
+      "name": "splitting upward starts as a downward split",
+      "why": "The other half of the same pair, on the other axis.",
+      "given": {
+        "intent": "split",
+        "pane": "p1",
+        "side": "up"
+      },
+      "expect": {
+        "method": "pane.split",
+        "params": {
+          "target_pane_id": "p1",
+          "direction": "down",
+          "focus": true
+        }
+      }
+    },
+    {
+      "name": "a ratio turns round when the pair will be swapped",
+      "why": "Muster's ratio is the share the pane being split keeps, on all four sides, so that one number means one thing. herdr's is the *first* child's share, and after the swap the pane being split is the second child - so the two count from opposite ends and the number has to be inverted on the way out. A keybinding never notices, because it sends no ratio and herdr's default is symmetric; a drag-to-split or a CLI placing a divider at a quarter would otherwise get three quarters.",
+      "given": {
+        "intent": "split",
+        "pane": "p1",
+        "side": "left",
+        "ratio": 0.25
+      },
+      "expect": {
+        "method": "pane.split",
+        "params": {
+          "target_pane_id": "p1",
+          "direction": "right",
+          "focus": true,
+          "ratio": 0.75
         }
       }
     },

@@ -10,7 +10,7 @@ use std::collections::BTreeSet;
 
 use conformance::{CaseError, Conformance, fields, repo_root};
 use muster_core::intent::{BackendIntent, Branch, Side};
-use muster_core::mirror::backend::{PaneId, SplitAxis, TabId, WorkspaceId};
+use muster_core::mirror::backend::{PaneId, TabId, WorkspaceId};
 use muster_herdr::request;
 use serde_json::{Value, json};
 
@@ -71,7 +71,16 @@ fn every_intent() -> Vec<BackendIntent> {
     let all = vec![
         BackendIntent::SplitPane {
             pane: PaneId::new("p1"),
-            axis: SplitAxis::Columns,
+            side: Side::Right,
+            ratio: Some(0.25),
+            cwd: Some("/src/muster".into()),
+        },
+        // Both kinds of split, because the second is two requests rather than one and only
+        // the first of them is what `request` builds. What the pair adds up to is checked
+        // against a real daemon in `split_sides.rs`.
+        BackendIntent::SplitPane {
+            pane: PaneId::new("p1"),
+            side: Side::Left,
             ratio: Some(0.25),
             cwd: Some("/src/muster".into()),
         },
@@ -146,11 +155,8 @@ fn intent(given: &Value) -> Result<BackendIntent, CaseError> {
     match kind.as_str() {
         "split" => Ok(BackendIntent::SplitPane {
             pane: PaneId::new(&text(given, "pane")?),
-            axis: match text(given, "axis")?.as_str() {
-                "columns" => SplitAxis::Columns,
-                "rows" => SplitAxis::Rows,
-                other => return Err(CaseError::new(format!("`{other}` is not an axis"))),
-            },
+            side: Side::parse(&text(given, "side")?)
+                .ok_or_else(|| CaseError::new("that is not a side"))?,
             ratio: ratio(given),
             cwd,
         }),

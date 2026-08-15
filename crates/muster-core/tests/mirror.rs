@@ -5,6 +5,7 @@ mod support;
 
 use conformance::{Conformance, fields};
 use muster_core::AgentState;
+use muster_core::intent::SettledLayout;
 use muster_core::mirror::backend::{Focus, PaneId, Tab, TabId, Workspace, WorkspaceId};
 use muster_core::mirror::{BackendEvent, Change, Mirror};
 use serde_json::{Value, json};
@@ -24,8 +25,18 @@ fn mirror_conformance() {
         if let Some(snapshot) = given.get("snapshot") {
             mirror.bootstrap(read_snapshot(snapshot));
         }
-        for event in given.get("events").and_then(Value::as_array).into_iter().flatten() {
-            changes.extend(mirror.apply(read_event(event)));
+        for step in given.get("events").and_then(Value::as_array).into_iter().flatten() {
+            // An answer, in the same list as the events, because where in a stream it lands is
+            // the whole question: a daemon replies to a request faster than it broadcasts what
+            // the request did, so an answer taken here is ahead of the events after it.
+            if text(step, "kind") == "settled" {
+                changes.extend(mirror.settle(SettledLayout {
+                    layout: read_layout(step),
+                    stale: step.get("stale").map(read_layout),
+                }));
+                continue;
+            }
+            changes.extend(mirror.apply(read_event(step)));
         }
         // After the stream, because that is when it happens: a watcher subscribes, then asks
         // what it may already have missed. `expected` is absent when the caller believed the
@@ -158,4 +169,139 @@ fn read_event(given: &Value) -> BackendEvent {
         // pass by exercising nothing at all.
         other => panic!("corpus case names an event kind the driver does not know: {other:?}"),
     }
+}
+
+/// The two sequences a case cannot spell: an event after a reconnect, and one arrangement
+/// arriving more times than the mirror was ever going to suppress it.
+///
+/// Both are about the bound on suppression, which is the property that lets this work without
+/// a clock. The corpus covers everything up to a reconnect; the driver applies its resnapshot
+/// last, so what happens on the stream *after* one has to be written out here.
+mod suppression_is_bounded {
+    use muster_core::intent::SettledLayout;
+    use muster_core::mirror::backend::{Layout, LayoutNode, PaneId, SplitAxis, TabId};
+    use muster_core::mirror::{BackendEvent, Mirror};
+
+    use super::support::backend::read_snapshot;
+    use serde_json::json;
+
+    fn tree(first: &str, second: &str) -> Layout {
+        Layout {
+            tab: TabId::new("w1:t1"),
+            root: LayoutNode::Split {
+                axis: SplitAxis::Columns,
+                ratio: 0.5,
+                first: Box::new(LayoutNode::Pane(PaneId::new(first))),
+                second: Box::new(LayoutNode::Pane(PaneId::new(second))),
+            },
+            focused: Some(PaneId::new("w1:p1")),
+            zoomed: None,
+        }
+    }
+
+    fn session() -> Mirror {
+        let mut mirror = Mirror::new();
+        mirror.bootstrap(read_snapshot(&json!({
+            "workspaces": [{ "id": "w1", "label": "tmp" }],
+            "tabs": [{ "id": "w1:t1", "workspace": "w1", "label": "1" }],
+            "panes": [
+                { "id": "w1:p1", "tab": "w1:t1", "workspace": "w1", "agentState": "idle" },
+                { "id": "w1:p2", "tab": "w1:t1", "workspace": "w1", "agentState": "idle" },
+            ],
+        })));
+        mirror
+    }
+
+    #[test]
+    fn a_reconnect_forgets_what_it_was_suppressing() {
+        // A snapshot is a fresh statement of the whole world, taken after the answer this was
+        // guarding against. An arming carried across one would drop a real arrangement out of
+        // the stream that follows - and that stream is the only thing that will mention it
+        // again, because herdr offers no replay.
+        let mut mirror = session();
+        let rightward = tree("w1:p1", "w1:p2");
+        mirror.settle(SettledLayout {
+            layout: tree("w1:p2", "w1:p1"),
+            stale: Some(rightward.clone()),
+        });
+
+        mirror.bootstrap(read_snapshot(&json!({
+            "workspaces": [{ "id": "w1", "label": "tmp" }],
+            "tabs": [{ "id": "w1:t1", "workspace": "w1", "label": "1" }],
+            "panes": [
+                { "id": "w1:p1", "tab": "w1:t1", "workspace": "w1", "agentState": "idle" },
+                { "id": "w1:p2", "tab": "w1:t1", "workspace": "w1", "agentState": "idle" },
+            ],
+        })));
+
+        assert!(
+            !mirror.apply(BackendEvent::LayoutUpserted(rightward.clone())).is_empty(),
+            "a reconnected mirror is still suppressing an arrangement from before the gap"
+        );
+        assert_eq!(mirror.layout(&TabId::new("w1:t1")), Some(&rightward));
+    }
+
+    #[test]
+    fn more_answers_than_the_bound_drop_the_oldest_rather_than_growing() {
+        // What a resize chord held down produces: answers outrunning their own broadcasts. The
+        // list is capped, so the arrangement furthest behind stops being suppressed - one
+        // frame of a divider jumping backwards, which is what happens today anyway. The
+        // alternative is a list that grows for as long as somebody holds a key.
+        let mut mirror = session();
+        let ratios = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6];
+        let at = |ratio: f32| {
+            let mut layout = tree("w1:p1", "w1:p2");
+            if let LayoutNode::Split { ratio: held, .. } = &mut layout.root {
+                *held = ratio;
+            }
+            layout
+        };
+        for ratio in ratios {
+            mirror.settle(SettledLayout { layout: at(ratio), stale: None });
+        }
+
+        // Six answers, and the mirror held one arrangement before each: the first five are
+        // candidates for suppression and only the last four fit.
+        assert!(
+            !mirror.apply(BackendEvent::LayoutUpserted(at(0.1))).is_empty(),
+            "the oldest arrangement is still being suppressed, so the list grew past its bound"
+        );
+        // Which puts the tab back where that broadcast said, since nothing is suppressing it.
+        assert_eq!(mirror.layout(&TabId::new("w1:t1")), Some(&at(0.1)));
+    }
+}
+
+#[test]
+fn exchanging_two_panes_moves_the_ids_and_leaves_the_shape() {
+    // How an adapter reconstructs the arrangement its backend published between the halves of
+    // a compound intent. A swap exchanges what sits in two places rather than rearranging the
+    // places, so the ratios, the axes and both cursors are untouched - a cursor names a pane,
+    // and a pane takes its focus with it when it moves.
+    use muster_core::mirror::backend::{Layout, LayoutNode, SplitAxis};
+
+    let settled = Layout {
+        tab: TabId::new("w1:t1"),
+        root: LayoutNode::Split {
+            axis: SplitAxis::Columns,
+            ratio: 0.25,
+            first: Box::new(LayoutNode::Pane(PaneId::new("w1:p2"))),
+            second: Box::new(LayoutNode::Split {
+                axis: SplitAxis::Rows,
+                ratio: 0.5,
+                first: Box::new(LayoutNode::Pane(PaneId::new("w1:p1"))),
+                second: Box::new(LayoutNode::Pane(PaneId::new("w1:p3"))),
+            }),
+        },
+        focused: Some(PaneId::new("w1:p2")),
+        zoomed: None,
+    };
+
+    let before = settled.with_panes_exchanged(&PaneId::new("w1:p1"), &PaneId::new("w1:p2"));
+    assert_eq!(before.root.to_string(), "columns(w1:p1, rows(w1:p2, w1:p3@0.5)@0.25)");
+    assert_eq!(before.focused, settled.focused);
+    assert_eq!(
+        before.with_panes_exchanged(&PaneId::new("w1:p1"), &PaneId::new("w1:p2")),
+        settled,
+        "exchanging the same pair twice did not come back to where it started"
+    );
 }

@@ -298,11 +298,19 @@ extension MusterWindow: NSWindowDelegate {
 // says it did (architecture.md, one action path).
 extension MusterWindow {
   @objc public func splitRight(_ sender: Any?) {
-    Core.split(axis: SplitAxis.columns.rawValue)
+    Core.split(side: "right")
   }
 
   @objc public func splitDown(_ sender: Any?) {
-    Core.split(axis: SplitAxis.rows.rawValue)
+    Core.split(side: "down")
+  }
+
+  @objc public func splitLeft(_ sender: Any?) {
+    Core.split(side: "left")
+  }
+
+  @objc public func splitUp(_ sender: Any?) {
+    Core.split(side: "up")
   }
 
   @objc public func newTab(_ sender: Any?) {

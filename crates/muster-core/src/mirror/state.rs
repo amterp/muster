@@ -11,10 +11,20 @@
 use std::collections::BTreeMap;
 
 use crate::AgentState;
+use crate::intent::SettledLayout;
 use crate::mirror::backend::{
-    Focus, Health, Layout, Pane, PaneId, Snapshot, Tab, TabId, Workspace, WorkspaceId,
+    Focus, Health, Layout, LayoutNode, Pane, PaneId, Snapshot, Tab, TabId, Workspace, WorkspaceId,
 };
 use crate::mirror::event::{BackendEvent, Change};
+
+/// How many arrangements one tab may be remembered as having moved past.
+///
+/// A bound rather than a judgement: what fills this is answers that have outrun their own
+/// broadcast, and a resize chord held down is the only thing that produces more than one at a
+/// time. Overflowing drops the oldest, which costs one frame of a divider jumping backwards -
+/// exactly what happens today, and only under a chord already going faster than the daemon
+/// can announce.
+const SUPERSEDED_LIMIT: usize = 4;
 
 /// What the backend says is true, as far as this mirror knows.
 ///
@@ -31,6 +41,33 @@ pub struct Mirror {
     /// keeping its last tree renders as slightly stale - and the second is the better
     /// wrong answer.
     layouts: BTreeMap<TabId, Layout>,
+    /// Arrangements a tab has already moved past, still in flight on the subscription.
+    ///
+    /// A daemon answers a request faster than it broadcasts what the request did, so a mirror
+    /// that takes the answer is ahead of its own event stream for a moment, and the events
+    /// that arrive in that moment describe arrangements it has left behind. Rendering one is
+    /// the pane jumping back to where it was, which is the whole defect this exists to
+    /// prevent.
+    ///
+    /// The arrangement rather than the whole layout, because the arrangement is what flashes.
+    /// The cursors beside it move on their own terms and disagreeing about them is normal:
+    /// herdr's swap puts daemon focus on the source pane, so the tree published between the
+    /// halves of a leftward split names a different focused pane than the one the tab settles
+    /// on, while being exactly the arrangement that must not be drawn.
+    ///
+    /// Drained on the first match, so each entry costs at most one dropped event and nothing
+    /// is suppressed indefinitely. Nothing clears an entry for *failing* to match, so an
+    /// answer's broadcast arriving before the one it superseded is no worse than the other
+    /// order.
+    superseded: BTreeMap<TabId, Vec<LayoutNode>>,
+    /// The arrangement an answer put here, until the backend's own broadcast of it arrives.
+    ///
+    /// What separates an arrangement still in flight from one long since delivered, and the
+    /// reason [`Mirror::settle`] can tell whether the tree it is replacing is owed an echo.
+    /// Without it, the tab's previous arrangement was armed every time - and a tab that later
+    /// returns to that shape by closing a pane has its broadcast dropped, leaving a pane on
+    /// screen that the daemon no longer holds.
+    awaiting_echo: BTreeMap<TabId, LayoutNode>,
     focus: Focus,
     health: Health,
     /// The agent-state stamp the last snapshot carried. herdr issues these from one
@@ -65,6 +102,11 @@ impl Mirror {
         self.tabs = snapshot.tabs.into_iter().map(|t| (t.id.clone(), t)).collect();
         self.panes = snapshot.panes.into_iter().map(|p| (p.id.clone(), p)).collect();
         self.layouts = snapshot.layouts.into_iter().map(|l| (l.tab.clone(), l)).collect();
+        // A snapshot is a fresh statement of the whole world, taken after every answer this
+        // was suppressing on behalf of. Keeping one across it would drop a real arrangement
+        // out of the stream that follows.
+        self.superseded.clear();
+        self.awaiting_echo.clear();
         self.health = Health::Connected;
         let previous_seq = std::mem::replace(&mut self.agent_state_seq, snapshot.agent_state_seq);
         let applied = std::mem::take(&mut self.agent_transitions_applied);
@@ -160,6 +202,76 @@ impl Mirror {
         changes
     }
 
+    /// Takes an arrangement the daemon stated in an answer, and remembers what it left behind.
+    ///
+    /// Distinct from applying an event, and the difference is only which channel the daemon
+    /// said it on. A backend answers a request with the arrangement that request produced, and
+    /// broadcasts the same arrangement afterwards - herdr about a hundred milliseconds
+    /// afterwards, measured (`observations/herdr-0.8.0.md` section 14). Both are the daemon
+    /// speaking, so both may be applied; taking the earlier one is the difference between a
+    /// split that lands and a split that lands twice.
+    ///
+    /// What it leaves behind is what makes this safe. Between the answer and its broadcast the
+    /// mirror is ahead of its own stream, and every arrangement the tab has passed through in
+    /// that window is still queued up to arrive - the one it held before, always, and for a
+    /// compound intent whatever the daemon published between the halves, which only the
+    /// adapter knows. Both are armed here so that [`Mirror::apply`] can recognize them as news
+    /// that has already been heard.
+    ///
+    /// An answer that changes nothing arms nothing: the tab is where the daemon says it should
+    /// be, so there is no earlier arrangement still on its way.
+    pub fn settle(&mut self, settled: SettledLayout) -> Vec<Change> {
+        let SettledLayout { layout, stale } = settled;
+        let tab = layout.tab.clone();
+        let held = self.layouts.get(&tab);
+        if held == Some(&layout) {
+            return Vec::new();
+        }
+
+        // The tree being replaced, but only while the backend still owes a broadcast of it -
+        // which is what happens under a chord going faster than the daemon can announce.
+        // An arrangement the mirror reached by being *told* has already had its broadcast, and
+        // arming it means dropping the next one that legitimately has that shape: closing a
+        // pane collapses a tab back to a tree it held before, and that is the one broadcast
+        // saying the pane is gone.
+        let replaced = held
+            .map(|held| held.root.clone())
+            .filter(|root| self.awaiting_echo.get(&tab) == Some(root));
+
+        let armed = self.superseded.entry(tab.clone()).or_default();
+        // Never the arrangement being settled on. A tab whose answer only moved a cursor has
+        // the same tree on both sides of this, and arming it would suppress the broadcast the
+        // answer is waiting for rather than the one it overtook.
+        armed.extend(
+            replaced
+                .into_iter()
+                .chain(stale.map(|stale| stale.root))
+                .filter(|passed| *passed != layout.root),
+        );
+        while armed.len() > SUPERSEDED_LIMIT {
+            armed.remove(0);
+        }
+
+        self.awaiting_echo.insert(tab.clone(), layout.root.clone());
+        self.layouts.insert(tab.clone(), layout);
+        vec![Change::LayoutChanged(tab)]
+    }
+
+    /// Whether this arrangement is one its tab has already been told it left.
+    ///
+    /// Drains the entry it matched, so the same arrangement arriving twice is suppressed once.
+    fn already_moved_past(&mut self, layout: &Layout) -> bool {
+        let Some(armed) = self.superseded.get_mut(&layout.tab) else { return false };
+        let Some(at) = armed.iter().position(|passed| *passed == layout.root) else {
+            return false;
+        };
+        armed.remove(at);
+        if armed.is_empty() {
+            self.superseded.remove(&layout.tab);
+        }
+        true
+    }
+
     fn apply_inner(&mut self, event: BackendEvent) -> Vec<Change> {
         match event {
             // Upserting an existing workspace or tab reports nothing, even when its label
@@ -211,7 +323,19 @@ impl Mirror {
             // tree dropped for arriving early would be replaced by nothing until the next
             // pane change, which on a quiet tab is never.
             BackendEvent::LayoutUpserted(layout) => {
+                // Before the comparison below rather than after it, because the two say
+                // different things: this one is an arrangement the daemon has already told
+                // Muster it left, arriving late, and applying it would walk a tab backwards.
+                if self.already_moved_past(&layout) {
+                    return Vec::new();
+                }
                 let tab = layout.tab.clone();
+                // The echo of an answer this mirror already took. Applying it is a no-op by
+                // the comparison below; what matters is that the debt is settled, so the tree
+                // stops counting as one the backend still owes a broadcast of.
+                if self.awaiting_echo.get(&tab) == Some(&layout.root) {
+                    self.awaiting_echo.remove(&tab);
+                }
                 if self.layouts.get(&tab) == Some(&layout) {
                     return Vec::new();
                 }
@@ -304,6 +428,8 @@ impl Mirror {
         // not fire for a tab closing, so a mirror that waited for one would keep a tree for
         // a tab nobody can reach (`observations/herdr-0.8.0.md` section 10).
         self.layouts.remove(id);
+        self.superseded.remove(id);
+        self.awaiting_echo.remove(id);
         let orphaned: Vec<PaneId> = self
             .panes
             .values()

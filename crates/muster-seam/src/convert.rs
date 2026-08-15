@@ -109,15 +109,6 @@ fn node(node: &ViewNode) -> proto::ViewNode {
     proto::ViewNode { node: Some(payload) }
 }
 
-/// Muster's own spelling of how a split divides its area.
-pub(crate) fn axis(name: &str) -> Option<SplitAxis> {
-    match name {
-        "columns" => Some(SplitAxis::Columns),
-        "rows" => Some(SplitAxis::Rows),
-        _ => None,
-    }
-}
-
 pub(crate) fn key(event: &proto::KeyEvent) -> Result<KeyEvent, String> {
     let action = KeyAction::parse(&event.action).ok_or_else(|| {
         format!(

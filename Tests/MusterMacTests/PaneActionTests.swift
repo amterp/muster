@@ -132,17 +132,19 @@ struct PaneActionTests {
   }
 
   @MainActor
-  @Test("a split names the arrangement it wants, not a direction")
-  func aSplitAsksForAnAxis() {
-    // herdr says right and down, which describe the moment of splitting. Muster says columns
-    // and rows, which describe what the user is looking at afterwards - and the translation
-    // belongs in the adapter, not in a menu item.
+  @Test("a split names the side the new pane lands on")
+  func aSplitAsksForASide() {
+    // All four, and the shell cannot tell which of them its daemon can do in one request:
+    // herdr splits rightward and downward only, so the other two are a split and a rearrange,
+    // and that belongs in the adapter rather than in a menu item.
     let recorder = recorder()
 
-    Core.split(axis: SplitAxis.columns.rawValue)
-    Core.split(axis: SplitAxis.rows.rawValue)
+    Core.split(side: "right")
+    Core.split(side: "down")
+    Core.split(side: "left")
+    Core.split(side: "up")
 
-    #expect(recorder.requests.map { $0.splitPane.axis } == ["columns", "rows"])
+    #expect(recorder.requests.map { $0.splitPane.side } == ["right", "down", "left", "up"])
     // Empty means the pane the keyboard feeds, which is what a keybinding means. A menu that
     // named a pane would be naming one it had to track.
     #expect(recorder.requests.allSatisfy { $0.splitPane.paneID.isEmpty })

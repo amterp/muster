@@ -408,15 +408,20 @@ fn open_window() -> Response {
 fn read_bindings() -> Response {
     Response {
         payload: Some(response::Payload::Bindings(proto::Bindings {
+            // An action on no chord is published with an empty key rather than left out. It
+            // is still a menu item - a shortcut is not the only way to pick one - and on
+            // macOS an action with no item is an action nothing can reach.
             bindings: session::bindings()
                 .all()
                 .map(|(action, chord)| proto::Binding {
                     action: action.as_str().to_string(),
-                    key: chord.key.as_str().to_string(),
-                    modifiers: Modifiers::ALL_NAMES
+                    key: chord.map(|chord| chord.key.as_str().to_string()).unwrap_or_default(),
+                    modifiers: chord
                         .into_iter()
-                        .filter(|(_, bit)| {
-                            Modifiers::CHORD.contains(*bit) && chord.modifiers.contains(*bit)
+                        .flat_map(|chord| {
+                            Modifiers::ALL_NAMES.into_iter().filter(move |(_, bit)| {
+                                Modifiers::CHORD.contains(*bit) && chord.modifiers.contains(*bit)
+                            })
                         })
                         .map(|(name, _)| name.to_string())
                         .collect(),
@@ -426,19 +431,19 @@ fn read_bindings() -> Response {
     }
 }
 
-/// Splits a pane, putting the new one beside or below it.
+/// Splits a pane, putting the new one on the named side of it.
 fn split_pane(split: &proto::SplitPane) -> Response {
-    let Some(axis) = convert::axis(&split.axis) else {
+    let Some(side) = Side::parse(&split.side) else {
         return Response::failure(format!(
-            "the core does not know a split axis called {:?}, so nothing was split. Only \
-             columns and rows exist; the shell builds this from a fixed set, so this is a bug \
+            "the core does not know a side called {:?}, so nothing was split. They are left, \
+             right, up and down; the shell builds this from a fixed set, so this is a bug \
              there.",
-            split.axis
+            split.side
         ));
     };
     act(&split.daemon_id, &split.pane_id, |pane| BackendIntent::SplitPane {
         pane,
-        axis,
+        side,
         // Zero is proto3's unset, and a divider at the very edge is not a thing anyone asks
         // for, so the two are safely the same answer here.
         ratio: (split.ratio > 0.0).then_some(split.ratio),

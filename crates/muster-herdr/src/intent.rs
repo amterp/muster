@@ -4,26 +4,122 @@
 //! what a `pane.split` envelope looks like is here, so a second backend is a second file
 //! rather than a search for every place a JSON key leaked.
 //!
-//! Two translations are worth naming. A split's axis becomes the direction herdr names it
-//! for - a column puts the new pane to the `right`, a row puts it `down` - which is the same
-//! translation `layout.rs` does in reverse when it reads a tree back. And a path down the
-//! tree becomes an array of booleans, herdr's own spelling for the turns.
+//! Three translations are worth naming. A split's side becomes the direction herdr names it
+//! for - a new pane goes on the `second` side of a `right` or a `down` - which is the same
+//! translation `layout.rs` does in reverse when it reads a tree back. A path down the tree
+//! becomes an array of booleans, herdr's own spelling for the turns. And two of Muster's four
+//! sides have no request behind them at all, so this is also where one intent becomes two.
 
-use muster_core::intent::{BackendChannel, BackendIntent, Branch, Outcome, Refusal};
-use muster_core::mirror::backend::{PaneId, SplitAxis, TabId};
+use muster_core::diagnostics::log;
+use muster_core::fields;
+use muster_core::intent::{
+    BackendChannel, BackendIntent, Branch, Outcome, Refusal, SettledLayout, Side,
+};
+use muster_core::mirror::backend::{PaneId, TabId};
 use serde_json::{Value, json};
 
 use crate::client::{Failure, HerdrClient};
+use crate::layout::read_layout;
 
 impl BackendChannel for HerdrClient {
     fn submit(&self, intent: &BackendIntent) -> Result<Outcome, Refusal> {
         let (method, params) = request(intent);
         let result = self.request(method, &params).map_err(|failure| refusal(&failure))?;
-        Ok(Outcome { created: created(&result), created_tab: created_tab(&result) })
+        let created = created(&result);
+        let settled = match (rearranges(intent), &created) {
+            (Some(pane), Some(created)) => self.rearrange(pane, created),
+            // A split herdr made and would not name. Worth saying, because the consequence is
+            // no longer only a keyboard that stays put: the pane cannot be rearranged either,
+            // so a leftward split quietly becomes a rightward one.
+            (Some(pane), None) => {
+                log::warn(
+                    "herdr.split.unnamed",
+                    fields! {
+                        "pane" => pane.to_string(),
+                        "impact" => "the split happened and the new pane is on the opposite \
+                                     side from the one that was asked for, because nothing \
+                                     can name it to rearrange it.",
+                        "next" => "whether pane.split still answers with the pane it made, \
+                                   under `pane.pane_id` - `created` in this file reads it.",
+                    },
+                );
+                None
+            }
+            _ => settled(&result, None),
+        };
+        Ok(Outcome { created, created_tab: created_tab(&result), settled })
     }
 
     fn description(&self) -> &str {
         self.socket_path()
+    }
+}
+
+impl HerdrClient {
+    /// Puts a pane herdr has just made on the other side of the one it was split from.
+    ///
+    /// herdr's `SplitDirection` is `right` and `down`, and a split always puts the new pane on
+    /// the `second` side, so leftward and upward have no request behind them: they are a split
+    /// followed by `pane.swap` of the pair. The whole compound lives here rather than above,
+    /// because it is a fact about one daemon's vocabulary and a backend with four directions
+    /// would need none of it.
+    ///
+    /// **A refusal here is not a failure of the intent.** The pane exists - herdr said so
+    /// before this was asked - and the honest answer to a swap that will not happen is to keep
+    /// it and say where it ended up, never to close a pane the user may already be typing in.
+    /// Undoing is the one thing worse than a pane on the wrong side.
+    fn rearrange(&self, pane: &PaneId, created: &PaneId) -> Option<SettledLayout> {
+        let params = json!({ "source_pane_id": pane.as_str(), "target_pane_id": created.as_str() });
+        let answer = match self.request("pane.swap", &params) {
+            Ok(answer) => answer,
+            Err(failure) => {
+                // `invalid_pane_swap` rather than one of the four refusal reasons, for a swap
+                // herdr will not even consider (`observations/herdr-0.8.0.md` section 14).
+                log::warn(
+                    "herdr.swap.refused",
+                    fields! {
+                        "pane" => pane.to_string(),
+                        "created" => created.to_string(),
+                        "detail" => failure.to_string(),
+                        "impact" => "the new pane is on the opposite side from the one that \
+                                     was asked for. Nothing is lying - the daemon and the \
+                                     window agree - and the pane is usable.",
+                        "next" => "herdr's code says why it would not swap. A four-way \
+                                   SplitDirection upstream would remove the second request \
+                                   entirely (kan a_28XGcvXEg).",
+                    },
+                );
+                return None;
+            }
+        };
+        // `changed` is a success with a reason beside it rather than an error, and it nests
+        // one level down like every other herdr result - read off the top level it is `null`,
+        // which is indistinguishable from a swap that did nothing.
+        let swap = answer.get("swap")?;
+        if swap.get("changed").and_then(Value::as_bool) != Some(true) {
+            log::warn(
+                "herdr.swap.declined",
+                fields! {
+                    "pane" => pane.to_string(),
+                    "created" => created.to_string(),
+                    "reason" => swap.get("reason").and_then(Value::as_str).unwrap_or("(none given)"),
+                    "impact" => "the new pane is on the opposite side from the one that was \
+                                 asked for, and is usable.",
+                    "next" => "herdr names four reasons a swap does not happen: no_neighbor, \
+                               same_pane, not_found, cross_tab.",
+                },
+            );
+            return None;
+        }
+        settled(swap, Some((pane, created)))
+    }
+}
+
+/// The pane a split has to be rearranged against, for an intent herdr cannot do in one request.
+fn rearranges(intent: &BackendIntent) -> Option<&PaneId> {
+    match intent {
+        BackendIntent::SplitPane { pane, side, .. } if swaps(*side) => Some(pane),
+        _ => None,
     }
 }
 
@@ -54,21 +150,26 @@ pub fn refusal(failure: &Failure) -> Refusal {
 /// by name (`corpus/conformance/backend-intent.json`).
 pub fn request(intent: &BackendIntent) -> (&'static str, Value) {
     match intent {
-        BackendIntent::SplitPane { pane, axis, ratio, cwd } => {
+        BackendIntent::SplitPane { pane, side, ratio, cwd } => {
             let mut params = json!({
                 // `target_pane_id`, not `pane_id`, and the difference is silent: herdr
                 // ignores a key it does not know and splits whichever pane it has focused,
                 // so the wrong name reads as a split landing in an arbitrary place rather
                 // than as a refusal. Every other pane verb takes `pane_id`.
                 "target_pane_id": pane.as_str(),
-                "direction": direction(*axis),
+                "direction": direction(*side),
                 // The daemon's cursor follows the new pane, because a person who split
                 // something is looking at what they made. Muster's own keyboard is moved
                 // separately, by whoever asked for this.
                 "focus": true,
             });
             if let Some(ratio) = ratio {
-                params["ratio"] = json!(ratio);
+                // herdr's `ratio` is the *first* child's share, and Muster's is the share the
+                // pane being split keeps. On a leftward or upward split that pane ends up
+                // second, so the two count from opposite ends and the number has to be turned
+                // round. Invisible to a keybinding, which sends no ratio at all and takes the
+                // daemon's symmetric default; visible to anything that places a divider.
+                params["ratio"] = json!(if swaps(*side) { 1.0 - ratio } else { *ratio });
             }
             if let Some(cwd) = cwd {
                 params["cwd"] = json!(cwd);
@@ -148,11 +249,57 @@ fn created_tab(result: &Value) -> Option<TabId> {
     Some(TabId::new(result.get("tab")?.get("tab_id")?.as_str()?))
 }
 
-/// herdr names a split for where the new pane goes; Muster names it for the arrangement it
-/// produces. The same pair `layout.rs` reads in the other direction.
-fn direction(axis: SplitAxis) -> &'static str {
-    match axis {
-        SplitAxis::Columns => "right",
-        SplitAxis::Rows => "down",
+/// The axis herdr splits along to produce a side, named the way herdr names it.
+///
+/// Two of Muster's four sides map onto the same request as their opposite, because herdr has
+/// no other: a leftward split is a rightward one that has not been rearranged yet. The pair
+/// `layout.rs` reads back in the other direction is this one with the sides dropped.
+fn direction(side: Side) -> &'static str {
+    match side {
+        Side::Left | Side::Right => "right",
+        Side::Up | Side::Down => "down",
     }
+}
+
+/// Whether herdr puts a new pane on this side only after being asked a second time.
+fn swaps(side: Side) -> bool {
+    matches!(side, Side::Left | Side::Up)
+}
+
+/// The arrangement a herdr result states, when it states one.
+///
+/// `pane.swap` and `pane.resize` both answer with the whole settled layout in the same shape
+/// `layout_updated` carries, which is what makes this one reader rather than two - and what
+/// makes an answer usable as truth rather than as a hint (`intent.rs`, `SettledLayout`).
+///
+/// `layout.set_split_ratio` answers with a layout too and is deliberately not covered: its is
+/// the exported *tree* rather than the flat rectangles, so it needs a second reader. A dragged
+/// divider therefore still waits for the broadcast, which is what it did before any of this.
+/// Silently, because `read_layout` will not read that shape and `None` is already the answer
+/// for a result that states no arrangement.
+///
+/// `swapped` names the pair a compound intent exchanged, and is what lets the arrangement
+/// herdr published between the two halves be reconstructed: its swap exchanges the ids sitting
+/// in two places and leaves the places alone, so the tree it was is the tree it became with
+/// those two ids put back.
+fn settled(result: &Value, swapped: Option<(&PaneId, &PaneId)>) -> Option<SettledLayout> {
+    let layout = read_layout(nested(result, "layout")?)?;
+    let stale = swapped.map(|(one, other)| layout.with_panes_exchanged(one, other));
+    Some(SettledLayout { layout, stale })
+}
+
+/// A field of a herdr result, wherever the result nests it.
+///
+/// Every result puts its payload under a key beside its `type` rather than at the top level
+/// (`observations/herdr-0.8.0.md` section 6), and which key differs per verb. Looking one
+/// level down rather than naming each one means a verb that starts answering with a layout
+/// needs no change here.
+fn nested<'a>(result: &'a Value, field: &str) -> Option<&'a Value> {
+    if let Some(found) = result.get(field) {
+        return Some(found);
+    }
+    result
+        .as_object()?
+        .iter()
+        .find_map(|(key, value)| (key != "type").then(|| value.get(field)).flatten())
 }

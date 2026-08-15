@@ -276,6 +276,19 @@ pub(crate) struct Session {
     /// somebody pressing the key twice, and the second is the one they are looking for.
     wanted_tabs: BTreeMap<DaemonId, TabId>,
 
+    /// A pane Muster made and wants the keyboard on, until the daemon has described it.
+    ///
+    /// The same shape as `wanted_tabs` and for the same reason: a split answers with the pane
+    /// it made long before the event describing it arrives, and `Composition::reconcile`
+    /// resolves a region against the mirror's pane list - so a keyboard pointed at a pane the
+    /// mirror has not heard of falls to whichever pane the tab already had, and nothing
+    /// afterwards points it back. What that looks like is a split whose new pane appears
+    /// unfocused while the keyboard sits in the pane you split.
+    ///
+    /// One per daemon, replaced rather than queued, because two splits in flight at once is
+    /// somebody pressing the key twice and the second is the one they are looking at.
+    wanted_panes: BTreeMap<DaemonId, (RegionId, PaneId)>,
+
     /// Which agents have been seen, and so which are `done`.
     ///
     /// Beside the mirrors rather than inside one, because it spans them: a window is focused
@@ -489,6 +502,29 @@ impl Session {
     /// Shows a tab Muster asked for, once the daemon has described it.
     ///
     /// Returns whether anything moved, so the caller knows whether to republish.
+    /// Puts the keyboard on a pane Muster made, once the daemon has described it.
+    ///
+    /// Returns whether anything moved, so the caller knows whether to republish. Held rather
+    /// than applied and hoped for: `Composition::reconcile` runs before every publish and
+    /// resolves each region against the mirror's pane list, so pointing at a pane the mirror
+    /// does not hold yet is undone by the next publish rather than remembered.
+    fn keyboard_to_wanted_pane(&mut self, daemon: &DaemonId) -> bool {
+        let Some((region, pane)) = self.wanted_panes.get(daemon).cloned() else { return false };
+        {
+            let Some(backend) = self.backends.get(daemon) else { return false };
+            let Ok(mirror) = backend.mirror.lock() else { return false };
+            // Not yet described. Left in place rather than dropped, on the same terms as a
+            // wanted tab: the event is on its way, and forgetting it here is a split whose
+            // pane never takes the keyboard.
+            if mirror.pane(&pane).is_none() {
+                return false;
+            }
+        }
+        self.wanted_panes.remove(daemon);
+        self.composition.focus_pane(region, pane);
+        true
+    }
+
     fn show_wanted_tab(&mut self, daemon: &DaemonId) -> bool {
         let Some(tab) = self.wanted_tabs.get(daemon).cloned() else { return false };
         let workspace = {
@@ -720,14 +756,36 @@ pub(crate) fn submit(daemon: &DaemonId, intent: &BackendIntent) -> Result<(), St
         session.wanted_tabs.insert(daemon.clone(), tab);
     }
 
+    // What the daemon said about the arrangement it just made, taken now rather than waited
+    // for. herdr answers a swap or a resize with the settled tree and broadcasts the same tree
+    // about a hundred milliseconds later, so a window that only listens renders the
+    // arrangement being moved away from for six frames and then jumps
+    // (`observations/herdr-0.8.0.md` section 14). Still daemon truth - the mirror is what
+    // applies it, and it arms itself against the broadcast that is now behind it.
+    let mut moved = false;
+    if let Ok(outcome) = &outcome
+        && let Some(settled) = outcome.settled.clone()
+    {
+        let session = SESSION.lock().expect("a panicking sender poisoned the session");
+        if let Some(backend) = session.backends.get(daemon)
+            && let Ok(mut mirror) = backend.mirror.lock()
+        {
+            moved = !mirror.settle(settled).is_empty();
+        }
+    }
+
+    // The pane a split made, remembered rather than pointed at. It is not in the mirror yet -
+    // its event is still in flight - and every publish resolves a region against the mirror's
+    // pane list, so pointing at it now is undone before anything renders. `publish` puts the
+    // keyboard there on the first pass after the daemon has described it.
     if let (Some(region), Some(created)) =
         (region, outcome.as_ref().ok().and_then(|outcome| outcome.created.clone()))
     {
-        SESSION
-            .lock()
-            .expect("a panicking sender poisoned the session")
-            .composition
-            .focus_pane(region, created);
+        let mut session = SESSION.lock().expect("a panicking sender poisoned the session");
+        session.wanted_panes.insert(daemon.clone(), (region, created));
+        moved = true;
+    }
+    if moved {
         publish();
     }
     outcome.map(|_| ()).map_err(|refusal| refusal.to_string())
@@ -1438,6 +1496,10 @@ fn publish() {
         let daemons: Vec<DaemonId> = session.backends.keys().cloned().collect();
         for daemon in &daemons {
             session.reconcile(daemon);
+            // After the reconcile rather than before it, because the reconcile is what would
+            // undo it: it resolves every region against the mirror's pane list, so a keyboard
+            // put on a pane the mirror has just heard of has to be put there afterwards.
+            session.keyboard_to_wanted_pane(daemon);
         }
         let view = session.view();
         let roster = session.roster(&view);

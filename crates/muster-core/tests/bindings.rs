@@ -20,9 +20,11 @@ fn bindings_conformance() {
         // `*` means every action, which is how the case about the whole table asks for it
         // without listing fifteen names that would then need editing to add a sixteenth.
         if wanted.iter().any(|name| name.as_str() == Some("*")) {
-            let chords: BTreeSet<String> = bindings.all().map(|(_, chord)| spell(chord)).collect();
+            let chords: BTreeSet<String> =
+                bindings.all().filter_map(|(_, chord)| Some(spell(chord?))).collect();
             return Ok(fields([
                 ("actions", Some(json!(bindings.all().count()))),
+                ("bound", Some(json!(bindings.all().filter(|(_, on)| on.is_some()).count()))),
                 ("distinct_chords", Some(json!(chords.len()))),
             ]));
         }
@@ -60,16 +62,34 @@ fn a_config_rebinds_what_it_names_and_leaves_the_rest() {
 }
 
 #[test]
-fn an_unbound_action_is_absent_rather_than_bound_to_nothing() {
-    // Different from not being mentioned: somebody who wants their chord back for something
-    // else has to be able to say so, and the alternative is binding it to a key nobody presses.
+fn an_unbound_action_keeps_its_place_and_loses_its_chord() {
+    // Somebody who wants their chord back for something else has to be able to say so, and
+    // the alternative is binding it to a key nobody presses. What they gave up is the
+    // shortcut: the action is still published, so a shell still has a menu item to offer, and
+    // on macOS an action with no item is one nothing can reach.
     let mut bindings = Bindings::default();
     bindings.unbind(Action::ClosePane);
 
     assert_eq!(bindings.chord(Action::ClosePane), None);
+    assert_eq!(
+        bindings.all().find(|(action, _)| *action == Action::ClosePane),
+        Some((Action::ClosePane, None)),
+        "an unbound action stopped being published at all"
+    );
+}
+
+#[test]
+fn the_two_splits_ghostty_leaves_unbound_ship_unbound() {
+    // Parity, and the careful half of it: Ghostty has `new_split:left` and `new_split:up` and
+    // ships neither on a chord. Muster shipping one would be Muster inventing a shortcut for
+    // an action the terminal it embeds deliberately left alone.
+    let bindings = Bindings::default();
+
+    assert_eq!(bindings.chord(Action::SplitLeft), None);
+    assert_eq!(bindings.chord(Action::SplitUp), None);
     assert!(
-        !bindings.all().any(|(action, _)| action == Action::ClosePane),
-        "an unbound action is still being published with a chord"
+        bindings.all().any(|(action, chord)| action == Action::SplitLeft && chord.is_none()),
+        "splitting leftward is not offered at all, so nothing can reach it"
     );
 }
 

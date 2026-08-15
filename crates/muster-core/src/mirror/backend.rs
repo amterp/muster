@@ -124,6 +124,30 @@ impl LayoutNode {
             }
         }
     }
+
+    /// The same shape with two of its panes in each other's places.
+    ///
+    /// For an adapter whose backend has no leftward split and has to build one out of a
+    /// rightward split and a swap. The daemon publishes the arrangement in between on its way
+    /// past, and that arrangement is this, applied to the one it settled on - so reconstructing
+    /// it is what lets the publish be recognized as already out of date rather than rendered.
+    ///
+    /// The shape does not move, only the two ids: a swap exchanges what sits in two places
+    /// rather than rearranging the places.
+    #[must_use]
+    pub fn with_panes_exchanged(&self, one: &PaneId, other: &PaneId) -> LayoutNode {
+        match self {
+            LayoutNode::Pane(id) if id == one => LayoutNode::Pane(other.clone()),
+            LayoutNode::Pane(id) if id == other => LayoutNode::Pane(one.clone()),
+            LayoutNode::Pane(id) => LayoutNode::Pane(id.clone()),
+            LayoutNode::Split { axis, ratio, first, second } => LayoutNode::Split {
+                axis: *axis,
+                ratio: *ratio,
+                first: Box::new(first.with_panes_exchanged(one, other)),
+                second: Box::new(second.with_panes_exchanged(one, other)),
+            },
+        }
+    }
 }
 
 /// A tree on one line: `columns(w1:p1, rows(w1:p2, w1:p3@0.5)@0.5)`.
@@ -164,6 +188,22 @@ pub struct Layout {
     /// (`observations/herdr-0.8.0.md` section 13). Resolved to the pane itself here so that
     /// the question a view actually asks has an answer it cannot skip.
     pub zoomed: Option<PaneId>,
+}
+
+impl Layout {
+    /// The same tab with two of its panes in each other's places.
+    ///
+    /// Only the arrangement moves. Both cursors here name a pane rather than a place, and a
+    /// pane carries its focus and its zoom with it when it moves, so neither changes.
+    #[must_use]
+    pub fn with_panes_exchanged(&self, one: &PaneId, other: &PaneId) -> Layout {
+        Layout {
+            tab: self.tab.clone(),
+            root: self.root.with_panes_exchanged(one, other),
+            focused: self.focused.clone(),
+            zoomed: self.zoomed.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

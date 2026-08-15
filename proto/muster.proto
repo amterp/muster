@@ -203,11 +203,13 @@ message SplitPane {
   string daemon_id = 4;
   string pane_id = 1;
 
-  // columns (the new pane goes beside it) or rows (below it).
-  string axis = 2;
+  // Which side of it the new pane lands on: left, right, up or down.
+  string side = 2;
 
   // The existing pane's share afterwards, between 0 and 1. Zero means the daemon's own
-  // default, which is what a keybinding wants; a drag-to-split would say.
+  // default, which is what a keybinding wants; a drag-to-split would say. The existing
+  // pane's share rather than the upper or left one's, so that one number means one thing
+  // on all four sides.
   float ratio = 3;
 
   // Where the new pane starts. Empty takes the daemon's own rule, which is the directory the

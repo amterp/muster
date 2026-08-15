@@ -1693,6 +1693,831 @@
       }
     },
     {
+      "name": "an answer is applied like an event, and says the tab moved",
+      "why": "A daemon says things two ways - broadcast, and in reply to a request - and both are the daemon. herdr answers a swap with the settled tree in about a millisecond and publishes the same tree about a hundred milliseconds later (observations section 14), so a mirror that only listens spends six frames at 60fps rendering the arrangement it is moving away from. Taking the answer is the difference between a leftward split that lands and one that lands twice.",
+      "given": {
+        "snapshot": {
+          "workspaces": [
+            {
+              "id": "w1",
+              "label": "tmp"
+            }
+          ],
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            },
+            {
+              "id": "w1:p2",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "layoutUpserted",
+            "tab": "w1:t1",
+            "root": {
+              "axis": "columns",
+              "ratio": 0.5,
+              "first": "w1:p1",
+              "second": "w1:p2"
+            },
+            "focused": "w1:p1"
+          },
+          {
+            "kind": "settled",
+            "tab": "w1:t1",
+            "root": {
+              "axis": "columns",
+              "ratio": 0.5,
+              "first": "w1:p2",
+              "second": "w1:p1"
+            },
+            "focused": "w1:p1"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1",
+          "w1:p2"
+        ],
+        "tabs": [
+          "w1:t1"
+        ],
+        "workspaces": [
+          "w1"
+        ],
+        "agentStates": {
+          "w1:p1": "idle",
+          "w1:p2": "idle"
+        },
+        "layouts": {
+          "w1:t1": "columns(w1:p2, w1:p1@0.5)"
+        },
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "layoutChanged:w1:t1",
+          "layoutChanged:w1:t1"
+        ]
+      }
+    },
+    {
+      "name": "an answer overtaken by a second one drops the broadcast in between",
+      "why": "A resize chord held down, which is where this bites. Each repeat is answered before the previous one is broadcast, so the mirror is two arrangements ahead of its own stream and the broadcast that arrives describes where the divider was rather than where it is. Applying it walks the divider backwards one step per event.\n\nThe first answer arms nothing - the tab reached 0.5 by being told, so nothing is still owed for it. The second arms the first, because the backend has not got round to announcing that one yet. What separates the two is the debt, not the recency.",
+      "given": {
+        "snapshot": {
+          "workspaces": [
+            {
+              "id": "w1",
+              "label": "tmp"
+            }
+          ],
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            },
+            {
+              "id": "w1:p2",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "layoutUpserted",
+            "tab": "w1:t1",
+            "root": {
+              "axis": "columns",
+              "ratio": 0.5,
+              "first": "w1:p1",
+              "second": "w1:p2"
+            },
+            "focused": "w1:p1"
+          },
+          {
+            "kind": "settled",
+            "tab": "w1:t1",
+            "root": {
+              "axis": "columns",
+              "ratio": 0.6,
+              "first": "w1:p1",
+              "second": "w1:p2"
+            },
+            "focused": "w1:p1"
+          },
+          {
+            "kind": "settled",
+            "tab": "w1:t1",
+            "root": {
+              "axis": "columns",
+              "ratio": 0.7,
+              "first": "w1:p1",
+              "second": "w1:p2"
+            },
+            "focused": "w1:p1"
+          },
+          {
+            "kind": "layoutUpserted",
+            "tab": "w1:t1",
+            "root": {
+              "axis": "columns",
+              "ratio": 0.6,
+              "first": "w1:p1",
+              "second": "w1:p2"
+            },
+            "focused": "w1:p1"
+          },
+          {
+            "kind": "layoutUpserted",
+            "tab": "w1:t1",
+            "root": {
+              "axis": "columns",
+              "ratio": 0.7,
+              "first": "w1:p1",
+              "second": "w1:p2"
+            },
+            "focused": "w1:p1"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1",
+          "w1:p2"
+        ],
+        "tabs": [
+          "w1:t1"
+        ],
+        "workspaces": [
+          "w1"
+        ],
+        "agentStates": {
+          "w1:p1": "idle",
+          "w1:p2": "idle"
+        },
+        "layouts": {
+          "w1:t1": "columns(w1:p1, w1:p2@0.7)"
+        },
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "layoutChanged:w1:t1",
+          "layoutChanged:w1:t1",
+          "layoutChanged:w1:t1"
+        ]
+      }
+    },
+    {
+      "name": "an intermediate arrangement nobody asked for is dropped",
+      "why": "The case the whole thing exists for. herdr has no leftward split, so one is a rightward split followed by a swap, and it publishes both arrangements - 100.4 ms apart, measured (corpus/herdr-0.8.0/split-sides). Only the adapter knows what the middle one looked like, because only it issued the two halves, so it hands that tree over with the answer. Two arrangements are armed here rather than one: the tab's own previous tree, and the one published between the halves.",
+      "given": {
+        "snapshot": {
+          "workspaces": [
+            {
+              "id": "w1",
+              "label": "tmp"
+            }
+          ],
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            },
+            {
+              "id": "w1:p2",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "settled",
+            "tab": "w1:t1",
+            "root": {
+              "axis": "columns",
+              "ratio": 0.5,
+              "first": "w1:p2",
+              "second": "w1:p1"
+            },
+            "focused": "w1:p1",
+            "stale": {
+              "tab": "w1:t1",
+              "root": {
+                "axis": "columns",
+                "ratio": 0.5,
+                "first": "w1:p1",
+                "second": "w1:p2"
+              },
+              "focused": "w1:p1"
+            }
+          },
+          {
+            "kind": "layoutUpserted",
+            "tab": "w1:t1",
+            "root": {
+              "axis": "columns",
+              "ratio": 0.5,
+              "first": "w1:p1",
+              "second": "w1:p2"
+            },
+            "focused": "w1:p1"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1",
+          "w1:p2"
+        ],
+        "tabs": [
+          "w1:t1"
+        ],
+        "workspaces": [
+          "w1"
+        ],
+        "agentStates": {
+          "w1:p1": "idle",
+          "w1:p2": "idle"
+        },
+        "layouts": {
+          "w1:t1": "columns(w1:p2, w1:p1@0.5)"
+        },
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "layoutChanged:w1:t1"
+        ]
+      }
+    },
+    {
+      "name": "an answer arriving after its own broadcast changes nothing",
+      "why": "Idempotence across the two channels. The event stream can win the race, and then the answer is stating what the mirror already holds - which is not news, and must not be reported as a change, or every split would repaint the tab twice. Nothing is armed either: a tab already where the daemon says it should be has no earlier arrangement still on its way.",
+      "given": {
+        "snapshot": {
+          "workspaces": [
+            {
+              "id": "w1",
+              "label": "tmp"
+            }
+          ],
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            },
+            {
+              "id": "w1:p2",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "layoutUpserted",
+            "tab": "w1:t1",
+            "root": {
+              "axis": "columns",
+              "ratio": 0.5,
+              "first": "w1:p2",
+              "second": "w1:p1"
+            },
+            "focused": "w1:p1"
+          },
+          {
+            "kind": "settled",
+            "tab": "w1:t1",
+            "root": {
+              "axis": "columns",
+              "ratio": 0.5,
+              "first": "w1:p2",
+              "second": "w1:p1"
+            },
+            "focused": "w1:p1",
+            "stale": {
+              "tab": "w1:t1",
+              "root": {
+                "axis": "columns",
+                "ratio": 0.5,
+                "first": "w1:p1",
+                "second": "w1:p2"
+              },
+              "focused": "w1:p1"
+            }
+          },
+          {
+            "kind": "layoutUpserted",
+            "tab": "w1:t1",
+            "root": {
+              "axis": "columns",
+              "ratio": 0.5,
+              "first": "w1:p1",
+              "second": "w1:p2"
+            },
+            "focused": "w1:p1"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1",
+          "w1:p2"
+        ],
+        "tabs": [
+          "w1:t1"
+        ],
+        "workspaces": [
+          "w1"
+        ],
+        "agentStates": {
+          "w1:p1": "idle",
+          "w1:p2": "idle"
+        },
+        "layouts": {
+          "w1:t1": "columns(w1:p1, w1:p2@0.5)"
+        },
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "layoutChanged:w1:t1",
+          "layoutChanged:w1:t1"
+        ]
+      }
+    },
+    {
+      "name": "suppression is spent once, not standing",
+      "why": "What keeps this from being a mute button. An arrangement is dropped once and then forgotten, so a tab that genuinely comes back to that shape - somebody dragging a divider back, another client swapping the pair again - renders it. The alternative, suppressing until the expected tree turns up, is unbounded: nothing guarantees it ever does, and a window stuck on a stale arrangement is worse than one frame of the wrong one.",
+      "given": {
+        "snapshot": {
+          "workspaces": [
+            {
+              "id": "w1",
+              "label": "tmp"
+            }
+          ],
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            },
+            {
+              "id": "w1:p2",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "settled",
+            "tab": "w1:t1",
+            "root": {
+              "axis": "columns",
+              "ratio": 0.5,
+              "first": "w1:p2",
+              "second": "w1:p1"
+            },
+            "focused": "w1:p1",
+            "stale": {
+              "tab": "w1:t1",
+              "root": {
+                "axis": "columns",
+                "ratio": 0.5,
+                "first": "w1:p1",
+                "second": "w1:p2"
+              },
+              "focused": "w1:p1"
+            }
+          },
+          {
+            "kind": "layoutUpserted",
+            "tab": "w1:t1",
+            "root": {
+              "axis": "columns",
+              "ratio": 0.5,
+              "first": "w1:p1",
+              "second": "w1:p2"
+            },
+            "focused": "w1:p1"
+          },
+          {
+            "kind": "layoutUpserted",
+            "tab": "w1:t1",
+            "root": {
+              "axis": "columns",
+              "ratio": 0.5,
+              "first": "w1:p1",
+              "second": "w1:p2"
+            },
+            "focused": "w1:p1"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1",
+          "w1:p2"
+        ],
+        "tabs": [
+          "w1:t1"
+        ],
+        "workspaces": [
+          "w1"
+        ],
+        "agentStates": {
+          "w1:p1": "idle",
+          "w1:p2": "idle"
+        },
+        "layouts": {
+          "w1:t1": "columns(w1:p1, w1:p2@0.5)"
+        },
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "layoutChanged:w1:t1",
+          "layoutChanged:w1:t1"
+        ]
+      }
+    },
+    {
+      "name": "an answer's broadcast arriving first does not clear the other one",
+      "why": "Order-independence, and why nothing is cleared for failing to match. The settled tree and the intermediate one are both in flight, and a mirror that dropped its guard on the first non-matching layout would then apply the intermediate and end up showing the pane on the side nobody asked for. Matching drains an entry; not matching leaves every entry alone.",
+      "given": {
+        "snapshot": {
+          "workspaces": [
+            {
+              "id": "w1",
+              "label": "tmp"
+            }
+          ],
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            },
+            {
+              "id": "w1:p2",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "settled",
+            "tab": "w1:t1",
+            "root": {
+              "axis": "columns",
+              "ratio": 0.5,
+              "first": "w1:p2",
+              "second": "w1:p1"
+            },
+            "focused": "w1:p1",
+            "stale": {
+              "tab": "w1:t1",
+              "root": {
+                "axis": "columns",
+                "ratio": 0.5,
+                "first": "w1:p1",
+                "second": "w1:p2"
+              },
+              "focused": "w1:p1"
+            }
+          },
+          {
+            "kind": "layoutUpserted",
+            "tab": "w1:t1",
+            "root": {
+              "axis": "columns",
+              "ratio": 0.5,
+              "first": "w1:p2",
+              "second": "w1:p1"
+            },
+            "focused": "w1:p1"
+          },
+          {
+            "kind": "layoutUpserted",
+            "tab": "w1:t1",
+            "root": {
+              "axis": "columns",
+              "ratio": 0.5,
+              "first": "w1:p1",
+              "second": "w1:p2"
+            },
+            "focused": "w1:p1"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1",
+          "w1:p2"
+        ],
+        "tabs": [
+          "w1:t1"
+        ],
+        "workspaces": [
+          "w1"
+        ],
+        "agentStates": {
+          "w1:p1": "idle",
+          "w1:p2": "idle"
+        },
+        "layouts": {
+          "w1:t1": "columns(w1:p2, w1:p1@0.5)"
+        },
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "layoutChanged:w1:t1"
+        ]
+      }
+    },
+    {
+      "name": "an arrangement is left behind whatever cursor came with it",
+      "why": "Why suppression names the tree rather than the whole layout. herdr's swap puts daemon focus on the source pane, so the arrangement it publishes between the halves of a leftward split names the *new* pane as focused and the one it settles on names the pane that was split - measured live, and the reason a first attempt at this let the flash straight through. Whole-layout equality would have called those two different things; they are the same arrangement, and the arrangement is what a person sees jump.",
+      "given": {
+        "snapshot": {
+          "workspaces": [
+            {
+              "id": "w1",
+              "label": "tmp"
+            }
+          ],
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            },
+            {
+              "id": "w1:p2",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "settled",
+            "tab": "w1:t1",
+            "root": {
+              "axis": "columns",
+              "ratio": 0.5,
+              "first": "w1:p2",
+              "second": "w1:p1"
+            },
+            "focused": "w1:p1",
+            "stale": {
+              "tab": "w1:t1",
+              "root": {
+                "axis": "columns",
+                "ratio": 0.5,
+                "first": "w1:p1",
+                "second": "w1:p2"
+              },
+              "focused": "w1:p1"
+            }
+          },
+          {
+            "kind": "layoutUpserted",
+            "tab": "w1:t1",
+            "root": {
+              "axis": "columns",
+              "ratio": 0.5,
+              "first": "w1:p1",
+              "second": "w1:p2"
+            },
+            "focused": "w1:p2"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1",
+          "w1:p2"
+        ],
+        "tabs": [
+          "w1:t1"
+        ],
+        "workspaces": [
+          "w1"
+        ],
+        "agentStates": {
+          "w1:p1": "idle",
+          "w1:p2": "idle"
+        },
+        "layouts": {
+          "w1:t1": "columns(w1:p2, w1:p1@0.5)"
+        },
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "layoutChanged:w1:t1"
+        ]
+      }
+    },
+    {
+      "name": "a shape a tab comes back to is not an old answer arriving late",
+      "why": "The bound that keeps suppression from eating real news, and a bug this caught in the running app. Splitting upward settles a tab from `w1:p3` to `rows(w1:p6, w1:p3)`; closing the new pane collapses it straight back to `w1:p3`, and herdr broadcasts that - it is the only thing that says the pane is gone. An arrangement is only worth suppressing while the backend still owes a broadcast of it, and the tab reached `w1:p3` by being told, so that debt was paid long ago. Arming it regardless left a closed pane on screen with no way to dismiss it, because the tree the view was withholding still named a pane the tab no longer held.",
+      "given": {
+        "snapshot": {
+          "workspaces": [
+            {
+              "id": "w1",
+              "label": "tmp"
+            }
+          ],
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p3",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "layoutUpserted",
+            "tab": "w1:t1",
+            "root": "w1:p3",
+            "focused": "w1:p3"
+          },
+          {
+            "kind": "paneUpserted",
+            "id": "w1:p6",
+            "tab": "w1:t1",
+            "workspace": "w1",
+            "agentState": "idle"
+          },
+          {
+            "kind": "settled",
+            "tab": "w1:t1",
+            "root": {
+              "axis": "rows",
+              "ratio": 0.5,
+              "first": "w1:p6",
+              "second": "w1:p3"
+            },
+            "focused": "w1:p3",
+            "stale": {
+              "tab": "w1:t1",
+              "root": {
+                "axis": "rows",
+                "ratio": 0.5,
+                "first": "w1:p3",
+                "second": "w1:p6"
+              },
+              "focused": "w1:p6"
+            }
+          },
+          {
+            "kind": "layoutUpserted",
+            "tab": "w1:t1",
+            "root": {
+              "axis": "rows",
+              "ratio": 0.5,
+              "first": "w1:p3",
+              "second": "w1:p6"
+            },
+            "focused": "w1:p6"
+          },
+          {
+            "kind": "layoutUpserted",
+            "tab": "w1:t1",
+            "root": {
+              "axis": "rows",
+              "ratio": 0.5,
+              "first": "w1:p6",
+              "second": "w1:p3"
+            },
+            "focused": "w1:p3"
+          },
+          {
+            "kind": "paneRemoved",
+            "id": "w1:p6"
+          },
+          {
+            "kind": "layoutUpserted",
+            "tab": "w1:t1",
+            "root": "w1:p3",
+            "focused": "w1:p3"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p3"
+        ],
+        "tabs": [
+          "w1:t1"
+        ],
+        "workspaces": [
+          "w1"
+        ],
+        "agentStates": {
+          "w1:p3": "idle"
+        },
+        "layouts": {
+          "w1:t1": "w1:p3"
+        },
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "layoutChanged:w1:t1",
+          "paneAdded:w1:p6",
+          "layoutChanged:w1:t1",
+          "paneRemoved:w1:p6:announced",
+          "layoutChanged:w1:t1"
+        ]
+      }
+    },
+    {
       "name": "a state read after subscribing fills in what the stream never delivered",
       "why": "herdr delivers agent state only to a subscriber that names the pane, and a watcher has to be told the pane exists before it can name it - so between a pane appearing and its watcher connecting there is a window, and herdr has no replay for what falls in it. A pane whose agent moved in that window keeps its old state and looks calm, which is this project's whole reason for existing failing silently at the moment it matters most: right after a split, with something new started in the pane. So the watcher subscribes and then asks.",
       "given": {

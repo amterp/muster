@@ -1323,16 +1323,20 @@ def split_sides(daemon, rec: Recorder) -> None:
     `second` side. So a person asking to split leftward is asking for the opposite
     arrangement, and the only way there is to split and then swap the pair.
 
-    Two panes, one intent, and that is the whole question. Muster's rule is that
-    composition follows daemon truth rather than being predicted, so a window renders
-    whatever tree it is told about - including the one that exists between the split
-    and the swap. If that tree reaches a client, splitting left flashes the new pane
-    on the wrong side before it moves, and the action is not worth having in that
-    shape. If the pair settles without an intermediate tree ever being published, it
-    is a compound intent like any other.
+    Two panes, one intent, and two questions that are easy to run together. What a
+    *subscriber* is shown is one: a window renders whatever tree it is told about,
+    including the one that exists between the split and the swap, so if that tree is
+    broadcast then splitting left flashes the new pane on the wrong side. What the
+    *caller* is told is the other, and it is the one that decides how fast the action
+    can be: `pane.swap` answers with the settled layout, so a client that reads its
+    own answer never has to wait for the broadcast at all.
 
-    So this records the events across both calls with their timings, and what
-    `pane.swap` says about a swap it decides not to do - it can refuse, and a
+    So this records both clocks. The events across the pair with their arrival times,
+    which is what a passive client sees; and the request timings beside them, which is
+    what the client that asked sees. Reading only the first is how the pair acquires a
+    hundred-millisecond price tag it does not have.
+
+    Also what `pane.swap` says about a swap it decides not to do - it can refuse, and a
     refusal after a split that already happened leaves the arrangement half-made.
     """
     client = RecordingClient(daemon.client(), rec)
@@ -1364,10 +1368,21 @@ def split_sides(daemon, rec: Recorder) -> None:
 
         # The pair, as fast as a caller could issue them: no sleep between, because
         # what is being measured is whether a client can see between them at all.
+        #
+        # Timed as well as recorded, and that is the second clock. Everything above is
+        # about being *told*; this is about being *answered*, which is what the client
+        # that issued the pair actually waits on - and reading only the first is how
+        # the pair acquires a price tag it does not have.
+        asked = time.monotonic()
         split = client.request(
             "pane.split", {"direction": "right", "target_pane_id": "w1:p1", "cwd": "/tmp"})
+        split_answered = time.monotonic()
         swap = client.request(
             "pane.swap", {"source_pane_id": "w1:p1", "target_pane_id": "w1:p2"})
+        answered = [
+            round((split_answered - asked) * 1000, 1),
+            round((time.monotonic() - split_answered) * 1000, 1),
+        ]
         time.sleep(1.5)
         stop.set()
         watcher.join(timeout=2)
@@ -1401,6 +1416,20 @@ def split_sides(daemon, rec: Recorder) -> None:
         rec.fact("arrival_gaps_ms", gaps)
         rec.note(f"published {len(orders)} arrangement(s): {orders}")
         rec.note(f"arrival gaps: {gaps} ms")
+
+        rec.fact("split_then_swap_answered_ms", answered)
+        rec.fact("pair_answered_in_ms", round(sum(answered), 1))
+        # Whether the caller needs the broadcast at all. `PaneSwapResult` declares a
+        # required `layout`, and it is the same PaneLayoutSnapshot shape a
+        # `layout_updated` carries - so an answer is a whole arrangement rather than a
+        # receipt, and a client that reads its own is not waiting on anything.
+        settled_layout = result.get("layout", {})
+        rec.fact("swap_answers_with_a_layout", bool(settled_layout.get("panes")))
+        rec.fact("swap_answer_arrangement", [
+            p.get("pane_id") for p in sorted(
+                settled_layout.get("panes", []),
+                key=lambda p: (p.get("rect", {}).get("y", 0), p.get("rect", {}).get("x", 0)))])
+        rec.note(f"pair answered in {round(sum(answered), 1)} ms: {answered}")
 
         # What a swap that cannot be done looks like, since one would arrive after a
         # split that already happened. A caller treating it as a plain failure leaves a

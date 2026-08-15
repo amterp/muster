@@ -82,6 +82,7 @@ divider_color = "#4a4a4a"      # the line between two regions; omit for the plat
 
 [keymap]
 split_right = "cmd+d"          # the default; Ghostty's, wherever Ghostty has one
+split_left = "cmd+opt+d"       # ships unbound, as it does in Ghostty
 zoom = "cmd+shift+return"
 close_pane = ""                # unbound - the action stays, the shortcut goes
 
@@ -92,11 +93,19 @@ close_pane = ""                # unbound - the action stays, the shortcut goes
 `[keymap]` is partial, so a file that names one action rebinds one action. Chords are
 modifiers and a key, in any order and any case, spelled the way you would say them: `cmd`,
 `opt`, `ctrl`, `shift`, and `left`, `return`, `f5`, `[`. The actions are `new_tab`,
-`next_tab`, `previous_tab`, `focus_tab_1` to `focus_tab_9`, `split_right`, `split_down`,
+`next_tab`, `previous_tab`, `focus_tab_1` to `focus_tab_9`, `split_*` for each direction,
 `close_pane`, `next_pane`, `previous_pane`, `focus_*` and `resize_*` for each direction,
 `zoom`, `toggle_sidebar`, and `show_shortcuts`. On macOS these become menu items, which is
 where the platform dispatches a key equivalent from - so a rebound action moves in the menu
 too, and System Settings can move it again.
+
+Two of them ship with no chord at all. Ghostty has `split_left` and `split_up` as actions and
+binds neither, so Muster does the same rather than inventing a shortcut for them - they are in
+the menu, one click away and one `[keymap]` line from a chord. Which of the four sides costs
+herdr one request and which costs two is not something you can tell from here, and that is the
+point: herdr splits rightward and downward only, so the other two are a split and a rearrange,
+and Muster takes the arrangement from the daemon's own answer rather than letting you watch the
+pane move.
 
 The two ways of moving are different axes rather than two flavours of the same one.
 `next_pane` and the four directions reach every pane the window is **showing**; `next_tab` and

@@ -1,16 +1,16 @@
 //! What Muster asks a backend to change.
 //!
-//! Muster never mutates: it requests, and finds out what happened by watching the events
-//! that follow (`docs/architecture.md`, the vocabulary). Nothing here returns new state, and
-//! nothing above here may assume a request took effect - the mirror says what is true, and
-//! it says so when the daemon does.
+//! Muster never mutates: it requests, and what it holds afterwards is whatever the daemon
+//! said rather than what the request hoped for (`docs/architecture.md`, ownership of truth).
+//! An answer is one of the two ways a daemon says something - a statement about a change it
+//! has just made, arriving on the request channel instead of the event stream - so what comes
+//! back here may be applied, and nothing here may be assumed.
 //!
 //! Named for what a view wants rather than for what a backend offers, like every other noun
-//! Muster owns. herdr spells a split as the direction the new pane went; a window asks for
-//! a column or a row, because that is the question a person answered when they pressed the
-//! key.
+//! Muster owns. herdr spells a split as the direction the new pane went; a window asks for a
+//! side, because that is the question a person answered when they pressed the key.
 
-use crate::mirror::backend::{PaneId, SplitAxis, TabId, WorkspaceId};
+use crate::mirror::backend::{Layout, PaneId, TabId, WorkspaceId};
 
 /// A direction on screen, as a person means it.
 ///
@@ -62,12 +62,22 @@ pub enum Branch {
 /// One requested change.
 #[derive(Debug, Clone, PartialEq)]
 pub enum BackendIntent {
-    /// Splits a pane, putting the new one beside or below it.
+    /// Splits a pane, putting the new one on the named side of it.
+    ///
+    /// All four sides, which is not what every backend offers: herdr places a new pane on the
+    /// `second` side and has only `right` and `down`, so two of these are a split and a swap
+    /// rather than one request. That is the adapter's problem, deliberately - the question a
+    /// person answered when they pressed the key was "which side", and a core that only had
+    /// two of the four answers would be a core shaped by one daemon's spelling.
     SplitPane {
         pane: PaneId,
-        axis: SplitAxis,
+        side: Side,
         /// The existing pane's share afterwards. `None` takes the backend's own default,
         /// which is what a keybinding wants; a drag-to-split would say.
+        ///
+        /// The existing pane's rather than the first child's, so that one number means one
+        /// thing on all four sides. An adapter whose backend counts from the other end
+        /// inverts it.
         ratio: Option<f32>,
         /// Where the new pane starts. `None` takes the backend's own rule, which for herdr
         /// means the directory the split came from - what somebody splitting a pane mid-task
@@ -152,14 +162,34 @@ pub enum BackendIntent {
     },
 }
 
+/// An arrangement a daemon stated in its answer, and what that answer left behind.
+///
+/// Daemon truth on the same terms as an event, and the reason it is worth taking here is
+/// timing: herdr answers a swap with the settled tree in about a millisecond and broadcasts
+/// the same tree about a hundred milliseconds later
+/// (`observations/herdr-0.8.0.md` section 14). A window that waits to be told twice is a
+/// window that renders the arrangement it was moving away from.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SettledLayout {
+    /// How the tab is arranged now, as the daemon said when it was asked.
+    pub layout: Layout,
+    /// An arrangement the daemon published on its way here, which has not reached the
+    /// subscription yet and is already out of date when it does.
+    ///
+    /// Only a backend that needs two requests for one intent has one of these, and only its
+    /// adapter can know what it looked like. `None` everywhere else, including the case the
+    /// mirror handles for itself: what a tab was arranged as *before* this answer is
+    /// something the mirror is already holding, and does not have to be told.
+    pub stale: Option<Layout>,
+}
+
 /// What a backend said about a change it just made.
 ///
-/// Not state, and not a shortcut around the event stream: what the session now looks like
-/// still arrives on the daemon's own events, and the mirror still learns it there. What is
-/// here is the one thing those events cannot answer - *which* of the panes that appeared is
-/// the one this request created - and Muster needs it only to point its own keyboard, which
-/// is Muster's state rather than the daemon's.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+/// Two kinds of thing, and the difference is who they are for. `created` and `created_tab`
+/// answer what no event can - *which* of the things that appeared is the one this request
+/// made - and are Muster's own state, used to point its keyboard. `settled` is daemon truth,
+/// and is here because a daemon answers faster than it broadcasts.
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct Outcome {
     /// The pane a split made, when the request made one.
     pub created: Option<PaneId>,
@@ -170,6 +200,8 @@ pub struct Outcome {
     /// reading the daemon's own focus (`architecture.md`, cursors are written, not read). So
     /// the answer has to come back with the request that caused it.
     pub created_tab: Option<TabId>,
+    /// How a tab is arranged now, when the daemon's answer said.
+    pub settled: Option<SettledLayout>,
 }
 
 /// Why a backend would not make a change.

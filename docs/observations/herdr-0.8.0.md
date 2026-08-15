@@ -702,7 +702,7 @@ split that held the closed pane is gone from the tree rather than left with one 
 
 Evidence: `corpus/herdr-0.8.0/layout/`, recorded with `tools/herdr-probe/probe layout`.
 
-## 14. There is no splitting leftward, and building one out of two calls flashes
+## 14. There is no splitting leftward, and the pair that builds one is announced twice
 
 `SplitDirection` is `right` and `down`, and a split always puts the new pane on the
 `second` side. So the four-way splitting people arrive expecting has no direct request
@@ -714,20 +714,31 @@ watching is shown while it happens.
 wait between them produced `pane_created`, then a `layout_updated` placing the new pane
 on the right, then a second `layout_updated` placing it on the left. Arrival gaps
 measured by a watcher rather than read off the daemon: 0.0 ms from the creation to the
-first layout, and **100.4 ms** from the first layout to the second. At sixty frames a
+first layout, and **108.3 ms** from the first layout to the second. At sixty frames a
 second that is six frames of the pane sitting where nobody asked for it, then a jump.
 
-That is enough to decide the feature rather than to warn about it. Muster renders what
-the daemon says (`architecture.md`, view = f(daemon state)), so a compound intent whose
-first half is published on its own is a compound intent a viewer watches happen. Muster
-has no `split_left` or `split_up` for this reason, and the fix is upstream: a four-way
-`SplitDirection`, or a request that places a new pane on a named side. The alternative
-open to Muster alone is holding a tab's layout updates between issuing the split and the
-swap returning, and applying the settled layout the swap already answers with. What that
-costs is a withholding tied to an in-flight intent, with a timeout and an answer for a
-refused swap; what it buys is that the daemon and the window agree afterwards, which a
-render-side mirroring would not. Weighed on the card (kan a_28XGcvXEg) rather than here -
-the measurement below is what this file is for.
+**That hundred milliseconds is the broadcast, not the work.** The same recording times
+the requests: `pane.split` answered in 13.8 ms and `pane.swap` in **1.5 ms** after it, so
+the pair is finished about 15 ms after it is asked for. What takes another hundred is
+herdr getting round to telling a *subscriber* - and the caller does not need telling,
+because `PaneSwapResult` carries the whole settled layout, in the same
+`PaneLayoutSnapshot` shape `layout_updated` uses. A client that reads its own answer is a
+hundred milliseconds ahead of one that waits to be told twice.
+
+So what a viewer sees is not decided by the daemon. Both arrangements still reach the
+subscription, and applying them in order is what draws the wrong one; Muster takes the
+arrangement from the answer and drops the broadcast it overtook (`mirror/state.rs`,
+`settle`). The upstream ask stands and would delete all of it - a four-way
+`SplitDirection`, or a request that places a new pane on a named side.
+
+**A swap moves daemon focus to the source pane.** Not to the pane that was focused, and
+not to whatever ends up where it was: `focused_pane_id` in the result is the
+`source_pane_id` that was asked for. It shows up when the split before it carried
+`focus: true`, which Muster's does - the intermediate arrangement names the *new* pane as
+focused and the settled one names the pane that was split, so the two layouts differ in
+their cursor as well as their shape. Worth knowing because it defeats the obvious way to
+recognize the intermediate: comparing whole layouts calls those two different things when
+the only difference that matters is the arrangement.
 
 **A swap it cannot do is an error, not a soft no.** `pane.swap` names four refusal
 reasons in its result (`no_neighbor`, `same_pane`, `not_found`, `cross_tab`), but a call
@@ -741,7 +752,10 @@ result. Reading `changed` off the top level gets `null`, which reads exactly lik
 that did nothing.
 
 Evidence: `corpus/herdr-0.8.0/split-sides/`, recorded with
-`tools/herdr-probe/probe split-sides`.
+`tools/herdr-probe/probe split-sides` - `wire.ndjson` for the request timings and
+`FACTS.json` for the broadcast gap. The focus behaviour was measured live against the
+pinned daemon while building the leftward split, 2026-08-15, and is held by
+`crates/muster-herdr/tests/split_sides.rs`.
 
 ## 15. A tab closes when its last pane goes, and says nothing
 

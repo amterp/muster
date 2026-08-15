@@ -395,7 +395,7 @@ fn the_window_follows_and_drives_the_tree(daemon: &Daemon, second: &str) {
     // the keyboard is on - what a keybinding means. Nothing about the window is applied
     // here; the fourth leaf arrives because the daemon said so.
     assert_ok(&answer(request::Payload::SplitPane(SplitPane {
-        axis: "rows".to_string(),
+        side: "down".to_string(),
         ..SplitPane::default()
     })));
     // Where it landed, not just that something did. Every other split in this tab is a
@@ -414,15 +414,45 @@ fn the_window_follows_and_drives_the_tree(daemon: &Daemon, second: &str) {
         },
     );
 
+    // The keyboard follows what you made, and this is the side that proves it. A leftward
+    // split is two requests, so the arrangement is settled from the daemon's own answer
+    // before the pane it made has been described - and every publish resolves a region
+    // against the mirror's pane list, so a keyboard put there too early is taken back off.
+    // What that looks like in the window is a new pane appearing unfocused while the
+    // keyboard sits in the pane you split.
+    let before: BTreeSet<String> =
+        settled(4).expect("just waited for it").into_iter().map(|(id, _)| id).collect();
+    assert_ok(&answer(request::Payload::SplitPane(SplitPane {
+        side: "left".to_string(),
+        ..SplitPane::default()
+    })));
+    until(
+        "the keyboard to land on the pane the split made, on the left of the one it split",
+        || {
+            let landed = || -> Option<bool> {
+                let panes = settled(5)?;
+                let made = panes.iter().map(|(id, _)| id).find(|id| !before.contains(*id))?;
+                Some(&latest_view()?.regions.into_iter().next()?.pane_id == made)
+            };
+            landed() == Some(true)
+        },
+        || {
+            format!(
+                "the panes before the split were {before:?}; the last view: {:?}",
+                latest_view()
+            )
+        },
+    );
+
     // Closing names a pane, the way a CLI would.
-    let doomed = settled(4).expect("just waited for it")[0].0.clone();
+    let doomed = settled(5).expect("just waited for it")[0].0.clone();
     assert_ok(&answer(request::Payload::ClosePane(ClosePane {
         daemon_id: String::new(),
         pane_id: doomed.clone(),
     })));
     until(
         "the closed pane to leave the window",
-        || settled(3).is_some_and(|panes| panes.iter().all(|(id, _)| id != &doomed)),
+        || settled(4).is_some_and(|panes| panes.iter().all(|(id, _)| id != &doomed)),
         || format!("the last view the core published: {:?}", latest_view()),
     );
 

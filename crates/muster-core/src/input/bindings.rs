@@ -36,6 +36,8 @@ pub enum Action {
     FocusTab(u8),
     SplitRight,
     SplitDown,
+    SplitLeft,
+    SplitUp,
     ClosePane,
     NextPane,
     PreviousPane,
@@ -58,7 +60,7 @@ impl Action {
     /// Deliberately not alphabetical: a menu is read top to bottom, and the order here is what
     /// somebody scanning it expects - making something, then arranging it, then moving around
     /// it. A shell that sorted these would produce a menu nobody can find anything in.
-    pub const ALL: [Action; 28] = [
+    pub const ALL: [Action; 30] = [
         Action::NewTab,
         Action::NextTab,
         Action::PreviousTab,
@@ -73,6 +75,8 @@ impl Action {
         Action::FocusTab(9),
         Action::SplitRight,
         Action::SplitDown,
+        Action::SplitLeft,
+        Action::SplitUp,
         Action::ClosePane,
         Action::NextPane,
         Action::PreviousPane,
@@ -104,6 +108,8 @@ impl Action {
             }
             Action::SplitRight => "split_right",
             Action::SplitDown => "split_down",
+            Action::SplitLeft => "split_left",
+            Action::SplitUp => "split_up",
             Action::ClosePane => "close_pane",
             Action::NextPane => "next_pane",
             Action::PreviousPane => "previous_pane",
@@ -125,53 +131,60 @@ impl Action {
         Action::ALL.into_iter().find(|action| action.as_str() == name)
     }
 
-    /// The chord Muster ships it on.
+    /// The chord Muster ships it on, if it ships on one.
     ///
     /// Ghostty's, wherever Ghostty has one. Somebody arriving from the terminal Muster embeds
     /// should not have to learn a second set of chords for the same actions - and the ones
     /// Ghostty has no answer for sit where the pattern says they should: resize is focus with
     /// one more finger, so moving to a pane and growing it are the same hand position.
-    pub fn default_chord(self) -> Chord {
+    ///
+    /// `None` is parity too, and the more careful half of it. Ghostty has `new_split:left` and
+    /// `new_split:up` as actions and ships neither on a chord, so Muster does the same: the
+    /// action exists and `[keymap]` turns it on, and nobody's ⌘D quietly starts meaning
+    /// something else. It is the same state a config file produces by unbinding.
+    pub fn default_chord(self) -> Option<Chord> {
         let command = Modifiers::SUPER;
         let shifted = Modifiers(Modifiers::SUPER.0 | Modifiers::SHIFT.0);
         let optioned = Modifiers(Modifiers::SUPER.0 | Modifiers::ALT.0);
         let resizing = Modifiers(Modifiers::SUPER.0 | Modifiers::CONTROL.0 | Modifiers::SHIFT.0);
         match self {
-            Action::NewTab => Chord::new(Key::KeyT, command),
+            Action::NewTab => Some(Chord::new(Key::KeyT, command)),
             // Ghostty's, and one finger away from next and previous pane - which is what they
             // are: the same walk, one level up. Muster's list crosses daemons where Ghostty's
             // cannot, but the gesture is the one somebody already has.
-            Action::NextTab => Chord::new(Key::BracketRight, shifted),
-            Action::PreviousTab => Chord::new(Key::BracketLeft, shifted),
+            Action::NextTab => Some(Chord::new(Key::BracketRight, shifted)),
+            Action::PreviousTab => Some(Chord::new(Key::BracketLeft, shifted)),
             // ⌘1 to ⌘9, as every tabbed thing on this platform has them. The number is the
             // place in the window's tab order, so it counts across daemons the way the
             // sidebar does rather than restarting at each machine.
-            Action::FocusTab(place) => Chord::new(
+            Action::FocusTab(place) => Some(Chord::new(
                 TAB_DIGITS.get(usize::from(place).wrapping_sub(1)).copied().unwrap_or(Key::Digit1),
                 command,
-            ),
-            Action::SplitRight => Chord::new(Key::KeyD, command),
-            Action::SplitDown => Chord::new(Key::KeyD, shifted),
-            Action::ClosePane => Chord::new(Key::KeyW, command),
-            Action::NextPane => Chord::new(Key::BracketRight, command),
-            Action::PreviousPane => Chord::new(Key::BracketLeft, command),
-            Action::FocusLeft => Chord::new(Key::ArrowLeft, optioned),
-            Action::FocusRight => Chord::new(Key::ArrowRight, optioned),
-            Action::FocusUp => Chord::new(Key::ArrowUp, optioned),
-            Action::FocusDown => Chord::new(Key::ArrowDown, optioned),
-            Action::ResizeLeft => Chord::new(Key::ArrowLeft, resizing),
-            Action::ResizeRight => Chord::new(Key::ArrowRight, resizing),
-            Action::ResizeUp => Chord::new(Key::ArrowUp, resizing),
-            Action::ResizeDown => Chord::new(Key::ArrowDown, resizing),
-            Action::Zoom => Chord::new(Key::Enter, shifted),
+            )),
+            Action::SplitRight => Some(Chord::new(Key::KeyD, command)),
+            Action::SplitDown => Some(Chord::new(Key::KeyD, shifted)),
+            // Unbound, as Ghostty ships them. See `default_chord`.
+            Action::SplitLeft | Action::SplitUp => None,
+            Action::ClosePane => Some(Chord::new(Key::KeyW, command)),
+            Action::NextPane => Some(Chord::new(Key::BracketRight, command)),
+            Action::PreviousPane => Some(Chord::new(Key::BracketLeft, command)),
+            Action::FocusLeft => Some(Chord::new(Key::ArrowLeft, optioned)),
+            Action::FocusRight => Some(Chord::new(Key::ArrowRight, optioned)),
+            Action::FocusUp => Some(Chord::new(Key::ArrowUp, optioned)),
+            Action::FocusDown => Some(Chord::new(Key::ArrowDown, optioned)),
+            Action::ResizeLeft => Some(Chord::new(Key::ArrowLeft, resizing)),
+            Action::ResizeRight => Some(Chord::new(Key::ArrowRight, resizing)),
+            Action::ResizeUp => Some(Chord::new(Key::ArrowUp, resizing)),
+            Action::ResizeDown => Some(Chord::new(Key::ArrowDown, resizing)),
+            Action::Zoom => Some(Chord::new(Key::Enter, shifted)),
             // Ghostty has no sidebar, so this one comes from the wider platform instead:
             // ⌘B is what a Mac app with a list down the side puts it on, and no terminal
             // wants the chord for anything, since a command chord never reaches a pane.
-            Action::ToggleSidebar => Chord::new(Key::KeyB, command),
+            Action::ToggleSidebar => Some(Chord::new(Key::KeyB, command)),
             // Where a list of shortcuts lives in most things that have one. Nothing in a
             // terminal wants it, and it is the chord somebody presses when they are looking
             // for exactly this.
-            Action::ShowShortcuts => Chord::new(Key::Slash, command),
+            Action::ShowShortcuts => Some(Chord::new(Key::Slash, command)),
         }
     }
 }
@@ -359,16 +372,23 @@ impl Default for Bindings {
         Bindings {
             chords: Action::ALL
                 .into_iter()
-                .map(|action| (action, action.default_chord()))
+                .filter_map(|action| Some((action, action.default_chord()?)))
                 .collect(),
         }
     }
 }
 
 impl Bindings {
-    /// The chord an action is on, in the order a menu lists them.
-    pub fn all(&self) -> impl Iterator<Item = (Action, Chord)> + '_ {
-        Action::ALL.into_iter().filter_map(|action| Some((action, *self.chords.get(&action)?)))
+    /// Every action and the chord it is on, in the order a menu lists them.
+    ///
+    /// Every action, including the ones on no chord, because a shell builds its menu from this
+    /// and an action with no shortcut is still something a person can pick. Two ways one gets
+    /// here and they want the same answer: somebody who unbound it wanted the chord back
+    /// rather than the action gone, and two of the splits ship unbound because the terminal
+    /// Muster embeds ships them that way. Dropping them here would make both invisible, and on
+    /// macOS invisible means unreachable - the menu is the dispatch.
+    pub fn all(&self) -> impl Iterator<Item = (Action, Option<Chord>)> + '_ {
+        Action::ALL.into_iter().map(|action| (action, self.chords.get(&action).copied()))
     }
 
     pub fn chord(&self, action: Action) -> Option<Chord> {
