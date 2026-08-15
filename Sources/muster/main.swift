@@ -14,6 +14,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private var renderer: Renderer?
 
   func applicationDidFinishLaunching(_ notification: Notification) {
+    // Before the core, because the core attaches daemons as it starts and every one of those
+    // opens sockets. Reported a few lines further down, once there is somewhere to report to.
+    let descriptors = DescriptorLimit.raise()
+
     // First, so that everything after it is on the record - including the failures that
     // terminate this method.
     let logPath = startLogging()
@@ -33,6 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         "config": config ?? "(none)",
         "input_recorded": String(Core.includesInput),
       ])
+    DescriptorLimit.report(descriptors)
 
     do {
       let renderer = try Renderer()
