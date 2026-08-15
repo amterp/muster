@@ -119,11 +119,16 @@ impl Change {
 
     /// The pane whose agent state the shell has to be told about, if any.
     ///
+    /// A transition is the obvious case. A pane appearing is the one that is easy to miss,
+    /// and was: a pane already working when Muster attaches has never transitioned, so a
+    /// shell told only about transitions paints a busy agent as `unknown` until that agent
+    /// happens to move again.
+    ///
     /// The state is not carried here because the mirror already holds it, and a second copy
     /// travelling beside the pane id is a second copy to disagree.
     pub fn announces_agent_state(&self) -> Option<&PaneId> {
         match self {
-            Change::AgentStateChanged { pane, .. } => Some(pane),
+            Change::AgentStateChanged { pane, .. } | Change::PaneAdded(pane) => Some(pane),
             _ => None,
         }
     }

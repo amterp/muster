@@ -36,14 +36,27 @@ fn attaching_places_a_pane_where_the_keyboard_can_find_it() {
         .find(|pane| pane != &first)
         .expect("the split gives this tab a second pane");
 
+    // An agent already at work before Muster has heard of this session, which is the
+    // ordinary case: the daemon outlives the app, so most windows open onto panes whose
+    // agents have been running for a while. Reported here rather than later so that no
+    // transition of any kind happens after the core starts watching.
+    daemon.call(
+        "pane.report_agent",
+        &json!({ "pane_id": first, "agent": "probe", "source": "probe", "state": "working" }),
+    );
+
     // The core discovers its daemon the way a person's would, from the environment, so this
     // is the only way to point it at a scratch one.
     //
     // SAFETY: this binary holds one test, so the only other thread alive is the harness's
     // own, which reads no environment. The module docs say why it stays that way.
     unsafe { std::env::set_var("HERDR_SOCKET_PATH", daemon.socket_path()) };
-    assert_ok(&answer(request::Payload::Startup(Startup::default())));
+    // Before startup, because that is the order the shell uses (`Sources/MusterMac/Core.swift`)
+    // and the order is load-bearing: startup begins following the configured daemons, so a
+    // callback registered after it misses the whole first bootstrap - every pane that already
+    // existed, and whatever their agents were already doing.
     muster::ffi::muster_set_event_callback(Some(note_view));
+    assert_ok(&answer(request::Payload::Startup(Startup::default())));
 
     // Before any attach, so this is the state a window is in on the way up rather than one
     // it fell back to.
@@ -72,6 +85,16 @@ fn attaching_places_a_pane_where_the_keyboard_can_find_it() {
     assert_ne!(
         one.control_socket_path, two.control_socket_path,
         "each pane dials the core on its own socket, and both panes were given one path"
+    );
+
+    // The agent that was working before any of this began. Bootstrap says only that the
+    // pane appeared, so a core that told the shell about transitions alone would leave this
+    // window painting a busy agent as unknown grey until it happened to move again - and a
+    // window opened onto running work is exactly when the states have to be right.
+    until(
+        "the working agent that predates this window to reach the shell",
+        || latest_state(&first).as_deref() == Some("working"),
+        || format!("the core last said {:?} about {first}", latest_state(&first)),
     );
 
     // The keyboard follows the pane just attached, which is the whole of composition doing
@@ -224,17 +247,43 @@ fn settled(count: usize) -> Option<Vec<(String, String)>> {
 /// window because the core said so, not because anything asked.
 static VIEW: Mutex<Option<ViewChanged>> = Mutex::new(None);
 
+/// Every agent state the core has pushed, by daemon and pane.
+///
+/// Kept rather than counted, because the question is what the shell was last told a pane's
+/// agent is doing - which is what it paints.
+static STATES: Mutex<Vec<(String, String)>> = Mutex::new(Vec::new());
+
 extern "C" fn note_view(bytes: *const u8, len: usize) {
     // SAFETY: the core guarantees `len` readable bytes for the duration of this call, which
     // is the contract in include/muster.h.
     let bytes = unsafe { std::slice::from_raw_parts(bytes, len) };
-    if let Ok(Event { payload: Some(event::Payload::ViewChanged(view)) }) = Event::decode(bytes) {
-        *VIEW.lock().expect("a panicking reader poisoned the view") = Some(view);
+    match Event::decode(bytes) {
+        Ok(Event { payload: Some(event::Payload::ViewChanged(view)) }) => {
+            *VIEW.lock().expect("a panicking reader poisoned the view") = Some(view);
+        }
+        Ok(Event { payload: Some(event::Payload::PaneStateChanged(state)) }) => {
+            STATES
+                .lock()
+                .expect("a panicking reader poisoned the states")
+                .push((state.pane_id, state.state));
+        }
+        _ => {}
     }
 }
 
 fn latest_view() -> Option<ViewChanged> {
     VIEW.lock().expect("a panicking reader poisoned the view").clone()
+}
+
+/// The last thing the core said about this pane's agent, if it has said anything.
+fn latest_state(pane: &str) -> Option<String> {
+    STATES
+        .lock()
+        .expect("a panicking reader poisoned the states")
+        .iter()
+        .rev()
+        .find(|(id, _)| id == pane)
+        .map(|(_, state)| state.clone())
 }
 
 /// The axis of the split this pane hangs directly off, in the published tree.

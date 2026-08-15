@@ -13,6 +13,7 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 
+use muster_core::AgentState;
 use muster_core::composition::{
     Composition, Daemon, DaemonId, Endpoint, RegionId, Step, Transport, View,
 };
@@ -173,15 +174,21 @@ impl Session {
     /// The endpoint and the socket path are both passed because they are different things.
     /// The endpoint is what someone asked for and is what composition writes down; the path
     /// is where this run found it, and is worth nothing to a later one.
-    fn follow(&mut self, daemon: &Daemon, reached: Reached, seed: Snapshot) {
+    ///
+    /// Returns what the seed established, for the caller to announce once it has let go of
+    /// the session. Nothing else will: the subscription's own bootstrap diffs against this
+    /// mirror rather than an empty one, so every pane the seed already placed is a pane it
+    /// sees no change in. Dropping these on the floor is how a window opened onto running
+    /// agents came up believing every one of them was unknown.
+    fn follow(&mut self, daemon: &Daemon, reached: Reached, seed: Snapshot) -> Vec<Change> {
         let id = daemon.id.clone();
         self.composition.attach_daemon(daemon.clone());
         if self.backends.contains_key(&id) {
-            return;
+            return Vec::new();
         }
 
         let mut mirror = Mirror::new();
-        mirror.bootstrap(seed);
+        let seeded = mirror.bootstrap(seed);
         let mirror = Arc::new(Mutex::new(mirror));
 
         let reporting = id.clone();
@@ -200,6 +207,7 @@ impl Session {
                 _subscription: subscription,
             },
         );
+        seeded
     }
 
     /// Brings composition, and what this process holds open, in line with one daemon.
@@ -560,7 +568,14 @@ fn attach_daemon(daemon: &Daemon) -> Result<(), String> {
         },
     );
     let mut session = SESSION.lock().expect("a panicking sender poisoned the session");
-    session.follow(daemon, reached, snapshot);
+    let seeded = session.follow(daemon, reached, snapshot);
+    // Before reporting, and explicitly: reporting reads the mirror back through the session
+    // and reaches the shell, which may answer by dispatching. Both want this lock.
+    drop(session);
+
+    for change in seeded {
+        report(&daemon.id, &change);
+    }
     Ok(())
 }
 
@@ -850,14 +865,35 @@ fn report(daemon: &DaemonId, change: &Change) {
                 "to" => to.as_str(),
             },
         );
-        ffi::emit(&Event {
-            payload: Some(event::Payload::PaneStateChanged(PaneStateChanged {
-                daemon_id: daemon.to_string(),
-                pane_id: pane.to_string(),
-                state: to.as_str().to_string(),
-            })),
-        });
     }
+
+    let Some(pane) = change.announces_agent_state() else { return };
+    // Read back rather than taken from the change, because one of the two changes that
+    // announce a pane carries no state at all: a pane that appears already running is the
+    // case this exists for. The mirror was written before this ran, so for a transition it
+    // holds exactly what the transition moved to.
+    let Some(state) = agent_state(daemon, pane) else { return };
+    ffi::emit(&Event {
+        payload: Some(event::Payload::PaneStateChanged(PaneStateChanged {
+            daemon_id: daemon.to_string(),
+            pane_id: pane.to_string(),
+            state: state.as_str().to_string(),
+        })),
+    });
+}
+
+/// What one daemon's mirror says a pane's agent is doing.
+///
+/// Scoped to the daemon rather than searched, for the reason every other lookup here is:
+/// two daemons hand out `w1:p1`, and a search would let one answer for the other's pane.
+///
+/// The session lock is released before the caller emits. Emitting reaches the shell, the
+/// shell reacts by dispatching, and a dispatch arriving while this held the session would
+/// deadlock against it on the same thread.
+fn agent_state(daemon: &DaemonId, pane: &PaneId) -> Option<AgentState> {
+    let session = SESSION.lock().expect("a panicking sender poisoned the session");
+    let mirror = session.backends.get(daemon)?.mirror.lock().ok()?;
+    mirror.agent_state(pane)
 }
 
 /// How much of one daemon's truth the core currently has.
