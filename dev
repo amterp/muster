@@ -155,9 +155,20 @@ fn run_ssh_tier():
 fn stage_helpers():
     stdout = $`swift build --show-bin-path`
     swift_bin = stdout.trim()
-    $`cp target/debug/muster-bridge {swift_bin}/muster-bridge`
+    stage(target = "target/debug/muster-bridge", into = "{swift_bin}/muster-bridge")
     herdr = herdr_binary()
-    $`cp {herdr} {swift_bin}/herdr`
+    stage(target = herdr, into = "{swift_bin}/herdr")
+
+// Copies a binary into place without disturbing anyone running the old one.
+//
+// Via a temporary name and a rename, because a plain `cp` writes through the file the
+// running process has mapped: macOS invalidates its pages, SIGKILLs it, and then SIGKILLs
+// every later exec of the path until the signature is re-validated. That is not theoretical
+// here - the app starts a daemon from this directory and the whole point of it is to outlive
+// the app, so a rebuild would otherwise kill the agents somebody is running. A rename swaps
+// the directory entry and leaves the old inode alone.
+fn stage(target, into):
+    $`cp {target} {into}.staging && mv -f {into}.staging {into}`
 
 // Assembles the built binary into something the platform can launch.
 //

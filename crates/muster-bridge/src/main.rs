@@ -21,7 +21,7 @@ use muster_core::fields;
 use muster_herdr::{ControlStreamMessage, FrameDecoder, PaneStreamEvent};
 
 const USAGE: &str = "\
-usage: muster-bridge <pane-id> [--control-socket <path>]
+usage: muster-bridge <pane-id> [--control-socket <path>] [--herdr-socket <path>]
                      [--via-ssh <host> --ssh-control <path>]
 
 Runs `herdr terminal session control <pane-id>` and unwraps its frames onto stdout.
@@ -30,6 +30,9 @@ Sized from the PTY on stdout, which is the surface's own geometry.
 With --control-socket, dials that socket and relays whatever the app sends onto herdr's
 control stream verbatim - input and scroll. Without it, the pane renders but cannot be
 typed into.
+
+With --herdr-socket, asks that daemon for the frames rather than whichever one this
+process would find for itself. The app always says, because it runs a herdr of its own.
 
 With --via-ssh, runs that command on another machine instead, over the ssh master the app
 already opened for the daemon's control plane. Frames are byte-identical either way.";
@@ -63,7 +66,7 @@ fn main() {
         },
     );
 
-    let mut herdr = match spawn_herdr(&arguments.pane, columns, rows, arguments.ssh.as_ref()) {
+    let mut herdr = match spawn_herdr(&arguments, columns, rows) {
         Ok(child) => child,
         Err(error) => {
             log::error(
@@ -106,6 +109,12 @@ fn main() {
 struct Arguments {
     pane: String,
     control_socket: Option<String>,
+    /// Which daemon to ask for this pane's frames, when it is on this machine.
+    ///
+    /// Handed over rather than discovered, because Muster runs its own herdr on a session of
+    /// its own: a bridge that found a daemon for itself would find whichever one the user
+    /// last started, not hold this pane, and end its stream before a single frame.
+    herdr_socket: Option<String>,
     ssh: Option<Ssh>,
 }
 
@@ -126,12 +135,13 @@ impl Arguments {
         if pane.starts_with('-') {
             return None;
         }
-        let mut parsed = Arguments { pane, control_socket: None, ssh: None };
+        let mut parsed = Arguments { pane, control_socket: None, herdr_socket: None, ssh: None };
         let (mut host, mut control_path) = (None, None);
         while let Some(flag) = read.next() {
             let value = read.next()?.clone();
             match flag.as_str() {
                 "--control-socket" => parsed.control_socket = Some(value),
+                "--herdr-socket" => parsed.herdr_socket = Some(value),
                 "--via-ssh" => host = Some(value),
                 "--ssh-control" => control_path = Some(value),
                 _ => return None,
@@ -158,9 +168,19 @@ impl Arguments {
 ///
 /// ssh joins everything after the destination and hands it to the far shell, so an argument
 /// with a space in it would come apart. Nothing here has one: a pane id and two numbers.
-fn spawn_herdr(pane: &str, columns: u16, rows: u16, ssh: Option<&Ssh>) -> Result<Child, String> {
-    let mut command = match ssh {
-        None => Command::new("herdr"),
+fn spawn_herdr(arguments: &Arguments, columns: u16, rows: u16) -> Result<Child, String> {
+    let mut command = match &arguments.ssh {
+        None => {
+            let mut command = Command::new(herdr_binary());
+            // The daemon the app is talking to, rather than whichever one this process would
+            // find. Muster runs its own under a session of its own, so a CLI left to look for
+            // itself reaches a different daemon, does not hold this pane, and closes its
+            // stream immediately - a pane that renders nothing and says nothing.
+            if let Some(socket) = &arguments.herdr_socket {
+                command.env("HERDR_SOCKET_PATH", socket);
+            }
+            command
+        }
         Some(ssh) => {
             let mut command = Command::new("ssh");
             command.args(["-S", &ssh.control_path, "-o", "BatchMode=yes", &ssh.host, "herdr"]);
@@ -168,13 +188,27 @@ fn spawn_herdr(pane: &str, columns: u16, rows: u16, ssh: Option<&Ssh>) -> Result
         }
     };
     command
-        .args(["terminal", "session", "control", pane])
+        .args(["terminal", "session", "control", &arguments.pane])
         .args(["--cols", &columns.to_string(), "--rows", &rows.to_string()])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
         .spawn()
         .map_err(|error| error.to_string())
+}
+
+/// The herdr this Muster ships, which sits beside this binary.
+///
+/// The same rule the app uses to find this bridge, applied one step further along, and for
+/// the same reason: a PATH lookup finds whatever version somebody installed, and the frames
+/// on a pane's screen are then rendered by a daemon nobody pinned. Falls back to the name so
+/// that a bridge run by hand still works, which is how this gets debugged.
+fn herdr_binary() -> std::ffi::OsString {
+    let beside = std::env::current_exe()
+        .ok()
+        .and_then(|path| Some(path.parent()?.join("herdr")))
+        .filter(|path| path.is_file());
+    beside.map_or_else(|| "herdr".into(), Into::into)
 }
 
 fn send(input: &HerdrInput, message: &ControlStreamMessage) {

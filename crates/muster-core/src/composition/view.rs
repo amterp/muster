@@ -60,6 +60,18 @@ pub struct ViewRegion {
     /// and every pane in a region belongs to one. `None` is a daemon on this machine, which is
     /// the only difference a shell ever has to notice between local and remote.
     pub transport: Option<Transport>,
+    /// Which daemon this region's frame streams should come from, on this machine.
+    ///
+    /// A pane's frames arrive from a herdr CLI rather than over the control socket, and that
+    /// CLI finds a daemon the way any other client does. That stopped being good enough when
+    /// Muster started running its own daemon under a session of its own: a bridge left to
+    /// find one reaches whatever the user last started, does not find the pane there, and the
+    /// stream ends before a single frame - a pane that renders nothing.
+    ///
+    /// `None` for a remote region, deliberately. That bridge runs its CLI on the far machine,
+    /// where a path from this one names nothing, and it finds the daemon over there the
+    /// ordinary way.
+    pub herdr_socket: Option<String>,
 }
 
 /// What a pane's bridge needs in order to reach another machine.
@@ -113,6 +125,7 @@ impl View {
         mirror: impl Fn(&DaemonId) -> Option<&'a Mirror>,
         socket: impl Fn(&DaemonId, &PaneId) -> Option<String>,
         transport: impl Fn(&DaemonId) -> Option<Transport>,
+        herdr_socket: impl Fn(&DaemonId) -> Option<String>,
     ) -> View {
         let regions = composition
             .regions()
@@ -136,6 +149,7 @@ impl View {
                     }),
                     zoomed: layout.is_some_and(|layout| layout.zoomed.is_some()),
                     transport: transport(&region.daemon),
+                    herdr_socket: herdr_socket(&region.daemon),
                 })
             })
             .collect();

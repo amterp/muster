@@ -31,6 +31,19 @@ from herdrprobe.daemon import IsolatedDaemon  # noqa: E402
 APP = REPO / ".build/arm64-apple-macosx/debug/muster"
 ROOT = Path("/private/tmp/muster-smoke")
 
+# What the probe's own daemon is configured with, for the one check here that starts a daemon
+# without it - the app's, on a scratch home of its own.
+_ISOLATED_HERDR_CONFIG = """\
+[terminal]
+default_shell = "/bin/sh"
+shell_mode = "non_login"
+new_cwd = "current"
+
+[update]
+version_check = false
+manifest_check = false
+"""
+
 
 class Failure(Exception):
     pass
@@ -51,6 +64,18 @@ def read_log(path: Path) -> list[dict]:
             # asserts on, so it has to survive concurrent writers.
             raise Failure(f"unparseable log line: {line[:120]!r} ({exc})") from exc
     return records
+
+
+def pointed_at(daemon: IsolatedDaemon) -> dict:
+    """The app's environment, with a config file naming this daemon.
+
+    The only way to point Muster at a daemon it did not start. It runs its own herdr on a
+    session of its own and does not read HERDR_SOCKET_PATH, so a scratch daemon has to be
+    asked for the way a person would ask for one - by naming its socket in the config file.
+    """
+    config = ROOT / "muster.toml"
+    config.write_text(f'[[daemon]]\nid = "local"\nsocket = "{daemon.socket_path}"\n')
+    return {**daemon.env, "MUSTER_CONFIG": str(config)}
 
 
 def launch(env: dict, args: list[str], name: str, settle: float = 6.0) -> list[dict]:
@@ -98,7 +123,7 @@ def expect_no_errors(records: list[dict]) -> None:
 
 def check_healthy_launch(daemon: IsolatedDaemon, pane: str) -> None:
     """The whole chain: app binds, bridge starts, dials back, and paints."""
-    records = launch(daemon.env, [pane], "healthy")
+    records = launch(pointed_at(daemon), [pane], "healthy")
     expect_no_errors(records)
     expect(records, "app.ready", "the app never finished launching")
     expect(
@@ -136,7 +161,7 @@ def check_agent_state_reaches_the_app(daemon: IsolatedDaemon, pane: str) -> None
     """
     log_path = ROOT / "agentstate.jsonl"
     log_path.unlink(missing_ok=True)
-    env = {**daemon.env, "MUSTER_LOG_FILE": str(log_path)}
+    env = {**pointed_at(daemon), "MUSTER_LOG_FILE": str(log_path)}
 
     app = subprocess.Popen(
         [str(APP), pane], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE
@@ -224,7 +249,7 @@ def check_a_split_tab_becomes_splits(daemon: IsolatedDaemon, pane: str) -> None:
             f"{[held['pane_id'] for held in everything]}"
         )
 
-    records = launch(daemon.env, [pane], "splits", settle=10.0)
+    records = launch(pointed_at(daemon), [pane], "splits", settle=10.0)
     expect_no_errors(records)
 
     surfaced = {r.get("pane") for r in records if r["event"] == "surface.create"}
@@ -291,7 +316,7 @@ def check_a_split_tab_becomes_splits(daemon: IsolatedDaemon, pane: str) -> None:
 
 def check_bad_pane(daemon: IsolatedDaemon) -> None:
     """A pane that does not exist must say so rather than showing a blank window."""
-    records = launch(daemon.env, ["w9:p99"], "badpane")
+    records = launch(pointed_at(daemon), ["w9:p99"], "badpane")
     refused = expect(
         records,
         "core.refused",
@@ -305,13 +330,87 @@ def check_bad_pane(daemon: IsolatedDaemon) -> None:
 
 
 def check_bare_launch(daemon: IsolatedDaemon) -> None:
-    """A window with no pane must admit it cannot be typed into."""
-    records = launch(daemon.env, [], "bare")
+    """A bare `muster` opens a usable window, which is what double-clicking sends.
+
+    It used to render the user's shell and drop every keystroke, because the only way in was
+    to know a pane id and pass it. This is the check that the ordinary way to open the app is
+    the ordinary way to open the app.
+    """
+    records = launch(pointed_at(daemon), [], "bare")
+    expect_no_errors(records)
     ready = expect(records, "app.ready", "the app never finished launching")
-    if ready.get("typeable") != "false":
+    if ready.get("typeable") != "true":
         raise Failure(
-            "a bare `muster` claimed to be typeable, but it has no control stream to "
-            "put keystrokes on"
+            "a bare `muster` came up with nothing to type into, so double-clicking the app "
+            "gives a window that ignores the keyboard"
+        )
+    expect(
+        records,
+        "channel.connected",
+        "the bridge never dialed back, so the pane would swallow every keystroke",
+    )
+
+
+def check_cold_start() -> None:
+    """No daemon, no config, nothing: the app has to produce a window anyway.
+
+    The first launch on a machine, and the reason Muster carries a herdr at all. Nothing is
+    running, nothing names a socket, and the app has to start its own daemon, ask it for a
+    workspace, and end up with a pane somebody can type into. Every other check here is
+    handed a daemon that already exists.
+
+    Its own scratch home, so the daemon this starts is not the developer's - and stopped
+    afterwards, since the whole point of the thing is that it outlives the app.
+    """
+    root = ROOT / "cold"
+    shutil.rmtree(root, ignore_errors=True)
+    for directory in ("home", "config/herdr", "state", "data", "cache"):
+        (root / directory).mkdir(parents=True, exist_ok=True)
+    # The same pinning the probe's daemon does, and for the same reason: a login shell under
+    # a scratch HOME exits nonzero, which closes the pane, then the workspace, then the
+    # server - so the check would be measuring the fixture rather than the app.
+    (root / "config/herdr/config.toml").write_text(_ISOLATED_HERDR_CONFIG)
+    env = {
+        **os.environ,
+        "HOME": str(root / "home"),
+        "XDG_CONFIG_HOME": str(root / "config"),
+        "XDG_STATE_HOME": str(root / "state"),
+        "XDG_DATA_HOME": str(root / "data"),
+        "XDG_CACHE_HOME": str(root / "cache"),
+        "TERM": "xterm-256color",
+    }
+    for stale in ("HERDR_SOCKET_PATH", "HERDR_CLIENT_SOCKET_PATH", "HERDR_SESSION", "MUSTER_CONFIG"):
+        env.pop(stale, None)
+
+    socket = root / "config/herdr/sessions/muster/herdr.sock"
+    try:
+        # Longer than the rest: this one waits on a daemon starting from nothing.
+        records = launch(env, [], "cold", settle=20.0)
+        expect_no_errors(records)
+        expect(
+            records,
+            "daemon.started",
+            "no daemon was started, so a first launch on a clean machine shows nothing",
+        )
+        expect(
+            records,
+            "workspace.creating",
+            "a daemon was started and never asked for a workspace, so the window is empty",
+        )
+        ready = expect(records, "app.ready", "the app never finished launching")
+        if ready.get("typeable") != "true":
+            raise Failure(
+                "a cold start produced a window with nothing to type into - the daemon "
+                "started, but no pane reached the keyboard"
+            )
+        if not socket.exists():
+            raise Failure(f"the daemon did not bind Muster's own socket at {socket}")
+    finally:
+        subprocess.run(
+            [str(APP.parent / "herdr"), "server", "stop"],
+            env={**env, "HERDR_SESSION": "muster"},
+            capture_output=True,
+            check=False,
         )
 
 
@@ -340,7 +439,8 @@ def main() -> int:
                 lambda: check_agent_state_reaches_the_app(daemon, pane),
             ),
             ("a pane that does not exist says why", lambda: check_bad_pane(daemon)),
-            ("a window with no pane admits it", lambda: check_bare_launch(daemon)),
+            ("a bare launch opens a usable window", lambda: check_bare_launch(daemon)),
+            ("a clean machine gets a daemon and a workspace", check_cold_start),
             # Last, because it splits the tab the checks above are written against.
             (
                 "a split tab becomes splits, all of them typeable",
@@ -368,7 +468,8 @@ def main() -> int:
         return 1
     print(
         "\nsmoke: the app launches, connects, paints, renders a split tab as splits, shows "
-        "what its agents are doing, and lists the panes nothing is showing."
+        "what its agents are doing, lists the panes nothing is showing, and comes up on a "
+        "machine with no daemon by starting one."
     )
     return 0
 

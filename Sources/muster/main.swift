@@ -28,8 +28,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // part of logging that is an OS question (architecture.md, the diagnostic log).
     // The config file goes over at the same moment and for the same reason: where it lives
     // is an OS question, and what it says is the core's.
+    // The daemon binary goes over for the same reason and at the same moment: Muster runs
+    // its own herdr rather than asking anybody to install one, and where a build put it is
+    // an OS question while starting it is the core's.
     let config = configPath()
-    Core.start(logPath: logPath, configPath: config)
+    let daemon = herdrPath(executable: CommandLine.arguments[0])
+    Core.start(logPath: logPath, configPath: config, herdrPath: daemon)
     Core.info(
       "app.launch",
       [
@@ -50,19 +54,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       NSApp.mainMenu = AppMenu.build(target: muster)
       muster.show()
 
-      // Everything about what this window shows is behind this call: the core finds the
-      // daemon, opens a socket per pane, and publishes the whole view back - which is what
-      // builds the surfaces. A window with no pane named renders the user's shell instead.
+      // Everything about what this window shows is behind these calls: the core reaches the
+      // daemons, starting its own if none answers, opens a socket per pane, and publishes the
+      // whole view back - which is what builds the surfaces.
       let attached: Bool
-      if let paneID = CommandLine.arguments.dropFirst().first {
+      switch launchRequest(arguments: Array(CommandLine.arguments.dropFirst())) {
+      case .open:
+        attached = Core.open()
+        if !attached {
+          muster.report(problem: "no session could be opened (see stderr)")
+        }
+      case .pane(let paneID):
         attached = Core.attach(paneID: paneID)
         if !attached {
           muster.report(problem: "\(paneID) could not be attached (see stderr)")
         }
-      } else {
+      case .rendererCheck:
         explainRendererCheck()
         muster.showRendererCheck()
         attached = false
+      case .unknown(let flag):
+        explainUnknownFlag(flag)
+        NSApp.terminate(nil)
+        return
       }
       renderer.setFocus(true)
       Core.info("app.ready", ["typeable": String(attached)])
@@ -75,20 +89,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
   }
 
-  /// A bare `muster` has no daemon behind it, and Muster's input path only knows how to talk
-  /// to one: it encodes a keystroke and hands the bytes to a pane's control stream. A local
-  /// shell has no control stream, so there is nowhere to put them.
+  /// `--renderer-check` has no daemon behind it, and Muster's input path only knows how to
+  /// talk to one: it encodes a keystroke and hands the bytes to a pane's control stream. A
+  /// local shell has no control stream, so there is nowhere to put them.
   ///
-  /// That makes bare `muster` an output-only check on the renderer, and it says so rather than
+  /// That makes this an output-only check on the renderer, and it says so rather than
   /// presenting a terminal that ignores the keyboard.
   private func explainRendererCheck() {
     FileHandle.standardError.write(
       Data(
         """
-        muster: no pane named, so this window only proves the renderer works.
+        muster: --renderer-check, so this window only proves the renderer works.
         It runs $SHELL and paints what that prints, but every keystroke is dropped - \
-        input needs a daemon-owned pane to encode for. To type into one, pass its id: \
-        `muster w1:p1`. `herdr pane list` names the panes that exist.
+        input needs a daemon-owned pane to encode for. Run `muster` with no arguments \
+        for an ordinary window.
+
+        """.utf8))
+  }
+
+  /// A flag nobody reads is usually a misspelling of one somebody meant, so it is refused
+  /// rather than ignored - the same rule the config file already applies to its own keys.
+  private func explainUnknownFlag(_ flag: String) {
+    FileHandle.standardError.write(
+      Data(
+        """
+        muster: \(flag) is not something Muster reads, so nothing was opened.
+        Run `muster` with no arguments for an ordinary window, `muster w1:p1` to start \
+        the keyboard on a named pane, or `muster --renderer-check` for a window with no \
+        daemon behind it.
 
         """.utf8))
   }

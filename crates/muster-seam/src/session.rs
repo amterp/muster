@@ -28,7 +28,8 @@ use muster_core::mirror::{Change, Mirror};
 use muster_core::roster::Roster;
 use muster_herdr::subscription::{Notice, Subscription};
 use muster_herdr::{
-    HerdrClient, HerdrPaneChannel, PaneControlChannel, discover_socket_path, fetch_snapshot,
+    HerdrClient, HerdrPaneChannel, PaneControlChannel, daemon, discover_socket_path,
+    fetch_snapshot, own_socket_path,
 };
 use muster_ssh::{Forward, Tunnel, remote_environment};
 use muster_vt::KeyEncoder;
@@ -41,6 +42,26 @@ use crate::{convert, ffi};
 /// The name for the one nobody named. A config file that lists daemons names its own, and
 /// this is what a config-less Muster calls the herdr on this machine.
 const LOCAL: &str = "local";
+
+/// The daemon binary this Muster ships, as the shell resolved it.
+///
+/// Held here rather than looked up, because where it sits is an OS and packaging question -
+/// inside a bundle for a shipped app, beside the binary for a build - and the core answers
+/// none of those. The shell hands it over at startup, the way it already does the log file
+/// and the config file.
+///
+/// None means the shell found none, which is a real state and not a default to paper over: a
+/// window with no daemon to start says so rather than rendering nothing in silence.
+static DAEMON_BINARY: Mutex<Option<String>> = Mutex::new(None);
+
+pub(crate) fn set_daemon_binary(path: &str) {
+    let mut held = DAEMON_BINARY.lock().expect("a panicking sender poisoned the daemon binary");
+    *held = if path.is_empty() { None } else { Some(path.to_string()) };
+}
+
+fn daemon_binary() -> Option<String> {
+    DAEMON_BINARY.lock().expect("a panicking sender poisoned the daemon binary").clone()
+}
 
 /// A daemon's endpoint, turned into something that can be connected to.
 ///
@@ -60,19 +81,27 @@ struct Reached {
 /// mirror, the subscription and the encoder below never learn which they got.
 fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, String> {
     match endpoint {
+        // A socket somebody named is a daemon somebody chose, of a version nobody promised.
+        // Taken as asked for, and left alone: this is the deliberate way out of the
+        // arrangement below, and second-guessing it would leave no way out at all.
         Endpoint::Local { socket_path: Some(path) } => {
             Ok(Reached { socket_path: path.clone(), tunnel: None })
         }
         Endpoint::Local { socket_path: None } => {
-            let path = discover_socket_path(&std::env::vars().collect()).ok_or_else(|| {
-                "there is no herdr socket where one would be on this machine, and the config \
-                 file names none for this daemon. Either start a daemon, or give it a `socket` \
-                 in the config; HERDR_SOCKET_PATH and HERDR_SESSION are what Muster reads to \
-                 find one."
+            let path = own_socket_path(&daemon::environment()).ok_or_else(|| {
+                "Muster cannot work out where its own daemon's socket would go, because \
+                 nothing in the environment says where home is - neither HOME nor \
+                 XDG_CONFIG_HOME. This window will render nothing. Give the daemon a `socket` \
+                 in the config file to say outright."
                     .to_string()
             })?;
+            daemon::ensure_running(&path, daemon_binary().as_deref())?;
             Ok(Reached { socket_path: path, tunnel: None })
         }
+        // A remote is the one place Muster does not yet own its daemon, and the reason is
+        // packaging rather than principle: the bundle carries a binary for this machine's
+        // platform and a devenv is usually another. So an ssh endpoint attaches to whatever
+        // herdr is installed over there, at whatever version. Closing that is a_28QlRpvKj.
         Endpoint::Ssh { host, options, socket_path } => {
             // Asked for rather than assumed, and asked for using the rules Muster already
             // has: a shell one-liner spelling out where herdr keeps its socket would be a
@@ -409,6 +438,13 @@ impl Session {
                     control_path: tunnel.control_path().to_string(),
                 })
             },
+            |daemon| {
+                let backend = self.backends.get(daemon)?;
+                // Only for a daemon on this machine. A remote one's socket path here is the
+                // near end of a tunnel, and the bridge that would use it runs its CLI on the
+                // far end, where that path names nothing at all.
+                backend.tunnel.is_none().then(|| backend.socket_path.clone())
+            },
         )
     }
 
@@ -494,21 +530,24 @@ pub(crate) fn keyboard_pane() -> Option<Arc<AttachedPane>> {
 pub(crate) fn submit(daemon: &DaemonId, intent: &BackendIntent) -> Result<(), String> {
     let (region, channel) = {
         let session = SESSION.lock().expect("a panicking sender poisoned the session");
-        let found = match intent {
+        // Which region this is about, for the keyboard afterwards. None is an answer rather
+        // than a failure for an intent that names nothing existing - there is no region to
+        // find for a workspace that does not exist yet, and the one it produces is opened by
+        // the reconcile behind the daemon's own event.
+        let region = match intent {
+            BackendIntent::CreateWorkspace { .. } => None,
             BackendIntent::SplitPane { pane, .. }
             | BackendIntent::ClosePane { pane }
-            | BackendIntent::FocusPane { pane } => session.region_holding(daemon, pane),
-            BackendIntent::SetSplitRatio { tab, .. } => {
-                session.composition.region_showing(daemon, tab)
+            | BackendIntent::FocusPane { pane } => {
+                Some(session.region_holding(daemon, pane).ok_or_else(|| not_showing(daemon))?)
             }
+            BackendIntent::SetSplitRatio { tab, .. } => Some(
+                session
+                    .composition
+                    .region_showing(daemon, tab)
+                    .ok_or_else(|| not_showing(daemon))?,
+            ),
         };
-        let region = found.ok_or_else(|| {
-            format!(
-                "the daemon {daemon} is not showing that pane or tab in this window, so \
-                 nothing was asked of anything. Either it closed while this was in flight, \
-                 or the request names something in a session this window is not attached to."
-            )
-        })?;
         let channel = session.channel_of(daemon).ok_or_else(|| {
             format!(
                 "the daemon {daemon} is in this window's composition and is not being \
@@ -534,7 +573,9 @@ pub(crate) fn submit(daemon: &DaemonId, intent: &BackendIntent) -> Result<(), St
     // the one that was split rather than one looked up. Taking the pane on trust is what
     // `Composition::focus_pane` is for, and the reconcile behind the event that follows is
     // where daemon truth gets applied to it.
-    if let Some(created) = outcome.as_ref().ok().and_then(|outcome| outcome.created.clone()) {
+    if let (Some(region), Some(created)) =
+        (region, outcome.as_ref().ok().and_then(|outcome| outcome.created.clone()))
+    {
         SESSION
             .lock()
             .expect("a panicking sender poisoned the session")
@@ -543,6 +584,15 @@ pub(crate) fn submit(daemon: &DaemonId, intent: &BackendIntent) -> Result<(), St
         publish();
     }
     outcome.map(|_| ())
+}
+
+/// Why an intent about something on screen could not be sent.
+fn not_showing(daemon: &DaemonId) -> String {
+    format!(
+        "the daemon {daemon} is not showing that pane or tab in this window, so nothing was \
+         asked of anything. Either it closed while this was in flight, or the request names \
+         something in a session this window is not attached to."
+    )
 }
 
 /// Points this window's keyboard at a pane, and tells the daemon somebody looked.
@@ -673,10 +723,98 @@ fn attach_daemon(daemon: &Daemon) -> Result<(), String> {
 
 /// Why a pane could not be attached.
 pub(crate) enum AttachError {
-    NoDaemon,
     Unreachable(String),
     NoSuchPane { pane: String, held: usize, dropped: usize },
     NoChannel(String),
+}
+
+/// Opens this window onto whatever the daemons hold.
+///
+/// What a bare `muster` means. No pane is named, so nothing decides which daemon or which tab
+/// beyond what each daemon is already focused on - which is what its user was last looking at
+/// and the best answer Muster has to invent.
+///
+/// Three steps, and each is the reason the next can be simple: be following something, give
+/// every daemon a region, and make a workspace if all of that still leaves nothing to show.
+/// The last is the one a fresh machine needs, where Muster has just started a daemon that
+/// holds no panes at all.
+pub(crate) fn open() -> Result<(), String> {
+    follow_implicitly_if_nothing_else()?;
+    open_remaining_regions();
+    open_a_workspace_if_the_window_is_empty();
+    publish();
+    Ok(())
+}
+
+/// Attaches the daemon on this machine when no config file named any.
+///
+/// Recorded as the wish that produced it - Muster's own daemon, wherever that turns out to be
+/// - rather than as the path that answered today.
+fn follow_implicitly_if_nothing_else() -> Result<(), String> {
+    if following_anything() {
+        return Ok(());
+    }
+    let implicit =
+        Daemon { id: DaemonId::new(LOCAL), endpoint: Endpoint::Local { socket_path: None } };
+    attach_daemon(&implicit)
+}
+
+/// Asks for one workspace when nothing else has produced anything to show.
+///
+/// A daemon Muster started a moment ago holds nothing, so every rule above it produces an
+/// empty window - which is the state this whole path exists to avoid. One workspace, on the
+/// first daemon that is local, because a remote one is somebody else's machine and making
+/// things on it uninvited is a bigger claim than filling a window.
+///
+/// Nothing is opened here. The daemon answers by publishing a workspace, a tab and a pane,
+/// and the region appears the way every other region does - through the reconcile that
+/// follows. A window that built one itself would be a second place layout is decided.
+fn open_a_workspace_if_the_window_is_empty() {
+    let empty = {
+        let session = SESSION.lock().expect("a panicking sender poisoned the session");
+        session.composition.regions().next().is_none()
+    };
+    if !empty {
+        return;
+    }
+
+    let Some(daemon) = first_local_daemon() else {
+        log::warn(
+            "window.empty",
+            fields! {
+                "impact" => "this window shows nothing, because no attached daemon holds a \
+                             tab and none of them is on this machine",
+                "check" => "whether the remote daemons in the config file have any sessions \
+                            open - Muster will not make one on somebody else's machine",
+            },
+        );
+        return;
+    };
+
+    log::info("workspace.creating", fields! { "daemon" => daemon.to_string() });
+    if let Err(refusal) = submit(&daemon, &BackendIntent::CreateWorkspace { cwd: None }) {
+        log::error(
+            "workspace.refused",
+            fields! {
+                "daemon" => daemon.to_string(),
+                "detail" => refusal,
+                "impact" => "this window opens empty, and stays that way until something \
+                             makes a pane on that daemon",
+                "check" => "the daemon's own log - it answered its socket, so this is a \
+                            refusal rather than an absence",
+            },
+        );
+    }
+}
+
+/// The first attached daemon on this machine, in the order the config named them.
+fn first_local_daemon() -> Option<DaemonId> {
+    let session = SESSION.lock().expect("a panicking sender poisoned the session");
+    session
+        .composition
+        .daemons()
+        .find(|daemon| matches!(daemon.endpoint, Endpoint::Local { .. }))
+        .map(|daemon| daemon.id.clone())
 }
 
 /// Shows a daemon-owned pane in this window, and points the keyboard at it.
@@ -693,20 +831,7 @@ pub(crate) enum AttachError {
 /// to ask, which it finds the way herdr's own client would.
 pub(crate) fn attach(pane_id: &str) -> Result<Arc<AttachedPane>, AttachError> {
     let pane = PaneId::new(pane_id);
-    if !following_anything() {
-        // No config named a daemon, so the one on this machine is what was meant. Recorded as
-        // the wish that produced it - find whatever is here - rather than as the path that
-        // answered today.
-        let implicit =
-            Daemon { id: DaemonId::new(LOCAL), endpoint: Endpoint::Local { socket_path: None } };
-        attach_daemon(&implicit).map_err(|refusal| {
-            if refusal.contains("no herdr socket") {
-                AttachError::NoDaemon
-            } else {
-                AttachError::Unreachable(refusal)
-            }
-        })?;
-    }
+    follow_implicitly_if_nothing_else().map_err(AttachError::Unreachable)?;
 
     let (daemon, workspace, tab) = locate(&pane).ok_or_else(|| AttachError::NoSuchPane {
         pane: pane_id.to_string(),
@@ -882,8 +1007,19 @@ fn publish() {
 /// shell, the shell reacts by dispatching, and a dispatch that arrived while this held the
 /// session would deadlock against it on the same thread.
 fn reconcile(daemon: &DaemonId) {
-    let mut session = SESSION.lock().expect("a panicking sender poisoned the session");
-    session.reconcile(daemon);
+    {
+        let mut session = SESSION.lock().expect("a panicking sender poisoned the session");
+        session.reconcile(daemon);
+    }
+    // A standing rule rather than a launch-time one, because the states that produce a
+    // daemon with nothing on screen keep arriving: a workspace Muster asked for a moment ago
+    // and is waiting on, a daemon that came back after a restart with its tabs, a tab closed
+    // from another client while its daemon still holds others.
+    //
+    // Safe only while nothing closes a region deliberately - the day a user can put one away,
+    // this would reopen it on the next thing the daemon said, and the rule needs to learn the
+    // difference between empty and dismissed.
+    open_remaining_regions();
 }
 
 /// Turns what one daemon said into a log line and, where the window renders it, an event.

@@ -8,6 +8,7 @@
 pub mod client;
 pub mod control_socket;
 pub mod control_stream;
+pub mod daemon;
 pub mod discovery;
 pub mod events;
 pub mod frame;
@@ -20,7 +21,7 @@ pub mod subscription;
 pub use client::HerdrClient;
 pub use control_socket::PaneControlChannel;
 pub use control_stream::ControlStreamMessage;
-pub use discovery::discover_socket_path;
+pub use discovery::{discover_socket_path, own_socket_path};
 pub use events::EventDecoder;
 pub use frame::{FrameDecoder, PaneFrame, PaneStreamEvent};
 pub use layout::read_layout;

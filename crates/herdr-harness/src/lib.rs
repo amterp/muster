@@ -153,6 +153,28 @@ impl Daemon {
         &self.socket_path
     }
 
+    /// Writes a Muster config file naming this daemon, and returns its path.
+    ///
+    /// How a test points the core at a scratch daemon, and the only way there is. Muster runs
+    /// its own herdr on a socket of its own and does not read `HERDR_SOCKET_PATH` - a window
+    /// that silently joined whatever the environment pointed at would be back to attaching a
+    /// daemon of unknown version. Naming a `socket` in the config file is the deliberate way
+    /// to ask for a particular one, so a test asks the way a person would.
+    ///
+    /// It also means a test needs no environment mutation, which in a process that is also
+    /// running threads is worth more than the line it saves.
+    pub fn muster_config(&self) -> PathBuf {
+        let path = self.root.join("muster.toml");
+        let contents = format!(
+            "[[daemon]]\nid = \"local\"\nsocket = {:?}\n",
+            self.socket_path.to_string_lossy()
+        );
+        std::fs::write(&path, contents).unwrap_or_else(|error| {
+            panic!("could not write the harness's Muster config at {}: {error}", path.display())
+        });
+        path
+    }
+
     pub fn client(&self) -> HerdrClient {
         // Longer than the client's own default, which is tuned for the input path where a
         // wedged daemon must not take the keyboard with it. A test would rather wait than

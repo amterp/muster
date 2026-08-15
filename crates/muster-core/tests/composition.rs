@@ -248,6 +248,12 @@ fn view_of(
             }
             _ => None,
         },
+        // The mirror image, and read back the same way: a local daemon says where its frames
+        // come from, and a remote one does not, because that bridge asks the far machine.
+        |daemon| match composition.daemon(daemon).map(|held| &held.endpoint) {
+            Some(Endpoint::Ssh { .. }) => None,
+            _ => Some(format!("/tmp/{daemon}.sock")),
+        },
     )
 }
 

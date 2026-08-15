@@ -47,6 +47,20 @@ fn request(intent: &BackendIntent) -> (&'static str, Value) {
             }
             ("pane.split", params)
         }
+        BackendIntent::CreateWorkspace { cwd } => {
+            let mut params = json!({
+                // The daemon's cursor follows it, for the same reason a split's does: this is
+                // asked for by somebody who wants to be looking at what it makes.
+                "focus": true,
+                // herdr labels an unlabelled workspace itself, and a name Muster invented
+                // would be a second naming scheme for the same thing.
+                "label": Value::Null,
+            });
+            if let Some(cwd) = cwd {
+                params["cwd"] = json!(cwd);
+            }
+            ("workspace.create", params)
+        }
         BackendIntent::ClosePane { pane } => ("pane.close", json!({ "pane_id": pane.as_str() })),
         BackendIntent::FocusPane { pane } => ("pane.focus", json!({ "pane_id": pane.as_str() })),
         BackendIntent::SetSplitRatio { tab, path, ratio } => (
@@ -62,16 +76,18 @@ fn request(intent: &BackendIntent) -> (&'static str, Value) {
 
 /// The pane a request made, if it made one.
 ///
-/// `pane.split` answers with the whole new pane, nested under `pane` the way every herdr
-/// result nests under a key beside its `type`. Only the id is read: everything else about it
-/// arrives on the event stream a moment later, and reading it here would be a second source
-/// for facts the mirror already owns.
+/// `pane.split` answers with the whole new pane nested under `pane`, and `workspace.create`
+/// with the one it started the workspace off with under `root_pane` - the way every herdr
+/// result nests under a key beside its `type`. Only the id is read: everything else about
+/// them arrives on the event stream a moment later, and reading it here would be a second
+/// source for facts the mirror already owns.
 ///
 /// A shape that does not match is `None` rather than a refusal. The split happened - the
 /// daemon said so - and the only cost of not finding the id is a keyboard that stays where it
 /// was, which is worth less than turning a successful split into an error.
 fn created(result: &Value) -> Option<PaneId> {
-    Some(PaneId::new(result.get("pane")?.get("pane_id")?.as_str()?))
+    let pane = result.get("pane").or_else(|| result.get("root_pane"))?;
+    Some(PaneId::new(pane.get("pane_id")?.as_str()?))
 }
 
 /// herdr names a split for where the new pane goes; Muster names it for the arrangement it

@@ -32,8 +32,24 @@ message Request {
     FocusRelative focus_relative = 13;
     WindowFocus window_focus = 14;
     SetRegionBoundary set_region_boundary = 15;
+    OpenWindow open_window = 16;
   }
 }
+
+// Show whatever there is to show.
+//
+// What a bare `muster` asks for, and the ordinary way to open the app: no pane is named, so
+// each attached daemon gets a region on the tab it is already focused on. A daemon Muster
+// had to start holds nothing at all, and this is what asks it for a first workspace.
+//
+// Its own message rather than an AttachPane with an empty pane id. Everywhere else in this
+// schema an empty pane means "the one this window's keyboard is on", and at open there is no
+// keyboard yet - so the same spelling would mean two different things one message apart.
+//
+// Nothing comes back but Ok. What the window ends up showing arrives as a ViewChanged, like
+// every other answer about what is on screen, and a first workspace lands there a moment
+// later when the daemon has made it.
+message OpenWindow {}
 
 // Moves the line between two regions of the window.
 //
@@ -192,6 +208,18 @@ message Startup {
   // Empty is the ordinary case rather than a problem: a Muster with no config file attaches
   // the daemon on this machine the way herdr's own client would find it.
   string config_path = 4;
+
+  // The herdr binary this Muster ships, or empty if the shell found none.
+  //
+  // Muster runs its own daemon rather than asking anybody to install one, and it runs the
+  // version it shipped rather than whatever is on PATH - a daemon the corpus was never
+  // recorded against is a window whose every behaviour is unverified. Where that binary sits
+  // is an OS and packaging question, which is why the shell answers it: inside the bundle for
+  // a shipped app, beside the executable for a build.
+  //
+  // Empty is not a default to paper over. It means this build staged no daemon, and a window
+  // that then finds none running has nothing to show and says so.
+  string herdr_path = 5;
 
   // trace, debug, info, warn, error. Empty means debug.
   string log_level = 2;
@@ -422,6 +450,20 @@ message ViewRegion {
   // command through the connection the control plane already opened, instead of paying for a
   // handshake per pane.
   string ssh_control_path = 8;
+
+  // Which daemon this region's frame streams should come from, on this machine.
+  //
+  // The bridge runs a herdr CLI to get a pane's frames, and that CLI finds a daemon the same
+  // way any other client does - which is not good enough now that Muster runs its own on a
+  // session of its own. A bridge left to find one for itself reaches whatever the user last
+  // started, does not find the pane there, and the stream ends before a single frame: a pane
+  // that renders nothing, which is this project's most expensive failure shape.
+  //
+  // Empty for a remote region, and not an oversight: that bridge runs its CLI on the far
+  // machine, where this path names nothing. It finds the daemon over there the ordinary way,
+  // which is the same asymmetry the control plane already has until Muster ships a daemon to
+  // the far end too.
+  string herdr_socket = 10;
 }
 
 message ViewNode {

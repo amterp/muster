@@ -22,13 +22,15 @@ public enum Core {
   ///
   /// `logPath` nil turns logging off, which is what a release build does unless asked.
   public static func start(
-    logPath: String?, configPath: String? = nil, process: String = "app"
+    logPath: String?, configPath: String? = nil, herdrPath: String? = nil,
+    process: String = "app"
   ) {
     muster_set_event_callback(coreEventArrived)
 
     var startup = Muster_Startup()
     startup.logPath = logPath ?? ""
     startup.configPath = configPath ?? ""
+    startup.herdrPath = herdrPath ?? ""
     startup.logLevel = ProcessInfo.processInfo.environment["MUSTER_LOG_LEVEL"] ?? ""
     startup.process = process
     var request = Muster_Request()
@@ -58,6 +60,19 @@ public enum Core {
     var request = Muster_Request()
     request.attachPane = attach
     guard case .attached = send(request) else { return false }
+    return true
+  }
+
+  /// Opens the window onto whatever the daemons hold, which is what a bare `muster` means.
+  ///
+  /// The same shape as `attach`: everything about what ends up on screen is pushed, so the
+  /// answer here is only whether there is a session behind this window at all. False means it
+  /// renders nothing, and the core has already said why on stderr and in the log.
+  @discardableResult
+  public static func open() -> Bool {
+    var request = Muster_Request()
+    request.openWindow = Muster_OpenWindow()
+    guard case .ok = send(request) else { return false }
     return true
   }
 
@@ -280,6 +295,7 @@ public enum Core {
     case .startup: return "startup"
     case .logRecord: return "log"
     case .attachPane: return "attach_pane"
+    case .openWindow: return "open_window"
     case .keyDown: return "key_down"
     case .keyUp: return "key_up"
     case .sendText: return "send_text"

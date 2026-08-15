@@ -18,8 +18,12 @@ public enum PaneCommand {
   /// - Parameter sshHost: the machine this pane lives on, when it is not this one, and
   ///   `sshControlPath` the master the core already opened for that daemon. Both come from
   ///   the view rather than being worked out here: they name a connection the core owns.
+  /// - Parameter herdrSocketPath: the daemon to ask for this pane's frames. Absent means the
+  ///   bridge finds one for itself, which is right only for a remote pane - its command runs
+  ///   on the far machine, where a path from this one names nothing.
   public static func bridge(
     executable: String, paneID: String, controlSocketPath: String?,
+    herdrSocketPath: String? = nil,
     sshHost: String? = nil, sshControlPath: String? = nil
   ) -> String {
     let bridge = URL(fileURLWithPath: executable)
@@ -30,6 +34,9 @@ public enum PaneCommand {
     var arguments = [bridge, paneID]
     if let controlSocketPath {
       arguments += ["--control-socket", controlSocketPath]
+    }
+    if let herdrSocketPath, !herdrSocketPath.isEmpty {
+      arguments += ["--herdr-socket", herdrSocketPath]
     }
     // Half a target would run the wrong machine's terminal, so both or neither. The bridge
     // refuses half as well; this is the side that can still say something useful about it.

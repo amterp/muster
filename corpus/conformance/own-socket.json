@@ -1,0 +1,38 @@
+{
+  "concept": "muster.ownSocketPath",
+  "source": "authored",
+  "citation": "herdr src/session.rs, at the v0.8.0 tag: data_dir_for() puts a named session under sessions/<name>/ and api_socket_path_for() puts herdr.sock inside it. Verified against the pinned binary, which binds /tmp/.../config/herdr/sessions/muster/herdr.sock when started with HERDR_SESSION=muster.",
+  "why": "Muster ships a herdr and runs it rather than asking anybody to install one, which only means something if the daemon it talks to is the daemon it shipped. So it runs its own under a herdr session of its own and never meets a stranger: a daemon on the default socket is whatever the user last started, of a version this project's corpus says nothing about, and every behaviour after attaching to one is unverified. The rules here differ from herdr's own discovery in exactly one way that matters - HERDR_SOCKET_PATH is not read - and a change that quietly started reading it would put Muster back on somebody else's daemon with nothing to show for it.",
+  "cases": [
+    {
+      "name": "a session of Muster's own, under the config directory",
+      "why": "The ordinary answer, and the whole arrangement in one path: `muster` is a herdr session name, so `herdr --session muster pane list` reaches this daemon from a terminal and nothing had to be invented for it.",
+      "given": { "env": { "HOME": "/home/a" } },
+      "expect": { "path": "/home/a/.config/herdr/sessions/muster/herdr.sock" }
+    },
+    {
+      "name": "XDG_CONFIG_HOME moves it, the way it moves herdr's own",
+      "why": "The isolated daemons every test and every recording runs against are isolated exactly this way, so a rule that ignored XDG would put Muster's daemon in a developer's real config directory during the suite.",
+      "given": { "env": { "XDG_CONFIG_HOME": "/xdg", "HOME": "/home/a" } },
+      "expect": { "path": "/xdg/herdr/sessions/muster/herdr.sock" }
+    },
+    {
+      "name": "an explicit herdr socket is deliberately not read",
+      "why": "The one difference from herdr's own discovery, and the point of the whole design. HERDR_SOCKET_PATH is exported by somebody pointing their own CLI at their own daemon; a Muster that followed it would silently attach to a version nobody promised. Asking for that on purpose is what the config file's `socket` key is for.",
+      "given": { "env": { "HERDR_SOCKET_PATH": "/tmp/somebody-elses.sock", "HOME": "/home/a" } },
+      "expect": { "path": "/home/a/.config/herdr/sessions/muster/herdr.sock" }
+    },
+    {
+      "name": "a named session belonging to the user is not ours either",
+      "why": "Same reasoning one variable along: HERDR_SESSION says which session that person's terminal is working in, and Muster's is always its own. Following it would put two Musters on different daemons depending on which shell launched them.",
+      "given": { "env": { "HERDR_SESSION": "work", "HOME": "/home/a" } },
+      "expect": { "path": "/home/a/.config/herdr/sessions/muster/herdr.sock" }
+    },
+    {
+      "name": "nothing says where home is, so there is no answer",
+      "why": "A path built from an empty base would name something plausible in the filesystem root, turning `there is nowhere to look` into a connection failure somewhere further from the cause.",
+      "given": { "env": {} },
+      "expect": { "path": null }
+    }
+  ]
+}

@@ -168,6 +168,7 @@ fn view_cost() -> Cost {
                 |named| (named == &daemon).then_some(&mirror),
                 |_, pane| Some(pane.to_string()),
                 |_| None,
+                |_| Some("/tmp/herdr.sock".to_string()),
             );
             black_box(view.regions.len());
         }

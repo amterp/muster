@@ -68,18 +68,19 @@ fn attaching_places_a_pane_where_the_keyboard_can_find_it() {
         || format!("herdr says {:?} about {finished}", agent_status(&daemon, &finished)),
     );
 
-    // The core discovers its daemon the way a person's would, from the environment, so this
-    // is the only way to point it at a scratch one.
-    //
-    // SAFETY: this binary holds one test, so the only other thread alive is the harness's
-    // own, which reads no environment. The module docs say why it stays that way.
-    unsafe { std::env::set_var("HERDR_SOCKET_PATH", daemon.socket_path()) };
+    // A config file naming this daemon's socket, which is how a person points Muster at a
+    // daemon it did not start - and the only way there is, since Muster runs its own herdr
+    // and does not read HERDR_SOCKET_PATH.
+    let config = daemon.muster_config();
     // Before startup, because that is the order the shell uses (`Sources/MusterMac/Core.swift`)
     // and the order is load-bearing: startup begins following the configured daemons, so a
     // callback registered after it misses the whole first bootstrap - every pane that already
     // existed, and whatever their agents were already doing.
     muster::ffi::muster_set_event_callback(Some(note_view));
-    assert_ok(&answer(request::Payload::Startup(Startup::default())));
+    assert_ok(&answer(request::Payload::Startup(Startup {
+        config_path: config.to_string_lossy().into_owned(),
+        ..Startup::default()
+    })));
 
     // Before any attach, so this is the state a window is in on the way up rather than one
     // it fell back to.

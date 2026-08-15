@@ -24,8 +24,8 @@ public final class RegionView: NSView {
   /// is a PTY told it has no columns.
   public typealias StartPane =
     @MainActor (
-      _ daemonID: String, _ transport: WindowContents.Region.Transport?, _ chrome: PaneChrome,
-      _ controlSocketPath: String?
+      _ daemonID: String, _ transport: WindowContents.Region.Transport?,
+      _ herdrSocket: String?, _ chrome: PaneChrome, _ controlSocketPath: String?
     ) -> Void
 
   private struct Held {
@@ -54,6 +54,9 @@ public final class RegionView: NSView {
 
   /// How this region's panes are reached, when they are on another machine.
   public private(set) var transport: WindowContents.Region.Transport?
+
+  /// Which daemon this region's frames come from, when it is on this machine.
+  public private(set) var herdrSocket: String?
   private var tab: String = ""
 
   public init(frame: NSRect, startPane: @escaping StartPane) {
@@ -86,6 +89,7 @@ public final class RegionView: NSView {
     regionID = region.id
     daemonID = region.daemon
     transport = region.transport
+    herdrSocket = region.herdrSocket
     tab = region.tab
     guard let tree = region.tree else { return }
     self.tree = tree
@@ -96,7 +100,7 @@ public final class RegionView: NSView {
     layoutSubtreeIfNeeded()
     for leaf in fresh {
       guard let chrome = held[leaf.paneID]?.chrome else { continue }
-      startPane(daemonID, transport, chrome, leaf.controlSocketPath)
+      startPane(daemonID, transport, herdrSocket, chrome, leaf.controlSocketPath)
     }
     apply(keyboardPane: focused ? region.keyboardPane : nil)
   }

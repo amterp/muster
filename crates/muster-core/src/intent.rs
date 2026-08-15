@@ -46,6 +46,17 @@ pub enum BackendIntent {
     FocusPane {
         pane: PaneId,
     },
+    /// Makes a workspace, with one tab and one pane in it.
+    ///
+    /// The only intent that names nothing existing, because it is the one asked for when
+    /// there is nothing: a daemon Muster just started holds no panes, and a window showing
+    /// none of them is not a window. Every other verb here needs a pane to point at.
+    CreateWorkspace {
+        /// Where its first pane starts. `None` takes the daemon's own default rather than
+        /// this process's directory - Muster's cwd is wherever the app was launched from,
+        /// which is meaningless to whoever is looking at the window.
+        cwd: Option<String>,
+    },
     /// Moves one divider in a tab's tree.
     SetSplitRatio {
         tab: TabId,

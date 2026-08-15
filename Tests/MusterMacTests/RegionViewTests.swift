@@ -15,6 +15,8 @@ import Testing
 @MainActor
 private final class Started {
   var panes: [String] = []
+  /// Which daemon each pane's frames were to come from, in the order they were started.
+  var daemonSockets: [String?] = []
 }
 
 /// A region whose surfaces are recorded rather than allocated.
@@ -22,9 +24,10 @@ private final class Started {
 private func region(width: CGFloat = 800, height: CGFloat = 600) -> (RegionView, Started) {
   let started = Started()
   let view = RegionView(frame: NSRect(x: 0, y: 0, width: width, height: height)) {
-    daemon, transport, chrome, socket in
+    daemon, transport, herdrSocket, chrome, socket in
     let machine = transport.map { "@\($0.sshHost)" } ?? ""
     started.panes.append("\(daemon)\(machine):\(chrome.paneID ?? "")@\(socket ?? "-")")
+    started.daemonSockets.append(herdrSocket)
   }
   return (view, started)
 }
@@ -33,9 +36,12 @@ private func leaf(_ id: String, socket: String? = "/tmp/\(0).sock") -> PaneTree 
   .pane(.init(paneID: id, controlSocketPath: socket))
 }
 
-private func contents(_ tree: PaneTree?, keyboard: String? = nil) -> WindowContents.Region {
+private func contents(
+  _ tree: PaneTree?, keyboard: String? = nil, herdrSocket: String? = nil
+) -> WindowContents.Region {
   WindowContents.Region(
-    id: "r0", daemon: "local", tab: "w1:t1", keyboardPane: keyboard, tree: tree, zoomed: false)
+    id: "r0", daemon: "local", tab: "w1:t1", keyboardPane: keyboard, tree: tree, zoomed: false,
+    herdrSocket: herdrSocket)
 }
 
 @Suite("a region renders a tree")
@@ -150,5 +156,32 @@ struct RegionViewTests {
     // Three panes need two dividers, and every one of them is a grab handle: a missing one
     // is a split nobody can resize.
     #expect(view.subviews.filter { $0 is DividerView }.count == 2)
+  }
+}
+
+@Suite("a region says which daemon its frames come from")
+struct RegionFrameSourceTests {
+  @MainActor
+  @Test("the daemon's socket reaches the pane that is about to be started")
+  func theDaemonSocketReachesTheBridge() {
+    // Muster runs its own herdr on a session of its own, so a bridge left to find a daemon
+    // finds a different one, does not hold the pane, and ends its stream before a frame.
+    // Dropping this value between the view and the bridge's command line is invisible until
+    // a pane renders nothing - which is exactly how it was found.
+    let (view, started) = region()
+
+    view.apply(contents(leaf("w1:p1"), herdrSocket: "/tmp/muster/herdr.sock"), focused: true)
+
+    #expect(started.daemonSockets == ["/tmp/muster/herdr.sock"])
+  }
+
+  @MainActor
+  @Test("a remote region names no socket, because that path means nothing over there")
+  func aRemoteRegionNamesNoSocket() {
+    let (view, started) = region()
+
+    view.apply(contents(leaf("w1:p1")), focused: true)
+
+    #expect(started.daemonSockets == [nil])
   }
 }

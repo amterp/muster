@@ -52,6 +52,7 @@ fn handle(request: Request) -> Response {
         request::Payload::Startup(startup) => start(&startup),
         request::Payload::LogRecord(record) => write(record),
         request::Payload::AttachPane(attach) => attach_pane(&attach.pane_id),
+        request::Payload::OpenWindow(_) => open_window(),
         request::Payload::KeyDown(down) => with_pane("a keystroke", |pane| key_down(pane, &down)),
         request::Payload::KeyUp(up) => {
             with_pane("a key release", |pane| send_key(pane, up.key.as_ref()))
@@ -278,6 +279,17 @@ fn answer(outcome: Result<(), String>) -> Response {
     }
 }
 
+/// Opens the window onto whatever the daemons hold, which is what a bare `muster` asks for.
+fn open_window() -> Response {
+    match session::open() {
+        Ok(()) => Response::ok(),
+        Err(detail) => Response::failure(format!(
+            "{detail} This window has no session behind it, so it renders nothing and \
+             ignores the keyboard."
+        )),
+    }
+}
+
 fn attach_pane(pane_id: &str) -> Response {
     match session::attach(pane_id) {
         Ok(pane) => Response {
@@ -285,16 +297,8 @@ fn attach_pane(pane_id: &str) -> Response {
                 control_socket_path: pane.control_socket_path.clone(),
             })),
         },
-        Err(AttachError::NoDaemon) => Response::failure(
-            "no herdr daemon could be found, so there is no pane to attach to and this \
-             window will render nothing. Every pane Muster shows is owned by a daemon; \
-             check that one is running, and that HERDR_SOCKET_PATH or the default socket \
-             path points at it.",
-        ),
         Err(AttachError::Unreachable(detail)) => Response::failure(format!(
-            "the daemon did not answer ({detail}), so nothing is known about this pane and \
-             the window will render nothing. The socket exists, which usually means a \
-             daemon that is wedged or shutting down rather than one that is absent."
+            "{detail} Nothing is known about this pane, so the window will render nothing."
         )),
         Err(AttachError::NoSuchPane { pane, held, dropped }) => Response::failure(format!(
             "no daemon holds a pane called {pane}, so this window has nothing to show and \
@@ -316,6 +320,10 @@ fn attach_pane(pane_id: &str) -> Response {
 /// shell sends when the user has not opted in. Logging is set up first so that the config
 /// file's own account of itself has somewhere to go.
 fn start(startup: &proto::Startup) -> Response {
+    // Before the config, because applying one attaches the daemons it names and attaching a
+    // local one may have to start it.
+    session::set_daemon_binary(&startup.herdr_path);
+
     if startup.log_path.is_empty() {
         apply_config(&startup.config_path);
         return Response::ok();
@@ -356,6 +364,14 @@ fn start(startup: &proto::Startup) -> Response {
         "core.start",
         fields! {
             "vt_engine" => muster_vt::engine_version().unwrap_or_else(|| "unknown".to_string()),
+            // The other half of the same question: which daemon this run would start. A
+            // window with no session behind it is nearly always one of these two being
+            // absent, and both belong in the first record rather than in the failure.
+            "daemon_binary" => if startup.herdr_path.is_empty() {
+                "(none staged)".to_string()
+            } else {
+                startup.herdr_path.clone()
+            },
         },
     );
     apply_config(&startup.config_path);

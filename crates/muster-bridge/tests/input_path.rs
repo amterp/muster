@@ -42,14 +42,14 @@ fn a_keystroke_crosses_the_seam_and_arrives_on_the_panes_screen() {
     daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "input", "focus": true }));
     let pane = only_pane(&daemon);
 
-    // The core discovers its daemon the way a person's would, from the environment, so this
-    // is the only way to point it at a scratch one.
-    //
-    // SAFETY: this binary holds one test, so the only other thread alive is the harness's
-    // own, which reads no environment. The module docs say why it stays that way.
-    unsafe { std::env::set_var("HERDR_SOCKET_PATH", daemon.socket_path()) };
-
-    assert_ok(&answer(request::Payload::Startup(Startup::default())));
+    // A config file naming this daemon's socket, which is how a person points Muster at a
+    // daemon it did not start - and the only way there is, since Muster runs its own herdr
+    // and does not read HERDR_SOCKET_PATH.
+    let config = daemon.muster_config();
+    assert_ok(&answer(request::Payload::Startup(Startup {
+        config_path: config.to_string_lossy().into_owned(),
+        ..Startup::default()
+    })));
 
     // Registered before the attach that binds the socket, because the bridge can dial back
     // before this test's next line runs.
