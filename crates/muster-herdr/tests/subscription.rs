@@ -11,10 +11,11 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use herdr_harness::Daemon;
+use muster_core::AgentState;
 use muster_core::mirror::backend::{Health, LayoutNode, PaneId, SplitAxis, TabId};
 use muster_core::mirror::{Change, Mirror};
 use muster_herdr::subscription::{Notice, Subscription};
-use serde_json::json;
+use serde_json::{Value, json};
 
 /// Everything a test wants to look at afterwards, written from the subscription's thread.
 #[derive(Debug, Default)]
@@ -251,12 +252,12 @@ fn every_pane_reports_its_agent_state_without_being_attached_to() {
 
     until("the unattached pane's state to arrive", || {
         mirror.lock().unwrap().agent_state(&PaneId::new(elsewhere.clone()))
-            == Some(muster_core::AgentState::Blocked)
+            == Some(AgentState::Blocked)
     });
     assert!(log.notices().iter().any(|notice| matches!(
         notice,
         Notice::Changed(Change::AgentStateChanged { to, .. })
-            if *to == muster_core::AgentState::Blocked
+            if *to == AgentState::Blocked
     )));
 }
 
@@ -280,7 +281,7 @@ fn a_pane_created_later_is_watched_too() {
     );
     until("the new pane's agent state to arrive", || {
         mirror.lock().unwrap().agent_state(&PaneId::new(new_pane.clone()))
-            == Some(muster_core::AgentState::Working)
+            == Some(AgentState::Working)
     });
 }
 
@@ -340,4 +341,83 @@ fn a_tab_arranged_by_a_real_daemon_arrives_as_a_tree() {
     for pane in layout.root.panes() {
         assert!(mirror.pane(pane).is_some(), "the tree names {pane}, which the mirror lacks");
     }
+}
+
+/// A pane's agent state can move before its watcher is listening, and the state must survive
+/// it.
+///
+/// herdr delivers agent state only to a subscriber that names the pane, so a watcher is
+/// spawned when the structure stream says the pane exists and dials afterwards. Anything that
+/// fires in between reaches nobody, and herdr has no replay - so without the read that
+/// follows subscribing, the pane keeps whatever state it had and looks calm. In the app that
+/// is the founding desideratum failing silently at the worst moment: right after a split,
+/// with something new started in the pane.
+///
+/// Split and report back to back, many times, because the window is small and real. This is
+/// the shape that was first filed as a flaky suite before the flakiness turned out to be the
+/// symptom rather than the fault.
+#[test]
+fn an_agent_state_that_lands_before_its_watcher_is_recovered() {
+    // Enough that the window is hit rather than hoped for. Each round is a split and a report
+    // with nothing in between, which is as close as a test can get to an agent that starts
+    // working the instant its pane exists.
+    const ROUNDS: usize = 20;
+
+    let daemon = Daemon::start();
+    daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "one", "focus": true }));
+
+    let (mirror, log, _subscription) = mirror_and_log(&daemon);
+    until("the first bootstrap", || log.bootstraps() > 0);
+
+    let root = {
+        let mirror = mirror.lock().unwrap();
+        mirror.panes().next().expect("the workspace came with a pane").id.clone()
+    };
+
+    let mut made = Vec::new();
+    for _ in 0..ROUNDS {
+        let answer = daemon
+            .call("pane.split", &json!({ "target_pane_id": root.as_str(), "direction": "down" }));
+        let Some(pane) =
+            answer.get("pane").and_then(|pane| pane.get("pane_id")).and_then(Value::as_str)
+        else {
+            panic!("herdr split without saying which pane it made: {answer}");
+        };
+        let pane = pane.to_string();
+        daemon.call(
+            "pane.report_agent",
+            &json!({
+                "pane_id": pane,
+                "source": "test",
+                "agent": "claude",
+                "state": "working",
+            }),
+        );
+        made.push(PaneId::new(pane));
+    }
+
+    until("every new pane to reach the mirror", || {
+        let mirror = mirror.lock().unwrap();
+        made.iter().all(|pane| mirror.agent_state(pane).is_some())
+    });
+
+    // No further events are coming: every report has been sent and answered. So whatever the
+    // mirror holds now is what a window would be showing, indefinitely.
+    until("every new pane's agent state to settle", || {
+        let mirror = mirror.lock().unwrap();
+        made.iter().all(|pane| mirror.agent_state(pane) == Some(AgentState::Working))
+    });
+
+    let mirror = mirror.lock().unwrap();
+    let calm: Vec<&PaneId> =
+        made.iter().filter(|pane| mirror.agent_state(pane) != Some(AgentState::Working)).collect();
+    assert!(
+        calm.is_empty(),
+        "{} of {ROUNDS} panes report an agent that is working and look idle here: {calm:?}.\n  \
+         Impact: in the app those panes show nothing happening while an agent runs in them, \
+         and nothing ever corrects it - herdr has no replay and only a reconnect \
+         re-bootstraps.\n  Check the read that follows subscribing in \
+         `subscription.rs::seed`.",
+        calm.len()
+    );
 }

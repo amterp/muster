@@ -401,4 +401,40 @@ impl Mirror {
     pub fn agent_state(&self, id: &PaneId) -> Option<AgentState> {
         self.panes.get(id).map(|pane| pane.agent_state)
     }
+
+    /// Takes the daemon's current answer for one pane's agent, having asked for it.
+    ///
+    /// Distinct from applying an event, and the difference is where the answer came from. A
+    /// backend delivers a transition it witnessed; this is a question Muster asked because it
+    /// knows it may have missed one - herdr delivers agent state only to a subscriber that
+    /// names the pane, so between a pane existing and its subscription being live there is a
+    /// window, and herdr offers no replay for what fell in it. Without this, a pane whose
+    /// agent moved in that window keeps its old state and looks calm, which is the founding
+    /// desideratum failing silently at the moment it matters most: just after a split, with
+    /// something new started in the pane.
+    ///
+    /// **Not counted as a transition**, because the daemon counted one and Muster never saw
+    /// it. `agent_transitions_applied` is reconciled against the backend's own counter to
+    /// notice gaps, so counting a recovery would hide the very gap it recovered from - the
+    /// next bootstrap would find the numbers agreeing and report nothing missed.
+    ///
+    /// `expected` is what the caller believed before it asked, and the answer is refused if
+    /// the mirror has moved since. That is the ordering rule: a live subscription is a better
+    /// authority than an answer to a question asked at the same moment, so anything that
+    /// arrived while the question was in flight wins. Passing the state read a moment earlier
+    /// is what makes this safe to run on a thread of its own.
+    pub fn seed_agent_state(
+        &mut self,
+        pane: &PaneId,
+        state: AgentState,
+        expected: Option<AgentState>,
+    ) -> Vec<Change> {
+        let Some(held) = self.panes.get_mut(pane) else { return Vec::new() };
+        let from = held.agent_state;
+        if Some(from) != expected || from == state {
+            return Vec::new();
+        }
+        held.agent_state = state;
+        vec![Change::AgentStateChanged { pane: pane.clone(), from, to: state }]
+    }
 }

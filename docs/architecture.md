@@ -264,6 +264,17 @@ model:
   and the payloads are replayed as of when a subscription opened - so letting structure write that field means a
   reconnect can roll a working agent back with nothing following to correct it. The agent channel owns the field;
   structure sets it only for a pane it is seeing for the first time.
+- **A watcher subscribes and then asks, because the two cannot happen at once.** A per-pane subscription can only be
+  opened once the pane is known to exist, and dialing it takes time - so between a pane appearing and its watcher
+  being live there is a window, and herdr has no replay for what falls in it. Nothing corrects it afterwards either:
+  only a reconnect re-bootstraps, so on a healthy connection the pane keeps its old state indefinitely and looks
+  calm. That is this project's founding claim failing silently, at the moment it is most likely to matter - just
+  after a split, with something new started in the pane. So each watcher reads its pane's current state once it is
+  subscribed, and the read is refused if the subscription moved the pane while the question was in flight: a stream
+  is a better authority than an answer to a question asked at the same moment. The read is deliberately not counted
+  as a transition, because the daemon counted one Muster never saw - counting it would hide the very gap it
+  recovered from. Periodic reconciliation would paper over this rather than close it, and "papering over" is the
+  accurate description: the pane would stay wrong until the next sweep.
 - **Agent state costs a connection per pane.** `pane.agent_status_changed` takes a `pane_id` and no session-wide
   subscription carries the same information (`observations/herdr-0.8.0.md` section 11), so an overview of N panes is
   N held-open connections plus one for structure. Muster subscribes for every pane the mirror holds rather than only

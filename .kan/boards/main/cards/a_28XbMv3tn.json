@@ -6,20 +6,29 @@
     "backend",
     "testing"
   ],
-  "column": "next",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "**Done** (2026-08-15). A watcher now subscribes and then asks: after `connect` returns, it reads the pane's current agent state once and applies it. That closes the window outright rather than papering over it, which is what the card wanted over the reconciliation option.\n\nAnswering the card's questions:\n\n- **What herdr offers.** `pane.get`, which answers `{\"type\":\"pane_info\",\"pane\":{..,\"agent_status\":..}}` - per pane and cheap, so no need for the `session.snapshot` sledgehammer. One request per pane, once, at creation.\n- **Ordering.** The watcher reads what the mirror believed *before* it asks, and the answer is refused if the mirror moved in the meantime. A live subscription is the better authority: it was delivered because the daemon witnessed the transition, where a read is a snapshot of an instant the caller cannot pin down. So anything arriving while the question is in flight wins.\n- **A third thing the card did not ask about, and it matters.** The read goes through `Mirror::seed_agent_state` rather than `apply`, so it does **not** increment `agent_transitions_applied`. That counter is reconciled against herdr's own `agent_state_seq` to notice gaps - counting a recovery would have hidden the very gap it recovered from, and the next bootstrap would have found the numbers agreeing and reported nothing missed. Not counting it is right on both grounds: a transition genuinely was missed, and saying so is honest.\n\nAlso handles the second shape the card measured. A rule about `unknown` alone would not: a pane can be `working` in the bootstrap snapshot and finish inside the window, so the mirror holds a real state and is still wrong. The compare-and-set covers both.\n\nSix conformance cases in `corpus/conformance/mirror.json` under a new `seeds` step, plus `an_agent_state_that_lands_before_its_watcher_is_recovered` in `crates/muster-herdr/tests/subscription.rs` - twenty split-and-report rounds against a real pinned daemon. Confirmed to fail 3 runs out of 3 with the read disabled.\n\n**On the flakiness:** three clean `cargo test --workspace` runs after the fix. Not conclusive against a 2-in-6 failure rate, so worth watching rather than declaring settled - but nothing was touched about timeouts, which is what the card asked for.",
+      "created_at_millis": 1786818848819,
+      "id": "c_28b7uDyXb"
+    }
+  ],
   "created_at_millis": 1786810448261,
   "creator": "Alexander Terp",
   "description": "Filed first as a flaky suite. It is not: the flakiness is a symptom, and the thing under it is a correctness bug in the agent path.\n\n**Measured.** `attaching_places_a_pane_where_the_keyboard_can_find_it` failed 2 runs in 6 of `cargo test --workspace`, always on `w1:p2`, at two *different* transitions (once waiting for `working` with the core still saying `unknown`, once waiting for the finish with it still saying `working`). It passes instantly when run alone. Same test, same pane, different transitions is too specific for contention.\n\n**The mechanism**, in `crates/muster-herdr/src/subscription.rs`. herdr only delivers agent state to a subscriber that names the pane, so Muster holds one connection per pane. When a pane appears, the structure stream reports `PaneAdded`, `AgentWatchers::follow` spawns a thread, and *that thread then dials* `connect`. Between the pane existing and its subscription being live there is a window. herdr offers no replay - the file says so itself, which is why a dropped subscription rebuilds rather than resumes - so a `pane.agent_status_changed` landing in that window is gone. Nothing on a healthy connection ever re-reads it: only a reconnect re-bootstraps.\n\n**Why this is not a test problem.** In the app, an agent whose state moves shortly after its pane is created is an agent Muster never hears about. The pane sits on its last known state - very likely `unknown` - and looks calm. That is the founding desideratum failing silently, in the window that matters most: right after you split a pane and start something in it.\n\nWorth deciding rather than defaulting:\n\n- **Should a watcher read the pane's current state once it is subscribed?** Cheapest fix and it closes the window outright - subscribe, then ask, then let events take over. Costs one request per pane at creation. Check what herdr offers for reading one pane's agent state; `session.snapshot` carries agents and is the sledgehammer.\n- **Or does reconciliation cover it?** a_27RZ05KFh (reconciliation cadence) is the adjacent card. A periodic re-snapshot would paper over this, and \"papering over\" is the accurate description - the state would be wrong until the next sweep.\n- **Ordering, not just presence.** If a read follows a subscribe, a state arriving between them must not be overwritten by the older read. The mirror's own rule for first-sight-versus-transition is the precedent.\n\nOnce fixed, the suite should stop failing without anyone touching a timeout. If it does not, *then* there is a load problem to look at separately - 9 daemon-backed test binaries now run concurrently, and `subscription.rs` alone starts 11 daemons in parallel.",
   "id": "a_28XbMv3tn",
-  "position": "!6",
+  "position": "!!!!!!!!U",
   "title": "🕳️ An agent state is lost if it lands before its watcher connects",
   "type": "chore",
-  "updated_at_millis": 1786815763052,
+  "updated_at_millis": 1786819295192,
   "history": [
     {"field":"column","value":"backlog-lo","at":1786810448261},
     {"field":"column","value":"backlog-hi","at":1786810456530},
     {"field":"column","value":"next","at":1786811428132},
     {"field":"column","value":"backlog-hi","at":1786813094435},
-    {"field":"column","value":"next","at":1786815763052}
+    {"field":"column","value":"next","at":1786815763052},
+    {"field":"column","value":"done","at":1786819295192}
   ]
 }

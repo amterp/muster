@@ -27,6 +27,16 @@ fn mirror_conformance() {
         for event in given.get("events").and_then(Value::as_array).into_iter().flatten() {
             changes.extend(mirror.apply(read_event(event)));
         }
+        // After the stream, because that is when it happens: a watcher subscribes, then asks
+        // what it may already have missed. `expected` is absent when the caller believed the
+        // pane had no state at all, which is different from believing it was `unknown`.
+        for seed in given.get("seeds").and_then(Value::as_array).into_iter().flatten() {
+            changes.extend(mirror.seed_agent_state(
+                &PaneId::new(text(seed, "pane")),
+                AgentState::from_backend(&text(seed, "state")),
+                optional(seed, "expected").map(|state| AgentState::from_backend(&state)),
+            ));
+        }
         if let Some(resnapshot) = given.get("resnapshot") {
             changes.extend(mirror.bootstrap(read_snapshot(resnapshot)));
         }

@@ -5,7 +5,7 @@
   "area": [
     "backend"
   ],
-  "column": "next",
+  "column": "done",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -18,13 +18,14 @@
   "creator": "Alexander Terp",
   "description": "Muster already isolates two of the three things that matter and neither of the other two is obvious from reading the code, which is how both went unnoticed until a real launch exposed one.\n\n**What is isolated today.** The daemon runs under herdr session `muster` on its own socket (`sessions/muster/herdr.sock`), and Muster never reads `HERDR_SOCKET_PATH`. So it cannot accidentally attach to whatever daemon the user last started. That part works.\n\n**What is not: the environment.** `daemon::start` inherits the launching process's environment wholesale, and `daemon.rs` says so deliberately - the socket path was computed from that environment, so building a fresh one risks binding somewhere else. Sound reasoning, unbounded consequence: *everything else* is carried too, into a process that outlives the app and hands it to every shell it ever spawns.\n\nObserved 2026-08-15, not hypothesised. Launching Muster from inside a Claude Code session put `CLAUDE_CODE_CHILD_SESSION`, `CLAUDE_CODE_SESSION_ID`, `CLAUDE_CODE_MESSAGING_SOCKET` and `CLAUDE_CODE_MESSAGING_TOKEN` into the daemon. Every pane opened afterwards inherited them - a Claude Code started in one silently disabled transcript saving and was handed another session's IPC credentials. The daemon outlives the app, so it persisted after that Muster was gone. For a tool whose entire purpose is running coding agents, leaking the launching session's agent environment into every agent it runs is close to the worst version of this bug.\n\n**What is not: the configuration.** `discovery::config_base` is `$XDG_CONFIG_HOME/herdr`, which is the user's own herdr config directory. Muster's daemon is a separate session reading somebody else's `config.toml` - their `default_shell`, `shell_mode`, plugins, update checks. A herdr setting changed for their own use silently changes what Muster's panes do, and Muster's corpus was recorded against neither.\n\n**And it should be hard to get wrong.** Today any shell can run `muster.app/Contents/MacOS/muster` and whatever that shell was carrying becomes permanent daemon state. The launch that produces a clean daemon and the launch that poisons one look identical and neither says anything.\n\nWorth deciding rather than defaulting:\n\n- **What the daemon is entitled to inherit.** `PATH`, `HOME`, `TERM`, locale and the XDG vars the socket path came from are the plausible list; an allowlist is the shape, since a denylist has to keep up with every tool that invents a variable.\n- **Whether the panes inherit the same set as the daemon.** They are different questions: a person wants their shell to work in a pane, which argues for more, and nobody wants another session's tokens, which argues for less.\n- **Whether Muster's daemon gets a config directory of its own**, and what happens to somebody who deliberately wants their herdr settings to apply.\n- **How a launch says which it did.** A run log line naming what was scrubbed is the cheapest version and probably enough.\n\nRelated: the daemon has no lifecycle on quit either - see the daemon-lifecycle card.",
   "id": "a_28YgGqYq7",
-  "position": "!E",
+  "position": "!!!!!!!0",
   "title": "🧪 Muster's daemon should be its own world, not a session inside somebody else's",
   "type": "chore",
-  "updated_at_millis": 1786817723269,
+  "updated_at_millis": 1786817868374,
   "history": [
     {"field":"column","value":"backlog-lo","at":1786813019975},
     {"field":"column","value":"backlog-hi","at":1786813094546},
-    {"field":"column","value":"next","at":1786815763014}
+    {"field":"column","value":"next","at":1786815763014},
+    {"field":"column","value":"done","at":1786817868374}
   ]
 }

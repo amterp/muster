@@ -1694,6 +1694,240 @@
           "layoutChanged:w1:t1"
         ]
       }
+    },
+    {
+      "name": "a state read after subscribing fills in what the stream never delivered",
+      "why": "herdr delivers agent state only to a subscriber that names the pane, and a watcher has to be told the pane exists before it can name it - so between a pane appearing and its watcher connecting there is a window, and herdr has no replay for what falls in it. A pane whose agent moved in that window keeps its old state and looks calm, which is this project's whole reason for existing failing silently at the moment it matters most: right after a split, with something new started in the pane. So the watcher subscribes and then asks.",
+      "given": {
+        "snapshot": {
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "unknown"
+            }
+          ]
+        },
+        "seeds": [
+          {
+            "pane": "w1:p1",
+            "state": "working",
+            "expected": "unknown"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1"
+        ],
+        "tabs": [],
+        "workspaces": [],
+        "agentStates": {
+          "w1:p1": "working"
+        },
+        "layouts": {},
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "agentStateChanged:w1:p1:unknown->working"
+        ]
+      }
+    },
+    {
+      "name": "a read is refused when the stream moved the pane while the question was in flight",
+      "why": "The ordering rule, and the reason the caller passes what it believed. A live subscription is a better authority than an answer to a question asked at the same moment: the event was delivered because the daemon witnessed the transition, where the read is a snapshot of some instant the caller cannot pin down. So anything that arrives while the question is out wins, and the answer is dropped rather than applied over it.",
+      "given": {
+        "snapshot": {
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "unknown"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "agentStateChanged",
+            "pane": "w1:p1",
+            "state": "blocked"
+          }
+        ],
+        "seeds": [
+          {
+            "pane": "w1:p1",
+            "state": "working",
+            "expected": "unknown"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1"
+        ],
+        "tabs": [],
+        "workspaces": [],
+        "agentStates": {
+          "w1:p1": "blocked"
+        },
+        "layouts": {},
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "agentStateChanged:w1:p1:unknown->blocked"
+        ]
+      }
+    },
+    {
+      "name": "a read that agrees with what is already held changes nothing",
+      "why": "The ordinary case, and it has to be silent. Every watcher asks on every connection, so a read that reported a change whenever it merely confirmed one would flash every indicator in the window each time a subscription rebuilt - which is exactly what a reconnect does to every pane at once.",
+      "given": {
+        "snapshot": {
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "working"
+            }
+          ]
+        },
+        "seeds": [
+          {
+            "pane": "w1:p1",
+            "state": "working",
+            "expected": "working"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1"
+        ],
+        "tabs": [],
+        "workspaces": [],
+        "agentStates": {
+          "w1:p1": "working"
+        },
+        "layouts": {},
+        "focus": {},
+        "health": "connected",
+        "changes": []
+      }
+    },
+    {
+      "name": "a read recovers a finish the stream missed, not just a start",
+      "why": "The second shape the bug takes, and the one a rule about `unknown` alone would not catch. A pane can be `working` in the bootstrap snapshot and finish inside the window before its watcher is live - so the mirror holds a real state, not an absent one, and it is still wrong. Both were measured on the same flaky test, at two different transitions.",
+      "given": {
+        "snapshot": {
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "working"
+            }
+          ]
+        },
+        "seeds": [
+          {
+            "pane": "w1:p1",
+            "state": "idle",
+            "expected": "working"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1"
+        ],
+        "tabs": [],
+        "workspaces": [],
+        "agentStates": {
+          "w1:p1": "idle"
+        },
+        "layouts": {},
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "agentStateChanged:w1:p1:working->idle"
+        ]
+      }
+    },
+    {
+      "name": "a read for a pane the mirror does not hold is dropped",
+      "why": "A watcher outlives its pane by a moment: the pane closes, the read is already out, and the answer comes back about something nothing can place. Inventing a pane from it would produce an orphan with no tab and no workspace, which is the same refusal an agent event already gets and for the same reason.",
+      "given": {
+        "snapshot": {
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ]
+        },
+        "seeds": [
+          {
+            "pane": "w1:p9",
+            "state": "working",
+            "expected": "unknown"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1"
+        ],
+        "tabs": [],
+        "workspaces": [],
+        "agentStates": {
+          "w1:p1": "idle"
+        },
+        "layouts": {},
+        "focus": {},
+        "health": "connected",
+        "changes": []
+      }
+    },
+    {
+      "name": "a read is refused when the caller believed the pane had no state at all",
+      "why": "Absent and `unknown` are different beliefs and the difference decides this. A caller with no belief never saw the pane, so it has nothing to compare against and no business writing over whatever the mirror learned in the meantime - where a caller that read `unknown` did look, and is entitled to say so.",
+      "given": {
+        "snapshot": {
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "unknown"
+            }
+          ]
+        },
+        "seeds": [
+          {
+            "pane": "w1:p1",
+            "state": "working"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1"
+        ],
+        "tabs": [],
+        "workspaces": [],
+        "agentStates": {
+          "w1:p1": "unknown"
+        },
+        "layouts": {},
+        "focus": {},
+        "health": "connected",
+        "changes": []
+      }
     }
   ]
 }

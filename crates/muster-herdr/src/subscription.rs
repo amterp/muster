@@ -18,10 +18,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use muster_core::AgentState;
 use muster_core::mirror::backend::PaneId;
 use muster_core::mirror::{Change, Mirror};
 use serde_json::{Value, json};
 
+use crate::client::HerdrClient;
 use crate::events::EventDecoder;
 use crate::snapshot::fetch_snapshot;
 
@@ -409,6 +411,7 @@ impl AgentWatchers {
         let held = Arc::clone(&slot);
         let subscription =
             vec![json!({ "type": "pane.agent_status_changed", "pane_id": pane.as_str() })];
+        let pane = pane.clone();
 
         let _ = std::thread::Builder::new().name(format!("muster-agent-{pane}")).spawn(move || {
             // No retry loop of its own. A watcher whose connection drops has almost always
@@ -421,6 +424,15 @@ impl AgentWatchers {
                 && let Ok(mut slot) = held.lock()
             {
                 *slot = Some(shared);
+            }
+
+            // Subscribed, and now ask what was missed on the way here. This thread is spawned
+            // when the structure stream says the pane exists and dials afterwards, so a
+            // transition landing in between reaches nobody and herdr has no replay for it -
+            // the pane would keep its old state and look calm. One request per pane, once, at
+            // creation (`Mirror::seed_agent_state`).
+            for change in seed(&socket_path, &pane, &mirror) {
+                report(Notice::Changed(change));
             }
 
             let mut decoder = EventDecoder::new();
@@ -444,4 +456,36 @@ impl AgentWatchers {
 
         Watcher { stream: slot }
     }
+}
+
+/// Asks the daemon what one pane's agent is doing, and takes the answer if nothing moved.
+///
+/// Its own connection rather than the subscription's, because that stream is a stream: the
+/// reply to a request written onto it would arrive interleaved with events, and the decoder
+/// reading it is not looking for one.
+///
+/// Every refusal is silence. A pane that closed while this was in flight, a daemon that went
+/// away, an answer with no status in it - none of them are worth a log line per pane per
+/// connection, and the state that results is the one the watcher would have had anyway.
+fn seed(socket_path: &str, pane: &PaneId, mirror: &Arc<Mutex<Mirror>>) -> Vec<Change> {
+    read_agent_state(socket_path, pane, mirror).unwrap_or_default()
+}
+
+fn read_agent_state(
+    socket_path: &str,
+    pane: &PaneId,
+    mirror: &Arc<Mutex<Mirror>>,
+) -> Option<Vec<Change>> {
+    // Read before asking, so the answer can be refused if the subscription overtook it.
+    let expected = mirror.lock().ok().and_then(|held| held.agent_state(pane))?;
+
+    let answer = HerdrClient::new(socket_path)
+        .request("pane.get", &json!({ "pane_id": pane.as_str() }))
+        .ok()?;
+    // `{"type":"pane_info","pane":{..,"agent_status":".."}}`, with the outer `result`
+    // already unwrapped by the client.
+    let state = AgentState::from_backend(answer.get("pane")?.get("agent_status")?.as_str()?);
+
+    let mut held = mirror.lock().ok()?;
+    Some(held.seed_agent_state(pane, state, Some(expected)))
 }
