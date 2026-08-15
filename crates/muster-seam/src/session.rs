@@ -259,26 +259,45 @@ impl Session {
     }
 
     /// Brings composition, and what this process holds open, in line with one daemon.
-    ///
-    /// A channel per pane in every region this daemon shows, not only the one the keyboard
-    /// is on: the view names a socket for each leaf and a shell renders a surface per leaf,
-    /// so a pane the daemon added is one Muster has to be ready to be typed into before
-    /// anyone looks at it.
-    ///
-    /// The same pass drops channels for panes that are gone, because each one owns a bound
-    /// socket and the thread waiting on it. A window whose panes come and go all day would
-    /// otherwise collect both, and neither shows up as anything but a process that grows.
     fn reconcile(&mut self, daemon: &DaemonId) {
+        self.prune(daemon);
+        self.open_channels(daemon);
+    }
+
+    /// Lets go of what this daemon no longer holds.
+    ///
+    /// Regions whose tab is gone, and the channels of panes that are gone with them - each one
+    /// owns a bound socket and the thread waiting on it, so a window whose panes come and go
+    /// all day would otherwise collect both, and neither shows up as anything but a process
+    /// that grows.
+    fn prune(&mut self, daemon: &DaemonId) {
+        let Some(backend) = self.backends.get(daemon) else { return };
+        let Ok(mirror) = backend.mirror.lock() else { return };
+
+        self.composition.reconcile(daemon, &mirror);
+        let attached = self.panes.entry(daemon.clone()).or_default();
+        attached.retain(|pane, _| mirror.pane(pane).is_some());
+    }
+
+    /// Opens a channel for every pane this daemon has on screen and does not already have one.
+    ///
+    /// A channel per pane in every region this daemon shows, not only the one the keyboard is
+    /// on: the view names a socket for each leaf and a shell renders a surface per leaf, so a
+    /// pane the daemon added is one Muster has to be ready to be typed into before anyone
+    /// looks at it.
+    ///
+    /// Called from `publish`, which is what makes it a rule rather than a step somebody has to
+    /// remember. Every path that changes what is on screen ends in a publish, and a view naming
+    /// a pane with no socket is a pane a shell must not build a surface for - so it renders
+    /// blank until something else republishes, which in one shipped case was nothing at all.
+    fn open_channels(&mut self, daemon: &DaemonId) {
         // In two passes, because opening a channel needs the whole session and reading the
         // mirror borrows one daemon out of it. Nothing can change in between: the caller
         // holds the session across both.
         let wanted: Vec<PaneId> = {
             let Some(backend) = self.backends.get(daemon) else { return };
             let Ok(mirror) = backend.mirror.lock() else { return };
-
-            self.composition.reconcile(daemon, &mirror);
             let attached = self.panes.entry(daemon.clone()).or_default();
-            attached.retain(|pane, _| mirror.pane(pane).is_some());
 
             self.composition
                 .regions()
@@ -1016,6 +1035,17 @@ fn publish() {
     // handed the arrangement they appear in.
     let (view, roster, settled) = {
         let mut session = SESSION.lock().expect("a panicking sender poisoned the session");
+        // Before the view is built, and over every daemon rather than whichever one prompted
+        // this. A view names a control socket per pane and a shell must not spawn a bridge
+        // without one, so a pane published before its channel exists renders blank until
+        // something republishes - and several paths here change what is on screen without
+        // going near a reconcile: showing a tab that was just created, surfacing a pane from
+        // the sidebar, giving a daemon its first region. Making it a precondition of building
+        // the view means none of them can get it wrong, rather than each having to remember.
+        let daemons: Vec<DaemonId> = session.backends.keys().cloned().collect();
+        for daemon in &daemons {
+            session.open_channels(daemon);
+        }
         let view = session.view();
         let roster = session.roster(&view);
         let settled = session.attention.showing(view.showing());
