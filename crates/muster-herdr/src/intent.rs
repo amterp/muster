@@ -9,21 +9,39 @@
 //! translation `layout.rs` does in reverse when it reads a tree back. And a path down the
 //! tree becomes an array of booleans, herdr's own spelling for the turns.
 
-use muster_core::intent::{BackendChannel, BackendIntent, Branch, Outcome};
+use muster_core::intent::{BackendChannel, BackendIntent, Branch, Outcome, Refusal};
 use muster_core::mirror::backend::{PaneId, SplitAxis, TabId};
 use serde_json::{Value, json};
 
-use crate::client::HerdrClient;
+use crate::client::{Failure, HerdrClient};
 
 impl BackendChannel for HerdrClient {
-    fn submit(&self, intent: &BackendIntent) -> Result<Outcome, String> {
+    fn submit(&self, intent: &BackendIntent) -> Result<Outcome, Refusal> {
         let (method, params) = request(intent);
-        let result = self.request(method, &params).map_err(|failure| failure.to_string())?;
+        let result = self.request(method, &params).map_err(|failure| refusal(&failure))?;
         Ok(Outcome { created: created(&result), created_tab: created_tab(&result) })
     }
 
     fn description(&self) -> &str {
         self.socket_path()
+    }
+}
+
+/// herdr's refusal, in the two kinds Muster acts on differently.
+///
+/// The codes it names are the ones that mean "no such thing here", which herdr spells one way
+/// per kind of thing (`pane_not_found`, `tab_not_found`, `workspace_not_found`,
+/// `layout_not_found`, `split_not_found`). Read by code rather than by message: the messages
+/// are prose that has changed between versions and the codes have not, and being wrong here
+/// means a window that keeps showing a pane nobody can reach.
+///
+/// Everything else - unreachable, timed out, a daemon that answered something unparseable -
+/// says nothing about whether the pane exists, so it stays a refusal and nothing more.
+pub fn refusal(failure: &Failure) -> Refusal {
+    let detail = failure.to_string();
+    match failure {
+        Failure::Daemon { code, .. } if code.ends_with("not_found") => Refusal::NotThere(detail),
+        _ => Refusal::Declined(detail),
     }
 }
 

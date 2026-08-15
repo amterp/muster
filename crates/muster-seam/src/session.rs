@@ -22,7 +22,7 @@ use muster_core::config::Config;
 use muster_core::diagnostics::log;
 use muster_core::fields;
 use muster_core::input::{Keymap, PaneInput, TerminalModeProfile};
-use muster_core::intent::{BackendChannel, BackendIntent};
+use muster_core::intent::{BackendChannel, BackendIntent, Refusal};
 use muster_core::mirror::backend::{PaneId, Snapshot, TabId, WorkspaceId};
 use muster_core::mirror::{Change, Mirror};
 use muster_core::roster::Roster;
@@ -613,9 +613,18 @@ pub(crate) fn submit(daemon: &DaemonId, intent: &BackendIntent) -> Result<(), St
             "backend" => channel.description(),
             "created" => outcome.as_ref().ok().and_then(|outcome| outcome.created.clone())
                 .map(|pane| pane.to_string()).unwrap_or_default(),
-            "refused" => outcome.as_ref().err().cloned().unwrap_or_default(),
+            "refused" => outcome.as_ref().err().map(ToString::to_string).unwrap_or_default(),
         },
     );
+
+    // A daemon that says it does not hold what was named is describing this window rather
+    // than the request: whatever is on screen for that thing is stale, and every later
+    // request about it is refused the same way. It has to be asked what it does hold, because
+    // it will not volunteer it - herdr drops a pane whose terminal is gone without an event
+    // for it, which leaves a pane on screen that cannot be focused, closed or typed into.
+    if let Err(Refusal::NotThere(detail)) = &outcome {
+        resnapshot(daemon, detail);
+    }
 
     // The new pane is not in the mirror yet - its event is still in flight - so the region is
     // the one that was split rather than one looked up. Taking the pane on trust is what
@@ -639,7 +648,68 @@ pub(crate) fn submit(daemon: &DaemonId, intent: &BackendIntent) -> Result<(), St
             .focus_pane(region, created);
         publish();
     }
-    outcome.map(|_| ())
+    outcome.map(|_| ()).map_err(|refusal| refusal.to_string())
+}
+
+/// Asks a daemon what it actually holds, and shows that instead.
+///
+/// The whole picture rather than the one thing that was refused, because the refusal only
+/// proves the picture is wrong somewhere - a pane that went may have taken its tab with it,
+/// and patching out the single entry that was named would leave the rest of the same staleness
+/// on screen. `bootstrap` already diffs against what the mirror holds, so what this costs when
+/// only one thing moved is one round trip and one change.
+///
+/// A daemon that will not answer is left alone. The window is already showing something wrong;
+/// replacing it with nothing on the strength of a failed request would be worse, and the
+/// subscription's own health reporting is what speaks for a daemon that has stopped answering.
+fn resnapshot(daemon: &DaemonId, why: &str) {
+    let Some((socket_path, mirror)) = ({
+        let session = SESSION.lock().expect("a panicking sender poisoned the session");
+        session
+            .backends
+            .get(daemon)
+            .map(|backend| (backend.socket_path.clone(), Arc::clone(&backend.mirror)))
+    }) else {
+        return;
+    };
+
+    let (snapshot, dropped) = match fetch_snapshot(&socket_path) {
+        Ok(answer) => answer,
+        Err(failure) => {
+            log::warn(
+                "mirror.resnapshot.failed",
+                fields! {
+                    "daemon" => daemon.to_string(),
+                    "detail" => failure.to_string(),
+                    "impact" => "the window keeps showing what it was showing, including \
+                                 whatever the daemon has just said it does not hold",
+                    "check" => "whether this daemon is still answering at all - a health \
+                                record for it follows if it is not",
+                },
+            );
+            return;
+        }
+    };
+
+    let changes = {
+        let Ok(mut mirror) = mirror.lock() else { return };
+        mirror.bootstrap(snapshot)
+    };
+    log::info(
+        "mirror.resnapshot",
+        fields! {
+            "daemon" => daemon.to_string(),
+            "changes" => changes.len().to_string(),
+            "dropped" => dropped.to_string(),
+            "why" => why.to_string(),
+        },
+    );
+
+    reconcile(daemon);
+    publish();
+    for change in changes {
+        report(daemon, &change);
+    }
 }
 
 /// Why an intent about something on screen could not be sent.

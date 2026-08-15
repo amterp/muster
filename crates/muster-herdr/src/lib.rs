@@ -24,7 +24,7 @@ pub use control_stream::ControlStreamMessage;
 pub use discovery::{discover_socket_path, own_socket_path};
 pub use events::EventDecoder;
 pub use frame::{FrameDecoder, PaneFrame, PaneStreamEvent};
-pub use intent::request;
+pub use intent::{refusal, request};
 pub use layout::read_layout;
 pub use pane_channel::HerdrPaneChannel;
 pub use snapshot::{fetch_snapshot, read_snapshot};

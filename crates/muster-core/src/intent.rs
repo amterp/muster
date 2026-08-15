@@ -109,17 +109,48 @@ pub struct Outcome {
     pub created_tab: Option<TabId>,
 }
 
+/// Why a backend would not make a change.
+///
+/// Mostly prose for a log, because there is usually no second thing to try: a refused split
+/// is a split that did not happen, and the honest response is to say so where somebody will
+/// read it. One kind is different, and is why this is not just a string.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Refusal {
+    /// The backend does not hold what the request named.
+    ///
+    /// Not a failure of the request so much as a report about Muster: the window is showing
+    /// something that is not there, and every later request about it will be refused the same
+    /// way. A daemon can drop a pane without saying so - herdr does, when a pane's terminal
+    /// goes - so this is sometimes the only account of it there is, and it is worth acting on
+    /// rather than logging.
+    NotThere(String),
+
+    /// Anything else. Worth a log line and nothing more.
+    Declined(String),
+}
+
+impl Refusal {
+    /// What the backend said, for a log or a message back to whoever asked.
+    pub fn detail(&self) -> &str {
+        match self {
+            Refusal::NotThere(detail) | Refusal::Declined(detail) => detail,
+        }
+    }
+}
+
+impl std::fmt::Display for Refusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.detail())
+    }
+}
+
 /// A way to ask one backend for a change.
 ///
 /// One per daemon rather than one per pane, unlike the input channels: these are about
 /// structure, and structure belongs to the daemon rather than to any pane in it.
 pub trait BackendChannel: Send + Sync + std::fmt::Debug {
     /// Asks, and says why not.
-    ///
-    /// The error is prose for a log rather than a code to branch on, because there is no
-    /// second thing to try: a refused split is a split that did not happen, and the honest
-    /// response is to say so where somebody will read it.
-    fn submit(&self, intent: &BackendIntent) -> Result<Outcome, String>;
+    fn submit(&self, intent: &BackendIntent) -> Result<Outcome, Refusal>;
 
     /// What this channel is talking to, for the log.
     fn description(&self) -> &str;

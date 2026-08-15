@@ -1,0 +1,47 @@
+{
+  "concept": "muster.daemonRefusal.kind",
+  "source": "authored",
+  "citation": "herdr v0.8.0 source, which spells one not-found code per kind of thing: pane_not_found (src/app/api/panes.rs, src/api/server.rs), tab_not_found and workspace_not_found and layout_not_found and split_not_found (src/app/api/layouts.rs), agent_not_found (src/app/agents.rs). Observed on the wire as `pane_not_found: pane w1:p2 not found` when a window asked to focus a pane the daemon had dropped.",
+  "why": "Most refusals are worth a log line and nothing more - a refused split is a split that did not happen, and there is no second thing to try. One kind is different: a daemon saying it does not hold what was named is describing this window rather than the request, because the window is showing something that is not there. herdr can drop a pane without ever emitting an event for it - a pane whose terminal has gone - so the refusal is sometimes the only account of it Muster will ever get, and reading it as ordinary prose leaves a pane on screen that cannot be focused, closed or typed into. Classified by code rather than by message, because the messages are prose that has changed between versions and the codes have not.",
+  "cases": [
+    {
+      "name": "a pane the daemon does not hold",
+      "why": "The one that was actually hit. Every later request about that pane is refused the same way, so the window never recovers on its own.",
+      "given": { "kind": "daemon", "code": "pane_not_found", "message": "pane w1:p2 not found" },
+      "expect": { "kind": "not_there", "detail": "pane_not_found: pane w1:p2 not found" }
+    },
+    {
+      "name": "a tab that has gone, which takes its panes with it",
+      "why": "Same fact one level up, and the reason the answer is to re-read the whole session rather than to remove the one thing that was named.",
+      "given": { "kind": "daemon", "code": "tab_not_found", "message": "tab w1:t2 not found" },
+      "expect": { "kind": "not_there", "detail": "tab_not_found: tab w1:t2 not found" }
+    },
+    {
+      "name": "a divider that is no longer in the tree",
+      "why": "Dragging a divider in a tab whose shape changed underneath. herdr spells this `split_not_found`, which is neither a pane nor a tab and still means the window is stale.",
+      "given": { "kind": "daemon", "code": "split_not_found", "message": "no split at that path" },
+      "expect": { "kind": "not_there", "detail": "split_not_found: no split at that path" }
+    },
+    {
+      "name": "a refusal that says nothing about what exists",
+      "why": "The counterweight. A request refused on its merits leaves the window's picture untouched, and re-reading the whole session on every such refusal would be a round trip for nothing.",
+      "given": { "kind": "daemon", "code": "invalid_ratio", "message": "ratio must be between 0 and 1" },
+      "expect": { "kind": "declined", "detail": "invalid_ratio: ratio must be between 0 and 1" }
+    },
+    {
+      "name": "a daemon that could not be reached at all",
+      "why": "The sharpest distinction here. A daemon that did not answer has said nothing about whether the pane exists, and treating silence as `it is gone` would empty a window every time a socket hiccuped - which is the opposite of what a stale daemon is supposed to do (architecture.md, degradation).",
+      "given": { "kind": "unreachable", "detail": "No such file or directory (os error 2)" },
+      "expect": {
+        "kind": "declined",
+        "detail": "unreachable (No such file or directory (os error 2))"
+      }
+    },
+    {
+      "name": "a daemon that took too long",
+      "why": "Same reasoning as unreachable, and reached by a different route: a busy daemon is not a daemon that has lost the pane.",
+      "given": { "kind": "timed_out" },
+      "expect": { "kind": "declined", "detail": "timed out" }
+    }
+  ]
+}
