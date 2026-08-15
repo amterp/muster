@@ -6,15 +6,24 @@
     "shell",
     "backend"
   ],
-  "column": "next",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Fixed in c383122. SIGWINCH's default disposition is to be ignored, and POSIX discards an ignored signal where it is generated rather than leaving it pending - so the `sigwait` collecting it never returned and every resize was dropped in silence. Installing a handler that can never run (the signal is blocked) takes the disposition off SIG_IGN, which is all it takes.\n\nNone of the three candidates on this card was right, and none of them was checkable from the code: every piece was correct in isolation. What found it was a probe that ran the real arrangement - a real pty, a real bridge, a real daemon - and asked the daemon what size it thought the pane was. That probe is now `crates/muster-bridge/tests/resize.rs` and it fails without the fix.\n\nA resize also leaves a `bridge.resize` record now, so the next one that goes nowhere says so rather than looking like a program that draws badly.\n\nSaved as a memory, since it applies to any signal whose default action is Ignore: SIGWINCH, SIGCHLD, SIGURG, SIGCONT.",
+      "created_at_millis": 1786801198097,
+      "id": "c_28TijJ60p"
+    }
+  ],
   "created_at_millis": 1786800241463,
   "creator": "Alexander Terp",
   "description": "Resizing the Muster window garbles a running TUI: Claude Code re-wraps against its old geometry and stays broken. The same agent under `ghostty \u003e herdr \u003e claude` redraws correctly on resize, so the pane's program is fine and something between the surface and the daemon is not.\n\nWhere it should already work: the bridge blocks SIGWINCH, waits on it in a thread, and on each one reads the pty size and sends `terminal.resize` on herdr's control stream (crates/muster-bridge/src/main.rs:94, pty.rs:39). Nothing in that path logs, so a run cannot say whether the signal arrived, whether the size read was right, or whether herdr acted on it - which is the first thing to fix regardless of the cause.\n\nCandidates, cheapest first: the surface's pty never sees SIGWINCH because libghostty resizes it differently than a terminal app expects; the size read races the signal and reports the old geometry; herdr's `terminal.resize` needs something we are not sending. Decide it by recording what herdr does with a resize on the control stream, the way the other adapter facts were recorded.\n\nReported from a real window, 2026-08-15.",
   "id": "a_28TJqLvGd",
-  "position": "6",
+  "position": "!!!!!6",
   "title": "🔄 A resized window never reaches the daemon",
-  "updated_at_millis": 1786800241463,
+  "updated_at_millis": 1786801198097,
   "history": [
-    {"field":"column","value":"next","at":1786800241463}
+    {"field":"column","value":"next","at":1786800241463},
+    {"field":"column","value":"done","at":1786801198044}
   ]
 }
