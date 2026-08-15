@@ -54,7 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       let muster = MusterWindow(renderer: renderer, executable: CommandLine.arguments[0])
       Core.window = muster
       self.muster = muster
-      NSApp.mainMenu = AppMenu.build(target: muster)
+      NSApp.mainMenu = AppMenu.build(target: muster, bindings: Core.bindings())
       muster.show()
 
       // Everything about what this window shows is behind these calls: the core reaches the

@@ -68,6 +68,32 @@ how you run your agents.
                   ├─ daemon on this machine   local agents
                   └─ daemon on devenv (SSH)   remote agents
 
+## Configuring
+
+Two files, both optional, both TOML. `~/.config/muster/config.toml` is yours to write:
+`[[daemon]]` blocks name the machines a window attaches to, and `[keymap]` rebinds any of
+Muster's own actions.
+
+```toml
+[keymap]
+split_right = "cmd+d"          # the default; Ghostty's, wherever Ghostty has one
+zoom = "cmd+shift+return"
+close_pane = ""                # unbound - the action stays, the shortcut goes
+```
+
+Partial, so a file that names one action rebinds one action. Chords are modifiers and a key,
+in any order and any case, spelled the way you would say them: `cmd`, `opt`, `ctrl`, `shift`,
+and `left`, `return`, `f5`, `[`. The actions are `new_tab`, `split_right`, `split_down`,
+`close_pane`, `next_pane`, `previous_pane`, `focus_*` and `resize_*` for each direction, and
+`zoom`. On macOS these become menu items, which is where the platform dispatches a key
+equivalent from - so a rebound action moves in the menu too, and System Settings can move it
+again.
+
+`~/.local/state/muster/window.toml` is Muster's, rewritten whenever the window settles: which
+tabs it was showing, in what order, at what widths. Delete it and the next launch opens fresh.
+Nothing about a session is in it - what a tab holds is the daemon's answer, asked again on
+every launch.
+
 ## Building
 
 `./dev` is the only supported way to build, test, and lint. With no flags it takes the full gate, and

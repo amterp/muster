@@ -1,0 +1,211 @@
+{
+  "concept": "muster.chord.parse",
+  "source": "authored",
+  "citation": "Muster's own policy for the config file, so the cases are the whole oracle. The key names it produces are the W3C UI Events codes in crates/muster-core/src/input/key.rs, generated from libghostty; the modifier bits are Modifiers in key_event.rs, whose numbering libghostty-vt's ABI fixes.",
+  "why": "This is the one piece of Muster a person writes by hand, so every failure here is a config that looks right and does something else. Two things make that easy to get wrong. The first is spelling: a Mac user writes `cmd` and `opt`, a config carried over from elsewhere says `super` and `alt`, and reading only one of each pair leaves a file that silently does nothing. The second is that a chord's key is a physical key rather than a character - `cmd+shift+d` is the D key with shift held, not whatever shift+d produces on that layout - so the parse has to keep the modifier and not fold it into the key. Refusals matter as much: they name the piece that could not be read, because a config with one bad chord in twenty is one where `invalid keybinding` is not an answer.",
+  "cases": [
+    {
+      "name": "the ordinary one",
+      "why": "What most of the file looks like. `cmd` is the word on the key somebody is pressing, and Muster's own name for that bit is `super`.",
+      "given": {
+        "chord": "cmd+d"
+      },
+      "expect": {
+        "key": "KeyD",
+        "modifiers": [
+          "super"
+        ],
+        "refused": false
+      }
+    },
+    {
+      "name": "shift is held, not folded into the key",
+      "why": "The chord is the D key with shift down. Reading it as whatever shift+d produces would bind a different thing on every keyboard layout, and would come apart the first time somebody typed on a German one.",
+      "given": {
+        "chord": "cmd+shift+d"
+      },
+      "expect": {
+        "key": "KeyD",
+        "modifiers": [
+          "shift",
+          "super"
+        ],
+        "refused": false
+      }
+    },
+    {
+      "name": "every modifier under both of its names",
+      "why": "A Mac user writes one set and a config carried from elsewhere writes the other. Reading only one of each pair is a file that looks right and does nothing.",
+      "given": {
+        "chord": "control+alt+super+shift+a"
+      },
+      "expect": {
+        "key": "KeyA",
+        "modifiers": [
+          "shift",
+          "control",
+          "alt",
+          "super"
+        ],
+        "refused": false
+      }
+    },
+    {
+      "name": "the same chord in the words a Mac user reaches for",
+      "why": "The counterpart to the case above, and the reason both are pinned: these two strings have to end up identical.",
+      "given": {
+        "chord": "ctrl+opt+cmd+shift+a"
+      },
+      "expect": {
+        "key": "KeyA",
+        "modifiers": [
+          "shift",
+          "control",
+          "alt",
+          "super"
+        ],
+        "refused": false
+      }
+    },
+    {
+      "name": "order and case are not part of the chord",
+      "why": "Nobody writing `Shift+Cmd+D` means something different from `cmd+shift+d`, and a parser that disagreed would produce a binding that never fires with no way to see why.",
+      "given": {
+        "chord": "Shift+CMD+D"
+      },
+      "expect": {
+        "key": "KeyD",
+        "modifiers": [
+          "shift",
+          "super"
+        ],
+        "refused": false
+      }
+    },
+    {
+      "name": "spaces around the pieces",
+      "why": "Hand-edited files have them. Rejecting `cmd + d` would be a rule with nothing behind it.",
+      "given": {
+        "chord": " cmd + d "
+      },
+      "expect": {
+        "key": "KeyD",
+        "modifiers": [
+          "super"
+        ],
+        "refused": false
+      }
+    },
+    {
+      "name": "an arrow is spelled the way it is spoken",
+      "why": "The W3C name is `ArrowLeft` and nobody writes that in a config file. Both are read, and this is the half a person types.",
+      "given": {
+        "chord": "cmd+ctrl+shift+left"
+      },
+      "expect": {
+        "key": "ArrowLeft",
+        "modifiers": [
+          "shift",
+          "control",
+          "super"
+        ],
+        "refused": false
+      }
+    },
+    {
+      "name": "return and enter are the same key",
+      "why": "The key is labelled differently on different keyboards and means one thing. A config that used the other word and silently did nothing is exactly the failure this file exists to prevent.",
+      "given": {
+        "chord": "cmd+shift+return"
+      },
+      "expect": {
+        "key": "Enter",
+        "modifiers": [
+          "shift",
+          "super"
+        ],
+        "refused": false
+      }
+    },
+    {
+      "name": "the wire's own spelling is still readable",
+      "why": "So a chord copied out of a log line or a corpus case can be pasted into a config and work. There is no reason to make somebody translate it.",
+      "given": {
+        "chord": "cmd+ArrowRight"
+      },
+      "expect": {
+        "key": "ArrowRight",
+        "modifiers": [
+          "super"
+        ],
+        "refused": false
+      }
+    },
+    {
+      "name": "a bare key with nothing held",
+      "why": "Legal, and worth pinning as legal: somebody binding a function key on its own should not be told to add a modifier.",
+      "given": {
+        "chord": "f5"
+      },
+      "expect": {
+        "key": "F5",
+        "modifiers": [],
+        "refused": false
+      }
+    },
+    {
+      "name": "the plus key, on the character the separator uses",
+      "why": "The one ambiguity in the format. A trailing `+` is the key rather than an empty piece, which is the only reading that lets `cmd++` mean anything at all.",
+      "given": {
+        "chord": "cmd++"
+      },
+      "expect": {
+        "key": "Equal",
+        "modifiers": [
+          "super"
+        ],
+        "refused": false
+      }
+    },
+    {
+      "name": "modifiers and no key",
+      "why": "Refused rather than bound to nothing. A binding that can never fire is indistinguishable from one that fires and does nothing, and only one of those is worth a message. What the message says is pinned in the driver rather than here, because prose in a corpus is a corpus that fails when the wording improves.",
+      "given": {
+        "chord": "cmd+shift"
+      },
+      "expect": {
+        "refused": true
+      }
+    },
+    {
+      "name": "two keys in one chord",
+      "why": "Sequences are not a thing Muster has, so `cmd+d+e` is somebody expecting something that will not happen.",
+      "given": {
+        "chord": "cmd+d+e"
+      },
+      "expect": {
+        "refused": true
+      }
+    },
+    {
+      "name": "a key nobody has",
+      "why": "The commonest way a hand-edited chord is wrong: a name they guessed. The driver pins that the refusal quotes the piece it could not read and lists what is spellable.",
+      "given": {
+        "chord": "cmd+meta"
+      },
+      "expect": {
+        "refused": true
+      }
+    },
+    {
+      "name": "nothing at all",
+      "why": "An empty string in the config file, which is what a half-finished line leaves behind.",
+      "given": {
+        "chord": ""
+      },
+      "expect": {
+        "refused": true
+      }
+    }
+  ]
+}

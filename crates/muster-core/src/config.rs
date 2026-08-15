@@ -21,6 +21,8 @@
 
 use toml::Value;
 
+use crate::input::{Action, Bindings};
+
 use crate::composition::{Daemon, DaemonId, Endpoint};
 
 /// Everything a config file says.
@@ -28,16 +30,16 @@ use crate::composition::{Daemon, DaemonId, Endpoint};
 pub struct Config {
     /// In the order the file lists them, which is the order their regions are laid out.
     pub daemons: Vec<Daemon>,
+    /// Which chord asks for which of Muster's own actions, with the file's answers over the
+    /// defaults. A file that names none leaves every default in place.
+    pub bindings: Bindings,
 }
 
 /// The keys a `[[daemon]]` block may carry.
 const DAEMON_KEYS: [&str; 4] = ["id", "socket", "host", "ssh_options"];
 
 /// The keys the file itself may carry.
-///
-/// One today. The keymap arrives here later, and until it does a `[keymap]` block is a
-/// config from a version that does not exist rather than something to quietly skip.
-const ROOT_KEYS: [&str; 1] = ["daemon"];
+const ROOT_KEYS: [&str; 2] = ["daemon", "keymap"];
 
 /// Reads a config file's text.
 ///
@@ -77,7 +79,59 @@ pub fn parse(text: &str) -> Result<Config, String> {
         }
         daemons.push(daemon);
     }
-    Ok(Config { daemons })
+    Ok(Config { daemons, bindings: read_keymap(root)? })
+}
+
+/// The `[keymap]` block, over the defaults.
+///
+/// Partial by design: a file that names one action rebinds one action. Requiring all fifteen
+/// to change one is a file nobody edits twice, and it would silently drop an action the day
+/// Muster grew a sixteenth.
+///
+/// An empty chord unbinds outright, which is different from not mentioning it. Somebody who
+/// wants ⌘W back for closing the window has to be able to say so, and the alternative is
+/// binding it to a chord nobody presses and hoping.
+fn read_keymap(root: &toml::Table) -> Result<Bindings, String> {
+    let mut bindings = Bindings::default();
+    let Some(value) = root.get("keymap") else {
+        return Ok(bindings);
+    };
+    let block = value.as_table().ok_or_else(|| {
+        format!(
+            "`keymap` in the config file is {}, and it has to be a table of actions - \
+             `[keymap]` with a line like `split_right = \"cmd+d\"` under it. None of the \
+             file was applied.",
+            described(value)
+        )
+    })?;
+
+    for (name, chord) in block {
+        let action = Action::parse(name).ok_or_else(|| {
+            format!(
+                "`{name}` in the config file's [keymap] is not something Muster does, so \
+                 none of the file was applied. What it does: {}.",
+                Action::ALL.map(Action::as_str).join(", ")
+            )
+        })?;
+        let chord = chord.as_str().ok_or_else(|| {
+            format!(
+                "`{name}` in the config file's [keymap] is {}, and a binding is a string like \
+                 `\"cmd+shift+d\"`. None of the file was applied.",
+                described(chord)
+            )
+        })?;
+        if chord.trim().is_empty() {
+            bindings.unbind(action);
+            continue;
+        }
+        bindings.bind(action, chord).map_err(|refusal| {
+            format!(
+                "the config file binds `{name}` to `{chord}`, which Muster cannot read: \
+                 {refusal} None of the file was applied."
+            )
+        })?;
+    }
+    Ok(bindings)
 }
 
 /// The `[[daemon]]` blocks, or an empty list when the file names none.

@@ -37,8 +37,18 @@ message Request {
     BridgeExited bridge_exited = 18;
     ResizePane resize_pane = 19;
     ZoomPane zoom_pane = 20;
+    ReadBindings read_bindings = 21;
   }
 }
+
+// Asks which chord means what.
+//
+// The shell builds its menu from the answer rather than from a table of its own, so a config
+// file that rebinds an action rebinds the menu item too - and on macOS that is the whole of
+// rebinding, because a key equivalent on a menu item is how the platform decides what a chord
+// means. Nothing is dispatched through here: what a shell does with a chord is the shell's,
+// and what a chord is called is Muster's.
+message ReadBindings {}
 
 // Grows a pane against its neighbour, by a step.
 //
@@ -259,7 +269,31 @@ message Response {
     Ok ok = 1;
     Failure failure = 2;
     Attached attached = 3;
+    Bindings bindings = 4;
   }
+}
+
+// Every action Muster has, and the chord asking for it.
+//
+// In menu order rather than alphabetical: a menu is read top to bottom, and making something
+// then arranging it then moving around it is what somebody scanning one expects.
+message Bindings {
+  repeated Binding bindings = 1;
+}
+
+message Binding {
+  // What Muster calls the action - `split_right`, `zoom`. The same word a config file binds
+  // and a log line names, so a shell maps this to whatever it dispatches with.
+  string action = 1;
+
+  // The physical key, as the W3C UI Events code standard names it: `KeyD`, `ArrowLeft`,
+  // `Enter`. A key rather than a character, because a chord is a place on the keyboard - and
+  // what a layout produces there travels separately as text.
+  string key = 2;
+
+  // shift, control, alt, super. Absent rather than false, and never the side bits: a chord is
+  // the same chord whichever command key supplied it.
+  repeated string modifiers = 3;
 }
 
 message Ok {}

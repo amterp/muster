@@ -11,7 +11,7 @@ use muster_core::fields;
 
 use muster_core::composition::{DaemonId, RegionId, Step};
 use muster_core::config;
-use muster_core::input::{CompositionOutcome, ScrollDirection, composition_outcome};
+use muster_core::input::{CompositionOutcome, Modifiers, ScrollDirection, composition_outcome};
 use muster_core::intent::{BackendIntent, Branch, Side};
 use muster_core::mirror::backend::{PaneId, TabId};
 
@@ -67,27 +67,11 @@ fn handle(request: Request) -> Response {
             pane.input.paste(&paste.text);
             Response::ok()
         }),
-        request::Payload::SplitPane(split) => match convert::axis(&split.axis) {
-            Some(axis) => act(&split.daemon_id, &split.pane_id, |pane| BackendIntent::SplitPane {
-                pane,
-                axis,
-                // Zero is proto3's unset, and a divider at the very edge is not a thing
-                // anyone asks for, so the two are safely the same answer here.
-                ratio: (split.ratio > 0.0).then_some(split.ratio),
-                // Empty is the daemon's own rule rather than this process's directory, and
-                // for a split that rule is "wherever the pane you split was".
-                cwd: (!split.cwd.is_empty()).then(|| split.cwd.clone()),
-            }),
-            None => Response::failure(format!(
-                "the core does not know a split axis called {:?}, so nothing was split. \
-                 Only columns and rows exist; the shell builds this from a fixed set, so \
-                 this is a bug there.",
-                split.axis
-            )),
-        },
+        request::Payload::SplitPane(split) => split_pane(&split),
         request::Payload::ClosePane(close) => {
             act(&close.daemon_id, &close.pane_id, |pane| BackendIntent::ClosePane { pane })
         }
+        request::Payload::ReadBindings(_) => read_bindings(),
         request::Payload::ResizePane(resize) => resize_pane(&resize),
         request::Payload::ZoomPane(zoom) => {
             act(&zoom.daemon_id, &zoom.pane_id, |pane| BackendIntent::ZoomPane { pane })
@@ -338,6 +322,54 @@ fn open_window() -> Response {
     }
 }
 
+/// Every action and the chord asking for it, for a shell to build a menu from.
+///
+/// Answered from the config rather than from a table in the shell, which is what makes
+/// rebinding one thing: a file that moves `split_right` moves the menu item, and on macOS the
+/// menu item is the binding.
+fn read_bindings() -> Response {
+    Response {
+        payload: Some(response::Payload::Bindings(proto::Bindings {
+            bindings: session::bindings()
+                .all()
+                .map(|(action, chord)| proto::Binding {
+                    action: action.as_str().to_string(),
+                    key: chord.key.as_str().to_string(),
+                    modifiers: Modifiers::ALL_NAMES
+                        .into_iter()
+                        .filter(|(_, bit)| {
+                            Modifiers::CHORD.contains(*bit) && chord.modifiers.contains(*bit)
+                        })
+                        .map(|(name, _)| name.to_string())
+                        .collect(),
+                })
+                .collect(),
+        })),
+    }
+}
+
+/// Splits a pane, putting the new one beside or below it.
+fn split_pane(split: &proto::SplitPane) -> Response {
+    let Some(axis) = convert::axis(&split.axis) else {
+        return Response::failure(format!(
+            "the core does not know a split axis called {:?}, so nothing was split. Only \
+             columns and rows exist; the shell builds this from a fixed set, so this is a bug \
+             there.",
+            split.axis
+        ));
+    };
+    act(&split.daemon_id, &split.pane_id, |pane| BackendIntent::SplitPane {
+        pane,
+        axis,
+        // Zero is proto3's unset, and a divider at the very edge is not a thing anyone asks
+        // for, so the two are safely the same answer here.
+        ratio: (split.ratio > 0.0).then_some(split.ratio),
+        // Empty is the daemon's own rule rather than this process's directory, and for a
+        // split that rule is "wherever the pane you split was".
+        cwd: (!split.cwd.is_empty()).then(|| split.cwd.clone()),
+    })
+}
+
 /// Grows a pane against its neighbour, by a step.
 fn resize_pane(resize: &proto::ResizePane) -> Response {
     let Some(direction) = Side::parse(&resize.direction) else {
@@ -497,6 +529,7 @@ fn apply_config(path: &str) {
                 "config.read",
                 fields! { "path" => path.to_string(), "daemons" => config.daemons.len().to_string() },
             );
+            session::set_bindings(config.bindings.clone());
             session::follow_configured(&config);
         }
         Err(refusal) => log::warn(

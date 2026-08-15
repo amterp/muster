@@ -7,8 +7,13 @@
     {
       "name": "a file with nothing in it names no daemons",
       "why": "An empty config is not an error, and will be the ordinary case the day this file holds only a keymap. It has to be distinguishable from a file that failed to parse, because the caller's answer to those differs: one means find the local daemon, the other means find the local daemon and say loudly that a file was ignored.",
-      "given": { "file": [] },
-      "expect": { "daemons": [] }
+      "given": {
+        "file": []
+      },
+      "expect": {
+        "daemons": [],
+        "keymap": []
+      }
     },
     {
       "name": "a daemon needs only a name",
@@ -19,7 +24,12 @@
           "id = \"local\""
         ]
       },
-      "expect": { "daemons": ["local local"] }
+      "expect": {
+        "daemons": [
+          "local local"
+        ],
+        "keymap": []
+      }
     },
     {
       "name": "a socket path names one daemon out of several on a machine",
@@ -31,7 +41,12 @@
           "socket = \"/tmp/herdr-scratch.sock\""
         ]
       },
-      "expect": { "daemons": ["scratch local=/tmp/herdr-scratch.sock"] }
+      "expect": {
+        "daemons": [
+          "scratch local=/tmp/herdr-scratch.sock"
+        ],
+        "keymap": []
+      }
     },
     {
       "name": "a host makes a daemon remote",
@@ -43,7 +58,12 @@
           "host = \"devenv\""
         ]
       },
-      "expect": { "daemons": ["devenv ssh=devenv"] }
+      "expect": {
+        "daemons": [
+          "devenv ssh=devenv"
+        ],
+        "keymap": []
+      }
     },
     {
       "name": "ssh options are carried verbatim, for what a host alias cannot cover",
@@ -60,7 +80,8 @@
       "expect": {
         "daemons": [
           "devenv ssh=dev@localhost socket=/home/dev/.config/herdr/herdr.sock options=-p 2222 -i devenv/.ssh/id_ed25519"
-        ]
+        ],
+        "keymap": []
       }
     },
     {
@@ -76,7 +97,13 @@
           "host = \"devenv\""
         ]
       },
-      "expect": { "daemons": ["local local", "devenv ssh=devenv"] }
+      "expect": {
+        "daemons": [
+          "local local",
+          "devenv ssh=devenv"
+        ],
+        "keymap": []
+      }
     },
     {
       "name": "a misspelled key is named rather than skipped",
@@ -93,16 +120,77 @@
       }
     },
     {
-      "name": "a key nobody has written yet is still refused",
-      "why": "A `[keymap]` block is a config from a version that does not exist. Skipping it would let someone write a keymap, see nothing happen, and have no way to tell that from a keymap that was read and did nothing. This case is expected to change the day the keymap lands here, and changing it is the point.",
+      "name": "a keymap rebinds what it names",
+      "why": "Keyed by action rather than by chord, because an action has one chord and a menu item has one key equivalent - and because `split_right = \"cmd+d\"` is the direction somebody thinks in when they open the file to change a key they did not like.",
       "given": {
         "file": [
           "[keymap]",
-          "\"cmd+d\" = \"split_right\""
+          "split_right = \"ctrl+backslash\""
         ]
       },
       "expect": {
-        "refused": "the config file has a key called \"keymap\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: daemon."
+        "daemons": [],
+        "keymap": [
+          "split_right=control+Backslash"
+        ]
+      }
+    },
+    {
+      "name": "a keymap that names nothing leaves everything where it was",
+      "why": "Partial by design: a file that had to restate all fifteen bindings to change one is a file nobody edits twice, and it would silently drop an action the day Muster grows a sixteenth.",
+      "given": {
+        "file": [
+          "[keymap]",
+          "zoom = \"cmd+shift+z\""
+        ]
+      },
+      "expect": {
+        "daemons": [],
+        "keymap": [
+          "zoom=shift+super+KeyZ"
+        ]
+      }
+    },
+    {
+      "name": "an empty chord unbinds the action outright",
+      "why": "Different from not mentioning it. Somebody who wants their chord back for something else has to be able to say so, and the alternative is binding it to a key nobody presses and hoping.",
+      "given": {
+        "file": [
+          "[keymap]",
+          "close_pane = \"\""
+        ]
+      },
+      "expect": {
+        "daemons": [],
+        "keymap": [
+          "close_pane=(unbound)"
+        ]
+      }
+    },
+    {
+      "name": "an action Muster does not have",
+      "why": "Almost always a misspelling of one it does, so the refusal lists them. Refusing the whole file rather than that line, on the same terms as every other unknown key here: a config half-applied is a config nobody can reason about.",
+      "given": {
+        "file": [
+          "[keymap]",
+          "splitt_right = \"cmd+d\""
+        ]
+      },
+      "expect": {
+        "refused": "`splitt_right` in the config file's [keymap] is not something Muster does, so none of the file was applied. What it does: new_tab, split_right, split_down, close_pane, next_pane, previous_pane, focus_left, focus_right, focus_up, focus_down, resize_left, resize_right, resize_up, resize_down, zoom."
+      }
+    },
+    {
+      "name": "a chord Muster cannot read",
+      "why": "The other half of the same failure, and the one where naming the piece matters most - the refusal has to say which chord and what was wrong with it, or the answer is re-reading the whole file.",
+      "given": {
+        "file": [
+          "[keymap]",
+          "zoom = \"cmd+wat\""
+        ]
+      },
+      "expect": {
+        "refused": "the config file binds `zoom` to `cmd+wat`, which Muster cannot read: `wat` is not a key Muster knows. Letters and digits are themselves, and the rest are spelled out: left, right, up, down, enter, tab, space, escape, backspace, delete, home, end, pageup, pagedown, f1 to f12. None of the file was applied."
       }
     },
     {

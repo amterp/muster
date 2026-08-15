@@ -200,38 +200,111 @@ struct PaneActionTests {
 
 @Suite("the menu is where a macOS keybinding lives")
 struct AppMenuTests {
+  /// What the core publishes, as it publishes it.
+  ///
+  /// A fixture rather than the core's own answer, because these test the translation and not
+  /// the policy: which chord each action ships on is the core's, pinned in
+  /// `corpus/conformance/bindings.json`. What is checked here is that a published binding
+  /// becomes a menu item AppKit will actually dispatch.
+  ///
+  /// Drift between the two lists - an action the core has and this shell does not - is caught
+  /// where it matters rather than here: building the menu logs `menu.action.unknown`, and a
+  /// contract run fails on any warning it did not expect.
+  static let published: [Core.Binding] = [
+    Core.Binding(action: "new_tab", key: "KeyT", modifiers: ["super"]),
+    Core.Binding(action: "split_right", key: "KeyD", modifiers: ["super"]),
+    Core.Binding(action: "split_down", key: "KeyD", modifiers: ["shift", "super"]),
+    Core.Binding(action: "close_pane", key: "KeyW", modifiers: ["super"]),
+    Core.Binding(action: "next_pane", key: "BracketRight", modifiers: ["super"]),
+    Core.Binding(action: "previous_pane", key: "BracketLeft", modifiers: ["super"]),
+    Core.Binding(action: "focus_left", key: "ArrowLeft", modifiers: ["alt", "super"]),
+    Core.Binding(action: "focus_right", key: "ArrowRight", modifiers: ["alt", "super"]),
+    Core.Binding(action: "focus_up", key: "ArrowUp", modifiers: ["alt", "super"]),
+    Core.Binding(action: "focus_down", key: "ArrowDown", modifiers: ["alt", "super"]),
+    Core.Binding(
+      action: "resize_left", key: "ArrowLeft", modifiers: ["shift", "control", "super"]),
+    Core.Binding(
+      action: "resize_right", key: "ArrowRight", modifiers: ["shift", "control", "super"]),
+    Core.Binding(action: "resize_up", key: "ArrowUp", modifiers: ["shift", "control", "super"]),
+    Core.Binding(
+      action: "resize_down", key: "ArrowDown", modifiers: ["shift", "control", "super"]),
+    Core.Binding(action: "zoom", key: "Enter", modifiers: ["shift", "super"]),
+  ]
+
   @MainActor
-  @Test("every pane action has a shortcut and something to send it to")
+  @Test("every published action becomes an item something can carry out")
   func paneItemsAreWired() {
-    // A menu item whose target does not implement its selector is a menu item that renders
-    // grayed out and does nothing, and the compiler has nothing to say about it.
-    let window = NSObject()
-    for item in AppMenu.paneItems {
+    // A menu item whose target does not implement its selector renders grayed out and does
+    // nothing, and the compiler has nothing to say about it.
+    let items = AppMenu.paneItems(AppMenuTests.published)
+    #expect(items.count == AppMenuTests.published.count)
+    for item in items {
       #expect(!item.key.isEmpty)
       #expect(item.modifiers.contains(.command))
       #expect(MusterWindow.instancesRespond(to: item.action))
-      _ = window
     }
-    // And no two items are the same action. Four directional items written one after another
-    // is exactly where a copy-paste points two titles at one selector, and the symptom is a
-    // key that quietly moves the wrong way rather than a key that does nothing.
-    let actions = Set(AppMenu.paneItems.map { NSStringFromSelector($0.action) })
-    #expect(actions.count == AppMenu.paneItems.count)
-    let chords = Set(AppMenu.paneItems.map { "\($0.modifiers.rawValue):\($0.key)" })
-    #expect(chords.count == AppMenu.paneItems.count)
+    // And no two items are the same action or the same chord. Four directional items written
+    // one after another is exactly where a copy-paste points two titles at one selector, and
+    // the symptom is a key that quietly moves the wrong way rather than one that does nothing.
+    let actions = Set(items.map { NSStringFromSelector($0.action) })
+    #expect(actions.count == items.count)
+    let chords = Set(items.map { "\($0.modifiers.rawValue):\($0.key)" })
+    #expect(chords.count == items.count)
   }
 
   @MainActor
-  @Test("splitting is bound to Ghostty's own shortcuts")
-  func shortcutsMatchTheTerminalWeEmbed() {
-    // Somebody arriving from the terminal Muster embeds should not have to learn a second set
-    // of keys for the same actions.
-    let byTitle = Dictionary(uniqueKeysWithValues: AppMenu.paneItems.map { ($0.title, $0) })
+  @Test("a rebound chord moves the menu item, which is what rebinding means on macOS")
+  func rebindingMovesTheItem() {
+    // The whole point of the menu being built from the core: a config file that moves an
+    // action moves its key equivalent, because on macOS the key equivalent is the binding.
+    let items = AppMenu.paneItems([
+      Core.Binding(action: "split_right", key: "Backslash", modifiers: ["control"])
+    ])
 
-    #expect(byTitle["Split Right"]?.key == "d")
-    #expect(byTitle["Split Right"]?.modifiers == [.command])
-    #expect(byTitle["Split Down"]?.modifiers == [.command, .shift])
-    #expect(byTitle["Close Pane"]?.key == "w")
+    #expect(items.count == 1)
+    #expect(items[0].title == "Split Right")
+    #expect(items[0].key == "\\")
+    #expect(items[0].modifiers == [.control])
+  }
+
+  @MainActor
+  @Test("an unbound action keeps its item and loses its shortcut")
+  func unbindingLeavesTheAction() {
+    // Somebody who unbound ⌘W wanted the shortcut back, not the action gone - and a menu is
+    // also where you look when you have forgotten what something is called.
+    let items = AppMenu.paneItems([Core.Binding(action: "close_pane", key: "", modifiers: [])])
+
+    #expect(items.count == 1)
+    #expect(items[0].title == "Close Pane")
+    #expect(items[0].key.isEmpty)
+  }
+
+  @MainActor
+  @Test("an action this shell has never heard of is left out rather than guessed at")
+  func anUnknownActionIsSkipped() {
+    // A core one version ahead. A menu missing a line is recoverable; a crash at launch is
+    // not, and neither is an item pointed at a selector nobody implements.
+    let items = AppMenu.paneItems([
+      Core.Binding(action: "teleport", key: "KeyT", modifiers: ["super"]),
+      Core.Binding(action: "zoom", key: "Enter", modifiers: ["shift", "super"]),
+    ])
+
+    #expect(items.map(\.title) == ["Zoom Pane"])
+  }
+
+  @MainActor
+  @Test("the keys AppKit needs are the ones it gets")
+  func keyEquivalentsAreWhatAppKitWants() {
+    // AppKit takes a character rather than a key code, and it spells shift as a capital in
+    // this field - so a capital here plus .shift in the mask is an item needing shift twice.
+    #expect(menuKeyEquivalent(forKeyNamed: "KeyD") == "d")
+    #expect(menuKeyEquivalent(forKeyNamed: "Digit1") == "1")
+    #expect(menuKeyEquivalent(forKeyNamed: "ArrowLeft") == "\u{F702}")
+    #expect(menuKeyEquivalent(forKeyNamed: "Enter") == "\r")
+    #expect(menuKeyEquivalent(forKeyNamed: "BracketRight") == "]")
+    // No character to put on a menu. An empty key equivalent is an item with no shortcut,
+    // which is the honest rendering of a chord AppKit cannot express.
+    #expect(menuKeyEquivalent(forKeyNamed: "AudioVolumeUp") == nil)
   }
 
   @MainActor
@@ -239,7 +312,7 @@ struct AppMenuTests {
   func theMenuBarIsComplete() {
     // Without a menu at all, ⌘V is inert no matter what any view implements and the app
     // cannot be quit normally.
-    let menu = AppMenu.build(target: NSApp)
+    let menu = AppMenu.build(target: NSApp, bindings: AppMenuTests.published)
 
     let titles = menu.items.compactMap { $0.submenu?.items.map(\.title) }.flatMap { $0 }
     #expect(titles.contains("Quit muster"))
@@ -256,7 +329,7 @@ struct AppMenuTests {
   func editItemsWalkTheChain() {
     // A target here would be whichever object built the menu, and the selection belongs to
     // the focused surface. Nil is what makes AppKit walk down to it.
-    let menu = AppMenu.build(target: NSApp)
+    let menu = AppMenu.build(target: NSApp, bindings: AppMenuTests.published)
     let edit = menu.items.compactMap(\.submenu).first { $0.title == "Edit" }
 
     let items = edit?.items.filter { ["Copy", "Paste"].contains($0.title) } ?? []

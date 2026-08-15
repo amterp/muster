@@ -1,5 +1,6 @@
 //! What happens when you type: the vocabulary, the precedence, and the route out.
 
+mod bindings;
 mod composition;
 mod key;
 mod key_event;
@@ -8,6 +9,7 @@ mod mode_profile;
 mod pane_channel;
 mod pane_input;
 
+pub use bindings::{Action, Bindings, Chord};
 pub use composition::{Outcome as CompositionOutcome, outcome as composition_outcome};
 pub use key::Key;
 pub use key_event::{KeyAction, KeyEvent, Modifiers};

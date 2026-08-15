@@ -21,7 +21,7 @@ use muster_core::composition::{
 use muster_core::config::Config;
 use muster_core::diagnostics::log;
 use muster_core::fields;
-use muster_core::input::{Keymap, PaneInput, TerminalModeProfile};
+use muster_core::input::{Bindings, Keymap, PaneInput, TerminalModeProfile};
 use muster_core::intent::{BackendChannel, BackendIntent, Refusal};
 use muster_core::mirror::backend::{PaneId, Snapshot, TabId, WorkspaceId};
 use muster_core::mirror::{Change, Mirror};
@@ -72,6 +72,22 @@ fn daemon_binary() -> Option<String> {
 /// None means remember nothing, which is what a shell that found nowhere to write says and
 /// what every test that never sets one gets.
 static STATE: Mutex<Option<(String, String)>> = Mutex::new(None);
+
+/// Which chord asks for which action, as the config file left it.
+///
+/// Held rather than passed, for the reason the daemon binary and the state path are: a shell
+/// asks for these once at launch, and threading them through every caller in between would be
+/// a parameter nothing else in that path uses.
+static BINDINGS: Mutex<Option<Bindings>> = Mutex::new(None);
+
+pub(crate) fn set_bindings(bindings: Bindings) {
+    *BINDINGS.lock().expect("a panicking sender poisoned the bindings") = Some(bindings);
+}
+
+/// The bindings in force, which with no config file is what Muster ships.
+pub(crate) fn bindings() -> Bindings {
+    BINDINGS.lock().expect("a panicking sender poisoned the bindings").clone().unwrap_or_default()
+}
 
 pub(crate) fn set_state_path(path: &str) {
     let mut held = STATE.lock().expect("a panicking sender poisoned the saved arrangement");

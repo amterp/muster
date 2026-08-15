@@ -216,6 +216,30 @@ public enum Core {
     send(request)
   }
 
+  /// One of Muster's actions and the chord asking for it.
+  ///
+  /// The core's vocabulary, in the shell's own type: the generated messages stop at this
+  /// module's edge like every other one, so a menu builder never sees a protobuf.
+  public struct Binding: Sendable {
+    public let action: String
+    public let key: String
+    public let modifiers: [String]
+  }
+
+  /// Every action and its chord, as the config file left them.
+  ///
+  /// Empty when the core will not answer, which is a menu with no pane shortcuts rather than
+  /// a launch that fails - the core has already said why in the log, and a window somebody
+  /// can click around is worth more than one that refuses to open.
+  public static func bindings() -> [Binding] {
+    var request = Muster_Request()
+    request.readBindings = Muster_ReadBindings()
+    guard case .bindings(let answer) = send(request) else { return [] }
+    return answer.bindings.map {
+      Binding(action: $0.action, key: $0.key, modifiers: $0.modifiers)
+    }
+  }
+
   /// Points this window's keyboard at a pane, and tells the daemon somebody looked.
   public static func focus(daemonID: String, paneID: String) {
     var focus = Muster_FocusPane()
@@ -366,6 +390,7 @@ public enum Core {
     case .setSplitRatio: return "set_split_ratio"
     case .windowFocus: return "window_focus"
     case .setRegionBoundary: return "set_region_boundary"
+    case .readBindings: return "read_bindings"
     case .bridgeExited: return "bridge_exited"
     case .resizePane: return "resize_pane"
     case .zoomPane: return "zoom_pane"

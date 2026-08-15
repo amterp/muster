@@ -134,9 +134,11 @@ fn answer(payload: request::Payload) -> Response {
 
 fn assert_ok(response: &Response) {
     match &response.payload {
-        Some(response::Payload::Ok(_) | response::Payload::Attached(_)) => {}
         Some(response::Payload::Failure(failure)) => panic!("the core refused: {}", failure.reason),
         None => panic!("the core answered with no payload"),
+        // Anything else is the core accepting: what it answers with is the request's business
+        // and not this helper's.
+        Some(_) => {}
     }
 }
 

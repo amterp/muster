@@ -8,6 +8,7 @@ mod support;
 
 use conformance::Conformance;
 use muster_core::config;
+use muster_core::input::{Action, Bindings, Chord, Modifiers};
 use serde_json::{Value, json};
 use support::backend::describe_daemon;
 
@@ -18,9 +19,12 @@ fn config_conformance() {
     let ran = corpus.run(|given| {
         let text = file(given);
         Ok(match config::parse(&text) {
-            Ok(parsed) => {
-                json!({ "daemons": parsed.daemons.iter().map(describe_daemon).collect::<Vec<_>>() })
-            }
+            Ok(parsed) => json!({
+                "daemons": parsed.daemons.iter().map(describe_daemon).collect::<Vec<_>>(),
+                // What the file changed, rather than all fifteen bindings in every case. A
+                // keymap is partial by design, so what a case is about is the difference.
+                "keymap": rebound(&parsed.bindings),
+            }),
             // The refusal itself, not a code. Whether the sentence names the key somebody
             // mistyped is the whole of what this file is protecting, and a taxonomy of error
             // kinds would let the wording rot while every case still passed.
@@ -47,6 +51,36 @@ fn malformed_toml_is_refused_with_the_parser_s_account_of_it() {
         refusal.contains("The parser says:") && refusal.len() > "The parser says:".len() + 40,
         "the parser's own message is what names the line, and it did not survive: {refusal}"
     );
+}
+
+/// The bindings this file moved, spelled `action=chord` in bit order.
+///
+/// Against the defaults rather than in full, because a case listing fifteen unchanged
+/// bindings buries the one it is about.
+fn rebound(bindings: &Bindings) -> Vec<String> {
+    let defaults = Bindings::default();
+    let mut changed = Vec::new();
+    for action in Action::ALL {
+        let now = bindings.chord(action);
+        if now == defaults.chord(action) {
+            continue;
+        }
+        changed.push(match now {
+            Some(chord) => format!("{}={}", action.as_str(), spell(chord)),
+            None => format!("{}=(unbound)", action.as_str()),
+        });
+    }
+    changed
+}
+
+fn spell(chord: Chord) -> String {
+    let mut spelled: Vec<&str> = Modifiers::ALL_NAMES
+        .into_iter()
+        .filter(|(_, bit)| Modifiers::CHORD.contains(*bit) && chord.modifiers.contains(*bit))
+        .map(|(name, _)| name)
+        .collect();
+    spelled.push(chord.key.as_str());
+    spelled.join("+")
 }
 
 fn file(given: &Value) -> String {

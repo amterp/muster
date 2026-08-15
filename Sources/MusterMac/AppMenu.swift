@@ -21,69 +21,37 @@ public enum AppMenu {
     public let modifiers: NSEvent.ModifierFlags
   }
 
-  /// What Muster does to panes. Every one goes to the core; none of them changes a window
-  /// directly.
-  @MainActor public static let paneItems: [Item] = [
-    // First, because it is the one that makes something out of nothing. Everything below
-    // needs a pane to already be there.
-    Item(
-      title: "New Tab", action: #selector(MusterWindow.newTab(_:)), key: "t",
-      modifiers: [.command]),
-    Item(
-      title: "Split Right", action: #selector(MusterWindow.splitRight(_:)), key: "d",
-      modifiers: [.command]),
-    Item(
-      title: "Split Down", action: #selector(MusterWindow.splitDown(_:)), key: "D",
-      modifiers: [.command, .shift]),
-    Item(
-      title: "Close Pane", action: #selector(MusterWindow.closePane(_:)), key: "w",
-      modifiers: [.command]),
-    Item(
-      title: "Next Pane", action: #selector(MusterWindow.focusNextPane(_:)), key: "]",
-      modifiers: [.command]),
-    Item(
-      title: "Previous Pane", action: #selector(MusterWindow.focusPreviousPane(_:)), key: "[",
-      modifiers: [.command]),
-    // The movement a terminal user expects, and the one every other multiplexer has. Next and
-    // previous already reach every pane, so these are ergonomics rather than reachability -
-    // which is why they are allowed to go nowhere at an edge instead of wrapping.
-    //
-    // Arrow keys as key equivalents, spelled by the unicode codepoints AppKit wants for them.
-    Item(
-      title: "Select Pane Left", action: #selector(MusterWindow.focusPaneLeft(_:)),
-      key: "\u{F702}", modifiers: [.command, .option]),
-    Item(
-      title: "Select Pane Right", action: #selector(MusterWindow.focusPaneRight(_:)),
-      key: "\u{F703}", modifiers: [.command, .option]),
-    Item(
-      title: "Select Pane Above", action: #selector(MusterWindow.focusPaneUp(_:)),
-      key: "\u{F700}", modifiers: [.command, .option]),
-    Item(
-      title: "Select Pane Below", action: #selector(MusterWindow.focusPaneDown(_:)),
-      key: "\u{F701}", modifiers: [.command, .option]),
-    // Resizing, on the chord Ghostty uses. A direction and not a divider: which one moves is
-    // a question about a tree nobody pressing this is looking at, and the daemon answers it.
-    //
-    // Ctrl on top of the focus chord, so moving to a pane and growing it are the same hand
-    // position with one more finger - and so a mistyped focus does not resize.
-    Item(
-      title: "Resize Pane Left", action: #selector(MusterWindow.resizePaneLeft(_:)),
-      key: "\u{F702}", modifiers: [.command, .control, .shift]),
-    Item(
-      title: "Resize Pane Right", action: #selector(MusterWindow.resizePaneRight(_:)),
-      key: "\u{F703}", modifiers: [.command, .control, .shift]),
-    Item(
-      title: "Resize Pane Up", action: #selector(MusterWindow.resizePaneUp(_:)),
-      key: "\u{F700}", modifiers: [.command, .control, .shift]),
-    Item(
-      title: "Resize Pane Down", action: #selector(MusterWindow.resizePaneDown(_:)),
-      key: "\u{F701}", modifiers: [.command, .control, .shift]),
-    // The one that matters at fifteen panes: read one properly without rearranging anything,
-    // and press it again to have the arrangement back exactly as it was.
-    Item(
-      title: "Zoom Pane", action: #selector(MusterWindow.zoomPane(_:)), key: "\r",
-      modifiers: [.command, .shift]),
-  ]
+  /// What Muster does to panes, as the core says they are bound.
+  ///
+  /// Built from the core rather than declared here, which is what makes rebinding one thing:
+  /// a config file that moves `split_right` moves this item, and on macOS this item *is* the
+  /// binding - a key equivalent on a menu item is how the platform decides what a chord means.
+  ///
+  /// An action with no chord is still an item. Somebody who unbound it did so to get the
+  /// shortcut back, not to lose the action - and a menu is also where you look when you have
+  /// forgotten what something is called.
+  public static func paneItems(_ bindings: [Core.Binding]) -> [Item] {
+    bindings.compactMap { binding in
+      guard let described = PaneActions.byName[binding.action] else {
+        // A core that names an action this shell has never heard of. Skipped rather than
+        // guessed at, and said out loud: the symptom otherwise is a menu quietly missing a
+        // line nobody can find.
+        Core.warn(
+          "menu.action.unknown",
+          [
+            "action": binding.action,
+            "impact": "that action has no menu item and no shortcut; everything else in the "
+              + "menu is unaffected",
+            "check": "whether this shell is older than the core it is running against",
+          ])
+        return nil
+      }
+      return Item(
+        title: described.title, action: described.selector,
+        key: menuKeyEquivalent(forKeyNamed: binding.key) ?? "",
+        modifiers: menuModifiers(binding.modifiers))
+    }
+  }
 
   /// Builds the smallest menu bar that makes the platform's shortcuts work.
   ///
@@ -94,7 +62,7 @@ public enum AppMenu {
   /// chord matched in `keyDown`: that is how macOS decides what these mean, so a person who
   /// has rebound either gets what they bound. A pane's selection is the surface's own - made
   /// against the grid libghostty already painted - so neither needs a daemon to agree.
-  public static func build(target: AnyObject) -> NSMenu {
+  public static func build(target: AnyObject, bindings: [Core.Binding]) -> NSMenu {
     let menu = NSMenu()
 
     let appItem = NSMenuItem()
@@ -114,7 +82,7 @@ public enum AppMenu {
 
     let paneItem = NSMenuItem()
     let paneMenu = NSMenu(title: "Pane")
-    for item in paneItems {
+    for item in paneItems(bindings) {
       // An explicit target rather than the responder chain, because the first responder is a
       // surface and these are not a surface's business. A chain walk would also make ⌘W mean
       // "close the window" the moment no pane has focus, which is not what it says.
