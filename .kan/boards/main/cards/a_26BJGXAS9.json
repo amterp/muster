@@ -5,7 +5,7 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-hi",
+  "column": "next",
   "created_at_millis": 1786461793497,
   "creator": "Alexander Terp",
   "description": "cmd+d splits, cmd+opt+arrow focus, cmd+ctrl+shift+arrow resize (the one even cmux lacks), cmd+shift+return zoom. File-based config; every action rebindable.",
@@ -13,8 +13,9 @@
   "position": "UUUUUUUUU",
   "title": "Stage 3: Ghostty-parity keymap, fully rebindable",
   "type": "feature",
-  "updated_at_millis": 1786461793497,
+  "updated_at_millis": 1786787768134,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1786461793497}
+    {"field":"column","value":"backlog-hi","at":1786461793497},
+    {"field":"column","value":"next","at":1786787768134}
   ]
 }
