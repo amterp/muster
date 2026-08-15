@@ -192,6 +192,12 @@ public enum Core {
     send(request)
   }
 
+  public static func toggleSidebar() {
+    var request = Muster_Request()
+    request.toggleSidebar = Muster_ToggleSidebar()
+    send(request)
+  }
+
   public static func closePane(daemonID: String = "", paneID: String = "") {
     var close = Muster_ClosePane()
     close.daemonID = daemonID
@@ -394,6 +400,7 @@ public enum Core {
     case .bridgeExited: return "bridge_exited"
     case .resizePane: return "resize_pane"
     case .zoomPane: return "zoom_pane"
+    case .toggleSidebar: return "toggle_sidebar"
     case nil: return "(none)"
     }
   }
@@ -440,6 +447,10 @@ public enum Core {
           "on_screen": String(roster.panes.filter(\.onScreen).count),
         ])
       window?.apply(roster)
+    case .presentationChanged(let changed):
+      let presentation = Presentation(sidebar: changed.sidebar)
+      info("presentation.received", ["sidebar": String(presentation.sidebar)])
+      window?.apply(presentation: presentation)
     case nil:
       break
     }

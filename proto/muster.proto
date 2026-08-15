@@ -38,6 +38,7 @@ message Request {
     ResizePane resize_pane = 19;
     ZoomPane zoom_pane = 20;
     ReadBindings read_bindings = 21;
+    ToggleSidebar toggle_sidebar = 22;
   }
 }
 
@@ -67,6 +68,13 @@ message ResizePane {
   // or an agent placing a divider exactly says.
   float amount = 4;
 }
+
+// Shows the roster or puts it away.
+//
+// A toggle rather than a set, matching ZoomPane: what a menu item and a chord both dispatch
+// is "the other one", and neither knows which it currently is. The core holds the answer, so
+// asking it to flip its own is one round trip fewer than asking it what it has first.
+message ToggleSidebar {}
 
 // Makes one pane fill its tab, or puts it back.
 //
@@ -485,7 +493,18 @@ message Event {
     BackendHealth backend_health = 3;
     ViewChanged view_changed = 4;
     RosterChanged roster_changed = 5;
+    PresentationChanged presentation_changed = 6;
   }
+}
+
+// The window's own chrome, as the core decided it.
+//
+// Separate from ViewChanged because it answers a different question and changes on a
+// different schedule: a view moves whenever a pane does, and this moves when somebody asks
+// for it. Sent whole, and sent once on startup so a shell never has to guess a default.
+message PresentationChanged {
+  // Whether the roster is on screen.
+  bool sidebar = 1;
 }
 
 // Every pane every attached daemon holds, whether or not this window is showing it.

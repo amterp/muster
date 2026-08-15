@@ -119,6 +119,14 @@ public final class MusterWindow: NSObject {
     sidebar.apply(roster: roster, states: states)
   }
 
+  /// What the window should be showing of itself, as the core decided it.
+  ///
+  /// Applied rather than toggled: the core holds the answer and sends it whole, including
+  /// once at startup, so this window never has a default of its own to disagree with.
+  public func apply(presentation: Presentation) {
+    split.sidebarShown = presentation.sidebar
+  }
+
   public func apply(daemon: String, health state: String, detail: String) {
     health[daemon] = DaemonHealth(state: state, detail: detail)
     applyTitle()
@@ -309,6 +317,10 @@ extension MusterWindow {
     Core.zoom()
   }
 
+  @objc public func toggleSidebar(_ sender: Any?) {
+    Core.toggleSidebar()
+  }
+
   @objc public func focusNextPane(_ sender: Any?) {
     Core.focus(step: "next")
   }
@@ -345,6 +357,12 @@ final class WindowLayout: NSView {
   private var sidebar: NSView?
   private var strip: NSView?
 
+  /// Whether the core says the list belongs on screen. Mirrored, never decided: the answer
+  /// is written down beside the arrangement and comes back on the next launch.
+  var sidebarShown = true {
+    didSet { needsLayout = true }
+  }
+
   override var isFlipped: Bool { true }
 
   func attach(sidebar: NSView, strip: NSView) {
@@ -357,7 +375,7 @@ final class WindowLayout: NSView {
 
   override func layout() {
     super.layout()
-    let (listWidth, regionWidth) = SidebarModel.widths(in: bounds.width)
+    let (listWidth, regionWidth) = SidebarModel.widths(in: bounds.width, shown: sidebarShown)
     sidebar?.frame = CGRect(x: 0, y: 0, width: listWidth, height: bounds.height)
     sidebar?.isHidden = listWidth == 0
     strip?.frame = CGRect(x: listWidth, y: 0, width: regionWidth, height: bounds.height)

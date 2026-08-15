@@ -30,10 +30,12 @@
 //! survive a restart, and a view is derived, disposable, and correct only for as long as
 //! the mirror behind it is.
 
+pub mod presentation;
 pub mod record;
 pub mod saved;
 pub mod view;
 
+pub use presentation::Presentation;
 pub use record::{Composition, Daemon, DaemonId, Endpoint, PaneKey, Region, RegionId};
 pub use saved::{Restorable, Saved, SavedRegion};
 pub use view::{Step, Transport, View, ViewNode, ViewPane, ViewRegion};

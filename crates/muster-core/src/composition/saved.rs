@@ -18,6 +18,7 @@
 
 use std::collections::BTreeMap;
 
+use crate::composition::presentation::Presentation;
 use crate::composition::record::{Composition, Daemon, DaemonId, Endpoint};
 use crate::mirror::backend::{PaneId, TabId, WorkspaceId};
 
@@ -49,6 +50,12 @@ pub struct Saved {
     pub regions: Vec<SavedRegion>,
     /// Which region had the keyboard, by its place in the list.
     pub focused: Option<usize>,
+    /// The window's own chrome, which needs no checking against a daemon.
+    ///
+    /// The one thing in this file that comes back exactly as it went in. Everything else is a
+    /// wish about a session that may have moved on; nobody else has an opinion about whether
+    /// a list was open.
+    pub presentation: Presentation,
 }
 
 /// What survives a check against what the daemons actually hold.
@@ -59,12 +66,13 @@ pub struct Restorable {
 }
 
 impl Saved {
-    /// Takes down what a composition is showing.
-    pub fn of(composition: &Composition) -> Saved {
+    /// Takes down what a composition is showing, and what the window is showing of itself.
+    pub fn of(composition: &Composition, presentation: Presentation) -> Saved {
         let focused = composition
             .focused_region()
             .and_then(|focused| composition.regions().position(|region| region.id == focused.id));
         Saved {
+            presentation,
             daemons: composition.daemons().cloned().collect(),
             regions: composition
                 .regions()
@@ -137,6 +145,14 @@ pub fn to_toml(saved: &Saved) -> String {
     if let Some(focused) = saved.focused.and_then(|place| i64::try_from(place).ok()) {
         root.insert("focused".to_string(), toml::Value::Integer(focused));
     }
+
+    // Written even when it matches the default, unlike the keys above that are absent when
+    // they have nothing to say. This is a file somebody opens to find out what a window is
+    // remembering about them, and a setting that only appears once you have changed it is one
+    // they have to already know about to look for.
+    let mut window = toml::Table::new();
+    window.insert("sidebar".to_string(), toml::Value::Boolean(saved.presentation.sidebar));
+    root.insert("window".to_string(), toml::Value::Table(window));
 
     toml::to_string_pretty(&toml::Value::Table(root))
         .unwrap_or_else(|error| panic!("a composition should always render as TOML: {error}"))
@@ -217,7 +233,19 @@ pub fn from_toml(text: &str) -> Result<Saved, String> {
         .and_then(toml::Value::as_integer)
         .and_then(|place| usize::try_from(place).ok());
 
-    Ok(Saved { daemons, regions, focused })
+    // Absent means the default, which is what a file written before this key existed looks
+    // like. Worth reading that way rather than refusing the file: the version above is for a
+    // format that moved, and a key that merely arrived has not moved anything.
+    let presentation = Presentation {
+        sidebar: root
+            .get("window")
+            .and_then(toml::Value::as_table)
+            .and_then(|window| window.get("sidebar"))
+            .and_then(toml::Value::as_bool)
+            .unwrap_or(Presentation::default().sidebar),
+    };
+
+    Ok(Saved { daemons, regions, focused, presentation })
 }
 
 /// An entry that will not read is skipped rather than failing the file, on the same terms as

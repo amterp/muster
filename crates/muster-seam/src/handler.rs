@@ -73,6 +73,10 @@ fn handle(request: Request) -> Response {
         }
         request::Payload::ReadBindings(_) => read_bindings(),
         request::Payload::ResizePane(resize) => resize_pane(&resize),
+        request::Payload::ToggleSidebar(_) => {
+            session::toggle_sidebar();
+            Response::ok()
+        }
         request::Payload::ZoomPane(zoom) => {
             act(&zoom.daemon_id, &zoom.pane_id, |pane| BackendIntent::ZoomPane { pane })
         }

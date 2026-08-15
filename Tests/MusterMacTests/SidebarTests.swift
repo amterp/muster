@@ -97,4 +97,17 @@ struct SidebarTests {
     #expect(cramped.sidebar == 0)
     #expect(cramped.regions == SidebarModel.width)
   }
+
+  @Test("a list put away gives its width to the panes, at any window size")
+  func puttingItAwayIsNotTheSameAsRunningOutOfRoom() {
+    // Two ways to end up with no list, and only one of them is a decision. Being asked for
+    // it is remembered across launches; being too narrow is this window right now, and
+    // widening the window again brings the list back because nothing about that was chosen.
+    let away = SidebarModel.widths(in: 960, shown: false)
+    #expect(away.sidebar == 0)
+    #expect(away.regions == 960)
+
+    let back = SidebarModel.widths(in: 960, shown: true)
+    #expect(back.sidebar == SidebarModel.width)
+  }
 }

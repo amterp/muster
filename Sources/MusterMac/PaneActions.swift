@@ -44,6 +44,8 @@ public enum PaneActions {
     "resize_down": Described(
       title: "Resize Pane Down", selector: #selector(MusterWindow.resizePaneDown(_:))),
     "zoom": Described(title: "Zoom Pane", selector: #selector(MusterWindow.zoomPane(_:))),
+    "toggle_sidebar": Described(
+      title: "Show Agents", selector: #selector(MusterWindow.toggleSidebar(_:))),
   ]
 }
 

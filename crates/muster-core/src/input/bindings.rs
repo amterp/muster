@@ -39,6 +39,7 @@ pub enum Action {
     ResizeUp,
     ResizeDown,
     Zoom,
+    ToggleSidebar,
 }
 
 impl Action {
@@ -47,7 +48,7 @@ impl Action {
     /// Deliberately not alphabetical: a menu is read top to bottom, and the order here is what
     /// somebody scanning it expects - making something, then arranging it, then moving around
     /// it. A shell that sorted these would produce a menu nobody can find anything in.
-    pub const ALL: [Action; 15] = [
+    pub const ALL: [Action; 16] = [
         Action::NewTab,
         Action::SplitRight,
         Action::SplitDown,
@@ -63,6 +64,7 @@ impl Action {
         Action::ResizeUp,
         Action::ResizeDown,
         Action::Zoom,
+        Action::ToggleSidebar,
     ];
 
     /// The name a config file, a log line and the seam all spell it with.
@@ -83,6 +85,7 @@ impl Action {
             Action::ResizeUp => "resize_up",
             Action::ResizeDown => "resize_down",
             Action::Zoom => "zoom",
+            Action::ToggleSidebar => "toggle_sidebar",
         }
     }
 
@@ -117,6 +120,10 @@ impl Action {
             Action::ResizeUp => Chord::new(Key::ArrowUp, resizing),
             Action::ResizeDown => Chord::new(Key::ArrowDown, resizing),
             Action::Zoom => Chord::new(Key::Enter, shifted),
+            // Ghostty has no sidebar, so this one comes from the wider platform instead:
+            // ⌘B is what a Mac app with a list down the side puts it on, and no terminal
+            // wants the chord for anything, since a command chord never reaches a pane.
+            Action::ToggleSidebar => Chord::new(Key::KeyB, command),
         }
     }
 }

@@ -16,7 +16,8 @@ use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 use muster_core::AgentState;
 use muster_core::attention::Attention;
 use muster_core::composition::{
-    Composition, Daemon, DaemonId, Endpoint, PaneKey, RegionId, Saved, Step, Transport, View, saved,
+    Composition, Daemon, DaemonId, Endpoint, PaneKey, Presentation, RegionId, Saved, Step,
+    Transport, View, saved,
 };
 use muster_core::config::Config;
 use muster_core::diagnostics::log;
@@ -34,7 +35,9 @@ use muster_herdr::{
 use muster_ssh::{Forward, Tunnel, remote_environment};
 use muster_vt::KeyEncoder;
 
-use crate::proto::{BackendHealth, Event, PaneStateChanged, PaneTypeable, event};
+use crate::proto::{
+    BackendHealth, Event, PaneStateChanged, PaneTypeable, PresentationChanged, event,
+};
 use crate::{convert, ffi};
 
 /// What Muster calls the daemon it found for itself.
@@ -261,6 +264,9 @@ pub(crate) struct Session {
     /// Beside the mirrors rather than inside one, because it spans them: a window is focused
     /// or it is not, and that answers for a laptop's panes and a devenv's at once.
     attention: Attention,
+
+    /// The window's own chrome, which spans the daemons for the same reason attention does.
+    presentation: Presentation,
 }
 
 pub(crate) static SESSION: LazyLock<Mutex<Session>> =
@@ -944,11 +950,28 @@ pub(crate) enum AttachError {
 /// holds no panes at all.
 pub(crate) fn open() -> Result<(), String> {
     follow_implicitly_if_nothing_else()?;
+    restore_presentation();
     reopen_what_was_left();
     open_remaining_regions();
     open_a_workspace_if_the_window_is_empty();
     publish();
     Ok(())
+}
+
+/// Puts back the window's own chrome, and tells the shell either way.
+///
+/// Separate from the regions, and ahead of them, because it survives conditions they do not.
+/// A saved region is a wish about a session that may be gone, so restoring one can come to
+/// nothing; nobody else has an opinion about whether a list was open, so this always applies.
+/// Folding it into `reopen_what_was_left` would tie it to that function's early return, and a
+/// person who put the sidebar away would find it back whenever their tabs did not survive.
+///
+/// Announced unconditionally, including when there was nothing to read, so the shell is told
+/// the default rather than holding one.
+fn restore_presentation() {
+    let presentation = saved_arrangement().map(|saved| saved.presentation).unwrap_or_default();
+    SESSION.lock().expect("a panicking sender poisoned the session").presentation = presentation;
+    announce_presentation(presentation);
 }
 
 /// Puts back the regions this window was showing when it last closed.
@@ -1238,11 +1261,11 @@ fn open_remaining_regions() {
 /// Replaced rather than appended to, through a temporary beside it: a window that quit while
 /// this was half-written would otherwise come back to a file that parses as far as the third
 /// region and stops.
-fn save(composition: &Composition) {
+fn save(composition: &Composition, presentation: Presentation) {
     let mut held = STATE.lock().expect("a panicking sender poisoned the saved arrangement");
     let Some((path, written)) = held.as_mut() else { return };
 
-    let text = saved::to_toml(&Saved::of(composition));
+    let text = saved::to_toml(&Saved::of(composition, presentation));
     if &text == written {
         return;
     }
@@ -1335,7 +1358,7 @@ fn publish() {
         let settled = session.attention.showing(view.showing());
         // Here because this is the moment composition is settled, and because everything that
         // changes it ends up here - so nothing has to remember to save.
-        save(&session.composition);
+        save(&session.composition, session.presentation);
         (view, roster, settled)
     };
 
@@ -1586,6 +1609,35 @@ fn presented(pane: &PaneKey) -> Option<AgentState> {
 /// it changes is which finished agents are still waiting to be noticed, so only those panes
 /// are re-announced - an agent-state change costs that change rather than a walk of every
 /// pane (`architecture.md`, fast is a feature).
+/// Shows the roster or puts it away, and says what it settled on.
+///
+/// The write goes through `publish` like every other change, which is what gets it saved: the
+/// arrangement is written down at the one moment composition is settled, and adding a second
+/// place that remembers to save would be a second place that can forget.
+pub(crate) fn toggle_sidebar() {
+    let presentation = {
+        let mut session = SESSION.lock().expect("a panicking sender poisoned the session");
+        session.presentation = session.presentation.with_sidebar(!session.presentation.sidebar);
+        session.presentation
+    };
+    log::info("presentation.sidebar", fields! { "shown" => presentation.sidebar });
+    announce_presentation(presentation);
+    publish();
+}
+
+/// Tells the shell what the window should be showing of itself.
+///
+/// Sent whole and sent on startup as well as on every change, so a shell holds no default of
+/// its own. A shell that guessed would be a second answer to a question the core owns, and
+/// the two would disagree the first time the default moved.
+fn announce_presentation(presentation: Presentation) {
+    ffi::emit(&Event {
+        payload: Some(event::Payload::PresentationChanged(PresentationChanged {
+            sidebar: presentation.sidebar,
+        })),
+    });
+}
+
 pub(crate) fn window_focused(focused: bool) {
     log::info("window.focus", fields! { "focused" => focused });
     let settled = {

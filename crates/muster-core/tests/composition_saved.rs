@@ -7,6 +7,7 @@
 use std::collections::BTreeSet;
 
 use conformance::{CaseError, Conformance, fields};
+use muster_core::composition::presentation::Presentation;
 use muster_core::composition::record::{Composition, Daemon, DaemonId, Endpoint};
 use muster_core::composition::saved::{Saved, SavedRegion, from_toml, to_toml};
 use muster_core::mirror::backend::{PaneId, TabId, WorkspaceId};
@@ -71,7 +72,8 @@ fn what_is_written_is_what_comes_back() {
         .open_region(&DaemonId::new("devenv"), WorkspaceId::new("w1"), TabId::new("w1:t2"))
         .expect("the daemon was just attached");
 
-    let written = Saved::of(&composition);
+    // Not the default, so a round trip that quietly dropped the table would still fail.
+    let written = Saved::of(&composition, Presentation::default().with_sidebar(false));
     let read = from_toml(&to_toml(&written)).expect("what this wrote, it can read");
 
     assert_eq!(read, written, "the file lost something between writing and reading it");
@@ -114,6 +116,9 @@ fn saved(given: &Value) -> Result<Saved, CaseError> {
             .get("focused")
             .and_then(Value::as_u64)
             .and_then(|place| usize::try_from(place).ok()),
+        // Not what these cases are about: they judge which regions survive a check against
+        // the daemons, and nothing here is checked against anything.
+        presentation: Presentation::default(),
     })
 }
 

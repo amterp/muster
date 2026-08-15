@@ -31,6 +31,20 @@ public struct Roster: Equatable {
   }
 }
 
+/// What the window shows of itself, as the core decided it.
+///
+/// The shell's mirror of `PresentationChanged`, on the same terms as `Roster` and
+/// `WindowContents`: a value that arrives whole and is applied, never one this side decides.
+/// It is written down beside the arrangement, so it comes back on the next launch.
+public struct Presentation: Equatable {
+  /// Whether the roster is on screen.
+  public let sidebar: Bool
+
+  public init(sidebar: Bool) {
+    self.sidebar = sidebar
+  }
+}
+
 /// What the sidebar draws, worked out from the roster and the states beside it.
 ///
 /// Pure, and separate from the view for the same reason `PaneAppearance` is: these are the
@@ -109,8 +123,15 @@ public enum SidebarModel {
   /// is arithmetic no test can call. A window too narrow to hold both gives the list up
   /// rather than squeezing the panes to nothing - the terminals are what the app is for, and
   /// a two-column sidebar beside a two-column pane helps nobody.
-  public static func widths(in total: CGFloat) -> (sidebar: CGFloat, regions: CGFloat) {
-    guard total >= width * 2 else { return (0, max(0, total)) }
+  ///
+  /// Two ways to end up with no list, and they are not the same thing. `shown` is what the
+  /// core was asked for and remembers; the width check is this window being too small right
+  /// now. A window narrowed until the list disappears and then widened again gets it back,
+  /// because nothing about that was a decision.
+  public static func widths(in total: CGFloat, shown: Bool = true) -> (
+    sidebar: CGFloat, regions: CGFloat
+  ) {
+    guard shown, total >= width * 2 else { return (0, max(0, total)) }
     return (width, total - width)
   }
 }

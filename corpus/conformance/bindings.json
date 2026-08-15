@@ -7,27 +7,62 @@
     {
       "name": "the splits, on Ghostty's own chords",
       "why": "The pair somebody presses most, and the pair where a wrong modifier is least visible: cmd+d and cmd+shift+d differ by one key and produce arrangements that both look plausible.",
-      "given": { "actions": ["split_right", "split_down"] },
-      "expect": { "chords": ["split_right=super+KeyD", "split_down=shift+super+KeyD"] }
+      "given": {
+        "actions": [
+          "split_right",
+          "split_down"
+        ]
+      },
+      "expect": {
+        "chords": [
+          "split_right=super+KeyD",
+          "split_down=shift+super+KeyD"
+        ]
+      }
     },
     {
       "name": "making a tab and closing a pane",
       "why": "Both are chords the platform already means something by, so a default has to be the one people expect rather than a free choice.",
-      "given": { "actions": ["new_tab", "close_pane"] },
-      "expect": { "chords": ["new_tab=super+KeyT", "close_pane=super+KeyW"] }
+      "given": {
+        "actions": [
+          "new_tab",
+          "close_pane"
+        ]
+      },
+      "expect": {
+        "chords": [
+          "new_tab=super+KeyT",
+          "close_pane=super+KeyW"
+        ]
+      }
     },
     {
       "name": "stepping through panes in order",
       "why": "The two that reach every pane whatever shape the tab is in, which is why they are bound to something reachable one-handed rather than to arrows.",
-      "given": { "actions": ["next_pane", "previous_pane"] },
+      "given": {
+        "actions": [
+          "next_pane",
+          "previous_pane"
+        ]
+      },
       "expect": {
-        "chords": ["next_pane=super+BracketRight", "previous_pane=super+BracketLeft"]
+        "chords": [
+          "next_pane=super+BracketRight",
+          "previous_pane=super+BracketLeft"
+        ]
       }
     },
     {
       "name": "selecting the neighbour in a direction",
       "why": "Ergonomics rather than reachability - next and previous already reach everything - so these are the ones a hand rests on, and they carry one modifier fewer than resize.",
-      "given": { "actions": ["focus_left", "focus_right", "focus_up", "focus_down"] },
+      "given": {
+        "actions": [
+          "focus_left",
+          "focus_right",
+          "focus_up",
+          "focus_down"
+        ]
+      },
       "expect": {
         "chords": [
           "focus_left=alt+super+ArrowLeft",
@@ -40,7 +75,14 @@
     {
       "name": "resize is focus with one more finger",
       "why": "The relationship is the design: moving to a pane and growing it are the same hand position, and a mistyped focus cannot resize. Ghostty has no default here, so this is ours to keep consistent.",
-      "given": { "actions": ["resize_left", "resize_right", "resize_up", "resize_down"] },
+      "given": {
+        "actions": [
+          "resize_left",
+          "resize_right",
+          "resize_up",
+          "resize_down"
+        ]
+      },
       "expect": {
         "chords": [
           "resize_left=shift+control+super+ArrowLeft",
@@ -53,14 +95,43 @@
     {
       "name": "zoom",
       "why": "The one that matters at fifteen panes: read a pane properly and press it again to have the arrangement back. Return because it is the key nothing else in this set uses and it is under the same hand as the modifiers.",
-      "given": { "actions": ["zoom"] },
-      "expect": { "chords": ["zoom=shift+super+Enter"] }
+      "given": {
+        "actions": [
+          "zoom"
+        ]
+      },
+      "expect": {
+        "chords": [
+          "zoom=shift+super+Enter"
+        ]
+      }
+    },
+    {
+      "name": "showing the agents, on the chord the platform uses for a list",
+      "why": "The one default that does not come from Ghostty, because Ghostty has no sidebar. Cmd+B is where a Mac app with a list down the side puts it, and no terminal wants the chord: a command chord is a menu key equivalent on this platform and never reaches a pane. It is a window action rather than a pane action, which is why it sits at the end of the list rather than among the splits - a menu is read top to bottom and this is not part of arranging panes.",
+      "given": {
+        "actions": [
+          "toggle_sidebar"
+        ]
+      },
+      "expect": {
+        "chords": [
+          "toggle_sidebar=super+KeyB"
+        ]
+      }
     },
     {
       "name": "every action has one, and no two share a chord",
       "why": "An action with no default is one nobody can reach without editing a config file, and two on the same chord is one of them silently never firing - which on macOS shows up as a menu item that looks bound and does nothing.",
-      "given": { "actions": ["*"] },
-      "expect": { "actions": 15, "distinct_chords": 15 }
+      "given": {
+        "actions": [
+          "*"
+        ]
+      },
+      "expect": {
+        "actions": 16,
+        "distinct_chords": 16
+      }
     }
   ]
 }

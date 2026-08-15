@@ -90,9 +90,9 @@ close_pane = ""                # unbound - the action stays, the shortcut goes
 modifiers and a key, in any order and any case, spelled the way you would say them: `cmd`,
 `opt`, `ctrl`, `shift`, and `left`, `return`, `f5`, `[`. The actions are `new_tab`,
 `split_right`, `split_down`, `close_pane`, `next_pane`, `previous_pane`, `focus_*` and
-`resize_*` for each direction, and `zoom`. On macOS these become menu items, which is where
-the platform dispatches a key equivalent from - so a rebound action moves in the menu too,
-and System Settings can move it again.
+`resize_*` for each direction, `zoom`, and `toggle_sidebar`. On macOS these become menu
+items, which is where the platform dispatches a key equivalent from - so a rebound action
+moves in the menu too, and System Settings can move it again.
 
 `option_as_alt` is the one that decides whether `opt+t` reaches an agent. macOS treats option
 as a composing key, so by default it produces `†` and a program waiting for `alt+t` never
@@ -108,9 +108,9 @@ than the design, and `docs/architecture.md` says what it costs. And scrollback d
 daemon's, because herdr owns the buffer that a scroll intent moves.
 
 `~/.local/state/muster/window.toml` is Muster's, rewritten whenever the window settles: which
-tabs it was showing, in what order, at what widths. Delete it and the next launch opens fresh.
-Nothing about a session is in it - what a tab holds is the daemon's answer, asked again on
-every launch.
+tabs it was showing, in what order, at what widths, and under `[window]` whether the agent
+list was open. Delete it and the next launch opens fresh. Nothing about a session is in it -
+what a tab holds is the daemon's answer, asked again on every launch.
 
 ## Building
 
