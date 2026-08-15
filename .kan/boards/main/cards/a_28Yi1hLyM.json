@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "muster-s-appearance",
+  "alias_explicit": false,
+  "area": [
+    "renderer"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1786813087465,
+  "creator": "Alexander Terp",
+  "description": "`Renderer.init` calls `ghostty_config_load_default_files`, so fonts, colours and cursor style come from whatever config libghostty finds on disk - in practice a Ghostty config. Decided 2026-08-15 to keep it for now, because it costs nothing and panes look right on a first launch, and written down in `docs/architecture.md` beside the renderer seam so it stops being invisible.\n\nThis card is the exit. Two reasons it has to exist:\n\n- **It is the one place the renderer is not behind the contract.** Muster's appearance is decided by a file Muster does not define, and a replacement renderer would have nothing to read. The seam's whole claim is that each dependency lives in one adapter.\n- **Somebody without a Ghostty config gets libghostty's defaults**, which is not the same as Muster having an opinion. Right now Muster has none.\n\nThe shape is Muster's own appearance vocabulary in its own config file, translated by the shell for whichever renderer is behind the seam. Worth deciding whether inheriting stays as a fallback, an explicit opt-in, or goes.\n\nNot urgent, and deliberately so: nothing in the keystroke path leans on the loan (`option_as_alt` reads Muster's config, not libghostty's), so this is about the seam's integrity rather than about anything being broken.",
+  "id": "a_28Yi1hLyM",
+  "position": "!!2",
+  "title": "🎨 Muster's appearance comes from a file belonging to another app",
+  "type": "chore",
+  "updated_at_millis": 1786813094364,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1786813087465},
+    {"field":"column","value":"backlog-hi","at":1786813094364}
+  ]
+}

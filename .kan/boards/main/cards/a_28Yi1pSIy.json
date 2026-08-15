@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "font-size-is-fixed",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1786813087538,
+  "creator": "Alexander Terp",
+  "description": "`cmd+plus` and `cmd+minus` are reflexes in every terminal and Muster has neither. `config.font_size = 0` inherits the configured size once at surface creation (`Renderer.swift`), so the only way to change it is to edit a config and relaunch.\n\nWorth noting this is a Muster *action* rather than an appearance setting, so it is wanted whatever happens to the appearance loan (see the appearance card): it joins `Action::ALL`, becomes rebindable and gets a menu item, like every other action.\n\nTwo things to work out: whether the size is per-window or per-pane (Ghostty does per-surface), and whether a changed size is remembered - it is presentation state, so `[window]` in the state file is the obvious home now that one exists.",
+  "id": "a_28Yi1pSIy",
+  "position": "!!6",
+  "title": "🔍 Font size is fixed for the life of a launch",
+  "type": "feature",
+  "updated_at_millis": 1786813094312,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1786813087538},
+    {"field":"column","value":"backlog-hi","at":1786813094312}
+  ]
+}

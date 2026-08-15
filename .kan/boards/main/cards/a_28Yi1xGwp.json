@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "changing-the-config",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1786813087619,
+  "creator": "Alexander Terp",
+  "description": "Every config key is read once at `Startup`: `apply_config` parses the file and hands the results to statics (`BINDINGS`, `PANE_INPUT`), and a pane's encoder is built from them at attach. So editing `config.toml` does nothing until the app restarts.\n\nAcceptable while the file is small. Irritating during exactly the phase where somebody is tuning it, which is the daily-driving phase, and the phase Muster is in now.\n\nThe awkward part is not re-reading the file, it is what to do with what is already open. Bindings are easy - the menu is rebuilt from them. Typing settings are not: an encoder is built per pane at attach, so a reload either rebuilds every pane's encoder or leaves a window whose panes disagree depending on when each was opened. That second outcome is worse than needing a relaunch, and is why this was left alone rather than half-done.\n\nWorth deciding: whether reload is a first-class action (rebindable, in the menu, dispatchable by the CLI) or something that happens when the file changes on disk. The first is honest about when it happens; the second is what people expect.",
+  "id": "a_28Yi1xGwp",
+  "position": "!!E",
+  "title": "♻️ Changing the config means relaunching",
+  "type": "feature",
+  "updated_at_millis": 1786813094260,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1786813087619},
+    {"field":"column","value":"backlog-hi","at":1786813094260}
+  ]
+}
