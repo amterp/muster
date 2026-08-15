@@ -82,6 +82,41 @@ struct ShortcutsTests {
   }
 
   @MainActor
+  @Test("the window is as big as its contents, so nothing truncates and nothing scrolls")
+  func theWindowFitsWhatItHolds() {
+    // The rule for a window of this kind rather than a detail of this one: a list you have
+    // to scroll to find a shortcut in is a list you go back to the README instead of.
+    let sections = Shortcuts.sections(
+      MenuActions.byName.keys.map { Core.Binding(action: $0, key: "KeyA", modifiers: ["super"]) })
+    let roomy = CGSize(width: 4000, height: 4000)
+    let size = Shortcuts.windowSize(sections, limit: roomy)
+
+    let rows = sections.reduce(0) { $0 + $1.rows.count }
+    let wanted =
+      CGFloat(rows) * Shortcuts.Metrics.rowHeight
+      + CGFloat(sections.count) * Shortcuts.Metrics.headerHeight
+    #expect(size.height >= wanted, "the window opens too short to hold its own list")
+
+    let columns = Shortcuts.columnWidths(sections)
+    #expect(
+      size.width >= columns.title + columns.detail + Shortcuts.Metrics.gap,
+      "the columns do not fit, so the longest row truncates")
+  }
+
+  @MainActor
+  @Test("a screen smaller than the list is what the scroller is for")
+  func aSmallScreenClampsRatherThanOverflows() {
+    // The one case a scroll bar is right, and the reason it is not simply removed. A window
+    // taller than the display is worse than scrolling.
+    let sections = Shortcuts.sections([Core.Binding(action: "zoom", key: "KeyA", modifiers: [])])
+    let cramped = CGSize(width: 200, height: 80)
+    let size = Shortcuts.windowSize(sections, limit: cramped)
+
+    #expect(size.height <= cramped.height)
+    #expect(size.width <= cramped.width)
+  }
+
+  @MainActor
   @Test("chords are spelled the way this platform prints them")
   func chordsReadLikeAMenu() {
     // Modifiers in the platform's own order, so a column of them can be scanned rather than

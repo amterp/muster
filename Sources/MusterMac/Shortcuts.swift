@@ -93,6 +93,69 @@ public enum Shortcuts {
     Row(title: "Scroll back", chord: "", note: "the wheel, over the pane"),
   ]
 
+  /// How the list is drawn, in one place because the sizing depends on it.
+  ///
+  /// A window like this should open at the size that fits it, so nothing truncates and there
+  /// is nothing to scroll - which means the fonts and the row heights are not decoration but
+  /// inputs to how big the window is. Anything else Muster grows of this kind (a settings
+  /// window, another help surface) should size itself the same way.
+  @MainActor
+  public enum Metrics {
+    public static let title = NSFont.systemFont(ofSize: 13)
+    /// The system font rather than a monospaced one. These are modifier glyphs, which the
+    /// system font draws far more legibly at this size, and the column lines up because it
+    /// is right-aligned rather than because the characters are all one width - which is how
+    /// the platform's own menus do it.
+    public static let chord = NSFont.systemFont(ofSize: 13)
+    public static let header = NSFont.systemFont(ofSize: 11, weight: .semibold)
+
+    public static let rowHeight: CGFloat = 26
+    /// Taller, because the space above a heading is what separates one group from the last.
+    public static let headerHeight: CGFloat = 34
+    public static let inset: CGFloat = 16
+    /// The least space between what something is called and the chord that does it, so the
+    /// two columns never read as one.
+    public static let gap: CGFloat = 32
+  }
+
+  /// How wide each column has to be for nothing in it to be cut off.
+  ///
+  /// Measured from the text rather than guessed, because the longest row decides: "Go to a
+  /// pane nothing is showing" is the reason a fixed width truncated.
+  public static func columnWidths(_ sections: [Section]) -> (title: CGFloat, detail: CGFloat) {
+    var title: CGFloat = 0
+    var detail: CGFloat = 0
+    for section in sections {
+      for row in section.rows {
+        title = max(title, width(row.title, Metrics.title))
+        let trailing = row.chord.isEmpty ? row.note : row.chord
+        let font = row.chord.isEmpty ? Metrics.title : Metrics.chord
+        detail = max(detail, width(trailing, font))
+      }
+    }
+    return (title.rounded(.up), detail.rounded(.up))
+  }
+
+  /// The size the window wants, and the size it is allowed.
+  ///
+  /// Clamped to what it is given rather than assumed to fit: a laptop screen in a meeting
+  /// room is smaller than the list, and a window taller than the display is worse than a
+  /// scroll bar. The scroller stays for that case and hides itself the rest of the time.
+  public static func windowSize(_ sections: [Section], limit: CGSize) -> CGSize {
+    let columns = columnWidths(sections)
+    let width = Metrics.inset * 2 + columns.title + Metrics.gap + columns.detail
+    let height = sections.reduce(CGFloat.zero) { running, section in
+      running + Metrics.headerHeight + CGFloat(section.rows.count) * Metrics.rowHeight
+    }
+    return CGSize(
+      width: min(max(width, 320), limit.width),
+      height: min(height + Metrics.inset, limit.height))
+  }
+
+  private static func width(_ text: String, _ font: NSFont) -> CGFloat {
+    (text as NSString).size(withAttributes: [.font: font]).width
+  }
+
   /// One chord, spelled the way a Mac menu spells one.
   ///
   /// Modifiers in the platform's own order - control, option, shift, command - because that

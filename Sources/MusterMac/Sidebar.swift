@@ -70,6 +70,13 @@ public enum SidebarModel {
     /// reason the list exists, and they are drawn as reachable rather than as absent.
     public let onScreen: Bool
 
+    /// Whether this is the pane the keyboard feeds.
+    ///
+    /// Exactly one row can carry it, and it answers a question the window already answers
+    /// with a border - which is the point. A list of a dozen panes beside a window of two is
+    /// hard to read back against; marking the same pane in both is what joins them.
+    public let hasKeyboard: Bool
+
     public var isHeader: Bool { daemon != nil && pane == nil }
   }
 
@@ -81,15 +88,21 @@ public enum SidebarModel {
   /// A daemon holding no panes contributes no header. An attached daemon whose subscription
   /// has not bootstrapped is an ordinary moment on the way up, and a heading over nothing
   /// reads as a machine that lost its session.
-  public static func rows(roster: Roster, states: [PaneKey: String]) -> [Row] {
+  /// `keyboard` is the pane the core's view says has the keyboard, or nil when no region
+  /// does. Passed in rather than derived here: which pane that is arrives on the view, and
+  /// the roster is a separate message - the same join the window already makes for states.
+  public static func rows(roster: Roster, states: [PaneKey: String], keyboard: PaneKey? = nil)
+    -> [Row]
+  {
     var rows: [Row] = []
     var current: String?
     for pane in roster.panes {
       if pane.key.daemon != current {
         current = pane.key.daemon
         rows.append(
-          Row(daemon: pane.key.daemon, pane: nil, label: pane.key.daemon, state: "", onScreen: true)
-        )
+          Row(
+            daemon: pane.key.daemon, pane: nil, label: pane.key.daemon, state: "", onScreen: true,
+            hasKeyboard: false))
       }
       rows.append(
         Row(
@@ -97,7 +110,8 @@ public enum SidebarModel {
           // A pane the core has said nothing about is unknown, not idle. An agent we have
           // not heard from is not an agent that finished (`corpus/conformance/agent-state.json`).
           state: states[pane.key] ?? "unknown",
-          onScreen: pane.onScreen))
+          onScreen: pane.onScreen,
+          hasKeyboard: pane.key == keyboard))
     }
     return rows
   }
@@ -179,8 +193,8 @@ public final class SidebarView: NSView {
     fatalError("muster builds its views in code")
   }
 
-  public func apply(roster: Roster, states: [PaneKey: String]) {
-    rows = SidebarModel.rows(roster: roster, states: states)
+  public func apply(roster: Roster, states: [PaneKey: String], keyboard: PaneKey? = nil) {
+    rows = SidebarModel.rows(roster: roster, states: states, keyboard: keyboard)
     table.reloadData()
   }
 
@@ -215,10 +229,20 @@ extension SidebarView: NSTableViewDataSource, NSTableViewDelegate {
 final class SidebarRowView: NSView {
   private let dot = CALayer()
   private let name = NSTextField(labelWithString: "")
+  private let highlight = CALayer()
 
   init(row: SidebarModel.Row) {
     super.init(frame: .zero)
     wantsLayer = true
+
+    // The pane the keyboard feeds, marked the way the window already marks it. Drawn behind
+    // everything else and only for the one row, so a list of a dozen panes beside a window
+    // of two can be read back against it.
+    if row.hasKeyboard {
+      highlight.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.22).cgColor
+      highlight.cornerRadius = 5
+      layer?.addSublayer(highlight)
+    }
     name.font = .systemFont(
       ofSize: row.isHeader ? 10 : 12, weight: row.isHeader ? .semibold : .regular)
     name.stringValue = row.isHeader ? row.label.uppercased() : row.label
@@ -244,6 +268,9 @@ final class SidebarRowView: NSView {
 
   override func layout() {
     super.layout()
+    if highlight.superlayer != nil {
+      highlight.frame = bounds.insetBy(dx: 4, dy: 1)
+    }
     let hasDot = dot.superlayer != nil
     let textLeft = hasDot ? SidebarRowView.inset * 2 + SidebarRowView.dotSize : SidebarRowView.inset
     dot.frame = CGRect(

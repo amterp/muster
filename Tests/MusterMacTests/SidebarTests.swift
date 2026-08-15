@@ -98,6 +98,36 @@ struct SidebarTests {
     #expect(cramped.regions == SidebarModel.width)
   }
 
+  @Test("the pane with the keyboard is marked, and only that one")
+  func theKeyboardIsFindableInTheList() {
+    // The list spans daemons and a window shows two of a dozen panes, so reading one back
+    // against the other is hard. Marking the same pane in both is what joins them.
+    let local = PaneKey(daemon: "local", pane: "w1:p1")
+    let devenv = PaneKey(daemon: "devenv", pane: "w1:p1")
+    let roster = Roster(panes: [
+      Roster.Pane(key: local, tab: "w1:t1", label: "rad", onScreen: true),
+      Roster.Pane(key: devenv, tab: "w1:t1", label: "rad", onScreen: true),
+    ])
+
+    let rows = SidebarModel.rows(roster: roster, states: [:], keyboard: devenv)
+    let marked = rows.filter(\.hasKeyboard)
+
+    #expect(marked.count == 1, "more than one row claims the keyboard")
+    // Two daemons hand out the same pane ids, so a list keyed on the id alone would light up
+    // the laptop's row for a devenv pane.
+    #expect(marked.first?.pane == devenv)
+  }
+
+  @Test("with the keyboard nowhere, no row claims it")
+  func noRegionMeansNoMark() {
+    let roster = Roster(panes: [
+      Roster.Pane(
+        key: PaneKey(daemon: "local", pane: "w1:p1"), tab: "w1:t1", label: "rad", onScreen: false)
+    ])
+    #expect(
+      SidebarModel.rows(roster: roster, states: [:], keyboard: nil).allSatisfy { !$0.hasKeyboard })
+  }
+
   @Test("a list put away gives its width to the panes, at any window size")
   func puttingItAwayIsNotTheSameAsRunningOutOfRoom() {
     // Two ways to end up with no list, and only one of them is a decision. Being asked for

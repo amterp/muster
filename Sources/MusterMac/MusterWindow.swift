@@ -52,6 +52,13 @@ public final class MusterWindow: NSObject {
   }
 
   private var keyboardPane: String?
+
+  /// The pane the keyboard feeds, with the daemon that hands out its id.
+  ///
+  /// Held beside `keyboardPane` because the list spans daemons and a bare pane id does not:
+  /// two daemons hand out the same ones, so a sidebar keyed on the id alone would light up a
+  /// devenv row for a laptop pane.
+  private var keyboardKey: PaneKey?
   private var zoomed = false
   private var problem: String?
 
@@ -98,7 +105,12 @@ public final class MusterWindow: NSObject {
     strip.arrange(order)
 
     keyboardPane = contents.keyboardPane
-    zoomed = contents.regions.first { $0.id == contents.focusedRegion }?.zoomed ?? false
+    let focused = contents.regions.first { $0.id == contents.focusedRegion }
+    keyboardKey = focused.flatMap { region in
+      region.keyboardPane.map { PaneKey(daemon: region.daemon, pane: $0) }
+    }
+    sidebar.apply(roster: roster, states: states, keyboard: keyboardKey)
+    zoomed = focused?.zoomed ?? false
     applyTitle()
   }
 
@@ -107,7 +119,7 @@ public final class MusterWindow: NSObject {
     for region in regions.values where region.daemonID == pane.daemon {
       region.chrome(for: pane.pane)?.apply(paneID: pane.pane, state: state)
     }
-    sidebar.apply(roster: roster, states: states)
+    sidebar.apply(roster: roster, states: states, keyboard: keyboardKey)
   }
 
   /// Everything the daemons hold, whether or not this window is showing it.
@@ -117,7 +129,7 @@ public final class MusterWindow: NSObject {
   /// finished while nobody was looking.
   public func apply(_ roster: Roster) {
     self.roster = roster
-    sidebar.apply(roster: roster, states: states)
+    sidebar.apply(roster: roster, states: states, keyboard: keyboardKey)
   }
 
   /// What the window should be showing of itself, as the core decided it.
