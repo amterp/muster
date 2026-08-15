@@ -8,6 +8,7 @@ members = [
     "crates/muster-herdr",
     "crates/muster-perf",
     "crates/muster-seam",
+    "crates/muster-ssh",
     "crates/muster-vt",
 ]
 
@@ -25,6 +26,7 @@ libc = "0.2"
 muster-core = { path = "crates/muster-core" }
 muster-herdr = { path = "crates/muster-herdr" }
 muster-seam = { path = "crates/muster-seam" }
+muster-ssh = { path = "crates/muster-ssh" }
 muster-vt = { path = "crates/muster-vt" }
 prost = "0.14"
 serde_json = "1"

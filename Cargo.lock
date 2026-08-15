@@ -405,6 +405,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "muster-ssh"
+version = "0.1.0"
+dependencies = [
+ "conformance",
+ "muster-core",
+ "serde_json",
+]
+
+[[package]]
 name = "muster-vt"
 version = "0.1.0"
 dependencies = [

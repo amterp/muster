@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-pane-is-named-by",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "done",
+  "created_at_millis": 1786777154329,
+  "creator": "Alexander Terp",
+  "description": "Two daemons hand out the same pane ids, so a bare one stopped being an answer the moment the remote arc made a second daemon real. Landed in f2cad96: the seam's pane-naming messages carry a daemon, the shell keys its window-wide maps on the pair, health is per daemon, and region resolution is scoped to one daemon rather than scanning every region and taking the first match.\n\nTurned up on the way: the server-encode channel was pointed at whatever the environment named rather than at the daemon the pane belongs to. For a remote pane that would have sent arrows and pastes to the local machine, and the symptom would have been a guessed encoding rather than an error.",
+  "id": "a_28JdF2xkm",
+  "position": "UUUUUUUUUUUUUUUUU",
+  "title": "🪪 A pane is named by its daemon as well as its id",
+  "type": "chore",
+  "updated_at_millis": 1786777154329,
+  "history": [
+    {"field":"column","value":"done","at":1786777154329}
+  ]
+}

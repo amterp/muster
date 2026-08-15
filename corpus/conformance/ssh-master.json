@@ -1,0 +1,133 @@
+{
+  "concept": "ssh-master",
+  "source": "authored",
+  "citation": "ssh_config(5) for what each option does; docs/architecture.md, backend adapters (control-plane transports: local socket for local daemons, SSH for remote ones) and degradation for what the connection has to admit when it breaks. The choice of options is Muster's own policy and has no oracle above it.",
+  "why": "One command line stands between a devenv's panes and a window that renders nothing, and every option on it is there to turn a specific silent failure into a loud one. That reasoning has nowhere else to live: an argument vector is the least self-explanatory artifact in the project, and the day somebody trims it for looking noisy is the day a dropped VPN starts reading as a healthy connection. So the cases here are one per option, and the `why` is the point of the file rather than decoration around it. What is being fixed is the whole vector, in order - ssh takes the first value it is given for any setting, so order is not cosmetic, and Muster's own options come first precisely so a config file cannot switch them off.",
+  "cases": [
+    {
+      "name": "a master forwards a socket and runs no command",
+      "why": "The shape of the whole thing. `-N` because there is no remote command to run - the forwarded socket is the entire point - and `-L local:remote` because a unix socket on this machine that answers as the daemon's own is what lets every layer above stay unable to tell local from remote. Without `-N`, ssh would open a login shell nobody is reading.",
+      "given": {
+        "host": "devenv",
+        "options": [],
+        "controlPath": "/tmp/muster-1-devenv.ctl",
+        "localSocket": "/tmp/muster-1-devenv.sock",
+        "remoteSocket": "/home/dev/.config/herdr/herdr.sock"
+      },
+      "expect": {
+        "arguments": [
+          "-N",
+          "-M",
+          "-S",
+          "/tmp/muster-1-devenv.ctl",
+          "-L",
+          "/tmp/muster-1-devenv.sock:/home/dev/.config/herdr/herdr.sock",
+          "-o",
+          "BatchMode=yes",
+          "-o",
+          "ExitOnForwardFailure=yes",
+          "-o",
+          "ServerAliveInterval=15",
+          "-o",
+          "ServerAliveCountMax=3",
+          "devenv"
+        ]
+      }
+    },
+    {
+      "name": "the connection is a master, so panes do not each pay for one",
+      "why": "`-M -S <path>` is what makes a pane cheap. Frames cannot ride the forwarded socket - herdr publishes them through a CLI over stdio rather than through a socket method - so every pane runs a command over ssh, and fifteen panes on a devenv would be fifteen handshakes without a master to share. It is also why the control path is part of this record rather than a private detail: the bridge needs the same path to reuse the connection.",
+      "given": {
+        "host": "devenv",
+        "options": [],
+        "controlPath": "/tmp/muster-1-devenv.ctl",
+        "localSocket": "/tmp/muster-1-devenv.sock",
+        "remoteSocket": "/run/herdr.sock"
+      },
+      "expect": {
+        "arguments": [
+          "-N",
+          "-M",
+          "-S",
+          "/tmp/muster-1-devenv.ctl",
+          "-L",
+          "/tmp/muster-1-devenv.sock:/run/herdr.sock",
+          "-o",
+          "BatchMode=yes",
+          "-o",
+          "ExitOnForwardFailure=yes",
+          "-o",
+          "ServerAliveInterval=15",
+          "-o",
+          "ServerAliveCountMax=3",
+          "devenv"
+        ]
+      }
+    },
+    {
+      "name": "the user's own options come after Muster's, and so cannot switch them off",
+      "why": "ssh uses the first value it is given for any setting, so this order decides who wins. Muster's four are what make a broken tunnel fail loudly rather than hang a window, and they are not a preference; the escape hatch exists for connection details - a port, a key, a jump host - which is what this case passes. Anything a host alias can express belongs in the user's own ssh config instead, where every other tool already looks.",
+      "given": {
+        "host": "dev@localhost",
+        "options": ["-p", "2222", "-i", "devenv/.ssh/id_ed25519"],
+        "controlPath": "/tmp/muster-1-devenv.ctl",
+        "localSocket": "/tmp/muster-1-devenv.sock",
+        "remoteSocket": "/home/dev/.config/herdr/herdr.sock"
+      },
+      "expect": {
+        "arguments": [
+          "-N",
+          "-M",
+          "-S",
+          "/tmp/muster-1-devenv.ctl",
+          "-L",
+          "/tmp/muster-1-devenv.sock:/home/dev/.config/herdr/herdr.sock",
+          "-o",
+          "BatchMode=yes",
+          "-o",
+          "ExitOnForwardFailure=yes",
+          "-o",
+          "ServerAliveInterval=15",
+          "-o",
+          "ServerAliveCountMax=3",
+          "-p",
+          "2222",
+          "-i",
+          "devenv/.ssh/id_ed25519",
+          "dev@localhost"
+        ]
+      }
+    },
+    {
+      "name": "the host is last, because everything after it would be a remote command",
+      "why": "ssh reads the first non-option word as the destination and everything after it as a command to run there. A user option accidentally placed after the host would be handed to the far end's shell instead of to ssh, and the failure would be an unexplained remote error rather than a rejected flag.",
+      "given": {
+        "host": "devenv",
+        "options": ["-4"],
+        "controlPath": "/tmp/c",
+        "localSocket": "/tmp/l.sock",
+        "remoteSocket": "/tmp/r.sock"
+      },
+      "expect": {
+        "arguments": [
+          "-N",
+          "-M",
+          "-S",
+          "/tmp/c",
+          "-L",
+          "/tmp/l.sock:/tmp/r.sock",
+          "-o",
+          "BatchMode=yes",
+          "-o",
+          "ExitOnForwardFailure=yes",
+          "-o",
+          "ServerAliveInterval=15",
+          "-o",
+          "ServerAliveCountMax=3",
+          "-4",
+          "devenv"
+        ]
+      }
+    }
+  ]
+}
