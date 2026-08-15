@@ -121,6 +121,20 @@
       }
     },
     {
+      "name": "the list of shortcuts is itself an action with a shortcut",
+      "why": "It is a window action like the rest, which is what makes it rebindable and what puts it in its own list. Cmd+/ is where a list of shortcuts lives in most things that have one, and nothing in a terminal wants the chord.",
+      "given": {
+        "actions": [
+          "show_shortcuts"
+        ]
+      },
+      "expect": {
+        "chords": [
+          "show_shortcuts=super+Slash"
+        ]
+      }
+    },
+    {
       "name": "every action has one, and no two share a chord",
       "why": "An action with no default is one nobody can reach without editing a config file, and two on the same chord is one of them silently never firing - which on macOS shows up as a menu item that looks bound and does nothing.",
       "given": {
@@ -129,8 +143,8 @@
         ]
       },
       "expect": {
-        "actions": 16,
-        "distinct_chords": 16
+        "actions": 17,
+        "distinct_chords": 17
       }
     }
   ]

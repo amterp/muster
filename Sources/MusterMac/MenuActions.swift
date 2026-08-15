@@ -10,42 +10,64 @@ import AppKit
 /// An action the core names and this does not know is skipped rather than guessed at, so a
 /// core one version ahead produces a menu missing an item rather than a crash.
 @MainActor
-public enum PaneActions {
+public enum MenuActions {
+  /// Which menu an action belongs under.
+  ///
+  /// The core's list is flat and stays that way - what an action does is not a question about
+  /// where a menu bar puts it, and a menu bar is one platform's answer. So the grouping is
+  /// here, and a shell without a menu bar ignores it.
+  public enum Group: String, CaseIterable {
+    case pane = "Pane"
+    case view = "View"
+    case help = "Help"
+  }
+
   public struct Described {
     public let title: String
     public let selector: Selector
+    public let group: Group
   }
 
   /// Keyed by the core's own name for the action.
   public static let byName: [String: Described] = [
-    "new_tab": Described(title: "New Tab", selector: #selector(MusterWindow.newTab(_:))),
+    "new_tab": Described(
+      title: "New Tab", selector: #selector(MusterWindow.newTab(_:)), group: .pane),
     "split_right": Described(
-      title: "Split Right", selector: #selector(MusterWindow.splitRight(_:))),
-    "split_down": Described(title: "Split Down", selector: #selector(MusterWindow.splitDown(_:))),
-    "close_pane": Described(title: "Close Pane", selector: #selector(MusterWindow.closePane(_:))),
+      title: "Split Right", selector: #selector(MusterWindow.splitRight(_:)), group: .pane),
+    "split_down": Described(
+      title: "Split Down", selector: #selector(MusterWindow.splitDown(_:)), group: .pane),
+    "close_pane": Described(
+      title: "Close Pane", selector: #selector(MusterWindow.closePane(_:)), group: .pane),
     "next_pane": Described(
-      title: "Next Pane", selector: #selector(MusterWindow.focusNextPane(_:))),
+      title: "Next Pane", selector: #selector(MusterWindow.focusNextPane(_:)), group: .pane),
     "previous_pane": Described(
-      title: "Previous Pane", selector: #selector(MusterWindow.focusPreviousPane(_:))),
+      title: "Previous Pane", selector: #selector(MusterWindow.focusPreviousPane(_:)), group: .pane),
     "focus_left": Described(
-      title: "Select Pane Left", selector: #selector(MusterWindow.focusPaneLeft(_:))),
+      title: "Select Pane Left", selector: #selector(MusterWindow.focusPaneLeft(_:)), group: .pane),
     "focus_right": Described(
-      title: "Select Pane Right", selector: #selector(MusterWindow.focusPaneRight(_:))),
+      title: "Select Pane Right", selector: #selector(MusterWindow.focusPaneRight(_:)), group: .pane
+    ),
     "focus_up": Described(
-      title: "Select Pane Above", selector: #selector(MusterWindow.focusPaneUp(_:))),
+      title: "Select Pane Above", selector: #selector(MusterWindow.focusPaneUp(_:)), group: .pane),
     "focus_down": Described(
-      title: "Select Pane Below", selector: #selector(MusterWindow.focusPaneDown(_:))),
+      title: "Select Pane Below", selector: #selector(MusterWindow.focusPaneDown(_:)), group: .pane),
     "resize_left": Described(
-      title: "Resize Pane Left", selector: #selector(MusterWindow.resizePaneLeft(_:))),
+      title: "Resize Pane Left", selector: #selector(MusterWindow.resizePaneLeft(_:)), group: .pane),
     "resize_right": Described(
-      title: "Resize Pane Right", selector: #selector(MusterWindow.resizePaneRight(_:))),
+      title: "Resize Pane Right", selector: #selector(MusterWindow.resizePaneRight(_:)),
+      group: .pane),
     "resize_up": Described(
-      title: "Resize Pane Up", selector: #selector(MusterWindow.resizePaneUp(_:))),
+      title: "Resize Pane Up", selector: #selector(MusterWindow.resizePaneUp(_:)), group: .pane),
     "resize_down": Described(
-      title: "Resize Pane Down", selector: #selector(MusterWindow.resizePaneDown(_:))),
-    "zoom": Described(title: "Zoom Pane", selector: #selector(MusterWindow.zoomPane(_:))),
+      title: "Resize Pane Down", selector: #selector(MusterWindow.resizePaneDown(_:)), group: .pane),
+    "zoom": Described(
+      title: "Zoom Pane", selector: #selector(MusterWindow.zoomPane(_:)), group: .pane),
     "toggle_sidebar": Described(
-      title: "Show Agents", selector: #selector(MusterWindow.toggleSidebar(_:))),
+      title: "Show Agents", selector: #selector(MusterWindow.toggleSidebar(_:)),
+      group: .view),
+    "show_shortcuts": Described(
+      title: "muster Shortcuts", selector: #selector(MusterWindow.showShortcuts(_:)),
+      group: .help),
   ]
 }
 

@@ -230,6 +230,12 @@ public enum Core {
     public let action: String
     public let key: String
     public let modifiers: [String]
+
+    public init(action: String, key: String, modifiers: [String]) {
+      self.action = action
+      self.key = key
+      self.modifiers = modifiers
+    }
   }
 
   /// Every action and its chord, as the config file left them.

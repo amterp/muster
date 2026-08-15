@@ -18,6 +18,7 @@ public final class MusterWindow: NSObject {
   private let executable: String
   private let strip = RegionStrip(frame: NSRect(x: 0, y: 0, width: 960, height: 600))
   private let sidebar = SidebarView(frame: .zero)
+  private let shortcuts = ShortcutsPanel()
   private let split = WindowLayout(frame: NSRect(x: 0, y: 0, width: 960, height: 600))
   private var regions: [String: RegionView] = [:]
 
@@ -319,6 +320,12 @@ extension MusterWindow {
 
   @objc public func toggleSidebar(_ sender: Any?) {
     Core.toggleSidebar()
+  }
+
+  /// Opens the list of what this window does. Answered here rather than by the core: the
+  /// list is built from what the core already publishes, and a window is a shell's to open.
+  @objc public func showShortcuts(_ sender: Any?) {
+    shortcuts.show(bindings: Core.bindings())
   }
 
   @objc public func focusNextPane(_ sender: Any?) {

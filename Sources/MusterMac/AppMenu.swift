@@ -19,9 +19,10 @@ public enum AppMenu {
     public let action: Selector
     public let key: String
     public let modifiers: NSEvent.ModifierFlags
+    public let group: MenuActions.Group
   }
 
-  /// What Muster does to panes, as the core says they are bound.
+  /// What Muster does, as the core says it is bound.
   ///
   /// Built from the core rather than declared here, which is what makes rebinding one thing:
   /// a config file that moves `split_right` moves this item, and on macOS this item *is* the
@@ -32,7 +33,7 @@ public enum AppMenu {
   /// forgotten what something is called.
   public static func paneItems(_ bindings: [Core.Binding]) -> [Item] {
     bindings.compactMap { binding in
-      guard let described = PaneActions.byName[binding.action] else {
+      guard let described = MenuActions.byName[binding.action] else {
         // A core that names an action this shell has never heard of. Skipped rather than
         // guessed at, and said out loud: the symptom otherwise is a menu quietly missing a
         // line nobody can find.
@@ -49,7 +50,8 @@ public enum AppMenu {
       return Item(
         title: described.title, action: described.selector,
         key: menuKeyEquivalent(forKeyNamed: binding.key) ?? "",
-        modifiers: menuModifiers(binding.modifiers))
+        modifiers: menuModifiers(binding.modifiers),
+        group: described.group)
     }
   }
 
@@ -80,19 +82,27 @@ public enum AppMenu {
     editItem.submenu = editMenu
     menu.addItem(editItem)
 
-    let paneItem = NSMenuItem()
-    let paneMenu = NSMenu(title: "Pane")
-    for item in paneItems(bindings) {
-      // An explicit target rather than the responder chain, because the first responder is a
-      // surface and these are not a surface's business. A chain walk would also make ⌘W mean
-      // "close the window" the moment no pane has focus, which is not what it says.
-      let entry = NSMenuItem(title: item.title, action: item.action, keyEquivalent: item.key)
-      entry.keyEquivalentModifierMask = item.modifiers
-      entry.target = target
-      paneMenu.addItem(entry)
+    // One menu per group, in the order the groups are declared, and none for a group nothing
+    // landed in. Splitting a pane and opening a list of shortcuts are not the same kind of
+    // thing, and a single menu holding both is one nobody can scan.
+    let items = paneItems(bindings)
+    for group in MenuActions.Group.allCases {
+      let inGroup = items.filter { $0.group == group }
+      if inGroup.isEmpty { continue }
+      let groupItem = NSMenuItem()
+      let groupMenu = NSMenu(title: group.rawValue)
+      for item in inGroup {
+        // An explicit target rather than the responder chain, because the first responder is
+        // a surface and these are not a surface's business. A chain walk would also make ⌘W
+        // mean "close the window" the moment no pane has focus, which is not what it says.
+        let entry = NSMenuItem(title: item.title, action: item.action, keyEquivalent: item.key)
+        entry.keyEquivalentModifierMask = item.modifiers
+        entry.target = target
+        groupMenu.addItem(entry)
+      }
+      groupItem.submenu = groupMenu
+      menu.addItem(groupItem)
     }
-    paneItem.submenu = paneMenu
-    menu.addItem(paneItem)
 
     return menu
   }

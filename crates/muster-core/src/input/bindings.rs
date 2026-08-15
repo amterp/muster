@@ -40,6 +40,7 @@ pub enum Action {
     ResizeDown,
     Zoom,
     ToggleSidebar,
+    ShowShortcuts,
 }
 
 impl Action {
@@ -48,7 +49,7 @@ impl Action {
     /// Deliberately not alphabetical: a menu is read top to bottom, and the order here is what
     /// somebody scanning it expects - making something, then arranging it, then moving around
     /// it. A shell that sorted these would produce a menu nobody can find anything in.
-    pub const ALL: [Action; 16] = [
+    pub const ALL: [Action; 17] = [
         Action::NewTab,
         Action::SplitRight,
         Action::SplitDown,
@@ -65,6 +66,7 @@ impl Action {
         Action::ResizeDown,
         Action::Zoom,
         Action::ToggleSidebar,
+        Action::ShowShortcuts,
     ];
 
     /// The name a config file, a log line and the seam all spell it with.
@@ -86,6 +88,7 @@ impl Action {
             Action::ResizeDown => "resize_down",
             Action::Zoom => "zoom",
             Action::ToggleSidebar => "toggle_sidebar",
+            Action::ShowShortcuts => "show_shortcuts",
         }
     }
 
@@ -124,6 +127,10 @@ impl Action {
             // ⌘B is what a Mac app with a list down the side puts it on, and no terminal
             // wants the chord for anything, since a command chord never reaches a pane.
             Action::ToggleSidebar => Chord::new(Key::KeyB, command),
+            // Where a list of shortcuts lives in most things that have one. Nothing in a
+            // terminal wants it, and it is the chord somebody presses when they are looking
+            // for exactly this.
+            Action::ShowShortcuts => Chord::new(Key::Slash, command),
         }
     }
 }

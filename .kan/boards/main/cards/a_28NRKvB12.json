@@ -5,19 +5,28 @@
   "area": [
     "shell"
   ],
-  "column": "next",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Landed in a24d5fd. The answer to the card's real question - where the answer lives - is a `Presentation` value beside composition in the same file, not inside it: composition describes a session, and a chrome setting inside \"which tabs was I looking at\" makes that answer harder to read. Being a value in the core rather than a bool in the window is what makes it rebindable, a menu item, and one day CLI-reachable.\n\nRestored ahead of the regions and separately from them, which turned out to matter: a saved region is a wish that can come to nothing, so sharing that early return would have put the list back whenever somebody's tabs did not survive.\n\nCarded on the way out: a_28Xb4UJFc, because putting the list away closes the only door to a pane in a tab no region is showing.",
+      "created_at_millis": 1786810456765,
+      "id": "c_28XbaebSM"
+    }
+  ],
   "created_at_millis": 1786786229820,
   "creator": "Alexander Terp",
   "description": "The list is always visible. At a full window of fifteen panes its two hundred points are two hundred points of terminal, and somebody driving one pane wants them back.\n\nThe interesting half is not the toggle, it is where the answer lives. The shell owns nothing, so a bool in MusterWindow is a second home for durable-ish view state. Composition is the obvious candidate - it is what Muster owns and what gets written down - but 'which daemons are attached and what each region shows' is a description of a session, and whether a list is open is not that.\n\nWorth settling alongside a_27QcqNxRB (composition is a value, so it can be written down), because the answer is the same shape: either composition grows a notion of window presentation, or something beside it does.",
   "id": "a_28NRKvB12",
-  "position": "0",
+  "position": "!!!!!!2",
   "title": "👁️ A sidebar you can put away",
   "type": "feature",
-  "updated_at_millis": 1786805513357,
+  "updated_at_millis": 1786810456765,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786786229820},
     {"field":"column","value":"next","at":1786787768058},
     {"field":"column","value":"backlog-hi","at":1786790570606},
-    {"field":"column","value":"next","at":1786805513357}
+    {"field":"column","value":"next","at":1786805513357},
+    {"field":"column","value":"done","at":1786810456623}
   ]
 }
