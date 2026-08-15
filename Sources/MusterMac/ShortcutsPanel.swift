@@ -24,13 +24,17 @@ public final class ShortcutsPanel: NSObject {
   ///
   /// Rebuilt on the way in, so a rebind made since it was last opened is what it shows.
   public func show(bindings: [Core.Binding]) {
+    // The panel first, then the rows. A table with no window is a table at its default size,
+    // and rows built against that keep the width they were laid out at - which is how the
+    // chord column ended up in the middle of the panel rather than down its right edge.
+    makePanelIfNeeded()
     rows = ShortcutsPanel.entries(Shortcuts.sections(bindings))
     table.reloadData()
+    panel?.makeKeyAndOrderFront(nil)
+  }
 
-    if let panel {
-      panel.makeKeyAndOrderFront(nil)
-      return
-    }
+  private func makePanelIfNeeded() {
+    if panel != nil { return }
     let panel = NSPanel(
       contentRect: NSRect(x: 0, y: 0, width: 420, height: 520),
       styleMask: [.titled, .closable, .resizable, .utilityWindow],
@@ -47,11 +51,17 @@ public final class ShortcutsPanel: NSObject {
     scroll.documentView = table
     scroll.hasVerticalScroller = true
     scroll.autoresizingMask = [.width, .height]
+    // Without this the table keeps whatever width it was born with and every row is laid out
+    // against a bounds narrower than the panel - which puts the chord column in the middle
+    // and squeezes the titles to nothing. A document view does not follow its clip view
+    // unless it is told to.
+    table.autoresizingMask = [.width]
+    table.frame = NSRect(origin: .zero, size: scroll.contentSize)
+    table.sizeLastColumnToFit()
     panel.contentView?.addSubview(scroll)
 
     self.panel = panel
     panel.center()
-    panel.makeKeyAndOrderFront(nil)
   }
 
   public override init() {
@@ -98,18 +108,25 @@ extension ShortcutsPanel: NSTableViewDataSource, NSTableViewDelegate {
 
 @MainActor
 private final class ShortcutsHeaderView: NSView {
+  private let label = NSTextField(labelWithString: "")
+
   init(title: String) {
     super.init(frame: .zero)
-    let label = NSTextField(labelWithString: title.uppercased())
+    label.stringValue = title.uppercased()
     label.font = .systemFont(ofSize: 10, weight: .semibold)
     label.textColor = .secondaryLabelColor
-    label.frame = NSRect(x: 12, y: 2, width: 320, height: 16)
-    label.autoresizingMask = [.width]
     addSubview(label)
   }
 
   required init?(coder: NSCoder) {
     fatalError("muster builds its views in code")
+  }
+
+  override func layout() {
+    super.layout()
+    label.frame = CGRect(
+      x: ShortcutsRowView.inset, y: 0,
+      width: max(0, bounds.width - ShortcutsRowView.inset * 2), height: bounds.height)
   }
 }
 
@@ -119,24 +136,32 @@ private final class ShortcutsHeaderView: NSView {
 /// than read across - which is the whole reason somebody opened this.
 @MainActor
 private final class ShortcutsRowView: NSView {
+  static let inset: CGFloat = 12
+
+  /// How much of the row the chord gets. Fixed rather than sized to the widest chord: the
+  /// point of a right-aligned column is that it lines up, and a column that moved with the
+  /// contents would not.
+  private static let detailWidth: CGFloat = 160
+
+  private let what = NSTextField(labelWithString: "")
+  private let detail = NSTextField(labelWithString: "")
+
   init(row: Shortcuts.Row) {
     super.init(frame: .zero)
-    let what = NSTextField(labelWithString: row.title)
+    what.stringValue = row.title
     what.font = .systemFont(ofSize: 12)
-    what.frame = NSRect(x: 12, y: 2, width: 200, height: 16)
+    what.lineBreakMode = .byTruncatingTail
     addSubview(what)
 
     // The note takes the chord's place when there is no chord, because a row saying only
     // "Focus a pane" with an empty column looks like something that failed to load.
-    let trailing = row.chord.isEmpty ? row.note : row.chord
-    let detail = NSTextField(labelWithString: trailing)
+    detail.stringValue = row.chord.isEmpty ? row.note : row.chord
     detail.font =
       row.chord.isEmpty
       ? .systemFont(ofSize: 11) : .monospacedSystemFont(ofSize: 12, weight: .regular)
     detail.textColor = row.chord.isEmpty ? .secondaryLabelColor : .labelColor
     detail.alignment = .right
-    detail.frame = NSRect(x: 216, y: 2, width: 188, height: 16)
-    detail.autoresizingMask = [.width]
+    detail.lineBreakMode = .byTruncatingTail
     addSubview(detail)
 
     if !row.chord.isEmpty && !row.note.isEmpty {
@@ -146,5 +171,21 @@ private final class ShortcutsRowView: NSView {
 
   required init?(coder: NSCoder) {
     fatalError("muster builds its views in code")
+  }
+
+  /// Positioned from `bounds` rather than by a frame set at init.
+  ///
+  /// A table hands a row view its size after building it, so a frame chosen against the zero
+  /// one it was born with lands wherever the resize leaves it - which put every chord off the
+  /// right-hand edge and made the whole column look empty. The same arithmetic-in-`layout`
+  /// the sidebar rows already do.
+  override func layout() {
+    super.layout()
+    let detailLeft = max(0, bounds.width - ShortcutsRowView.inset - ShortcutsRowView.detailWidth)
+    what.frame = CGRect(
+      x: ShortcutsRowView.inset, y: 0,
+      width: max(0, detailLeft - ShortcutsRowView.inset * 2), height: bounds.height)
+    detail.frame = CGRect(
+      x: detailLeft, y: 0, width: ShortcutsRowView.detailWidth, height: bounds.height)
   }
 }

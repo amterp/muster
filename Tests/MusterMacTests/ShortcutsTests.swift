@@ -94,5 +94,11 @@ struct ShortcutsTests {
     #expect(Shortcuts.spell(Core.Binding(action: "x", key: "KeyD", modifiers: ["super"])) == "⌘D")
     #expect(Shortcuts.spell(Core.Binding(action: "x", key: "Enter", modifiers: [])) == "↩")
     #expect(Shortcuts.spell(Core.Binding(action: "x", key: "", modifiers: ["super"])) == "")
+    // The punctuation keys, which the core names and a keyboard prints. Left out, the row for
+    // this very panel read `⌘Slash` - the wire's spelling showing through to the one person
+    // who opened a list of chords to find out which key to press.
+    #expect(Shortcuts.spell(Core.Binding(action: "x", key: "Slash", modifiers: ["super"])) == "⌘/")
+    #expect(
+      Shortcuts.spell(Core.Binding(action: "x", key: "BracketLeft", modifiers: ["super"])) == "⌘[")
   }
 }

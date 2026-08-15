@@ -121,8 +121,20 @@ public enum Shortcuts {
     case "Escape": return "⎋"
     case "Backspace": return "⌫"
     case "Delete": return "⌦"
+    // The punctuation keys, which the core names and a keyboard prints. Without these a row
+    // reads `⌘Slash`, which is the wire's spelling showing through to somebody who wanted to
+    // know which key to press.
     case "BracketLeft": return "["
     case "BracketRight": return "]"
+    case "Slash": return "/"
+    case "Backslash": return "\\"
+    case "Comma": return ","
+    case "Period": return "."
+    case "Semicolon": return ";"
+    case "Quote": return "'"
+    case "Minus": return "-"
+    case "Equal": return "="
+    case "Backquote": return "`"
     default:
       // The friendly spelling the config file uses, which for a letter or digit is the
       // character itself. Anything else is left as the core named it rather than blanked:
