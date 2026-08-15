@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "the-list-says",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "next",
+  "created_at_millis": 1786812724711,
+  "creator": "Alexander Terp",
+  "description": "The sidebar is a flat list of panes under a daemon heading. Four rows of `rad · claude`, `rad-sprint1 · claude`, `Downloads`, `rad-sprint1` say nothing about which tab each pane lives in, whether two of them are side by side in one tab, or which tab you are currently looking at. The roster already carries `tab_id` per pane (`RosterChanged.RosterPane.tab_id`) and nothing renders it.\n\nThis matters more than a missing label. Muster's founding claim is that the pane most likely to have finished unnoticed is the one no region is showing - and \"where is it, then\" is a question about tabs. Right now the answer is: click the row and find out.\n\n**This card is the thinking, then the doing.** It should not be settled by adding a second level of indentation without deciding what the list is for.\n\nQuestions worth answering before drawing anything:\n\n- **What is a tab to a person here?** herdr's tabs are its own; Muster shows one tab per region. A user's mental model is closer to \"a workspace of related panes\". Whether the list mirrors the daemon's tab structure or presents something of Muster's own is the first fork.\n- **Two levels or one?** daemon → tab → pane is a three-level tree in a 200pt column, and most people run a handful of panes. A grouped-flat list with a quiet tab caption may read better than a real outline. Consider what 15 panes across 4 tabs looks like, not what 3 looks like.\n- **Which tab is on screen?** A region shows one tab; the list should say which, and probably differently from how it says which pane has the keyboard (that landed already, as a row highlight).\n- **Does the tab row do anything?** Clicking a pane focuses it. Clicking a tab could surface it - which is also the missing keyboard path in a_28Xb4UJFc. The two cards may share an answer: if tabs become first-class in the list, `focus_next_tab` has an obvious order to walk.\n- **Does the core decide the grouping?** Order and labels already live in the core so the sidebar, a CLI and an agent get one answer. Tab grouping is the same kind of decision and probably belongs there too, which means the roster grows a tab label rather than the shell inventing one from an id.\n- **What about a daemon with one tab?** Nesting everything one level deeper to say \"tab 1\" is noise for the common case.\n\nRelated: a_28Xb4UJFc (a hidden tab is reachable by mouse and nothing else). Worth reading together - that card is about reaching a tab, this one is about seeing it, and one design should serve both.",
+  "id": "a_28YYac6Wn",
+  "position": "!E",
+  "title": "🗂️ The list says nothing about tabs, and it has to",
+  "type": "feature",
+  "updated_at_millis": 1786812729689,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1786812724711},
+    {"field":"column","value":"next","at":1786812729689}
+  ]
+}
