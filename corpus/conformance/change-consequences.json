@@ -1,0 +1,85 @@
+{
+  "concept": "mirror.change.consequences",
+  "source": "authored",
+  "citation": "docs/architecture.md, ownership of truth (composition is resolved against the mirror) and agent state; docs/observations/herdr-0.8.0.md section 11",
+  "why": "A change is applied once and read twice: composition asks whether the arrangement moved, and the seam asks whether the shell has to be told an agent's state. Both answers used to live inside the seam as `match` arms nobody could reach without a process-global session, so neither was pinned - and one of them was wrong. They are decidable properties of a change and nothing else, which is exactly what a corpus is for.\n\nThe two are asymmetric on purpose, and the asymmetry is the reasoning worth keeping. A wrong `movesStructure` of true costs a reconcile that changes nothing; false leaves a region pointing at a tab the daemon closed. A wrong `announcesAgentState` of null is a pane whose agent is misreported to the user, which is the one failure this product cannot have.",
+  "cases": [
+    {
+      "name": "a pane that appears announces its state",
+      "why": "The case that was missing, and the bug it hid. A pane already working when Muster attaches never transitions, so a shell told only about transitions renders a busy agent as `unknown` grey until that agent happens to move again. Bootstrap reports it as `paneAdded` and nothing else - so if this is not an announcement, a freshly opened window is wrong about every agent already running in it, which is the state the product exists to show.",
+      "given": { "change": "paneAdded", "pane": "w1:p1" },
+      "expect": { "movesStructure": true, "announcesAgentState": "w1:p1" }
+    },
+    {
+      "name": "a transition announces the pane it moved",
+      "why": "The obvious half. Carries the pane rather than the state, because the mirror already holds the state and a copy travelling beside the id is a copy that can disagree with it.",
+      "given": {
+        "change": "agentStateChanged",
+        "pane": "w1:p2",
+        "from": "working",
+        "to": "blocked"
+      },
+      "expect": { "movesStructure": false, "announcesAgentState": "w1:p2" }
+    },
+    {
+      "name": "a transition does not move the arrangement",
+      "why": "An agent changing state is a property of a pane that still exists in the same place. Reconciling composition for it would walk every region on every blink, which is the per-event cost `architecture.md` budgets against - a full window of agents is the common case, not the rare one.",
+      "given": { "change": "agentStateChanged", "pane": "w1:p1", "from": "idle", "to": "working" },
+      "expect": { "movesStructure": false, "announcesAgentState": "w1:p1" }
+    },
+    {
+      "name": "a pane that goes away moves the arrangement and announces nothing",
+      "why": "A region may have been showing it, so composition has to look. There is no state to announce because there is no longer a pane to have one, and a shell told a state for a pane it has just been told to drop would have to guess which message won.",
+      "given": { "change": "paneRemoved", "pane": "w1:p1", "cascaded": false },
+      "expect": { "movesStructure": true, "announcesAgentState": null }
+    },
+    {
+      "name": "a pane removed by a cascade is still a removal",
+      "why": "Closing a tab takes its panes with it and herdr announces none of them, so the mirror infers these. An inference is still a pane leaving the arrangement, and treating it as lesser is how an exited pane renders forever.",
+      "given": { "change": "paneRemoved", "pane": "w1:p1", "cascaded": true },
+      "expect": { "movesStructure": true, "announcesAgentState": null }
+    },
+    {
+      "name": "a tab that appears moves the arrangement",
+      "why": "A region names a tab, so a tab arriving is a thing a region could come to show.",
+      "given": { "change": "tabAdded", "tab": "w1:t1" },
+      "expect": { "movesStructure": true, "announcesAgentState": null }
+    },
+    {
+      "name": "a tab that goes away moves the arrangement",
+      "why": "The failure this side of the asymmetry exists for: a region still pointing at a closed tab renders a session nobody has.",
+      "given": { "change": "tabRemoved", "tab": "w1:t1" },
+      "expect": { "movesStructure": true, "announcesAgentState": null }
+    },
+    {
+      "name": "a tree that moved moves the arrangement",
+      "why": "The tree is what a region renders as splits, so a new arrangement of the same panes still changes what is on screen.",
+      "given": { "change": "layoutChanged", "tab": "w1:t1" },
+      "expect": { "movesStructure": true, "announcesAgentState": null }
+    },
+    {
+      "name": "a workspace that appears moves the arrangement",
+      "why": "Composition names a workspace as well as a tab, so the same argument as a tab reaches one level up.",
+      "given": { "change": "workspaceAdded", "workspace": "w1" },
+      "expect": { "movesStructure": true, "announcesAgentState": null }
+    },
+    {
+      "name": "a workspace that goes away moves the arrangement",
+      "why": "It takes every tab and pane under it, none of which is announced separately.",
+      "given": { "change": "workspaceRemoved", "workspace": "w1" },
+      "expect": { "movesStructure": true, "announcesAgentState": null }
+    },
+    {
+      "name": "the daemon's own focus cursor moves nothing",
+      "why": "Daemon focus is a single value shared with every client, which Muster writes and never reads - a herdr TUI moving it must not move this window's keyboard. Reconciling on it would make another client's cursor into Muster's, which is the exact confusion `architecture.md` keeps the two apart to avoid.",
+      "given": { "change": "focusChanged" },
+      "expect": { "movesStructure": false, "announcesAgentState": null }
+    },
+    {
+      "name": "transitions that ran while nobody was listening move nothing and name no pane",
+      "why": "It reports an interval, not a pane - the counter is session-wide and the transitions may have run on panes this mirror has never heard of. There is nothing to reconcile because the bootstrap that emitted it has already made the mirror correct, and no pane to announce because it cannot say which one. It still has to reach the log, which is a separate question from either of these.",
+      "given": { "change": "agentTransitionsMissed", "expected": 4, "saw": 9 },
+      "expect": { "movesStructure": false, "announcesAgentState": null }
+    }
+  ]
+}

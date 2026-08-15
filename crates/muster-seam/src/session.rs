@@ -797,7 +797,7 @@ fn announce(daemon: &DaemonId, notice: Notice) {
             }
         }
         Notice::Changed(change) => {
-            if moves_structure(&change) {
+            if change.moves_structure() {
                 reconcile(daemon);
                 publish();
             }
@@ -837,20 +837,6 @@ fn announce(daemon: &DaemonId, notice: Notice) {
             },
         ),
     }
-}
-
-/// Whether this change can have moved something composition names.
-///
-/// Agent state and daemon focus cannot: one is a property of a pane that still exists, and
-/// the other is a cursor Muster writes and never reads. Everything else moves a tab or a
-/// pane, and both are things a region is holding on to.
-fn moves_structure(change: &Change) -> bool {
-    !matches!(
-        change,
-        Change::AgentStateChanged { .. }
-            | Change::AgentTransitionsMissed { .. }
-            | Change::FocusChanged
-    )
 }
 
 fn report(daemon: &DaemonId, change: &Change) {

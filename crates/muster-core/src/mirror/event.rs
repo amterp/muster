@@ -97,3 +97,34 @@ pub enum Change {
         saw: u64,
     },
 }
+
+impl Change {
+    /// Whether this can have moved something composition names.
+    ///
+    /// Agent state and daemon focus cannot: one is a property of a pane that still exists,
+    /// and the other is a cursor Muster writes and never reads. Everything else moves a tab
+    /// or a pane, and both are things a region is holding on to.
+    ///
+    /// A false positive costs a reconcile and a republish that change nothing. A false
+    /// negative leaves a region pointing at a tab the daemon has closed, which is why the
+    /// unfamiliar case belongs on the true side.
+    pub fn moves_structure(&self) -> bool {
+        !matches!(
+            self,
+            Change::AgentStateChanged { .. }
+                | Change::AgentTransitionsMissed { .. }
+                | Change::FocusChanged
+        )
+    }
+
+    /// The pane whose agent state the shell has to be told about, if any.
+    ///
+    /// The state is not carried here because the mirror already holds it, and a second copy
+    /// travelling beside the pane id is a second copy to disagree.
+    pub fn announces_agent_state(&self) -> Option<&PaneId> {
+        match self {
+            Change::AgentStateChanged { pane, .. } => Some(pane),
+            _ => None,
+        }
+    }
+}
