@@ -5,25 +5,32 @@
   "area": [
     "shell"
   ],
-  "column": "next",
+  "column": "done",
   "comments": [
     {
       "author": "Alexander Terp",
       "body": "Region weights (a_27Y3iQCxI) now live in composition and are the strongest argument yet for writing it down. Equal widths are a default nobody minds losing on restart; a width somebody deliberately dragged is not - so this stops being tidiness and starts being a thing users notice.",
       "created_at_millis": 1786787101779,
       "id": "c_28No1JZD9"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Done in 4c6ab27. The constraint held - composition was already plain records, no closures and nothing a file cannot hold - so this was writing it out rather than untangling it, which is what the card was hoping for.\n\nWritten where composition settles, which is where the view is built, so nothing has to remember to save. Most publishes change no arrangement at all (one follows every agent transition), so the decision is a comparison against the bytes last written, and the write goes through a temporary beside the file - a window that quit mid-write would otherwise come back to a file that parses as far as the third region.\n\nThe restore rules are in `corpus/conformance/composition-saved.json`: which regions survive the check against what the daemons hold, in what order, and where focus lands when the region that had it did not survive. Reopening, a reboot that took every daemon, and a machine that has never run Muster are one path doing different amounts - a window whose regions all fail the check opens exactly as a first launch does.\n\nRegion weights were the argument this card made for itself and they are covered: the weight is written per region and put back directly, which needed a `set_weight` beside `set_boundary` - dragging a divider is about a pair and has to leave the rest alone, where restoring sets every weight in turn and would fight itself if each one redistributed.\n\nFound on the way, and fixed in the same commit: a region opened for a tab that had just been created never got a pane, because the reconcile that picks one had already run by the time the region existed. Every keybinding meaning 'the focused pane' was refused until somebody clicked - a fresh window answered ⌘T with 'no pane has this window's keyboard'. Same ordering trap as the blank pane one layer up, and the same fix.",
+      "created_at_millis": 1786803775629,
+      "id": "c_28Unmc8pH"
     }
   ],
   "created_at_millis": 1786646058639,
   "creator": "Alexander Terp",
   "description": "A constraint on how composition gets built (a_26DAm1Zt0 / chunk E), not a feature.\n\nMuster's only durable state is which daemons are attached and which (daemon, workspace, tab) shows in which window region - a few hundred bytes. If that is modelled as plain records it can be persisted and restored almost for free later. If it becomes a graph of view objects and closures, persistence is a rewrite.\n\nCheap to get right while composition is being written; expensive to retrofit. This card exists so the constraint is visible at the moment it applies rather than remembered afterwards.",
   "id": "a_27QcqNxRB",
-  "position": "UUUUUUUUUUUUUUU",
+  "position": "!!!!!!U",
   "title": "💾 Composition is a value, so it can be written down",
   "type": "chore",
-  "updated_at_millis": 1786790571039,
+  "updated_at_millis": 1786803775629,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786646058639},
-    {"field":"column","value":"next","at":1786787768025}
+    {"field":"column","value":"next","at":1786787768025},
+    {"field":"column","value":"done","at":1786803775581}
   ]
 }
