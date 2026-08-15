@@ -5,15 +5,24 @@
   "area": [
     "shell"
   ],
-  "column": "next",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Landed in 1afe6c0, with the card's three open questions answered.\n\n**Shape: both.** A panel on ⌘/ and a Help menu item that opens the same one. macOS's Help search already covers menu items, so the panel earns its place by listing what is *not* a menu item.\n\n**Scope: the core's list plus a declared shell table.** `Core.bindings()` gives every action and its live chord, right by construction after a rebind. The shell appends the platform's own chords (copy, paste, quit - none rebindable here) and the things with no chord at all: clicking a pane, dragging a divider, clicking a row to reach a hidden pane. A Swift test asserts every installed menu item appears in the list, so a new action cannot reach the menu bar and miss this.\n\n**Unbound: listed with an empty shortcut**, matching the menu. And an action *newer than this shell* is listed under the core's own name rather than dropped - the menu has to skip it, having no title or selector, but somebody who pressed a chord that worked should be able to look it up.\n\nRead-only, per the card.\n\nThe menu bar grew groups on the way past, since \"Split Right\" and \"muster Shortcuts\" in one menu is a menu nobody can scan: the shell's table now says which menu an action belongs under, and the core's list stays flat. That table is no longer only about panes, so it is named `MenuActions` now.",
+      "created_at_millis": 1786811404246,
+      "id": "c_28Y0EqHfe"
+    }
+  ],
   "created_at_millis": 1786805996642,
   "creator": "Alexander Terp",
   "description": "There is no way to find out what Muster can do short of reading the README or opening every menu. A new window gives you a pane and no hint that ⌘D splits it, ⇧⌘Return zooms it, or that a sidebar is listing the agents you cannot see. Discoverability is currently a documentation problem, and it should be an in-app one.\n\nRebinding makes this sharper rather than softer. Now that a config file can move any action, the shortcut somebody remembers and the shortcut that is bound can differ - and nothing in the app will tell them which one is live. The saving grace is that the answer is already available: the core publishes every action and its chord (`Core.bindings()`), so anything built from that source is right by construction, including after a rebind and including for an action this shell had to skip.\n\nRead-only for now. Editing bindings stays the config file - a help surface that also rebinds is a second way to do something the file already does, and the file is the one an agent and a dotfiles repo can both read. Worth revisiting once the read-only half is being used.\n\nOpen, and worth deciding before building:\n\n- **Shape.** macOS gives every app a Help menu with a search box that searches menu items, and reinventing that badly would be worse than leaving it. So the question is whether this is a Help menu entry that opens a window listing everything, a panel on a chord the way Ghostty and Slack do it, or both.\n- **Scope.** The pane actions come from the core. What about the chords that are not pane actions - copy, paste, quit - and the things with no chord at all, like clicking a pane to focus it or dragging a divider? A list that covers only what the core publishes is a list that quietly implies the rest does not exist.\n- **What it says about an unbound action.** Somebody who unbound ⌘W should see the action listed with no shortcut rather than not listed, for the same reason the menu keeps the item.\n\nAsked for directly, 2026-08-15.",
   "id": "a_28VjYtjTW",
-  "position": "!U",
+  "position": "!!!!!!!U",
   "title": "❓ Somewhere to see what Muster does, and which key does it",
-  "updated_at_millis": 1786806265971,
+  "updated_at_millis": 1786811404246,
   "history": [
-    {"field":"column","value":"next","at":1786805996642}
+    {"field":"column","value":"next","at":1786805996642},
+    {"field":"column","value":"done","at":1786811394185}
   ]
 }
