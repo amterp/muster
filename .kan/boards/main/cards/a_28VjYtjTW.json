@@ -1,0 +1,19 @@
+{
+  "_v": 3,
+  "alias": "somewhere-to-see",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "next",
+  "created_at_millis": 1786805996642,
+  "creator": "Alexander Terp",
+  "description": "There is no way to find out what Muster can do short of reading the README or opening every menu. A new window gives you a pane and no hint that ⌘D splits it, ⇧⌘Return zooms it, or that a sidebar is listing the agents you cannot see. Discoverability is currently a documentation problem, and it should be an in-app one.\n\nRebinding makes this sharper rather than softer. Now that a config file can move any action, the shortcut somebody remembers and the shortcut that is bound can differ - and nothing in the app will tell them which one is live. The saving grace is that the answer is already available: the core publishes every action and its chord (`Core.bindings()`), so anything built from that source is right by construction, including after a rebind and including for an action this shell had to skip.\n\nRead-only for now. Editing bindings stays the config file - a help surface that also rebinds is a second way to do something the file already does, and the file is the one an agent and a dotfiles repo can both read. Worth revisiting once the read-only half is being used.\n\nOpen, and worth deciding before building:\n\n- **Shape.** macOS gives every app a Help menu with a search box that searches menu items, and reinventing that badly would be worse than leaving it. So the question is whether this is a Help menu entry that opens a window listing everything, a panel on a chord the way Ghostty and Slack do it, or both.\n- **Scope.** The pane actions come from the core. What about the chords that are not pane actions - copy, paste, quit - and the things with no chord at all, like clicking a pane to focus it or dragging a divider? A list that covers only what the core publishes is a list that quietly implies the rest does not exist.\n- **What it says about an unbound action.** Somebody who unbound ⌘W should see the action listed with no shortcut rather than not listed, for the same reason the menu keeps the item.\n\nAsked for directly, 2026-08-15.",
+  "id": "a_28VjYtjTW",
+  "position": "!U",
+  "title": "❓ Somewhere to see what Muster does, and which key does it",
+  "updated_at_millis": 1786805996642,
+  "history": [
+    {"field":"column","value":"next","at":1786805996642}
+  ]
+}
