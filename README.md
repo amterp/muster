@@ -71,23 +71,41 @@ how you run your agents.
 ## Configuring
 
 Two files, both optional, both TOML. `~/.config/muster/config.toml` is yours to write:
-`[[daemon]]` blocks name the machines a window attaches to, and `[keymap]` rebinds any of
-Muster's own actions.
+`[[daemon]]` blocks name the machines a window attaches to, `[keymap]` rebinds any of
+Muster's own actions, and the rest decides what a keystroke becomes on its way to a pane.
 
 ```toml
+option_as_alt = "left"         # never (the default) | always | left | right
+
 [keymap]
 split_right = "cmd+d"          # the default; Ghostty's, wherever Ghostty has one
 zoom = "cmd+shift+return"
 close_pane = ""                # unbound - the action stays, the shortcut goes
+
+[text]
+"shift+enter" = "\n"           # this chord sends these bytes, whatever the encoder would say
 ```
 
-Partial, so a file that names one action rebinds one action. Chords are modifiers and a key,
-in any order and any case, spelled the way you would say them: `cmd`, `opt`, `ctrl`, `shift`,
-and `left`, `return`, `f5`, `[`. The actions are `new_tab`, `split_right`, `split_down`,
-`close_pane`, `next_pane`, `previous_pane`, `focus_*` and `resize_*` for each direction, and
-`zoom`. On macOS these become menu items, which is where the platform dispatches a key
-equivalent from - so a rebound action moves in the menu too, and System Settings can move it
-again.
+`[keymap]` is partial, so a file that names one action rebinds one action. Chords are
+modifiers and a key, in any order and any case, spelled the way you would say them: `cmd`,
+`opt`, `ctrl`, `shift`, and `left`, `return`, `f5`, `[`. The actions are `new_tab`,
+`split_right`, `split_down`, `close_pane`, `next_pane`, `previous_pane`, `focus_*` and
+`resize_*` for each direction, and `zoom`. On macOS these become menu items, which is where
+the platform dispatches a key equivalent from - so a rebound action moves in the menu too,
+and System Settings can move it again.
+
+`option_as_alt` is the one that decides whether `opt+t` reaches an agent. macOS treats option
+as a composing key, so by default it produces `†` and a program waiting for `alt+t` never
+hears it. Naming a side keeps accented characters on the other hand. `[text]` is the escape
+hatch beneath all of that: a chord bound there sends exactly those bytes and no encoder is
+consulted. It is keyed by chord where `[keymap]` is keyed by action, because an action has
+one chord and text has no name to key on. Both are read once at launch, so changing either
+means relaunching.
+
+Two things Muster does not decide. Fonts, colors and cursor style come from whatever config
+libghostty finds on disk, which today means a Ghostty config if you have one - a loan rather
+than the design, and `docs/architecture.md` says what it costs. And scrollback depth is the
+daemon's, because herdr owns the buffer that a scroll intent moves.
 
 `~/.local/state/muster/window.toml` is Muster's, rewritten whenever the window settles: which
 tabs it was showing, in what order, at what widths. Delete it and the next launch opens fresh.

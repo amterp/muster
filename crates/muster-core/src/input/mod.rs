@@ -8,6 +8,7 @@ mod keymap;
 mod mode_profile;
 mod pane_channel;
 mod pane_input;
+mod settings;
 
 pub use bindings::{Action, Bindings, Chord};
 pub use composition::{Outcome as CompositionOutcome, outcome as composition_outcome};
@@ -17,3 +18,4 @@ pub use keymap::{Binding, Keymap, Resolution};
 pub use mode_profile::{OptionAsAlt, TerminalModeProfile, kitty_flags};
 pub use pane_channel::{EncodeError, KeyEncoding, PaneChannel, PaneIntent, ScrollDirection};
 pub use pane_input::PaneInput;
+pub use settings::PaneInputSettings;

@@ -21,7 +21,7 @@ use muster_core::composition::{
 use muster_core::config::Config;
 use muster_core::diagnostics::log;
 use muster_core::fields;
-use muster_core::input::{Bindings, Keymap, PaneInput, TerminalModeProfile};
+use muster_core::input::{Bindings, PaneInput, PaneInputSettings};
 use muster_core::intent::{BackendChannel, BackendIntent, Refusal};
 use muster_core::mirror::backend::{PaneId, Snapshot, TabId, WorkspaceId};
 use muster_core::mirror::{Change, Mirror};
@@ -87,6 +87,30 @@ pub(crate) fn set_bindings(bindings: Bindings) {
 /// The bindings in force, which with no config file is what Muster ships.
 pub(crate) fn bindings() -> Bindings {
     BINDINGS.lock().expect("a panicking sender poisoned the bindings").clone().unwrap_or_default()
+}
+
+/// What the config file said about typing, held for the panes attached after it was read.
+///
+/// Beside [`BINDINGS`] and for the same reason: a pane is attached from several places and
+/// none of them has a config file in hand.
+///
+/// Read at attach rather than per keystroke, so a pane keeps the settings it was attached
+/// with. That is what makes a change need a relaunch, and it is the honest arrangement while
+/// the encoder is built once per pane - re-reading here would leave a window whose panes
+/// disagree depending on when each was opened.
+static PANE_INPUT: Mutex<Option<PaneInputSettings>> = Mutex::new(None);
+
+pub(crate) fn set_pane_input(settings: PaneInputSettings) {
+    *PANE_INPUT.lock().expect("a panicking sender poisoned the input settings") = Some(settings);
+}
+
+/// The typing settings in force, which with no config file is what Muster ships.
+pub(crate) fn pane_input() -> PaneInputSettings {
+    PANE_INPUT
+        .lock()
+        .expect("a panicking sender poisoned the input settings")
+        .clone()
+        .unwrap_or_default()
 }
 
 pub(crate) fn set_state_path(path: &str) {
@@ -399,9 +423,11 @@ impl Session {
         // reads as a guessed encoding rather than as an error.
         let server = HerdrPaneChannel::new(HerdrClient::new(socket_path), pane.as_str());
 
-        // The pane's modes are not readable, so this is the documented guess. One day it is
+        // The pane's modes are not readable, so this is the documented guess, with the one
+        // field in it that is a preference taken from the config file. One day the rest is
         // fed from the daemon; nothing above here changes when it is.
-        let encoder = KeyEncoder::new(TerminalModeProfile::UNKNOWN_PANE).map_err(|error| {
+        let settings = pane_input();
+        let encoder = KeyEncoder::new(settings.profile()).map_err(|error| {
             format!(
                 "could not build a key encoder ({error}), so nothing typed into this pane \
                  would reach it. libghostty-vt is behind this; check that ./dev built it."
@@ -415,7 +441,7 @@ impl Session {
                     Arc::clone(&control) as Arc<_>,
                     Some(Arc::new(server) as Arc<_>),
                     Arc::new(encoder),
-                    Keymap::default(),
+                    settings.keymap(),
                 ),
                 control_socket_path: path,
                 _control: control,

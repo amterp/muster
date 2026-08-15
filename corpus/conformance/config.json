@@ -12,7 +12,9 @@
       },
       "expect": {
         "daemons": [],
-        "keymap": []
+        "keymap": [],
+        "option_as_alt": "never",
+        "text": []
       }
     },
     {
@@ -28,7 +30,9 @@
         "daemons": [
           "local local"
         ],
-        "keymap": []
+        "keymap": [],
+        "option_as_alt": "never",
+        "text": []
       }
     },
     {
@@ -45,7 +49,9 @@
         "daemons": [
           "scratch local=/tmp/herdr-scratch.sock"
         ],
-        "keymap": []
+        "keymap": [],
+        "option_as_alt": "never",
+        "text": []
       }
     },
     {
@@ -62,7 +68,9 @@
         "daemons": [
           "devenv ssh=devenv"
         ],
-        "keymap": []
+        "keymap": [],
+        "option_as_alt": "never",
+        "text": []
       }
     },
     {
@@ -81,7 +89,9 @@
         "daemons": [
           "devenv ssh=dev@localhost socket=/home/dev/.config/herdr/herdr.sock options=-p 2222 -i devenv/.ssh/id_ed25519"
         ],
-        "keymap": []
+        "keymap": [],
+        "option_as_alt": "never",
+        "text": []
       }
     },
     {
@@ -102,7 +112,9 @@
           "local local",
           "devenv ssh=devenv"
         ],
-        "keymap": []
+        "keymap": [],
+        "option_as_alt": "never",
+        "text": []
       }
     },
     {
@@ -132,7 +144,9 @@
         "daemons": [],
         "keymap": [
           "split_right=control+Backslash"
-        ]
+        ],
+        "option_as_alt": "never",
+        "text": []
       }
     },
     {
@@ -148,7 +162,9 @@
         "daemons": [],
         "keymap": [
           "zoom=shift+super+KeyZ"
-        ]
+        ],
+        "option_as_alt": "never",
+        "text": []
       }
     },
     {
@@ -164,7 +180,9 @@
         "daemons": [],
         "keymap": [
           "close_pane=(unbound)"
-        ]
+        ],
+        "option_as_alt": "never",
+        "text": []
       }
     },
     {
@@ -283,6 +301,139 @@
       },
       "expect": {
         "refused": "the third `[[daemon]]` block has a key called \"sock\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: id, socket, host, ssh_options."
+      }
+    },
+    {
+      "name": "option composes characters unless the file says otherwise",
+      "why": "macOS's own behavior is the default, because it is what somebody typing accented text expects and Muster has no way to know which kind of typist it has. Stated as a case rather than assumed, since the cost of the default is that every alt chord an agent binds is dead until this key is set.",
+      "given": {
+        "file": []
+      },
+      "expect": {
+        "daemons": [],
+        "keymap": [],
+        "option_as_alt": "never",
+        "text": []
+      }
+    },
+    {
+      "name": "option_as_alt names a side in the words a person writes",
+      "why": "`left` rather than `leftOnly`: the wire's spelling is right for a corpus and wrong for a hand-edited file, the same split the chord grammar already makes between `cmd` and `super`. The per-side values are the ones people actually pick, because option composes on macOS and a common arrangement is one side for meta chords with the other still composing.",
+      "given": {
+        "file": [
+          "option_as_alt = \"left\""
+        ]
+      },
+      "expect": {
+        "daemons": [],
+        "keymap": [],
+        "option_as_alt": "leftOnly",
+        "text": []
+      }
+    },
+    {
+      "name": "the wire's own spelling is read too",
+      "why": "A name copied out of a log line or a conformance case has to work in the file, or the two vocabularies drift and nobody can tell which one they are looking at.",
+      "given": {
+        "file": [
+          "option_as_alt = \"rightOnly\""
+        ]
+      },
+      "expect": {
+        "daemons": [],
+        "keymap": [],
+        "option_as_alt": "rightOnly",
+        "text": []
+      }
+    },
+    {
+      "name": "an option_as_alt Muster does not know says what it takes",
+      "why": "Silently defaulting to `never` here would produce exactly the symptom this key exists to fix, with a file on disk that looks like it fixed it. The refusal quotes the four names rather than saying `invalid value`, because the mistake is nearly always a near-miss.",
+      "given": {
+        "file": [
+          "option_as_alt = \"leftonly\""
+        ]
+      },
+      "expect": {
+        "refused": "`option_as_alt` in the config file is \"leftonly\", which Muster does not know, so none of the file was applied. It is one of `never`, `always`, `left`, `right`: `never` leaves option composing characters the way macOS does, and the others make that side of the keyboard send alt instead."
+      }
+    },
+    {
+      "name": "a chord can stand for literal bytes",
+      "why": "The distinction an agent needs most and a terminal cannot always carry: shift+enter as a newline rather than as a carriage return. `[text]` is keyed by chord where `[keymap]` is keyed by action, and deliberately - an action has one chord so its name reads best, and text has no name at all, so the chord is the only thing left to key on.",
+      "given": {
+        "file": [
+          "[text]",
+          "\"shift+enter\" = \"\\n\""
+        ]
+      },
+      "expect": {
+        "daemons": [],
+        "keymap": [],
+        "option_as_alt": "never",
+        "text": [
+          "shift+Enter=0a"
+        ]
+      }
+    },
+    {
+      "name": "text bindings are read in a stable order",
+      "why": "Two runs over the same file must build the same keymap. A hash map over chords gives no such promise, and the day two bindings collide the winner would depend on the run rather than on the file.",
+      "given": {
+        "file": [
+          "[text]",
+          "\"ctrl+g\" = \"hello\"",
+          "\"shift+enter\" = \"\\n\""
+        ]
+      },
+      "expect": {
+        "daemons": [],
+        "keymap": [],
+        "option_as_alt": "never",
+        "text": [
+          "control+KeyG=68656c6c6f",
+          "shift+Enter=0a"
+        ]
+      }
+    },
+    {
+      "name": "a text chord Muster cannot read is named rather than skipped",
+      "why": "The same policy the keymap already follows. A chord that silently did nothing is indistinguishable from a chord that is bound correctly and whose bytes went nowhere, and only one of those is the user's mistake to fix.",
+      "given": {
+        "file": [
+          "[text]",
+          "\"shift+enterr\" = \"\\n\""
+        ]
+      },
+      "expect": {
+        "refused": "the config file's [text] has a chord `shift+enterr` which Muster cannot read: `enterr` is not a key Muster knows. Letters and digits are themselves, and the rest are spelled out: left, right, up, down, enter, tab, space, escape, backspace, delete, home, end, pageup, pagedown, f1 to f12. None of the file was applied."
+      }
+    },
+    {
+      "name": "a text chord bound to nothing is refused rather than read as an unbinding",
+      "why": "`[keymap]` reads an empty chord as `unbind this action`, and the symmetry is tempting and wrong. There is nothing here to unbind: every default text binding is a chord no program asks for, so a file that wants one back binds it to the bytes it prefers. Refusing keeps the day that changes an explicit decision rather than a silent one already made.",
+      "given": {
+        "file": [
+          "[text]",
+          "\"shift+enter\" = \"\""
+        ]
+      },
+      "expect": {
+        "refused": "the config file's [text] gives `shift+enter` an empty string, so pressing it would send nothing at all. None of the file was applied. Delete the line to leave the chord alone."
+      }
+    },
+    {
+      "name": "two spellings of one chord cannot both be bound",
+      "why": "`shift+enter` and `enter+shift` are the same chord and TOML sees two keys, so one silently wins. Which one depends on the table's order, which is not something a person reading their own file can work out.",
+      "given": {
+        "file": [
+          "[text]",
+          "\"shift+enter\" = \"\\n\"",
+          "\"enter+shift\" = \"x\""
+        ]
+      },
+      "expect": {
+        "refused": "the config file's [text] binds `shift+enter` twice under different spellings, and one of them silently wins. None of the file was applied."
       }
     }
   ]

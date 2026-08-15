@@ -24,6 +24,22 @@ fn config_conformance() {
                 // What the file changed, rather than all fifteen bindings in every case. A
                 // keymap is partial by design, so what a case is about is the difference.
                 "keymap": rebound(&parsed.bindings),
+                "option_as_alt": parsed.input.option_as_alt.as_str(),
+                // The bytes, not the string, because deciding exactly what reaches a pane is
+                // the whole of what this setting is for. A case expecting "\n" would pass on
+                // a parser that sent the two characters backslash and n.
+                "text": parsed
+                    .input
+                    .text
+                    .iter()
+                    .map(|(binding, bytes)| {
+                        format!(
+                            "{}={}",
+                            spell(Chord::new(binding.key, binding.modifiers)),
+                            conformance::hex(bytes),
+                        )
+                    })
+                    .collect::<Vec<_>>(),
             }),
             // The refusal itself, not a code. Whether the sentence names the key somebody
             // mistyped is the whole of what this file is protecting, and a taxonomy of error

@@ -52,6 +52,25 @@ impl OptionAsAlt {
         }
     }
 
+    /// The same value, under the name somebody writes in a config file.
+    ///
+    /// `left` and `right` rather than `leftOnly` and `rightOnly`, on the same grounds the
+    /// chord grammar reads `cmd` and `left` instead of `super` and `ArrowLeft`: the wire's
+    /// spelling is right for a corpus and wrong for a file that gets hand-edited. Falls
+    /// through to [`OptionAsAlt::parse`], so a name copied out of a log line also reads.
+    pub fn read(name: &str) -> Option<OptionAsAlt> {
+        match name {
+            "left" => Some(OptionAsAlt::LeftOnly),
+            "right" => Some(OptionAsAlt::RightOnly),
+            other => OptionAsAlt::parse(other),
+        }
+    }
+
+    /// Every value, under the name a config file writes it with.
+    ///
+    /// The list a refusal quotes back at somebody who misspelled one.
+    pub const READABLE: [&'static str; 4] = ["never", "always", "left", "right"];
+
     pub fn as_str(self) -> &'static str {
         match self {
             OptionAsAlt::Never => "never",

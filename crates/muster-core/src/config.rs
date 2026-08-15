@@ -19,9 +19,11 @@
 //! something else (`docs/observations/herdr-0.8.0.md` section 6). A typo in a file someone
 //! typed deserves a sentence naming it, not a daemon that never appears.
 
+use std::collections::BTreeMap;
+
 use toml::Value;
 
-use crate::input::{Action, Bindings};
+use crate::input::{Action, Binding, Bindings, Chord, OptionAsAlt, PaneInputSettings};
 
 use crate::composition::{Daemon, DaemonId, Endpoint};
 
@@ -33,13 +35,16 @@ pub struct Config {
     /// Which chord asks for which of Muster's own actions, with the file's answers over the
     /// defaults. A file that names none leaves every default in place.
     pub bindings: Bindings,
+    /// What the file says about keystrokes on their way to a pane, which is a different
+    /// question from which chord Muster keeps for itself.
+    pub input: PaneInputSettings,
 }
 
 /// The keys a `[[daemon]]` block may carry.
 const DAEMON_KEYS: [&str; 4] = ["id", "socket", "host", "ssh_options"];
 
 /// The keys the file itself may carry.
-const ROOT_KEYS: [&str; 2] = ["daemon", "keymap"];
+const ROOT_KEYS: [&str; 4] = ["daemon", "keymap", "text", "option_as_alt"];
 
 /// Reads a config file's text.
 ///
@@ -79,7 +84,102 @@ pub fn parse(text: &str) -> Result<Config, String> {
         }
         daemons.push(daemon);
     }
-    Ok(Config { daemons, bindings: read_keymap(root)? })
+    Ok(Config {
+        daemons,
+        bindings: read_keymap(root)?,
+        input: PaneInputSettings {
+            option_as_alt: read_option_as_alt(root)?,
+            text: read_text(root)?,
+        },
+    })
+}
+
+/// Whether the option key means alt, as the file says.
+///
+/// Muster's default is `never`, which is macOS's own behavior: option composes `†` out of
+/// `opt+t` and the pane receives that character. Right for somebody typing accents and wrong
+/// for somebody whose agent binds alt chords, and only they know which they are.
+fn read_option_as_alt(root: &toml::Table) -> Result<OptionAsAlt, String> {
+    let Some(value) = root.get("option_as_alt") else {
+        return Ok(OptionAsAlt::default());
+    };
+    let name = value.as_str().ok_or_else(|| {
+        format!(
+            "`option_as_alt` in the config file is {}, and it has to be one of {}. None of \
+             the file was applied.",
+            described(value),
+            quoted(&OptionAsAlt::READABLE),
+        )
+    })?;
+    OptionAsAlt::read(name).ok_or_else(|| {
+        format!(
+            "`option_as_alt` in the config file is {name:?}, which Muster does not know, so \
+             none of the file was applied. It is one of {}: `never` leaves option composing \
+             characters the way macOS does, and the others make that side of the keyboard \
+             send alt instead.",
+            quoted(&OptionAsAlt::READABLE),
+        )
+    })
+}
+
+/// The `[text]` block: chords that stand for literal bytes.
+///
+/// Keyed by chord rather than by action, which is the other way round from `[keymap]`, and
+/// deliberately. An action has one chord, so naming the action reads best there; text has no
+/// name at all, so the chord is the only thing left to key on.
+fn read_text(root: &toml::Table) -> Result<BTreeMap<Binding, Vec<u8>>, String> {
+    let mut text = BTreeMap::new();
+    let Some(value) = root.get("text") else {
+        return Ok(text);
+    };
+    let block = value.as_table().ok_or_else(|| {
+        format!(
+            "`text` in the config file is {}, and it has to be a table of chords - `[text]` \
+             with a line like `\"shift+enter\" = \"\\n\"` under it. None of the file was \
+             applied.",
+            described(value)
+        )
+    })?;
+
+    for (chord, bytes) in block {
+        let binding = Chord::parse(chord)
+            .map(|Chord { key, modifiers }| Binding::new(key, modifiers))
+            .map_err(|refusal| {
+                format!(
+                    "the config file's [text] has a chord `{chord}` which Muster cannot \
+                     read: {refusal} None of the file was applied."
+                )
+            })?;
+        let bytes = bytes.as_str().ok_or_else(|| {
+            format!(
+                "the config file's [text] gives `{chord}` {}, and it has to be the string to \
+                 send - `\"\\n\"` for a newline. None of the file was applied.",
+                described(bytes)
+            )
+        })?;
+        // An empty string is refused rather than taken as an unbinding. A chord bound to no
+        // bytes and a chord left to the encoder look identical from the pane and mean
+        // opposite things here, and nothing in the file yet needs the distinction.
+        if bytes.is_empty() {
+            return Err(format!(
+                "the config file's [text] gives `{chord}` an empty string, so pressing it \
+                 would send nothing at all. None of the file was applied. Delete the line to \
+                 leave the chord alone."
+            ));
+        }
+        if text.insert(binding, bytes.as_bytes().to_vec()).is_some() {
+            return Err(format!(
+                "the config file's [text] binds `{chord}` twice under different spellings, \
+                 and one of them silently wins. None of the file was applied."
+            ));
+        }
+    }
+    Ok(text)
+}
+
+/// A list of names, quoted, for a refusal that has to say what was allowed.
+fn quoted(names: &[&str]) -> String {
+    names.iter().map(|name| format!("`{name}`")).collect::<Vec<_>>().join(", ")
 }
 
 /// The `[keymap]` block, over the defaults.

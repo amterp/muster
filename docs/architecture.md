@@ -337,6 +337,15 @@ header has no byte-feed API. The pane channel is therefore delivered by a bridge
 is a fact about current libghostty, not a choice - re-verify on upgrades, and revisit if upstream grows a direct
 feed.
 
+**One thing crosses this seam that should not, deliberately and for now.** Muster calls
+`ghostty_config_load_default_files` at startup, so fonts, colors and cursor style come from whatever config
+libghostty finds on disk - in practice a Ghostty config, belonging to a different application. It is kept because it
+costs nothing and panes look right on the first launch, and it is written down here because it is the one place the
+renderer is not behind the contract: Muster's appearance is decided by a file Muster does not define, and a
+replacement renderer would have nothing to read. The exit is Muster's own appearance vocabulary in its own config
+file, which the shell translates for whichever renderer is behind the seam. Nothing else leans on the loan - the
+keystroke path, `option_as_alt` included, reads Muster's config and not libghostty's.
+
 ## Degradation
 
 Health is per-connection *and* per-channel, and it is state, not an error path:

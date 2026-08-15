@@ -13,7 +13,11 @@ use std::collections::HashMap;
 use super::{Key, KeyAction, KeyEvent, Modifiers};
 
 /// A chord: which key, under which modifiers.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+///
+/// Ordered as well as hashed, so a config file's text bindings can be held somewhere with a
+/// stable order: two runs over the same file must produce the same keymap, and a hash map
+/// gives no such promise.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Binding {
     pub key: Key,
     pub modifiers: Modifiers,
@@ -57,6 +61,25 @@ pub struct Keymap {
 impl Keymap {
     pub fn new(bindings: HashMap<Binding, Resolution>) -> Keymap {
         Keymap { bindings }
+    }
+
+    /// The defaults, with a config file's own text bindings over them.
+    ///
+    /// A third layer on the two [`Keymap::default`] already describes, and the outermost, so
+    /// a file wins over both. Somebody who binds shift+enter has said what they want that
+    /// chord to do, and losing to a built-in would leave them with a file that reads as
+    /// though it worked.
+    ///
+    /// Unbinding is not spelled here because there is nothing yet to unbind: every default
+    /// is a chord no program asks for, so a file that wants one back can bind it to the
+    /// bytes it prefers. The day that stops being true this grows an empty-value rule, the
+    /// way `[keymap]` already has one.
+    pub fn with_text(text: impl IntoIterator<Item = (Binding, Vec<u8>)>) -> Keymap {
+        let mut keymap = Keymap::default();
+        for (binding, bytes) in text {
+            keymap.bindings.insert(binding, Resolution::Text(bytes));
+        }
+        keymap
     }
 
     pub fn resolve(&self, key: &KeyEvent) -> Resolution {

@@ -527,9 +527,15 @@ fn apply_config(path: &str) {
         Ok(config) => {
             log::info(
                 "config.read",
-                fields! { "path" => path.to_string(), "daemons" => config.daemons.len().to_string() },
+                fields! {
+                    "path" => path.to_string(),
+                    "daemons" => config.daemons.len().to_string(),
+                    "option_as_alt" => config.input.option_as_alt.as_str(),
+                    "text_bindings" => config.input.text.len().to_string(),
+                },
             );
             session::set_bindings(config.bindings.clone());
+            session::set_pane_input(config.input.clone());
             session::follow_configured(&config);
         }
         Err(refusal) => log::warn(
