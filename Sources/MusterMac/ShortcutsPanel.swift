@@ -124,9 +124,10 @@ private final class ShortcutsHeaderView: NSView {
 
   override func layout() {
     super.layout()
+    let height = min(bounds.height, label.fittingSize.height)
     label.frame = CGRect(
-      x: ShortcutsRowView.inset, y: 0,
-      width: max(0, bounds.width - ShortcutsRowView.inset * 2), height: bounds.height)
+      x: ShortcutsRowView.inset, y: (bounds.height - height) / 2,
+      width: max(0, bounds.width - ShortcutsRowView.inset * 2), height: height)
   }
 }
 
@@ -182,10 +183,17 @@ private final class ShortcutsRowView: NSView {
   override func layout() {
     super.layout()
     let detailLeft = max(0, bounds.width - ShortcutsRowView.inset - ShortcutsRowView.detailWidth)
-    what.frame = CGRect(
-      x: ShortcutsRowView.inset, y: 0,
-      width: max(0, detailLeft - ShortcutsRowView.inset * 2), height: bounds.height)
-    detail.frame = CGRect(
-      x: detailLeft, y: 0, width: ShortcutsRowView.detailWidth, height: bounds.height)
+    // Each field sized to its own text and centred. A label draws at the top of its frame, so
+    // a full-height one puts the words above the middle of the row - and the two here are
+    // different sizes, so they would sit at different heights as well as the wrong one.
+    what.frame = centred(
+      what, x: ShortcutsRowView.inset,
+      width: max(0, detailLeft - ShortcutsRowView.inset * 2))
+    detail.frame = centred(detail, x: detailLeft, width: ShortcutsRowView.detailWidth)
+  }
+
+  private func centred(_ field: NSTextField, x: CGFloat, width: CGFloat) -> CGRect {
+    let height = min(bounds.height, field.fittingSize.height)
+    return CGRect(x: x, y: (bounds.height - height) / 2, width: width, height: height)
   }
 }

@@ -249,8 +249,12 @@ final class SidebarRowView: NSView {
     dot.frame = CGRect(
       x: SidebarRowView.inset, y: (bounds.height - SidebarRowView.dotSize) / 2,
       width: SidebarRowView.dotSize, height: SidebarRowView.dotSize)
+    // Sized to the text and then centred, rather than given the whole row. A label draws its
+    // text at the top of whatever frame it is handed, so a full-height frame puts the words
+    // above the dot beside them - which reads as the dot being wrong rather than the text.
+    let textHeight = min(bounds.height, name.fittingSize.height)
     name.frame = CGRect(
-      x: textLeft, y: 0, width: max(0, bounds.width - textLeft - SidebarRowView.inset),
-      height: bounds.height)
+      x: textLeft, y: (bounds.height - textHeight) / 2,
+      width: max(0, bounds.width - textLeft - SidebarRowView.inset), height: textHeight)
   }
 }
