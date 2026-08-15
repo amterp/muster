@@ -6,16 +6,17 @@
     "shell",
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "next",
   "created_at_millis": 1786653247498,
   "creator": "Alexander Terp",
   "description": "herdr computes `done` as idle-on-an-unseen-pane, and seen-ness reads the foreground\nclient's window focus, which its JSON API has no method for (a_26LAtaO6T, parked). The\nconsequence is not cosmetic: an agent that finishes while a Muster window sits unfocused\nreads `idle` rather than `done`, and attention routing is why this project exists.\n\nMuster already holds both halves. The agent channel delivers every working -\u003e idle\ntransition to the core, and the shell is the only thing that knows whether its own window\nhad OS focus at that moment. `done` is a claim about whether anyone saw the pane, and no\ndaemon can answer that for a window it cannot see.\n\nSo this is ordinary work we own rather than a favor to wait on, and it costs a desideratum\nnothing if herdr never moves. architecture.md already allows for it: state is daemon truth,\nbut one of the five is computed from a client-side input, so the vocabulary carries that\ninput.\n\nWhat does not exist yet is the input. The shell has to report window focus across the seam,\nand the core has to hold seen-ness per pane - which pane was visible, in a focused window,\nat the moment its agent went idle.\n\nOpen: what a second Muster window, or a herdr TUI attached beside us, does to the answer.\nOurs is the only focus we can observe, so `done` becomes \"nobody *we know of* saw it\".",
   "id": "a_27TdrJVUb",
-  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "position": "!U",
   "title": "🎯 Compute `done` ourselves, instead of asking herdr for focus",
   "type": "chore",
-  "updated_at_millis": 1786653247498,
+  "updated_at_millis": 1786779076476,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1786653247498}
+    {"field":"column","value":"backlog-hi","at":1786653247498},
+    {"field":"column","value":"next","at":1786779076476}
   ]
 }

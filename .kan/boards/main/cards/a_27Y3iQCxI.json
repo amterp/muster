@@ -5,16 +5,25 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-hi",
+  "column": "next",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Now the card that matters rather than a hypothetical: two regions side by side are reachable as of 386c9e0, so a laptop and a devenv genuinely split the window evenly with no way to change it. Everything the card asked for still stands - a ratio per boundary, a divider that drags, the value written into composition - and the panes inside each region already have all three, so this is the same treatment one level out.",
+      "created_at_millis": 1786779088242,
+      "id": "c_28KRYGSvJ"
+    }
+  ],
   "created_at_millis": 1786663774545,
   "creator": "Alexander Terp",
   "description": "Two regions side by side - a laptop and a devenv - split the window evenly and there is no way to change that. Equal shares are a defensible floor, and the arrangement over regions is the one part of the layout Muster owns rather than mirrors, so nothing upstream will ever answer it.\n\nWants the same treatment panes got: a ratio per boundary, a divider that drags, and the value written into composition, where it is already durable. Note that this is Muster's own split tree over regions in everything but name, and the non-goal says Muster is not a multiplexer - so keep it a list with weights rather than letting it become a tree.",
   "id": "a_27Y3iQCxI",
-  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "position": "!6",
   "title": "🪟 Regions get equal widths, and nothing can resize them",
   "type": "feature",
-  "updated_at_millis": 1786663774545,
+  "updated_at_millis": 1786779088242,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1786663774545}
+    {"field":"column","value":"backlog-hi","at":1786663774545},
+    {"field":"column","value":"next","at":1786779076569}
   ]
 }

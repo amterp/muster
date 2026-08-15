@@ -5,16 +5,25 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Landed across 9956f00 (the transport), 386c9e0 (config, regions, the bridge) and b4acea8 (the Linux corpus tier).\n\nThe transport question this card left open is answered: the control plane rides a forwarded unix socket, so the adapter is unchanged and a remote daemon is a socket path like any other. The data plane cannot - herdr publishes frames through a CLI over stdio - so a pane's bridge runs that command over the same ssh master, which also keeps a remote pane as cheap as a local one. CLI-over-ssh for everything was rejected on the per-intent connect cost; reimplementing the frame stream was rejected because it is bincode over herdr's internal types with no published schema.\n\nProven by ./dev --ssh against the real container: a snapshot over the forwarded socket, a command over the master, and 0 differences across all 11 recorded scenarios between the Linux daemon and the macOS one.",
+      "created_at_millis": 1786779051758,
+      "id": "c_28KQbPmy9"
+    }
+  ],
   "created_at_millis": 1786461793415,
   "creator": "Alexander Terp",
   "description": "Attach the devenv container's daemon alongside the local one - the mixed local/remote view herdr itself cannot do (their discussion #2232). Decide transport here: tunneled socket vs CLI-over-ssh.",
   "id": "a_26BJGPTjG",
-  "position": "UUUUUUU",
+  "position": "!!0",
   "title": "Stage 2: second daemon over SSH in the same window",
   "type": "feature",
-  "updated_at_millis": 1786461793415,
+  "updated_at_millis": 1786779051758,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1786461793415}
+    {"field":"column","value":"backlog-hi","at":1786461793415},
+    {"field":"column","value":"done","at":1786779041936}
   ]
 }

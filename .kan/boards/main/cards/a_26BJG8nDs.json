@@ -6,24 +6,31 @@
     "testing",
     "devenv"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "comments": [
     {
       "author": "Alexander Terp",
       "body": "Rewritten: there is no fake to audit any more, so the original framing (replay the fake's corpus against real herdr) has no subject.\n\nTwo of its three jobs are already done. The corpus is recorded from a real daemon rather than written, and drift is caught mechanically - the gate diffs 'herdr api schema --json' against corpus/herdr-0.8.0/api-schema.json before running anything, so a changed wire is named with the command that shows what moved.\n\nWhat is left is the cross-platform half: run the same recordings against the Linux daemon in the devenv container and diff, which tools/herdr-probe/diff-corpus already does and section 8 of the observations doc last did at 0 differences. Worth re-running on every herdr re-pin, and worth wiring into CI once CI exists.",
       "created_at_millis": 1786640007894,
       "id": "c_27O5R7LV3"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Closed in b4acea8. ./dev --ssh records every scenario against the container's daemon into a scratch directory and diffs it against the macOS corpus, so a herdr re-pin that changes behavior on one platform and not the other is caught rather than assumed.\n\nRe-running it found the claim in observations section 8 was narrower than it read - six scenarios when there are now eleven - and a probe bug that would have been read as a platform difference: the remote fixture emptied the session file on every start, so the durability scenario's mid-run restart recorded that nothing survives a restart on Linux. It does; the fixture was measuring the wrong event.",
+      "created_at_millis": 1786779051796,
+      "id": "c_28KQbT9Ts"
     }
   ],
   "created_at_millis": 1786461793244,
   "creator": "Alexander Terp",
   "description": "The same recorded exchanges run against a real daemon (local + devenv container) so the fake cannot drift from reality. Fakes preserve the real edge's contract - this is what enforces it.",
   "id": "a_26BJG8nDs",
-  "position": "UUU",
+  "position": "!!!U",
   "title": "Run the corpus against a Linux herdr in the devenv container",
   "type": "feature",
-  "updated_at_millis": 1786640007894,
+  "updated_at_millis": 1786779051796,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1786461793244}
+    {"field":"column","value":"backlog-hi","at":1786461793244},
+    {"field":"column","value":"done","at":1786779041968}
   ]
 }
