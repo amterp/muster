@@ -18,10 +18,10 @@
   "creator": "Alexander Terp",
   "description": "A constraint on how composition gets built (a_26DAm1Zt0 / chunk E), not a feature.\n\nMuster's only durable state is which daemons are attached and which (daemon, workspace, tab) shows in which window region - a few hundred bytes. If that is modelled as plain records it can be persisted and restored almost for free later. If it becomes a graph of view objects and closures, persistence is a rewrite.\n\nCheap to get right while composition is being written; expensive to retrofit. This card exists so the constraint is visible at the moment it applies rather than remembered afterwards.",
   "id": "a_27QcqNxRB",
-  "position": "UUUUUU",
+  "position": "UUUUUUUUUUUUUUU",
   "title": "💾 Composition is a value, so it can be written down",
   "type": "chore",
-  "updated_at_millis": 1786787768025,
+  "updated_at_millis": 1786790571039,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786646058639},
     {"field":"column","value":"next","at":1786787768025}

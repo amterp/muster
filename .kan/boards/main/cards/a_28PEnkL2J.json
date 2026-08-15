@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "copy-what-is",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "next",
+  "created_at_millis": 1786790514531,
+  "creator": "Alexander Terp",
+  "description": "Paste works and copy does not, which for anything involving a terminal is an hourly need. Reading an error out of a pane and putting it somewhere means retyping it.\n\nTwo halves, and only one of them is the thing that is blocked upstream.\n\nMaking a selection. `SurfaceView.mouseDown` sends a focus request and returns; nothing reaches the libghostty surface, so there is currently no way to drag out a selection at all. This is *not* a_27CTgqqdv. That card is about mouse buttons and motion being reported to the program running in the pane, which needs herdr to expose the pane's modes and is genuinely stuck. A selection is the surface's own - it is made against the grid libghostty already painted, and no daemon has to agree to anything.\n\nReading it back. AppMenu.swift currently says a pane's selection lives in the daemon where Muster cannot yet reach it. That is wrong for the pinned libghostty: `ghostty_surface_has_selection` and `ghostty_surface_read_selection` are both in deps/ghostty/include/ghostty.h, and the header also carries clipboard read/write callbacks on the runtime config. Worth correcting the comment whichever way this lands.\n\nSo: an Edit menu item beside Paste, reading the focused surface's selection, and enough mouse handling for a drag to make one. Selection also wants a visible highlight, which libghostty draws itself once it knows a selection exists.\n\nOpen: whether keyboard selection is wanted too, and whether double-click-to-word and triple-click-to-line come for free from the surface or need wiring.",
+  "id": "a_28PEnkL2J",
+  "position": "UUUUUUUUUUUUU",
+  "title": "📋 Copy what is selected in a pane",
+  "type": "feature",
+  "updated_at_millis": 1786790570951,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1786790514531},
+    {"field":"column","value":"next","at":1786790570951}
+  ]
+}

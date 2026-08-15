@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "make-a-tab-and-a",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "next",
+  "created_at_millis": 1786790514598,
+  "creator": "Alexander Terp",
+  "description": "Splitting is the only way to make a pane, and a split inherits the directory it came from. There is no new tab, no new workspace, and no way to say where a pane should start - so anything outside the tab you happen to be in means dropping to the herdr CLI, which in practice is several times an hour.\n\nSwitching between tabs already works, by an accident worth keeping: clicking a pane in the sidebar surfaces its tab, and the sidebar lists every pane every daemon holds. So this is about *making* things, not reaching them.\n\nherdr already answers all of it - `tab.create`, `workspace.create`, and `pane.split` takes a `cwd` - so this is new messages beside SplitPane rather than anything new underneath.\n\nA new pane's directory is the part worth thinking about rather than defaulting. The focused pane's working directory is the useful answer most of the time and is what a split already does; a picker is not what anybody wants mid-flow. Something that can be given a directory from the CLI or an agent probably matters more than anything in the GUI, and connects to a_26BJb2n6o.\n\nOpen: whether a workspace is a thing Muster should make at all, or whether it stays herdr's unit and Muster only ever makes tabs and panes inside one. Regions already show a (daemon, workspace, tab), so nothing in composition objects to more workspaces - the question is whether it earns a menu item.",
+  "id": "a_28PEnr4NX",
+  "position": "UUUUUUUUUUUUUU",
+  "title": "🗂️ Make a tab, and a pane in the directory you meant",
+  "type": "feature",
+  "updated_at_millis": 1786790570997,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1786790514598},
+    {"field":"column","value":"next","at":1786790570997}
+  ]
+}

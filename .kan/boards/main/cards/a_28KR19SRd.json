@@ -6,17 +6,18 @@
     "testing",
     "shell"
   ],
-  "column": "next",
+  "column": "backlog-hi",
   "created_at_millis": 1786779067716,
   "creator": "Alexander Terp",
   "description": "The remote tier proves the transport: a snapshot over the forwarded socket, a command over the master, 0 differences across 11 scenarios. What it does not prove is a remote pane in a window - that its bridge starts, that frames reach a surface, and that a keystroke lands on the other machine.\n\nThat is the ./dev --contract shape rather than the ./dev --ssh one: it needs the app, so a logged-in GUI session and the container at once. tools/smoke-launch.py already launches the real binary against a real daemon and reads the run log; what this adds is a config naming the devenv beside the local daemon, and assertions that two regions appear, each names its own daemon, and both reach 'channel.connected'.\n\nWorth doing because everything between the socket and the glyph is currently covered by unit tests and an argument.",
   "id": "a_28KR19SRd",
-  "position": "2",
+  "position": "E",
   "title": "🖥️ A remote pane in the real app, not just on the wire",
   "type": "chore",
-  "updated_at_millis": 1786779076398,
+  "updated_at_millis": 1786790570523,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786779067716},
-    {"field":"column","value":"next","at":1786779076398}
+    {"field":"column","value":"next","at":1786779076398},
+    {"field":"column","value":"backlog-hi","at":1786790570523}
   ]
 }

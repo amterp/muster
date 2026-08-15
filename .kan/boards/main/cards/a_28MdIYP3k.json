@@ -5,17 +5,18 @@
   "area": [
     "shell"
   ],
-  "column": "next",
+  "column": "backlog-hi",
   "created_at_millis": 1786784306352,
   "creator": "Alexander Terp",
   "description": "The core now logs agent.transitions_missed when a bootstrap finds herdr ran more transitions than this mirror was told about - an agent may have asked for a person while the window was disconnected, and gone back to work since. A log line is the right floor, and it is not routing: nobody watching the window learns anything.\n\nThe counter is session-wide and reaches a client only in a snapshot, so it cannot say which pane moved. That is what makes this awkward to render: the honest marker is per daemon, not per pane, and it means 'something on this machine may have wanted you' rather than naming anything.\n\nWorth deciding once the sidebar exists and there is somewhere to put it. Options worth weighing: a marker on the daemon's group header, a one-shot notification, or leaving it in the log on the grounds that a claim this vague costs more attention than it routes.",
   "id": "a_28MdIYP3k",
-  "position": "UUUUUUUU",
+  "position": "0",
   "title": "🔎 Say on the pane that its agent may have moved unseen",
   "type": "chore",
-  "updated_at_millis": 1786787768092,
+  "updated_at_millis": 1786790570653,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786784306352},
-    {"field":"column","value":"next","at":1786787768092}
+    {"field":"column","value":"next","at":1786787768092},
+    {"field":"column","value":"backlog-hi","at":1786790570653}
   ]
 }
