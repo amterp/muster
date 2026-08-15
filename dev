@@ -391,10 +391,6 @@ if not (deps or build or test or lint or format or clean or contract or ssh or p
     test = true
     lint = true
 
-if deps:
-    announce("deps")
-    build_deps()
-
 if clean:
     announce("clean")
     $`cargo clean`
@@ -405,6 +401,23 @@ if format:
     $`cargo fmt --all`
     $`swift format --recursive --in-place Sources Tests Package.swift`
 
+// The cheapest signal this script has, and therefore the first. None of these needs a
+// compiler, a dependency or an artifact, so they answer in seconds on a checkout with
+// nothing built - and a misplaced brace found after the suite has run costs a minute to
+// learn something a second would have said. After --format rather than before, so that
+// asking for both means "fix it, then check the fix" rather than a refusal to start.
+if lint:
+    announce("style")
+    $`cargo fmt --all --check`
+    $`swift format lint --recursive --strict Sources Tests Package.swift`
+    // The probe is a dev tool rather than a component, so it gets a syntax check and
+    // no more. It has no test suite of its own; running it needs a real herdr daemon.
+    $`python3 -m compileall -q tools`
+
+if deps:
+    announce("deps")
+    build_deps()
+
 if build:
     announce("build")
     if proto or not proto_is_current():
@@ -414,6 +427,14 @@ if build:
     $`cargo build --workspace --all-targets`
     $`swift build`
     stage_bridge()
+
+// Clippy is a compile, so it cannot move up with the rest of the style checks - but it
+// goes before the suite rather than after it. Which lints are on is declared in Cargo.toml,
+// so that cargo, rust-analyzer and this all judge the code the same way; the gate's job is
+// only to escalate them, because a warning a contributor can ignore forever is not a rule.
+if lint:
+    announce("lint")
+    $`cargo clippy --workspace --all-targets -- -D warnings`
 
 if test:
     announce("test")
@@ -516,17 +537,5 @@ if latency:
         print_err(stderr.trim())
         exit(1)
     print(stdout.trim())
-
-if lint:
-    announce("lint")
-    // Which lints are on is declared in Cargo.toml, so that cargo, rust-analyzer and this
-    // all judge the code the same way. The gate's job is only to escalate them: a warning
-    // a contributor can ignore forever is not a rule.
-    $`cargo fmt --all --check`
-    $`cargo clippy --workspace --all-targets -- -D warnings`
-    $`swift format lint --recursive --strict Sources Tests Package.swift`
-    // The probe is a dev tool rather than a component, so it gets a syntax check and
-    // no more. It has no test suite of its own; running it needs a real herdr daemon.
-    $`python3 -m compileall -q tools`
 
 print(green("\n✓ ok"))
