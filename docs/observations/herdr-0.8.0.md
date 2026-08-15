@@ -701,3 +701,42 @@ flag is not optional.
 split that held the closed pane is gone from the tree rather than left with one side.
 
 Evidence: `corpus/herdr-0.8.0/layout/`, recorded with `tools/herdr-probe/probe layout`.
+
+## 14. There is no splitting leftward, and building one out of two calls flashes
+
+`SplitDirection` is `right` and `down`, and a split always puts the new pane on the
+`second` side. So the four-way splitting people arrive expecting has no direct request
+behind it: leftward is a rightward split followed by `pane.swap` of the pair. The
+question is not whether that ends in the right arrangement - it does - but what a client
+watching is shown while it happens.
+
+**Both arrangements are published, 100 ms apart.** The pair issued back to back with no
+wait between them produced `pane_created`, then a `layout_updated` placing the new pane
+on the right, then a second `layout_updated` placing it on the left. Arrival gaps
+measured by a watcher rather than read off the daemon: 0.0 ms from the creation to the
+first layout, and **100.4 ms** from the first layout to the second. At sixty frames a
+second that is six frames of the pane sitting where nobody asked for it, then a jump.
+
+That is enough to decide the feature rather than to warn about it. Muster renders what
+the daemon says (`architecture.md`, view = f(daemon state)), so a compound intent whose
+first half is published on its own is a compound intent a viewer watches happen. Muster
+has no `split_left` or `split_up` for this reason, and the fix is upstream: a four-way
+`SplitDirection`, or a request that places a new pane on a named side. The alternative
+open to Muster alone - holding a tab's layout updates between issuing the split and the
+swap returning, and applying the settled layout the swap already answers with - is a new
+power in the mirror rather than a small correction, and is not worth taking on for two
+chords while an upstream answer is plausible.
+
+**A swap it cannot do is an error, not a soft no.** `pane.swap` names four refusal
+reasons in its result (`no_neighbor`, `same_pane`, `not_found`, `cross_tab`), but a call
+naming no target at all raises `invalid_pane_swap` instead. Worth knowing because this
+one arrives *after* a split that already succeeded: a caller treating it as a plain
+failure has created a pane it never undoes, on the side nobody asked for.
+
+**Its result nests, like the rest of them.** The settled layout comes back under a `swap`
+key rather than at the top level, the same shape section 6 recorded for every other
+result. Reading `changed` off the top level gets `null`, which reads exactly like a swap
+that did nothing.
+
+Evidence: `corpus/herdr-0.8.0/split-sides/`, recorded with
+`tools/herdr-probe/probe split-sides`.

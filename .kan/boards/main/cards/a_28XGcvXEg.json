@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "upstream-there-is-no",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1786809650935,
+  "creator": "Alexander Terp",
+  "description": "herdr's `SplitDirection` is `right` and `down`, and a split always puts the new pane on the `second` side. So a four-way splitting keymap - which is what people arrive from Ghostty expecting, and what a real config binds - has no direct request behind it. Two of the four chords do nothing in Muster today.\n\nBuilding it out of `pane.split` + `pane.swap` was measured rather than assumed, and it is not good enough. Both arrangements get published, **100.4 ms apart**: the new pane appears on the right, sits there for six frames at 60fps, then jumps left. Muster renders what the daemon says, so that is a flash a person sees, in a project whose premise is native feel.\n\n**The ask:** a four-way `SplitDirection`, or a split that names which side the new pane lands on.\n\n**What Muster could do alone, and why it is not doing it yet:** hold a tab's layout updates between issuing the split and the swap returning, then apply the settled layout `pane.swap` already answers with. That is a new power in the mirror - suppressing published truth while an intent is in flight - and it interacts with reconciliation. Not worth taking on for two chords while an upstream answer is plausible.\n\nAlso recorded on the way: a `pane.swap` naming no target raises `invalid_pane_swap` rather than returning one of its four refusal reasons, and it would arrive *after* a split that already succeeded - so a caller treating it as a plain failure leaves a pane it never undoes.\n\nEvidence: `corpus/herdr-0.8.0/split-sides/`, `docs/observations/herdr-0.8.0.md` section 14.",
+  "id": "a_28XGcvXEg",
+  "position": "!6",
+  "title": "🪓 Upstream: there is no splitting leftward, and faking it flashes",
+  "type": "chore",
+  "updated_at_millis": 1786809661872,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1786809650935},
+    {"field":"column","value":"backlog-hi","at":1786809661872}
+  ]
+}

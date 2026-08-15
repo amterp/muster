@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 import json
 import re
+import threading
 import time
 from pathlib import Path
 
@@ -1315,6 +1316,103 @@ def layout(daemon, rec: Recorder) -> None:
     rec.note(f"{len(updates)} layout_updated event(s) across {len(events)} in total")
 
 
+def split_sides(daemon, rec: Recorder) -> None:
+    """Splitting toward the left or up, which herdr has no direction for.
+
+    `SplitDirection` is `right` and `down` only, and the new pane always lands on the
+    `second` side. So a person asking to split leftward is asking for the opposite
+    arrangement, and the only way there is to split and then swap the pair.
+
+    Two panes, one intent, and that is the whole question. Muster's rule is that
+    composition follows daemon truth rather than being predicted, so a window renders
+    whatever tree it is told about - including the one that exists between the split
+    and the swap. If that tree reaches a client, splitting left flashes the new pane
+    on the wrong side before it moves, and the action is not worth having in that
+    shape. If the pair settles without an intermediate tree ever being published, it
+    is a compound intent like any other.
+
+    So this records the events across both calls with their timings, and what
+    `pane.swap` says about a swap it decides not to do - it can refuse, and a
+    refusal after a split that already happened leaves the arrangement half-made.
+    """
+    client = RecordingClient(daemon.client(), rec)
+    _new_workspace(client)
+    time.sleep(0.5)
+
+    with daemon.client().subscribe(STRUCTURE_SUBSCRIPTIONS) as stream:
+        time.sleep(0.8)
+        before = len(stream.snapshot())
+
+        # Arrival times, stamped by a watcher rather than by the daemon, because what
+        # decides this is how long a client would render the wrong arrangement for. A
+        # gap under a frame is not a flash anybody sees; a gap over one is.
+        arrivals: list[list] = []
+        stop = threading.Event()
+
+        def watch() -> None:
+            seen, t0 = before, time.monotonic()
+            while not stop.is_set():
+                events = stream.snapshot()
+                while seen < len(events):
+                    arrivals.append(
+                        [round((time.monotonic() - t0) * 1000, 1), events[seen].get("event")])
+                    seen += 1
+                time.sleep(0.001)
+
+        watcher = threading.Thread(target=watch, daemon=True)
+        watcher.start()
+
+        # The pair, as fast as a caller could issue them: no sleep between, because
+        # what is being measured is whether a client can see between them at all.
+        split = client.request(
+            "pane.split", {"direction": "right", "target_pane_id": "w1:p1", "cwd": "/tmp"})
+        swap = client.request(
+            "pane.swap", {"source_pane_id": "w1:p1", "target_pane_id": "w1:p2"})
+        time.sleep(1.5)
+        stop.set()
+        watcher.join(timeout=2)
+
+        events = stream.snapshot()[before:]
+        rec.write_json("split-then-swap.result.json", {"split": split, "swap": swap})
+        rec.write_text(
+            "split-then-swap.events.ndjson",
+            "".join(json.dumps(e, sort_keys=True) + "\n" for e in events))
+
+        export = client.request("layout.export", {})
+        result = swap.get("swap", swap)
+        rec.fact("settled_tree_shape", _tree_shape(export.get("layout", {}).get("root")))
+        rec.fact("pair_event_kinds", [e.get("event") for e in events])
+        rec.fact("event_arrival_ms", arrivals)
+        rec.fact("swap_changed", result.get("changed"))
+        rec.fact("swap_reason", result.get("reason"))
+        rec.fact("swap_focused_pane", result.get("focused_pane_id"))
+
+        # The question the whole scenario exists for: what arrangement is a client
+        # shown, and how many times. A `layout_updated` carries panes and their rects
+        # rather than a tree, so the arrangement is the pane ids in screen order.
+        orders = [
+            [p.get("pane_id") for p in sorted(
+                e.get("data", {}).get("layout", {}).get("panes", []),
+                key=lambda p: (p.get("rect", {}).get("y", 0), p.get("rect", {}).get("x", 0)))]
+            for e in events if e.get("event") == "layout_updated"
+        ]
+        rec.fact("arrangements_published_across_the_pair", orders)
+        gaps = [round(b[0] - a[0], 1) for a, b in zip(arrivals, arrivals[1:])]
+        rec.fact("arrival_gaps_ms", gaps)
+        rec.note(f"published {len(orders)} arrangement(s): {orders}")
+        rec.note(f"arrival gaps: {gaps} ms")
+
+        # What a swap that cannot be done looks like, since one would arrive after a
+        # split that already happened. A caller treating it as a plain failure leaves a
+        # pane it never undid, on the side nobody asked for.
+        try:
+            lonely = client.request("pane.swap", {"source_pane_id": "w1:p1"})
+            rec.fact("swap_with_no_target", {"answered": lonely})
+        except Exception as error:  # noqa: BLE001 - what it raises is the finding
+            rec.fact("swap_with_no_target", {"raised": str(error)})
+            rec.note(f"a swap naming no target: {error}")
+
+
 ALL = {
     "snapshot": snapshot,
     "frames": frames,
@@ -1326,5 +1424,6 @@ ALL = {
     "frame-fidelity": frame_fidelity,
     "lifecycle": lifecycle,
     "layout": layout,
+    "split-sides": split_sides,
     "durability": durability,
 }

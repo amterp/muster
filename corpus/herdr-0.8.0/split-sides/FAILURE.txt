@@ -1,0 +1,12 @@
+Traceback (most recent call last):
+  File "/Users/amterp/src/muster/tools/herdr-probe/./probe", line 137, in main
+    scenarios.ALL[name](daemon, rec)
+  File "/Users/amterp/src/muster/tools/herdr-probe/herdrprobe/scenarios.py", line 1378, in split_sides
+    lonely = client.request("pane.swap", {"source_pane_id": "w1:p1"})
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/amterp/src/muster/tools/herdr-probe/herdrprobe/recorder.py", line 95, in request
+    result = self._client.request(method, params)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/amterp/src/muster/tools/herdr-probe/herdrprobe/client.py", line 50, in request
+    raise RequestError(method, msg["error"])
+herdrprobe.client.RequestError: pane.swap failed: {"code": "invalid_pane_swap", "message": "missing target_pane_id"}

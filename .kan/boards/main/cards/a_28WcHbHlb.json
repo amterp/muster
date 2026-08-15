@@ -6,6 +6,14 @@
     "shell"
   ],
   "column": "in-progress",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "**Done and shipped:** `option_as_alt` and `[text]`, proven end to end against a real daemon (`crates/muster-bridge/tests/typing_settings.rs`).\n\nThe option-as-alt fix needed two commits and the second is the interesting one. Setting the encoder's flag does nothing on its own: libghostty computes effective modifiers as held-minus-consumed, and macOS always reports option as consumed when it composed a character, so the alt-prefix branch is never reached and the flag is read by nobody. The consumed alt is now taken back before encoding and the text replaced with what the layout would have produced without option - a second reading the shell reports (`KeyEvent.text_without_option`) because only the layout can answer it.\n\nThe conformance corpus is the more useful half of that fix. `key-encoder.json` had no way to express consumed modifiers, so every case described a keystroke nobody presses - which is how four new cases about option passed while the behaviour was entirely absent.\n\n**Checked and not needed:** shift+enter already encodes as `CSI 27;2;13~` in every mode, so `[text]` is an escape hatch for programs that do not read that, not a fix.\n\n**Split left/up is out**, and split into a_28XGcvXEg: measured at 100.4 ms of visible flash, so the answer is upstream rather than a two-call fake.\n\nLeft on this card: the small ones - a configurable resize step, a scroll multiplier, and a divider colour.",
+      "created_at_millis": 1786809671246,
+      "id": "c_28XH9gUHE"
+    }
+  ],
   "created_at_millis": 1786808100123,
   "creator": "Alexander Terp",
   "description": "A working Ghostty config is the best available inventory of what a person needs a terminal to let them configure, and reading one against Muster turned up a blocker rather than a polish item.\n\n`TerminalModeProfile::UNKNOWN_PANE` hardcodes `option_acts_as_alt: OptionAsAlt::Never` and nothing configures it, so `opt+t` sends `†` rather than `ESC t`. Every alt chord an agent binds is dead, which is exactly what `macos-option-as-alt` exists to fix elsewhere. Muster's own config key, in Muster's own vocabulary - none of this reads anybody else's file.\n\nBeside it, two smaller gaps in the same area:\n\n- **A chord that stands for literal bytes.** `Resolution::Text` already exists and is how ⌘← becomes ctrl+A, but `Keymap::default()` is hardcoded and a config file cannot reach it. Worth having as an escape hatch even though shift+enter already survives as `CSI 27;2;13~` in every mode, because a program that does not read that sequence has no other way out.\n- **Splitting left and up.** `Action::ALL` has only right and down. herdr's `SplitDirection` is `[right, down]` too, so this is split-then-`pane.swap`, which means two transient trees rather than one - record what the daemon publishes across the pair before deciding the core can issue it as one intent.\n\nSmaller still, and only worth doing if the above lands clean: a configurable resize step, a scroll multiplier, and a divider color.",
@@ -13,7 +21,7 @@
   "position": "U",
   "title": "⌨️ Typing knobs a terminal is expected to have",
   "type": "chore",
-  "updated_at_millis": 1786808103173,
+  "updated_at_millis": 1786809671246,
   "history": [
     {"field":"column","value":"backlog-lo","at":1786808100123},
     {"field":"column","value":"in-progress","at":1786808103173}

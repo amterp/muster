@@ -1,0 +1,42 @@
+{
+  "arrangements_published_across_the_pair": [
+    [
+      "w1:p1",
+      "w1:p2"
+    ],
+    [
+      "w1:p2",
+      "w1:p1"
+    ]
+  ],
+  "arrival_gaps_ms": [
+    0.0,
+    100.4
+  ],
+  "event_arrival_ms": [
+    [
+      23.9,
+      "pane_created"
+    ],
+    [
+      23.9,
+      "layout_updated"
+    ],
+    [
+      124.3,
+      "layout_updated"
+    ]
+  ],
+  "pair_event_kinds": [
+    "pane_created",
+    "layout_updated",
+    "layout_updated"
+  ],
+  "settled_tree_shape": "right(w1:p2, w1:p1@0.5)",
+  "swap_changed": true,
+  "swap_focused_pane": "w1:p1",
+  "swap_reason": null,
+  "swap_with_no_target": {
+    "raised": "pane.swap failed: {\"code\": \"invalid_pane_swap\", \"message\": \"missing target_pane_id\"}"
+  }
+}
