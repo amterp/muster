@@ -1,0 +1,11 @@
+{
+  "frame_count": 9,
+  "full_frame_count": 1,
+  "payload_lines": [
+    "ascii: hello world",
+    "wide: NIHAO -> \u4f60\u597d\u4e16\u754c",
+    "combining: e\u0301 and \u00e9 should look alike",
+    "box: \u250c\u2500\u252c\u2500\u2510",
+    "emoji: \ud83d\udc4d and \ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67"
+  ]
+}

@@ -26,12 +26,24 @@ from pathlib import Path
 # Facts that legitimately differ between machines and runs. Timings are timings, and
 # a pane's PTY with no viewer is herdr's TUI layout, which depends on the terminal
 # size the daemon assumes.
+#
+# The terminal ids and the working directories are here for a different reason: they are
+# values rather than claims. A terminal id is stamped per run, and a home directory is a
+# fact about the machine, not about the daemon. What is being asked - were the terminals
+# reused, did the directories survive - is recorded separately as a boolean, and those are
+# compared. Adding the raw values here loses nothing and stops a real difference being
+# buried under three that mean nothing.
 VOLATILE = {
     "detection_latency_no_viewer_s",
     "detection_latency_with_viewer_s",
     "attach_first_frame_bytes",
     "frame_count",
     "frame_seq_range",
+    "terminal_ids_before_restart",
+    "terminal_ids_after_restart",
+    "cwds_after_apply",
+    "cwds_before_restart",
+    "cwds_after_restart",
 }
 
 

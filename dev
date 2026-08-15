@@ -105,6 +105,37 @@ fn run_ssh_tier():
 
     $`MUSTER_DEVENV_HOST=dev@localhost MUSTER_DEVENV_SSH_OPTIONS={options} cargo test --workspace -- --ignored`
 
+    // The other half of the tier, and the one that catches an upgrade rather than a bug:
+    // run the recorded scenarios against the container's Linux daemon and diff what it did
+    // against what the macOS one did. Recorded into a scratch directory rather than over
+    // corpus/herdr-<version>-linux, because a check that rewrites its own oracle can only
+    // ever pass. Re-recording the checked-in one is a deliberate step, taken when herdr is
+    // re-pinned (tools/herdr-probe/probe --remote).
+    pin = read_file(HERDR_PIN) catch:
+        print_err(red("{HERDR_PIN} is missing, so there is no corpus to compare against."))
+        exit(1)
+    pinned = parse_json(pin.content) catch:
+        print_err(red("{HERDR_PIN} is not valid JSON, so there is no corpus to compare against."))
+        exit(1)
+    version = pinned.version
+
+    scratch = "/tmp/muster-linux-corpus"
+    $`rm -rf {scratch}`
+    $`python3 tools/herdr-probe/probe --remote --corpus {scratch}`
+    stdout, stderr, code = $`python3 tools/herdr-probe/diff-corpus corpus/herdr-{version} {scratch}` catch:
+        print_err(red("The Linux daemon and the macOS one no longer agree."))
+        print_err(stdout.trim())
+        print_err(stderr.trim())
+        exit(1)
+    print(stdout.trim())
+    if "\n0 difference(s)" not in stdout:
+        print_err(red("The Linux daemon and the macOS one no longer agree."))
+        print_err("Impact: 'local and remote render identically' stops being true, and the")
+        print_err("adapter has to learn about whatever moved.")
+        print_err("The diff above says what; docs/observations/herdr-{version}.md")
+        print_err("section 8 is where the answer belongs once it is understood.")
+        exit(1)
+
 // A surface spawns its bridge by path, looking beside the running executable - right for a
 // shipped bundle, and wrong for two build systems with two output directories. Rather than
 // teach the app where cargo puts things, the build puts the bridge where the app already

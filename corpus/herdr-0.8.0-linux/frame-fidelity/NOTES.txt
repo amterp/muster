@@ -1,0 +1,1 @@
+[  6003ms] painted 5 lines, captured 9 frame(s) and herdr's own screen text

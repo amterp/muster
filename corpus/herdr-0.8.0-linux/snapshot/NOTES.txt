@@ -1,3 +1,3 @@
-[  2329ms] snapshot panes=3 tabs=2 agents=0
-[  2329ms] live fields on pane: ['agent_status', 'focused', 'foreground_cwd', 'scroll', 'revision']
-[  3453ms] events.subscribe replayed 9 events for an already-populated session
+[  1749ms] snapshot panes=3 tabs=2 agents=0
+[  1749ms] live fields on pane: ['agent_status', 'focused', 'foreground_cwd', 'scroll', 'revision']
+[  2873ms] events.subscribe replayed 9 events for an already-populated session

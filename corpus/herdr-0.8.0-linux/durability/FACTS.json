@@ -1,0 +1,52 @@
+{
+  "cwds_after_apply": [
+    "/home/dev",
+    "/tmp"
+  ],
+  "cwds_survive_daemon_restart": true,
+  "export_carries_cwd_per_pane": true,
+  "export_carries_root": true,
+  "layout_apply_accepted_an_export": true,
+  "layout_apply_is_additive": true,
+  "marker_on_screen_before_restart": true,
+  "pane_count_after_apply": 5,
+  "panes_after_apply": [
+    "w1:p1",
+    "w1:p2",
+    "w1:p3",
+    "w1:p4",
+    "w1:p5"
+  ],
+  "panes_after_restart": [
+    "w1:p1",
+    "w1:p2",
+    "w1:p3"
+  ],
+  "panes_before_apply": [
+    "w1:p1",
+    "w1:p2",
+    "w1:p3"
+  ],
+  "panes_before_restart": [
+    "w1:p1",
+    "w1:p2",
+    "w1:p3"
+  ],
+  "scrollback_survives_daemon_restart": false,
+  "session_survives_daemon_restart": true,
+  "splits_after_apply": 1,
+  "terminal_ids_after_restart": {
+    "w1:p1": "term_65910cc58e8871",
+    "w1:p2": "term_65910cc58ef482",
+    "w1:p3": "term_65910cc58f4973"
+  },
+  "terminal_ids_before_restart": {
+    "w1:p1": "term_65910cc1a0c701",
+    "w1:p2": "term_65910cc1bcf3a2",
+    "w1:p3": "term_65910cc1d8b663"
+  },
+  "terminals_survive_daemon_restart": false,
+  "workspaces_after_restart": [
+    "w1"
+  ]
+}

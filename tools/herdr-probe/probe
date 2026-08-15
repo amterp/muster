@@ -148,6 +148,12 @@ def main() -> int:
             if not args.keep:
                 daemon.stop()
 
+    # A remote run stops the container's daemon on the way out of its last scenario, and the
+    # container is a fixture other things share - the remote test tier, ./devenv/devenv
+    # status. Left stopped, every one of them fails with a socket that opens and refuses.
+    if args.remote:
+        probe_daemon().leave_running()
+
     if failures:
         where = ("docker exec muster-devenv cat /home/dev/herdr-server.out" if args.remote
                  else f"{args.root}/config/herdr/herdr-server.log")

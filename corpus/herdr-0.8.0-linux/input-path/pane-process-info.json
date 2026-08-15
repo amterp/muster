@@ -1,6 +1,6 @@
 {
   "process_info": {
-    "foreground_process_group_id": 534,
+    "foreground_process_group_id": 1959,
     "foreground_processes": [
       {
         "argv": [
@@ -9,11 +9,11 @@
         "cmdline": "/bin/sh",
         "cwd": "/tmp",
         "name": "sh",
-        "pid": 534
+        "pid": 1959
       }
     ],
     "pane_id": "w1:p1",
-    "shell_pid": 534
+    "shell_pid": 1959
   },
   "type": "pane_process_info"
 }

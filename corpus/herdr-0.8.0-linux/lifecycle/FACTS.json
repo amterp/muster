@@ -1,0 +1,158 @@
+{
+  "agent_state_change_events_when_naming_the_pane": [
+    "pane.agent_status_changed"
+  ],
+  "agent_state_change_events_without_naming_the_pane": [
+    [
+      "working",
+      [
+        "pane_agent_detected"
+      ]
+    ],
+    [
+      "idle",
+      []
+    ],
+    [
+      "blocked",
+      []
+    ]
+  ],
+  "agent_state_change_seq_final": {
+    "w1:p1": 10,
+    "w1:p5": 8
+  },
+  "agent_state_change_seq_progression": [
+    {
+      "w1:p1": 6
+    },
+    {
+      "w1:p1": 6,
+      "w1:p5": 8
+    },
+    {
+      "w1:p1": 10,
+      "w1:p5": 8
+    }
+  ],
+  "agent_state_change_seq_unique_across_panes": true,
+  "agent_state_visible_to_unparameterized_subscriber": false,
+  "layout_updated_count": 7,
+  "layout_updated_is_whole_tab_absolute": true,
+  "layout_updated_payload_keys": [
+    "area",
+    "focused_pane_id",
+    "panes",
+    "splits",
+    "tab_id",
+    "workspace_id",
+    "zoomed"
+  ],
+  "lifecycle_event_kinds_delivered": [
+    "layout_updated",
+    "pane_agent_detected",
+    "pane_closed",
+    "pane_created",
+    "pane_exited",
+    "pane_focused",
+    "tab_closed",
+    "tab_created",
+    "tab_focused",
+    "workspace_closed",
+    "workspace_created",
+    "workspace_focused"
+  ],
+  "nested_snapshot_pane_rects": {
+    "w1:p1": {
+      "height": 23,
+      "width": 27,
+      "x": 26,
+      "y": 1
+    },
+    "w1:p2": {
+      "height": 12,
+      "width": 27,
+      "x": 53,
+      "y": 1
+    },
+    "w1:p3": {
+      "height": 11,
+      "width": 27,
+      "x": 53,
+      "y": 13
+    }
+  },
+  "nested_snapshot_split_count": 2,
+  "nested_snapshot_split_keys": [
+    "direction",
+    "id",
+    "ratio",
+    "rect"
+  ],
+  "nested_tree_depth": 2,
+  "nested_tree_directions": [
+    "down",
+    "right"
+  ],
+  "pane_closed_payload_keys": [
+    "pane_id",
+    "type",
+    "workspace_id"
+  ],
+  "pane_exit_also_emits_pane_closed": false,
+  "pane_exited_payload": {
+    "pane_id": "w1:p2",
+    "type": "pane_exited",
+    "workspace_id": "w1"
+  },
+  "pane_exited_payload_keys": [
+    "pane_id",
+    "type",
+    "workspace_id"
+  ],
+  "pane_revision_bumped_by_agent_state": false,
+  "pane_revision_bumped_by_title": true,
+  "pane_revision_start": 0,
+  "panes_created": [
+    "w1:p1",
+    "w1:p2",
+    "w1:p3",
+    "w1:p4",
+    "w2:p1"
+  ],
+  "panes_removed_with_no_pane_event": [
+    "w1:p4",
+    "w2:p1"
+  ],
+  "panes_still_alive": [
+    "w1:p1"
+  ],
+  "panes_whose_removal_was_announced": [
+    "w1:p3",
+    "w1:p2"
+  ],
+  "removal_kinds_seen": [
+    "pane_closed",
+    "pane_exited",
+    "tab_closed",
+    "workspace_closed"
+  ],
+  "structural_change_followed_by_layout_updated": {
+    "pane_closed": true,
+    "pane_created": true,
+    "pane_exited": true,
+    "tab_closed": false,
+    "tab_created": false,
+    "workspace_closed": false
+  },
+  "subscribe_replayed_event_count": 7,
+  "subscribe_replayed_kinds": [
+    "layout_updated",
+    "pane_created",
+    "pane_focused",
+    "tab_created",
+    "tab_focused",
+    "workspace_created",
+    "workspace_focused"
+  ]
+}

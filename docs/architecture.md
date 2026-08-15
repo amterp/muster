@@ -47,7 +47,18 @@ be Swift either. Putting a portable core on one side of it means macOS pays a we
 other platform pays nothing.
 
 **Backend adapters** (herdr today). Translate the Muster vocabulary to a concrete backend. One adapter per backend;
-nothing herdr-shaped escapes it. Control-plane transports: local socket for local daemons, SSH for remote ones.
+nothing herdr-shaped escapes it.
+
+**Reaching a remote daemon is a transport concern and stops there.** A remote herdr speaks the same socket a local
+one does, so an SSH master forwards that socket onto a path on this machine and the adapter is handed a path like
+any other - the client, the snapshot, the subscription, the agent watchers and the server-side encoder are
+unchanged. The evidence that this is safe is `observations/herdr-0.8.0.md` section 8: the same recordings against a
+Linux daemon differ in nothing. The data plane cannot use the trick, because herdr publishes a pane's frames through
+a CLI over stdio rather than through a socket method - so a pane's bridge runs that command over the same master,
+which is also what keeps a remote pane as cheap as a local one. Reimplementing that stream was rejected: it is
+bincode over herdr's internal types with no published schema, which is the byte-level protocol emulation
+`testing.md` deletes. A tunnel that drops is reopened onto the same path, so recovery is the adapter's ordinary
+reconnect rather than a mechanism of its own.
 
 ## The vocabulary
 
@@ -146,6 +157,15 @@ codegen - a surface that cannot express an action is a missing message, visible 
   such way ends in a window that ignores the keyboard and cannot say why, so composition is brought back into line
   with a daemon's mirror whenever that daemon's structure moves. A region whose tab is gone closes; view-local
   focus falls to a pane that exists.
+- **A pane is named by its daemon and its id.** Two daemons hand out the same ids - `w1:p1` means something on each -
+  so a bare pane id stops being an answer the moment a window shows more than one. Every message that names a pane
+  says both, and anything keyed by pane alone that spans regions is a bug waiting for a second daemon. The empty
+  string means "the one this window's keyboard is on", which is what a keybinding means and what every menu item
+  sends. One place is left genuinely ambiguous and says so: a command line carrying only a pane id, at the moment
+  before any daemon is being followed.
+- **Health is per connection, and so is what a window says about it.** A laptop and a devenv have two answers and one
+  title bar. The unhappiest is what shows, named - reporting one state for the window would let a dropped VPN read as
+  though every session had gone.
 - **Cursors are written, not read.** Daemon focus (focused workspace, tab, pane) is a single value per daemon,
   shared with every client including the herdr TUI. Muster's input routing - which pane its keyboard feeds - is
   view-local. Interacting writes daemon focus (which also feeds seen-ness); Muster never *routes* input by reading

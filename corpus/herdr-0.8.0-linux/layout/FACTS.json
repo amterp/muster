@@ -1,0 +1,315 @@
+{
+  "area_after_that_client_left": {
+    "height": 23,
+    "width": 54,
+    "x": 26,
+    "y": 1
+  },
+  "area_follows_an_attached_client": false,
+  "area_with_a_200x50_client": {
+    "height": 23,
+    "width": 54,
+    "x": 26,
+    "y": 1
+  },
+  "area_with_no_client": {
+    "height": 23,
+    "width": 54,
+    "x": 26,
+    "y": 1
+  },
+  "border_ratios_match_the_export": true,
+  "close_events": [
+    "workspace_focused",
+    "tab_focused",
+    "pane_closed",
+    "pane_focused",
+    "layout_updated"
+  ],
+  "collapsed_split_ids": [
+    "split_0_root",
+    "split_1_0",
+    "split_2_01",
+    "split_3_1"
+  ],
+  "collapsed_tree_shape": "right(down(w1:p1, right(w1:p3, w1:p6@0.5)@0.5), down(w1:p2, w1:p5@0.5)@0.3)",
+  "crowded": {
+    "last_good_pane_count": 15,
+    "steps": [
+      {
+        "borders_matched": 4,
+        "panes": 5,
+        "rebuildable": true,
+        "rects_distinct": true,
+        "smallest_rect": 8,
+        "splits": 4
+      },
+      {
+        "borders_matched": 5,
+        "panes": 6,
+        "rebuildable": true,
+        "rects_distinct": true,
+        "smallest_rect": 8,
+        "splits": 5
+      },
+      {
+        "borders_matched": 6,
+        "panes": 7,
+        "rebuildable": true,
+        "rects_distinct": true,
+        "smallest_rect": 8,
+        "splits": 6
+      },
+      {
+        "borders_matched": 7,
+        "panes": 8,
+        "rebuildable": true,
+        "rects_distinct": true,
+        "smallest_rect": 8,
+        "splits": 7
+      },
+      {
+        "borders_matched": 8,
+        "panes": 9,
+        "rebuildable": true,
+        "rects_distinct": true,
+        "smallest_rect": 8,
+        "splits": 8
+      },
+      {
+        "borders_matched": 9,
+        "panes": 10,
+        "rebuildable": true,
+        "rects_distinct": true,
+        "smallest_rect": 8,
+        "splits": 9
+      },
+      {
+        "borders_matched": 10,
+        "panes": 11,
+        "rebuildable": true,
+        "rects_distinct": true,
+        "smallest_rect": 8,
+        "splits": 10
+      },
+      {
+        "borders_matched": 11,
+        "panes": 12,
+        "rebuildable": true,
+        "rects_distinct": true,
+        "smallest_rect": 8,
+        "splits": 11
+      },
+      {
+        "borders_matched": 12,
+        "panes": 13,
+        "rebuildable": true,
+        "rects_distinct": true,
+        "smallest_rect": 6,
+        "splits": 12
+      },
+      {
+        "borders_matched": 13,
+        "panes": 14,
+        "rebuildable": true,
+        "rects_distinct": true,
+        "smallest_rect": 6,
+        "splits": 13
+      },
+      {
+        "borders_matched": 14,
+        "panes": 15,
+        "rebuildable": true,
+        "rects_distinct": true,
+        "smallest_rect": 5,
+        "splits": 14
+      },
+      {
+        "borders_matched": 15,
+        "panes": 16,
+        "rebuildable": true,
+        "rects_distinct": true,
+        "smallest_rect": 5,
+        "splits": 15
+      }
+    ],
+    "verdict": "held to the end"
+  },
+  "deep_area": {
+    "height": 23,
+    "width": 54,
+    "x": 26,
+    "y": 1
+  },
+  "deep_pane_count": 5,
+  "deep_pane_rects": {
+    "w1:p1": {
+      "height": 12,
+      "width": 27,
+      "x": 26,
+      "y": 1
+    },
+    "w1:p2": {
+      "height": 12,
+      "width": 27,
+      "x": 53,
+      "y": 1
+    },
+    "w1:p3": {
+      "height": 11,
+      "width": 14,
+      "x": 26,
+      "y": 13
+    },
+    "w1:p4": {
+      "height": 11,
+      "width": 13,
+      "x": 40,
+      "y": 13
+    },
+    "w1:p5": {
+      "height": 11,
+      "width": 27,
+      "x": 53,
+      "y": 13
+    }
+  },
+  "deep_split_ids": [
+    "split_0_root",
+    "split_1_0",
+    "split_2_01",
+    "split_3_1"
+  ],
+  "deep_tree_depth": 3,
+  "deep_tree_directions": [
+    "down",
+    "right"
+  ],
+  "deep_tree_shape": "right(down(w1:p1, right(w1:p3, w1:p4@0.5)@0.5), down(w1:p2, w1:p5@0.5)@0.5)",
+  "event_kinds": [
+    "layout_updated",
+    "pane_closed",
+    "pane_created",
+    "pane_focused",
+    "tab_created",
+    "tab_focused",
+    "workspace_created",
+    "workspace_focused"
+  ],
+  "every_split_has_a_border_covering_exactly_its_panes": true,
+  "layout_updated_count": 21,
+  "pane_rects_while_zoomed": {
+    "w1:p1": {
+      "height": 12,
+      "width": 16,
+      "x": 26,
+      "y": 1
+    },
+    "w1:p2": {
+      "height": 12,
+      "width": 38,
+      "x": 42,
+      "y": 1
+    },
+    "w1:p3": {
+      "height": 11,
+      "width": 4,
+      "x": 26,
+      "y": 13
+    },
+    "w1:p4": {
+      "height": 11,
+      "width": 8,
+      "x": 34,
+      "y": 13
+    },
+    "w1:p5": {
+      "height": 11,
+      "width": 38,
+      "x": 42,
+      "y": 13
+    },
+    "w1:p6": {
+      "height": 11,
+      "width": 4,
+      "x": 30,
+      "y": 13
+    }
+  },
+  "root_ratio_after_setting_it_to_0_3": 0.3,
+  "same_axis_tree_shape": "right(down(w1:p1, right(right(w1:p3, w1:p6@0.5), w1:p4@0.5)@0.5), down(w1:p2, w1:p5@0.5)@0.5)",
+  "set_split_ratio_accepted": true,
+  "set_split_ratio_events": [
+    "layout_updated"
+  ],
+  "split_id_paths_match_the_export_paths": true,
+  "split_pairings": [
+    {
+      "covered_rect": {
+        "height": 23,
+        "width": 54,
+        "x": 26,
+        "y": 1
+      },
+      "direction": "right",
+      "export_ratio": 0.5,
+      "matched_ratio": 0.5,
+      "matched_split_id": "split_0_root",
+      "path": []
+    },
+    {
+      "covered_rect": {
+        "height": 23,
+        "width": 27,
+        "x": 26,
+        "y": 1
+      },
+      "direction": "down",
+      "export_ratio": 0.5,
+      "matched_ratio": 0.5,
+      "matched_split_id": "split_1_0",
+      "path": [
+        false
+      ]
+    },
+    {
+      "covered_rect": {
+        "height": 11,
+        "width": 27,
+        "x": 26,
+        "y": 13
+      },
+      "direction": "right",
+      "export_ratio": 0.5,
+      "matched_ratio": 0.5,
+      "matched_split_id": "split_2_01",
+      "path": [
+        false,
+        true
+      ]
+    },
+    {
+      "covered_rect": {
+        "height": 23,
+        "width": 27,
+        "x": 53,
+        "y": 1
+      },
+      "direction": "down",
+      "export_ratio": 0.5,
+      "matched_ratio": 0.5,
+      "matched_split_id": "split_3_1",
+      "path": [
+        true
+      ]
+    }
+  ],
+  "zoom_accepted": true,
+  "zoom_events": [
+    "workspace_focused",
+    "tab_focused",
+    "pane_focused",
+    "layout_updated"
+  ],
+  "zoomed_flag": true
+}

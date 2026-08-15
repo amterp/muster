@@ -346,17 +346,41 @@ SSH, and diffed:
 
 ```
 $ tools/herdr-probe/diff-corpus corpus/herdr-0.8.0 corpus/herdr-0.8.0-linux
-0 difference(s) across 6 shared scenario(s); 5 volatile fact(s) not compared
+0 difference(s) across 11 shared scenario(s); 9 volatile fact(s) not compared
 ```
 
 Not one recorded fact differs. The attach frame is the same 35,605 bytes, the PTY
 walks the same 53x23 to 100x30 to 120x40, `done` derives the same way, and
-`pane.send_keys` refuses the same seven key names. The five facts not compared are
-timings and frame counts, which are not expected to match.
+`pane.send_keys` refuses the same seven key names. The facts not compared are timings,
+frame counts, and two kinds of value that are about the machine rather than about the
+daemon: the opaque terminal ids stamped per run, and a home directory. What is being
+asked of those - were the terminals reused, did the working directories survive - is
+recorded separately as a boolean, and those are compared.
 
 So the remote path is the same path, and "local and remote in one window" costs the
-adapter nothing beyond the transport. Re-run this on every herdr upgrade: the day it
-stops printing zero is the day the remote path needs its own handling.
+adapter nothing beyond the transport. `./dev --ssh` re-runs this against a scratch
+recording on every invocation, so the day it stops printing zero is the day the remote
+path needs its own handling.
+
+Two corrections to what this section said when it was first written, both found by
+re-running it after the scenario set grew from six to eleven.
+
+The first is that it was six, and the claim was quietly narrower than it read. The
+five scenarios added since - input encoding, layout reconstruction, lifecycle,
+durability, and the removal counters - had never been run against Linux at all, and
+three of them had no Linux recording to diff against.
+
+The second is a bug in the probe rather than in herdr, and it is the more interesting
+one. The remote fixture emptied the session file every time it started the daemon, so
+that each scenario began with no leftovers. The durability scenario stops the daemon
+mid-run to see what survives a restart - and against the remote fixture that stop and
+start emptied the session, so it recorded `session_survives_daemon_restart: false` and
+eleven facts that followed from it. Read at face value that is a platform difference
+worth designing around; it was an artifact of the measurement. Emptying the session now
+happens once per scenario rather than on every start, and a stop over there stops the
+daemon rather than only the tunnel, so the event being measured is the event the
+scenario names. Linux survives a restart exactly as macOS does, keeping pane ids and
+losing terminals.
 
 ## 9. Input-to-glyph is 1.4 ms, and its tail is a render throttle
 

@@ -63,20 +63,26 @@ class RemoteDaemon:
                               capture_output=True, text=True, check=check)
 
     def prepare(self, manifest_source=None) -> None:
-        """The image already carries the daemon config, manifests, and fake agents."""
+        """The image already carries the daemon config, manifests, and fake agents.
+
+        What is left is giving this scenario a session with no leftovers, which the local
+        runs get from a fresh scratch root. Here rather than in `start`, and the difference
+        is not cosmetic: the durability scenario restarts the daemon mid-run to see what
+        survives, and a start that wiped the session would answer "nothing" every time and
+        record it as a platform difference.
+        """
         self.root.mkdir(parents=True, exist_ok=True)
         self.socket_path.unlink(missing_ok=True)
+        self.ssh("herdr server stop >/dev/null 2>&1; sleep 0.3; "
+                 f"rm -f {REMOTE_SESSION}", check=False)
 
     def start(self, timeout: float = 30.0) -> None:
-        """Restart the container's daemon, then forward its socket to this machine.
+        """Starts the container's daemon, then forwards its socket to this machine.
 
-        Restarting gives each scenario a session with no leftovers, matching what the
-        local runs get from a fresh scratch root - otherwise pane ids from an earlier
-        scenario would collide with this one's.
+        Whatever session file is there is left alone, so that a stop followed by a start is
+        the restart a scenario means by it. Emptying the session belongs to `prepare`.
         """
-        self.ssh("herdr server stop >/dev/null 2>&1; sleep 0.3; "
-                 f"rm -f {REMOTE_SESSION}; "
-                 "setsid nohup herdr server >>/home/dev/herdr-server.out 2>&1 < /dev/null & "
+        self.ssh("setsid nohup herdr server >>/home/dev/herdr-server.out 2>&1 < /dev/null & "
                  "sleep 0.2", check=False)
 
         deadline = time.monotonic() + timeout
@@ -122,6 +128,13 @@ class RemoteDaemon:
         return subprocess.run(self.herdr_argv(*args), capture_output=True, text=True, check=check, **kwargs)
 
     def stop(self) -> None:
+        """Stops the daemon over there, and the forward that reached it.
+
+        Both, because a scenario that stops a daemon means the daemon: leaving it running
+        and only dropping the tunnel would make the restart it is about invisible, and the
+        facts it records would describe nothing that happened.
+        """
+        self.ssh("herdr server stop >/dev/null 2>&1", check=False)
         if self._forward is not None:
             self._forward.terminate()
             try:
@@ -130,6 +143,28 @@ class RemoteDaemon:
                 self._forward.kill()
             self._forward = None
         self.socket_path.unlink(missing_ok=True)
+
+    def leave_running(self, timeout: float = 30.0) -> None:
+        """Puts the container back the way its image intends to find it.
+
+        The entrypoint starts a daemon and every other thing that talks to this container -
+        `devenv status`, the remote tier's tests - assumes one is there. A probe run ends
+        with the daemon stopped, because the last scenario's teardown stops it, so the run
+        has to put it back rather than leaving the fixture broken for whatever comes next.
+        """
+        self.ssh("setsid nohup herdr server >>/home/dev/herdr-server.out 2>&1 < /dev/null & "
+                 "sleep 0.2", check=False)
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if self.ssh(f"test -S {REMOTE_SOCKET}", check=False).returncode == 0:
+                return
+            time.sleep(0.2)
+        raise DaemonError(
+            f"the devenv daemon did not come back within {timeout}s after the probe run.\n"
+            f"  Impact: the container is left with no daemon, so anything else that talks to\n"
+            f"  it will fail with a connection that opens and then refuses.\n"
+            f"  Fix: ./devenv/devenv rebuild"
+        )
 
     def __enter__(self) -> RemoteDaemon:
         return self

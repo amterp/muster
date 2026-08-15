@@ -1,0 +1,11 @@
+$ printf '%s\n' "ascii: hello world"
+ascii: hello world
+$ printf '%s\n' "wide: NIHAO -> 你好世界"
+wide: NIHAO -> 你好世界
+$ printf '%s\n' "combining: é and é should look alike"
+combining: é and é should look alike
+$ printf '%s\n' "box: ┌─┬─┐"
+box: ┌─┬─┐
+$ printf '%s\n' "emoji: 👍 and 👨‍👩‍👧"
+emoji: 👍 and 👨‍👩‍👧
+$
