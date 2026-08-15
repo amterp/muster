@@ -30,7 +30,14 @@ extension NSEvent {
     // unchanged for years: control and command never contribute to text, everything else is
     // assumed to have.
     event.consumedModifiers = event.modifiers.filter { $0 != "control" && $0 != "super" }
-    event.text = musterText ?? ""
+    event.text = musterText(self.characters) ?? ""
+    // The other reading of the same keystroke, for the core to pick between. Only while
+    // option is down, because that is the only time the two differ and translating twice on
+    // every keypress would cost the input path a layout lookup it never uses.
+    if modifierFlags.contains(.option) {
+      let withoutOption = modifierFlags.subtracting(.option)
+      event.textWithoutOption = musterText(characters(byApplyingModifiers: withoutOption)) ?? ""
+    }
     if let unshifted = unshiftedCodepoint {
       event.unshiftedCodepoint = unshifted.value
     }
@@ -38,11 +45,11 @@ extension NSEvent {
     return event
   }
 
-  /// The text this keystroke produced, with the two cases a terminal must not see.
-  private var musterText: String? {
-    guard let characters else { return nil }
-    guard characters.count == 1, let scalar = characters.unicodeScalars.first else {
-      return characters
+  /// A translation of this keystroke, with the two cases a terminal must not see.
+  private func musterText(_ produced: String?) -> String? {
+    guard let produced else { return nil }
+    guard produced.count == 1, let scalar = produced.unicodeScalars.first else {
+      return produced
     }
 
     // A control character means macOS already applied ctrl. The encoder does its own
@@ -57,7 +64,7 @@ extension NSEvent {
       return nil
     }
 
-    return characters
+    return produced
   }
 
   /// What this key produces with no modifiers at all.

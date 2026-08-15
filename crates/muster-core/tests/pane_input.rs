@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use conformance::{CaseError, Conformance, fields, hex, strings};
 use muster_core::input::{
-    Key, KeyAction, KeyEvent, Keymap, Modifiers, PaneChannel, PaneInput, PaneIntent,
+    Key, KeyAction, KeyEvent, Modifiers, PaneChannel, PaneInput, PaneInputSettings, PaneIntent,
     ScrollDirection,
 };
 use serde_json::{Value, json};
@@ -26,7 +26,7 @@ fn pane_input_conformance() {
             control,
             server_channel(given.get("daemon"), &recorder),
             Arc::new(FakeEncoder),
-            Keymap::default(),
+            &PaneInputSettings::default(),
         );
 
         for step in given.get("steps").and_then(Value::as_array).unwrap_or(&Vec::new()) {

@@ -164,9 +164,26 @@ impl Daemon {
     /// It also means a test needs no environment mutation, which in a process that is also
     /// running threads is worth more than the line it saves.
     pub fn muster_config(&self) -> PathBuf {
+        self.muster_config_with("")
+    }
+
+    /// The same file with more in it, for a test about a setting rather than about a daemon.
+    ///
+    /// Written as text rather than built from a config type, because what is under test is
+    /// what a person types: a setting reached by constructing the parsed form would pass
+    /// while the file that names it was being refused.
+    ///
+    /// The extra goes *first*, which is not a style choice. In TOML every bare key after a
+    /// table header belongs to that table, so `option_as_alt` written below `[[daemon]]`
+    /// becomes a key of the daemon block and the file is refused for naming something a
+    /// daemon does not have. A refused config is not a failed test either - Muster falls back
+    /// to finding a daemon for itself, so the run quietly attaches to whatever herdr the
+    /// developer has open and fails somewhere unrecognizable.
+    pub fn muster_config_with(&self, extra: &str) -> PathBuf {
         let path = self.root.join("muster.toml");
+        let preamble = if extra.is_empty() { String::new() } else { format!("{extra}\n") };
         let contents = format!(
-            "[[daemon]]\nid = \"local\"\nsocket = {:?}\n",
+            "{preamble}[[daemon]]\nid = \"local\"\nsocket = {:?}\n",
             self.socket_path.to_string_lossy()
         );
         std::fs::write(&path, contents).unwrap_or_else(|error| {

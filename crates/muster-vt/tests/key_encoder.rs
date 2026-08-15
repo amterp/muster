@@ -2,10 +2,19 @@
 //! upstream does that, and a second implementation written to agree with it would be the
 //! bug. What they pin is everything around it that is ours.
 //!
+//! Option-as-alt is driven here as one thing rather than two, and that is the point. The
+//! encoder's flag alone cannot settle it: a layout that spent option composing a character
+//! reports it consumed, and the encoder subtracts consumed modifiers before it ever reads
+//! the flag. So `PaneInputSettings::as_alt` rewrites the keystroke first and these cases run
+//! both steps together. Running only the second is what let every case here pass while every
+//! real keystroke did the opposite.
+//!
 //! Cases live in corpus/conformance/key-encoder.json.
 
 use conformance::{CaseError, Conformance, fields, hex, strings};
-use muster_core::input::{Key, KeyEvent, Modifiers, OptionAsAlt, TerminalModeProfile};
+use muster_core::input::{
+    Key, KeyEvent, Modifiers, OptionAsAlt, PaneInputSettings, TerminalModeProfile,
+};
 use muster_vt::KeyEncoder;
 use serde_json::{Value, json};
 
@@ -14,10 +23,16 @@ fn key_encoder_conformance() {
     let corpus = Conformance::load("key-encoder.json");
 
     let ran = corpus.run(|given| {
-        let encoder = KeyEncoder::new(profile(given.get("profile"))?)
-            .map_err(|error| CaseError::new(error.to_string()))?;
-        let bytes =
-            encoder.encode(&key_event(given)?).map_err(|e| CaseError::new(e.to_string()))?;
+        let profile = profile(given.get("profile"))?;
+        let encoder =
+            KeyEncoder::new(profile).map_err(|error| CaseError::new(error.to_string()))?;
+        // The same setting the encoder was built with, so the two steps cannot disagree -
+        // which is exactly the arrangement `PaneInput` holds at runtime.
+        let settings =
+            PaneInputSettings { option_as_alt: profile.option_acts_as_alt, ..Default::default() };
+        let key = key_event(given)?;
+        let key = settings.as_alt(&key).unwrap_or(key);
+        let bytes = encoder.encode(&key).map_err(|e| CaseError::new(e.to_string()))?;
         Ok(fields([("bytes_hex", Some(json!(hex(&bytes))))]))
     });
 
@@ -84,10 +99,23 @@ fn key_event(given: &Value) -> Result<KeyEvent, CaseError> {
         .ok_or_else(|| CaseError::new(format!("`{name}` is not a W3C key name")))?;
     let modifiers = Modifiers::parse(&strings(given, "modifiers"))
         .ok_or_else(|| CaseError::new("`modifiers` names something that is not a modifier"))?;
+    // Which modifiers the layout spent producing the text. Absent means none were, which is
+    // what an unmodified press looks like - but a case about option has to say, because
+    // whether the encoder may use the text at all turns on this and on nothing else.
+    let consumed_modifiers =
+        Modifiers::parse(&strings(given, "consumedModifiers")).ok_or_else(|| {
+            CaseError::new("`consumedModifiers` names something that is not a modifier")
+        })?;
     Ok(KeyEvent {
         key,
         modifiers,
+        consumed_modifiers,
         text: given.get("text").and_then(Value::as_str).unwrap_or("").to_string(),
+        text_without_option: given
+            .get("textWithoutOption")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string(),
         unshifted_codepoint: given
             .get("unshiftedCodepoint")
             .and_then(Value::as_str)

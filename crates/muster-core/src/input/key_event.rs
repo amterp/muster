@@ -59,6 +59,18 @@ pub struct KeyEvent {
     /// What the layout produced, if anything. Empty for keys with no text, such as arrows.
     pub text: String,
 
+    /// What the layout would have produced if option had not been part of the translation.
+    ///
+    /// Only meaningful on macOS, and only when option is down. It exists because option is
+    /// two things there: a modifier, and a key that composes characters. Which one it is for
+    /// a given user is configuration, and only the layout can say what the other reading
+    /// would have produced - `opt+shift+t` is `‡` under one and `T` under the other, and no
+    /// amount of reasoning about `text` recovers the second from the first.
+    ///
+    /// Reported rather than decided, which keeps the shell a translator: it hands over both
+    /// readings and the core picks, knowing what the config file said.
+    pub text_without_option: String,
+
     /// The codepoint this key produces with no modifiers at all.
     ///
     /// The kitty protocol reports it so an application can recognize a chord by the key the
@@ -89,6 +101,7 @@ impl Default for KeyEvent {
             modifiers: Modifiers::NONE,
             consumed_modifiers: Modifiers::NONE,
             text: String::new(),
+            text_without_option: String::new(),
             unshifted_codepoint: None,
             is_composing: false,
         }
@@ -153,6 +166,12 @@ impl Modifiers {
     #[must_use]
     pub fn intersection(self, other: Modifiers) -> Modifiers {
         Modifiers(self.0 & other.0)
+    }
+
+    /// These modifiers with the given ones cleared.
+    #[must_use]
+    pub fn without(self, other: Modifiers) -> Modifiers {
+        Modifiers(self.0 & !other.0)
     }
 
     pub fn is_empty(self) -> bool {

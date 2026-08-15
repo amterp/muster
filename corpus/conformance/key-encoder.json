@@ -141,7 +141,11 @@
           "alt"
         ],
         "text": "†",
-        "unshiftedCodepoint": "t"
+        "unshiftedCodepoint": "t",
+        "consumedModifiers": [
+          "alt"
+        ],
+        "textWithoutOption": "t"
       },
       "expect": {
         "bytes_hex": "e280a0"
@@ -159,7 +163,11 @@
           "alt"
         ],
         "text": "†",
-        "unshiftedCodepoint": "t"
+        "unshiftedCodepoint": "t",
+        "consumedModifiers": [
+          "alt"
+        ],
+        "textWithoutOption": "t"
       },
       "expect": {
         "bytes_hex": "1b74"
@@ -178,7 +186,11 @@
           "altIsRight"
         ],
         "text": "†",
-        "unshiftedCodepoint": "t"
+        "unshiftedCodepoint": "t",
+        "consumedModifiers": [
+          "alt"
+        ],
+        "textWithoutOption": "t"
       },
       "expect": {
         "bytes_hex": "e280a0"
@@ -197,10 +209,38 @@
           "altIsRight"
         ],
         "text": "†",
-        "unshiftedCodepoint": "t"
+        "unshiftedCodepoint": "t",
+        "consumedModifiers": [
+          "alt"
+        ],
+        "textWithoutOption": "t"
       },
       "expect": {
         "bytes_hex": "1b74"
+      }
+    },
+    {
+      "name": "a shifted option chord keeps its shift",
+      "why": "Why the shell reports what the layout would have produced without option, rather than the core reusing `unshiftedCodepoint`. That field is unshifted by definition, so falling back to it turns opt+shift+t into a lowercase meta chord - readline's alt+F and alt+f are different commands, so the difference is not cosmetic. Only the layout can answer what the other reading was, which is why it is reported rather than derived.",
+      "given": {
+        "profile": {
+          "optionActsAsAlt": "always"
+        },
+        "key": "KeyT",
+        "modifiers": [
+          "alt",
+          "shift"
+        ],
+        "consumedModifiers": [
+          "alt",
+          "shift"
+        ],
+        "text": "‡",
+        "textWithoutOption": "T",
+        "unshiftedCodepoint": "t"
+      },
+      "expect": {
+        "bytes_hex": "1b54"
       }
     }
   ]

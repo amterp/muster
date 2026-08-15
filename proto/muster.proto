@@ -417,6 +417,14 @@ message KeyEvent {
   // Whether an input method is mid-composition. A composing keystroke belongs to the input
   // method, not the pane: encoding it would deliver the romaji as well as the result.
   bool is_composing = 7;
+
+  // What the layout would have produced if option had not been part of the translation.
+  // Only meaningful on macOS and only while option is down, because option is two things
+  // there: a modifier, and a key that composes characters. Which one it is for a given user
+  // is configuration, and only the layout can say what the other reading would have been -
+  // `opt+shift+t` is `‡` under one and `T` under the other. The shell reports both readings
+  // rather than choosing, and the core picks knowing what the config file said.
+  string text_without_option = 8;
 }
 
 // A key press, as it looked after the input method had its turn.

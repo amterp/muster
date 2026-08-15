@@ -88,6 +88,30 @@ func repeatsAreDistinct() throws {
   #expect(translated.action == "repeated")
 }
 
+@Test("an option chord carries both readings, because only the layout knows the second")
+func optionChordsCarryTheirOtherReading() throws {
+  // Option is two keys on macOS: a modifier, and one that composes characters. Which it is
+  // for a given person is configuration, so the shell reports what the layout did and what
+  // it would have done, and the core picks. Deriving the second from the first is not
+  // possible - nothing about `†` says it came from `t`.
+  let event = try #require(key("†", unshifted: "t", keyCode: 0x11, flags: .option))
+  let translated = event.musterKeyEvent(action: "press", isComposing: false)
+
+  #expect(translated.text == "†")
+  #expect(translated.textWithoutOption == "t")
+  #expect(translated.modifiers.contains("alt"))
+  #expect(translated.consumedModifiers.contains("alt"))
+}
+
+@Test("a keystroke with no option held reports no second reading")
+func plainKeystrokesCarryOneReading() throws {
+  // The two only differ while option is down, and translating twice on every keypress
+  // would cost the input path a layout lookup nothing reads.
+  let event = try #require(key("a", keyCode: 0x00))
+  let translated = event.musterKeyEvent(action: "press", isComposing: false)
+  #expect(translated.textWithoutOption.isEmpty)
+}
+
 /// Builds the keystroke AppKit would have delivered.
 private func key(
   _ characters: String,

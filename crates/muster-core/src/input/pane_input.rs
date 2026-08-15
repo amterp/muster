@@ -8,7 +8,10 @@
 
 use std::sync::{Arc, Mutex};
 
-use super::{KeyEncoding, KeyEvent, Keymap, PaneChannel, PaneIntent, Resolution, ScrollDirection};
+use super::{
+    KeyEncoding, KeyEvent, Keymap, PaneChannel, PaneInputSettings, PaneIntent, Resolution,
+    ScrollDirection,
+};
 use crate::diagnostics::log;
 use crate::fields;
 
@@ -17,6 +20,12 @@ pub struct PaneInput {
     server_channel: Option<Arc<dyn PaneChannel>>,
     encoder: Arc<dyn KeyEncoding>,
     keymap: Keymap,
+
+    /// Held beside the encoder rather than only inside it, because option-as-alt takes two
+    /// steps and they must be the same answer: the encoder's flag opens the alt-prefix
+    /// branch, and this decides whether the keystroke arrives in a shape that reaches it.
+    /// Both come from one [`PaneInputSettings`] for that reason.
+    settings: PaneInputSettings,
 
     /// Everything leaves through here, in order.
     ///
@@ -47,17 +56,21 @@ impl std::fmt::Debug for PaneInput {
 }
 
 impl PaneInput {
+    /// The encoder is passed in rather than built here because building one is I/O-adjacent
+    /// and fallible, but it must come from `settings.profile()` - an encoder built from
+    /// anything else disagrees with the keystrokes this will hand it.
     pub fn new(
         channel: Arc<dyn PaneChannel>,
         server_channel: Option<Arc<dyn PaneChannel>>,
         encoder: Arc<dyn KeyEncoding>,
-        keymap: Keymap,
+        settings: &PaneInputSettings,
     ) -> PaneInput {
         PaneInput {
             channel,
             server_channel,
             encoder,
-            keymap,
+            keymap: settings.keymap(),
+            settings: settings.clone(),
             outbound: Mutex::new(Outbound::default()),
         }
     }
@@ -94,6 +107,12 @@ impl PaneInput {
             }
             Resolution::Unbound => {}
         }
+
+        // After the keymap and before the encoder. A chord bound in the config is bound
+        // whatever option means, because the keymap matches on which modifiers are held and
+        // never on what the layout did with them.
+        let resolved = self.settings.as_alt(key);
+        let key = resolved.as_ref().unwrap_or(key);
 
         let Ok(bytes) = self.encoder.encode(key) else {
             log::warn(

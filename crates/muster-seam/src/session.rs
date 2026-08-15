@@ -441,7 +441,7 @@ impl Session {
                     Arc::clone(&control) as Arc<_>,
                     Some(Arc::new(server) as Arc<_>),
                     Arc::new(encoder),
-                    settings.keymap(),
+                    &settings,
                 ),
                 control_socket_path: path,
                 _control: control,

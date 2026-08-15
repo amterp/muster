@@ -12,7 +12,7 @@
 
 use std::collections::BTreeMap;
 
-use super::{Binding, Keymap, OptionAsAlt, TerminalModeProfile};
+use super::{Binding, KeyEvent, Keymap, Modifiers, OptionAsAlt, TerminalModeProfile};
 
 /// The config file's answers about typing, with Muster's own where it said nothing.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -44,5 +44,49 @@ impl PaneInputSettings {
     /// What Muster binds, with this file's text bindings over it.
     pub fn keymap(&self) -> Keymap {
         Keymap::with_text(self.text.clone())
+    }
+
+    /// The keystroke as the encoder should see it, with option read the way the file asks.
+    ///
+    /// Setting the encoder's own option flag is necessary and not sufficient, which is the
+    /// part that is easy to get wrong and impossible to see. The encoder computes its
+    /// effective modifiers as everything held minus everything the layout spent, and macOS
+    /// always reports option as spent when option composed a character. So a held-and-spent
+    /// option arrives as no option at all, the alt-prefix branch is never reached, and the
+    /// flag that would have enabled it is read by nobody. Every conformance case that left
+    /// consumed modifiers out passed while every real keystroke did the opposite.
+    ///
+    /// So the spend is taken back here, and the text is replaced with what the layout would
+    /// have produced without option - the second reading the shell reports for exactly this.
+    /// Ghostty does the same thing one layer up, by re-translating the event before it ever
+    /// reaches the encoder (`macos/Sources/Ghostty/Surface View/SurfaceView_AppKit.swift`,
+    /// `keyDown`); the difference is where the decision sits, not what it decides.
+    ///
+    /// Untouched when option is not held, or when the config leaves option composing, so the
+    /// default path costs a modifier test and nothing else.
+    pub fn as_alt(&self, key: &KeyEvent) -> Option<KeyEvent> {
+        if !key.modifiers.contains(Modifiers::ALT) || !self.option_is_alt(key.modifiers) {
+            return None;
+        }
+        Some(KeyEvent {
+            text: key.text_without_option.clone(),
+            consumed_modifiers: key.consumed_modifiers.without(Modifiers::ALT),
+            ..key.clone()
+        })
+    }
+
+    /// Whether the option key being held is one the config says means alt.
+    ///
+    /// The side comes from the event, because a chord with the left option down and the
+    /// right one configured is an ordinary composition rather than a meta chord. A keystroke
+    /// that names no side is a left one: that is what the encoding treats as the default and
+    /// what a shell that cannot tell the sides apart would report.
+    fn option_is_alt(&self, held: Modifiers) -> bool {
+        match self.option_as_alt {
+            OptionAsAlt::Never => false,
+            OptionAsAlt::Always => true,
+            OptionAsAlt::LeftOnly => !held.contains(Modifiers::ALT_IS_RIGHT),
+            OptionAsAlt::RightOnly => held.contains(Modifiers::ALT_IS_RIGHT),
+        }
     }
 }

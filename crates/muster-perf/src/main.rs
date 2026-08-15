@@ -15,7 +15,7 @@ use std::sync::Arc;
 use muster_core::AgentState;
 use muster_core::composition::{Composition, Daemon, DaemonId, Endpoint, View};
 use muster_core::input::{
-    Key, KeyEvent, Keymap, Modifiers, PaneInput, Resolution, TerminalModeProfile,
+    Key, KeyEvent, Keymap, Modifiers, PaneInput, PaneInputSettings, Resolution, TerminalModeProfile,
 };
 use muster_core::mirror::backend::{
     Focus, Layout, LayoutNode, Pane, PaneId, Snapshot, SplitAxis, Tab, TabId, Workspace,
@@ -369,7 +369,12 @@ fn bind_pane_socket(index: usize) -> Option<(Arc<PaneControlChannel>, PaneInput)
         .into_owned();
     let control = Arc::new(PaneControlChannel::bind(path, || {}).ok()?);
     let encoder = Arc::new(KeyEncoder::new(TerminalModeProfile::UNKNOWN_PANE).ok()?);
-    let input = PaneInput::new(Arc::clone(&control) as Arc<_>, None, encoder, Keymap::default());
+    let input = PaneInput::new(
+        Arc::clone(&control) as Arc<_>,
+        None,
+        encoder,
+        &PaneInputSettings::default(),
+    );
     Some((control, input))
 }
 

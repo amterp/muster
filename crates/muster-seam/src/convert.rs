@@ -138,6 +138,7 @@ pub(crate) fn key(event: &proto::KeyEvent) -> Result<KeyEvent, String> {
         modifiers,
         consumed_modifiers,
         text: event.text.clone(),
+        text_without_option: event.text_without_option.clone(),
         // A codepoint that is not a character is not worth refusing over: it is an extra the
         // kitty protocol reports, not the keystroke itself.
         unshifted_codepoint: event.unshifted_codepoint.and_then(char::from_u32),
