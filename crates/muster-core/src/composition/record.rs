@@ -251,6 +251,56 @@ impl Composition {
             .map(|region| region.id)
     }
 
+    /// Brings a tab onto the screen, and says which region is now showing it.
+    ///
+    /// The half of attention routing that is not a colour on a pane. A `done` or `blocked`
+    /// agent is most often on a pane no window is showing, so being told about it is only
+    /// useful if going to it works - and going to it means changing what a region shows
+    /// first (`architecture.md`, attention routing: surfacing the hidden is part of the
+    /// feature, and the core owns it).
+    ///
+    /// Three answers, in order. A region already showing this tab is the one to use; a
+    /// second region onto the same tab would be two copies of one thing. Otherwise a region
+    /// already on this daemon is retargeted - the focused one when it qualifies, so that
+    /// following a notification does not move the keyboard's region out from under the next
+    /// keystroke. Only when the daemon has no region at all does one open.
+    ///
+    /// A region on another daemon is never taken. A window showing a laptop and a devenv
+    /// side by side is the arrangement this project exists for, and quietly replacing one
+    /// with the other would be a worse surprise than a new region appearing.
+    ///
+    /// `None` only when the daemon is not attached, which is the one case where there is
+    /// nothing honest to show.
+    pub fn surface(
+        &mut self,
+        daemon: &DaemonId,
+        workspace: WorkspaceId,
+        tab: TabId,
+    ) -> Option<RegionId> {
+        if let Some(showing) = self.region_showing(daemon, &tab) {
+            return Some(showing);
+        }
+        let retarget = self
+            .focused
+            .filter(|id| {
+                self.regions.iter().any(|region| region.id == *id && &region.daemon == daemon)
+            })
+            .or_else(|| {
+                self.regions.iter().find(|region| &region.daemon == daemon).map(|region| region.id)
+            });
+        let Some(id) = retarget else {
+            return self.open_region(daemon, workspace, tab);
+        };
+        let region = self.regions.iter_mut().find(|region| region.id == id)?;
+        region.workspace = workspace;
+        region.tab = tab;
+        // Cleared rather than kept: the pane it held is in the tab this region just stopped
+        // showing, and leaving it would point the keyboard at something off screen. The
+        // caller names the pane it wanted, and reconcile fills one in otherwise.
+        region.pane = None;
+        Some(id)
+    }
+
     /// Points the window's keyboard at a pane, and at the region holding it.
     ///
     /// A no-op for a region that is gone, rather than an error. A focus intent racing a

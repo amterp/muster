@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "going-to-a-pane-no",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "done",
+  "created_at_millis": 1786786606803,
+  "creator": "Alexander Terp",
+  "description": "Attention routing's ceiling, and the half that makes the sidebar more than a display. Glanceable states are the floor; an agent that finished or is waiting for somebody is most often on a pane no region shows, so being told about it only helps if going there works.\n\nA focus request naming such a pane now retargets a region onto its tab rather than being refused. The region chosen is one already on that pane's daemon, preferring the focused one so that following a notification does not slide the keyboard's region out from under the next keystroke. A region on another daemon is never taken - a laptop beside a devenv is the arrangement this project exists for, and quietly replacing one with the other is a worse surprise than a region appearing. Only a daemon with no region at all gets a new one.\n\nCases in corpus/conformance/composition.json; proved end to end in crates/muster-seam/tests/attach.rs, in both directions, because a surface that could only move away from where you were would be a trap.",
+  "id": "a_28Nb8xJyb",
+  "position": "UUUUUUUUUUUUUUUUUUU",
+  "title": "🧭 Going to a pane no window is showing",
+  "type": "feature",
+  "updated_at_millis": 1786786606803,
+  "history": [
+    {"field":"column","value":"done","at":1786786606803}
+  ]
+}

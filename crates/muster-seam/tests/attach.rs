@@ -19,8 +19,8 @@ use std::sync::Mutex;
 
 use herdr_harness::Daemon;
 use muster::proto::{
-    AttachPane, ClosePane, Event, Paste, Request, Response, SplitPane, Startup, ViewChanged,
-    ViewNode, WindowFocus, event, request, response, view_node,
+    AttachPane, ClosePane, Event, FocusPane, Paste, Request, Response, RosterChanged, SplitPane,
+    Startup, ViewChanged, ViewNode, WindowFocus, event, request, response, view_node,
 };
 use prost::Message;
 use serde_json::{Value, json};
@@ -146,7 +146,79 @@ fn attaching_places_a_pane_where_the_keyboard_can_find_it() {
     );
 
     an_agent_finishing_unseen_waits_to_be_noticed(&daemon, &second);
+    a_pane_no_region_shows_can_still_be_reached(&daemon);
     the_window_follows_and_drives_the_tree(&daemon, &second);
+}
+
+/// Going to a pane in a tab this window is not showing.
+///
+/// The half of attention routing that is not a colour. Glanceable states are the floor: an
+/// agent that finished or is waiting for somebody is most often on a pane no region is
+/// showing, and being told about it only helps if going there works. Before this, focusing
+/// such a pane was refused by name - which is a list of things you cannot reach.
+fn a_pane_no_region_shows_can_still_be_reached(daemon: &Daemon) {
+    let before = latest_view().expect("the window is showing something by now");
+    let shown: Vec<String> = before.regions.iter().map(|region| region.tab_id.clone()).collect();
+
+    let created = daemon.call("tab.create", &json!({ "cwd": "/tmp" }));
+    let elsewhere = daemon
+        .call("pane.list", &json!({}))
+        .get("panes")
+        .and_then(Value::as_array)
+        .expect("herdr lists its panes")
+        .iter()
+        .find(|pane| {
+            pane["tab_id"].as_str().is_some_and(|tab| !shown.iter().any(|shown| shown == tab))
+        })
+        .and_then(|pane| pane["pane_id"].as_str())
+        .unwrap_or_else(|| panic!("the new tab holds no pane of its own: {created:?}"))
+        .to_string();
+
+    // Listed, and listed as hidden - which is the row the sidebar would draw and the state
+    // this whole check is about. Waited for on the list rather than on the view, because the
+    // view is the one place this pane will never appear until something surfaces it.
+    until(
+        "the new tab's pane to be listed as something nothing is showing",
+        || listed(&elsewhere) == Some(false),
+        || format!("the list says {:?} about {elsewhere}", listed(&elsewhere)),
+    );
+
+    assert_ok(&answer(request::Payload::FocusPane(FocusPane {
+        daemon_id: String::new(),
+        pane_id: elsewhere.clone(),
+    })));
+
+    // One region still, retargeted rather than added: switching tabs on the daemon you are
+    // already looking at should not split the window in two.
+    until(
+        "the region to be showing the pane that was asked for",
+        || {
+            latest_view()
+                .is_some_and(|view| view.regions.len() == 1 && view.regions[0].pane_id == elsewhere)
+        },
+        || format!("the last view: {:?}", latest_view()),
+    );
+    // And the list agrees with the window it sits beside, which is the join the sidebar
+    // draws: the row that said hidden a moment ago now says it is showing.
+    until(
+        "the list to agree that the pane is on screen",
+        || listed(&elsewhere) == Some(true),
+        || format!("the list says {:?} about {elsewhere}", listed(&elsewhere)),
+    );
+
+    // Back where it started, so that what follows is about the tab it was written against.
+    // Going back is the same mechanism in reverse and is worth one assertion of its own -
+    // a surface that could only move away from where you were would be a trap.
+    let home = before.regions[0].pane_id.clone();
+    assert_ok(&answer(request::Payload::FocusPane(FocusPane {
+        daemon_id: String::new(),
+        pane_id: home.clone(),
+    })));
+    until(
+        "the window to come back to the tab it started on",
+        || latest_view().is_some_and(|view| view.regions[0].pane_id == home),
+        || format!("the last view: {:?}", latest_view()),
+    );
 }
 
 /// An agent that finishes while nobody is looking, and what happens when somebody looks.
@@ -297,6 +369,9 @@ static VIEW: Mutex<Option<ViewChanged>> = Mutex::new(None);
 /// agent is doing - which is what it paints.
 static STATES: Mutex<Vec<(String, String)>> = Mutex::new(Vec::new());
 
+/// The last list of everything the daemons hold, which is what a sidebar row comes from.
+static ROSTER: Mutex<Option<RosterChanged>> = Mutex::new(None);
+
 extern "C" fn note_view(bytes: *const u8, len: usize) {
     // SAFETY: the core guarantees `len` readable bytes for the duration of this call, which
     // is the contract in include/muster.h.
@@ -311,12 +386,27 @@ extern "C" fn note_view(bytes: *const u8, len: usize) {
                 .expect("a panicking reader poisoned the states")
                 .push((state.pane_id, state.state));
         }
+        Ok(Event { payload: Some(event::Payload::RosterChanged(roster)) }) => {
+            *ROSTER.lock().expect("a panicking reader poisoned the roster") = Some(roster);
+        }
         _ => {}
     }
 }
 
 fn latest_view() -> Option<ViewChanged> {
     VIEW.lock().expect("a panicking reader poisoned the view").clone()
+}
+
+/// Whether the list holds a row for this pane, and whether it says anything is showing it.
+fn listed(pane: &str) -> Option<bool> {
+    ROSTER
+        .lock()
+        .expect("a panicking reader poisoned the roster")
+        .as_ref()?
+        .panes
+        .iter()
+        .find(|row| row.pane_id == pane)
+        .map(|row| row.on_screen)
 }
 
 /// The last thing the core said about this pane's agent, if it has said anything.

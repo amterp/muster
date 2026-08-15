@@ -337,6 +337,47 @@ impl Session {
         self.panes.get(daemon)?.get(pane)
     }
 
+    /// Puts a region onto the tab holding this pane, so that something can show it.
+    ///
+    /// The mirror is what knows which tab a pane is in, so the lookup is here and the policy
+    /// - which region, or a new one - is in the composition record where the rest of it is.
+    ///
+    /// Refuses by name rather than silently doing nothing. A pane the daemon has never heard
+    /// of and a pane that closed while a click was in flight look identical from a sidebar
+    /// row, and both leave the keyboard where it was.
+    fn surface(&mut self, daemon: &DaemonId, pane: &PaneId) -> Result<RegionId, String> {
+        let (workspace, tab) = {
+            let mirror = self
+                .backends
+                .get(daemon)
+                .ok_or_else(|| {
+                    format!(
+                        "this window is not following a daemon called {daemon}, so there is \
+                         nothing to show {pane} in and the keyboard stayed where it was."
+                    )
+                })?
+                .mirror
+                .lock()
+                .map_err(|_| {
+                    format!("the mirror for {daemon} was poisoned by a panicking sender")
+                })?;
+            let held = mirror.pane(pane).ok_or_else(|| {
+                format!(
+                    "{daemon} holds no pane called {pane}, so the keyboard stayed where it \
+                     was. Most likely it closed while this was in flight, which an entry in a \
+                     list outlives by a moment."
+                )
+            })?;
+            (held.workspace.clone(), held.tab.clone())
+        };
+        self.composition.surface(daemon, workspace, tab).ok_or_else(|| {
+            format!(
+                "{daemon} is followed but not attached to this window's composition, so no \
+                 region could be opened onto {pane}."
+            )
+        })
+    }
+
     /// What this window is showing, right now.
     ///
     /// Every daemon's mirror is locked for the length of it, in the map's own order. That
@@ -504,13 +545,14 @@ pub(crate) fn submit(daemon: &DaemonId, intent: &BackendIntent) -> Result<(), St
 pub(crate) fn focus(daemon: &DaemonId, pane: &PaneId) -> Result<(), String> {
     {
         let mut session = SESSION.lock().expect("a panicking sender poisoned the session");
-        let region = session.region_holding(daemon, pane).ok_or_else(|| {
-            format!(
-                "no region in this window is showing a pane called {pane} on {daemon}, so \
-                 the keyboard stayed where it was. Either the pane closed while this was in \
-                 flight, or it belongs to a tab this window is not showing."
-            )
-        })?;
+        let region = match session.region_holding(daemon, pane) {
+            Some(region) => region,
+            // Not on screen, which is the interesting half. An agent that finished or is
+            // waiting for somebody is most often in a tab no region is showing, so a focus
+            // request that refused there would leave the sidebar listing panes nobody can
+            // reach - a display, not attention routing.
+            None => session.surface(daemon, pane)?,
+        };
         session.composition.focus_pane(region, pane.clone());
     }
     publish();

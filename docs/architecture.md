@@ -248,6 +248,19 @@ ordering; the shell only delivers notifications and renders indicators. Activati
 ordinary focus intent through the one action path - which may change composition first, because the pane that asked
 may not be visible in any window. Surfacing the hidden is part of the feature, and the core owns it.
 
+**Everything the daemons hold is published as well as everything on screen.** A window shows what fits in it, and the
+pane most likely to have finished unnoticed is the one no region is showing - so a roster travels beside the view:
+every pane every attached daemon holds, ordered and named for a reader, each row saying whether anything is showing
+it. Order and label are decisions and live in the core, so the sidebar, the CLI and an agent all get the same answer.
+Structure only, like the view: what an agent is doing keeps its own per-pane message, because a roster is stable and
+a state blinks.
+
+**A focus request surfaces the pane it names.** Naming a pane no region is showing retargets a region onto its tab
+rather than being refused - a list of panes that cannot be reached is a display, not routing. The region chosen is
+one already on that pane's daemon, preferring the focused one; a region on another daemon is never taken, because a
+window showing a laptop beside a devenv is the arrangement this project exists for. Only a daemon with no region at
+all gets a new one.
+
 ## Input precedence
 
 A keystroke resolves in fixed order: first the Muster keymap - if the chord is bound to an action, dispatch it and

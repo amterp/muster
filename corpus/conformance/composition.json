@@ -2824,6 +2824,312 @@
           "r1 tab=w1:t1 columns(w1:p1*, w1:p2*@0.5)"
         ]
       }
+    },
+    {
+      "name": "surfacing a tab nothing shows retargets that daemon's region",
+      "why": "The common shape of attention routing. A pane that finished unseen is almost always in a tab this window is not showing, and the region on its daemon is the honest place to put it - a second region onto the same daemon would split the window in two for what the user experiences as switching tabs.",
+      "given": {
+        "steps": [
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/herdr-local.sock"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "surface",
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t2"
+          }
+        ],
+        "attached": []
+      },
+      "expect": {
+        "daemons": [
+          "local local=/tmp/herdr-local.sock"
+        ],
+        "regions": [
+          "r0 daemon=local workspace=w1 tab=w1:t2"
+        ],
+        "focusedRegion": "r0",
+        "view": []
+      }
+    },
+    {
+      "name": "surfacing a tab already on screen changes nothing",
+      "why": "Following a notification about a pane you are already looking at must be a no-op, not a second region onto the same tab. Two copies of one tab is the multiplexer this project is deliberately not, and it would double every surface in it.",
+      "given": {
+        "steps": [
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/herdr-local.sock"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "surface",
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          }
+        ],
+        "attached": []
+      },
+      "expect": {
+        "daemons": [
+          "local local=/tmp/herdr-local.sock"
+        ],
+        "regions": [
+          "r0 daemon=local workspace=w1 tab=w1:t1"
+        ],
+        "focusedRegion": "r0",
+        "view": []
+      }
+    },
+    {
+      "name": "surfacing never takes a region from another daemon",
+      "why": "A window showing a laptop beside a devenv is the arrangement this project exists for. Retargeting the laptop's region onto a devenv tab would make one machine's panes vanish to show the other's, which is a worse surprise than a new region appearing - so the devenv's own region is the one that moves.",
+      "given": {
+        "steps": [
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/herdr-local.sock"
+          },
+          {
+            "do": "attachDaemon",
+            "daemon": "devenv",
+            "socketPath": "/tmp/herdr-devenv.sock"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "devenv",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "focusRegion",
+            "region": "r0"
+          },
+          {
+            "do": "surface",
+            "daemon": "devenv",
+            "workspace": "w1",
+            "tab": "w1:t9"
+          }
+        ],
+        "attached": []
+      },
+      "expect": {
+        "daemons": [
+          "devenv local=/tmp/herdr-devenv.sock",
+          "local local=/tmp/herdr-local.sock"
+        ],
+        "regions": [
+          "r0 daemon=local workspace=w1 tab=w1:t1",
+          "r1 daemon=devenv workspace=w1 tab=w1:t9"
+        ],
+        "focusedRegion": "r0",
+        "view": []
+      }
+    },
+    {
+      "name": "a daemon with no region on screen gets one rather than borrowing",
+      "why": "The only case where a region appears. The daemon is attached and holds panes, and nothing is showing any of them - so there is nothing to retarget, and refusing would leave the list naming panes that cannot be reached.",
+      "given": {
+        "steps": [
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/herdr-local.sock"
+          },
+          {
+            "do": "attachDaemon",
+            "daemon": "devenv",
+            "socketPath": "/tmp/herdr-devenv.sock"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "surface",
+            "daemon": "devenv",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          }
+        ],
+        "attached": []
+      },
+      "expect": {
+        "daemons": [
+          "devenv local=/tmp/herdr-devenv.sock",
+          "local local=/tmp/herdr-local.sock"
+        ],
+        "regions": [
+          "r0 daemon=local workspace=w1 tab=w1:t1",
+          "r1 daemon=devenv workspace=w1 tab=w1:t1"
+        ],
+        "focusedRegion": "r0",
+        "view": []
+      }
+    },
+    {
+      "name": "the keyboard's own region is the one that moves when it can",
+      "why": "Following a notification should not slide the keyboard's region out from under the next keystroke. When the focused region is already on the right daemon it is the one retargeted, so what the user was typing into is what changes rather than some other region of the same machine.",
+      "given": {
+        "steps": [
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/herdr-local.sock"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t2"
+          },
+          {
+            "do": "focusRegion",
+            "region": "r1"
+          },
+          {
+            "do": "surface",
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t3"
+          }
+        ],
+        "attached": []
+      },
+      "expect": {
+        "daemons": [
+          "local local=/tmp/herdr-local.sock"
+        ],
+        "regions": [
+          "r0 daemon=local workspace=w1 tab=w1:t1",
+          "r1 daemon=local workspace=w1 tab=w1:t3"
+        ],
+        "focusedRegion": "r1",
+        "view": []
+      }
+    },
+    {
+      "name": "a retargeted region forgets the pane it was showing",
+      "why": "The pane it held is in the tab it just stopped showing, so keeping it would point the keyboard at something off screen - and the input path reads that answer without checking. The caller names the pane it wanted, and a reconcile fills one in otherwise. The region carries no pane of its own afterwards; the tree beside it is the tab's, which is daemon truth and was always going to render.",
+      "given": {
+        "worlds": {
+          "two tabs": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "w1"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              },
+              {
+                "id": "w1:t2",
+                "workspace": "w1",
+                "label": "t2"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p9",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ],
+            "layouts": [
+              {
+                "tab": "w1:t1",
+                "root": "w1:p1"
+              },
+              {
+                "tab": "w1:t2",
+                "root": "w1:p9"
+              }
+            ]
+          }
+        },
+        "steps": [
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/herdr-local.sock"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "two tabs"
+          },
+          {
+            "do": "surface",
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t2"
+          }
+        ],
+        "attached": []
+      },
+      "expect": {
+        "daemons": [
+          "local local=/tmp/herdr-local.sock"
+        ],
+        "regions": [
+          "r0 daemon=local workspace=w1 tab=w1:t2"
+        ],
+        "focusedRegion": "r0",
+        "view": [
+          "r0 tab=w1:t2 w1:p9"
+        ]
+      }
     }
   ]
 }

@@ -78,6 +78,15 @@ fn act(
             );
         }
         "closeRegion" => composition.close_region(region(step)?),
+        // What following a notification does before it moves the keyboard: the pane that
+        // asked may be in a tab no region is showing, and surfacing it is the core's job.
+        "surface" => {
+            composition.surface(
+                &daemon(step),
+                WorkspaceId::new(text(step, "workspace")),
+                TabId::new(text(step, "tab")),
+            );
+        }
         "focusRegion" => composition.focus_region(region(step)?),
         "focusPane" => composition.focus_pane(region(step)?, PaneId::new(text(step, "pane"))),
         // The seam's own two lines: ask the view where a step lands, then move the keyboard
