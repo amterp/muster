@@ -5,18 +5,19 @@
   "area": [
     "shell"
   ],
-  "column": "next",
+  "column": "done",
   "created_at_millis": 1786810436831,
   "creator": "Alexander Terp",
   "description": "`View::step` walks only the regions on screen (`composition/view.rs`), so a pane in a tab no region is showing cannot be reached by any chord. Clicking its row in the sidebar is the only door, and it is now a door that can be closed: putting the list away (a_28NRKvB12) leaves those panes with no way in at all.\n\nMuster has next/previous and four directions, and between them they guarantee reaching every pane **the window is showing**. What is missing is the other axis - the tabs behind the ones on screen. Ghostty has ⌘1..⌘9 for this and most terminals have something.\n\nWorth deciding rather than defaulting:\n\n- **What the numbers count.** Tabs of the focused region's daemon? Every tab across every attached daemon, in roster order? The second is more useful in a two-machine window and harder to hold in your head.\n- **Whether it is numbers at all.** The roster is already ordered and labelled by the core, so `focus_next_tab`/`focus_previous_tab` over that order is one pair of chords instead of nine, and does not go stale when a tab closes.\n- **What it does to the region.** `FocusPane` already surfaces a hidden pane by retargeting a region, so the machinery exists; this is about naming the destination, not about getting there.",
   "id": "a_28Xb4UJFc",
-  "position": "2",
+  "position": "!!!!!!!2",
   "title": "⌨️ A hidden tab is reachable by mouse and nothing else",
   "type": "feature",
-  "updated_at_millis": 1786811428083,
+  "updated_at_millis": 1786815762976,
   "history": [
     {"field":"column","value":"backlog-lo","at":1786810436831},
     {"field":"column","value":"backlog-hi","at":1786810448312},
-    {"field":"column","value":"next","at":1786811428083}
+    {"field":"column","value":"next","at":1786811428083},
+    {"field":"column","value":"done","at":1786815762976}
   ]
 }

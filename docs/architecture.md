@@ -63,6 +63,19 @@ session is herdr's own concept rather than one invented here. Naming a `socket` 
 to ask for a particular daemon on purpose; nothing else in the environment is read, so an exported
 `HERDR_SOCKET_PATH` meant for somebody's own CLI cannot quietly redirect a window.
 
+**The daemon's environment is built, not inherited, and that follows from it being started and never stopped.**
+Whatever shell launched Muster is a moment; the daemon is not, and every pane's program is its child - so anything
+carried in at birth becomes state handed to every agent, on a process that outlives the app that carried it. An
+allowlist rather than a denylist, because a denylist is wrong until somebody notices, and the way you notice here is
+an agent behaving strangely for reasons nothing on screen explains. It stays short because a pane runs a shell and a
+shell rebuilds its own world from the user's files: what has to survive is only what a shell cannot work out for
+itself - where home is, what to run, the machine's locale, and the person's own ssh agent. The launch says in the run
+log what it carried and what it dropped, by name and never by value.
+
+Not hypothetical. Launching Muster from inside a coding-agent session put that session's markers and its messaging
+credentials into the daemon and from there into every pane, where a fresh agent read them, believed it was a child of
+another session, and stopped saving its transcript - and it persisted after that Muster had quit.
+
 The guarantee stops at the machine's edge. An SSH endpoint runs a platform this bundle carries no binary for, so a
 remote daemon is still whatever is installed over there. Closing that means putting an agent on the far machine on
 first connection, the way mutagen does.

@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "upstream-a-daemon",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "uncommitted",
+  "created_at_millis": 1786817672235,
+  "creator": "Alexander Terp",
+  "description": "Muster's daemon runs under a herdr session of its own, on a socket of its own, from a binary Muster shipped - and then reads the user's own `~/.config/herdr/config.toml`. A `default_shell` or a `shell_mode` somebody set for their own terminal silently decides what every Muster pane runs, and the corpus Muster is judged against was recorded against neither that config nor any other.\n\n**It cannot be fixed from this side, and that is the ask.** herdr resolves its config directory from `XDG_CONFIG_HOME` and nothing else (`src/config/io.rs`, `config_dir` - there is no flag and no `HERDR_CONFIG_*` variable; the only env vars herdr reads are `HERDR_SOCKET_PATH`, `HERDR_CLIENT_SOCKET_PATH`, `HERDR_SESSION`, `HERDR_BIN_PATH`, `HERDR_ENV`, and the three pane identity ones). A pane's process inherits the daemon's environment, so pointing the daemon at a private config directory points every pane's git, editor, gh and shell at one too. That is a worse fault than the one it fixes, so Muster does not do it.\n\n**The ask:** a way to name the config file independently of `XDG_CONFIG_HOME` - `herdr server --config \u003cpath\u003e`, or a `HERDR_CONFIG_PATH` read only by the server. Either separates \"which config this daemon runs on\" from \"where the programs inside it look for theirs\", which are two different questions that share one variable today.\n\nWorth noting there is already a partial answer in the API that does not reach this: `layout.apply` takes a `LayoutNode` carrying a per-pane `env` map, so herdr can already give one pane an environment of its own. It is only on that path - `pane.split`, `tab.create` and `workspace.create` take no env - and applying a layout is not what a keystroke means, so Muster cannot route ordinary pane creation through it to get there.\n\nUntil then Muster names the file in its run log at daemon start (`daemon.starting`, `config` field), so a pane that opened an unexpected shell is diagnosable rather than mysterious.\n\nRelated: a_28YgGqYq7, whose environment half is fixed - the daemon is now handed an allowlist rather than the launching shell's whole world. This is the half that was left.",
+  "id": "a_28adIUgPE",
+  "position": "UUUU",
+  "title": "🔌 Upstream: a daemon cannot be given a config without giving its panes one",
+  "type": "chore",
+  "updated_at_millis": 1786817672235,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1786817672235}
+  ]
+}

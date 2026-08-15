@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-window-that",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1786816945094,
+  "creator": "Alexander Terp",
+  "description": "Quit Muster and reopen it and every tab comes back, in the order and at the widths you left them - but the window itself opens at 960x632 in the middle of the screen, whatever it was before. Somebody running full-screen loses that on every relaunch.\n\n`window.toml` already exists and already survives a launch. It holds composition (which daemons, which tabs, which regions, at what weights) and, since the presentation work, a `[window]` table for whether the agent list is open. The frame is the obvious missing neighbour of that second one: it is the same kind of thing - what the window looked like rather than what session it was showing - and it has a home already built.\n\nObserved 2026-08-15, from an agent's stray `pkill` taking out a running app. The session came back perfectly, which is the guarantee working; the full-screen frame did not, which is what made the relaunch feel like a loss anyway. A crash or a reboot costs the same thing, so this is not really about stray pkills.\n\nWorth deciding rather than defaulting:\n\n- **What a frame even is across displays.** A window saved at 3400x1400 on a desk monitor and reopened on a laptop alone has to land somewhere sensible rather than mostly off-screen. macOS has `setFrameAutosaveName`, which handles exactly this and is the platform's own answer - but it writes to `NSUserDefaults`, which is a second place window state lives and is not a file anybody can read or delete. Muster's own file is the consistent choice; the display question is then ours to answer.\n- **Whether full-screen is part of it.** Native full-screen is a macOS space rather than a frame, so restoring it is a different call from restoring a size. Somebody who quit from full-screen probably wants it back, and reopening into a space is more disruptive to get wrong than a size is.\n- **Whether it belongs in `[window]` beside the sidebar, or in a table of its own.** They are the same kind of value - presentation rather than session - which argues for beside. A frame is per display and a sidebar is not, which argues against.\n- **What a shell that is not macOS does with it.** The frame is the shell's business the way the log path and the config path are, so the core probably holds a rectangle and has no opinion about screens.\n\nRelated: a_27QcqNxRB (composition is a value, so it can be written down) built the file this joins.",
+  "id": "a_28aKNgpuy",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "title": "🪟 A window that reopens forgets how big it was",
+  "type": "feature",
+  "updated_at_millis": 1786816945094,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1786816945094}
+  ]
+}

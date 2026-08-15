@@ -55,6 +55,24 @@ pub fn own_socket_path(environment: &BTreeMap<String, String>) -> Option<String>
     Some(format!("{}/sessions/{OWN_SESSION}/herdr.sock", config_base(environment)?))
 }
 
+/// The config file Muster's daemon will read, which is the user's own herdr config.
+///
+/// Reported rather than changed, and that is a limitation rather than a decision. Muster's
+/// daemon is a session of its own but not a world of its own: it reads whatever
+/// `config.toml` the user wrote for their own herdr, so a `default_shell` or a `shell_mode`
+/// changed for their terminal silently changes what Muster's panes do - and the corpus was
+/// recorded against neither.
+///
+/// It cannot be isolated from here. herdr resolves its config directory from
+/// `XDG_CONFIG_HOME` and nothing else (`config/io.rs`, `config_dir`), and a pane's process
+/// inherits the daemon's environment - so pointing the daemon at a private directory would
+/// point every pane's git, editor and shell at one too. That is a worse fault than the one it
+/// fixes, so what is left is saying which file is in play, where somebody debugging a
+/// surprising pane will see it.
+pub fn config_file(environment: &BTreeMap<String, String>) -> Option<String> {
+    Some(format!("{}/config.toml", config_base(environment)?))
+}
+
 /// herdr's configuration directory, which is also where its sockets live.
 ///
 /// None when the environment says nothing about where home is. Returning a plausible-looking

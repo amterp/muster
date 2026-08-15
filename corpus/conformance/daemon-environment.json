@@ -1,0 +1,201 @@
+{
+  "concept": "daemon.carried",
+  "source": "authored",
+  "citation": "README.md desiderata, sessions outlive the app; docs/architecture.md, durability; kan a_28YgGqYq7",
+  "why": "Muster's daemon is started by whichever shell started Muster, and it outlives that shell, that window and that app. Every pane it ever spawns is its child, so whatever it was handed at birth becomes permanent state handed to every agent - which for a tool whose entire purpose is running coding agents is close to the worst place for a stray variable to end up.\n\nThat is not hypothetical. Launching Muster from inside a Claude Code session put that session's CLAUDE_CODE_* markers and its messaging credentials into the daemon; a fresh Claude Code started in a pane read them, silently turned its own transcript saving off, and held another session's IPC token. It persisted after that Muster had quit.\n\nSo the daemon is handed an allowlist rather than an inheritance. A denylist would have to keep up with every tool that invents a variable, and would be wrong until somebody noticed - which is the same shape of failure again.\n\nThe list is short on purpose, and the reason is worth stating: a pane runs a shell, and a shell rebuilds its own world from the user's rc files. Toolchain managers, version switchers and prompts all put themselves back. What has to survive is only what a shell cannot work out for itself - where home is, what to run, and the machine's conventions.\n\nCases below name the whole environment a launch might carry and say which of it reaches the daemon. `carried` is name=value so that a case can show a value surviving intact; `dropped` is names alone.",
+  "cases": [
+    {
+      "name": "a harness's session state does not reach the daemon",
+      "why": "The bug this exists for, in the shape it was found. CLAUDE_CODE_CHILD_SESSION told a fresh agent it was a child session and to stop saving its transcript; CLAUDE_CODE_MESSAGING_TOKEN handed it another session's credentials. Neither belongs to the agents Muster runs - they belonged to whoever launched Muster - and both would have outlived the app that carried them in.",
+      "given": {
+        "env": {
+          "HOME": "/Users/a",
+          "PATH": "/usr/bin",
+          "CLAUDE_CODE_CHILD_SESSION": "1",
+          "CLAUDE_CODE_SESSION_ID": "77b20c76",
+          "CLAUDE_CODE_MESSAGING_SOCKET": "/tmp/cc.sock",
+          "CLAUDE_CODE_MESSAGING_TOKEN": "s3cret"
+        }
+      },
+      "expect": {
+        "carried": [
+          "HOME=/Users/a",
+          "PATH=/usr/bin"
+        ],
+        "dropped": [
+          "CLAUDE_CODE_CHILD_SESSION",
+          "CLAUDE_CODE_MESSAGING_SOCKET",
+          "CLAUDE_CODE_MESSAGING_TOKEN",
+          "CLAUDE_CODE_SESSION_ID"
+        ]
+      }
+    },
+    {
+      "name": "the variables the socket path was computed from survive",
+      "why": "Muster resolves where its daemon should listen from this environment and then starts a daemon that has to bind there. A daemon handed a different XDG_CONFIG_HOME binds somewhere else, and the launch waits out its ten-second timeout for a daemon that is running perfectly well - so this is not a preference, it is the one thing the allowlist cannot get wrong.",
+      "given": {
+        "env": {
+          "HOME": "/Users/a",
+          "XDG_CONFIG_HOME": "/Users/a/.config",
+          "XDG_STATE_HOME": "/Users/a/.local/state",
+          "XDG_DATA_HOME": "/Users/a/.local/share",
+          "XDG_CACHE_HOME": "/Users/a/.cache",
+          "XDG_RUNTIME_DIR": "/run/user/501"
+        }
+      },
+      "expect": {
+        "carried": [
+          "HOME=/Users/a",
+          "XDG_CACHE_HOME=/Users/a/.cache",
+          "XDG_CONFIG_HOME=/Users/a/.config",
+          "XDG_DATA_HOME=/Users/a/.local/share",
+          "XDG_RUNTIME_DIR=/run/user/501",
+          "XDG_STATE_HOME=/Users/a/.local/state"
+        ],
+        "dropped": []
+      }
+    },
+    {
+      "name": "a pane gets a shell that works",
+      "why": "The other half of the allowlist, and the reason it is not simply HOME. A daemon with no PATH spawns a shell that cannot run `ls`; one with no SHELL has nothing to spawn. USER and LOGNAME are what a git author or a home-directory lookup reads, and no shell can invent them.",
+      "given": {
+        "env": {
+          "PATH": "/opt/homebrew/bin:/usr/bin",
+          "SHELL": "/bin/zsh",
+          "USER": "amterp",
+          "LOGNAME": "amterp",
+          "TERM": "xterm-ghostty",
+          "TMPDIR": "/var/folders/x/T/",
+          "TZ": "Australia/Sydney"
+        }
+      },
+      "expect": {
+        "carried": [
+          "LOGNAME=amterp",
+          "PATH=/opt/homebrew/bin:/usr/bin",
+          "SHELL=/bin/zsh",
+          "TERM=xterm-ghostty",
+          "TMPDIR=/var/folders/x/T/",
+          "TZ=Australia/Sydney",
+          "USER=amterp"
+        ],
+        "dropped": []
+      }
+    },
+    {
+      "name": "the whole locale family travels together",
+      "why": "Carrying some of the locale is worse than carrying none: a pane with LANG set and LC_CTYPE not renders wide glyphs differently from the terminal it was launched from, which reads as a font bug rather than a missing variable. LC_ is a prefix rather than a list because the family is open - a machine can set LC_MEASUREMENT and LC_TELEPHONE - and a list would be wrong on somebody's machine and silent about it.",
+      "given": {
+        "env": {
+          "LANG": "en_AU.UTF-8",
+          "LC_ALL": "en_AU.UTF-8",
+          "LC_CTYPE": "UTF-8",
+          "LC_TIME": "en_AU.UTF-8"
+        }
+      },
+      "expect": {
+        "carried": [
+          "LANG=en_AU.UTF-8",
+          "LC_ALL=en_AU.UTF-8",
+          "LC_CTYPE=UTF-8",
+          "LC_TIME=en_AU.UTF-8"
+        ],
+        "dropped": []
+      }
+    },
+    {
+      "name": "the user's ssh agent travels, deliberately",
+      "why": "A credential channel carried on purpose, which is worth writing down so it reads as a decision rather than a hole in the list. A pane that cannot `git push` or reach a devenv is a pane somebody stops using, every terminal emulator on this platform passes this through, and unlike a harness's session token it belongs to the person rather than to whichever program happened to launch Muster.",
+      "given": {
+        "env": {
+          "HOME": "/Users/a",
+          "SSH_AUTH_SOCK": "/private/tmp/ssh-XXXX/agent.1"
+        }
+      },
+      "expect": {
+        "carried": [
+          "HOME=/Users/a",
+          "SSH_AUTH_SOCK=/private/tmp/ssh-XXXX/agent.1"
+        ],
+        "dropped": []
+      }
+    },
+    {
+      "name": "a herdr pointed somewhere else does not come along",
+      "why": "HERDR_SOCKET_PATH and HERDR_SESSION name a daemon, and Muster's daemon is the one Muster started. Carrying either would point a pane's own `herdr` CLI at somebody else's daemon - the exact confusion running under a session of Muster's own exists to prevent. The session Muster wants is set explicitly on the command that starts the daemon, so it needs nothing from here.",
+      "given": {
+        "env": {
+          "HOME": "/Users/a",
+          "HERDR_SOCKET_PATH": "/Users/a/.config/herdr/herdr.sock",
+          "HERDR_SESSION": "work"
+        }
+      },
+      "expect": {
+        "carried": [
+          "HOME=/Users/a"
+        ],
+        "dropped": [
+          "HERDR_SESSION",
+          "HERDR_SOCKET_PATH"
+        ]
+      }
+    },
+    {
+      "name": "a shell's own accumulated world is left for the shell to rebuild",
+      "why": "This is what keeps the list short. A login shell re-reads the user's rc files inside the pane, so a version manager, a language toolchain and a prompt all put themselves back - carrying them would freeze one moment's answer into a daemon that outlives every window, so a person who changed their setup would keep getting the old one until they found and killed the daemon.",
+      "given": {
+        "env": {
+          "HOME": "/Users/a",
+          "NVM_DIR": "/Users/a/.nvm",
+          "GOPATH": "/Users/a/go",
+          "RBENV_SHELL": "zsh",
+          "VIRTUAL_ENV": "/Users/a/src/x/.venv",
+          "STARSHIP_SHELL": "zsh"
+        }
+      },
+      "expect": {
+        "carried": [
+          "HOME=/Users/a"
+        ],
+        "dropped": [
+          "GOPATH",
+          "NVM_DIR",
+          "RBENV_SHELL",
+          "STARSHIP_SHELL",
+          "VIRTUAL_ENV"
+        ]
+      }
+    },
+    {
+      "name": "a variable set to nothing is not carried",
+      "why": "An empty value and an unset name mean the same thing to everything that reads one, and the rest of Muster already treats them alike when resolving a socket path. Passing the empty one through would make a daemon that has HOME set to nothing look different from one that has no HOME, which is a distinction nobody wants to debug.",
+      "given": {
+        "env": {
+          "HOME": "/Users/a",
+          "PATH": "",
+          "LANG": ""
+        }
+      },
+      "expect": {
+        "carried": [
+          "HOME=/Users/a"
+        ],
+        "dropped": [
+          "LANG",
+          "PATH"
+        ]
+      }
+    },
+    {
+      "name": "an empty environment carries nothing, rather than inventing a floor",
+      "why": "A launch from something that cleared its environment is not a launch worth guessing at. Inventing a HOME or a PATH here would put the guess in a process that outlives the app; letting it through empty means the socket path resolves to nothing and the launch says so, which is the failure everybody can act on.",
+      "given": {
+        "env": {}
+      },
+      "expect": {
+        "carried": [],
+        "dropped": []
+      }
+    }
+  ]
+}

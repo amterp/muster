@@ -146,14 +146,15 @@ fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, String> {
             Ok(Reached { socket_path: path.clone(), tunnel: None })
         }
         Endpoint::Local { socket_path: None } => {
-            let path = own_socket_path(&daemon::environment()).ok_or_else(|| {
+            let environment = daemon::environment();
+            let path = own_socket_path(&environment).ok_or_else(|| {
                 "Muster cannot work out where its own daemon's socket would go, because \
                  nothing in the environment says where home is - neither HOME nor \
                  XDG_CONFIG_HOME. This window will render nothing. Give the daemon a `socket` \
                  in the config file to say outright."
                     .to_string()
             })?;
-            daemon::ensure_running(&path, daemon_binary().as_deref())?;
+            daemon::ensure_running(&path, daemon_binary().as_deref(), &environment)?;
             Ok(Reached { socket_path: path, tunnel: None })
         }
         // A remote is the one place Muster does not yet own its daemon, and the reason is

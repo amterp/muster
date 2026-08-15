@@ -21,7 +21,7 @@ use muster_core::fields;
 use serde_json::json;
 
 use crate::client::HerdrClient;
-use crate::discovery::OWN_SESSION;
+use crate::discovery::{OWN_SESSION, config_file};
 
 /// How long a daemon that has just been started gets to answer.
 ///
@@ -46,26 +46,54 @@ pub fn answers(socket_path: &str) -> bool {
 
 /// Starts a daemon on this socket and waits until it answers.
 ///
-/// The environment is inherited rather than built, because the socket path was computed from
-/// it: a daemon started under a different `XDG_CONFIG_HOME` than the one Muster resolved
-/// would bind somewhere else and this would wait out the timeout for a daemon that is running
-/// perfectly well.
+/// The environment is built from an allowlist rather than inherited, and that is the whole of
+/// [`carried`]. Everything the launching shell held would otherwise become permanent state in
+/// a process that outlives the app and hands it to every pane it ever spawns.
 ///
 /// `HERDR_SESSION` rather than `--session`, so it reaches the panes the daemon spawns too.
 /// That is what makes `herdr pane list` inside a Muster pane talk to the daemon that owns it
 /// rather than to whatever the user's own herdr would find.
-pub fn start(binary: &str, socket_path: &str) -> Result<(), String> {
+pub fn start(
+    binary: &str,
+    socket_path: &str,
+    environment: &BTreeMap<String, String>,
+) -> Result<(), String> {
     log::info(
         "daemon.starting",
         fields! {
             "binary" => binary,
             "socket" => socket_path,
             "session" => OWN_SESSION,
+            // Whose config decides what a pane runs. Muster's daemon reads the user's own
+            // herdr config, which it cannot be isolated from without moving every pane's
+            // XDG_CONFIG_HOME too - so the file is named here, where somebody debugging a
+            // pane that opened the wrong shell will find it.
+            "config" => config_file(environment).unwrap_or_default(),
+        },
+    );
+
+    let carried = carried(environment);
+    let dropped: Vec<&str> = environment
+        .keys()
+        .filter(|name| !carried.contains_key(*name))
+        .map(String::as_str)
+        .collect();
+    // Names, never values: this log is meant to be attachable to a bug report, and an
+    // environment holds tokens (`architecture.md`, the diagnostic log). The names are what
+    // somebody asking "why does my pane not see FOO" needs, and they are not secrets.
+    log::info(
+        "daemon.environment",
+        fields! {
+            "carried" => carried.keys().cloned().collect::<Vec<String>>().join(","),
+            "dropped_count" => dropped.len().to_string(),
+            "dropped" => dropped.join(","),
         },
     );
 
     let mut child = Command::new(binary)
         .arg("server")
+        .env_clear()
+        .envs(&carried)
         .env("HERDR_SESSION", OWN_SESSION)
         // Its own process group, so that Muster quitting - or being killed with the terminal
         // it was launched from - does not take the agents with it.
@@ -118,7 +146,11 @@ pub fn start(binary: &str, socket_path: &str) -> Result<(), String> {
 /// The order is deliberate: ask first, start second. A daemon left running by an earlier
 /// Muster is exactly what should be reused - that is the whole of "sessions outlive the app" -
 /// and starting a second one would bind nothing and lose the first one's panes.
-pub fn ensure_running(socket_path: &str, binary: Option<&str>) -> Result<(), String> {
+pub fn ensure_running(
+    socket_path: &str,
+    binary: Option<&str>,
+    environment: &BTreeMap<String, String>,
+) -> Result<(), String> {
     if answers(socket_path) {
         return Ok(());
     }
@@ -130,7 +162,7 @@ pub fn ensure_running(socket_path: &str, binary: Option<&str>) -> Result<(), Str
              stages one beside the binary."
         ));
     };
-    start(binary, socket_path)
+    start(binary, socket_path, environment)
 }
 
 /// The environment Muster resolves its own socket path from.
@@ -140,3 +172,76 @@ pub fn ensure_running(socket_path: &str, binary: Option<&str>) -> Result<(), Str
 pub fn environment() -> BTreeMap<String, String> {
     std::env::vars().collect()
 }
+
+/// What Muster's daemon is entitled to inherit from whoever launched Muster.
+///
+/// An allowlist, because a denylist has to keep up with every tool that invents a variable and
+/// is wrong until somebody notices it is. The consequence of being wrong is not a broken
+/// launch: it is a daemon that outlives the app, carrying one session's private state into
+/// every agent it ever spawns. Observed rather than imagined - launching Muster from inside a
+/// Claude Code session put that session's `CLAUDE_CODE_*` markers and messaging credentials
+/// into the daemon, and from there into every pane, where a fresh Claude Code read them and
+/// silently turned its own transcript saving off.
+///
+/// **The list is short because a pane runs a shell, and a shell builds its own world.** Login
+/// shells re-read the user's rc files inside the pane, so everything a toolchain manager,
+/// language version switcher or prompt puts in the environment is rebuilt there. What has to
+/// survive is only what a shell cannot work out for itself: where home is, what to run, and
+/// what the machine's conventions are.
+///
+/// The daemon and its panes get one answer rather than two, because there is one environment:
+/// a pane's program is a child of the daemon. That is worth stating rather than leaving
+/// implicit - a future herdr with per-pane environments would let these come apart, and then
+/// they are two decisions rather than one.
+pub fn carried(environment: &BTreeMap<String, String>) -> BTreeMap<String, String> {
+    environment
+        .iter()
+        .filter(|(name, value)| !value.is_empty() && is_carried(name))
+        .map(|(name, value)| (name.clone(), value.clone()))
+        .collect()
+}
+
+fn is_carried(name: &str) -> bool {
+    // Locale comes as a family - LC_ALL, LC_CTYPE, LC_TIME and the rest - and carrying some of
+    // it is worse than carrying none: a pane with LANG set and LC_CTYPE not renders wide
+    // glyphs differently from the terminal it was launched from.
+    name.starts_with("LC_") || CARRIED.contains(&name)
+}
+
+/// The variables Muster's daemon carries, and why each one is here.
+///
+/// Anything not on this list is a variable a pane's own shell can rebuild, or one that
+/// belonged to whoever launched Muster and not to the agents Muster runs.
+const CARRIED: &[&str] = &[
+    // Where herdr's own config, sockets and session state live. These are also what Muster
+    // resolved the socket path from, so a daemon started without them would bind somewhere
+    // else and the launch would wait out its timeout for a daemon running perfectly well.
+    "HOME",
+    "XDG_CONFIG_HOME",
+    "XDG_STATE_HOME",
+    "XDG_DATA_HOME",
+    "XDG_CACHE_HOME",
+    "XDG_RUNTIME_DIR",
+    // What to run in a pane, and what it needs to find anything. A daemon with no PATH spawns
+    // a shell that cannot run `ls`.
+    "PATH",
+    "SHELL",
+    // Who the person is. Tools that look up a home directory or a git author read these, and
+    // a shell cannot invent them.
+    "USER",
+    "LOGNAME",
+    // The machine's conventions. Wrong or missing, and a pane mangles non-ASCII or writes
+    // scratch files somewhere unexpected.
+    "LANG",
+    "TZ",
+    "TMPDIR",
+    // What the terminal is. herdr sets this for a pane, but a daemon with none of its own has
+    // nothing to fall back on when it starts a process outside one.
+    "TERM",
+    // The user's own ssh agent. A deliberate inclusion rather than an oversight: this is a
+    // credential channel, and a pane that cannot `git push` or reach a devenv is a pane
+    // somebody stops using. It is the person's own agent, it is what every terminal emulator
+    // on this platform passes through, and unlike a harness's session token it belongs to the
+    // human rather than to whichever program happened to launch Muster.
+    "SSH_AUTH_SOCK",
+];
