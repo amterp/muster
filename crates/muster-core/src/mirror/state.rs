@@ -320,14 +320,32 @@ impl Mirror {
     }
 
     fn remove_pane(&mut self, id: &PaneId, cascaded: bool) -> Vec<Change> {
-        if self.panes.remove(id).is_none() {
+        let Some(gone) = self.panes.remove(id) else {
             // A removal for something already gone is a no-op rather than an error. The
             // subscription replays, reconnects re-snapshot, and both routinely say a
             // thing is gone that this mirror already dropped.
             return Vec::new();
-        }
+        };
         self.forget_focus();
-        vec![Change::PaneRemoved { pane: id.clone(), cascaded }]
+        let mut changes = vec![Change::PaneRemoved { pane: id.clone(), cascaded }];
+
+        // A tab whose last pane went is a tab the backend has already closed, and it says
+        // nothing about it: closing or exiting the only pane in a tab emits `pane_closed` or
+        // `pane_exited` and never a `tab_closed`, while `tab.list` stops reporting the tab
+        // from that moment (`observations/herdr-0.8.0.md` section 15). So the mirror infers
+        // it, or holds a tab nothing can reach forever - which is what a sidebar caption over
+        // no rows looks like, and what keeps a region pointed at a tab that is gone.
+        //
+        // Safe to infer because a tab is never legitimately empty here: on creation the pane
+        // arrives *before* its tab, measured on the same events, so there is no moment where
+        // a real tab is waiting for its first pane.
+        //
+        // Not when cascading, because then the tab is what is being removed and this is one
+        // of its orphans - inferring there would recurse into the removal already in flight.
+        if !cascaded && !self.panes.values().any(|pane| pane.tab == gone.tab) {
+            changes.extend(self.remove_tab(&gone.tab));
+        }
+        changes
     }
 
     /// Drops focus cursors pointing at things that no longer exist.

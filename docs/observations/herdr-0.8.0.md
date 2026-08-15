@@ -722,10 +722,12 @@ the daemon says (`architecture.md`, view = f(daemon state)), so a compound inten
 first half is published on its own is a compound intent a viewer watches happen. Muster
 has no `split_left` or `split_up` for this reason, and the fix is upstream: a four-way
 `SplitDirection`, or a request that places a new pane on a named side. The alternative
-open to Muster alone - holding a tab's layout updates between issuing the split and the
-swap returning, and applying the settled layout the swap already answers with - is a new
-power in the mirror rather than a small correction, and is not worth taking on for two
-chords while an upstream answer is plausible.
+open to Muster alone is holding a tab's layout updates between issuing the split and the
+swap returning, and applying the settled layout the swap already answers with. What that
+costs is a withholding tied to an in-flight intent, with a timeout and an answer for a
+refused swap; what it buys is that the daemon and the window agree afterwards, which a
+render-side mirroring would not. Weighed on the card (kan a_28XGcvXEg) rather than here -
+the measurement below is what this file is for.
 
 **A swap it cannot do is an error, not a soft no.** `pane.swap` names four refusal
 reasons in its result (`no_neighbor`, `same_pane`, `not_found`, `cross_tab`), but a call
@@ -740,3 +742,42 @@ that did nothing.
 
 Evidence: `corpus/herdr-0.8.0/split-sides/`, recorded with
 `tools/herdr-probe/probe split-sides`.
+
+## 15. A tab closes when its last pane goes, and says nothing
+
+Closing or exiting the only pane in a tab removes the tab, and the only event that fires
+is about the pane. `tab.list` stops reporting the tab from the same moment, so the daemon
+is unambiguous about the outcome - it simply never announces it.
+
+Measured both spellings, since removal has two (section 10). `pane.close` on a tab's only
+pane emits `pane_closed` and nothing else; a shell that runs `exit` emits `pane_exited`
+and nothing else. In a tab holding two panes, neither removal touches the tab, so this is
+about emptiness rather than about closing:
+
+    tabs before          w1:t1, w1:t2, w1:t3
+    close w1:p2          → pane_closed          tabs: w1:t1, w1:t3
+    exit in w1:p4        → pane_exited          tabs: w1:t1, w1:t3   (t3 still holds p3)
+    exit in w1:p3        → pane_exited          tabs: w1:t1
+
+Subscribing to `tab.closed` throughout returns nothing. `workspace.closed` is not the
+answer either: the workspace outlives its tabs.
+
+**The consequence for a client is a tab it holds forever.** Nothing on a healthy
+connection ever revisits it - only a reconnect re-snapshots - so a mirror waiting to be
+told keeps a tab nobody can reach, which in Muster showed up as a sidebar caption over no
+rows and a region still pointed at a tab that is gone.
+
+**Inferring it is safe, and this is the measurement that says so.** A tab is never
+legitimately empty, because on creation the pane arrives *before* the tab:
+
+    tab.create           → pane_created w1:p3, then tab_created w1:t3, then layout_updated
+    pane.split           → pane_created w1:p4, then layout_updated
+
+So there is no moment where a real tab is waiting for its first pane, and "this tab holds
+no panes" means only one thing. Muster removes the tab when its last pane goes
+(`mirror/state.rs`, `remove_pane`) rather than waiting for an announcement that never
+comes. The upstream ask is still worth making - a client should not have to derive a
+tab's lifetime from its contents.
+
+Evidence: recorded live against the pinned daemon while fixing the sidebar caption bug,
+2026-08-15.

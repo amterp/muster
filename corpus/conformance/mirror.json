@@ -882,7 +882,7 @@
     },
     {
       "name": "focus does not survive the pane it names",
-      "why": "A cursor pointing at a removed pane is worse than an empty one: every reader has to handle the dangling case, and the one that forgets renders a pane that is gone. Clearing it here lets the rest of the core treat a focused id as one that exists. The reported change matters as much as the clearing - an earlier version cleared the cursor and told nobody, so a view watching for changes would have kept the stale highlight.",
+      "why": "A cursor pointing at a removed pane is worse than an empty one: every reader has to handle the dangling case, and the one that forgets renders a pane that is gone. Clearing it here lets the rest of the core treat a focused id as one that exists. The reported change matters as much as the clearing - an earlier version cleared the cursor and told nobody, so a view watching for changes would have kept the stale highlight. The tab goes with it here because it held nothing else, which is the inference below - so this case also shows the two clearings compounding: the pane cursor and then the tab's.",
       "given": {
         "snapshot": {
           "tabs": [
@@ -914,18 +914,15 @@
       },
       "expect": {
         "panes": [],
-        "tabs": [
-          "w1:t1"
-        ],
+        "tabs": [],
         "workspaces": [],
         "agentStates": {},
         "layouts": {},
-        "focus": {
-          "tab": "w1:t1"
-        },
+        "focus": {},
         "health": "connected",
         "changes": [
           "paneRemoved:w1:p1:announced",
+          "tabRemoved:w1:t1",
           "focusChanged"
         ]
       }
@@ -1927,6 +1924,192 @@
         "focus": {},
         "health": "connected",
         "changes": []
+      }
+    },
+    {
+      "name": "a tab whose last pane goes is a tab the backend has already closed",
+      "why": "Measured against herdr 0.8.0 rather than assumed: closing the only pane in a tab emits `pane_closed` and never a `tab_closed`, and `tab.list` stops reporting that tab from the same moment. So the tab is gone and nothing says so - a mirror that waited for an announcement would hold it forever. What that looks like on screen is a sidebar caption over no rows, and a region still pointed at a tab nobody can reach.",
+      "given": {
+        "snapshot": {
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            },
+            {
+              "id": "w1:t2",
+              "workspace": "w1",
+              "label": "2"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1"
+            },
+            {
+              "id": "w1:p2",
+              "tab": "w1:t2",
+              "workspace": "w1"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "paneRemoved",
+            "id": "w1:p2"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1"
+        ],
+        "tabs": [
+          "w1:t1"
+        ],
+        "workspaces": [],
+        "agentStates": {
+          "w1:p1": "unknown"
+        },
+        "layouts": {},
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "paneRemoved:w1:p2:announced",
+          "tabRemoved:w1:t2"
+        ]
+      }
+    },
+    {
+      "name": "a tab that still holds a pane survives losing one",
+      "why": "The other half, and the one that says this is an inference about emptiness rather than about removal. Closing one pane of a split leaves the tab exactly where it was, and a rule that dropped a tab on any pane removal would close a tab every time somebody closed a split.",
+      "given": {
+        "snapshot": {
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1"
+            },
+            {
+              "id": "w1:p2",
+              "tab": "w1:t1",
+              "workspace": "w1"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "paneRemoved",
+            "id": "w1:p2"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1"
+        ],
+        "tabs": [
+          "w1:t1"
+        ],
+        "workspaces": [],
+        "agentStates": {
+          "w1:p1": "unknown"
+        },
+        "layouts": {},
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "paneRemoved:w1:p2:announced"
+        ]
+      }
+    },
+    {
+      "name": "a pane removed as a tab's orphan does not remove the tab a second time",
+      "why": "`tab_closed` removes the tab and its panes with it, and each of those removals lands in the same place as an ordinary one. Without the guard the last orphan would infer that its tab is empty and try to remove it again - a second `tabRemoved` for one closing, and a recursion into a removal already in flight.",
+      "given": {
+        "snapshot": {
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1"
+            },
+            {
+              "id": "w1:p2",
+              "tab": "w1:t1",
+              "workspace": "w1"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "tabRemoved",
+            "id": "w1:t1"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [],
+        "tabs": [],
+        "workspaces": [],
+        "agentStates": {},
+        "layouts": {},
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "paneRemoved:w1:p1:cascaded",
+          "paneRemoved:w1:p2:cascaded",
+          "tabRemoved:w1:t1"
+        ]
+      }
+    },
+    {
+      "name": "a pane whose tab this mirror never learned takes no tab with it",
+      "why": "A pane arrives before its tab does - measured on herdr's own creation events, where `pane_created` precedes `tab_created` for the same tab. So a pane can be removed while its tab is still unknown here, and there is nothing to infer about a tab nobody has been told exists.",
+      "given": {
+        "events": [
+          {
+            "kind": "paneUpserted",
+            "id": "w1:p1",
+            "tab": "w1:t9",
+            "workspace": "w1"
+          },
+          {
+            "kind": "paneRemoved",
+            "id": "w1:p1"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [],
+        "tabs": [],
+        "workspaces": [],
+        "agentStates": {},
+        "layouts": {},
+        "focus": {},
+        "health": "disconnected",
+        "changes": [
+          "paneAdded:w1:p1",
+          "paneRemoved:w1:p1:announced"
+        ]
       }
     }
   ]
