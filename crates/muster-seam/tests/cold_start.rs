@@ -46,6 +46,16 @@ fn a_window_opened_on_an_empty_daemon_can_be_typed_into() {
     // shape. Without it the pane renders nothing at all: the shell defers the surface, logs
     // `pane.surface.deferred`, and waits for a republish that only a split ever caused.
     let view = latest_view().expect("just waited for it");
+
+    // The keyboard has to be somewhere. A region with no pane is one where every keybinding
+    // meaning "the focused pane" is refused - so ⌘T on a freshly opened window answered "no
+    // pane has this window's keyboard" until somebody clicked, which looks like the window
+    // ignoring the key.
+    assert!(
+        view.regions.iter().all(|region| !region.pane_id.is_empty()),
+        "a region opened with the keyboard on no pane, so the first keybinding pressed is \
+         refused: {view:?}"
+    );
     let unreachable: Vec<String> = panes(&view)
         .into_iter()
         .filter(|(_, socket)| socket.is_empty())

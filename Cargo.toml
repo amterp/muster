@@ -31,9 +31,10 @@ muster-vt = { path = "crates/muster-vt" }
 prost = "0.14"
 serde_json = "1"
 # Configuration is files, and a file people hand-edit needs comments - which is the whole
-# argument against reusing serde_json for it. Parsing only: nothing here writes TOML back
-# out, and every refusal is worded by us rather than by the parser.
-toml = { version = "1", default-features = false, features = ["parse", "serde", "std"] }
+# argument against reusing serde_json for it. Every refusal is worded by us rather than by
+# the parser. `display` is here for the one thing Muster writes rather than reads: the window
+# arrangement it saves, in the same format as the file beside it.
+toml = { version = "1", default-features = false, features = ["display", "parse", "serde", "std"] }
 
 # Lints live here rather than in a CI flag, so that `cargo build`, rust-analyzer and the
 # gate all judge the code the same way. A rule only enforced by CI is a rule discovered

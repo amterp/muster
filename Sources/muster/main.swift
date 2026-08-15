@@ -31,9 +31,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // The daemon binary goes over for the same reason and at the same moment: Muster runs
     // its own herdr rather than asking anybody to install one, and where a build put it is
     // an OS question while starting it is the core's.
+    // And the state file, which is the same division once more: where a window's arrangement
+    // is remembered is an OS question, and what is worth remembering is the core's.
     let config = configPath()
     let daemon = herdrPath(executable: CommandLine.arguments[0])
-    Core.start(logPath: logPath, configPath: config, herdrPath: daemon)
+    Core.start(
+      logPath: logPath, configPath: config, herdrPath: daemon, statePath: statePath())
     Core.info(
       "app.launch",
       [

@@ -351,6 +351,23 @@ impl Composition {
     ///
     /// A boundary that does not exist - the last region, or one that closed while a drag was
     /// in flight - does nothing. There is nothing for a caller to do about that either.
+    /// Puts one region's share back to what it was, without touching its neighbours.
+    ///
+    /// The restore path, and the reason it is not `set_boundary`: dragging a divider is about
+    /// a pair and has to leave the rest of the window alone, where reopening a saved
+    /// arrangement sets every weight in turn and would fight itself if each one redistributed.
+    ///
+    /// A weight that is not a positive finite number is ignored rather than taken. Zero is a
+    /// region rendered at no width, which nobody can see or grab their way out of.
+    pub fn set_weight(&mut self, region: RegionId, weight: f32) {
+        if !weight.is_finite() || weight <= 0.0 {
+            return;
+        }
+        if let Some(held) = self.regions.iter_mut().find(|held| held.id == region) {
+            held.weight = weight;
+        }
+    }
+
     pub fn set_boundary(&mut self, left: RegionId, ratio: f32) {
         if !ratio.is_finite() {
             return;

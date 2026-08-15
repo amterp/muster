@@ -19,13 +19,21 @@
 //! list and leaves the daemons where they are - which daemons are attached is not a
 //! window's business.
 //!
+//! `saved` is what that smallness buys: the records write to a few hundred bytes of TOML and
+//! read back, so a window reopens onto the tabs it was showing, in the order and at the
+//! widths somebody put them in. It writes intent and never observation - the tab that was
+//! chosen, not what was in it - so what comes back is a wish that gets checked against what
+//! the daemons turn out to hold.
+//!
 //! `view` is the other half: what those records plus a daemon's mirror add up to on screen.
 //! Kept apart because they are owned differently - the records are Muster's decisions and
 //! survive a restart, and a view is derived, disposable, and correct only for as long as
 //! the mirror behind it is.
 
 pub mod record;
+pub mod saved;
 pub mod view;
 
 pub use record::{Composition, Daemon, DaemonId, Endpoint, PaneKey, Region, RegionId};
+pub use saved::{Restorable, Saved, SavedRegion};
 pub use view::{Step, Transport, View, ViewNode, ViewPane, ViewRegion};

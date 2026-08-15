@@ -270,6 +270,17 @@ message Startup {
   // that then finds none running has nothing to show and says so.
   string herdr_path = 5;
 
+  // Where this window's arrangement is remembered, or empty to remember nothing.
+  //
+  // The one thing Muster owns that no daemon can answer: which of its tabs this window was
+  // showing, in what order, at what widths. Written on change and read at open, so the window
+  // comes back the way it was left rather than the way a first launch looks.
+  //
+  // The shell decides where it goes for the same reason it decides where the log does. Empty
+  // is a real state rather than a failure - a window that cannot find anywhere to write opens
+  // fresh every time, which is what it did before this existed.
+  string state_path = 6;
+
   // trace, debug, info, warn, error. Empty means debug.
   string log_level = 2;
 

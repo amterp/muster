@@ -381,6 +381,10 @@ fn start(startup: &proto::Startup) -> Response {
     // Before the config, because applying one attaches the daemons it names and attaching a
     // local one may have to start it.
     session::set_daemon_binary(&startup.herdr_path);
+    // Before the config too, and for a sharper reason: applying a config attaches daemons,
+    // attaching publishes, and a publish before this is one that would write the arrangement
+    // out to nowhere - or worse, read it back after it had been replaced.
+    session::set_state_path(&startup.state_path);
 
     if startup.log_path.is_empty() {
         apply_config(&startup.config_path);

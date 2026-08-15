@@ -23,7 +23,7 @@ public enum Core {
   /// `logPath` nil turns logging off, which is what a release build does unless asked.
   public static func start(
     logPath: String?, configPath: String? = nil, herdrPath: String? = nil,
-    process: String = "app"
+    statePath: String? = nil, process: String = "app"
   ) {
     muster_set_event_callback(coreEventArrived)
 
@@ -31,6 +31,7 @@ public enum Core {
     startup.logPath = logPath ?? ""
     startup.configPath = configPath ?? ""
     startup.herdrPath = herdrPath ?? ""
+    startup.statePath = statePath ?? ""
     startup.logLevel = ProcessInfo.processInfo.environment["MUSTER_LOG_LEVEL"] ?? ""
     startup.process = process
     var request = Muster_Request()

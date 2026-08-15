@@ -16,7 +16,7 @@ use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 use muster_core::AgentState;
 use muster_core::attention::Attention;
 use muster_core::composition::{
-    Composition, Daemon, DaemonId, Endpoint, PaneKey, RegionId, Step, Transport, View,
+    Composition, Daemon, DaemonId, Endpoint, PaneKey, RegionId, Saved, Step, Transport, View, saved,
 };
 use muster_core::config::Config;
 use muster_core::diagnostics::log;
@@ -61,6 +61,21 @@ pub(crate) fn set_daemon_binary(path: &str) {
 
 fn daemon_binary() -> Option<String> {
     DAEMON_BINARY.lock().expect("a panicking sender poisoned the daemon binary").clone()
+}
+
+/// Where this window's arrangement is remembered, and what was last written there.
+///
+/// The text rather than the record, so that deciding whether to write is a string compare
+/// against what is actually on disk. Composition settles on every publish and publishes
+/// happen on every agent transition, so most of them have nothing to save.
+///
+/// None means remember nothing, which is what a shell that found nowhere to write says and
+/// what every test that never sets one gets.
+static STATE: Mutex<Option<(String, String)>> = Mutex::new(None);
+
+pub(crate) fn set_state_path(path: &str) {
+    let mut held = STATE.lock().expect("a panicking sender poisoned the saved arrangement");
+    *held = if path.is_empty() { None } else { Some((path.to_string(), String::new())) };
 }
 
 /// A daemon's endpoint, turned into something that can be connected to.
@@ -885,10 +900,66 @@ pub(crate) enum AttachError {
 /// holds no panes at all.
 pub(crate) fn open() -> Result<(), String> {
     follow_implicitly_if_nothing_else()?;
+    reopen_what_was_left();
     open_remaining_regions();
     open_a_workspace_if_the_window_is_empty();
     publish();
     Ok(())
+}
+
+/// Puts back the regions this window was showing when it last closed.
+///
+/// Before the two rules under it rather than instead of them, which is what makes this an
+/// addition and not a special case: a daemon whose saved regions all turned out to be gone
+/// falls through to getting a region of its own, and a window where every daemon did falls
+/// through to asking for a workspace. So a first launch, a launch after a reboot took
+/// everything, and a launch onto a session still running are one path with different amounts
+/// of it doing anything.
+///
+/// Checked against the mirror, which by now holds each attached daemon's snapshot: a saved
+/// region is a wish, and a tab nobody holds any more would render as a square that never
+/// fills in.
+fn reopen_what_was_left() {
+    let Some(saved) = saved_arrangement() else { return };
+
+    let mut session = SESSION.lock().expect("a panicking sender poisoned the session");
+    let restorable = saved.restorable(|daemon, tab| {
+        session
+            .backends
+            .get(daemon)
+            .and_then(|backend| backend.mirror.lock().ok().map(|mirror| mirror.tab(tab).is_some()))
+            .unwrap_or(false)
+    });
+    if restorable.regions.is_empty() {
+        return;
+    }
+
+    let mut opened = Vec::new();
+    for region in &restorable.regions {
+        let Some(id) = session.composition.open_region(
+            &region.daemon,
+            region.workspace.clone(),
+            region.tab.clone(),
+        ) else {
+            continue;
+        };
+        session.composition.set_weight(id, region.weight);
+        if let Some(pane) = &region.pane {
+            session.composition.focus_pane(id, pane.clone());
+        }
+        opened.push(id);
+    }
+    if let Some(place) = restorable.focused.and_then(|place| opened.get(place)) {
+        session.composition.focus_region(*place);
+    }
+
+    log::info(
+        "composition.restored",
+        fields! {
+            "regions" => opened.len().to_string(),
+            "dropped" => (saved.regions.len() - restorable.regions.len()).to_string(),
+        },
+    );
 }
 
 /// Attaches the daemon on this machine when no config file named any.
@@ -1112,6 +1183,82 @@ fn open_remaining_regions() {
     }
 }
 
+/// Writes the arrangement down, if it has changed since the last time.
+///
+/// Called from `publish`, which is every moment composition is settled - and most of those
+/// change nothing about it, because a publish also follows every agent transition. So the
+/// comparison is against the text last written rather than against the record: the same
+/// arrangement renders to the same bytes, and identical bytes are a write that does not
+/// happen.
+///
+/// Replaced rather than appended to, through a temporary beside it: a window that quit while
+/// this was half-written would otherwise come back to a file that parses as far as the third
+/// region and stops.
+fn save(composition: &Composition) {
+    let mut held = STATE.lock().expect("a panicking sender poisoned the saved arrangement");
+    let Some((path, written)) = held.as_mut() else { return };
+
+    let text = saved::to_toml(&Saved::of(composition));
+    if &text == written {
+        return;
+    }
+
+    let file = std::path::PathBuf::from(&*path);
+    let staged = file.with_extension("writing");
+    let result = std::fs::create_dir_all(file.parent().unwrap_or(std::path::Path::new(".")))
+        .and_then(|()| std::fs::write(&staged, &text))
+        .and_then(|()| std::fs::rename(&staged, &file));
+
+    match result {
+        Ok(()) => *written = text,
+        Err(error) => {
+            log::warn(
+                "composition.save.failed",
+                fields! {
+                    "path" => path.clone(),
+                    "detail" => error.to_string(),
+                    "impact" => "this window opens as a first launch does next time - the \
+                                 daemons and their panes are unaffected, only the arrangement",
+                    "check" => "whether that directory exists and is writable",
+                },
+            );
+            // Cleared so a directory that becomes writable again is picked up by the next
+            // publish rather than after the arrangement happens to change twice.
+            written.clear();
+        }
+    }
+}
+
+/// The arrangement this window was left in, or nothing.
+///
+/// A file that will not read is a log line and nothing more. Every way this fails ends with a
+/// window that opens the way a first launch does, which is a worse morning and not a broken
+/// one - and refusing to open at all over a state file would be the wrong trade by a mile.
+fn saved_arrangement() -> Option<Saved> {
+    let path = {
+        let held = STATE.lock().expect("a panicking sender poisoned the saved arrangement");
+        held.as_ref().map(|(path, _)| path.clone())?
+    };
+    let text = std::fs::read_to_string(&path).ok()?;
+    match saved::from_toml(&text) {
+        Ok(saved) => Some(saved),
+        Err(detail) => {
+            log::warn(
+                "composition.restore.failed",
+                fields! {
+                    "path" => path,
+                    "detail" => detail,
+                    "impact" => "this window opens as a first launch does; nothing about the \
+                                 daemons or their panes is affected",
+                    "check" => "the file itself - it is TOML, and it is replaced by the next \
+                                arrangement this window settles on",
+                },
+            );
+            None
+        }
+    }
+}
+
 /// Tells the shell what this window is showing.
 ///
 /// The whole view rather than what moved. A shell handed the whole answer holds no picture
@@ -1125,19 +1272,26 @@ fn publish() {
     let (view, roster, settled) = {
         let mut session = SESSION.lock().expect("a panicking sender poisoned the session");
         // Before the view is built, and over every daemon rather than whichever one prompted
-        // this. A view names a control socket per pane and a shell must not spawn a bridge
-        // without one, so a pane published before its channel exists renders blank until
-        // something republishes - and several paths here change what is on screen without
-        // going near a reconcile: showing a tab that was just created, surfacing a pane from
-        // the sidebar, giving a daemon its first region. Making it a precondition of building
-        // the view means none of them can get it wrong, rather than each having to remember.
+        // this. Several paths change what is on screen without going near a reconcile:
+        // showing a tab that was just created, surfacing a pane from the sidebar, giving a
+        // daemon its first region, reopening a saved arrangement. Making this a precondition
+        // of building the view means none of them can get it wrong, rather than each having
+        // to remember - and both halves have already been got wrong that way.
+        //
+        // A region that has not been reconciled has no pane, so nothing in it has the
+        // keyboard and every keybinding meaning "the focused pane" is refused. A pane with no
+        // channel is one a shell must not spawn a bridge for, so it renders blank until
+        // something republishes.
         let daemons: Vec<DaemonId> = session.backends.keys().cloned().collect();
         for daemon in &daemons {
-            session.open_channels(daemon);
+            session.reconcile(daemon);
         }
         let view = session.view();
         let roster = session.roster(&view);
         let settled = session.attention.showing(view.showing());
+        // Here because this is the moment composition is settled, and because everything that
+        // changes it ends up here - so nothing has to remember to save.
+        save(&session.composition);
         (view, roster, settled)
     };
 
