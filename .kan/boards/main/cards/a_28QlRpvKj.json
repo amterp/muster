@@ -7,6 +7,14 @@
     "devenv"
   ],
   "column": "next",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "**Decided: fetch on demand, with a filesystem cache.** Not bundling all four platforms (~72 MB of app, mostly daemons nobody on that machine runs), and not having the remote fetch it either.\n\nThe reasoning, from the measurement the card asked for: `deps/herdr.pin` already carries a checksum for all four platform assets, and `./dev` already knows how to download one and verify it - so the acquisition step exists and is being moved rather than invented. Anybody setting up a remote almost certainly has web access, so a fetch is not a bet worth avoiding at the cost of tripling the app.\n\nOne refinement worth being explicit about: **the local machine fetches, not the remote.** The machine running Muster definitely has network - it got Muster somehow - and the remote may be a locked-down container or build box with no route out. So the shape is: probe the remote with `uname -sm`, work out the asset name, look for it in a local cache, download it once if absent, verify against the pin, and copy it over the ssh master Muster already has open. That also keeps the remote's network out of the picture entirely, which the original card flagged as the risk with letting the remote fetch.\n\nCache location is an OS question, so the shell answers it and hands it over - the same division as the log file, the config file, the herdr path and the state file. Something under `~/.cache/muster/herdr/\u003cversion\u003e/\u003casset\u003e/herdr` (XDG_CACHE_HOME when set). Present and matching the checksum means no web call.\n\nWhat stays fixed from the original card: the pin decides the version, and a checksum that does not match is a refusal rather than a warning.\n\nStill to work out when this starts: the remote install path (`~/.muster/herdr/\u003cversion\u003e/herdr` was the card's suggestion), starting the remote daemon on Muster's own herdr session the way the local one is, and a devenv image with no herdr baked in - the current Dockerfile installs it at build time, which is exactly the thing this card exists to stop needing.",
+      "created_at_millis": 1786805864677,
+      "id": "c_28Vg83cUx"
+    }
+  ],
   "created_at_millis": 1786794152740,
   "creator": "Alexander Terp",
   "description": "Once Muster carries its own herdr and runs it on a socket it owns (a_28QXsEcYU), a devenv is the one place that guarantee does not reach. An ssh endpoint attaches to whatever herdr somebody installed on that machine, at whatever version, and the bundle cannot help because it carries one platform's binary and the remote is usually another.\n\nThat asymmetry is worth closing rather than living with. It is also the difference between \"set up a devenv\" being a page of instructions and being a host in a config file.\n\nmutagen is the working prior art: on connect it probes the remote, looks for an agent of the matching version at a path it owns, and puts one there when it is absent. The same shape fits here - `uname -sm` over the ssh master Muster already opens, a version-named path like `~/.muster/herdr/\u003cversion\u003e/herdr`, and an install step only on the first connection to a given machine.\n\nWhere the remote binary comes from is the real question and is worth measuring before choosing. `deps/herdr.pin` already carries a checksum per platform, so either end can verify what it got. Copying it over the ssh master costs about 18 MB once per machine and needs nothing of the remote; having the remote fetch it costs nothing locally and assumes the remote can reach GitHub, which a devenv container may not. Whichever, the pin is what decides the version, and a checksum that does not match is a refusal rather than a warning.\n\nThe devenv container is the test bed and `./dev --ssh` is where this gets proven: a container with no herdr installed at all should end up with a working remote pane.",
@@ -14,7 +22,7 @@
   "position": "E",
   "title": "🛰️ Put our own daemon on the devenv, without anybody installing one",
   "type": "feature",
-  "updated_at_millis": 1786796735350,
+  "updated_at_millis": 1786805864677,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786794152740},
     {"field":"column","value":"next","at":1786796735350}
