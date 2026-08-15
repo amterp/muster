@@ -22,8 +22,9 @@ private final class Started {
 private func region(width: CGFloat = 800, height: CGFloat = 600) -> (RegionView, Started) {
   let started = Started()
   let view = RegionView(frame: NSRect(x: 0, y: 0, width: width, height: height)) {
-    daemon, chrome, socket in
-    started.panes.append("\(daemon):\(chrome.paneID ?? "")@\(socket ?? "-")")
+    daemon, transport, chrome, socket in
+    let machine = transport.map { "@\($0.sshHost)" } ?? ""
+    started.panes.append("\(daemon)\(machine):\(chrome.paneID ?? "")@\(socket ?? "-")")
   }
   return (view, started)
 }

@@ -397,6 +397,7 @@ dependencies = [
  "herdr-harness",
  "muster-core",
  "muster-herdr",
+ "muster-ssh",
  "muster-vt",
  "prost",
  "prost-build",
@@ -410,6 +411,7 @@ version = "0.1.0"
 dependencies = [
  "conformance",
  "muster-core",
+ "muster-herdr",
  "serde_json",
 ]
 

@@ -11,7 +11,7 @@ use std::fmt::Write as _;
 
 use conformance::{CaseError, Conformance, fields};
 use muster_core::composition::{
-    Composition, Daemon, DaemonId, Endpoint, Region, RegionId, Step, View,
+    Composition, Daemon, DaemonId, Endpoint, Region, RegionId, Step, Transport, View,
 };
 use muster_core::mirror::Mirror;
 use muster_core::mirror::backend::{PaneId, TabId, WorkspaceId};
@@ -201,6 +201,15 @@ fn view_of(
         |daemon| worlds.get(current.get(daemon)?),
         |daemon, pane| {
             attached.contains(&pane.to_string()).then(|| format!("/tmp/{daemon}-{pane}.sock"))
+        },
+        // How a daemon is reached is the runtime's answer, and a case has no runtime. What a
+        // case does say is how a daemon was asked for, so this reads the endpoint back: a
+        // region on an ssh daemon carries a transport, and one on a local daemon does not.
+        |daemon| match composition.daemon(daemon).map(|held| &held.endpoint) {
+            Some(Endpoint::Ssh { host, .. }) => {
+                Some(Transport { host: host.clone(), control_path: format!("/tmp/{daemon}.ctl") })
+            }
+            _ => None,
         },
     )
 }

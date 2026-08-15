@@ -9,6 +9,10 @@ muster-core.workspace = true
 
 [dev-dependencies]
 conformance.workspace = true
+# The devenv tier asks the far end where its daemon lives, using herdr's own rules rather
+# than a path spelled out in a test. Only the tests need it: nothing in this crate is
+# herdr-shaped.
+muster-herdr.workspace = true
 serde_json.workspace = true
 
 [lints]

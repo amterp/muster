@@ -18,6 +18,7 @@ args:
     clean c bool   # Delete build artifacts.
     proto bool     # Regenerate the seam's Swift types, whether or not the schema changed.
     contract bool  # Run the app against a real herdr. Needs a GUI session; not in the gate.
+    ssh bool       # Run the remote tier against the devenv container. Needs docker; not in the gate.
     perf bool      # Measure the per-unit budgets against perf/baseline.json. Not in the gate.
     record bool    # With --perf, record this run as the new baseline instead of judging it.
     latency bool   # Time input-to-glyph against a real herdr. Needs a daemon; not in the gate.
@@ -70,6 +71,39 @@ fn fail_perf(stdout, stderr, code):
     print_err("median column says which. If the cost is deliberate and acceptable:")
     print_err("  ./dev --perf --record")
     exit(1)
+
+// The remote tier: a real ssh master to a real machine running a real daemon.
+//
+// Out of the gate because it needs docker and a container, which is the same line the
+// contract tier sits on - not because it is slow or flaky (docs/testing.md, tiered by what
+// a tier can reach). The container is the devenv, so what gets tested and what gets
+// developed against are one artifact.
+fn run_ssh_tier():
+    $`./devenv/devenv up` catch:
+        print_err(red("The devenv container would not start, so the remote tier ran nothing."))
+        print_err("Impact: 'local and remote in one window' is unverified by this run.")
+        print_err("Check that docker is running, then: ./devenv/devenv up")
+        exit(1)
+
+    // Absolute, because cargo runs an integration test from its own package root and a
+    // repo-relative key silently becomes 'no such file' and then 'permission denied'.
+    cwd_raw = $`pwd`
+    root = cwd_raw.trim()
+    key = "{root}/devenv/.ssh/id_ed25519"
+    // The container is a local fixture on a port nobody else uses, and its key changes every
+    // time it is rebuilt, so pinning its host key would mean editing a file per rebuild.
+    options = "-p 2222 -i {key} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+
+    listed = $`MUSTER_DEVENV_HOST=dev@localhost MUSTER_DEVENV_SSH_OPTIONS={options} cargo test --workspace -- --ignored --list`
+    names = listed.split("\n").filter(fn(line) line.ends_with(": test"))
+    if len(names) == 0:
+        print_err(red("The remote tier discovered no tests."))
+        print_err("An empty tier passes, so this is a failure rather than a green run.")
+        print_err("Check that the #[ignore] tests in crates/muster-ssh/tests/ still exist.")
+        exit(1)
+    print(dim("{len(names)} remote test(s) discovered"))
+
+    $`MUSTER_DEVENV_HOST=dev@localhost MUSTER_DEVENV_SSH_OPTIONS={options} cargo test --workspace -- --ignored`
 
 // A surface spawns its bridge by path, looking beside the running executable - right for a
 // shipped bundle, and wrong for two build systems with two output directories. Rather than
@@ -305,6 +339,11 @@ fn build_deps():
 if contract:
     build = true
 
+// Same reasoning as the contract tier, a different missing thing: this one needs docker and
+// a container, which a contributor's machine cannot be assumed to have running.
+if ssh:
+    build = true
+
 if record and not perf:
     print_err(red("--record only means something with --perf."))
     print_err("It records what a perf run measured, so on its own there is nothing to")
@@ -315,7 +354,7 @@ if record and not perf:
 if proto:
     build = true
 
-if not (deps or build or test or lint or format or clean or contract or perf or latency):
+if not (deps or build or test or lint or format or clean or contract or ssh or perf or latency):
     deps = true
     build = true
     test = true
@@ -416,6 +455,10 @@ if contract:
         print_err(stderr.trim())
         exit(1)
     print(stdout.trim())
+
+if ssh:
+    announce("ssh")
+    run_ssh_tier()
 
 if perf:
     announce("perf")

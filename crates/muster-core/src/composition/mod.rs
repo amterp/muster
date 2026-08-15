@@ -28,4 +28,4 @@ pub mod record;
 pub mod view;
 
 pub use record::{Composition, Daemon, DaemonId, Endpoint, Region, RegionId};
-pub use view::{Step, View, ViewNode, ViewPane, ViewRegion};
+pub use view::{Step, Transport, View, ViewNode, ViewPane, ViewRegion};

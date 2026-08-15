@@ -30,6 +30,16 @@ pub(crate) fn view(view: &View) -> proto::ViewChanged {
                 pane_id: region.pane.as_ref().map(ToString::to_string).unwrap_or_default(),
                 root: region.root.as_ref().map(node),
                 zoomed: region.zoomed,
+                ssh_host: region
+                    .transport
+                    .as_ref()
+                    .map(|transport| transport.host.clone())
+                    .unwrap_or_default(),
+                ssh_control_path: region
+                    .transport
+                    .as_ref()
+                    .map(|transport| transport.control_path.clone())
+                    .unwrap_or_default(),
             })
             .collect(),
         focused_region: view.focused.map(|id| id.to_string()).unwrap_or_default(),

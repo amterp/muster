@@ -46,6 +46,26 @@ pub struct ViewRegion {
     /// renders the right thing; what the flag is for is saying so in the chrome, because a
     /// zoomed tab and a tab with one pane are otherwise indistinguishable on screen.
     pub zoomed: bool,
+    /// How a pane's frames get here, when they come from another machine.
+    ///
+    /// On the region rather than on each of its panes because it is a property of the daemon,
+    /// and every pane in a region belongs to one. `None` is a daemon on this machine, which is
+    /// the only difference a shell ever has to notice between local and remote.
+    pub transport: Option<Transport>,
+}
+
+/// What a pane's bridge needs in order to reach another machine.
+///
+/// Carried across the seam rather than worked out by the shell, for the same reason a pane's
+/// control socket is: it names something the core opened, and a shell that recomputed it
+/// would be guessing at a path only the core knows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Transport {
+    /// The ssh destination, as ssh spells it.
+    pub host: String,
+    /// The master's control socket, so a pane's frame stream rides the connection the control
+    /// plane already opened instead of paying for a handshake of its own.
+    pub control_path: String,
 }
 
 /// A region's tree, with the panes filled in.
@@ -84,6 +104,7 @@ impl View {
         composition: &Composition,
         mirror: impl Fn(&DaemonId) -> Option<&'a Mirror>,
         socket: impl Fn(&DaemonId, &PaneId) -> Option<String>,
+        transport: impl Fn(&DaemonId) -> Option<Transport>,
     ) -> View {
         let regions = composition
             .regions()
@@ -105,6 +126,7 @@ impl View {
                         build(zoomed.as_ref().unwrap_or(&layout.root), &region.daemon, &socket)
                     }),
                     zoomed: layout.is_some_and(|layout| layout.zoomed.is_some()),
+                    transport: transport(&region.daemon),
                 })
             })
             .collect();

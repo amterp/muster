@@ -30,9 +30,24 @@ public struct WindowContents: Equatable {
     /// Already resolved by the core, so a window that ignores this renders the right thing.
     public let zoomed: Bool
 
+    /// How this region's panes are reached, when they are on another machine. Nil is a daemon
+    /// on this one, which is the only difference the shell ever notices between local and
+    /// remote: these are relayed onto the bridge's command line and nothing else changes.
+    public let transport: Transport?
+
+    public struct Transport: Equatable {
+      public let sshHost: String
+      public let sshControlPath: String
+
+      public init(sshHost: String, sshControlPath: String) {
+        self.sshHost = sshHost
+        self.sshControlPath = sshControlPath
+      }
+    }
+
     public init(
       id: String, daemon: String, tab: String, keyboardPane: String?, tree: PaneTree?,
-      zoomed: Bool
+      zoomed: Bool, transport: Transport? = nil
     ) {
       self.id = id
       self.daemon = daemon
@@ -40,6 +55,7 @@ public struct WindowContents: Equatable {
       self.keyboardPane = keyboardPane
       self.tree = tree
       self.zoomed = zoomed
+      self.transport = transport
     }
   }
 
@@ -252,7 +268,12 @@ extension WindowContents {
           // no pane named is a region whose tab the daemon has not described yet.
           keyboardPane: region.paneID.isEmpty ? nil : region.paneID,
           tree: region.hasRoot ? PaneTree(region.root) : nil,
-          zoomed: region.zoomed)
+          zoomed: region.zoomed,
+          // Both or neither: half a target names no machine, and the core sends both when it
+          // has opened a connection at all.
+          transport: region.sshHost.isEmpty || region.sshControlPath.isEmpty
+            ? nil
+            : Region.Transport(sshHost: region.sshHost, sshControlPath: region.sshControlPath))
       },
       focusedRegion: changed.focusedRegion.isEmpty ? nil : changed.focusedRegion)
   }

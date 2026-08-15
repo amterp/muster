@@ -23,7 +23,10 @@ public final class RegionView: NSView {
   /// handed a view and sizes its surface from it: a surface created against a zero-sized view
   /// is a PTY told it has no columns.
   public typealias StartPane =
-    @MainActor (_ daemonID: String, _ chrome: PaneChrome, _ controlSocketPath: String?) -> Void
+    @MainActor (
+      _ daemonID: String, _ transport: WindowContents.Region.Transport?, _ chrome: PaneChrome,
+      _ controlSocketPath: String?
+    ) -> Void
 
   private struct Held {
     let chrome: PaneChrome
@@ -48,6 +51,9 @@ public final class RegionView: NSView {
   /// click or a state that travelled without this would land on whichever `w1:p1` was found
   /// first.
   public private(set) var daemonID: String = ""
+
+  /// How this region's panes are reached, when they are on another machine.
+  public private(set) var transport: WindowContents.Region.Transport?
   private var tab: String = ""
 
   public init(frame: NSRect, startPane: @escaping StartPane) {
@@ -79,6 +85,7 @@ public final class RegionView: NSView {
   public func apply(_ region: WindowContents.Region, focused: Bool) {
     regionID = region.id
     daemonID = region.daemon
+    transport = region.transport
     tab = region.tab
     guard let tree = region.tree else { return }
     self.tree = tree
@@ -89,7 +96,7 @@ public final class RegionView: NSView {
     layoutSubtreeIfNeeded()
     for leaf in fresh {
       guard let chrome = held[leaf.paneID]?.chrome else { continue }
-      startPane(daemonID, chrome, leaf.controlSocketPath)
+      startPane(daemonID, transport, chrome, leaf.controlSocketPath)
     }
     apply(keyboardPane: focused ? region.keyboardPane : nil)
   }

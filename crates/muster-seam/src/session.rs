@@ -13,17 +13,21 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 
-use muster_core::composition::{Composition, Daemon, DaemonId, Endpoint, RegionId, Step, View};
+use muster_core::composition::{
+    Composition, Daemon, DaemonId, Endpoint, RegionId, Step, Transport, View,
+};
+use muster_core::config::Config;
 use muster_core::diagnostics::log;
 use muster_core::fields;
 use muster_core::input::{Keymap, PaneInput, TerminalModeProfile};
 use muster_core::intent::{BackendChannel, BackendIntent};
-use muster_core::mirror::backend::{PaneId, Snapshot};
+use muster_core::mirror::backend::{PaneId, Snapshot, TabId, WorkspaceId};
 use muster_core::mirror::{Change, Mirror};
 use muster_herdr::subscription::{Notice, Subscription};
 use muster_herdr::{
     HerdrClient, HerdrPaneChannel, PaneControlChannel, discover_socket_path, fetch_snapshot,
 };
+use muster_ssh::{Forward, Tunnel, remote_environment};
 use muster_vt::KeyEncoder;
 
 use crate::proto::{BackendHealth, Event, PaneStateChanged, PaneTypeable, event};
@@ -31,10 +35,81 @@ use crate::{convert, ffi};
 
 /// What Muster calls the daemon it found for itself.
 ///
-/// A placeholder for configuration rather than a fact about the daemon: a config file will
-/// name the ones it lists, and this is the name for the one nobody named. It stops being
-/// the only entry the day an SSH endpoint is attached beside it.
+/// The name for the one nobody named. A config file that lists daemons names its own, and
+/// this is what a config-less Muster calls the herdr on this machine.
 const LOCAL: &str = "local";
+
+/// A daemon's endpoint, turned into something that can be connected to.
+///
+/// The one place local and remote differ. Everything past this point holds a socket path and
+/// never asks where it goes, which is the property that lets one adapter serve both.
+#[derive(Debug)]
+struct Reached {
+    socket_path: String,
+    tunnel: Option<Tunnel>,
+}
+
+/// Opens whatever a daemon's endpoint describes.
+///
+/// For a daemon on this machine that is a path, found the way herdr's own client finds it
+/// when the config did not say. For a remote one it is an ssh master forwarding that
+/// daemon's socket onto a path here - so the answer has the same shape either way, and the
+/// mirror, the subscription and the encoder below never learn which they got.
+fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, String> {
+    match endpoint {
+        Endpoint::Local { socket_path: Some(path) } => {
+            Ok(Reached { socket_path: path.clone(), tunnel: None })
+        }
+        Endpoint::Local { socket_path: None } => {
+            let path = discover_socket_path(&std::env::vars().collect()).ok_or_else(|| {
+                "there is no herdr socket where one would be on this machine, and the config \
+                 file names none for this daemon. Either start a daemon, or give it a `socket` \
+                 in the config; HERDR_SOCKET_PATH and HERDR_SESSION are what Muster reads to \
+                 find one."
+                    .to_string()
+            })?;
+            Ok(Reached { socket_path: path, tunnel: None })
+        }
+        Endpoint::Ssh { host, options, socket_path } => {
+            // Asked for rather than assumed, and asked for using the rules Muster already
+            // has: a shell one-liner spelling out where herdr keeps its socket would be a
+            // second copy of the thing most likely to drift.
+            let remote = if let Some(path) = socket_path {
+                path.clone()
+            } else {
+                let environment = remote_environment(host, options)?;
+                discover_socket_path(&environment).ok_or_else(|| {
+                    format!(
+                        "{host} answered, and nothing in its environment says where its herdr \
+                         socket would be - it has no HOME. Name the daemon's socket in the \
+                         config file's `socket` key."
+                    )
+                })?
+            };
+            let tunnel = Tunnel::open(Forward {
+                host: host.clone(),
+                options: options.clone(),
+                control_path: tunnel_path(daemon, "ctl"),
+                local_socket: tunnel_path(daemon, "sock"),
+                remote_socket: remote,
+            })?;
+            Ok(Reached {
+                socket_path: tunnel.local_socket_path().to_string(),
+                tunnel: Some(tunnel),
+            })
+        }
+    }
+}
+
+/// Where a daemon's tunnel puts its ends.
+///
+/// Named for the daemon rather than numbered, unlike a pane's socket, because there are a
+/// handful of these and the name is what makes one recognisable in `lsof` at the moment
+/// somebody is wondering which connection is wedged. The pid keeps two Musters apart.
+fn tunnel_path(daemon: &DaemonId, extension: &str) -> String {
+    let name = format!("muster-{}-{daemon}.{extension}", std::process::id());
+    std::env::temp_dir().join(name).to_string_lossy().into_owned()
+}
 
 /// Everything one attached pane needs to be typed into.
 #[derive(Debug)]
@@ -49,6 +124,12 @@ pub(crate) struct AttachedPane {
 #[derive(Debug)]
 struct Backend {
     mirror: Arc<Mutex<Mirror>>,
+    /// The ssh master this daemon is reached through, for a remote one.
+    ///
+    /// Held because dropping it takes the connection down, and named because a pane's bridge
+    /// needs the same master to run its frame stream through. Absent for a daemon on this
+    /// machine, which is the difference the rest of this file never has to notice.
+    tunnel: Option<Tunnel>,
     /// Where this daemon was actually found, as opposed to how it was asked for.
     ///
     /// The resolution rather than the wish, which is why it lives here and not in the
@@ -92,9 +173,10 @@ impl Session {
     /// The endpoint and the socket path are both passed because they are different things.
     /// The endpoint is what someone asked for and is what composition writes down; the path
     /// is where this run found it, and is worth nothing to a later one.
-    fn follow(&mut self, daemon: &DaemonId, endpoint: Endpoint, socket_path: &str, seed: Snapshot) {
-        self.composition.attach_daemon(Daemon { id: daemon.clone(), endpoint });
-        if self.backends.contains_key(daemon) {
+    fn follow(&mut self, daemon: &Daemon, reached: Reached, seed: Snapshot) {
+        let id = daemon.id.clone();
+        self.composition.attach_daemon(daemon.clone());
+        if self.backends.contains_key(&id) {
             return;
         }
 
@@ -102,18 +184,19 @@ impl Session {
         mirror.bootstrap(seed);
         let mirror = Arc::new(Mutex::new(mirror));
 
-        let reporting = daemon.clone();
+        let reporting = id.clone();
         let subscription = Subscription::start(
-            socket_path,
+            &reached.socket_path,
             Arc::clone(&mirror),
             Arc::new(move |notice| announce(&reporting, notice)),
         );
         self.backends.insert(
-            daemon.clone(),
+            id,
             Backend {
                 mirror,
-                socket_path: socket_path.to_string(),
-                channel: Arc::new(HerdrClient::new(socket_path)),
+                tunnel: reached.tunnel,
+                channel: Arc::new(HerdrClient::new(reached.socket_path.clone())),
+                socket_path: reached.socket_path,
                 _subscription: subscription,
             },
         );
@@ -254,6 +337,13 @@ impl Session {
             &self.composition,
             |daemon| mirrors.get(daemon).map(|held| &**held),
             |daemon, pane| self.channel(daemon, pane).map(|held| held.control_socket_path.clone()),
+            |daemon| {
+                let tunnel = self.backends.get(daemon)?.tunnel.as_ref()?;
+                Some(Transport {
+                    host: tunnel.host().to_string(),
+                    control_path: tunnel.control_path().to_string(),
+                })
+            },
         )
     }
 
@@ -428,6 +518,52 @@ pub(crate) fn focused_daemon() -> Option<DaemonId> {
     session.composition.focused_region().map(|region| region.daemon.clone())
 }
 
+/// Starts following every daemon a config file named.
+///
+/// No regions yet. Which tab a region shows depends on where the pane in `argv` turned out to
+/// live, and that is not known until [`attach`] has asked - so opening one here would mean
+/// opening a second one a moment later and closing the first.
+///
+/// A daemon that will not attach is logged and skipped rather than fatal. One unreachable
+/// devenv should cost its own panes and nothing else, and a window that refused to open
+/// because a container was down would be worse than the herdr TUI it replaces.
+pub(crate) fn follow_configured(config: &Config) {
+    for daemon in &config.daemons {
+        if let Err(refusal) = attach_daemon(daemon) {
+            log::error(
+                "daemon.unavailable",
+                fields! {
+                    "daemon" => daemon.id.to_string(),
+                    "detail" => refusal,
+                    "impact" => "this daemon's panes are absent from the window; every other \
+                                 daemon in the config is unaffected",
+                },
+            );
+        }
+    }
+}
+
+/// Reaches one daemon, takes its first snapshot, and starts following it.
+fn attach_daemon(daemon: &Daemon) -> Result<(), String> {
+    let reached = reach(&daemon.id, &daemon.endpoint)?;
+    let (snapshot, dropped) = fetch_snapshot(&reached.socket_path).map_err(|failure| {
+        format!("the daemon {} did not answer at {} ({failure}).", daemon.id, reached.socket_path)
+    })?;
+    log::info(
+        "daemon.attached",
+        fields! {
+            "daemon" => daemon.id.to_string(),
+            "socket" => reached.socket_path.clone(),
+            "remote" => reached.tunnel.as_ref().map_or("", Tunnel::host).to_string(),
+            "panes" => snapshot.panes.len().to_string(),
+            "dropped" => dropped.to_string(),
+        },
+    );
+    let mut session = SESSION.lock().expect("a panicking sender poisoned the session");
+    session.follow(daemon, reached, snapshot);
+    Ok(())
+}
+
 /// Why a pane could not be attached.
 pub(crate) enum AttachError {
     NoDaemon,
@@ -443,28 +579,36 @@ pub(crate) enum AttachError {
 /// knows which tab a pane is in - and a window that attaches to a pane no daemon holds is
 /// the failure that has cost this project the most time, because it looks exactly like a
 /// window that renders and ignores the keyboard.
+///
+/// Which daemon holds the pane is searched for rather than said, because at this moment
+/// nobody knows: `argv` carries a pane id and a config file carries daemons, and the two are
+/// joined here. Every daemon already being followed is asked; a Muster with no config has one
+/// to ask, which it finds the way herdr's own client would.
 pub(crate) fn attach(pane_id: &str) -> Result<Arc<AttachedPane>, AttachError> {
     let pane = PaneId::new(pane_id);
-    let socket_path =
-        discover_socket_path(&std::env::vars().collect()).ok_or(AttachError::NoDaemon)?;
+    if !following_anything() {
+        // No config named a daemon, so the one on this machine is what was meant. Recorded as
+        // the wish that produced it - find whatever is here - rather than as the path that
+        // answered today.
+        let implicit =
+            Daemon { id: DaemonId::new(LOCAL), endpoint: Endpoint::Local { socket_path: None } };
+        attach_daemon(&implicit).map_err(|refusal| {
+            if refusal.contains("no herdr socket") {
+                AttachError::NoDaemon
+            } else {
+                AttachError::Unreachable(refusal)
+            }
+        })?;
+    }
 
-    let (snapshot, dropped) = fetch_snapshot(&socket_path)
-        .map_err(|failure| AttachError::Unreachable(failure.to_string()))?;
-    let Some(placed) = snapshot.panes.iter().find(|held| held.id == pane) else {
-        return Err(AttachError::NoSuchPane {
-            pane: pane_id.to_string(),
-            held: snapshot.panes.len(),
-            dropped,
-        });
-    };
-    let (workspace, tab) = (placed.workspace.clone(), placed.tab.clone());
+    let (daemon, workspace, tab) = locate(&pane).ok_or_else(|| AttachError::NoSuchPane {
+        pane: pane_id.to_string(),
+        held: panes_followed(),
+        dropped: 0,
+    })?;
 
-    let daemon = DaemonId::new(LOCAL);
     let attached = {
         let mut session = SESSION.lock().expect("a panicking sender poisoned the session");
-        // Nothing named this daemon, so nothing to record but the wish that produced it:
-        // find whatever is on this machine. A config file naming a socket says so instead.
-        session.follow(&daemon, Endpoint::Local { socket_path: None }, &socket_path, snapshot);
 
         // This pane's channel by hand, before the rest. The reconcile below opens one for
         // every other pane in the tab and logs whatever refuses; this one has a caller
@@ -479,7 +623,7 @@ pub(crate) fn attach(pane_id: &str) -> Result<Arc<AttachedPane>, AttachError> {
             None => session
                 .composition
                 .open_region(&daemon, workspace, tab)
-                .expect("the daemon was attached a few lines above this"),
+                .expect("the daemon holding this pane is one being followed"),
         };
         session.composition.focus_pane(region, pane.clone());
         session.reconcile(&daemon);
@@ -490,10 +634,85 @@ pub(crate) fn attach(pane_id: &str) -> Result<Arc<AttachedPane>, AttachError> {
             .ok_or_else(|| AttachError::NoChannel("the channel opened and then went".to_string()))?
     };
 
+    // Every other daemon gets a region of its own, on whatever tab it is focused on. This is
+    // what puts a laptop and a devenv side by side: `argv` decides where the keyboard starts
+    // and the config decides what else is on screen.
+    open_remaining_regions();
+
     // Outside the lock, because emitting reaches the shell and a shell reacting to an event
     // by dispatching a request is ordinary.
     publish();
     Ok(attached)
+}
+
+fn following_anything() -> bool {
+    let session = SESSION.lock().expect("a panicking sender poisoned the session");
+    !session.backends.is_empty()
+}
+
+fn panes_followed() -> usize {
+    let session = SESSION.lock().expect("a panicking sender poisoned the session");
+    session
+        .backends
+        .values()
+        .filter_map(|backend| backend.mirror.lock().ok())
+        .map(|mirror| mirror.panes().count())
+        .sum()
+}
+
+/// Which followed daemon holds this pane, and where in it.
+///
+/// The first that has it, and an ambiguity nobody can resolve when two do: `w1:p1` on a
+/// laptop and `w1:p1` on a devenv are different panes with one name, and a command line
+/// carrying only the name has not said which. Named as a hazard here rather than silently
+/// resolved, because the day it bites, the window will have attached the wrong machine.
+fn locate(pane: &PaneId) -> Option<(DaemonId, WorkspaceId, TabId)> {
+    let session = SESSION.lock().expect("a panicking sender poisoned the session");
+    let mut found: Option<(DaemonId, WorkspaceId, TabId)> = None;
+    for (id, backend) in &session.backends {
+        let Ok(mirror) = backend.mirror.lock() else { continue };
+        let Some(held) = mirror.pane(pane) else { continue };
+        if let Some((first, ..)) = &found {
+            log::warn(
+                "pane.ambiguous",
+                fields! {
+                    "pane" => pane.to_string(),
+                    "daemons" => format!("{first}, {id}"),
+                    "impact" => "the keyboard started on the first of them, which may be the \
+                                 wrong machine",
+                    "check" => "name the pane on the daemon you meant once the CLI can say \
+                                which - a pane id alone does not",
+                },
+            );
+            break;
+        }
+        found = Some((id.clone(), held.workspace.clone(), held.tab.clone()));
+    }
+    found
+}
+
+/// Gives every daemon with nothing on screen a region of its own.
+///
+/// On the daemon's own focused tab, because that is the one its user was last looking at and
+/// Muster has no better answer to invent. A daemon that has published no tabs yet gets
+/// nothing and is picked up by the next reconcile.
+fn open_remaining_regions() {
+    let mut session = SESSION.lock().expect("a panicking sender poisoned the session");
+    let wanted: Vec<(DaemonId, WorkspaceId, TabId)> = session
+        .backends
+        .iter()
+        .filter(|(id, _)| !session.composition.regions().any(|region| &&region.daemon == id))
+        .filter_map(|(id, backend)| {
+            let mirror = backend.mirror.lock().ok()?;
+            let tab = mirror.focus().tab.clone()?;
+            let held = mirror.tab(&tab)?;
+            Some((id.clone(), held.workspace.clone(), tab))
+        })
+        .collect();
+    for (daemon, workspace, tab) in wanted {
+        session.composition.open_region(&daemon, workspace, tab);
+        session.reconcile(&daemon);
+    }
 }
 
 /// Tells the shell what this window is showing.

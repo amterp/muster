@@ -10,6 +10,7 @@ use muster_core::diagnostics::sink::JsonLinesSink;
 use muster_core::fields;
 
 use muster_core::composition::{DaemonId, Step};
+use muster_core::config;
 use muster_core::input::{CompositionOutcome, ScrollDirection, composition_outcome};
 use muster_core::intent::{BackendIntent, Branch};
 use muster_core::mirror::backend::{PaneId, TabId};
@@ -278,12 +279,14 @@ fn attach_pane(pane_id: &str) -> Response {
     }
 }
 
-/// Turns logging on, if this run wants it.
+/// Turns logging on and attaches whatever the config file names.
 ///
-/// An empty path is not a failure: it is what a release build asks for, and what the
-/// shell sends when the user has not opted in.
+/// An empty log path is not a failure: it is what a release build asks for, and what the
+/// shell sends when the user has not opted in. Logging is set up first so that the config
+/// file's own account of itself has somewhere to go.
 fn start(startup: &proto::Startup) -> Response {
     if startup.log_path.is_empty() {
+        apply_config(&startup.config_path);
         return Response::ok();
     }
     let Some(sink) = JsonLinesSink::open(&startup.log_path) else {
@@ -324,7 +327,56 @@ fn start(startup: &proto::Startup) -> Response {
             "vt_engine" => muster_vt::engine_version().unwrap_or_else(|| "unknown".to_string()),
         },
     );
+    apply_config(&startup.config_path);
     Response::ok()
+}
+
+/// Reads the config file and starts following the daemons it names.
+///
+/// Reading is here rather than in the core because it is I/O, and the core's rule is that it
+/// arrives through an edge. What comes back is a pure parse of the text, judged by the corpus.
+///
+/// Nothing here is fatal, and the response says nothing about it. A config that could not be
+/// read leaves Muster doing what a Muster with no config does - find the daemon on this
+/// machine - which is a working window, and the alternative is refusing to open one because a
+/// file has a typo. What it must never be is silent, so each way of failing writes the line
+/// that explains the window somebody is about to look at.
+fn apply_config(path: &str) {
+    if path.is_empty() {
+        return;
+    }
+    let text = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(error) => {
+            log::warn(
+                "config.unreadable",
+                fields! {
+                    "path" => path.to_string(),
+                    "detail" => error.to_string(),
+                    "impact" => "no daemon named in that file is attached, so the window shows                                  only the daemon on this machine",
+                    "check" => "whether the path exists and is readable; the shell only sends                                 one it has already seen",
+                },
+            );
+            return;
+        }
+    };
+    match config::parse(&text) {
+        Ok(config) => {
+            log::info(
+                "config.read",
+                fields! { "path" => path.to_string(), "daemons" => config.daemons.len().to_string() },
+            );
+            session::follow_configured(&config);
+        }
+        Err(refusal) => log::warn(
+            "config.refused",
+            fields! {
+                "path" => path.to_string(),
+                "detail" => refusal,
+                "impact" => "no daemon named in that file is attached, so the window shows                              only the daemon on this machine",
+            },
+        ),
+    }
 }
 
 fn write(record: proto::LogRecord) -> Response {

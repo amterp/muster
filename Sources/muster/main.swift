@@ -22,11 +22,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     // The core owns the file from here. The shell decided where it goes, which is the one
     // part of logging that is an OS question (architecture.md, the diagnostic log).
-    Core.start(logPath: logPath)
+    // The config file goes over at the same moment and for the same reason: where it lives
+    // is an OS question, and what it says is the core's.
+    let config = configPath()
+    Core.start(logPath: logPath, configPath: config)
     Core.info(
       "app.launch",
       [
         "args": CommandLine.arguments.dropFirst().joined(separator: " "),
+        "config": config ?? "(none)",
         "input_recorded": String(Core.includesInput),
       ])
 

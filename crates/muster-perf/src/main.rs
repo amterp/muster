@@ -147,6 +147,33 @@ fn recorded_frame_streams(corpus: &str) -> Vec<Vec<u8>> {
     found.iter().filter_map(|path| std::fs::read(path).ok()).collect()
 }
 
+/// What one structural change costs a window that is full.
+///
+/// Every pane event republishes the whole view - that is what keeps the shell from holding a
+/// picture it has to patch - so this runs whenever anything moves, and it is the one cost
+/// that scales with how many panes are on screen rather than with how much they print.
+///
+/// Per pane rather than per view, so the number stays comparable as the budgeted window size
+/// changes, and so that a build which made it quadratic shows up as one that no longer
+/// matches the one-pane case.
+fn view_cost() -> Cost {
+    let (composition, mirror) = full_window(BUDGETED_PANES);
+    let daemon = DaemonId::new("local");
+    measure("view.build", "ns/pane", BUDGETED_PANES * 200, 20, 5, || {
+        for _ in 0..200 {
+            // The last closure is the daemon's transport, and it is local here: what this
+            // measures is building a view, not reaching a machine.
+            let view = View::of(
+                &composition,
+                |named| (named == &daemon).then_some(&mirror),
+                |_, pane| Some(pane.to_string()),
+                |_| None,
+            );
+            black_box(view.regions.len());
+        }
+    })
+}
+
 fn measure_everything(streams: &[Vec<u8>]) -> Vec<Cost> {
     let wire_bytes: usize = streams.iter().map(Vec::len).sum();
     let frames: Vec<PaneFrame> = streams
@@ -256,26 +283,7 @@ fn measure_everything(streams: &[Vec<u8>]) -> Vec<Cost> {
         }
     }));
 
-    // What one structural change costs a window that is full. Every pane event republishes
-    // the whole view - that is what keeps the shell from holding a picture it has to patch -
-    // so this runs whenever anything moves, and it is the one cost that scales with how many
-    // panes are on screen rather than with how much they print.
-    //
-    // Per pane rather than per view, so that the number stays comparable as the budgeted
-    // window size changes, and so that a build that made it quadratic shows up as a number
-    // that no longer matches the one-pane case.
-    let (composition, mirror) = full_window(BUDGETED_PANES);
-    let daemon = DaemonId::new("local");
-    costs.push(measure("view.build", "ns/pane", BUDGETED_PANES * 200, 20, 5, || {
-        for _ in 0..200 {
-            let view = View::of(
-                &composition,
-                |named| (named == &daemon).then_some(&mirror),
-                |_, pane| Some(pane.to_string()),
-            );
-            black_box(view.regions.len());
-        }
-    }));
+    costs.push(view_cost());
 
     // What Muster holds open per pane, which is the half of "fast is a feature" that is fixed
     // cost rather than throughput: a full window is fifteen bound sockets, fifteen threads

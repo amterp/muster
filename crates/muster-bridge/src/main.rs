@@ -22,13 +22,17 @@ use muster_herdr::{ControlStreamMessage, FrameDecoder, PaneStreamEvent};
 
 const USAGE: &str = "\
 usage: muster-bridge <pane-id> [--control-socket <path>]
+                     [--via-ssh <host> --ssh-control <path>]
 
 Runs `herdr terminal session control <pane-id>` and unwraps its frames onto stdout.
 Sized from the PTY on stdout, which is the surface's own geometry.
 
 With --control-socket, dials that socket and relays whatever the app sends onto herdr's
 control stream verbatim - input and scroll. Without it, the pane renders but cannot be
-typed into.";
+typed into.
+
+With --via-ssh, runs that command on another machine instead, over the ssh master the app
+already opened for the daemon's control plane. Frames are byte-identical either way.";
 
 /// herdr's stdin, which two threads write to: the resize watcher and the app's relay.
 type HerdrInput = Arc<Mutex<ChildStdin>>;
@@ -54,10 +58,12 @@ fn main() {
             "cols" => columns,
             "rows" => rows,
             "control_socket" => arguments.control_socket.clone().unwrap_or("(none)".into()),
+            "host" => arguments.ssh.as_ref()
+                .map_or_else(|| "(this machine)".to_string(), |ssh| ssh.host.clone()),
         },
     );
 
-    let mut herdr = match spawn_herdr(&arguments.pane, columns, rows) {
+    let mut herdr = match spawn_herdr(&arguments.pane, columns, rows, arguments.ssh.as_ref()) {
         Ok(child) => child,
         Err(error) => {
             log::error(
@@ -66,8 +72,9 @@ fn main() {
             );
             eprint!(
                 "muster-bridge: could not start herdr: {error}\n\
-                 This pane will render nothing. Check that herdr is on PATH and that the \
-                 daemon this process can see owns pane {}.\n\n",
+                 This pane will render nothing. Check that herdr is on PATH - on {} - and \
+                 that the daemon there owns pane {}.\n\n",
+                arguments.ssh.as_ref().map_or("this machine", |ssh| ssh.host.as_str()),
                 arguments.pane
             );
             std::process::exit(1);
@@ -99,22 +106,68 @@ fn main() {
 struct Arguments {
     pane: String,
     control_socket: Option<String>,
+    ssh: Option<Ssh>,
+}
+
+/// The machine a pane lives on, when it is not this one.
+#[derive(Clone)]
+struct Ssh {
+    host: String,
+    /// The master the app opened for this daemon's control plane. Reusing it is what keeps a
+    /// pane cheap: a window of fifteen remote panes pays for one handshake rather than
+    /// fifteen.
+    control_path: String,
 }
 
 impl Arguments {
     fn parse(arguments: &[String]) -> Option<Arguments> {
-        match arguments {
-            [pane] => Some(Arguments { pane: pane.clone(), control_socket: None }),
-            [pane, flag, path] if flag == "--control-socket" => {
-                Some(Arguments { pane: pane.clone(), control_socket: Some(path.clone()) })
-            }
-            _ => None,
+        let mut read = arguments.iter();
+        let pane = read.next()?.clone();
+        if pane.starts_with('-') {
+            return None;
         }
+        let mut parsed = Arguments { pane, control_socket: None, ssh: None };
+        let (mut host, mut control_path) = (None, None);
+        while let Some(flag) = read.next() {
+            let value = read.next()?.clone();
+            match flag.as_str() {
+                "--control-socket" => parsed.control_socket = Some(value),
+                "--via-ssh" => host = Some(value),
+                "--ssh-control" => control_path = Some(value),
+                _ => return None,
+            }
+        }
+        parsed.ssh = match (host, control_path) {
+            (Some(host), Some(control_path)) => Some(Ssh { host, control_path }),
+            // Half an ssh target is not a local pane, it is a mistake that would render the
+            // wrong machine's terminal. Refusing prints the usage rather than quietly
+            // attaching to whatever herdr this process can see.
+            (None, None) => None,
+            _ => return None,
+        };
+        Some(parsed)
     }
 }
 
-fn spawn_herdr(pane: &str, columns: u16, rows: u16) -> Result<Child, String> {
-    Command::new("herdr")
+/// Starts the command whose frames become this pane.
+///
+/// Remotely it is the same command through ssh, which is why the frames are identical either
+/// way: the daemon renders them, and the transport carries bytes. The master is reused rather
+/// than reconnected, and batch mode is set for the same reason the app sets it - a pane that
+/// stopped to ask for a password would hang with nothing to type into.
+///
+/// ssh joins everything after the destination and hands it to the far shell, so an argument
+/// with a space in it would come apart. Nothing here has one: a pane id and two numbers.
+fn spawn_herdr(pane: &str, columns: u16, rows: u16, ssh: Option<&Ssh>) -> Result<Child, String> {
+    let mut command = match ssh {
+        None => Command::new("herdr"),
+        Some(ssh) => {
+            let mut command = Command::new("ssh");
+            command.args(["-S", &ssh.control_path, "-o", "BatchMode=yes", &ssh.host, "herdr"]);
+            command
+        }
+    };
+    command
         .args(["terminal", "session", "control", pane])
         .args(["--cols", &columns.to_string(), "--rows", &rows.to_string()])
         .stdin(Stdio::piped())

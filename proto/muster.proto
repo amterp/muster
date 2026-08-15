@@ -43,6 +43,7 @@ message Request {
 // Muster never mutates. Each of these is a request to a daemon, and what actually happened
 // arrives afterwards as a ViewChanged - so a shell that renders its own optimistic answer is
 // a shell that can be wrong, and none of these carry one.
+//
 // A pane is named by two things, and every message below that names one says both.
 //
 // Two daemons hand out the same ids - `w1:p1` means something on each - so a bare pane id
@@ -138,6 +139,13 @@ message Startup {
   // different mechanism for a different process, not a duplicate of this field: a bridge
   // is spawned, not dispatched to.
   string log_path = 1;
+
+  // The config file to read, or empty for none. The shell decides where it lives for the
+  // same reason it decides where the log goes; the core decides what it means.
+  //
+  // Empty is the ordinary case rather than a problem: a Muster with no config file attaches
+  // the daemon on this machine the way herdr's own client would find it.
+  string config_path = 4;
 
   // trace, debug, info, warn, error. Empty means debug.
   string log_level = 2;
@@ -312,6 +320,21 @@ message ViewRegion {
   // resolved, so a shell that ignores this renders the right thing; it exists so the chrome
   // can say so, because a zoomed tab and a one-pane tab are otherwise identical on screen.
   bool zoomed = 6;
+
+  // How this region's panes are reached, when they are on another machine. Both empty means
+  // a daemon on this machine, which is the only difference a shell has to notice between
+  // local and remote: it relays these onto the bridge's command line and nothing else here
+  // changes.
+  //
+  // On the region rather than on each pane because it is a property of the daemon, and every
+  // pane in a region belongs to one.
+  string ssh_host = 7;
+
+  // The ssh master's control socket. A pane's frames come from a command rather than from
+  // the forwarded socket - herdr publishes them through its CLI - so the bridge runs that
+  // command through the connection the control plane already opened, instead of paying for a
+  // handshake per pane.
+  string ssh_control_path = 8;
 }
 
 message ViewNode {

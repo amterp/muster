@@ -79,6 +79,10 @@ merge gate's green cannot drift apart. Flags narrow it and cluster: `./dev -t` t
 reads its run log to see what connected, so it needs a daemon on PATH and a logged-in GUI session - neither of which
 the default suite is allowed to require.
 
+`./dev --ssh` is the remote tier, and sits out of the gate for the same reason: it starts the devenv container and
+proves a forwarded socket is a socket - a real ssh master to a real machine running a real daemon - which needs
+docker rather than a GUI session.
+
 `./dev --perf` and `./dev --latency` are the other two out-of-gate tiers: the first measures the per-unit budgets
 against a checked-in baseline and fails on regression, the second times input-to-glyph against a real daemon, at one
 pane and at a full window of fifteen with fourteen of them printing. A functional green is never a performance
