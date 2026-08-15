@@ -6,18 +6,25 @@ import AppKit
 /// which color, what a stale backend does to a title - and a decision inside `draw` is a
 /// decision no test can reach. The views below only apply what this returns.
 public enum PaneAppearance {
-  /// The border color for an agent state, by the backend's own spelling.
+  /// The color for an agent state, by the backend's own spelling.
   ///
-  /// Anything unrecognized is `unknown`'s gray rather than a default of `idle`'s green.
-  /// A state we could not read is not an agent that finished, and coloring it as one is
-  /// how a user learns to stop trusting the colors.
+  /// Anything unrecognized falls to `unknown` rather than to `idle`. A state we could not
+  /// read is not an agent that finished, and coloring it as one is how a user learns to stop
+  /// trusting the colors.
+  ///
+  /// `unknown` is fainter than `idle` rather than another hue. The two used to share a gray,
+  /// which cost nothing while the only thing painted was a border - neither state draws one
+  /// - and became wrong the moment the sidebar drew a dot for every row, where a pane whose
+  /// harness could not be read would have been indistinguishable from one with nothing to
+  /// do. Faint rather than colorful because `unknown` is an absence of information, and a
+  /// hue of its own would read as a fifth thing an agent can be doing.
   public static func borderColor(state: String) -> NSColor {
     switch state {
     case "working": return NSColor.systemBlue
     case "blocked": return NSColor.systemOrange
     case "done": return NSColor.systemGreen
     case "idle": return NSColor.systemGray
-    default: return NSColor.systemGray
+    default: return NSColor.tertiaryLabelColor
     }
   }
 

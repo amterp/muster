@@ -25,6 +25,7 @@ use muster_core::input::{Keymap, PaneInput, TerminalModeProfile};
 use muster_core::intent::{BackendChannel, BackendIntent};
 use muster_core::mirror::backend::{PaneId, Snapshot, TabId, WorkspaceId};
 use muster_core::mirror::{Change, Mirror};
+use muster_core::roster::Roster;
 use muster_herdr::subscription::{Notice, Subscription};
 use muster_herdr::{
     HerdrClient, HerdrPaneChannel, PaneControlChannel, discover_socket_path, fetch_snapshot,
@@ -358,6 +359,27 @@ impl Session {
                     control_path: tunnel.control_path().to_string(),
                 })
             },
+        )
+    }
+
+    /// Everything the attached daemons hold, and which of it is on screen.
+    ///
+    /// Takes the view rather than recomputing what is visible, so the two answers cannot
+    /// disagree - a row marked hidden while its surface is on screen is the sidebar being
+    /// wrong about the window beside it.
+    ///
+    /// Locks every mirror for the length of it, in the map's own order, on the same terms as
+    /// [`Session::view`].
+    fn roster(&self, view: &View) -> Roster {
+        let mirrors: BTreeMap<&DaemonId, MutexGuard<'_, Mirror>> = self
+            .backends
+            .iter()
+            .filter_map(|(id, backend)| Some((id, backend.mirror.lock().ok()?)))
+            .collect();
+        Roster::of(
+            &self.composition,
+            |daemon| mirrors.get(daemon).map(|held| &**held),
+            &view.showing(),
         )
     }
 
@@ -746,11 +768,12 @@ fn publish() {
     // two are settled together rather than left to drift. `settled` is the panes that were
     // waiting to be noticed and have now been - re-announced below, after the shell has been
     // handed the arrangement they appear in.
-    let (view, settled) = {
+    let (view, roster, settled) = {
         let mut session = SESSION.lock().expect("a panicking sender poisoned the session");
         let view = session.view();
+        let roster = session.roster(&view);
         let settled = session.attention.showing(view.showing());
-        (view, settled)
+        (view, roster, settled)
     };
 
     // The shape, not the fact. "the view changed" is useless in a bug report and what it
@@ -772,7 +795,15 @@ fn publish() {
             },
         );
     }
+    log::info(
+        "roster.published",
+        fields! {
+            "panes" => roster.panes.len().to_string(),
+            "on_screen" => roster.panes.iter().filter(|pane| pane.on_screen).count().to_string(),
+        },
+    );
     ffi::emit(&Event { payload: Some(event::Payload::ViewChanged(convert::view(&view))) });
+    ffi::emit(&Event { payload: Some(event::Payload::RosterChanged(convert::roster(&roster))) });
 
     // After the view, so that a pane surfaced by this very publish has somewhere to be
     // painted before it is told it is no longer waiting on anyone.
@@ -830,8 +861,14 @@ fn announce(daemon: &DaemonId, notice: Notice) {
             }
         }
         Notice::Changed(change) => {
+            // Two questions, not one. Composition is reconciled when something it names may
+            // have moved; the view and the roster are republished whenever they would read
+            // differently - and a pane's name is in the roster without being anywhere
+            // composition can see.
             if change.moves_structure() {
                 reconcile(daemon);
+            }
+            if change.republishes() {
                 publish();
             }
             report(daemon, &change);

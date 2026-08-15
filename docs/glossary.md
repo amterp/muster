@@ -28,6 +28,8 @@ One name per concept; docs and code use these terms. Alphabetical.
   output.
 - **pane tree** - the split layout inside one tab; daemon truth.
 - **region** - the part of a Muster window displaying one tab's pane tree.
+- **roster** - every pane every attached daemon holds, ordered and labelled by the core, each row saying whether a
+  region is showing it. What the view is to the screen, this is to the session.
 - **seam** - an injected boundary the core is tested and swapped at. Two exist: backend and renderer.
 - **seen-ness** - whether anybody has looked at a pane since its agent finished; distinguishes idle from done. A pane
   is seen when it is on screen in a window holding the OS's focus, so Muster computes this rather than reading it -

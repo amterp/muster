@@ -76,6 +76,13 @@ pub enum Change {
         from: AgentState,
         to: AgentState,
     },
+    /// What this pane is called has moved - its directory, or the harness detected in it.
+    ///
+    /// Not a state change: an agent that has just been recognized was already doing whatever
+    /// it was doing, and a pane that changed directory is the same pane. It is reported
+    /// because a list of panes names them by exactly these two things, and a name that never
+    /// updates is a pane the user cannot find twice.
+    PaneRelabelled(PaneId),
     TabAdded(TabId),
     TabRemoved(TabId),
     /// This tab's tree is not the one it was. Carries the tab rather than the tree,
@@ -113,8 +120,25 @@ impl Change {
             self,
             Change::AgentStateChanged { .. }
                 | Change::AgentTransitionsMissed { .. }
+                | Change::PaneRelabelled(_)
                 | Change::FocusChanged
         )
+    }
+
+    /// Whether what the window is showing would come out different.
+    ///
+    /// A superset of [`Change::moves_structure`], and the two are separate because they
+    /// answer different questions. Composition has to be reconciled when something it names
+    /// may have moved; the view and the roster have to be republished whenever anything in
+    /// them would read differently - and a pane's name is in the roster without being
+    /// anywhere composition can see.
+    ///
+    /// Agent state is the one thing in neither. It has a message of its own for exactly this
+    /// reason: republishing the whole arrangement every time an agent blinked is the
+    /// per-event cost the budget is drawn against, and a full window of agents is the common
+    /// case rather than the rare one.
+    pub fn republishes(&self) -> bool {
+        self.moves_structure() || matches!(self, Change::PaneRelabelled(_))
     }
 
     /// The pane whose agent state the shell has to be told about, if any.

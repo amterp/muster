@@ -198,8 +198,12 @@ impl Mirror {
                 };
                 pane.agent_state = before.agent_state;
                 pane.agent = pane.agent.or_else(|| before.agent.clone());
-                self.panes.insert(id, pane);
-                Vec::new()
+                // What the pane is called, which is not structure and is not state. A pane
+                // that changed directory is listed under a name it no longer has until
+                // something else happens to move, and on a quiet session that is never.
+                let relabelled = pane.cwd != before.cwd || pane.agent != before.agent;
+                self.panes.insert(id.clone(), pane);
+                if relabelled { vec![Change::PaneRelabelled(id)] } else { Vec::new() }
             }
             BackendEvent::PaneRemoved(id) => self.remove_pane(&id, false),
             // Kept even for a tab this mirror does not know. herdr sends the layout for a
@@ -236,6 +240,10 @@ impl Mirror {
                     && existing.agent.as_deref() != Some(agent.as_str())
                 {
                     existing.agent = Some(agent);
+                    // herdr detects a harness by reading the screen, seconds after the pane
+                    // started, so this is how a list learns which of its rows is the one
+                    // running claude. Reported now that something names panes by it.
+                    return vec![Change::PaneRelabelled(pane)];
                 }
                 Vec::new()
             }

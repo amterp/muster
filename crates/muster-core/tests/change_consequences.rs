@@ -19,6 +19,7 @@ fn change_consequences_conformance() {
         let change = read_change(given)?;
         Ok(fields([
             ("movesStructure", Some(json!(change.moves_structure()))),
+            ("republishes", Some(json!(change.republishes()))),
             (
                 "announcesAgentState",
                 Some(match change.announces_agent_state() {
@@ -49,6 +50,7 @@ fn every_change_is_in_the_corpus() {
         "paneAdded",
         "paneRemoved",
         "agentStateChanged",
+        "paneRelabelled",
         "tabAdded",
         "tabRemoved",
         "layoutChanged",
@@ -90,6 +92,7 @@ fn read_change(given: &Value) -> Result<Change, CaseError> {
             from: AgentState::from_backend(&text("from")?),
             to: AgentState::from_backend(&text("to")?),
         },
+        "paneRelabelled" => Change::PaneRelabelled(PaneId::new(text("pane")?)),
         "tabAdded" => Change::TabAdded(TabId::new(text("tab")?)),
         "tabRemoved" => Change::TabRemoved(TabId::new(text("tab")?)),
         "layoutChanged" => Change::LayoutChanged(TabId::new(text("tab")?)),

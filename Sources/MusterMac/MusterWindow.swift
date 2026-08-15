@@ -17,7 +17,16 @@ public final class MusterWindow: NSObject {
   private let renderer: Renderer
   private let executable: String
   private let strip = RegionStrip(frame: NSRect(x: 0, y: 0, width: 960, height: 600))
+  private let sidebar = SidebarView(frame: .zero)
+  private let split = WindowLayout(frame: NSRect(x: 0, y: 0, width: 960, height: 600))
   private var regions: [String: RegionView] = [:]
+
+  /// Everything the attached daemons hold, whether or not this window is showing it.
+  ///
+  /// Held here rather than only in the sidebar because it is half of what the sidebar draws
+  /// and the other half arrives separately: a roster and an agent state land in either
+  /// order, and whichever is second has to be able to redraw with both.
+  private var roster = Roster(panes: [])
 
   /// Every pane's last known agent state, whether or not it is on screen.
   ///
@@ -54,9 +63,13 @@ public final class MusterWindow: NSObject {
       backing: .buffered,
       defer: false)
     super.init()
-    window.contentView = strip
+    split.attach(sidebar: sidebar, strip: strip)
+    window.contentView = split
     window.delegate = self
     window.center()
+    sidebar.onPanePicked = { pane in
+      Core.focus(daemonID: pane.daemon, paneID: pane.pane)
+    }
     applyTitle()
   }
 
@@ -93,6 +106,17 @@ public final class MusterWindow: NSObject {
     for region in regions.values where region.daemonID == pane.daemon {
       region.chrome(for: pane.pane)?.apply(paneID: pane.pane, state: state)
     }
+    sidebar.apply(roster: roster, states: states)
+  }
+
+  /// Everything the daemons hold, whether or not this window is showing it.
+  ///
+  /// The list is the half of the founding desideratum the window cannot carry on its own: a
+  /// pane no region shows has no border to colour, and it is the one most likely to have
+  /// finished while nobody was looking.
+  public func apply(_ roster: Roster) {
+    self.roster = roster
+    sidebar.apply(roster: roster, states: states)
   }
 
   public func apply(daemon: String, health state: String, detail: String) {
@@ -258,6 +282,37 @@ extension MusterWindow {
 
   @objc public func focusPreviousPane(_ sender: Any?) {
     Core.focus(step: "previous")
+  }
+}
+
+/// The sidebar down the left, and everything else to the right of it.
+///
+/// Its own view rather than arithmetic inside the window, so that the one number here - how
+/// much width the list takes - is a pure function a test can call. The list is a fixed width
+/// because it holds a directory and a harness name and nothing that benefits from more; the
+/// regions get what is left.
+@MainActor
+final class WindowLayout: NSView {
+  private var sidebar: NSView?
+  private var strip: NSView?
+
+  override var isFlipped: Bool { true }
+
+  func attach(sidebar: NSView, strip: NSView) {
+    self.sidebar = sidebar
+    self.strip = strip
+    addSubview(sidebar)
+    addSubview(strip)
+    needsLayout = true
+  }
+
+  override func layout() {
+    super.layout()
+    let (listWidth, regionWidth) = SidebarModel.widths(in: bounds.width)
+    sidebar?.frame = CGRect(x: 0, y: 0, width: listWidth, height: bounds.height)
+    sidebar?.isHidden = listWidth == 0
+    strip?.frame = CGRect(x: listWidth, y: 0, width: regionWidth, height: bounds.height)
+    strip?.needsLayout = true
   }
 }
 

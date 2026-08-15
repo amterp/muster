@@ -206,6 +206,10 @@ def check_a_split_tab_becomes_splits(daemon: IsolatedDaemon, pane: str) -> None:
     time.sleep(0.4)
     client.request("pane.split", {"target_pane_id": pane, "direction": "down", "cwd": "/tmp"})
     time.sleep(0.4)
+    # A second tab, whose pane no region will show. Nothing below renders it, which is the
+    # point: it is the pane the sidebar exists for, and the one a window alone loses.
+    client.request("tab.create", {"cwd": "/tmp"})
+    time.sleep(0.4)
     panes = [
         held["pane_id"]
         for held in client.request("pane.list", {})["panes"]
@@ -213,6 +217,12 @@ def check_a_split_tab_becomes_splits(daemon: IsolatedDaemon, pane: str) -> None:
     ]
     if len(panes) != 3:
         raise Failure(f"the daemon was asked for three panes in the tab and holds {panes}")
+    everything = client.request("pane.list", {})["panes"]
+    if len(everything) != 4:
+        raise Failure(
+            "the daemon was asked for a fourth pane in a tab of its own and holds "
+            f"{[held['pane_id'] for held in everything]}"
+        )
 
     records = launch(daemon.env, [pane], "splits", settle=10.0)
     expect_no_errors(records)
@@ -257,6 +267,25 @@ def check_a_split_tab_becomes_splits(daemon: IsolatedDaemon, pane: str) -> None:
         raise Failure(
             f"the tab was split right and then down, and the core published {tree!r}. A tree "
             "with one axis in it means the reconstruction collapsed a level."
+        )
+
+    # The list, which is the half of "every agent at a glance" a window cannot carry: the
+    # fourth pane is in a tab no region shows, so nothing on screen says anything about it.
+    # Counts rather than ids because these two discriminate on their own - four panes with
+    # three of them showing is the arrangement, and any other pair means the roster is
+    # describing a different session from the one the daemon holds.
+    roster = [r for r in records if r["event"] == "roster.received"]
+    if not roster:
+        raise Failure(
+            "the window was never handed a roster, so nothing lists the panes no region is "
+            "showing - which is exactly the pane most likely to have finished unnoticed"
+        )
+    listed, shown = roster[-1].get("panes"), roster[-1].get("on_screen")
+    if (listed, shown) != ("4", "3"):
+        raise Failure(
+            f"the daemon holds four panes with three of them on screen, and the window was "
+            f"handed {listed} panes with {shown} on screen. A roster that agrees with the "
+            "window instead of with the session lists nothing worth surfacing."
         )
 
 
@@ -338,8 +367,8 @@ def main() -> int:
         )
         return 1
     print(
-        "\nsmoke: the app launches, connects, paints, renders a split tab as splits, and "
-        "shows what its agents are doing."
+        "\nsmoke: the app launches, connects, paints, renders a split tab as splits, shows "
+        "what its agents are doing, and lists the panes nothing is showing."
     )
     return 0
 

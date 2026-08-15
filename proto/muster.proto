@@ -294,7 +294,43 @@ message Event {
     PaneStateChanged pane_state_changed = 2;
     BackendHealth backend_health = 3;
     ViewChanged view_changed = 4;
+    RosterChanged roster_changed = 5;
   }
+}
+
+// Every pane every attached daemon holds, whether or not this window is showing it.
+//
+// The view says what is on screen; this says what exists. Both, because the desideratum is
+// that every agent is glanceable and the pane most likely to have finished unnoticed is the
+// one no region is showing - a list of only what is visible would leave exactly those out.
+//
+// Structure only, on the same terms as ViewChanged and for the same reason: what an agent is
+// doing travels on PaneStateChanged, because a roster is mostly stable and a state blinks.
+// A shell holds both and joins them, which it already does to paint a pane's border.
+//
+// Whole list every time, absolute and idempotent. It is a few dozen short rows for a window
+// nobody can fill past about fifteen panes, and a shell handed the whole answer keeps no
+// picture of its own to patch.
+message RosterChanged {
+  // In the order to show them: daemons in the order their regions sit in the window, then
+  // any daemon with no region; within a tab, the order its tree lays the panes out.
+  repeated RosterPane panes = 1;
+}
+
+message RosterPane {
+  string daemon_id = 1;
+  string pane_id = 2;
+  string tab_id = 3;
+
+  // What to call this pane to somebody who did not open it - its directory, and the harness
+  // detected in it when there is one. Decided in the core, because a shell naming panes for
+  // itself would be a second place that decision lives.
+  string label = 4;
+
+  // Whether a region is showing it right now. Resolved here rather than left to a shell
+  // comparing this against the view: the two arrive separately, and a shell joining them
+  // would render a pane as hidden for as long as they disagreed.
+  bool on_screen = 5;
 }
 
 // Everything this window is showing, as one message.

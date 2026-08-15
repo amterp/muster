@@ -78,6 +78,20 @@ public struct WindowContents: Equatable {
   }
 }
 
+extension Roster {
+  /// The seam's roster, in the shell's own words.
+  init(_ changed: Muster_RosterChanged) {
+    self.init(
+      panes: changed.panes.map { pane in
+        Roster.Pane(
+          key: PaneKey(daemon: pane.daemonID, pane: pane.paneID),
+          tab: pane.tabID,
+          label: pane.label,
+          onScreen: pane.onScreen)
+      })
+  }
+}
+
 /// A pane, named the way a pane has to be named once a window shows two daemons.
 ///
 /// Two daemons hand out the same ids, so anything the shell keys by pane alone - which agent

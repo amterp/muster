@@ -9,6 +9,7 @@
 use muster_core::composition::{View, ViewNode};
 use muster_core::input::{Key, KeyAction, KeyEvent, Modifiers};
 use muster_core::mirror::backend::SplitAxis;
+use muster_core::roster::Roster;
 
 use crate::proto;
 
@@ -43,6 +44,23 @@ pub(crate) fn view(view: &View) -> proto::ViewChanged {
             })
             .collect(),
         focused_region: view.focused.map(|id| id.to_string()).unwrap_or_default(),
+    }
+}
+
+/// What exists, on its way out to the shell.
+pub(crate) fn roster(roster: &Roster) -> proto::RosterChanged {
+    proto::RosterChanged {
+        panes: roster
+            .panes
+            .iter()
+            .map(|pane| proto::RosterPane {
+                daemon_id: pane.key.daemon.to_string(),
+                pane_id: pane.key.pane.to_string(),
+                tab_id: pane.tab.to_string(),
+                label: pane.label.clone(),
+                on_screen: pane.on_screen,
+            })
+            .collect(),
     }
 }
 

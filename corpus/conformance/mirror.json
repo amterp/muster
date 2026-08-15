@@ -451,7 +451,7 @@
     },
     {
       "name": "a replayed pane does not roll back a live agent state",
-      "why": "herdr replays the session as it stood when the subscription opened, and its pane payloads carry agent_status. Letting a structure event write that field makes the backend two writers for it, the replay being the older one, and nothing arrives afterwards to correct the rollback - agent state comes on its own per-pane subscription. A pane stuck showing idle while its agent works is this product failing at the one thing it is for.",
+      "why": "herdr replays the session as it stood when the subscription opened, and its pane payloads carry agent_status. Letting a structure event write that field makes the backend two writers for it, the replay being the older one, and nothing arrives afterwards to correct the rollback - agent state comes on its own per-pane subscription. A pane stuck showing idle while its agent works is this product failing at the one thing it is for.\n\nThe relabel beside it is incidental to that and is still correct: the replayed payload carries a directory the snapshot did not, and what a pane is called is a thing structure events are allowed to write. Only the agent's state is fenced off.",
       "given": {
         "snapshot": {
           "panes": [
@@ -492,8 +492,174 @@
         "focus": {},
         "health": "connected",
         "changes": [
-          "agentStateChanged:w1:p1:idle->working"
+          "agentStateChanged:w1:p1:idle->working",
+          "paneRelabelled:w1:p1"
         ]
+      }
+    },
+    {
+      "name": "detecting a harness renames the pane, and moves nothing else",
+      "why": "herdr identifies a harness by reading the screen, seconds after the pane started, so a pane is listed before anything knows what is running in it. A list that names panes by their directory and harness would say `src` forever unless this is reported - and on a quiet session nothing else ever comes along to correct it. Reported as a rename rather than as a state change, because an agent that has just been recognized was already doing whatever it was doing.",
+      "given": {
+        "snapshot": {
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "working",
+              "cwd": "/src/muster"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "agentDetected",
+            "pane": "w1:p1",
+            "agent": "claude"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1"
+        ],
+        "tabs": [],
+        "workspaces": [],
+        "agentStates": {
+          "w1:p1": "working"
+        },
+        "layouts": {},
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "paneRelabelled:w1:p1"
+        ]
+      }
+    },
+    {
+      "name": "detecting the harness already known reports nothing",
+      "why": "Detection repeats: herdr re-reads the screen on a timer, and a subscription replays what it already sent. A rename reported every two seconds would republish the whole window forever on a session where nothing is happening, which is the per-event cost the budget is drawn against.",
+      "given": {
+        "snapshot": {
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "working",
+              "cwd": "/src/muster",
+              "agent": "claude"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "agentDetected",
+            "pane": "w1:p1",
+            "agent": "claude"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1"
+        ],
+        "tabs": [],
+        "workspaces": [],
+        "agentStates": {
+          "w1:p1": "working"
+        },
+        "layouts": {},
+        "focus": {},
+        "health": "connected",
+        "changes": []
+      }
+    },
+    {
+      "name": "a pane that changed directory is renamed",
+      "why": "A pane is named by the directory it is in, and agents move between them. A row still reading the directory a pane was opened in is a row the user cannot find twice - and unlike a harness, this one changes repeatedly over a session's life.",
+      "given": {
+        "snapshot": {
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle",
+              "cwd": "/src/muster"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "paneUpserted",
+            "id": "w1:p1",
+            "tab": "w1:t1",
+            "workspace": "w1",
+            "agentState": "idle",
+            "cwd": "/src/rad"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1"
+        ],
+        "tabs": [],
+        "workspaces": [],
+        "agentStates": {
+          "w1:p1": "idle"
+        },
+        "layouts": {},
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "paneRelabelled:w1:p1"
+        ]
+      }
+    },
+    {
+      "name": "a replayed pane that is the same in every way reports nothing",
+      "why": "Subscribing replays the whole session, so every pane arrives a second time exactly as it already is. Reporting those as renames would repaint the window on every reconnect, which is the idempotence the whole event model rests on.",
+      "given": {
+        "snapshot": {
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle",
+              "cwd": "/src/muster",
+              "agent": "claude"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "paneUpserted",
+            "id": "w1:p1",
+            "tab": "w1:t1",
+            "workspace": "w1",
+            "agentState": "idle",
+            "cwd": "/src/muster",
+            "agent": "claude"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1"
+        ],
+        "tabs": [],
+        "workspaces": [],
+        "agentStates": {
+          "w1:p1": "idle"
+        },
+        "layouts": {},
+        "focus": {},
+        "health": "connected",
+        "changes": []
       }
     },
     {

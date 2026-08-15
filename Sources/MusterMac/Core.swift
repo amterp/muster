@@ -315,6 +315,15 @@ public enum Core {
           "keyboard": contents.keyboardPane ?? "",
         ])
       window?.apply(contents)
+    case .rosterChanged(let changed):
+      let roster = Roster(changed)
+      info(
+        "roster.received",
+        [
+          "panes": String(roster.panes.count),
+          "on_screen": String(roster.panes.filter(\.onScreen).count),
+        ])
+      window?.apply(roster)
     case nil:
       break
     }

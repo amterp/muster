@@ -1,0 +1,325 @@
+{
+  "concept": "roster.of",
+  "source": "authored",
+  "citation": "README.md desiderata, agent states are the point and attention routing; docs/architecture.md, ownership of truth and one action path",
+  "why": "The view says what is on screen. The roster says what exists, which is the other half of the founding desideratum - and the more important half for attention, because a pane no window is showing is the one most likely to have finished without anybody noticing.\n\nTwo decisions live here and both are why it is in the core rather than the sidebar. What order a person reads the panes in, and what a pane is called when `w1:p2` tells them nothing. A shell that sorted and named for itself would be a second place those answers live, and the CLI and the agent-facing API would each grow a third.\n\nThe rendering below is one line per pane, in list order, so a case that gets the order wrong reads as obviously wrong rather than as a set that happens to differ.",
+  "cases": [
+    {
+      "name": "panes read in the order their tab lays them out",
+      "why": "The list runs down the side of a window whose panes run across it, and the eye moves between the two constantly. Sorting by id instead would be stable and would disagree with the screen for any tab somebody has rearranged, which is every tab after the first split.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "workspaces": [{ "id": "w1", "label": "one" }],
+            "tabs": [{ "id": "w1:t1", "workspace": "w1", "label": "t1" }],
+            "panes": [
+              { "id": "w1:p2", "tab": "w1:t1", "workspace": "w1", "cwd": "/src/beta" },
+              { "id": "w1:p1", "tab": "w1:t1", "workspace": "w1", "cwd": "/src/alpha" }
+            ],
+            "layouts": [
+              {
+                "tab": "w1:t1",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p2",
+                  "second": "w1:p1"
+                }
+              }
+            ]
+          }
+        },
+        "daemons": [{ "id": "local", "world": "laptop" }],
+        "regions": [{ "daemon": "local", "workspace": "w1", "tab": "w1:t1" }]
+      },
+      "expect": {
+        "panes": [
+          "local/w1:p2 tab=w1:t1 label=\"beta\" hidden",
+          "local/w1:p1 tab=w1:t1 label=\"alpha\" hidden"
+        ]
+      }
+    },
+    {
+      "name": "a tab whose tree has not arrived still lists its panes",
+      "why": "A tree is published on its own event and arrives after the panes do, so this is an ordinary moment on the way up rather than a fault. Hiding a pane until its arrangement is known would empty the list at exactly the moment a window is being opened onto running work.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "workspaces": [{ "id": "w1", "label": "one" }],
+            "tabs": [{ "id": "w1:t1", "workspace": "w1", "label": "t1" }],
+            "panes": [
+              { "id": "w1:p1", "tab": "w1:t1", "workspace": "w1", "cwd": "/src/alpha" },
+              { "id": "w1:p2", "tab": "w1:t1", "workspace": "w1", "cwd": "/src/beta" }
+            ],
+            "layouts": []
+          }
+        },
+        "daemons": [{ "id": "local", "world": "laptop" }],
+        "regions": [{ "daemon": "local", "workspace": "w1", "tab": "w1:t1" }]
+      },
+      "expect": {
+        "panes": [
+          "local/w1:p1 tab=w1:t1 label=\"alpha\" hidden",
+          "local/w1:p2 tab=w1:t1 label=\"beta\" hidden"
+        ]
+      }
+    },
+    {
+      "name": "a tree that disagrees with its tab does not lose a pane from the list",
+      "why": "The view withholds a disagreeing tree rather than repairing it, because rendering one would tear down surfaces. A list has no surfaces to lose and the opposite failure: a pane missing from the roster is a pane nobody can be routed to. So the panes decide what exists and the tree only decides order, which is the same rule read the other way round.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "workspaces": [{ "id": "w1", "label": "one" }],
+            "tabs": [{ "id": "w1:t1", "workspace": "w1", "label": "t1" }],
+            "panes": [
+              { "id": "w1:p1", "tab": "w1:t1", "workspace": "w1", "cwd": "/src/alpha" },
+              { "id": "w1:p2", "tab": "w1:t1", "workspace": "w1", "cwd": "/src/beta" }
+            ],
+            "layouts": [{ "tab": "w1:t1", "root": "w1:p1" }]
+          }
+        },
+        "daemons": [{ "id": "local", "world": "laptop" }],
+        "regions": [{ "daemon": "local", "workspace": "w1", "tab": "w1:t1" }]
+      },
+      "expect": {
+        "panes": [
+          "local/w1:p1 tab=w1:t1 label=\"alpha\" hidden",
+          "local/w1:p2 tab=w1:t1 label=\"beta\" hidden"
+        ]
+      }
+    },
+    {
+      "name": "a pane is named by its directory and the harness in it",
+      "why": "The two things that tell coding-agent panes apart. The id says nothing to anybody, and a terminal title is whatever the program last set it to. The directory answers 'which project' and the harness answers 'which of these is running claude', which are the two questions a list like this gets asked.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "workspaces": [{ "id": "w1", "label": "one" }],
+            "tabs": [{ "id": "w1:t1", "workspace": "w1", "label": "t1" }],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/Users/a/src/muster",
+                "agent": "claude"
+              }
+            ],
+            "layouts": []
+          }
+        },
+        "daemons": [{ "id": "local", "world": "laptop" }],
+        "regions": [{ "daemon": "local", "workspace": "w1", "tab": "w1:t1" }]
+      },
+      "expect": { "panes": ["local/w1:p1 tab=w1:t1 label=\"muster · claude\" hidden"] }
+    },
+    {
+      "name": "a pane running no agent is named by its directory alone",
+      "why": "Most panes in a window are a shell somebody left open. Appending an empty harness would leave a trailing separator on the majority of rows, and inventing one would claim a detection nobody made.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "workspaces": [{ "id": "w1", "label": "one" }],
+            "tabs": [{ "id": "w1:t1", "workspace": "w1", "label": "t1" }],
+            "panes": [
+              { "id": "w1:p1", "tab": "w1:t1", "workspace": "w1", "cwd": "/Users/a/src/rad" }
+            ],
+            "layouts": []
+          }
+        },
+        "daemons": [{ "id": "local", "world": "laptop" }],
+        "regions": [{ "daemon": "local", "workspace": "w1", "tab": "w1:t1" }]
+      },
+      "expect": { "panes": ["local/w1:p1 tab=w1:t1 label=\"rad\" hidden"] }
+    },
+    {
+      "name": "a pane with no directory falls back to its id",
+      "why": "An id nobody can read beats a blank row nobody can point at. A daemon that reports no cwd - or reports the filesystem root, which names nothing - still holds a pane somebody may need to reach.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "workspaces": [{ "id": "w1", "label": "one" }],
+            "tabs": [{ "id": "w1:t1", "workspace": "w1", "label": "t1" }],
+            "panes": [
+              { "id": "w1:p1", "tab": "w1:t1", "workspace": "w1", "cwd": "" },
+              { "id": "w1:p2", "tab": "w1:t1", "workspace": "w1", "cwd": "/" }
+            ],
+            "layouts": []
+          }
+        },
+        "daemons": [{ "id": "local", "world": "laptop" }],
+        "regions": [{ "daemon": "local", "workspace": "w1", "tab": "w1:t1" }]
+      },
+      "expect": {
+        "panes": [
+          "local/w1:p1 tab=w1:t1 label=\"w1:p1\" hidden",
+          "local/w1:p2 tab=w1:t1 label=\"w1:p2\" hidden"
+        ]
+      }
+    },
+    {
+      "name": "a trailing slash is not a directory name",
+      "why": "A daemon is free to report either spelling of the same directory, and a row reading `\"\"` for one and `src` for the other would be the same pane looking like two different bugs.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "workspaces": [{ "id": "w1", "label": "one" }],
+            "tabs": [{ "id": "w1:t1", "workspace": "w1", "label": "t1" }],
+            "panes": [{ "id": "w1:p1", "tab": "w1:t1", "workspace": "w1", "cwd": "/Users/a/src/" }],
+            "layouts": []
+          }
+        },
+        "daemons": [{ "id": "local", "world": "laptop" }],
+        "regions": [{ "daemon": "local", "workspace": "w1", "tab": "w1:t1" }]
+      },
+      "expect": { "panes": ["local/w1:p1 tab=w1:t1 label=\"src\" hidden"] }
+    },
+    {
+      "name": "a pane a region is showing says so",
+      "why": "The whole point of the list. A pane already on screen wants pointing at, and a pane nowhere on screen wants surfacing - two different things to do, and the row has to say which.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "workspaces": [{ "id": "w1", "label": "one" }],
+            "tabs": [
+              { "id": "w1:t1", "workspace": "w1", "label": "t1" },
+              { "id": "w1:t2", "workspace": "w1", "label": "t2" }
+            ],
+            "panes": [
+              { "id": "w1:p1", "tab": "w1:t1", "workspace": "w1", "cwd": "/src/shown" },
+              { "id": "w1:p9", "tab": "w1:t2", "workspace": "w1", "cwd": "/src/elsewhere" }
+            ],
+            "layouts": []
+          }
+        },
+        "daemons": [{ "id": "local", "world": "laptop" }],
+        "regions": [{ "daemon": "local", "workspace": "w1", "tab": "w1:t1" }],
+        "showing": ["local/w1:p1"]
+      },
+      "expect": {
+        "panes": [
+          "local/w1:p1 tab=w1:t1 label=\"shown\" on-screen",
+          "local/w1:p9 tab=w1:t2 label=\"elsewhere\" hidden"
+        ]
+      }
+    },
+    {
+      "name": "daemons come in the order their regions sit in the window",
+      "why": "The list reads down the side in the order the panes read across it. Sorting by daemon id would be stable and arbitrary - it would put a devenv above a laptop for no reason a person looking at the window could see, and every glance would cost a translation.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "workspaces": [{ "id": "w1", "label": "one" }],
+            "tabs": [{ "id": "w1:t1", "workspace": "w1", "label": "t1" }],
+            "panes": [{ "id": "w1:p1", "tab": "w1:t1", "workspace": "w1", "cwd": "/src/here" }],
+            "layouts": []
+          },
+          "box": {
+            "workspaces": [{ "id": "w1", "label": "one" }],
+            "tabs": [{ "id": "w1:t1", "workspace": "w1", "label": "t1" }],
+            "panes": [{ "id": "w1:p1", "tab": "w1:t1", "workspace": "w1", "cwd": "/src/there" }],
+            "layouts": []
+          }
+        },
+        "daemons": [
+          { "id": "local", "world": "laptop" },
+          { "id": "devenv", "world": "box" }
+        ],
+        "regions": [
+          { "daemon": "local", "workspace": "w1", "tab": "w1:t1" },
+          { "daemon": "devenv", "workspace": "w1", "tab": "w1:t1" }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "local/w1:p1 tab=w1:t1 label=\"here\" hidden",
+          "devenv/w1:p1 tab=w1:t1 label=\"there\" hidden"
+        ]
+      }
+    },
+    {
+      "name": "a daemon with no region on screen comes after the ones that have",
+      "why": "It still belongs on the list - its panes are exactly the ones nobody is looking at. Last rather than first, because the part of the list that maps onto the window should be the part that reads in the window's order.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "workspaces": [{ "id": "w1", "label": "one" }],
+            "tabs": [{ "id": "w1:t1", "workspace": "w1", "label": "t1" }],
+            "panes": [{ "id": "w1:p1", "tab": "w1:t1", "workspace": "w1", "cwd": "/src/shown" }],
+            "layouts": []
+          },
+          "box": {
+            "workspaces": [{ "id": "w1", "label": "one" }],
+            "tabs": [{ "id": "w1:t1", "workspace": "w1", "label": "t1" }],
+            "panes": [{ "id": "w1:p1", "tab": "w1:t1", "workspace": "w1", "cwd": "/src/offscreen" }],
+            "layouts": []
+          }
+        },
+        "daemons": [
+          { "id": "devenv", "world": "box" },
+          { "id": "local", "world": "laptop" }
+        ],
+        "regions": [{ "daemon": "local", "workspace": "w1", "tab": "w1:t1" }]
+      },
+      "expect": {
+        "panes": [
+          "local/w1:p1 tab=w1:t1 label=\"shown\" hidden",
+          "devenv/w1:p1 tab=w1:t1 label=\"offscreen\" hidden"
+        ]
+      }
+    },
+    {
+      "name": "a daemon that has said nothing yet contributes no rows",
+      "why": "An attached daemon whose subscription has not bootstrapped holds no panes this process knows of, and inventing rows for it would show a session nobody has. It is an ordinary moment on the way up, not a failure, so it is silence rather than a placeholder.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "workspaces": [{ "id": "w1", "label": "one" }],
+            "tabs": [{ "id": "w1:t1", "workspace": "w1", "label": "t1" }],
+            "panes": [{ "id": "w1:p1", "tab": "w1:t1", "workspace": "w1", "cwd": "/src/here" }],
+            "layouts": []
+          }
+        },
+        "daemons": [{ "id": "local", "world": "laptop" }, { "id": "devenv" }],
+        "regions": [{ "daemon": "local", "workspace": "w1", "tab": "w1:t1" }]
+      },
+      "expect": { "panes": ["local/w1:p1 tab=w1:t1 label=\"here\" hidden"] }
+    },
+    {
+      "name": "two daemons that hand out the same pane id are two rows",
+      "why": "Every daemon names its first pane `w1:p1`. A list keyed by pane alone would collapse a laptop's and a devenv's into one row, and clicking it would send somebody to the wrong machine - the failure attention routing can least afford.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "workspaces": [{ "id": "w1", "label": "one" }],
+            "tabs": [{ "id": "w1:t1", "workspace": "w1", "label": "t1" }],
+            "panes": [{ "id": "w1:p1", "tab": "w1:t1", "workspace": "w1", "cwd": "/src/laptop" }],
+            "layouts": []
+          },
+          "box": {
+            "workspaces": [{ "id": "w1", "label": "one" }],
+            "tabs": [{ "id": "w1:t1", "workspace": "w1", "label": "t1" }],
+            "panes": [{ "id": "w1:p1", "tab": "w1:t1", "workspace": "w1", "cwd": "/src/devenv" }],
+            "layouts": []
+          }
+        },
+        "daemons": [
+          { "id": "local", "world": "laptop" },
+          { "id": "devenv", "world": "box" }
+        ],
+        "regions": [
+          { "daemon": "local", "workspace": "w1", "tab": "w1:t1" },
+          { "daemon": "devenv", "workspace": "w1", "tab": "w1:t1" }
+        ],
+        "showing": ["devenv/w1:p1"]
+      },
+      "expect": {
+        "panes": [
+          "local/w1:p1 tab=w1:t1 label=\"laptop\" hidden",
+          "devenv/w1:p1 tab=w1:t1 label=\"devenv\" on-screen"
+        ]
+      }
+    }
+  ]
+}
