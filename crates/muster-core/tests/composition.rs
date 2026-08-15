@@ -16,7 +16,7 @@ use muster_core::composition::{
 use muster_core::mirror::Mirror;
 use muster_core::mirror::backend::{PaneId, TabId, WorkspaceId};
 use serde_json::{Value, json};
-use support::backend::{describe_daemon, optional, read_snapshot, text};
+use support::backend::{describe_daemon, optional, ratio, read_snapshot, text};
 
 #[test]
 fn composition_conformance() {
@@ -78,6 +78,9 @@ fn act(
             );
         }
         "closeRegion" => composition.close_region(region(step)?),
+        // The one drag Muster settles for itself: no daemon knows the other one exists, so
+        // nothing upstream can say how a window divides between them.
+        "setBoundary" => composition.set_boundary(region(step)?, ratio(step)),
         // What following a notification does before it moves the keyboard: the pane that
         // asked may be in a tab no region is showing, and surfacing it is the core's job.
         "surface" => {
@@ -268,6 +271,12 @@ fn describe_regions(composition: &Composition) -> Vec<String> {
                 "{} daemon={} workspace={} tab={}",
                 region.id, region.daemon, region.workspace, region.tab
             );
+            // Only when it has moved, so that the great majority of cases - which are not
+            // about widths - stay readable. Rounded, because a share is arrived at by
+            // division and a case should not pin the last bit of a float.
+            if (region.weight - 1.0).abs() > 0.0005 {
+                let _ = write!(described, " weight={:.3}", region.weight);
+            }
             if let Some(pane) = &region.pane {
                 let _ = write!(described, " pane={pane}");
             }

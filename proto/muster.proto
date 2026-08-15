@@ -31,7 +31,28 @@ message Request {
     SetSplitRatio set_split_ratio = 12;
     FocusRelative focus_relative = 13;
     WindowFocus window_focus = 14;
+    SetRegionBoundary set_region_boundary = 15;
   }
+}
+
+// Moves the line between two regions of the window.
+//
+// The one piece of layout Muster owns outright rather than mirrors: no daemon knows the
+// other one exists, so nothing upstream will ever answer how a laptop and a devenv divide a
+// window between them.
+//
+// Named by the region on the left, unlike SetSplitRatio, which addresses a pane divider by
+// the turns down to it. That divider genuinely has no name - it is a position in a tree that
+// changes under it - where a region has one, and a request named by an id survives its
+// neighbours closing mid-drag instead of quietly moving a different line.
+message SetRegionBoundary {
+  // The region on the left of the line being moved.
+  string region_id = 1;
+
+  // That region's share of itself and its right neighbour together, between 0 and 1. The
+  // pair keeps whatever width it had, so nothing further along the window moves. Clamped by
+  // the core: a region dragged to nothing would leave no divider to grab and no way back.
+  float ratio = 2;
 }
 
 // Whether this window has the OS's focus.
@@ -362,6 +383,11 @@ message ViewRegion {
   // The pane in this region the keyboard feeds while the region is focused. Empty when the
   // daemon has not yet said what is in this tab.
   string pane_id = 4;
+
+  // How much of the window's width this region gets, relative to the others. A weight rather
+  // than a fraction, so a shell divides by the sum and needs no other region's business - and
+  // so the list stays a list. Every region starts at 1, which is what equal shares are.
+  float weight = 9;
 
   // Absent while the daemon has not said how this tab is arranged, which is an ordinary
   // moment rather than a failure - the tree arrives on its own event. Absent and "no panes"

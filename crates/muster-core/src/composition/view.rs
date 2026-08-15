@@ -35,6 +35,12 @@ pub struct ViewRegion {
     pub tab: TabId,
     /// The pane in this region Muster's keyboard feeds when the region is focused.
     pub pane: Option<PaneId>,
+    /// How much of the window's width this region gets, relative to the others in the list.
+    ///
+    /// Muster's own answer rather than a daemon's. The arrangement over regions is the one
+    /// part of the layout nothing upstream will ever have an opinion about, because no daemon
+    /// knows the other one exists.
+    pub weight: f32,
     /// `None` while the daemon has not said how this tab is arranged.
     ///
     /// A real state rather than a failure - herdr publishes the tree on its own event,
@@ -119,6 +125,7 @@ impl View {
                     daemon: region.daemon.clone(),
                     tab: region.tab.clone(),
                     pane: region.pane.clone(),
+                    weight: region.weight,
                     root: layout.map(|layout| {
                         // Resolved here rather than flagged for the shell. herdr keeps
                         // publishing every pane's ordinary rect while a tab is zoomed, so a

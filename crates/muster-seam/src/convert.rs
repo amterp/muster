@@ -29,6 +29,7 @@ pub(crate) fn view(view: &View) -> proto::ViewChanged {
                 daemon_id: region.daemon.to_string(),
                 tab_id: region.tab.to_string(),
                 pane_id: region.pane.as_ref().map(ToString::to_string).unwrap_or_default(),
+                weight: region.weight,
                 root: region.root.as_ref().map(node),
                 zoomed: region.zoomed,
                 ssh_host: region

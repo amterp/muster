@@ -82,10 +82,10 @@ public final class MusterWindow: NSObject {
   /// Whole-view and idempotent, so applying the same one twice is applying it once. Regions
   /// that survive keep their surfaces; the rest go, and their bridges go with them.
   public func apply(_ contents: WindowContents) {
-    var order: [RegionView] = []
+    var order: [(id: String, weight: CGFloat, view: NSView)] = []
     for described in contents.regions {
       let region = regions[described.id] ?? make(regionID: described.id)
-      order.append(region)
+      order.append((id: described.id, weight: described.weight, view: region))
       region.apply(described, focused: described.id == contents.focusedRegion)
     }
 
@@ -132,7 +132,7 @@ public final class MusterWindow: NSObject {
   /// ignores you and does not explain itself is the worst thing this app could ship.
   public func showRendererCheck() {
     let region = make(regionID: "renderer-check")
-    strip.arrange([region])
+    strip.arrange([(id: "renderer-check", weight: 1, view: region)])
     let chrome = PaneChrome(frame: strip.bounds, surface: SurfaceView(frame: strip.bounds))
     region.addSubview(chrome)
     chrome.autoresizingMask = [.width, .height]
@@ -316,32 +316,118 @@ final class WindowLayout: NSView {
   }
 }
 
-/// Regions, side by side, in the order the core listed them.
+/// Where each region sits, and where the lines between them are.
 ///
-/// Equal widths, because Muster owns no tree over regions and has nothing else to divide them
-/// by. That is a deliberate floor rather than the finished answer - dragging the line between
-/// a laptop and a devenv is its own card - and equal shares are the arrangement nobody has to
-/// be told about.
+/// A pure function, in the same spirit as `PaneTree.frames`: this is the arithmetic, and
+/// arithmetic inside `layout` is arithmetic no test can call. A wrong frame here looks like a
+/// rendering problem and is a division.
+///
+/// Weights rather than a tree, because Muster owns no tree over regions - owning one is what
+/// would make it a multiplexer, a non-goal - so the whole arrangement is a list and a
+/// division by the sum of it.
+enum RegionStripLayout {
+  struct Placement: Equatable {
+    let frame: CGRect
+    /// The line on this region's right, and the area it shares with its neighbour. Absent on
+    /// the last region, which has nothing to its right to divide against.
+    let divider: CGRect?
+    let area: CGRect?
+  }
+
+  /// The same thickness a pane divider has. Two lines of different weights in one window
+  /// would read as two different kinds of thing, and they are the same thing one level apart.
+  static let dividerThickness = PaneTree.dividerThickness
+
+  static func place(weights: [CGFloat], in bounds: CGRect) -> [Placement] {
+    guard !weights.isEmpty else { return [] }
+    // A weight that is not a positive number is not this window's to validate - it came
+    // across the seam - so it is read as an equal share rather than collapsing the region to
+    // nothing or poisoning the total with a NaN.
+    let sane = weights.map { $0.isFinite && $0 > 0 ? $0 : 1 }
+    let total = sane.reduce(0, +)
+    let lines = CGFloat(weights.count - 1) * dividerThickness
+    let usable = max(0, bounds.width - lines)
+
+    var placements: [Placement] = []
+    var x = bounds.minX
+    for (index, weight) in sane.enumerated() {
+      let width = usable * weight / total
+      let frame = CGRect(x: x, y: bounds.minY, width: width, height: bounds.height)
+      x += width
+      guard index < sane.count - 1 else {
+        placements.append(Placement(frame: frame, divider: nil, area: nil))
+        continue
+      }
+      let divider = CGRect(
+        x: x, y: bounds.minY, width: dividerThickness, height: bounds.height)
+      // What the pair shares, which is what a drag's ratio is measured against - the two
+      // regions plus the line between them, and nothing further along the window.
+      let next = usable * sane[index + 1] / total
+      let area = CGRect(
+        x: frame.minX, y: bounds.minY, width: width + dividerThickness + next,
+        height: bounds.height)
+      x += dividerThickness
+      placements.append(Placement(frame: frame, divider: divider, area: area))
+    }
+    return placements
+  }
+}
+
+/// Regions, side by side, in the order the core listed them, at the widths it gave them.
+///
+/// Every region starts at the same weight, so equal shares are what a window that has never
+/// been dragged looks like - the floor this used to hardcode, now falling out of the
+/// arrangement rather than being it.
+///
+/// A drag moves nothing locally. It asks the core, which owns this arrangement outright, and
+/// the strip lands where the next published view puts it - the same discipline as a pane
+/// divider, for the same reason.
 @MainActor
 final class RegionStrip: NSView {
   private var order: [NSView] = []
+  private var identities: [String] = []
+  private var weights: [CGFloat] = []
+  private var dividers: [DividerView] = []
 
   override var isFlipped: Bool { true }
 
-  func arrange(_ regions: [NSView]) {
-    order = regions
+  func arrange(_ regions: [(id: String, weight: CGFloat, view: NSView)]) {
+    order = regions.map(\.view)
+    identities = regions.map(\.id)
+    weights = regions.map(\.weight)
     needsLayout = true
   }
 
   override func layout() {
     super.layout()
     guard !order.isEmpty else { return }
-    let width = bounds.width / CGFloat(order.count)
-    for (index, region) in order.enumerated() {
-      region.frame = CGRect(
-        x: bounds.minX + width * CGFloat(index), y: bounds.minY,
-        width: width, height: bounds.height)
-      region.needsLayout = true
+    let placements = RegionStripLayout.place(weights: weights, in: bounds)
+
+    let wanted = placements.filter { $0.divider != nil }.count
+    while dividers.count < wanted {
+      let divider = DividerView(frame: .zero)
+      addSubview(divider)
+      dividers.append(divider)
+    }
+    while dividers.count > wanted {
+      dividers.removeLast().removeFromSuperview()
+    }
+
+    var line = 0
+    for (index, placement) in placements.enumerated() {
+      order[index].frame = placement.frame
+      order[index].needsLayout = true
+      guard let frame = placement.divider, let area = placement.area else { continue }
+      let divider = dividers[line]
+      line += 1
+      let region = identities[index]
+      divider.onDrag = { ratio in Core.setRegionBoundary(region: region, ratio: ratio) }
+      divider.axis = .columns
+      divider.area = area
+      divider.frame = frame
+      // Cursor rectangles are cached against the frame they were set from, so a divider that
+      // moved shows the wrong resize cursor - or none - until this is asked for.
+      window?.invalidateCursorRects(for: divider)
     }
   }
 }

@@ -3130,6 +3130,341 @@
           "r0 tab=w1:t2 w1:p9"
         ]
       }
+    },
+    {
+      "name": "a region opens at the same weight as every other",
+      "why": "Equal shares are the arrangement nobody has to be told about, and they should fall out of the model rather than be a case somebody wrote. Every region starting at one means a window that has never been dragged divides itself evenly for free.",
+      "given": {
+        "steps": [
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/herdr-local.sock"
+          },
+          {
+            "do": "attachDaemon",
+            "daemon": "devenv",
+            "socketPath": "/tmp/herdr-devenv.sock"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "devenv",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          }
+        ],
+        "attached": []
+      },
+      "expect": {
+        "daemons": [
+          "devenv local=/tmp/herdr-devenv.sock",
+          "local local=/tmp/herdr-local.sock"
+        ],
+        "regions": [
+          "r0 daemon=local workspace=w1 tab=w1:t1",
+          "r1 daemon=devenv workspace=w1 tab=w1:t1"
+        ],
+        "focusedRegion": "r0",
+        "view": []
+      }
+    },
+    {
+      "name": "moving a boundary gives one side the share it asked for",
+      "why": "The whole feature: a laptop and a devenv split a window however the user wants rather than evenly forever. A ratio of the pair rather than of the window, because that is what a drag means - and the weights come out in that proportion.",
+      "given": {
+        "steps": [
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/herdr-local.sock"
+          },
+          {
+            "do": "attachDaemon",
+            "daemon": "devenv",
+            "socketPath": "/tmp/herdr-devenv.sock"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "devenv",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "setBoundary",
+            "region": "r0",
+            "ratio": 0.75
+          }
+        ],
+        "attached": []
+      },
+      "expect": {
+        "daemons": [
+          "devenv local=/tmp/herdr-devenv.sock",
+          "local local=/tmp/herdr-local.sock"
+        ],
+        "regions": [
+          "r0 daemon=local workspace=w1 tab=w1:t1 weight=1.500",
+          "r1 daemon=devenv workspace=w1 tab=w1:t1 weight=0.500"
+        ],
+        "focusedRegion": "r0",
+        "view": []
+      }
+    },
+    {
+      "name": "a boundary keeps the pair's own width, so nothing else moves",
+      "why": "What makes a drag local. The two weights still sum to what they summed to before, so every other region in the window keeps exactly the width it had - which is what the person dragging expects and what a rule dividing the whole window would break.",
+      "given": {
+        "steps": [
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/herdr-local.sock"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t2"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t3"
+          },
+          {
+            "do": "setBoundary",
+            "region": "r0",
+            "ratio": 0.25
+          }
+        ],
+        "attached": []
+      },
+      "expect": {
+        "daemons": [
+          "local local=/tmp/herdr-local.sock"
+        ],
+        "regions": [
+          "r0 daemon=local workspace=w1 tab=w1:t1 weight=0.500",
+          "r1 daemon=local workspace=w1 tab=w1:t2 weight=1.500",
+          "r2 daemon=local workspace=w1 tab=w1:t3"
+        ],
+        "focusedRegion": "r0",
+        "view": []
+      }
+    },
+    {
+      "name": "a region cannot be dragged away to nothing",
+      "why": "The one place a share is clamped. A pane's ratio goes to the daemon untouched because the daemon sizes its own rectangles and refuses what it cannot do; nothing sits behind this one. A region dragged to zero width leaves no divider to grab and no way back - a state a user can reach and not leave.",
+      "given": {
+        "steps": [
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/herdr-local.sock"
+          },
+          {
+            "do": "attachDaemon",
+            "daemon": "devenv",
+            "socketPath": "/tmp/herdr-devenv.sock"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "devenv",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "setBoundary",
+            "region": "r0",
+            "ratio": 0.0
+          }
+        ],
+        "attached": []
+      },
+      "expect": {
+        "daemons": [
+          "devenv local=/tmp/herdr-devenv.sock",
+          "local local=/tmp/herdr-local.sock"
+        ],
+        "regions": [
+          "r0 daemon=local workspace=w1 tab=w1:t1 weight=0.200",
+          "r1 daemon=devenv workspace=w1 tab=w1:t1 weight=1.800"
+        ],
+        "focusedRegion": "r0",
+        "view": []
+      }
+    },
+    {
+      "name": "the clamp holds at the other end too",
+      "why": "The same trap mirrored. Dragging a divider all the way right would strand the region on its right rather than the one on its left, and a rule that only guarded one direction would be half a guard.",
+      "given": {
+        "steps": [
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/herdr-local.sock"
+          },
+          {
+            "do": "attachDaemon",
+            "daemon": "devenv",
+            "socketPath": "/tmp/herdr-devenv.sock"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "devenv",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "setBoundary",
+            "region": "r0",
+            "ratio": 1.0
+          }
+        ],
+        "attached": []
+      },
+      "expect": {
+        "daemons": [
+          "devenv local=/tmp/herdr-devenv.sock",
+          "local local=/tmp/herdr-local.sock"
+        ],
+        "regions": [
+          "r0 daemon=local workspace=w1 tab=w1:t1 weight=1.800",
+          "r1 daemon=devenv workspace=w1 tab=w1:t1 weight=0.200"
+        ],
+        "focusedRegion": "r0",
+        "view": []
+      }
+    },
+    {
+      "name": "the last region has no boundary to move",
+      "why": "There is nothing to its right to divide against. Doing nothing rather than refusing, for the same reason focusing a closed region does nothing: a drag that arrives as the region beside it closes is ordinary, and there is nothing a caller could do about it.",
+      "given": {
+        "steps": [
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/herdr-local.sock"
+          },
+          {
+            "do": "attachDaemon",
+            "daemon": "devenv",
+            "socketPath": "/tmp/herdr-devenv.sock"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "devenv",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "setBoundary",
+            "region": "r1",
+            "ratio": 0.25
+          }
+        ],
+        "attached": []
+      },
+      "expect": {
+        "daemons": [
+          "devenv local=/tmp/herdr-devenv.sock",
+          "local local=/tmp/herdr-local.sock"
+        ],
+        "regions": [
+          "r0 daemon=local workspace=w1 tab=w1:t1",
+          "r1 daemon=devenv workspace=w1 tab=w1:t1"
+        ],
+        "focusedRegion": "r0",
+        "view": []
+      }
+    },
+    {
+      "name": "a boundary named for a region that is gone moves nothing",
+      "why": "A drag is a stream of requests and a region can close underneath one. Moving some other line because the ids shifted along would be worse than doing nothing, which is the argument for naming a boundary by a region rather than by an index.",
+      "given": {
+        "steps": [
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/herdr-local.sock"
+          },
+          {
+            "do": "attachDaemon",
+            "daemon": "devenv",
+            "socketPath": "/tmp/herdr-devenv.sock"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "devenv",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "closeRegion",
+            "region": "r0"
+          },
+          {
+            "do": "setBoundary",
+            "region": "r0",
+            "ratio": 0.25
+          }
+        ],
+        "attached": []
+      },
+      "expect": {
+        "daemons": [
+          "devenv local=/tmp/herdr-devenv.sock",
+          "local local=/tmp/herdr-local.sock"
+        ],
+        "regions": [
+          "r1 daemon=devenv workspace=w1 tab=w1:t1"
+        ],
+        "focusedRegion": "r1",
+        "view": []
+      }
     }
   ]
 }

@@ -13,17 +13,18 @@ import AppKit
 /// the alternative is a window that shows an arrangement no daemon agreed to.
 @MainActor
 final class DividerView: NSView {
-  /// The turns from the region's root down to this split, which is how a divider is named to
-  /// a daemon - it has no id of its own.
-  var path: [Bool] = []
   var axis: SplitAxis = .columns
 
-  /// The rectangle the two children share, in the region's coordinates.
+  /// The rectangle the two sides share, in the coordinates of whatever laid this out.
   var area: CGRect = .zero
 
-  /// Asks for a new share for the first child. Called while dragging, not at the end: a
+  /// Asks for a new share for the first side. Called while dragging, not at the end: a
   /// divider that only moved on mouse-up would look stuck for the length of the gesture.
-  var onDrag: ((_ path: [Bool], _ ratio: CGFloat) -> Void)?
+  ///
+  /// A ratio and nothing else. What the line is called differs by what it divides - a pane
+  /// split is named by the turns down to it, a region boundary by the region on its left -
+  /// and this view has no use for either, so whoever pools it closes over its own answer.
+  var onDrag: ((_ ratio: CGFloat) -> Void)?
 
   /// The last ratio asked for, so that a pointer moving along the divider rather than across
   /// it does not send a request per frame for a position that has not changed.
@@ -57,6 +58,6 @@ final class DividerView: NSView {
     let ratio = PaneTree.ratio(at: point, in: area, axis: axis)
     guard asked.map({ abs(ratio - $0) >= DividerView.sensitivity }) ?? true else { return }
     asked = ratio
-    onDrag?(path, ratio)
+    onDrag?(ratio)
   }
 }

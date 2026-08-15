@@ -78,11 +78,36 @@ struct PaneActionTests {
 
     region.layoutSubtreeIfNeeded()
     let divider = region.subviews.compactMap { $0 as? DividerView }.first
-    divider?.onDrag?([false], 0.3)
+    divider?.onDrag?(0.3)
 
     let sent = recorder.requests.dropFirst(before)
     #expect(sent.map { $0.setSplitRatio.daemonID } == ["devenv"])
     #expect(sent.map { $0.setSplitRatio.tabID } == ["w1:t1"])
+  }
+
+  @MainActor
+  @Test("a region drag names the region on its left, not a position")
+  func aRegionDragNamesARegion() {
+    // The one drag no daemon is told about: how a window divides between a laptop and a
+    // devenv is Muster's own arrangement. Named by the region rather than by an index,
+    // because a drag is a stream of requests and a region can close underneath one - an
+    // index would then move some other line, silently.
+    let recorder = recorder()
+    let strip = RegionStrip(frame: NSRect(x: 0, y: 0, width: 1000, height: 600))
+    strip.arrange([
+      (id: "r0", weight: 1, view: NSView()),
+      (id: "r1", weight: 1, view: NSView()),
+    ])
+    let before = recorder.requests.count
+
+    strip.layoutSubtreeIfNeeded()
+    let divider = strip.subviews.compactMap { $0 as? DividerView }.first
+    #expect(divider != nil, "two regions have one line between them")
+    divider?.onDrag?(0.25)
+
+    let sent = recorder.requests.dropFirst(before)
+    #expect(sent.map { $0.setRegionBoundary.regionID } == ["r0"])
+    #expect(sent.map { $0.setRegionBoundary.ratio } == [0.25])
   }
 
   @MainActor

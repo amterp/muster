@@ -165,10 +165,6 @@ public final class RegionView: NSView {
 
     while dividers.count < frames.dividers.count {
       let divider = DividerView(frame: .zero)
-      divider.onDrag = { [weak self] path, ratio in
-        guard let self else { return }
-        Core.setSplitRatio(daemonID: self.daemonID, tab: self.tab, path: path, ratio: ratio)
-      }
       addSubview(divider)
       dividers.append(divider)
     }
@@ -182,7 +178,13 @@ public final class RegionView: NSView {
       chrome.needsLayout = true
     }
     for (divider, placement) in zip(dividers, frames.dividers) {
-      divider.path = placement.path
+      // Rebound every pass rather than once at pooling, because what a divider is named by is a
+      // property of where it landed this time - the pool holds views and nothing else.
+      let path = placement.path
+      divider.onDrag = { [weak self] ratio in
+        guard let self else { return }
+        Core.setSplitRatio(daemonID: self.daemonID, tab: self.tab, path: path, ratio: ratio)
+      }
       divider.axis = placement.axis
       divider.area = placement.area
       divider.frame = placement.frame

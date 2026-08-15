@@ -179,6 +179,19 @@ public enum Core {
     send(request)
   }
 
+  /// Moves the line between a region and the one to its right.
+  ///
+  /// Named by the region on the left, unlike a pane divider: a region has an id that outlives
+  /// a drag, where a divider inside a tab is only a position in a tree the daemon may change.
+  public static func setRegionBoundary(region: String, ratio: CGFloat) {
+    var set = Muster_SetRegionBoundary()
+    set.regionID = region
+    set.ratio = Float(ratio)
+    var request = Muster_Request()
+    request.setRegionBoundary = set
+    send(request)
+  }
+
   /// Moves one divider, named by the turns from its tab's root.
   public static func setSplitRatio(daemonID: String, tab: String, path: [Bool], ratio: CGFloat) {
     var set = Muster_SetSplitRatio()
@@ -278,6 +291,7 @@ public enum Core {
     case .focusRelative: return "focus_relative"
     case .setSplitRatio: return "set_split_ratio"
     case .windowFocus: return "window_focus"
+    case .setRegionBoundary: return "set_region_boundary"
     case nil: return "(none)"
     }
   }

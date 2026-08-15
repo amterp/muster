@@ -255,6 +255,14 @@ it. Order and label are decisions and live in the core, so the sidebar, the CLI 
 Structure only, like the view: what an agent is doing keeps its own per-pane message, because a roster is stable and
 a state blinks.
 
+**The arrangement over regions is Muster's, and only Muster's.** Each region carries a weight and the window divides
+its width by their sum, so equal shares are what a window that has never been dragged looks like. A weight per region
+rather than a ratio per boundary, because regions are a list and not a tree - owning a tree over them is what would
+make Muster a multiplexer. Dragging the line between two regions moves only that pair's share of itself, so nothing
+further along the window moves, and it is the one drag that settles in the core rather than being asked of a daemon:
+no daemon knows the other one exists. It is also the one share that is clamped, because nothing sits behind it to
+refuse an impossible one, and a region dragged to nothing would leave no divider to grab.
+
 **A focus request surfaces the pane it names.** Naming a pane no region is showing retargets a region onto its tab
 rather than being refused - a list of panes that cannot be reached is a display, not routing. The region chosen is
 one already on that pane's daemon, preferring the focused one; a region on another daemon is never taken, because a

@@ -127,12 +127,26 @@ impl std::fmt::Display for PaneKey {
 }
 
 /// The part of a window showing one tab's pane tree.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// `Eq` is absent because of the weight, on the same terms as [`crate::mirror::backend::LayoutNode`]:
+/// a share is a float, and a float has no total equality.
+#[derive(Debug, Clone, PartialEq)]
 pub struct Region {
     pub id: RegionId,
     pub daemon: DaemonId,
     pub workspace: WorkspaceId,
     pub tab: TabId,
+
+    /// How much of the window's width this region gets, relative to the others.
+    ///
+    /// A weight rather than a ratio, and a number per region rather than one per boundary,
+    /// because regions are a list and not a tree. Owning a tree over them is what would make
+    /// Muster a multiplexer, which is a non-goal - so laying them out has to be something a
+    /// list can answer, and dividing the width by the sum of the weights is that.
+    ///
+    /// Every region starts at one, so equal shares fall out of the arrangement rather than
+    /// being a case anybody wrote.
+    pub weight: f32,
     /// The pane in this region Muster's keyboard feeds while the region is focused.
     ///
     /// View-local, and never read back from the daemon's own cursor. Daemon focus is a
@@ -144,7 +158,7 @@ pub struct Region {
 }
 
 /// Which daemons are attached, and what each region of the window shows.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct Composition {
     daemons: BTreeMap<DaemonId, Daemon>,
     /// In the order they are laid out. Not a map: the order is part of the answer, and it
@@ -220,6 +234,7 @@ impl Composition {
             // usually knows which pane it wants and says so; this stays the answer for a
             // region opened onto a tab rather than onto a pane.
             pane: None,
+            weight: 1.0,
         });
         if self.focused.is_none() {
             self.focused = Some(id);
@@ -317,6 +332,49 @@ impl Composition {
         found.pane = Some(pane);
         self.focused = Some(region);
     }
+
+    /// Moves the line between a region and the one to its right.
+    ///
+    /// `ratio` is the named region's share of the two of them together, so the pair keeps
+    /// whatever width it had and only the split between them moves. Everything further along
+    /// the window stays where it is, which is what a drag looks like to the person doing it.
+    ///
+    /// Named by the region on the left rather than by an index, unlike a pane divider. A
+    /// pane divider genuinely has no name - it is a position in a tree that changes under
+    /// it - but a region does, and a request that survives its neighbours closing mid-drag is
+    /// better than one that silently moves a different line.
+    ///
+    /// Clamped, and this is the one place a share is. A pane's ratio is passed to the daemon
+    /// untouched because the daemon sizes its own rectangles and will refuse what it cannot
+    /// do; nothing sits behind this one. A region dragged to nothing would leave no divider
+    /// to grab and no way back, so neither side goes below a tenth of the pair.
+    ///
+    /// A boundary that does not exist - the last region, or one that closed while a drag was
+    /// in flight - does nothing. There is nothing for a caller to do about that either.
+    pub fn set_boundary(&mut self, left: RegionId, ratio: f32) {
+        if !ratio.is_finite() {
+            return;
+        }
+        let Some(index) = self.regions.iter().position(|region| region.id == left) else {
+            return;
+        };
+        let Some(pair) = self.regions.get(index..=index + 1) else {
+            return;
+        };
+        let total = pair[0].weight + pair[1].weight;
+        if !total.is_finite() || total <= 0.0 {
+            return;
+        }
+        let ratio = ratio.clamp(Composition::MINIMUM_SHARE, 1.0 - Composition::MINIMUM_SHARE);
+        self.regions[index].weight = total * ratio;
+        self.regions[index + 1].weight = total * (1.0 - ratio);
+    }
+
+    /// The least of a boundary's pair either side may be dragged down to.
+    ///
+    /// A tenth, which at any window worth using leaves a region wide enough to see and a
+    /// divider wide enough to grab. Smaller would be a state a user can reach and not leave.
+    pub const MINIMUM_SHARE: f32 = 0.1;
 
     /// Points the window's keyboard at a region, keeping whichever pane it last fed.
     pub fn focus_region(&mut self, region: RegionId) {

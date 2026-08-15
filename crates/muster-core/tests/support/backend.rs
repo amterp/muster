@@ -118,7 +118,10 @@ pub(crate) fn read_node(given: &Value) -> LayoutNode {
 }
 
 /// JSON has one number type and a ratio is an `f32`, so narrowing is what reading one is.
+///
+/// Shared, because two corpora spell a ratio - a pane's split and a region's boundary - and
+/// two readers would let the same number mean two things.
 #[allow(clippy::cast_possible_truncation)]
-fn ratio(given: &Value) -> f32 {
+pub(crate) fn ratio(given: &Value) -> f32 {
     given.get("ratio").and_then(Value::as_f64).unwrap_or(0.5) as f32
 }

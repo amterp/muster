@@ -20,6 +20,11 @@ public struct WindowContents: Equatable {
     /// while the daemon has not said what is in this tab.
     public let keyboardPane: String?
 
+    /// How much of the window's width this region gets, relative to the others. A weight
+    /// rather than a fraction, so laying the strip out is a division by the sum and no
+    /// region needs to know another's business.
+    public let weight: CGFloat
+
     /// Nil while the daemon has not said how this tab is arranged, which is an ordinary
     /// moment and a different answer from a tab with no panes: a window told nil leaves its
     /// surfaces alone, where one told "no panes" would tear down surfaces that are about to
@@ -46,13 +51,16 @@ public struct WindowContents: Equatable {
     }
 
     public init(
-      id: String, daemon: String, tab: String, keyboardPane: String?, tree: PaneTree?,
-      zoomed: Bool, transport: Transport? = nil
+      id: String, daemon: String, tab: String, keyboardPane: String?, weight: CGFloat = 1,
+      tree: PaneTree?, zoomed: Bool, transport: Transport? = nil
     ) {
       self.id = id
       self.daemon = daemon
       self.tab = tab
       self.keyboardPane = keyboardPane
+      // Defaulted so that a test describing a window it is not about the widths of does not
+      // have to say so. Equal shares are what every region starts at.
+      self.weight = weight
       self.tree = tree
       self.zoomed = zoomed
       self.transport = transport
@@ -281,6 +289,7 @@ extension WindowContents {
           // Proto3 spells absence as the empty string, and here the two genuinely differ:
           // no pane named is a region whose tab the daemon has not described yet.
           keyboardPane: region.paneID.isEmpty ? nil : region.paneID,
+          weight: CGFloat(region.weight),
           tree: region.hasRoot ? PaneTree(region.root) : nil,
           zoomed: region.zoomed,
           // Both or neither: half a target names no machine, and the core sends both when it

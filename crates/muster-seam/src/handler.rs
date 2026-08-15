@@ -9,7 +9,7 @@ use muster_core::diagnostics::log::{self, LogLevel};
 use muster_core::diagnostics::sink::JsonLinesSink;
 use muster_core::fields;
 
-use muster_core::composition::{DaemonId, Step};
+use muster_core::composition::{DaemonId, RegionId, Step};
 use muster_core::config;
 use muster_core::input::{CompositionOutcome, ScrollDirection, composition_outcome};
 use muster_core::intent::{BackendIntent, Branch};
@@ -95,6 +95,7 @@ fn handle(request: Request) -> Response {
             session::window_focused(focus.focused);
             Response::ok()
         }
+        request::Payload::SetRegionBoundary(set) => move_region_boundary(&set),
         request::Payload::FocusRelative(step) => match Step::parse(&step.direction) {
             Some(direction) => answer(session::step(direction)),
             None => Response::failure(format!(
@@ -234,6 +235,32 @@ fn resolve_daemon(daemon_id: &str) -> Result<DaemonId, Response> {
              one whose every region closed.",
         )
     })
+}
+
+/// Moves the line between two regions of the window.
+///
+/// The one arrangement no daemon is asked about, so unlike every other drag this answers
+/// `ok` for a change that has already happened rather than for a request somebody may refuse.
+fn move_region_boundary(set: &proto::SetRegionBoundary) -> Response {
+    let Some(region) = region_id(&set.region_id) else {
+        return Response::failure(format!(
+            "the core does not know a region called {:?}, so no line moved. A region is named \
+             `r0`, `r1` and so on, and the shell reads these off the view it rendered - so \
+             this is a bug there.",
+            set.region_id
+        ));
+    };
+    session::set_region_boundary(region, set.ratio);
+    Response::ok()
+}
+
+/// A region, read back from the way the view spells one.
+///
+/// `r0`, `r1`, and so on - the same rendering the view publishes, parsed here rather than
+/// the seam carrying a number the shell would have to strip the prefix off. Anything else is
+/// a refusal, because a region id the core cannot read is a shell that built one itself.
+fn region_id(named: &str) -> Option<RegionId> {
+    named.strip_prefix('r')?.parse().ok().map(RegionId::new)
 }
 
 fn submit(daemon: &DaemonId, intent: &BackendIntent) -> Response {

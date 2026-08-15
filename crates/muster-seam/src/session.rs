@@ -559,6 +559,19 @@ pub(crate) fn focus(daemon: &DaemonId, pane: &PaneId) -> Result<(), String> {
     submit(daemon, &BackendIntent::FocusPane { pane: pane.clone() })
 }
 
+/// Moves the line between two regions, and republishes what that made.
+///
+/// No daemon is told, and there is nothing to tell one: how a window divides itself between
+/// a laptop and a devenv is Muster's own arrangement, and neither daemon knows the other
+/// exists. So unlike every other drag in this app, this one settles here.
+pub(crate) fn set_region_boundary(left: RegionId, ratio: f32) {
+    {
+        let mut session = SESSION.lock().expect("a panicking sender poisoned the session");
+        session.composition.set_boundary(left, ratio);
+    }
+    publish();
+}
+
 /// Moves the keyboard one pane along, in the window's own reading order.
 ///
 /// The order crosses regions, so a step can land on another daemon - which is the point of
