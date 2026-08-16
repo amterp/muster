@@ -72,20 +72,44 @@ public final class Renderer {
   private let app: ghostty_app_t
   private let config: ghostty_config_t
 
-  public init() throws {
-    // libghostty parses the real argv here - it is how `ghostty +action` works - so it
-    // wants the process's own, not an empty stand-in. Handing it argc 0 exits the
-    // process before any of our error handling can say why.
-    let rc = ghostty_init(UInt(CommandLine.argc), CommandLine.unsafeArgv)
+  /// What libghostty made of the configuration Muster handed it, if anything.
+  ///
+  /// Empty is the ordinary case. A line here means Muster's own translation emitted something
+  /// libghostty does not accept, which is a bug in `ghosttyConfiguration` rather than in
+  /// anybody's config file - the person's own file was parsed and refused by the core long
+  /// before this. Held rather than logged because this module has no way to reach the log, and
+  /// answering to whoever built it is the smaller of the two dependencies.
+  public private(set) var diagnostics: [String] = []
+
+  /// Stands up the runtime, painting panes the way `appearance` says.
+  ///
+  /// `configPath` is where the derived libghostty config is written, and is a path rather than
+  /// a decision for the same reason every other path is: where a file goes is an OS question.
+  /// It must be absolute - libghostty asserts that rather than refusing, so a relative one is
+  /// undefined in a release build.
+  public init(appearance: Appearance = Appearance(), configPath: String) throws {
+    // A program name and nothing else. libghostty parses whatever argv it is handed as its own
+    // configuration and as `+action` invocations, so Muster's real arguments would be offered
+    // to a parser with opinions about them - `muster --pane w1:p1` has been reaching it all
+    // along. argc 0 is not the fix: that exits the process before any error handling can say
+    // why. Deliberately leaked, because libghostty keeps the pointer for the process's life.
+    var argv: [UnsafeMutablePointer<CChar>?] = [strdup("muster")]
+    let rc = argv.withUnsafeMutableBufferPointer { arguments in
+      ghostty_init(UInt(arguments.count), arguments.baseAddress!)
+    }
     if rc != GHOSTTY_SUCCESS { throw RendererError.initFailed(rc) }
 
     guard let config = ghostty_config_new() else { throw RendererError.appCreationFailed }
-    // The user's own ghostty config decides fonts, colors, and cursor style. Muster has
-    // no opinion on those yet, and inheriting them means panes look like the terminal
-    // this developer already tuned.
-    ghostty_config_load_default_files(config)
+    // Muster's own appearance, translated. Nothing on disk belonging to another application is
+    // read: there is no ghostty_config_load_default_files call here any more, so what a pane
+    // looks like is decided by ~/.muster/config.toml and nothing else.
+    let lines = ghosttyConfiguration(appearance)
+    if !lines.isEmpty, write(lines, to: configPath) {
+      configPath.withCString { ghostty_config_load_file(config, $0) }
+    }
     ghostty_config_finalize(config)
     self.config = config
+    self.diagnostics = Renderer.complaints(about: config)
 
     // Six callbacks, and a spike owes real answers to none of them.
     var runtime = ghostty_runtime_config_s(
@@ -119,6 +143,16 @@ public final class Renderer {
   /// runtime exists, and costs a retain cycle to get wrong.
   public static var current: Renderer?
 
+  /// What libghostty said about a config it was handed.
+  ///
+  /// Nothing here is fatal to it: an unknown key and an unparseable value each append one of
+  /// these and leave the rest of the file applied.
+  private static func complaints(about config: ghostty_config_t) -> [String] {
+    (0..<ghostty_config_diagnostics_count(config)).compactMap { at in
+      ghostty_config_get_diagnostic(config, at).message.map { String(cString: $0) }
+    }
+  }
+
   fileprivate func tick() {
     ghostty_app_tick(app)
   }
@@ -144,7 +178,10 @@ public final class Renderer {
       macos: ghostty_platform_macos_s(nsview: Unmanaged.passUnretained(view).toOpaque()))
     let scale = view.window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor
     config.scale_factor = Double(scale ?? 2)
-    config.font_size = 0  // inherit from the user's config
+    // Zero means "no per-surface override", so the size comes from the config the app was built
+    // with - which is Muster's, translated. This is the knob a per-pane font size would use,
+    // and Muster has no per-pane font size on purpose: a grid you read at a glance wants one.
+    config.font_size = 0
 
     let surface: ghostty_surface_t? =
       if let command {
@@ -269,6 +306,23 @@ public final class Surface {
     guard let bytes = text.text, text.text_len > 0 else { return nil }
     return String(
       decoding: UnsafeRawBufferPointer(start: bytes, count: Int(text.text_len)), as: UTF8.self)
+  }
+}
+
+/// Puts the derived config where libghostty can read it, and says whether it got there.
+///
+/// A failure is not fatal and not even unusual - a read-only home, a directory nobody created -
+/// and the consequence is a window on the renderer's own defaults rather than no window. The
+/// caller skips the load, and the diagnostics stay empty because nothing was ever handed over.
+private func write(_ lines: [String], to path: String) -> Bool {
+  let file = URL(fileURLWithPath: path)
+  do {
+    try FileManager.default.createDirectory(
+      at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try (lines.joined(separator: "\n") + "\n").write(to: file, atomically: true, encoding: .utf8)
+    return true
+  } catch {
+    return false
   }
 }
 

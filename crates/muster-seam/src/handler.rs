@@ -10,7 +10,7 @@ use muster_core::diagnostics::sink::JsonLinesSink;
 use muster_core::fields;
 
 use muster_core::composition::{DaemonId, RegionId, Step};
-use muster_core::config;
+use muster_core::config::{self, CursorStyle};
 use muster_core::input::{CompositionOutcome, Modifiers, ScrollDirection, composition_outcome};
 use muster_core::intent::{BackendIntent, Branch, Side};
 use muster_core::mirror::backend::{PaneId, TabId};
@@ -73,7 +73,7 @@ fn handle(request: Request) -> Response {
             act(&close.daemon_id, &close.pane_id, |pane| BackendIntent::ClosePane { pane })
         }
         request::Payload::ReadBindings(_) => read_bindings(),
-        request::Payload::ReadStyle(_) => read_style(),
+        request::Payload::ReadAppearance(_) => read_appearance(),
         request::Payload::ResizePane(resize) => resize_pane(&resize),
         request::Payload::ToggleSidebar(_) => {
             session::toggle_sidebar();
@@ -278,19 +278,44 @@ fn resolve_daemon(daemon_id: &str) -> Result<DaemonId, Response> {
     })
 }
 
-/// How Muster's own chrome should look, which today is one line between two regions.
+/// What Muster should look like, as far as the config file said anything about it.
 ///
-/// Empty means the shell's own platform default, and that is the honest answer when the
-/// config file named no colour: only the shell knows what a separator looks like on this OS,
-/// and one invented here would be a second thing to keep in step with a system theme.
-fn read_style() -> Response {
+/// Absent throughout means the renderer's own default rather than one invented here. That is
+/// the honest answer for every field: only the shell knows what a separator looks like on this
+/// OS, only the machine knows what monospace fonts it has, and a palette written down in the
+/// core would be a transcription of somebody else's rather than a decision.
+fn read_appearance() -> Response {
+    let appearance = session::appearance();
+    let color = |value: Option<config::Rgb>| value.map(|c| c.to_string()).unwrap_or_default();
+
     Response {
-        payload: Some(response::Payload::Style(proto::Style {
-            divider_color: session::feel()
-                .divider_color
-                .map(|color| color.to_string())
+        payload: Some(response::Payload::Appearance(Box::new(proto::Appearance {
+            font_family: appearance.font.family.unwrap_or_default(),
+            font_size: appearance.font.size.unwrap_or_default(),
+
+            background: color(appearance.colors.background),
+            foreground: color(appearance.colors.foreground),
+            cursor: color(appearance.colors.cursor),
+            cursor_text: color(appearance.colors.cursor_text),
+            selection_background: color(appearance.colors.selection_background),
+            selection_foreground: color(appearance.colors.selection_foreground),
+            palette: appearance
+                .colors
+                .palette
+                .map(|entries| entries.iter().map(ToString::to_string).collect())
                 .unwrap_or_default(),
-        })),
+
+            cursor_style: appearance
+                .cursor
+                .style
+                .map(CursorStyle::as_str)
+                .unwrap_or_default()
+                .into(),
+            cursor_blink: appearance.cursor.blink,
+            pane_padding: appearance.pane_padding.map(u32::from),
+
+            divider_color: color(appearance.colors.divider),
+        }))),
     }
 }
 
@@ -627,6 +652,7 @@ fn apply_config(path: &str) {
             session::set_bindings(config.bindings.clone());
             session::set_pane_input(config.input.clone());
             session::set_feel(config.feel);
+            session::set_appearance(config.appearance.clone());
             session::follow_configured(&config);
         }
         Err(refusal) => log::warn(

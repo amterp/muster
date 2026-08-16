@@ -26,9 +26,56 @@ fn feel(feel: &config::Feel) -> Vec<String> {
     if feel.scroll_multiplier != config::Feel::default().scroll_multiplier {
         set.push(format!("scroll_multiplier={}", feel.scroll_multiplier));
     }
-    if let Some(color) = feel.divider_color {
-        set.push(format!("divider_color={color}"));
+    set
+}
+
+/// What a file said about how Muster should look, spelled the way the file spells it.
+///
+/// Only what was named, on the same terms as [`feel`]: absent means the renderer's own, and a
+/// case about a font family should not have to state fifteen colours it says nothing about.
+/// The values are the parsed ones written back out, so a case pins what Muster understood -
+/// `#ABCDEF` read as `#abcdef` is the parser working, and `hollow` surviving as `hollow` is
+/// what proves the shell is handed Muster's word rather than a renderer's.
+fn appearance(appearance: &config::Appearance) -> Vec<String> {
+    let mut set = Vec::new();
+
+    if let Some(family) = &appearance.font.family {
+        set.push(format!("font.family={family}"));
     }
+    if let Some(size) = appearance.font.size {
+        set.push(format!("font.size={size}"));
+    }
+
+    let colors = &appearance.colors;
+    for (name, color) in [
+        ("background", colors.background),
+        ("foreground", colors.foreground),
+        ("cursor", colors.cursor),
+        ("cursor_text", colors.cursor_text),
+        ("selection_background", colors.selection_background),
+        ("selection_foreground", colors.selection_foreground),
+        ("divider", colors.divider),
+    ] {
+        if let Some(color) = color {
+            set.push(format!("colors.{name}={color}"));
+        }
+    }
+    if let Some(palette) = &colors.palette {
+        // One line rather than sixteen, because a case about a palette is about the set.
+        let entries: Vec<String> = palette.iter().map(ToString::to_string).collect();
+        set.push(format!("colors.palette={}", entries.join(" ")));
+    }
+
+    if let Some(style) = appearance.cursor.style {
+        set.push(format!("cursor.style={}", style.as_str()));
+    }
+    if let Some(blink) = appearance.cursor.blink {
+        set.push(format!("cursor.blink={blink}"));
+    }
+    if let Some(padding) = appearance.pane_padding {
+        set.push(format!("pane_padding={padding}"));
+    }
+
     set
 }
 
@@ -69,8 +116,12 @@ fn config_conformance() {
                     )),
                 ),
                 // Only what the file set, so the two dozen cases about daemons and keymaps do
-                // not each carry three knobs they say nothing about.
+                // not each carry two knobs and a dozen colours they say nothing about.
                 ("feel", Some(json!(feel(&parsed.feel))).filter(|set| set != &json!([]))),
+                (
+                    "appearance",
+                    Some(json!(appearance(&parsed.appearance))).filter(|set| set != &json!([])),
+                ),
             ]),
             // The refusal itself, not a code. Whether the sentence names the key somebody
             // mistyped is the whole of what this file is protecting, and a taxonomy of error

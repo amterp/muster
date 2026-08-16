@@ -47,10 +47,11 @@ final class DividerView: NSView {
   /// the app runs - and asking the core per divider would be a round trip per line on every
   /// relayout.
   ///
-  /// Muster's own chrome rather than libghostty's, so this is the one piece of the window's
-  /// appearance no terminal config can reach and none ever will.
+  /// Muster's own chrome rather than the renderer's, so this is the one colour in `[colors]`
+  /// that no renderer paints - it arrives on the same answer as the rest because a person
+  /// picking colours picks all of them at once.
   static let color: NSColor = {
-    guard let named = Core.style().dividerColor, let parsed = NSColor(hex: named) else {
+    guard let named = Core.appearance().dividerColor, let parsed = NSColor(hex: named) else {
       return .separatorColor
     }
     return parsed

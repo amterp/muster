@@ -250,10 +250,12 @@ libghostty does not accept, and the log says so.
 **`ghostty_config_get` reads back less than you can write.** It answers for
 `?[:0]const u8`, `bool`, `u8`/`u32`, `i16`, `f32`/`f64`, any enum (as its tag name), and
 structs carrying a `cval()` - Color and Palette among them (`src/config/c_get.zig`). It
-returns false for everything else, which includes two things Muster sets:
+returns false for everything else, which turns out to be most of what Muster sets. Of the
+twelve keys the appearance vocabulary emits, six read back - `font-size`, `background`,
+`foreground`, `cursor-style`, `cursor-style-blink`, `palette` - and six are write-only:
+`font-family` is a `RepeatableString`; `cursor-color`, `cursor-text`,
 `selection-background` and `selection-foreground` are `?TerminalColor`, a union with no
-`cval`, and `window-padding-x`/`-y` are a plain struct with none either. Those apply and
-cannot be read.
+`cval`; `window-padding-x`/`-y` are a plain struct with none either. All of them apply.
 
 So the oracle for a translation test is two-sided, and both sides are needed: every
 C-readable key reads back the value Muster meant, and the diagnostics count is zero -

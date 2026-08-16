@@ -41,7 +41,7 @@ message Request {
     ToggleSidebar toggle_sidebar = 22;
     FocusTabRelative focus_tab_relative = 23;
     FocusTabAt focus_tab_at = 24;
-    ReadStyle read_style = 25;
+    ReadAppearance read_appearance = 25;
   }
 }
 
@@ -54,23 +54,58 @@ message Request {
 // and what a chord is called is Muster's.
 message ReadBindings {}
 
-// Asks how Muster's own chrome should look.
+// Asks what Muster should look like.
 //
-// Only what Muster draws itself, which today is the line between two regions. Everything
-// inside a pane is the renderer's, painted from whatever config libghostty finds - so a
-// shell asking this is asking about the few pixels no terminal config can reach.
+// Both halves of it, and deliberately one message: the cells inside a pane are painted by the
+// renderer and the line between two regions is painted by the shell itself, but which piece of
+// code holds the brush is not something a person picking colours should have to know. The shell
+// splits this answer; the core does not.
 //
-// A read like ReadBindings rather than an event, because it is answered once at launch and
-// does not change while the app runs. When it can change, it becomes an event.
-message ReadStyle {}
+// A read like ReadBindings rather than an event, because it is answered once at launch and does
+// not change while the app runs. When it can change, it becomes an event.
+message ReadAppearance {}
 
-// How Muster's own chrome should look.
-message Style {
-  // The line between two regions, as `#rrggbb`. Empty means the shell's own platform
-  // default, which is the honest answer when the config file named none: only the shell
-  // knows what a separator looks like on this OS, and a colour invented here would be one
+// What Muster should look like.
+//
+// Every field may be absent, and absent means the renderer's own default rather than one Muster
+// invented - what this vocabulary is for is naming what a person may change. A replacement
+// renderer supplies the rest, which is a stated limit of the contract rather than a gap in it.
+// Colours are `#rrggbb`, and empty is how a string field says nothing was named.
+message Appearance {
+  // A font family as the system knows it. Empty leaves the choice to the renderer, which is a
+  // question about the machine rather than about Muster: a family nobody installed is worse
+  // than no answer.
+  string font_family = 1;
+  // In points. Zero means none was named.
+  float font_size = 2;
+
+  string background = 3;
+  string foreground = 4;
+  string cursor = 5;
+  // What a character under the cursor is painted in.
+  string cursor_text = 6;
+  string selection_background = 7;
+  string selection_foreground = 8;
+
+  // The sixteen ANSI colours, black through bright white, or none of them. Never a partial
+  // list: the core refuses one, because a few entries of somebody's theme over the rest of the
+  // renderer's is a scheme nobody designed.
+  repeated string palette = 9;
+
+  // block, bar, underline or hollow. Empty means none was named.
+  string cursor_style = 10;
+  // Absent leaves it to the program in the pane, which can ask for either and often does.
+  optional bool cursor_blink = 11;
+
+  // Blank space between a pane's text and its edges, in points. Absent rather than zero when
+  // none was named, because zero is a real answer - it is what fits the most rows.
+  optional uint32 pane_padding = 12;
+
+  // The line between two regions. The one colour here no renderer paints: everything else is
+  // inside a pane, and this is Muster's own chrome. Empty means the shell's own platform
+  // default, which only the shell knows and which a colour invented in the core would be one
   // more thing to keep in step with a system theme.
-  string divider_color = 1;
+  string divider_color = 13;
 }
 
 // Grows a pane against its neighbour, by a step.
@@ -328,7 +363,7 @@ message Response {
     Failure failure = 2;
     Attached attached = 3;
     Bindings bindings = 4;
-    Style style = 5;
+    Appearance appearance = 5;
   }
 }
 

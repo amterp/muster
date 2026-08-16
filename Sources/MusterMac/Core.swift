@@ -1,5 +1,6 @@
 import CMuster
 import Foundation
+import MusterRenderer
 import SwiftProtobuf
 
 // The shell's side of the seam. Everything the shell asks of the core goes through here,
@@ -195,28 +196,53 @@ public enum Core {
     send(request)
   }
 
-  /// How Muster's own chrome should look, as the config file decided.
+  /// What Muster should look like, as the config file decided.
   ///
   /// A value of the shell's own rather than the generated message, on the same terms as
-  /// `bindings()`: the seam's vocabulary stops at this module's edge.
-  public struct Style: Sendable {
+  /// `bindings()`: the seam's vocabulary stops at this module's edge. Split in two here
+  /// because two different pieces of code paint it - the renderer fills a pane, and Muster
+  /// draws the line between two of them - which is a fact about the shell and the reason the
+  /// core answers with one message rather than two.
+  public struct Appearance: Sendable {
+    /// What a pane looks like, in the renderer seam's vocabulary.
+    public let pane: MusterRenderer.Appearance
     /// The line between two regions, as `#rrggbb`, or nil for the platform's own separator.
     public let dividerColor: String?
-
-    public init(dividerColor: String?) {
-      self.dividerColor = dividerColor
-    }
   }
 
-  /// What Muster paints its own chrome with.
+  /// What Muster paints itself with.
   ///
-  /// Everything empty when the core did not answer, which is a core that failed to start -
-  /// the caller falls back to the platform's own colours rather than refusing to draw.
-  public static func style() -> Style {
+  /// Everything absent when the core did not answer, which is a core that failed to start -
+  /// the caller falls back to the renderer's and the platform's own rather than refusing to
+  /// draw.
+  public static func appearance() -> Appearance {
     var request = Muster_Request()
-    request.readStyle = Muster_ReadStyle()
-    guard case .style(let answer) = send(request) else { return Style(dividerColor: nil) }
-    return Style(dividerColor: answer.dividerColor.isEmpty ? nil : answer.dividerColor)
+    request.readAppearance = Muster_ReadAppearance()
+    guard case .appearance(let answer) = send(request) else {
+      return Appearance(pane: MusterRenderer.Appearance(), dividerColor: nil)
+    }
+
+    // Empty is how a string field says "nothing was named", so it becomes nil rather than an
+    // empty family name or a colour of no digits.
+    let named = { (value: String) in value.isEmpty ? nil : value }
+    return Appearance(
+      pane: MusterRenderer.Appearance(
+        fontFamily: named(answer.fontFamily),
+        // Zero likewise, and it cannot collide with a size somebody meant: the core refuses
+        // anything below one point.
+        fontSize: answer.fontSize == 0 ? nil : answer.fontSize,
+        background: named(answer.background),
+        foreground: named(answer.foreground),
+        cursor: named(answer.cursor),
+        cursorText: named(answer.cursorText),
+        selectionBackground: named(answer.selectionBackground),
+        selectionForeground: named(answer.selectionForeground),
+        palette: answer.palette,
+        cursorStyle: MusterRenderer.Appearance.CursorStyle(rawValue: answer.cursorStyle),
+        cursorBlink: answer.hasCursorBlink ? answer.cursorBlink : nil,
+        panePadding: answer.hasPanePadding ? answer.panePadding : nil
+      ),
+      dividerColor: named(answer.dividerColor))
   }
 
   public static func toggleSidebar() {
@@ -455,7 +481,7 @@ public enum Core {
     case .windowFocus: return "window_focus"
     case .setRegionBoundary: return "set_region_boundary"
     case .readBindings: return "read_bindings"
-    case .readStyle: return "read_style"
+    case .readAppearance: return "read_appearance"
     case .bridgeExited: return "bridge_exited"
     case .resizePane: return "resize_pane"
     case .zoomPane: return "zoom_pane"

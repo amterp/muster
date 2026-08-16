@@ -59,7 +59,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     DescriptorLimit.report(descriptors)
 
     do {
-      let renderer = try Renderer()
+      // The core decides what the window should look like, because that is what the config
+      // file said; the shell decides where the renderer's derived copy of it goes, because
+      // that is an OS question - the same division every other path here draws.
+      let renderer = try Renderer(
+        appearance: Core.appearance().pane, configPath: rendererConfigPath())
+      for complaint in renderer.diagnostics {
+        Core.warn(
+          "renderer.config.rejected",
+          [
+            "complaint": complaint,
+            "impact": "that one setting is the renderer's own default; everything else applied",
+            "fix":
+              "a bug in Muster's translation rather than in the config file, which the core "
+              + "already parsed - report it with this line",
+          ])
+      }
       Renderer.current = renderer
       self.renderer = renderer
 

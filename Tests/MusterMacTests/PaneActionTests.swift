@@ -30,6 +30,20 @@ private func recorder() -> RecordingDispatcher {
   return recorder
 }
 
+extension RecordingDispatcher {
+  /// What the gesture sent, of the kind the test is about.
+  ///
+  /// Filtered rather than taken whole, because a gesture is not the only thing that reaches the
+  /// recorder between two marks. Reads answered once for the life of the process - the
+  /// divider's colour is one, and it fires the first time anything lays a divider out - land in
+  /// whichever test happens to get there first, which is a different one on every run. Counting
+  /// requests made those tests fail one run in four for a reason that had nothing to do with
+  /// what they assert.
+  func sent(since mark: Int, of kind: (Muster_Request) -> Bool) -> [Muster_Request] {
+    requests.dropFirst(mark).filter(kind)
+  }
+}
+
 @Suite("pane actions cross the seam")
 struct PaneActionTests {
   @MainActor
@@ -71,7 +85,9 @@ struct PaneActionTests {
 
     started.chrome(for: "w1:p1")?.surface.mouseDown(with: click())
 
-    let sent = recorder.requests.dropFirst(before)
+    let sent = recorder.sent(since: before) {
+      if case .focusPane = $0.payload { true } else { false }
+    }
     #expect(sent.map { $0.focusPane.paneID } == ["w1:p1"])
     // And it says which `w1:p1`. Both daemons hand out that id, so a click that named only
     // the pane would be answered by whichever region the core searched first - which is a
@@ -101,7 +117,9 @@ struct PaneActionTests {
     let divider = region.subviews.compactMap { $0 as? DividerView }.first
     divider?.onDrag?(0.3)
 
-    let sent = recorder.requests.dropFirst(before)
+    let sent = recorder.sent(since: before) {
+      if case .setSplitRatio = $0.payload { true } else { false }
+    }
     #expect(sent.map { $0.setSplitRatio.daemonID } == ["devenv"])
     #expect(sent.map { $0.setSplitRatio.tabID } == ["w1:t1"])
   }
@@ -126,7 +144,9 @@ struct PaneActionTests {
     #expect(divider != nil, "two regions have one line between them")
     divider?.onDrag?(0.25)
 
-    let sent = recorder.requests.dropFirst(before)
+    let sent = recorder.sent(since: before) {
+      if case .setRegionBoundary = $0.payload { true } else { false }
+    }
     #expect(sent.map { $0.setRegionBoundary.regionID } == ["r0"])
     #expect(sent.map { $0.setRegionBoundary.ratio } == [0.25])
   }

@@ -41,17 +41,134 @@ pub struct Config {
     /// What the file says about keystrokes on their way to a pane, which is a different
     /// question from which chord Muster keeps for itself.
     pub input: PaneInputSettings,
-    /// The numbers and the one colour that decide how the window feels to drive.
+    /// The numbers that decide how the window feels to drive.
     pub feel: Feel,
+    /// What the window looks like, pane and chrome alike.
+    pub appearance: Appearance,
 }
 
-/// The small answers a terminal is expected to let somebody change.
+/// What Muster looks like.
+///
+/// Every value here is optional, and absent means the renderer's own default rather than one
+/// Muster invented. That is the honest answer twice over: nobody has asked Muster for an
+/// opinion about a monospace font, and a sixteen-entry palette written down here would be a
+/// transcription of somebody else's rather than a decision. What the vocabulary is for is
+/// naming what a person may change - a replacement renderer supplies the rest, and that is a
+/// stated limit of the contract rather than a gap in it.
+///
+/// Split across `[font]`, `[colors]` and `[cursor]` because those are three subjects a person
+/// edits at different times, and `pane_padding` sits at the root because it is one answer with
+/// no siblings.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Appearance {
+    pub font: Font,
+    pub colors: Colors,
+    pub cursor: Cursor,
+
+    /// Blank space between a pane's text and its edges, in points.
+    ///
+    /// Zero is a real answer rather than an absent one - a window of fifteen agent panes fits
+    /// more rows without it, and somebody who wants that has to be able to say so.
+    pub pane_padding: Option<u16>,
+}
+
+/// `[font]`.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Font {
+    /// A family name as the system knows it - `Fira Code`, `Menlo`.
+    ///
+    /// Absent means whatever monospace the renderer would have picked, which is a question
+    /// about the machine rather than about Muster: a family named here that nobody installed
+    /// is worse than no answer at all.
+    pub family: Option<String>,
+
+    /// In points.
+    pub size: Option<f32>,
+}
+
+/// `[colors]`.
+///
+/// Six that decide what a pane looks like, one that decides what Muster's own chrome looks
+/// like, and the ANSI palette a program in a pane addresses by number.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Colors {
+    pub background: Option<Rgb>,
+    pub foreground: Option<Rgb>,
+    pub cursor: Option<Rgb>,
+
+    /// What a character under the cursor is painted in.
+    pub cursor_text: Option<Rgb>,
+
+    pub selection_background: Option<Rgb>,
+    pub selection_foreground: Option<Rgb>,
+
+    /// The line between two regions.
+    ///
+    /// The one colour here that no renderer paints: everything else is inside a pane, and this
+    /// is Muster's own chrome. It sits with the others anyway, because a person picking colours
+    /// is picking all of them at once and its being drawn by a different piece of code is not
+    /// something they should have to know.
+    pub divider: Option<Rgb>,
+
+    /// The sixteen ANSI colours, black through bright white, or none of them.
+    ///
+    /// All sixteen or nothing. A palette is a set rather than a list of independent choices -
+    /// four entries of somebody's theme over twelve of the renderer's is a scheme nobody
+    /// designed, and it would be indistinguishable from a file somebody stopped editing
+    /// halfway.
+    pub palette: Option<[Rgb; 16]>,
+}
+
+/// `[cursor]`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Cursor {
+    pub style: Option<CursorStyle>,
+
+    /// Absent leaves it to the program in the pane, which can ask for either and often does.
+    /// Naming it here overrules that, which is what somebody who finds a blinking cursor
+    /// distracting is asking for.
+    pub blink: Option<bool>,
+}
+
+/// The shapes a cursor comes in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CursorStyle {
+    Block,
+    Bar,
+    Underline,
+    /// An outline rather than a filled block.
+    Hollow,
+}
+
+impl CursorStyle {
+    pub const READABLE: [&'static str; 4] = ["block", "bar", "underline", "hollow"];
+
+    pub fn read(name: &str) -> Option<CursorStyle> {
+        match name {
+            "block" => Some(CursorStyle::Block),
+            "bar" => Some(CursorStyle::Bar),
+            "underline" => Some(CursorStyle::Underline),
+            "hollow" => Some(CursorStyle::Hollow),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            CursorStyle::Block => "block",
+            CursorStyle::Bar => "bar",
+            CursorStyle::Underline => "underline",
+            CursorStyle::Hollow => "hollow",
+        }
+    }
+}
+
+/// The small answers a terminal is expected to let somebody change about how it handles.
 ///
 /// Grouped because they share a shape rather than a subject: each is one value, read once,
-/// with a defensible default, and none of them is a decision Muster wants to make on
-/// somebody's behalf. What they have in common is that getting them wrong is an irritation
-/// nobody can name - a resize that moves too far, a trackpad that scrolls too slowly, a
-/// divider you cannot see against your theme.
+/// with a defensible default, and neither is a decision Muster wants to make on somebody's
+/// behalf. What they have in common is that getting them wrong is an irritation nobody can
+/// name - a resize that moves too far, a trackpad that scrolls too slowly.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Feel {
     /// How many cells a resize chord moves a divider.
@@ -71,19 +188,11 @@ pub struct Feel {
     /// size is the input device's business: a trackpad reports many small ones and a wheel
     /// mouse a few large ones, and only the person using them knows which needs adjusting.
     pub scroll_multiplier: f64,
-
-    /// The line between two regions, as `#rrggbb`.
-    ///
-    /// `None` takes the platform's own separator colour, which is right on a system theme and
-    /// wrong beside a pane painted from somebody's Ghostty config. This is Muster's own chrome
-    /// rather than libghostty's, so no terminal config can reach it and none ever will - which
-    /// is why it is here rather than waiting on Muster's appearance vocabulary.
-    pub divider_color: Option<Rgb>,
 }
 
 impl Default for Feel {
     fn default() -> Feel {
-        Feel { resize_step: None, scroll_multiplier: 1.0, divider_color: None }
+        Feel { resize_step: None, scroll_multiplier: 1.0 }
     }
 }
 
@@ -128,15 +237,36 @@ impl std::fmt::Display for Rgb {
 const DAEMON_KEYS: [&str; 4] = ["id", "socket", "host", "ssh_options"];
 
 /// The keys the file itself may carry.
-const ROOT_KEYS: [&str; 7] = [
+const ROOT_KEYS: [&str; 10] = [
     "daemon",
     "keymap",
     "text",
     "option_as_alt",
     "resize_step",
     "scroll_multiplier",
-    "divider_color",
+    "pane_padding",
+    "font",
+    "colors",
+    "cursor",
 ];
+
+/// The keys `[font]` may carry.
+const FONT_KEYS: [&str; 2] = ["family", "size"];
+
+/// The keys `[colors]` may carry.
+const COLOR_KEYS: [&str; 8] = [
+    "background",
+    "foreground",
+    "cursor",
+    "cursor_text",
+    "selection_background",
+    "selection_foreground",
+    "divider",
+    "palette",
+];
+
+/// The keys `[cursor]` may carry.
+const CURSOR_KEYS: [&str; 2] = ["style", "blink"];
 
 /// Reads a config file's text.
 ///
@@ -184,10 +314,11 @@ pub fn parse(text: &str) -> Result<Config, String> {
             text: read_text(root)?,
         },
         feel: read_feel(root)?,
+        appearance: read_appearance(root)?,
     })
 }
 
-/// The three knobs, each absent from the file more often than not.
+/// The two knobs, each absent from the file more often than not.
 fn read_feel(root: &toml::Table) -> Result<Feel, String> {
     let mut feel = Feel::default();
 
@@ -209,7 +340,7 @@ fn read_feel(root: &toml::Table) -> Result<Feel, String> {
     }
 
     if let Some(value) = root.get("scroll_multiplier") {
-        let multiplier = number(value, "scroll_multiplier")?;
+        let multiplier = number(value, "scroll_multiplier", "the config file")?;
         if !(multiplier.is_finite() && multiplier > 0.0) {
             return Err(format!(
                 "`scroll_multiplier` in the config file is {multiplier}, so the wheel would \
@@ -221,21 +352,178 @@ fn read_feel(root: &toml::Table) -> Result<Feel, String> {
         feel.scroll_multiplier = multiplier;
     }
 
-    if let Some(value) = root.get("divider_color") {
-        let text = value.as_str().ok_or_else(|| {
-            format!(
-                "`divider_color` in the config file is {}, and it has to be a string of six \
-                 hex digits - `divider_color = \"#4a4a4a\"`. None of the file was applied.",
-                described(value)
-            )
-        })?;
-        feel.divider_color = Some(
-            Rgb::parse(text)
-                .map_err(|refusal| format!("{refusal} None of the file was applied."))?,
+    Ok(feel)
+}
+
+/// `[font]`, `[colors]`, `[cursor]` and `pane_padding`.
+fn read_appearance(root: &toml::Table) -> Result<Appearance, String> {
+    let mut appearance = Appearance {
+        font: read_font(block(root, "font", &FONT_KEYS)?.as_ref())?,
+        colors: read_colors(block(root, "colors", &COLOR_KEYS)?.as_ref())?,
+        cursor: read_cursor(block(root, "cursor", &CURSOR_KEYS)?.as_ref())?,
+        pane_padding: None,
+    };
+
+    if let Some(value) = root.get("pane_padding") {
+        appearance.pane_padding = Some(
+            value.as_integer().and_then(|points| u16::try_from(points).ok()).ok_or_else(|| {
+                format!(
+                    "`pane_padding` in the config file is {}, and it has to be a whole \
+                         number of points, zero or more. None of the file was applied. Zero \
+                         is the one that fits the most rows in a window; leave it out for \
+                         the renderer's own answer.",
+                    written(value)
+                )
+            })?,
         );
     }
 
-    Ok(feel)
+    Ok(appearance)
+}
+
+/// One of the appearance blocks, checked for keys nobody reads.
+///
+/// Cloned rather than borrowed because the alternative is threading a lifetime through three
+/// readers to save copying at most eight small values, once, at startup.
+fn block(root: &toml::Table, name: &str, known: &[&str]) -> Result<Option<toml::Table>, String> {
+    let Some(value) = root.get(name) else { return Ok(None) };
+    let table = value.as_table().ok_or_else(|| {
+        format!(
+            "`{name}` in the config file is {}, and it has to be a block - `[{name}]` with \
+             its settings under it. None of the file was applied. Known keys there: {}.",
+            described(value),
+            known.join(", ")
+        )
+    })?;
+    known_keys(table.keys(), known, &format!("the config file's [{name}]"))?;
+    Ok(Some(table.clone()))
+}
+
+fn read_font(block: Option<&toml::Table>) -> Result<Font, String> {
+    let Some(block) = block else { return Ok(Font::default()) };
+
+    let mut size = None;
+    if let Some(value) = block.get("size") {
+        let points = number(value, "size", "the config file's [font]")?;
+        // libghostty's own range. Refused here rather than clamped there, because a font size
+        // of zero silently becoming 1 is a window nobody can read and no line explaining it.
+        if !(points.is_finite() && (1.0..=255.0).contains(&points)) {
+            return Err(format!(
+                "`size` in the config file's [font] is {}, and it has to be a number of points \
+                 between 1 and 255. None of the file was applied.",
+                written(value)
+            ));
+        }
+        // Narrowed only after the range check, so the cast is over a value between 1 and 255.
+        // What it loses is precision past the seventh digit of a font size, which no renderer
+        // takes and nobody typed.
+        #[allow(clippy::cast_possible_truncation)]
+        {
+            size = Some(points as f32);
+        }
+    }
+
+    Ok(Font {
+        // An empty family is treated as absent rather than refused, because it is the one way
+        // to write "whatever this machine has" in a file that otherwise names one.
+        family: string(block, "family", "the config file's [font]")?
+            .filter(|family| !family.trim().is_empty()),
+        size,
+    })
+}
+
+fn read_colors(block: Option<&toml::Table>) -> Result<Colors, String> {
+    let Some(block) = block else { return Ok(Colors::default()) };
+    Ok(Colors {
+        background: color(block, "background")?,
+        foreground: color(block, "foreground")?,
+        cursor: color(block, "cursor")?,
+        cursor_text: color(block, "cursor_text")?,
+        selection_background: color(block, "selection_background")?,
+        selection_foreground: color(block, "selection_foreground")?,
+        divider: color(block, "divider")?,
+        palette: read_palette(block)?,
+    })
+}
+
+/// One `#rrggbb` under `[colors]`, refused where it was written.
+fn color(block: &toml::Table, key: &str) -> Result<Option<Rgb>, String> {
+    let Some(value) = block.get(key) else { return Ok(None) };
+    let text = value.as_str().ok_or_else(|| {
+        format!(
+            "`{key}` in the config file's [colors] is {}, and it has to be a string of six hex \
+             digits - `{key} = \"#4a4a4a\"`. None of the file was applied.",
+            described(value)
+        )
+    })?;
+    Rgb::parse(text).map(Some).map_err(|refusal| {
+        format!("`{key}` in the config file's [colors]: {refusal} None of the file was applied.")
+    })
+}
+
+/// The sixteen ANSI colours, all of them or none.
+fn read_palette(block: &toml::Table) -> Result<Option<[Rgb; 16]>, String> {
+    let Some(entries) = strings(block, "palette", "the config file's [colors]")? else {
+        return Ok(None);
+    };
+    if entries.len() != 16 {
+        return Err(format!(
+            "`palette` in the config file's [colors] has {} {}, and it has to have exactly 16 - \
+             one for each ANSI colour, black through bright white. None of the file was \
+             applied. A palette is a set rather than a list of separate choices, so a partial \
+             one would leave the rest as the renderer's and produce a scheme nobody designed.",
+            entries.len(),
+            if entries.len() == 1 { "entry" } else { "entries" }
+        ));
+    }
+
+    let mut palette = [Rgb { red: 0, green: 0, blue: 0 }; 16];
+    for (at, entry) in entries.iter().enumerate() {
+        palette[at] = Rgb::parse(entry).map_err(|refusal| {
+            format!(
+                "the {} entry of `palette` in the config file's [colors]: {refusal} None of the \
+                 file was applied.",
+                ordinal(at)
+            )
+        })?;
+    }
+    Ok(Some(palette))
+}
+
+fn read_cursor(block: Option<&toml::Table>) -> Result<Cursor, String> {
+    let Some(block) = block else { return Ok(Cursor::default()) };
+    let mut cursor = Cursor::default();
+
+    if let Some(value) = block.get("style") {
+        let name = value.as_str().ok_or_else(|| {
+            format!(
+                "`style` in the config file's [cursor] is {}, and it has to be one of {}. None \
+                 of the file was applied.",
+                described(value),
+                quoted(&CursorStyle::READABLE),
+            )
+        })?;
+        cursor.style = Some(CursorStyle::read(name).ok_or_else(|| {
+            format!(
+                "`style` in the config file's [cursor] is {name:?}, which is not a shape Muster \
+                 knows, so none of the file was applied. It is one of {}.",
+                quoted(&CursorStyle::READABLE),
+            )
+        })?);
+    }
+
+    if let Some(value) = block.get("blink") {
+        cursor.blink = Some(value.as_bool().ok_or_else(|| {
+            format!(
+                "`blink` in the config file's [cursor] is {}, and it has to be true or false. \
+                 None of the file was applied. Leave it out to let the program in the pane \
+                 decide, which is what it did before this key existed.",
+                described(value)
+            )
+        })?);
+    }
+
+    Ok(cursor)
 }
 
 /// A number the file may have written as an integer or a float, since TOML tells them apart
@@ -245,12 +533,12 @@ fn read_feel(root: &toml::Table) -> Result<Feel, String> {
 /// that refuses is a knob past two billion, and every knob here is a handful of cells or a
 /// small multiplier - so the refusal lands on a value nobody meant, with the same sentence as
 /// any other unusable one.
-fn number(value: &Value, key: &str) -> Result<f64, String> {
+fn number(value: &Value, key: &str, where_: &str) -> Result<f64, String> {
     value.as_float().or_else(|| i32::try_from(value.as_integer()?).ok().map(f64::from)).ok_or_else(
         || {
             format!(
-                "`{key}` in the config file is {}, and it has to be a number. None of the \
-                 file was applied.",
+                "`{key}` in {where_} is {}, and it has to be a number. None of the file was \
+                 applied.",
                 described(value)
             )
         },

@@ -19,7 +19,7 @@ use muster_core::composition::{
     Composition, Daemon, DaemonId, Endpoint, PaneKey, Presentation, RegionId, Saved, Step, TabKey,
     Transport, View, saved,
 };
-use muster_core::config::{Config, Feel};
+use muster_core::config::{Appearance, Config, Feel};
 use muster_core::diagnostics::log;
 use muster_core::fields;
 use muster_core::input::{Bindings, PaneInput, PaneInputSettings};
@@ -116,11 +116,10 @@ pub(crate) fn pane_input() -> PaneInputSettings {
         .unwrap_or_default()
 }
 
-/// The three knobs, held for whatever asks about them next.
+/// The two knobs, held for whatever asks about them next.
 ///
 /// Beside [`BINDINGS`] and [`PANE_INPUT`], for the same reason: a resize arrives from a
-/// keystroke, a scroll from a wheel, and a colour from a shell building a divider, and none
-/// of those three callers has a config file in hand.
+/// keystroke and a scroll from a wheel, and neither caller has a config file in hand.
 static FEEL: Mutex<Option<Feel>> = Mutex::new(None);
 
 pub(crate) fn set_feel(feel: Feel) {
@@ -130,6 +129,23 @@ pub(crate) fn set_feel(feel: Feel) {
 /// The knobs in force, which with no config file is what Muster ships.
 pub(crate) fn feel() -> Feel {
     FEEL.lock().expect("a panicking sender poisoned the settings").unwrap_or_default()
+}
+
+/// What the window should look like, held the same way and for the same reason.
+///
+/// Cloned on read rather than copied, because a palette and a font family are not `Copy`. It
+/// is read once at launch by a shell standing up its renderer, so the cost is a font name and
+/// sixteen colours, once.
+static APPEARANCE: Mutex<Option<Appearance>> = Mutex::new(None);
+
+pub(crate) fn set_appearance(appearance: Appearance) {
+    *APPEARANCE.lock().expect("a panicking sender poisoned the settings") = Some(appearance);
+}
+
+/// The appearance in force, which with no config file is every value absent - so the renderer
+/// paints what it would have painted anyway.
+pub(crate) fn appearance() -> Appearance {
+    APPEARANCE.lock().expect("a panicking sender poisoned the settings").clone().unwrap_or_default()
 }
 
 pub(crate) fn set_state_path(path: &str) {

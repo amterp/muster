@@ -1,5 +1,6 @@
 import Foundation
 import GhosttyKit
+import MusterRenderer
 import Testing
 
 // What libghostty makes of a config file Muster wrote, asserted against the real library rather
@@ -7,6 +8,13 @@ import Testing
 // setter in the C API, so handing over a file is how Muster says what a pane should look like
 // (docs/observations/libghostty-9f9b8d1d.md section 9). A pin bump that changes any of this
 // should fail here rather than in a window.
+//
+// The oracle is two-sided, and needs to be. Every key the C API can read back is checked against
+// the value Muster meant; for the several it can write but not read - `selection-background` is a
+// union and `window-padding-x` a struct, and ghostty_config_get answers only for types with a C
+// representation - what stands in is a diagnostics count of zero. That is a real check rather
+// than a consolation, because a key libghostty does not know and a value it cannot parse both
+// land there, which is exactly what a wrong translation produces.
 //
 // Serialized, and one ghostty_init for the whole suite: ghostty_init assigns process-global state
 // (src/global.zig, `var state: ?GlobalState`), so two of them racing is two tests fighting over
@@ -63,6 +71,77 @@ import Testing
     // (src/config/c_get.zig). They applied - the diagnostics count above is what says so.
     #expect(color(config, "selection-background") == nil)
     #expect(count(config, "window-padding-x") == nil)
+  }
+
+  // The translation itself, end to end: a Muster appearance, through `ghosttyConfiguration`, into
+  // the real library, read back out. Nothing here asserts the intermediate lines - what those
+  // should say is libghostty's business, and pinning them would be pinning our own guess twice.
+
+  @Test func everythingMusterCanBeAskedForReachesTheRenderer() throws {
+    let config = try loaded(
+      ghosttyConfiguration(
+        Appearance(
+          fontFamily: "Menlo", fontSize: 17,
+          background: "#282c34", foreground: "#ffffff",
+          cursor: "#f5e0dc", cursorText: "#1e1e2e",
+          selectionBackground: "#414868", selectionForeground: "#c0caf5",
+          palette: (0..<16).map { String(format: "#%02x0000", $0) },
+          cursorStyle: .bar, cursorBlink: false,
+          panePadding: 4)))
+    defer { ghostty_config_free(config) }
+
+    // Zero is what covers selection-background, selection-foreground and both paddings, which
+    // cannot be read back. A misspelled key or an unusable value would show up here.
+    #expect(ghostty_config_diagnostics_count(config) == 0)
+
+    #expect(float(config, "font-size") == 17)
+    #expect(color(config, "background") == "#282c34")
+    #expect(color(config, "foreground") == "#ffffff")
+    #expect(name(config, "cursor-style") == "bar")
+    #expect(flag(config, "cursor-style-blink") == false)
+    #expect(palette(config, 0) == "#000000")
+    #expect(palette(config, 15) == "#0f0000")
+
+    // The other five are write-only through this API and the count above is what covers them:
+    // `font-family` is a RepeatableString, and `cursor-color`, `cursor-text` and both selection
+    // colours are `?TerminalColor` - a union, which has no C representation.
+    for unreadable in ["font-family", "cursor-color", "cursor-text", "selection-background"] {
+      #expect(color(config, unreadable) == nil, "\(unreadable) became readable")
+    }
+  }
+
+  @Test func hollowIsMustersWordAndBlockHollowIsGhosttys() throws {
+    // The one name that differs, and the reason the translation is a function rather than a
+    // pass-through. A person writes `hollow` because that is what Muster calls it; libghostty
+    // would refuse that value, which is what the diagnostics count catches.
+    let config = try loaded(ghosttyConfiguration(Appearance(cursorStyle: .hollow)))
+    defer { ghostty_config_free(config) }
+
+    #expect(ghostty_config_diagnostics_count(config) == 0)
+    #expect(name(config, "cursor-style") == "block_hollow")
+  }
+
+  @Test func anAppearanceNobodyConfiguredProducesNoFileAtAll() {
+    // Not an empty file - no file. Somebody who wrote no appearance gets whatever the renderer
+    // would have painted anyway, and Muster hands it nothing to read rather than a document
+    // saying nothing.
+    #expect(ghosttyConfiguration(Appearance()).isEmpty)
+  }
+
+  @Test func aSizeSomebodyWroteAsAWholeNumberStaysOne() {
+    // Cosmetic, and worth a line anyway: this file is what somebody reads when a colour does not
+    // take, and `font-size = 13.0` beside a config that says `size = 13` is one more thing to
+    // wonder about at that moment.
+    #expect(ghosttyConfiguration(Appearance(fontSize: 13)) == ["font-size = 13"])
+    #expect(ghosttyConfiguration(Appearance(fontSize: 13.5)) == ["font-size = 13.5"])
+  }
+
+  @Test func paddingIsOneNumberAndTwoAxes() {
+    // One key in Muster and two in libghostty, matching `resize_step`: which side of a pane the
+    // space is on is not a distinction anybody has asked for.
+    #expect(
+      ghosttyConfiguration(Appearance(panePadding: 0))
+        == ["window-padding-x = 0", "window-padding-y = 0"])
   }
 
   @Test func aValueLibghosttyCannotParseIsADiagnosticToo() throws {

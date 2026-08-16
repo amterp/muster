@@ -22,6 +22,12 @@ fn main() {
     // protox already parsed it; without this prost goes looking for a protoc binary that
     // this build deliberately does not require.
     config.skip_protoc_run();
+    // Every response is returned by value, including the one answering a keystroke, so the
+    // size of the largest variant is paid on every request rather than on the one that needs
+    // it. Appearance is that variant several times over - eight colours, a family name and a
+    // palette - and is read exactly once, at launch. Boxing puts the cost where it belongs.
+    // The Swift side needs no equivalent: swift-protobuf's messages are already references.
+    config.boxed("Response.payload.appearance");
     config.compile_fds(descriptors).expect("the schema generates");
 
     // cargo's default install name is the absolute path of the build output, which works

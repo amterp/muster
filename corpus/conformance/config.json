@@ -437,13 +437,12 @@
       }
     },
     {
-      "name": "the three knobs, each read as itself",
-      "why": "A resize step in cells, a scroll multiplier that scales whatever the input device reported, and the one colour Muster paints itself. Grouped in one case because they share nothing but a shape - each is a single value with a defensible default - and separate cases would be three copies of the same assertion.",
+      "name": "the two knobs, each read as itself",
+      "why": "A resize step in cells and a scroll multiplier that scales whatever the input device reported. Grouped in one case because they share nothing but a shape - each is a single value with a defensible default - and separate cases would be two copies of the same assertion. The divider colour used to sit beside them and now sits with the other colours, because somebody picking colours picks all of them at once.",
       "given": {
         "file": [
           "resize_step = 2",
-          "scroll_multiplier = 1.5",
-          "divider_color = \"#4a4a4a\""
+          "scroll_multiplier = 1.5"
         ]
       },
       "expect": {
@@ -453,14 +452,13 @@
         "text": [],
         "feel": [
           "resize_step=2",
-          "scroll_multiplier=1.5",
-          "divider_color=#4a4a4a"
+          "scroll_multiplier=1.5"
         ]
       }
     },
     {
       "name": "a file that names none of them leaves every default alone",
-      "why": "The overwhelmingly common case, and the reason these are absent from every other case in this file. The defaults are chosen so that a file naming nothing behaves exactly as Muster did before the keys existed: the daemon's own resize step, the device's own scroll delta, and the platform's own separator colour.",
+      "why": "The overwhelmingly common case, and the reason these are absent from every other case in this file. The defaults are chosen so that a file naming nothing behaves exactly as Muster did before the keys existed: the daemon's own resize step, the device's own scroll delta, and - for every appearance value - whatever the renderer would have painted anyway. Muster names no appearance default of its own, so this case is also what pins that.",
       "given": {
         "file": [
           "[[daemon]]",
@@ -498,10 +496,12 @@
     },
     {
       "name": "a colour may be written with or without its hash",
-      "why": "Both are what somebody types, and a file that silently ignored one spelling would be a colour that does not apply for a reason nobody can see. Normalized on the way out so the shell has one form to read.",
+      "why": "Both are what somebody types, and a file that silently ignored one spelling would be a colour that does not apply for a reason nobody can see. Normalized on the way out so the shell has one form to read, whichever colour it was.",
       "given": {
         "file": [
-          "divider_color = \"4a4a4a\""
+          "[colors]",
+          "background = \"4a4a4a\"",
+          "divider = \"#FFFFFF\""
         ]
       },
       "expect": {
@@ -509,8 +509,9 @@
         "keymap": [],
         "option_as_alt": "never",
         "text": [],
-        "feel": [
-          "divider_color=#4a4a4a"
+        "appearance": [
+          "colors.background=#4a4a4a",
+          "colors.divider=#ffffff"
         ]
       }
     },
@@ -540,14 +541,15 @@
     },
     {
       "name": "a colour that is not six hex digits is refused where it was written",
-      "why": "The alternative is a shell handed `#gg0000`, which can only fail silently or invent something - both a long way from the person who typed it. Reading the file is where the line number is, so it is where the refusal belongs.",
+      "why": "The alternative is a shell handed `#gg0000`, which can only fail silently or invent something - both a long way from the person who typed it. Reading the file is where the line number is, so it is where the refusal belongs. The key is named as well as the value, because a file setting eight colours has eight places this could be.",
       "given": {
         "file": [
-          "divider_color = \"#gg0000\""
+          "[colors]",
+          "background = \"#gg0000\""
         ]
       },
       "expect": {
-        "refused": "`#gg0000` is not a colour Muster can read. Write six hex digits, with or without a leading hash - `#4a4a4a`. None of the file was applied."
+        "refused": "`background` in the config file's [colors]: `#gg0000` is not a colour Muster can read. Write six hex digits, with or without a leading hash - `#4a4a4a`. None of the file was applied."
       }
     },
     {
@@ -572,6 +574,246 @@
       },
       "expect": {
         "refused": "`resize_step` in the config file is 1.5, and it has to be a whole number of cells, at least one. None of the file was applied. Leave it out to keep the daemon's own step, which is what a chord meant before this key existed."
+      }
+    },
+    {
+      "name": "every appearance key, each read as itself",
+      "why": "The whole vocabulary in one file, which is what somebody who has decided to make Muster look like their terminal actually writes. One case rather than fifteen because the assertion is identical for each and the interesting question is whether they coexist: three blocks and a root key, parsed together, none of them clobbering another. `hollow` surviving as `hollow` is the part worth watching - it is Muster's word for the shape, and a renderer that calls it something else translates in the shell.",
+      "given": {
+        "file": [
+          "pane_padding = 4",
+          "",
+          "[font]",
+          "family = \"Fira Code\"",
+          "size = 13",
+          "",
+          "[colors]",
+          "background = \"#282c34\"",
+          "foreground = \"#ffffff\"",
+          "cursor = \"#f5e0dc\"",
+          "cursor_text = \"#1e1e2e\"",
+          "selection_background = \"#414868\"",
+          "selection_foreground = \"#c0caf5\"",
+          "divider = \"#4a4a4a\"",
+          "",
+          "[cursor]",
+          "style = \"hollow\"",
+          "blink = false"
+        ]
+      },
+      "expect": {
+        "daemons": [],
+        "keymap": [],
+        "option_as_alt": "never",
+        "text": [],
+        "appearance": [
+          "font.family=Fira Code",
+          "font.size=13",
+          "colors.background=#282c34",
+          "colors.foreground=#ffffff",
+          "colors.cursor=#f5e0dc",
+          "colors.cursor_text=#1e1e2e",
+          "colors.selection_background=#414868",
+          "colors.selection_foreground=#c0caf5",
+          "colors.divider=#4a4a4a",
+          "cursor.style=hollow",
+          "cursor.blink=false",
+          "pane_padding=4"
+        ]
+      }
+    },
+    {
+      "name": "the sixteen ANSI colours are a set, and read as one",
+      "why": "The palette is the primitive a theme is made of, and Muster has no theme format of its own - naming one would mean adopting a file format belonging to whichever renderer is behind the seam. Sixteen rather than 256 because sixteen is what people write by hand and the rest are generated.",
+      "given": {
+        "file": [
+          "[colors]",
+          "palette = [",
+          "  \"#000000\", \"#cc0000\", \"#4e9a06\", \"#c4a000\",",
+          "  \"#3465a4\", \"#75507b\", \"#06989a\", \"#d3d7cf\",",
+          "  \"#555753\", \"#ef2929\", \"#8ae234\", \"#fce94f\",",
+          "  \"#729fcf\", \"#ad7fa8\", \"#34e2e2\", \"#eeeeec\",",
+          "]"
+        ]
+      },
+      "expect": {
+        "daemons": [],
+        "keymap": [],
+        "option_as_alt": "never",
+        "text": [],
+        "appearance": [
+          "colors.palette=#000000 #cc0000 #4e9a06 #c4a000 #3465a4 #75507b #06989a #d3d7cf #555753 #ef2929 #8ae234 #fce94f #729fcf #ad7fa8 #34e2e2 #eeeeec"
+        ]
+      }
+    },
+    {
+      "name": "no padding at all is a thing somebody asks for",
+      "why": "Zero is a real answer here where it is a refusal for `resize_step`, and the difference is worth pinning because the two look alike. A resize that moves nothing is a broken chord; a pane with no padding is a window that fits more rows, which is exactly what somebody watching fifteen agents wants.",
+      "given": {
+        "file": [
+          "pane_padding = 0"
+        ]
+      },
+      "expect": {
+        "daemons": [],
+        "keymap": [],
+        "option_as_alt": "never",
+        "text": [],
+        "appearance": [
+          "pane_padding=0"
+        ]
+      }
+    },
+    {
+      "name": "an empty font family is how you say \"whatever this machine has\"",
+      "why": "Treated as absent rather than refused. Somebody commenting out their font by emptying the string means the renderer's own, and refusing the whole file for it would be a refusal about nothing. It is the one appearance value where the machine, not the person, has the better answer - a family nobody installed is worse than no answer at all.",
+      "given": {
+        "file": [
+          "[font]",
+          "family = \"\"",
+          "size = 14"
+        ]
+      },
+      "expect": {
+        "daemons": [],
+        "keymap": [],
+        "option_as_alt": "never",
+        "text": [],
+        "appearance": [
+          "font.size=14"
+        ]
+      }
+    },
+    {
+      "name": "the colour that moved is refused by name at the root",
+      "why": "`divider_color` was a root key until the colours got a block of their own, so a file written against an older Muster names it there. The unknown-key refusal already covers this, and this case pins that it does: the sentence names the key somebody has to move and lists where the keys now live. Without it the symptom is a window with no daemons and no explanation.",
+      "given": {
+        "file": [
+          "divider_color = \"#4a4a4a\""
+        ]
+      },
+      "expect": {
+        "refused": "the config file has a key called \"divider_color\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: daemon, keymap, text, option_as_alt, resize_step, scroll_multiplier, pane_padding, font, colors, cursor."
+      }
+    },
+    {
+      "name": "a misspelled colour is refused against the block it was written in",
+      "why": "A file with three appearance blocks has three places a key can be wrong, and a refusal naming only the key would send somebody to the wrong one. This is also what makes the block listing useful: `backgrnd` is close enough to `background` that seeing the list is the whole fix.",
+      "given": {
+        "file": [
+          "[colors]",
+          "backgrnd = \"#282c34\""
+        ]
+      },
+      "expect": {
+        "refused": "the config file's [colors] has a key called \"backgrnd\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: background, foreground, cursor, cursor_text, selection_background, selection_foreground, divider, palette."
+      }
+    },
+    {
+      "name": "a font size outside what a renderer will take is refused here",
+      "why": "libghostty clamps this to 1..255 and says nothing, so a `size = 0` would silently become 1 - a window nobody can read with no line explaining why. Refusing at the point the file is read is the only place the person who typed it is still in the picture. The range is the renderer's, which is a borrowed number and worth knowing is borrowed.",
+      "given": {
+        "file": [
+          "[font]",
+          "size = 0"
+        ]
+      },
+      "expect": {
+        "refused": "`size` in the config file's [font] is 0, and it has to be a number of points between 1 and 255. None of the file was applied."
+      }
+    },
+    {
+      "name": "a font size written as a string is refused as a number would be",
+      "why": "TOML has numbers and this is one, matching the same refusal for `resize_step`. Worth its own case because the sentence has to name the block: `size` is a key two blocks could plausibly have, and the file being refused whole means the reader has only this sentence to go on.",
+      "given": {
+        "file": [
+          "[font]",
+          "size = \"13\""
+        ]
+      },
+      "expect": {
+        "refused": "`size` in the config file's [font] is a string, and it has to be a number. None of the file was applied."
+      }
+    },
+    {
+      "name": "a cursor shape Muster does not know is refused with the list",
+      "why": "The four shapes are a closed set and the names are not guessable - `hollow` rather than `block_hollow`, and no `beam` even though half the terminals in the world call it that. So the refusal carries the whole list rather than saying the value was wrong.",
+      "given": {
+        "file": [
+          "[cursor]",
+          "style = \"beam\""
+        ]
+      },
+      "expect": {
+        "refused": "`style` in the config file's [cursor] is \"beam\", which is not a shape Muster knows, so none of the file was applied. It is one of `block`, `bar`, `underline`, `hollow`."
+      }
+    },
+    {
+      "name": "a blink that is not true or false is refused, and says what absent means",
+      "why": "Three states hide in this key - on, off, and let the program in the pane decide - and only two of them are values. Somebody reaching for a third spelling needs telling that the third state is the absent one, or they will invent `blink = \"auto\"` and get a refused file.",
+      "given": {
+        "file": [
+          "[cursor]",
+          "blink = \"yes\""
+        ]
+      },
+      "expect": {
+        "refused": "`blink` in the config file's [cursor] is a string, and it has to be true or false. None of the file was applied. Leave it out to let the program in the pane decide, which is what it did before this key existed."
+      }
+    },
+    {
+      "name": "a palette that is not sixteen colours is refused",
+      "why": "A partial palette is the failure that would look like it worked: four of somebody's colours over twelve of the renderer's renders, and the result is a scheme nobody designed rather than an error. It is also indistinguishable from a file somebody stopped editing halfway, which is the likelier cause.",
+      "given": {
+        "file": [
+          "[colors]",
+          "palette = [\"#000000\", \"#cc0000\", \"#4e9a06\"]"
+        ]
+      },
+      "expect": {
+        "refused": "`palette` in the config file's [colors] has 3 entries, and it has to have exactly 16 - one for each ANSI colour, black through bright white. None of the file was applied. A palette is a set rather than a list of separate choices, so a partial one would leave the rest as the renderer's and produce a scheme nobody designed."
+      }
+    },
+    {
+      "name": "a palette entry that is not a colour says which entry",
+      "why": "Sixteen near-identical strings on one line, and a refusal saying only that one of them is wrong would leave somebody counting hex digits. The position is the whole of what makes this actionable.",
+      "given": {
+        "file": [
+          "[colors]",
+          "palette = [",
+          "  \"#000000\", \"#cc0000\", \"nope\", \"#c4a000\",",
+          "  \"#3465a4\", \"#75507b\", \"#06989a\", \"#d3d7cf\",",
+          "  \"#555753\", \"#ef2929\", \"#8ae234\", \"#fce94f\",",
+          "  \"#729fcf\", \"#ad7fa8\", \"#34e2e2\", \"#eeeeec\",",
+          "]"
+        ]
+      },
+      "expect": {
+        "refused": "the third entry of `palette` in the config file's [colors]: `nope` is not a colour Muster can read. Write six hex digits, with or without a leading hash - `#4a4a4a`. None of the file was applied."
+      }
+    },
+    {
+      "name": "an appearance block written as a value is refused with its keys",
+      "why": "`colors = \"dark\"` is what somebody expecting a theme name writes, and it is a reasonable thing to expect - most terminals have one. Muster does not, so the refusal has to do two jobs: say this is a block, and list what goes in it, because the answer to \"then how do I set a theme\" is the palette and the six colours.",
+      "given": {
+        "file": [
+          "colors = \"dark\""
+        ]
+      },
+      "expect": {
+        "refused": "`colors` in the config file is a string, and it has to be a block - `[colors]` with its settings under it. None of the file was applied. Known keys there: background, foreground, cursor, cursor_text, selection_background, selection_foreground, divider, palette."
+      }
+    },
+    {
+      "name": "a padding with a fraction in it is refused",
+      "why": "Whole points, matching `resize_step`'s whole cells. A renderer takes an integer here and would round it, so accepting `1.5` means the file says one thing and the window does another.",
+      "given": {
+        "file": [
+          "pane_padding = 1.5"
+        ]
+      },
+      "expect": {
+        "refused": "`pane_padding` in the config file is 1.5, and it has to be a whole number of points, zero or more. None of the file was applied. Zero is the one that fits the most rows in a window; leave it out for the renderer's own answer."
       }
     }
   ]

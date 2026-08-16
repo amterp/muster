@@ -71,20 +71,27 @@ how you run your agents.
 ## Configuring
 
 Everything Muster owns lives in `~/.muster`, and `MUSTER_HOME` moves the lot. Two files in
-it, both optional, both TOML. `~/.muster/config.toml` is yours to write: `[[daemon]]` blocks
-name the machines a window attaches to, `[keymap]` rebinds any of Muster's own actions, and
-the rest decides what a keystroke becomes on its way to a pane.
+it, both optional, both TOML. `~/.muster/config.toml` is yours to write, and it is the only
+file Muster reads: `[[daemon]]` blocks name the machines a window attaches to, `[keymap]`
+rebinds any of Muster's own actions, `[font]`, `[colors]` and `[cursor]` decide what the
+window looks like, and the rest decides what a keystroke becomes on its way to a pane.
 
 One directory rather than a file in each of the XDG trees, because Muster's surface is meant
 to be discovered rather than taught - an agent that can list one directory needs no
 documentation to find the whole of it. `XDG_CONFIG_HOME` and its family still decide where
 herdr listens and what herdr reads; they no longer move anything of Muster's.
 
+The rule, so that the next setting has an obvious home: **a setting is Muster's when Muster
+acts on the answer**, including the ones it only translates onward for libghostty. It is the
+daemon's when the daemon owns the thing being configured and Muster never sees it - what a
+pane runs, how deep its scrollback is. And within the file, a table when a subject has
+several answers, a root key when it has one.
+
 ```toml
 option_as_alt = "left"         # never (the default) | always | left | right
 resize_step = 2                # cells per resize chord; omit for the daemon's own step
 scroll_multiplier = 1.5        # scales what the trackpad or wheel reported
-divider_color = "#4a4a4a"      # the line between two regions; omit for the platform's
+pane_padding = 2               # points between a pane's text and its edges; 0 fits the most rows
 
 [keymap]
 split_right = "cmd+d"          # the default; Ghostty's, wherever Ghostty has one
@@ -94,6 +101,29 @@ close_pane = ""                # unbound - the action stays, the shortcut goes
 
 [text]
 "shift+enter" = "\n"           # this chord sends these bytes, whatever the encoder would say
+
+[font]
+family = "Fira Code"           # omit for whatever monospace this machine would have picked
+size = 13
+
+[colors]
+background = "#282c34"
+foreground = "#ffffff"
+cursor = "#f5e0dc"
+cursor_text = "#1e1e2e"        # the character under the cursor
+selection_background = "#414868"
+selection_foreground = "#c0caf5"
+divider = "#4a4a4a"            # the line between two regions; omit for the platform's
+palette = [                    # the ANSI sixteen, all of them or none
+  "#000000", "#cc0000", "#4e9a06", "#c4a000",
+  "#3465a4", "#75507b", "#06989a", "#d3d7cf",
+  "#555753", "#ef2929", "#8ae234", "#fce94f",
+  "#729fcf", "#ad7fa8", "#34e2e2", "#eeeeec",
+]
+
+[cursor]
+style = "block"                # block | bar | underline | hollow
+blink = true                   # omit to let the program in the pane decide
 ```
 
 `[keymap]` is partial, so a file that names one action rebinds one action. Chords are
@@ -127,24 +157,43 @@ consulted. It is keyed by chord where `[keymap]` is keyed by action, because an 
 one chord and text has no name to key on. Both are read once at launch, so changing either
 means relaunching.
 
-The last three are the small answers a terminal is expected to let you change, and each is
+The other three root keys are small answers a terminal is expected to let you change, each
 one line because each is one value. `resize_step` is how many cells a resize chord moves a
 divider; omit it and the daemon decides, which is what a chord meant before the key existed.
 `scroll_multiplier` scales whatever your trackpad or wheel reported, so `1` is the device's
 own answer and `0.5` is half of it - a multiplier rather than a line count, because how big
-one notch is belongs to the device. `divider_color` is the line between two regions, and it
-is the one piece of Muster's appearance no terminal config can reach: everything inside a
-pane is libghostty's, and this line is Muster's own.
+one notch is belongs to the device. `pane_padding` is the space between a pane's text and its
+edges, one number for both axes; `0` is what fits the most rows into a window of fifteen
+agents.
 
-Two things Muster does not decide. Fonts, colors and cursor style come from whatever config
-libghostty finds on disk, which today means a Ghostty config if you have one - a loan rather
-than the design, and `docs/architecture.md` says what it costs. And scrollback depth is the
-daemon's, because herdr owns the buffer that a scroll intent moves.
+`[font]`, `[colors]` and `[cursor]` are the window's appearance, and every one of them is
+optional. **Leave a value out and you get the renderer's own default, not one Muster
+invented** - the vocabulary names what you may change and nothing else, because Muster has no
+opinion about which monospace font your machine has and a default palette written into Muster
+would be a transcription of somebody else's. `palette` is the sixteen ANSI colours, all of
+them or none: a partial one leaves the rest as the renderer's and produces a scheme nobody
+designed. `divider` sits with the pane colours even though Muster rather than the renderer
+paints it, because you pick colours all at once and which piece of code holds the brush is
+not something you should have to know.
 
-`~/.muster/state/window.toml` is Muster's, rewritten whenever the window settles: which
-tabs it was showing, in what order, at what widths, and under `[window]` whether the agent
-list was open. Delete it and the next launch opens fresh. Nothing about a session is in it -
-what a tab holds is the daemon's answer, asked again on every launch.
+Muster reads no file belonging to another application. It used to: fonts and colours came
+from a Ghostty config if you had one, which is why the whole of `[colors]` is new rather than
+a rename. If you configured Muster's appearance through Ghostty, that stops working and this
+is where it moves to. `docs/architecture.md` says what the loan cost and why it went.
+
+One thing Muster still does not decide: scrollback depth is the daemon's, because herdr owns
+the buffer that a scroll intent moves.
+
+`~/.muster/state/` is Muster's to write, and holds two files nobody should edit. `window.toml`
+is rewritten whenever the window settles: which tabs it was showing, in what order, at what
+widths, and under `[window]` whether the agent list was open. Delete it and the next launch
+opens fresh. Nothing about a session is in it - what a tab holds is the daemon's answer, asked
+again on every launch.
+
+`libghostty.conf` is `[font]`, `[colors]` and `[cursor]` restated in the renderer's own
+format, because libghostty has no way to be handed a value except as a file. Rewritten every
+launch, so editing it changes nothing - but reading it answers "what did Muster actually tell
+the renderer", which is the first question when a colour does not take.
 
 ## Building
 
