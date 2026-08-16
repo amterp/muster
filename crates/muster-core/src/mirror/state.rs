@@ -300,19 +300,35 @@ impl Mirror {
         true
     }
 
+    /// Takes what a backend says a workspace is, and says whether anybody has to be told.
+    ///
+    /// **A label that moved is reported, because one is drawn.** Nothing draws a workspace on
+    /// its own, which is why this used to report nothing - but a tab caption leads with the
+    /// workspace holding it whenever a daemon holds more than one
+    /// ([`crate::roster::Roster`]), so a workspace renamed restyles a row per tab. Silent, the
+    /// mirror stored the new label and every caption went on reading the old one until some
+    /// unrelated event forced a republish.
+    ///
+    /// **A replay carrying the label already held is silent**, and that is what keeps the
+    /// above cheap: a subscription replays the whole session on every reconnect, so reporting
+    /// every upsert would republish once per workspace for nothing.
+    ///
+    /// Only the telling changed. The label was written either way, so this is not the mirror
+    /// storing something new - it is the mirror no longer keeping it to itself.
+    fn upsert_workspace(&mut self, workspace: Workspace) -> Vec<Change> {
+        let id = workspace.id.clone();
+        let renamed =
+            self.workspaces.get(&id).is_some_and(|before| before.label != workspace.label);
+        match self.workspaces.insert(id.clone(), workspace) {
+            Some(_) if renamed => vec![Change::WorkspaceRelabelled(id)],
+            Some(_) => Vec::new(),
+            None => vec![Change::WorkspaceAdded(id)],
+        }
+    }
+
     fn apply_inner(&mut self, event: BackendEvent) -> Vec<Change> {
         match event {
-            // Upserting an existing workspace or tab reports nothing, even when its label
-            // moved. Nothing renders labels yet, and a Change variant with no consumer is
-            // a guess at what a reader will want rather than an answer to one.
-            BackendEvent::WorkspaceUpserted(workspace) => {
-                let id = workspace.id.clone();
-                if self.workspaces.insert(id.clone(), workspace).is_some() {
-                    Vec::new()
-                } else {
-                    vec![Change::WorkspaceAdded(id)]
-                }
-            }
+            BackendEvent::WorkspaceUpserted(workspace) => self.upsert_workspace(workspace),
             BackendEvent::WorkspaceRemoved(id) => self.remove_workspace(&id),
             // A tab that already exists keeps the name it already has. This event says a tab
             // exists, and a backend may replay it forever - herdr's carries the label the tab

@@ -91,6 +91,60 @@
       }
     },
     {
+      "name": "a workspace renamed is announced, and a replay of the same label is not",
+      "why": "A workspace is never drawn on its own, which is why this went unreported for a while: the change looked like one with no reader. It has one per tab. A tab caption leads with the workspace holding it whenever a daemon holds more than one, so renaming a workspace restyles every row under it - and with nothing announced, the mirror stored the new label and every caption went on reading the old one until an unrelated event forced a republish. The second half is the half that keeps this cheap: a subscription replays the whole session on every reconnect, so an upsert carrying the label the mirror already holds must stay silent or a reconnect would republish once per workspace for nothing.",
+      "given": {
+        "snapshot": {
+          "workspaces": [
+            {
+              "id": "w1",
+              "label": "tmp"
+            }
+          ],
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            }
+          ],
+          "panes": [],
+          "layouts": []
+        },
+        "events": [
+          {
+            "kind": "workspaceUpserted",
+            "id": "w1",
+            "label": "muster"
+          },
+          {
+            "kind": "workspaceUpserted",
+            "id": "w1",
+            "label": "muster"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [],
+        "tabs": [
+          "w1:t1"
+        ],
+        "workspaces": [
+          "w1"
+        ],
+        "agentStates": {},
+        "tabLabels": {
+          "w1:t1": "1"
+        },
+        "layouts": {},
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "workspaceRelabelled:w1"
+        ]
+      }
+    },
+    {
       "name": "subscribing after a snapshot does not double the session",
       "why": "The load-bearing case. events.subscribe replays the current session as synthetic creation events, so a client that snapshots and then subscribes is told every existing entity was just created - 7 events for a one-pane session in the recording, 9 for a three-pane one. Convergence is what makes that harmless, and it is a property of the vocabulary rather than a rule each adapter remembers: there is no 'created' event to get wrong, only an upsert.",
       "given": {

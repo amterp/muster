@@ -7,8 +7,15 @@
     {
       "name": "a pane that appears announces its state",
       "why": "The case that was missing, and the bug it hid. A pane already working when Muster attaches never transitions, so a shell told only about transitions renders a busy agent as `unknown` grey until that agent happens to move again. Bootstrap reports it as `paneAdded` and nothing else - so if this is not an announcement, a freshly opened window is wrong about every agent already running in it, which is the state the product exists to show.",
-      "given": { "change": "paneAdded", "pane": "w1:p1" },
-      "expect": { "movesStructure": true, "republishes": true, "announcesAgentState": "w1:p1" }
+      "given": {
+        "change": "paneAdded",
+        "pane": "w1:p1"
+      },
+      "expect": {
+        "movesStructure": true,
+        "republishes": true,
+        "announcesAgentState": "w1:p1"
+      }
     },
     {
       "name": "a transition announces the pane it moved",
@@ -19,73 +26,171 @@
         "from": "working",
         "to": "blocked"
       },
-      "expect": { "movesStructure": false, "republishes": false, "announcesAgentState": "w1:p2" }
+      "expect": {
+        "movesStructure": false,
+        "republishes": false,
+        "announcesAgentState": "w1:p2"
+      }
     },
     {
       "name": "a transition does not move the arrangement",
       "why": "An agent changing state is a property of a pane that still exists in the same place. Reconciling composition for it would walk every region on every blink, which is the per-event cost `architecture.md` budgets against - a full window of agents is the common case, not the rare one.",
-      "given": { "change": "agentStateChanged", "pane": "w1:p1", "from": "idle", "to": "working" },
-      "expect": { "movesStructure": false, "republishes": false, "announcesAgentState": "w1:p1" }
+      "given": {
+        "change": "agentStateChanged",
+        "pane": "w1:p1",
+        "from": "idle",
+        "to": "working"
+      },
+      "expect": {
+        "movesStructure": false,
+        "republishes": false,
+        "announcesAgentState": "w1:p1"
+      }
     },
     {
       "name": "a pane that goes away moves the arrangement and announces nothing",
       "why": "A region may have been showing it, so composition has to look. There is no state to announce because there is no longer a pane to have one, and a shell told a state for a pane it has just been told to drop would have to guess which message won.",
-      "given": { "change": "paneRemoved", "pane": "w1:p1", "cascaded": false },
-      "expect": { "movesStructure": true, "republishes": true, "announcesAgentState": null }
+      "given": {
+        "change": "paneRemoved",
+        "pane": "w1:p1",
+        "cascaded": false
+      },
+      "expect": {
+        "movesStructure": true,
+        "republishes": true,
+        "announcesAgentState": null
+      }
     },
     {
       "name": "a pane removed by a cascade is still a removal",
       "why": "Closing a tab takes its panes with it and herdr announces none of them, so the mirror infers these. An inference is still a pane leaving the arrangement, and treating it as lesser is how an exited pane renders forever.",
-      "given": { "change": "paneRemoved", "pane": "w1:p1", "cascaded": true },
-      "expect": { "movesStructure": true, "republishes": true, "announcesAgentState": null }
+      "given": {
+        "change": "paneRemoved",
+        "pane": "w1:p1",
+        "cascaded": true
+      },
+      "expect": {
+        "movesStructure": true,
+        "republishes": true,
+        "announcesAgentState": null
+      }
     },
     {
       "name": "a pane renamed reaches the window without moving the arrangement",
       "why": "The case the other two columns cannot express between them. A pane names itself by its directory and the harness in it, and both arrive late - herdr detects a harness by reading the screen seconds after the pane starts. Nothing about the region holding it has moved, so reconciling would be waste; but the list beside the window says `src` where it should say `src · claude`, and on a quiet session nothing else will ever come along to correct it.",
-      "given": { "change": "paneRelabelled", "pane": "w1:p1" },
-      "expect": { "movesStructure": false, "republishes": true, "announcesAgentState": null }
+      "given": {
+        "change": "paneRelabelled",
+        "pane": "w1:p1"
+      },
+      "expect": {
+        "movesStructure": false,
+        "republishes": true,
+        "announcesAgentState": null
+      }
     },
     {
       "name": "a tab that appears moves the arrangement",
       "why": "A region names a tab, so a tab arriving is a thing a region could come to show.",
-      "given": { "change": "tabAdded", "tab": "w1:t1" },
-      "expect": { "movesStructure": true, "republishes": true, "announcesAgentState": null }
+      "given": {
+        "change": "tabAdded",
+        "tab": "w1:t1"
+      },
+      "expect": {
+        "movesStructure": true,
+        "republishes": true,
+        "announcesAgentState": null
+      }
     },
     {
       "name": "a tab that goes away moves the arrangement",
       "why": "The failure this side of the asymmetry exists for: a region still pointing at a closed tab renders a session nobody has.",
-      "given": { "change": "tabRemoved", "tab": "w1:t1" },
-      "expect": { "movesStructure": true, "republishes": true, "announcesAgentState": null }
+      "given": {
+        "change": "tabRemoved",
+        "tab": "w1:t1"
+      },
+      "expect": {
+        "movesStructure": true,
+        "republishes": true,
+        "announcesAgentState": null
+      }
     },
     {
       "name": "a tree that moved moves the arrangement",
       "why": "The tree is what a region renders as splits, so a new arrangement of the same panes still changes what is on screen.",
-      "given": { "change": "layoutChanged", "tab": "w1:t1" },
-      "expect": { "movesStructure": true, "republishes": true, "announcesAgentState": null }
+      "given": {
+        "change": "layoutChanged",
+        "tab": "w1:t1"
+      },
+      "expect": {
+        "movesStructure": true,
+        "republishes": true,
+        "announcesAgentState": null
+      }
     },
     {
       "name": "a workspace that appears moves the arrangement",
       "why": "Composition names a workspace as well as a tab, so the same argument as a tab reaches one level up.",
-      "given": { "change": "workspaceAdded", "workspace": "w1" },
-      "expect": { "movesStructure": true, "republishes": true, "announcesAgentState": null }
+      "given": {
+        "change": "workspaceAdded",
+        "workspace": "w1"
+      },
+      "expect": {
+        "movesStructure": true,
+        "republishes": true,
+        "announcesAgentState": null
+      }
+    },
+    {
+      "name": "a workspace renamed redraws the captions without moving the arrangement",
+      "why": "The same shape as a pane renamed, one level up and less obviously: nothing draws a workspace on its own, so this looks like a change with no reader. It has one per tab. A caption leads with the workspace holding it whenever a daemon holds more than one, so renaming a workspace restyles every row under it - and nothing about which region holds which tab has moved, so reconciling would be waste. Reported because the alternative was measured: the mirror stored the new label and told nobody, and every caption read the old name until some unrelated event happened along.",
+      "given": {
+        "change": "workspaceRelabelled",
+        "workspace": "w1"
+      },
+      "expect": {
+        "movesStructure": false,
+        "republishes": true,
+        "announcesAgentState": null
+      }
     },
     {
       "name": "a workspace that goes away moves the arrangement",
       "why": "It takes every tab and pane under it, none of which is announced separately.",
-      "given": { "change": "workspaceRemoved", "workspace": "w1" },
-      "expect": { "movesStructure": true, "republishes": true, "announcesAgentState": null }
+      "given": {
+        "change": "workspaceRemoved",
+        "workspace": "w1"
+      },
+      "expect": {
+        "movesStructure": true,
+        "republishes": true,
+        "announcesAgentState": null
+      }
     },
     {
       "name": "the daemon's own focus cursor moves nothing",
       "why": "Daemon focus is a single value shared with every client, which Muster writes and never reads - a herdr TUI moving it must not move this window's keyboard. Reconciling on it would make another client's cursor into Muster's, which is the exact confusion `architecture.md` keeps the two apart to avoid.",
-      "given": { "change": "focusChanged" },
-      "expect": { "movesStructure": false, "republishes": false, "announcesAgentState": null }
+      "given": {
+        "change": "focusChanged"
+      },
+      "expect": {
+        "movesStructure": false,
+        "republishes": false,
+        "announcesAgentState": null
+      }
     },
     {
       "name": "transitions that ran while nobody was listening move nothing and name no pane",
       "why": "It reports an interval, not a pane - the counter is session-wide and the transitions may have run on panes this mirror has never heard of. There is nothing to reconcile because the bootstrap that emitted it has already made the mirror correct, and no pane to announce because it cannot say which one. It still has to reach the log, which is a separate question from either of these.",
-      "given": { "change": "agentTransitionsMissed", "expected": 4, "saw": 9 },
-      "expect": { "movesStructure": false, "republishes": false, "announcesAgentState": null }
+      "given": {
+        "change": "agentTransitionsMissed",
+        "expected": 4,
+        "saw": 9
+      },
+      "expect": {
+        "movesStructure": false,
+        "republishes": false,
+        "announcesAgentState": null
+      }
     }
   ]
 }

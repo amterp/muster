@@ -97,6 +97,7 @@ fn read_change(given: &Value) -> Result<Change, CaseError> {
         "tabRemoved" => Change::TabRemoved(TabId::new(text("tab")?)),
         "layoutChanged" => Change::LayoutChanged(TabId::new(text("tab")?)),
         "workspaceAdded" => Change::WorkspaceAdded(WorkspaceId::new(text("workspace")?)),
+        "workspaceRelabelled" => Change::WorkspaceRelabelled(WorkspaceId::new(text("workspace")?)),
         "workspaceRemoved" => Change::WorkspaceRemoved(WorkspaceId::new(text("workspace")?)),
         "focusChanged" => Change::FocusChanged,
         "agentTransitionsMissed" => {

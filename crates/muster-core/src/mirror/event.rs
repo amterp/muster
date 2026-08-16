@@ -109,6 +109,11 @@ pub enum Change {
     /// because every reader has the mirror in hand and only some of them want to walk it.
     LayoutChanged(TabId),
     WorkspaceAdded(WorkspaceId),
+    /// What this workspace is called has moved. The same shape as [`Change::TabRelabelled`]
+    /// and reported for a less obvious reason: nothing draws a workspace on its own, but a
+    /// tab caption leads with the workspace holding it whenever a daemon holds more than one
+    /// ([`crate::roster::Roster`]), so one workspace's label moving restyles a row per tab.
+    WorkspaceRelabelled(WorkspaceId),
     WorkspaceRemoved(WorkspaceId),
     FocusChanged,
     /// Between the last snapshot and this one, the backend ran more agent transitions than
@@ -142,6 +147,7 @@ impl Change {
                 | Change::AgentTransitionsMissed { .. }
                 | Change::PaneRelabelled(_)
                 | Change::TabRelabelled(_)
+                | Change::WorkspaceRelabelled(_)
                 | Change::FocusChanged
         )
     }
@@ -160,7 +166,12 @@ impl Change {
     /// case rather than the rare one.
     pub fn republishes(&self) -> bool {
         self.moves_structure()
-            || matches!(self, Change::PaneRelabelled(_) | Change::TabRelabelled(_))
+            || matches!(
+                self,
+                Change::PaneRelabelled(_)
+                    | Change::TabRelabelled(_)
+                    | Change::WorkspaceRelabelled(_)
+            )
     }
 
     /// The pane whose agent state the shell has to be told about, if any.

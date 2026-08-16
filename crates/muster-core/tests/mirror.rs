@@ -164,6 +164,7 @@ fn describe(change: &Change) -> String {
         Change::TabRemoved(tab) => format!("tabRemoved:{tab}"),
         Change::LayoutChanged(tab) => format!("layoutChanged:{tab}"),
         Change::WorkspaceAdded(workspace) => format!("workspaceAdded:{workspace}"),
+        Change::WorkspaceRelabelled(workspace) => format!("workspaceRelabelled:{workspace}"),
         Change::WorkspaceRemoved(workspace) => format!("workspaceRemoved:{workspace}"),
         Change::FocusChanged => "focusChanged".to_string(),
         Change::AgentTransitionsMissed { expected, saw } => {
