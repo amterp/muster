@@ -1,0 +1,56 @@
+{
+  "deepest_read_vs_max_offset_from_bottom": {
+    "max_offset_from_bottom": 2978,
+    "rows_read": 1000
+  },
+  "long_line_row_widths_in_recent": [
+    80,
+    29,
+    80,
+    80,
+    7
+  ],
+  "long_line_row_widths_in_recent_unwrapped": [
+    167
+  ],
+  "method_exists__pane_find": false,
+  "method_exists__pane_scroll": false,
+  "method_exists__pane_search": false,
+  "offset_from_bottom_after_scrolling_up": {
+    "asked_for": 100,
+    "reported": 100
+  },
+  "recent_rows_returned_per_lines_asked": {
+    "1000": 1000,
+    "100000": 1000,
+    "1001": 1000,
+    "2000": 1000,
+    "500": 500,
+    "80": 80,
+    "999": 999,
+    "default": 80
+  },
+  "recent_tail_is_the_visible_screen": true,
+  "recent_truncated_per_lines_asked": {
+    "1000": true,
+    "100000": true,
+    "1001": true,
+    "2000": true,
+    "500": true,
+    "80": true,
+    "999": true,
+    "default": true
+  },
+  "scroll_after_printing": {
+    "max_offset_from_bottom": 2978,
+    "offset_from_bottom": 0,
+    "viewport_rows": 24
+  },
+  "scrolled_screen_is_the_predicted_slice_of_recent": true,
+  "unknown_offset_key_is_accepted_and_ignored": {
+    "request_succeeded": true,
+    "rows_returned": 1000,
+    "same_rows_as_no_offset": true
+  },
+  "visible_rows_returned": 24
+}

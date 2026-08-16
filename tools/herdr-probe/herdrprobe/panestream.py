@@ -12,6 +12,7 @@ client (src/client/mod.rs):
   in (stdin, NDJSON, control sessions only)
     {"type":"terminal.input","text":"..."}   or  {"type":"terminal.input","bytes":"<b64>"}
     {"type":"terminal.resize","cols":N,"rows":N,"cell_width_px":N,"cell_height_px":N}
+    {"type":"terminal.scroll","direction":"up|down","lines":N}
 """
 
 from __future__ import annotations
@@ -68,6 +69,14 @@ class PaneStream:
 
     def resize(self, cols: int, rows: int) -> None:
         self._write({"type": "terminal.resize", "cols": cols, "rows": rows})
+
+    def scroll(self, direction: str, lines: int) -> None:
+        """Move this pane's viewport, in the daemon's own scrollback.
+
+        Relative and one-directional, which is the whole of what herdr offers: there is
+        no way to ask for an absolute offset, though `pane.get` reports one.
+        """
+        self._write({"type": "terminal.scroll", "direction": direction, "lines": lines})
 
     def _write(self, obj: dict) -> None:
         self._proc.stdin.write((json.dumps(obj) + "\n").encode())

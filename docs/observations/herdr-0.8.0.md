@@ -867,6 +867,67 @@ feature rests on. After `server.stop` and a fresh daemon, `label` came back on t
 and `terminal_title` was null: herdr wrote the name down, and the process that would set
 a title again is new. A name is durable identity, a title is volatile status.
 
+## 17. A pane's history reads back as rows, and stops at a thousand of them
+
+Recorded in `corpus/herdr-0.8.0/read-depth/`, driving an 80x24 pane through three
+thousand numbered rows. Two questions, both of which decide whether a client can offer
+find-in-pane at all: how much of the history a client can get at, and whether what comes
+back can be turned into a position to scroll to.
+
+**A read's lines are grid rows, exactly.** `pane.read --source recent` ends with the rows
+`--source visible` returns, character for character, and scrolling up a hundred rows put
+exactly the hundred-rows-earlier slice of that same read on screen. So the *n*th line
+from the end of a read is `offset_from_bottom` *n*, with no fudge factor - which makes
+landing on a match arithmetic rather than a search of its own.
+
+    recent (last 1000 rows)   … ruler-02978 … ruler-03000
+    visible                     ruler-02978 … ruler-03000     the read's own tail
+    scroll up 100 → visible     ruler-02878 … ruler-02900     recent[-124:-100]
+
+**Relative scroll is exact and there is no absolute one.** Asking `terminal.scroll` for a
+hundred rows up moved `offset_from_bottom` to exactly 100. That is the whole mechanism
+available: `pane.scroll` does not exist as a method, so a client that knows which row it
+wants must read the current offset and scroll by the difference. Two round trips on two
+channels, and wrong if the pane prints in between.
+
+**The read stops at a thousand rows, and asking for more is not an error.** `lines` is
+clamped rather than refused - `read_terminal_snapshot` does `lines.min(1000)`
+(`~/src/herdr/src/app/api_helpers.rs:120`) - so 1001, 2000 and 100000 all returned 1000
+rows of a pane reporting `max_offset_from_bottom: 2978`. Two thirds of that pane's
+history is unreachable through this API, and nothing in the reply distinguishes "you
+asked for more than I give" from "that is all there is".
+
+    lines: 80 → 80      lines: 999  → 999      lines: 2000   → 1000
+    lines: 500 → 500    lines: 1000 → 1000     lines: 100000 → 1000
+
+**`truncated` answers a different question than the cap, and it is the useful one.** It
+was `true` for every read of this pane including `lines: 80`, so it means "there is more
+history than this" rather than "you hit the ceiling" - which is exactly what a client
+needs to say honestly what it searched, and is not a way to detect the clamp.
+
+**There is no paging, and asking for it succeeds.** `PaneReadParams` has no offset or
+cursor (`~/src/herdr/src/api/schema/panes.rs:252-263`), and an `offset` key sent anyway
+came back a normal success carrying the identical thousand rows - herdr ignores
+parameters it does not know (section 6). A client that assumed the key worked would page
+through the same screenful forever, with nothing anywhere reporting a problem.
+
+**Nothing on the API searches.** No `pane.search` and no `pane.find`; the refusal for an
+unknown method enumerates every method herdr has, so this is a complete answer rather
+than three guesses. `pane.read` and the `pane.output_matched` event are the entire
+surface area for looking at what a pane has printed.
+
+**The daemon is not short of the data.** herdr's own `snapshot_history` reads
+`recent_unwrapped_ansi(usize::MAX)` (`~/src/herdr/src/pane.rs:2651-2654`) when it writes
+a pane down for durability. The whole history is there; only the API declines to hand it
+over.
+
+**Choosing a source costs something either way, and a long line is where it shows.** A
+167-character line came back from `recent` as the rows it occupies - 80, 29, 80, 80, 7,
+counting the echoed command that wrapped too - and from `recent_unwrapped` as one line of
+167. So `recent` is the source whose positions are computable and which cannot match a
+needle spanning a wrap, and `recent_unwrapped` is the reverse. There is no source that is
+both, and a client that read both would have two answers to how many matches there are.
+
 Evidence: `corpus/herdr-0.8.0/naming/` - `FACTS.json` for the verdicts, `events.ndjson`
 for what a subscriber saw, `replay.ndjson` and `replayed-pane-created.json` for the
 replay, `before-restart.snapshot.json` and `after-restart.snapshot.json` for the

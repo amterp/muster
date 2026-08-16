@@ -265,3 +265,67 @@ unparseable value would show up there.
 One trap in the readback worth naming, because it fails quietly. The out-pointer's type is
 decided by the key and nothing checks it: reading `font-size`, an `f32`, into a `Double`
 returns true and yields `-1.0000002441229299` rather than the 17 that was set.
+
+## 10. Search is here, and it searches a buffer Muster's panes do not have
+
+Read 2026-08-16 while building find-in-pane. libghostty already implements terminal
+search, and the useful finding is what it searches rather than that it exists.
+
+**All five binding actions reach an embedder by name.** `ghostty_surface_binding_action`
+parses whatever string a config file could hold and performs it
+(`src/apprt/embedded.zig:1981-1996`), so `search:<text>`, `search_selection`,
+`navigate_search:next|previous`, `start_search` and `end_search`
+(`src/input/Binding.zig:409-433`) need no new C entry point. Muster already drives font
+sizing this way. Empty text on `search:` cancels the search and leaves any UI up;
+`end_search` is what tears it down.
+
+**Four actions come back through the app-wide callback**, not a search-specific one:
+`GHOSTTY_ACTION_START_SEARCH`, `_END_SEARCH`, `_SEARCH_TOTAL`, `_SEARCH_SELECTED`
+(`include/ghostty.h:966-969`), delivered to the `action_cb` in
+`ghostty_runtime_config_s`. Both counters are `ssize_t` with **-1 standing for null**
+(`src/apprt/action.zig:1006-1049`), and `selected` is 0-based despite a doc comment
+saying otherwise. Index 0 is the *bottom-most* match and the index counts upward, which
+is why Ghostty's own bar draws "next" as a chevron pointing up.
+
+**The total is a running count, and nothing says when it is final.** Search runs on its
+own OS thread with a 24 ms refresh timer (`src/terminal/search/Thread.zig:41-45`),
+emitting `total_matches` each time the count changes. The thread does raise a `complete`
+event, and `Surface.searchCallback_` drops it - `// Unhandled, so far.`
+(`src/Surface.zig:1544-1545`) - so an embedder watches the number tick upward with no
+way to know it has stopped.
+
+**It covers the whole scrollback, and that is exactly why it is the wrong engine here.**
+`ScreenSearch` pairs an `ActiveSearch` over the mutable active area with a
+`PageListSearch` walking the entire history in reverse (`src/terminal/search/screen.zig`),
+and keeps a separate search per screen so switching to the alt screen and back does not
+restart it. That is a better find than the one Muster is building - over a buffer Muster's
+panes do not have. A pane's surface is repainted from herdr's frame diffs, so its own
+scrollback is empty and libghostty would be searching one screen. The scrollback is the
+daemon's, and the daemon cannot search it (`herdr-0.8.0.md` section 17).
+
+**The matcher is `std.ascii.indexOfIgnoreCase`** (`src/terminal/search/sliding_window.zig`)
+- plain substring, ASCII case folding, no regex, no word boundaries. Anything Muster
+counts itself has to match that exactly, or the number in the find bar disagrees with what
+is highlighted underneath it.
+
+**Highlighting is libghostty's and costs the embedder nothing.** A third searcher over just
+the viewport produces the rectangles, which go to the renderer thread; the app draws
+nothing. Colors are config keys - `search-background` `#FFE082`, `search-selected-background`
+`#F2A57E` and their foregrounds (`src/config/Config.zig:1097-1124`) - so they arrive through
+the same derived config file as the rest of the appearance vocabulary.
+
+**One build fact that decides which library this works in.** The search thread is compiled
+out of the `.lib` artifact and present in the `.ghostty` one:
+
+```zig
+pub const Thread = switch (options.artifact) {
+    .ghostty => @import("search/Thread.zig"),
+    .lib => void,
+};                                      // src/terminal/search.zig:11-15
+```
+
+`.lib` is libghostty-vt, which Muster links for key encoding and the grid oracle; `.ghostty`
+is `GhosttyKit.xcframework`, which is where panes come from. So search is available exactly
+where Muster needs it, and would not have been had the surfaces come from the other library.
+The two headers are byte-identical either way, so this is not something a build failure
+would report.

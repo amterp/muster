@@ -1,0 +1,34 @@
+{
+  "1000": {
+    "rows_returned": 1000,
+    "truncated": true
+  },
+  "100000": {
+    "rows_returned": 1000,
+    "truncated": true
+  },
+  "1001": {
+    "rows_returned": 1000,
+    "truncated": true
+  },
+  "2000": {
+    "rows_returned": 1000,
+    "truncated": true
+  },
+  "500": {
+    "rows_returned": 500,
+    "truncated": true
+  },
+  "80": {
+    "rows_returned": 80,
+    "truncated": true
+  },
+  "999": {
+    "rows_returned": 999,
+    "truncated": true
+  },
+  "default": {
+    "rows_returned": 80,
+    "truncated": true
+  }
+}

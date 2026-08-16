@@ -1662,6 +1662,183 @@ def naming(daemon, rec: Recorder) -> None:
              f"title={survivor.get('terminal_title')!r}")
 
 
+# --------------------------------------------------------------------------- 17
+
+# Well past any plausible cap, so "it stopped here" is a measurement rather than the
+# end of the data. Numbered and zero-padded so a row's identity is readable in a
+# transcript and comparable as a string.
+RULER_ROWS = 3000
+RULER_COLS = 80
+RULER_VIEWPORT = 24
+
+
+def _ruler_command(rows: int) -> str:
+    """One awk call rather than a shell loop: 3000 forks through a PTY is a slow minute."""
+    return f"awk 'BEGIN{{for(i=1;i<={rows};i++) printf \"ruler-%05d\\n\", i}}'\n"
+
+
+def _read_with(client, params: dict) -> dict:
+    return client.request("pane.read", params)["read"]
+
+
+def _read(client, pane_id: str, source: str, lines: int | None = None) -> dict:
+    params = {"pane_id": pane_id, "source": source, "strip_ansi": True}
+    if lines is not None:
+        params["lines"] = lines
+    return _read_with(client, params)
+
+
+def _rows(read: dict) -> list[str]:
+    """A read's text as rows, without the empty tail a trailing newline produces."""
+    return read["text"].split("\n")[:-1] if read["text"].endswith("\n") else read["text"].split("\n")
+
+
+def read_depth(daemon, rec: Recorder) -> None:
+    """How far back `pane.read` can see, and whether what it returns lines up with the grid.
+
+    Find has to search a pane's history, and the history is the daemon's. Two questions
+    decide whether a client-side find is buildable at all, and neither has been recorded.
+
+    **How far back can a client read?** herdr's source clamps `lines` to 1000 with no
+    offset or cursor parameter, which would mean a find that silently misses everything
+    older - the same confident wrong answer the feature exists to avoid. Worth watching
+    rather than reading, because what matters is the answer at the wire, including
+    whether `truncated` is set when it happens.
+
+    **Do a read's lines correspond to grid rows?** This is the one that decides whether
+    landing on a hit is arithmetic or guesswork. herdr reports a pane's position as
+    `offset_from_bottom`, in rows, and there is no absolute scroll - so to put a hit on
+    screen a client must convert "the 400th line back in what I read" into "400 rows up
+    from the bottom" and scroll by the difference. That conversion is only sound if a
+    read's lines *are* rows. `recent` and `recent_unwrapped` are two different answers
+    to that, and the difference is a long line: one splits it at the pane's width, the
+    other does not.
+
+    Nothing here asserts. The evidence is `visible` compared against a slice of `recent`,
+    which is a claim anybody can re-derive from the transcript.
+    """
+    client = RecordingClient(daemon.client(), rec)
+    poll = daemon.client()
+    _new_workspace(client)
+    time.sleep(0.5)
+
+    with PaneStream(daemon, "w1:p1", cols=RULER_COLS, rows=RULER_VIEWPORT) as stream:
+        stream.wait_for_frames(1)
+        time.sleep(0.5)
+
+        stream.send_input_text(_ruler_command(RULER_ROWS))
+        last = f"ruler-{RULER_ROWS:05d}"
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
+            if last in _read(poll, "w1:p1", "visible")["text"]:
+                break
+            time.sleep(0.2)
+        else:
+            raise RuntimeError(f"{last} never reached the pane's screen")
+        stream.wait_quiet(0.5, timeout=10)
+        rec.note(f"printed {RULER_ROWS} numbered rows into an {RULER_COLS}x{RULER_VIEWPORT} pane")
+
+        # 1. How deep a read goes, against how deep the pane says it is.
+        scroll = client.request("pane.get", {"pane_id": "w1:p1"})["pane"]["scroll"]
+        rec.fact("scroll_after_printing", scroll)
+
+        depth = {}
+        for asked in (None, 80, 500, 999, 1000, 1001, 2000, 100000):
+            read = _read(client, "w1:p1", "recent", asked)
+            depth["default" if asked is None else str(asked)] = {
+                "rows_returned": len(_rows(read)),
+                "truncated": read["truncated"],
+            }
+        rec.write_json("recent-depth.json", depth)
+        rec.fact("recent_rows_returned_per_lines_asked",
+                 {k: v["rows_returned"] for k, v in depth.items()})
+        rec.fact("recent_truncated_per_lines_asked",
+                 {k: v["truncated"] for k, v in depth.items()})
+        deepest = max(v["rows_returned"] for v in depth.values())
+        rec.fact("deepest_read_vs_max_offset_from_bottom",
+                 {"rows_read": deepest, "max_offset_from_bottom": scroll.get("max_offset_from_bottom")})
+        rec.note(f"the deepest read returned {deepest} rows of a pane reporting "
+                 f"max_offset_from_bottom={scroll.get('max_offset_from_bottom')}")
+
+        # 2. Do a read's lines line up with the grid? `visible` is the grid, by
+        # definition - so if `recent` ends with exactly the rows `visible` holds, its
+        # lines are rows and a hit's line index is an offset.
+        recent = _rows(_read(client, "w1:p1", "recent", 1000))
+        visible = _rows(_read(client, "w1:p1", "visible"))
+        rec.write_text("visible-at-bottom.txt", "\n".join(visible) + "\n")
+        rec.write_text("recent-tail.txt", "\n".join(recent[-40:]) + "\n")
+        rec.fact("recent_tail_is_the_visible_screen", recent[-len(visible):] == visible)
+        rec.fact("visible_rows_returned", len(visible))
+
+        # 3. And is a scroll measured in those same rows? Scrolling up by a known number
+        # should reveal exactly the slice of `recent` that many rows further back.
+        step = 100
+        stream.scroll("up", step)
+        time.sleep(0.6)
+        scrolled = client.request("pane.get", {"pane_id": "w1:p1"})["pane"]["scroll"]
+        raised = _rows(_read(client, "w1:p1", "visible"))
+        rec.write_text("visible-after-scroll.txt", "\n".join(raised) + "\n")
+        rec.fact("offset_from_bottom_after_scrolling_up", {
+            "asked_for": step, "reported": scrolled.get("offset_from_bottom")})
+        predicted = recent[-len(visible) - step:-step] if step else recent[-len(visible):]
+        rec.fact("scrolled_screen_is_the_predicted_slice_of_recent", raised == predicted)
+        rec.write_text("predicted-after-scroll.txt", "\n".join(predicted) + "\n")
+        rec.note(f"scrolled up {step}: offset_from_bottom={scrolled.get('offset_from_bottom')}, "
+                 f"screen matches the predicted slice: {raised == predicted}")
+        stream.scroll("down", step)
+        time.sleep(0.4)
+
+        # 4. What a line longer than the pane becomes. `recent` is rows and so should
+        # split it; `recent_unwrapped` should not - which is the whole difference
+        # between a source you can compute positions in and one you can match across a
+        # wrap in. A find cannot have both.
+        wide = "W" * (RULER_COLS * 2 + 7)
+        stream.send_input_text(f"printf '%s\\n' {wide}\n")
+        time.sleep(1.0)
+        wrapped = _rows(_read(client, "w1:p1", "recent", 20))
+        unwrapped = _rows(_read(client, "w1:p1", "recent_unwrapped", 20))
+        rec.write_text("wrapped-tail.txt", "\n".join(wrapped) + "\n")
+        rec.write_text("unwrapped-tail.txt", "\n".join(unwrapped) + "\n")
+        rec.fact("long_line_row_widths_in_recent",
+                 [len(row) for row in wrapped if row.startswith("W")])
+        rec.fact("long_line_row_widths_in_recent_unwrapped",
+                 [len(row) for row in unwrapped if row.startswith("W")])
+        rec.note(f"a {len(wide)}-character line came back as "
+                 f"{len([r for r in wrapped if r.startswith('W')])} row(s) from recent and "
+                 f"{len([r for r in unwrapped if r.startswith('W')])} from recent_unwrapped")
+
+        # 5. Whether anything on the API can search, or read past the cap another way.
+        # A method that exists would change the whole design, so it is asked rather than
+        # assumed absent. herdr names every method it knows in the refusal, which makes
+        # this a complete answer rather than four guesses.
+        for method, params in (
+            ("pane.search", {"pane_id": "w1:p1", "query": "ruler-00042"}),
+            ("pane.find", {"pane_id": "w1:p1", "query": "ruler-00042"}),
+            ("pane.scroll", {"pane_id": "w1:p1", "offset_from_bottom": 400}),
+        ):
+            ok, answer = client.try_request(method, params)
+            rec.fact(f"method_exists__{method.replace('.', '_')}", ok)
+            if not ok:
+                rec.note(f"{method} refused: {answer}")
+
+        # An unknown parameter is the worse failure, because it answers. Paging past the
+        # cap would be spelled like this if it existed, and what comes back is a normal
+        # success carrying the same rows as a read that asked for no offset at all - so
+        # a client that assumed the key worked would page through one screenful forever.
+        base = {"pane_id": "w1:p1", "source": "recent", "strip_ansi": True, "lines": 1000}
+        # Read back to back, because the pane has been written to since the reads above
+        # and a stale baseline would make an ignored key look like an honoured one.
+        plain = _rows(_read_with(client, dict(base)))
+        paged = _rows(_read_with(client, dict(base, offset=1000)))
+        rec.fact("unknown_offset_key_is_accepted_and_ignored", {
+            "request_succeeded": True,
+            "rows_returned": len(paged),
+            "same_rows_as_no_offset": paged == plain,
+        })
+        rec.note(f"pane.read with an offset key succeeded, returned {len(paged)} rows, "
+                 f"identical to the read without one: {paged == plain}")
+
+
 ALL = {
     "snapshot": snapshot,
     "frames": frames,
@@ -1676,4 +1853,5 @@ ALL = {
     "split-sides": split_sides,
     "durability": durability,
     "naming": naming,
+    "read-depth": read_depth,
 }
