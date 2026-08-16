@@ -18,6 +18,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use herdr_harness::Daemon;
+use muster_core::intent::{BackendChannel, BackendIntent};
 use muster_core::mirror::Mirror;
 use muster_core::mirror::backend::PaneId;
 use muster_herdr::snapshot::read_snapshot;
@@ -144,6 +145,42 @@ fn a_name_and_a_title_sit_beside_each_other_and_neither_overwrites_the_other() {
         (Some("🔥 payments spike".to_string()), Some("second working build".to_string())),
         "naming a pane cost it the ability to say what it is doing, or the reverse"
     );
+}
+
+#[test]
+fn renaming_through_the_intent_shows_up_without_waiting_for_a_snapshot() {
+    // The whole point of the feature, and the hole it was shipped with. herdr emits no event
+    // for a pane rename, so a client that only listens changes the daemon and not its own
+    // window - which is what the running app did, while the wire-level cases were green.
+    // Going through `submit` rather than the raw call is what makes this the real path.
+    let (daemon, mirror, _subscription, pane) = session();
+    let client = daemon.client();
+
+    let outcome = client
+        .submit(&BackendIntent::RenamePane {
+            pane: pane.clone(),
+            name: Some("🔥 payments spike".into()),
+        })
+        .expect("a real daemon refused a rename it can do");
+    let (renamed, name) = outcome.renamed.clone().expect("pane.rename did not answer with a name");
+    assert_eq!(renamed, pane);
+    mirror.lock().unwrap().rename(&renamed, name);
+
+    assert_eq!(
+        held(&mirror, &pane).0.as_deref(),
+        Some("🔥 payments spike"),
+        "the answer to a rename was not applied, so the window keeps the old name until it \
+         happens to re-snapshot"
+    );
+
+    // And the way back, which is a null on the wire and no name here.
+    let outcome = client
+        .submit(&BackendIntent::RenamePane { pane: pane.clone(), name: None })
+        .expect("a real daemon refused a rename it can do");
+    let (cleared, name) = outcome.renamed.clone().expect("a clearing rename answered with nothing");
+    mirror.lock().unwrap().rename(&cleared, name);
+
+    assert_eq!(held(&mirror, &pane).0, None, "clearing a name left it named");
 }
 
 #[test]

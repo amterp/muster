@@ -261,6 +261,17 @@ pub struct Outcome {
     pub created_tab: Option<TabId>,
     /// How a tab is arranged now, when the daemon's answer said.
     pub settled: Option<SettledLayout>,
+    /// What a pane is called now, when the request renamed one.
+    ///
+    /// The only route there is. A backend need not announce a rename, and herdr does not:
+    /// there is no event for one and no counter that moves, so a reply is the whole of what
+    /// a client learns (`observations/herdr-0.8.0.md` section 16). Without taking it here,
+    /// naming a pane changes the daemon and not the window, and stays that way until the
+    /// connection next re-snapshots.
+    ///
+    /// The inner `Option` is the name itself, absent when the rename took one away, so that
+    /// "no rename happened" and "the name is now nothing" are different answers.
+    pub renamed: Option<(PaneId, Option<String>)>,
 }
 
 /// Why a backend would not make a change.

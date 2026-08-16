@@ -47,7 +47,12 @@ impl BackendChannel for HerdrClient {
             }
             _ => settled(&result, None),
         };
-        Ok(Outcome { created, created_tab: created_tab(&result), settled })
+        Ok(Outcome {
+            created,
+            created_tab: created_tab(&result),
+            settled,
+            renamed: renamed(intent, &result),
+        })
     }
 
     fn description(&self) -> &str {
@@ -241,6 +246,30 @@ pub fn request(intent: &BackendIntent) -> (&'static str, Value) {
             json!({ "tab_id": tab.as_str(), "label": name.clone().unwrap_or_default() }),
         ),
     }
+}
+
+/// What a pane is called now, for the request that renamed one.
+///
+/// Read from the answer because there is nowhere else to read it: herdr emits no event for a
+/// pane rename and has no topic for one, so this reply is the only thing that ever says the
+/// name changed (`observations/herdr-0.8.0.md` section 16).
+///
+/// Keyed off the intent rather than off the shape of the answer, because `pane.rename` replies
+/// with the same pane payload several other methods do - taking it from any of them would let
+/// a focus or a resize restate a name it knows nothing about.
+///
+/// The pane comes from the intent and not from the reply. The reply names it too and agrees,
+/// but the intent is what this window asked about, and a mirror updated from the answer's own
+/// idea of which pane it was is a mirror that cannot notice the two disagreeing.
+fn renamed(intent: &BackendIntent, result: &Value) -> Option<(PaneId, Option<String>)> {
+    let BackendIntent::RenamePane { pane, .. } = intent else { return None };
+    let name = result
+        .get("pane")
+        .and_then(|pane| pane.get("label"))
+        .and_then(Value::as_str)
+        .filter(|name| !name.is_empty())
+        .map(str::to_string);
+    Some((pane.clone(), name))
 }
 
 /// The pane a request made, if it made one.

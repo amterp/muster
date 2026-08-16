@@ -229,6 +229,25 @@ impl Mirror {
     ///
     /// An answer that changes nothing arms nothing: the tab is where the daemon says it should
     /// be, so there is no earlier arrangement still on its way.
+    /// Takes what a backend said a pane is now called, from its answer to a rename.
+    ///
+    /// Daemon truth on the same terms as an event, like [`Mirror::settle`] beside it - and
+    /// here it is the *only* terms there are. A backend need not announce a rename and herdr
+    /// does not, so without this a pane named from this window changes on the daemon and not
+    /// on screen, and stays that way until the connection re-snapshots.
+    ///
+    /// A rename of a pane the mirror does not hold is dropped rather than invented: it named
+    /// a pane that has closed since, and a name is not enough to build one from.
+    pub fn rename(&mut self, pane: &PaneId, name: Option<String>) -> Vec<Change> {
+        match self.panes.get_mut(pane) {
+            Some(held) if held.name != name => {
+                held.name = name;
+                vec![Change::PaneRelabelled(pane.clone())]
+            }
+            _ => Vec::new(),
+        }
+    }
+
     pub fn settle(&mut self, settled: SettledLayout) -> Vec<Change> {
         let SettledLayout { layout, stale } = settled;
         let tab = layout.tab.clone();

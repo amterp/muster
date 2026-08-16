@@ -854,6 +854,22 @@ pub(crate) fn submit(daemon: &DaemonId, intent: &BackendIntent) -> Result<(), St
         }
     }
 
+    // What the daemon said a pane is now called, taken from the answer for the same reason as
+    // the arrangement above and with less choice about it: herdr emits no event for a pane
+    // rename and has no topic for one, so this reply is the only thing that will ever say so
+    // (`observations/herdr-0.8.0.md` section 16). Without this, naming a pane changes the
+    // daemon and leaves the window reading what it read before.
+    if let Ok(outcome) = &outcome
+        && let Some((pane, name)) = outcome.renamed.clone()
+    {
+        let session = SESSION.lock().expect("a panicking sender poisoned the session");
+        if let Some(backend) = session.backends.get(daemon)
+            && let Ok(mut mirror) = backend.mirror.lock()
+        {
+            moved |= !mirror.rename(&pane, name).is_empty();
+        }
+    }
+
     // The pane a split made, remembered rather than pointed at. It is not in the mirror yet -
     // its event is still in flight - and every publish resolves a region against the mirror's
     // pane list, so pointing at it now is undone before anything renders. `publish` puts the
