@@ -598,12 +598,16 @@ fn attach_pane(pane_id: &str) -> Response {
         Err(AttachError::Unreachable(detail)) => Response::failure(format!(
             "{detail} Nothing is known about this pane, so the window will render nothing."
         )),
+        // Muster's own answer to "then what is there", rather than the daemon's CLI. Somebody
+        // who typed a Muster command and got a refusal should not have to learn which daemon
+        // is underneath it to act on one, and the schema-drift half of this belongs to
+        // whoever is debugging Muster - it is already a `mirror.entries_dropped` record.
         Err(AttachError::NoSuchPane { pane, held, dropped }) => Response::failure(format!(
-            "no daemon holds a pane called {pane}, so this window has nothing to show and \
-             would render and ignore the keyboard. The daemon answered with {held} pane(s); \
-             `herdr pane list` names them. {dropped} entries in that answer did not read, \
-             so if this id is one of them the problem is a herdr whose payload has moved \
-             rather than a pane that is missing."
+            "no pane called {pane} exists, so this window has nothing to show and would \
+             render and ignore the keyboard. The attached sessions hold {held} pane(s) \
+             between them - run `muster` with no arguments to open onto them and see the \
+             list. {dropped} more could not be read, so if this id is one of those, the run \
+             log says what went unread."
         )),
         Err(AttachError::NoChannel(detail)) => Response::failure(format!(
             "the core could not open a channel to this pane: {detail} Nothing typed into it \

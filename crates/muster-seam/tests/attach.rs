@@ -54,8 +54,16 @@ fn attaching_places_a_pane_where_the_keyboard_can_find_it() {
 
     let reason = refusal(request::Payload::AttachPane(AttachPane { pane_id: "w9:p9".to_string() }));
     assert!(
-        reason.contains("w9:p9") && reason.contains("herdr pane list"),
+        reason.contains("w9:p9") && reason.contains("run `muster`"),
         "a pane no daemon holds should be refused by name, and was refused with: {reason}"
+    );
+    // What a person is told to do next is Muster's own, never the backend's. Asserted rather
+    // than left to review because this message is read at exactly the moment somebody is
+    // confused, and naming the daemon there teaches them a vocabulary Muster exists to spare
+    // them (README desiderata, swappable organs).
+    assert!(
+        !reason.contains("herdr"),
+        "a refusal a user reads should not hand them the backend's CLI: {reason}"
     );
 
     let one = attach(&first);
