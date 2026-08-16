@@ -157,6 +157,39 @@ struct RegionViewTests {
     // is a split nobody can resize.
     #expect(view.subviews.filter { $0 is DividerView }.count == 2)
   }
+
+  @MainActor
+  @Test("the wheel moves the pane it is over, not the one with the keyboard")
+  func aWheelMovesThePaneUnderIt() {
+    // The card's whole case: reading one agent's output while typing into another is the
+    // ordinary thing to do in a window of fifteen, and a wheel that moved the focused pane
+    // made it impossible without clicking away from what you were typing in first.
+    let recorder = recorder()
+    let (view, _) = region()
+    let tree = PaneTree.split(
+      axis: .columns, ratio: 0.5, first: leaf("w1:p1"), second: leaf("w1:p2"))
+    view.apply(contents(tree, keyboard: "w1:p1"), focused: true)
+    // The real path does this when the pane's bridge starts; here the surface factory only
+    // records, so nothing else would make the view willing to report input.
+    guard let scrolled = view.chrome(for: "w1:p2") else { return }
+    scrolled.surface.attach(typeable: true)
+    let mark = recorder.requests.count
+    guard let event = wheel(deltaY: 3) else { return }
+
+    scrolled.surface.scrollWheel(with: event)
+
+    let scrolls = recorder.sent(since: mark) {
+      if case .scroll = $0.payload { true } else { false }
+    }
+    #expect(scrolls.map { $0.scroll.paneID } == ["w1:p2"])
+    #expect(scrolls.map { $0.scroll.daemonID } == ["local"])
+    #expect(scrolls.map { $0.scroll.direction } == ["up"])
+    // And the keyboard stayed where it was: nothing asked to focus the pane it moved over.
+    let focuses = recorder.sent(since: mark) {
+      if case .focusPane = $0.payload { true } else { false }
+    }
+    #expect(focuses.isEmpty)
+  }
 }
 
 @Suite("a region says which daemon its frames come from")

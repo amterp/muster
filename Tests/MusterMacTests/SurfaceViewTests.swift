@@ -12,20 +12,6 @@ import Testing
 // seam recorded rather than crossed - so what these assert on is the request that would
 // have gone to the core, which is the daemon-facing oracle one layer up (docs/testing.md).
 
-/// Records what the shell asked of the core, and answers as the core would.
-private final class RecordingDispatcher: Dispatcher, @unchecked Sendable {
-  private(set) var requests: [Muster_Request] = []
-
-  func dispatch(_ request: [UInt8]) -> [UInt8] {
-    if let decoded = try? Muster_Request(serializedBytes: request) {
-      requests.append(decoded)
-    }
-    var response = Muster_Response()
-    response.ok = Muster_Ok()
-    return (try? response.serializedBytes()) ?? []
-  }
-}
-
 @MainActor
 private func view(_ recorder: RecordingDispatcher) -> SurfaceView {
   Core.dispatcher = recorder
@@ -85,19 +71,35 @@ private func view(_ recorder: RecordingDispatcher) -> SurfaceView {
   #expect(recorder.requests.map { $0.sendText.text } == ["→"])
 }
 
-@Test @MainActor func aWheelBecomesAScrollIntent() {
+@Test @MainActor func aWheelIsReportedRatherThanSent() {
   // The device's own delta, unscaled and unrounded. How many lines that is worth depends on
   // `scroll_multiplier`, so the core decides it - a shell that turned a delta into lines here
   // would be a second place that answer lives, and the two would drift.
-  let recorder = RecordingDispatcher()
-  let surface = view(recorder)
-  guard let wheel = scroll(deltaY: 3) else { return }
+  //
+  // Reported rather than sent, because a wheel is addressed to a pane and this view does not
+  // know which one it is showing. Which pane it names is pinned a layer up, where the id is.
+  let surface = view(recorder())
+  var asked: [(String, Double)] = []
+  surface.onScroll = { asked.append(($0, $1)) }
+  guard let event = wheel(deltaY: 3) else { return }
 
-  surface.scrollWheel(with: wheel)
+  surface.scrollWheel(with: event)
 
-  #expect(recorder.requests.count == 1)
-  #expect(recorder.requests[0].scroll.direction == "up")
-  #expect(recorder.requests[0].scroll.delta == 3)
+  #expect(asked.map(\.0) == ["up"])
+  #expect(asked.map(\.1) == [3])
+}
+
+@Test @MainActor func aWheelOverAPaneNeverAsksForTheKeyboard() {
+  // The whole point of the feature: reading one agent's output while typing into another. A
+  // scroll that also focused would make that impossible in exactly the case it exists for.
+  let surface = view(recorder())
+  var focused = false
+  surface.onClick = { focused = true }
+  guard let event = wheel(deltaY: 3) else { return }
+
+  surface.scrollWheel(with: event)
+
+  #expect(focused == false)
 }
 
 @Test @MainActor func aViewWithNoPaneSendsNothingRatherThanRefusalsPerKeystroke() {
@@ -302,17 +304,6 @@ private func mouse(_ type: NSEvent.EventType, at point: NSPoint) -> NSEvent {
   NSEvent.mouseEvent(
     with: type, location: point, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil,
     eventNumber: 0, clickCount: 1, pressure: 1)!
-}
-
-private func scroll(deltaY: CGFloat) -> NSEvent? {
-  // Wheel events have no public constructor, so this goes through CGEvent, which does.
-  guard
-    let event = CGEvent(
-      scrollWheelEvent2Source: nil, units: .line, wheelCount: 1, wheel1: 0, wheel2: 0, wheel3: 0)
-  else { return nil }
-  event.setDoubleValueField(.scrollWheelEventPointDeltaAxis1, value: Double(deltaY))
-  event.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1, value: Double(deltaY))
-  return NSEvent(cgEvent: event)
 }
 
 // Sizing the text, which is a Muster action rather than a terminal setting - so it is

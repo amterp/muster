@@ -130,6 +130,10 @@ public final class RegionView: NSView {
       chrome.onFocusRequested = { [weak self] paneID in
         Core.focus(daemonID: self?.daemonID ?? "", paneID: paneID)
       }
+      chrome.onScrollRequested = { [weak self] paneID, direction, delta in
+        Core.scroll(
+          daemonID: self?.daemonID ?? "", paneID: paneID, direction: direction, delta: delta)
+      }
       addSubview(chrome)
       held[leaf.paneID] = Held(chrome: chrome, controlSocketPath: leaf.controlSocketPath)
       fresh.append(leaf)

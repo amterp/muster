@@ -10,40 +10,6 @@ import Testing
 // wired to the wrong one of these is invisible on screen until you try it: a split that
 // resizes, a close that focuses.
 
-private final class RecordingDispatcher: Dispatcher, @unchecked Sendable {
-  private(set) var requests: [Muster_Request] = []
-
-  func dispatch(_ request: [UInt8]) -> [UInt8] {
-    if let decoded = try? Muster_Request(serializedBytes: request) {
-      requests.append(decoded)
-    }
-    var response = Muster_Response()
-    response.ok = Muster_Ok()
-    return (try? response.serializedBytes()) ?? []
-  }
-}
-
-@MainActor
-private func recorder() -> RecordingDispatcher {
-  let recorder = RecordingDispatcher()
-  Core.dispatcher = recorder
-  return recorder
-}
-
-extension RecordingDispatcher {
-  /// What the gesture sent, of the kind the test is about.
-  ///
-  /// Filtered rather than taken whole, because a gesture is not the only thing that reaches the
-  /// recorder between two marks. Reads answered once for the life of the process - the
-  /// divider's colour is one, and it fires the first time anything lays a divider out - land in
-  /// whichever test happens to get there first, which is a different one on every run. Counting
-  /// requests made those tests fail one run in four for a reason that had nothing to do with
-  /// what they assert.
-  func sent(since mark: Int, of kind: (Muster_Request) -> Bool) -> [Muster_Request] {
-    requests.dropFirst(mark).filter(kind)
-  }
-}
-
 @Suite("pane actions cross the seam")
 struct PaneActionTests {
   @MainActor

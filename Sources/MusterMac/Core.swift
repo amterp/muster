@@ -122,8 +122,12 @@ public enum Core {
     send(request)
   }
 
-  public static func scroll(direction: String, delta: Double) {
+  /// Scrolls one named pane, which is the pane the pointer was over rather than the focused
+  /// one. Both ids, because two daemons hand out the same pane ids.
+  public static func scroll(daemonID: String, paneID: String, direction: String, delta: Double) {
     var scroll = Muster_Scroll()
+    scroll.daemonID = daemonID
+    scroll.paneID = paneID
     scroll.direction = direction
     scroll.delta = delta
     var request = Muster_Request()

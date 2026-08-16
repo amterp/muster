@@ -49,6 +49,15 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
   /// to mean this and nothing else.
   public var onClick: (@MainActor () -> Void)?
 
+  /// Called when the wheel moves over this view, meaning the user wants *this* pane scrolled.
+  ///
+  /// Reported rather than sent, for the same reason a click is: the view under the pointer
+  /// knows the gesture happened and nothing else, and which pane that is belongs to the chrome
+  /// around it. AppKit hit-tests `scrollWheel` to the view the pointer is over, so this fires
+  /// on the right surface whether or not it is the one with the keyboard - which is the whole
+  /// of the feature.
+  public var onScroll: (@MainActor (_ direction: String, _ delta: Double) -> Void)?
+
   public override init(frame: NSRect) {
     super.init(frame: frame)
     // Layer-backed before the surface is created, and on the main thread. libghostty's
@@ -218,8 +227,7 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
     // core's answer, because it depends on a config key and a shell deciding it here would
     // be a second place that lives.
     guard isTypeable, event.scrollingDeltaY != 0 else { return }
-    Core.scroll(
-      direction: event.scrollingDeltaY > 0 ? "up" : "down", delta: abs(event.scrollingDeltaY))
+    onScroll?(event.scrollingDeltaY > 0 ? "up" : "down", abs(event.scrollingDeltaY))
   }
 
   /// The clipboard, on its way to the pane.

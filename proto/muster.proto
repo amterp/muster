@@ -599,7 +599,16 @@ message Paste {
 // worth is a decision - `scroll_multiplier` scales it and the core rounds it. A shell that
 // turned a delta into lines for itself would be a second place that answer lives, and the
 // two would drift the moment either changed.
+//
+// The pane is named because a wheel moves what the pointer is over rather than what the
+// keyboard is in - reading one agent's output while typing into another is the ordinary case
+// in a window of fifteen. That is the one thing separating this from every other input
+// message here, all of which mean the focused pane. The daemon comes with it because two
+// daemons hand out the same pane ids.
 message Scroll {
+  string daemon_id = 3;
+  string pane_id = 4;
+
   string direction = 1;  // up or down
   double delta = 2;
 }

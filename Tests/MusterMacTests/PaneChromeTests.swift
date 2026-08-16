@@ -119,6 +119,28 @@ struct PaneChromeTests {
     #expect(asked == ["w1:p3"])
   }
 
+  @MainActor
+  @Test("a wheel names the pane it moved over, and asks for no keyboard")
+  func aWheelCarriesThePane() {
+    let chrome = pane()
+    chrome.attach(paneID: "w1:p3")
+    var scrolled: [String] = []
+    var focused: [String] = []
+    chrome.onScrollRequested = { paneID, _, _ in scrolled.append(paneID) }
+    chrome.onFocusRequested = { focused.append($0) }
+    // A view with no pane behind it reports nothing at all, which is a separate rule and one
+    // the renderer check relies on.
+    chrome.surface.attach(typeable: true)
+    guard let event = wheel(deltaY: 3) else { return }
+
+    chrome.surface.scrollWheel(with: event)
+
+    #expect(scrolled == ["w1:p3"])
+    // Two edges mean two things in this window, and so do two gestures: a click asks for the
+    // keyboard and a wheel does not.
+    #expect(focused.isEmpty)
+  }
+
   @Test("the renderer check has no pane and says so")
   func rendererCheckIsLabeled() {
     #expect(

@@ -112,6 +112,11 @@ public final class PaneChrome: NSView {
   /// Called when somebody clicks this pane, meaning they want the keyboard here.
   public var onFocusRequested: ((String) -> Void)?
 
+  /// Called when the wheel moves over this pane. Never moves the keyboard: a wheel scrolls
+  /// what the pointer is over and a click is what asks for the keyboard, and keeping the two
+  /// apart is what lets you read one agent while typing into another.
+  public var onScrollRequested: ((_ paneID: String, _ direction: String, _ delta: Double) -> Void)?
+
   private let focusRing = CALayer()
 
   public init(frame: NSRect, surface: SurfaceView) {
@@ -127,6 +132,10 @@ public final class PaneChrome: NSView {
     surface.onClick = { [weak self] in
       guard let self, let paneID = self.paneID else { return }
       self.onFocusRequested?(paneID)
+    }
+    surface.onScroll = { [weak self] direction, delta in
+      guard let self, let paneID = self.paneID else { return }
+      self.onScrollRequested?(paneID, direction, delta)
     }
     applyAppearance()
   }

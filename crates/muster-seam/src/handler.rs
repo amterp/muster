@@ -157,19 +157,44 @@ fn set_split_ratio(set: proto::SetSplitRatio) -> Response {
 }
 
 /// One wheel notch or trackpad gesture, scaled by what the config file asked for.
+///
+/// Addressed rather than focused, which is what separates this from every other input path
+/// here. A wheel moves the pane the pointer is over, because reading one agent's output while
+/// typing into another is the ordinary case in a window of fifteen - so this never touches the
+/// keyboard, and pointing at a pane is not a request to type in it.
 fn scroll_pane(scroll: &proto::Scroll) -> Response {
-    with_pane("a scroll", |pane| match ScrollDirection::parse(&scroll.direction) {
-        Some(direction) => {
-            pane.input.scroll(direction, lines(scroll.delta));
-            Response::ok()
-        }
-        None => Response::failure(format!(
+    let Some(direction) = ScrollDirection::parse(&scroll.direction) else {
+        return Response::failure(format!(
             "the core does not know a scroll direction called {:?}, so the wheel did nothing. \
              Only up and down exist; the shell builds this from a fixed set, so this is a bug \
              there.",
             scroll.direction
-        )),
-    })
+        ));
+    };
+    let daemon = match resolve_daemon(&scroll.daemon_id) {
+        Ok(daemon) => daemon,
+        Err(refusal) => return refusal,
+    };
+    let pane = PaneId::new(&scroll.pane_id);
+    let Some(attached) = session::attached_pane(&daemon, &pane) else {
+        // Not a refusal, and the difference is the point: the pointer being somewhere is not a
+        // request, so a wheel over a pane whose bridge has not finished starting should cost
+        // nothing and say nothing loud. A `Response::failure` here would be logged as
+        // `core.refused` at error level, once per wheel event, for a state that resolves in
+        // milliseconds.
+        log::debug(
+            "scroll.unattached",
+            fields! {
+                "daemon" => daemon.to_string(),
+                "pane" => pane.to_string(),
+                "impact" => "the wheel moved nothing. Expected while a pane's bridge is \
+                             starting; a pane that never scrolls has no channel at all.",
+            },
+        );
+        return Response::ok();
+    };
+    attached.input.scroll(direction, lines(scroll.delta));
+    Response::ok()
 }
 
 /// One press, after the input method has had its turn.

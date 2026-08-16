@@ -679,6 +679,14 @@ impl Session {
         self.panes.get(&region.daemon)?.get(region.pane.as_ref()?).map(Arc::clone)
     }
 
+    /// One named pane, whether or not the keyboard is in it.
+    ///
+    /// Behind an `Arc` for the same reason [`Self::keyboard_pane`] is: the caller lets go of
+    /// this lock before it sends anything.
+    fn attached_pane(&self, daemon: &DaemonId, pane: &PaneId) -> Option<Arc<AttachedPane>> {
+        self.panes.get(daemon)?.get(pane).map(Arc::clone)
+    }
+
     /// Which of one daemon's regions shows this pane.
     ///
     /// Scoped to a daemon rather than searched across all of them, because two daemons hand
@@ -713,6 +721,14 @@ impl Session {
 /// The pane this window's keyboard feeds, if it has one.
 pub(crate) fn keyboard_pane() -> Option<Arc<AttachedPane>> {
     SESSION.lock().expect("a panicking sender poisoned the session").keyboard_pane()
+}
+
+/// One named pane, if this window has a channel open to it.
+///
+/// For the input that is addressed rather than focused, which today is the wheel. Absent means
+/// no channel, not no pane: a pane whose bridge has not finished starting is the ordinary case.
+pub(crate) fn attached_pane(daemon: &DaemonId, pane: &PaneId) -> Option<Arc<AttachedPane>> {
+    SESSION.lock().expect("a panicking sender poisoned the session").attached_pane(daemon, pane)
 }
 
 /// Asks the daemon showing this window for a change.
