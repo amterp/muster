@@ -11,6 +11,7 @@ use muster_core::fields;
 
 use muster_core::composition::{DaemonId, FontSizeChange, RegionId, Step};
 use muster_core::config::{self, CursorStyle};
+use muster_core::find::Needle;
 use muster_core::input::{CompositionOutcome, Modifiers, ScrollDirection, composition_outcome};
 use muster_core::intent::{BackendIntent, Branch, Side};
 use muster_core::mirror::backend::{PaneId, TabId};
@@ -107,6 +108,68 @@ fn handle(request: Request) -> Response {
         request::Payload::Scroll(scroll) => scroll_pane(&scroll),
         request::Payload::RenamePane(rename) => rename_pane(&rename),
         request::Payload::RenameTab(rename) => rename_tab(&rename),
+        request::Payload::Find(find) => find_in_pane(&find),
+        request::Payload::FindStep(step) => step_find(&step.direction),
+        request::Payload::EndFind(_) => {
+            session::end_find();
+            Response::ok()
+        }
+    }
+}
+
+/// Looks for something in a pane, and puts the first match on screen.
+///
+/// Named like every other pane request: an empty pane means the one the keyboard is on,
+/// which is the pane a find bar is drawn over and so the only case a chord produces.
+fn find_in_pane(find: &proto::Find) -> Response {
+    let daemon = match resolve_daemon(&find.daemon_id) {
+        Ok(daemon) => daemon,
+        Err(refusal) => return refusal,
+    };
+    let pane = if find.pane_id.is_empty() {
+        match session::focused_pane() {
+            Some(pane) => pane,
+            None => {
+                return Response::failure(
+                    "no pane has this window's keyboard, so there was nothing to search. A find \
+                     that names no pane means the focused one, and this window has none - the \
+                     attach failed earlier, or the pane it succeeded on exited.",
+                );
+            }
+        }
+    } else {
+        PaneId::new(&find.pane_id)
+    };
+    found(session::find(&daemon, &pane, &Needle::new(&find.needle)))
+}
+
+/// Walks the matches of the search already open.
+fn step_find(direction: &str) -> Response {
+    let forward = match direction {
+        "next" => true,
+        "previous" => false,
+        _ => {
+            return Response::failure(format!(
+                "the core does not know a find step called {direction:?}, so the selected match \
+                 stayed where it was. Only next and previous exist; the shell builds this from a \
+                 fixed set, so this is a bug there."
+            ));
+        }
+    };
+    found(session::step_find(forward))
+}
+
+fn found(answer: Result<session::Findings, String>) -> Response {
+    match answer {
+        Ok(findings) => Response {
+            payload: Some(response::Payload::Findings(proto::Findings {
+                total: findings.total,
+                selected: findings.selected,
+                rows_searched: findings.rows_searched,
+                truncated: findings.truncated,
+            })),
+        },
+        Err(reason) => Response::failure(reason),
     }
 }
 

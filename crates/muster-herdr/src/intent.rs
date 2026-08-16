@@ -16,7 +16,7 @@ use muster_core::find::{Found, Needle, found_in};
 use muster_core::intent::{
     BackendChannel, BackendIntent, Branch, Outcome, Refusal, SettledLayout, Side,
 };
-use muster_core::mirror::backend::{PaneId, TabId};
+use muster_core::mirror::backend::{PaneId, TabId, Viewport};
 use serde_json::{Value, json};
 
 use crate::client::{Failure, HerdrClient};
@@ -118,6 +118,25 @@ impl BackendChannel for HerdrBackend {
         // reverse is the confident wrong answer this feature exists to avoid.
         let truncated = nested(&result, "truncated").and_then(Value::as_bool).unwrap_or(false);
         Ok(found_in(text, needle, truncated))
+    }
+
+    fn viewport(&self, pane: &PaneId) -> Result<Viewport, Refusal> {
+        let params = json!({ "pane_id": pane.as_str() });
+        let result =
+            self.client.request("pane.get", &params).map_err(|failure| refusal(&failure))?;
+        let scroll = nested(&result, "scroll");
+        let rows = |field: &str| {
+            scroll.and_then(|scroll| scroll.get(field)).and_then(Value::as_u64).unwrap_or_default()
+        };
+        // Saturating rather than wrapping. These are row counts of a terminal's history, so a
+        // value that did not fit is a daemon reporting something impossible - and a wrapped
+        // one would scroll a pane to the far end of itself.
+        let count = |field: &str| u32::try_from(rows(field)).unwrap_or(u32::MAX);
+        Ok(Viewport {
+            rows_from_bottom: count("offset_from_bottom"),
+            rows: count("viewport_rows"),
+            deepest: count("max_offset_from_bottom"),
+        })
     }
 
     fn description(&self) -> &str {

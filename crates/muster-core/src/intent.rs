@@ -11,7 +11,7 @@
 //! side, because that is the question a person answered when they pressed the key.
 
 use crate::find::{Found, Needle};
-use crate::mirror::backend::{Layout, PaneId, TabId, WorkspaceId};
+use crate::mirror::backend::{Layout, PaneId, TabId, Viewport, WorkspaceId};
 
 /// A direction on screen, as a person means it.
 ///
@@ -364,6 +364,15 @@ pub trait BackendChannel: Send + Sync + std::fmt::Debug {
     /// asks a backend to *do*, and putting a question in it would make `Outcome` - a
     /// statement about a change just made - carry answers to things that changed nothing.
     fn find(&self, pane: &PaneId, needle: &Needle) -> Result<Found, Refusal>;
+
+    /// Where a pane is looking, so that something found can be scrolled to.
+    ///
+    /// Asked at the moment it is needed rather than followed, because the change to it is
+    /// announced only to a subscription that names the pane - fifteen panes would be fifteen
+    /// held connections for a number nothing renders. A wheel touched between this answer
+    /// and the scroll that follows it makes the landing approximate, which is the honest
+    /// cost of a backend that scrolls by steps rather than to a place.
+    fn viewport(&self, pane: &PaneId) -> Result<Viewport, Refusal>;
 
     /// What this channel is talking to, for the log.
     fn description(&self) -> &str;

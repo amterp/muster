@@ -22,7 +22,8 @@ use muster_core::composition::{
 use muster_core::config::{Appearance, Config, Feel, Panes};
 use muster_core::diagnostics::log;
 use muster_core::fields;
-use muster_core::input::{Bindings, PaneInput, PaneInputSettings};
+use muster_core::find::{Found, Needle};
+use muster_core::input::{Bindings, PaneInput, PaneInputSettings, ScrollDirection};
 use muster_core::intent::{BackendChannel, BackendIntent, Refusal};
 use muster_core::mirror::backend::{PaneId, Snapshot, TabId, WorkspaceId};
 use muster_core::mirror::{Change, Mirror};
@@ -482,6 +483,30 @@ pub(crate) struct Session {
 
     /// The window's own chrome, which spans the daemons for the same reason attention does.
     presentation: Presentation,
+
+    /// The search somebody has open, if anybody has.
+    ///
+    /// One at a time, because the find bar is one bar over the pane with the keyboard. Held
+    /// here rather than in `Presentation` because it is not worth a restart remembering -
+    /// `presentation.rs` says as much about panels that open on a chord - and not in the
+    /// shell because which hit is selected decides which scroll goes out, and deciding is
+    /// this side's job.
+    search: Option<Search>,
+}
+
+/// One pane's live search.
+///
+/// The hits are kept rather than looked for again on every step. A pane goes on printing
+/// while somebody reads it, so a needle asked for twice can answer differently - and a
+/// counter that says "3 of 47" while walking a list of 51 is worse than one that is a moment
+/// behind. Re-typing is what re-reads.
+#[derive(Debug)]
+struct Search {
+    daemon: DaemonId,
+    pane: PaneId,
+    found: Found,
+    /// Which hit is selected, or none when nothing matched.
+    selected: Option<usize>,
 }
 
 pub(crate) static SESSION: LazyLock<Mutex<Session>> =
@@ -2098,6 +2123,156 @@ pub(crate) fn toggle_sidebar() {
     log::info("presentation.sidebar", fields! { "shown" => presentation.sidebar });
     announce_presentation(presentation);
     publish();
+}
+
+/// What a search is showing, which is everything the shell draws in the find bar.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct Findings {
+    pub(crate) total: u32,
+    /// Which hit is selected, counting from one, or zero when nothing matched.
+    ///
+    /// Counting from one because it is a number a person reads - "3 of 47" - and zero is
+    /// already the answer to "which of nothing".
+    pub(crate) selected: u32,
+    pub(crate) rows_searched: u32,
+    pub(crate) truncated: bool,
+}
+
+/// Looks for something in the pane with the keyboard, and lands on the first match.
+///
+/// A read and a scroll, in that order, and the whole of what typing in the find bar does.
+/// An empty needle answers without asking anybody: it means nothing has been typed yet, and
+/// a round trip per keystroke on the way to an empty field would be a round trip for nothing.
+pub(crate) fn find(daemon: &DaemonId, pane: &PaneId, needle: &Needle) -> Result<Findings, String> {
+    if needle.is_empty() {
+        end_find();
+        return Ok(Findings::default());
+    }
+    let channel = channel(daemon)?;
+    let found = channel.find(pane, needle).map_err(|refusal| {
+        format!(
+            "the daemon {daemon} would not read pane {pane}, so nothing was searched: {refusal}"
+        )
+    })?;
+
+    let selected = (!found.hits.is_empty()).then_some(0);
+    let search = Search { daemon: daemon.clone(), pane: pane.clone(), found, selected };
+    let findings = search.findings();
+    land(&search);
+    SESSION.lock().expect("a panicking sender poisoned the session").search = Some(search);
+    Ok(findings)
+}
+
+/// Moves to the next match, or the previous one, and lands on it.
+///
+/// Wraps at both ends, because a list somebody is stepping through has no reason to stop
+/// having reached one end of it - and the alternative is a chord that silently does nothing.
+pub(crate) fn step_find(forward: bool) -> Result<Findings, String> {
+    let mut session = SESSION.lock().expect("a panicking sender poisoned the session");
+    let Some(search) = session.search.as_mut() else {
+        return Err("nothing is being searched for, so there was no next match to go to. The \
+                    find bar sends this, so either it is open with nothing typed in it or the \
+                    core forgot a search the shell still has on screen."
+            .to_string());
+    };
+    let total = search.found.hits.len();
+    if total == 0 {
+        return Ok(search.findings());
+    }
+    search.selected = Some(match (search.selected, forward) {
+        (Some(at), true) => (at + 1) % total,
+        (Some(at), false) => (at + total - 1) % total,
+        (None, _) => 0,
+    });
+    let findings = search.findings();
+    // Taken out from under the lock, because landing is a round trip and holding the session
+    // across one stalls every event arriving from every other daemon.
+    let landing = Search {
+        daemon: search.daemon.clone(),
+        pane: search.pane.clone(),
+        found: search.found.clone(),
+        selected: search.selected,
+    };
+    drop(session);
+    land(&landing);
+    Ok(findings)
+}
+
+/// Forgets the search, which is what closing the find bar means.
+pub(crate) fn end_find() {
+    SESSION.lock().expect("a panicking sender poisoned the session").search = None;
+}
+
+impl Search {
+    fn findings(&self) -> Findings {
+        Findings {
+            total: u32::try_from(self.found.hits.len()).unwrap_or(u32::MAX),
+            selected: self.selected.map_or(0, |at| u32::try_from(at + 1).unwrap_or(u32::MAX)),
+            rows_searched: self.found.rows_searched,
+            truncated: self.found.truncated,
+        }
+    }
+}
+
+/// Puts the selected match on screen.
+///
+/// Two requests on two channels, because herdr scrolls by steps rather than to a place: where
+/// the pane is looking has to be asked for, and the difference is what gets sent
+/// (`observations/herdr-0.8.0.md` section 17). A pane already showing the match is left alone,
+/// so stepping through hits on one screen does not jog the view under somebody reading it.
+///
+/// Nothing here fails loudly. The count is already right and already on screen; a landing that
+/// did not happen costs a scroll somebody can do themselves, and a refusal per keystroke in the
+/// log would bury the one that mattered.
+fn land(search: &Search) {
+    let Some(hit) = search.selected.and_then(|at| search.found.hits.get(at)) else {
+        return;
+    };
+    let Ok(channel) = channel(&search.daemon) else {
+        return;
+    };
+    let Ok(viewport) = channel.viewport(&search.pane) else {
+        return;
+    };
+    if viewport.shows(hit.rows_from_bottom) {
+        return;
+    }
+    let Some(attached) = attached_pane(&search.daemon, &search.pane) else {
+        // A pane with no bridge is one no region is showing, which a find bar over the
+        // focused pane cannot be about. Worth a line rather than silence, because it means
+        // the window and the session disagree about what has the keyboard.
+        log::debug(
+            "find.unattached",
+            fields! {
+                "daemon" => search.daemon.to_string(),
+                "pane" => search.pane.to_string(),
+                "impact" => "the match was found and counted, and the pane did not move to it.",
+            },
+        );
+        return;
+    };
+
+    let wanted = viewport.centred_on(hit.rows_from_bottom);
+    let (direction, rows) = if wanted > viewport.rows_from_bottom {
+        (ScrollDirection::Up, wanted - viewport.rows_from_bottom)
+    } else {
+        (ScrollDirection::Down, viewport.rows_from_bottom - wanted)
+    };
+    if rows > 0 {
+        attached.input.scroll(direction, u16::try_from(rows).unwrap_or(u16::MAX));
+    }
+}
+
+/// The way to one daemon, or why there is not one.
+fn channel(daemon: &DaemonId) -> Result<Arc<dyn BackendChannel>, String> {
+    SESSION.lock().expect("a panicking sender poisoned the session").channel_of(daemon).ok_or_else(
+        || {
+            format!(
+                "the daemon {daemon} is in this window's composition and is not being followed, \
+                 which is a bug in the core rather than a state to recover from"
+            )
+        },
+    )
 }
 
 /// The `[[daemon]]` blocks the running configuration was built from.

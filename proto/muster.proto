@@ -48,8 +48,48 @@ message Request {
     RenameTab rename_tab = 29;
     FocusTab focus_tab = 30;
     ArrangePane arrange_pane = 31;
+    Find find = 32;
+    FindStep find_step = 33;
+    EndFind end_find = 34;
   }
 }
+
+// Looks for text in a pane, and puts the first match on screen.
+//
+// Sent per keystroke in the find bar, so the needle is the whole request rather than
+// something built up: what is being asked is always "find this", never "find this as well".
+//
+// **What it searches is a pane's recent history, not what is on screen.** A surface is
+// repainted from a frame stream and keeps no scrollback, so the renderer's own find would
+// cover one screen. The daemon holds the history and answers at most a thousand rows of it,
+// which is why the answer says how far it reached (`observations/herdr-0.8.0.md` section 17).
+message Find {
+  string daemon_id = 1;
+
+  // Empty means the pane this window's keyboard is on, as everywhere else. A find bar is
+  // drawn over that pane, so empty is the ordinary case here rather than a shorthand.
+  string pane_id = 2;
+
+  // Plain text. Matched as a substring with ASCII case folding and nothing else, because
+  // that is what the renderer highlighting these does, and two matchers that disagreed would
+  // put a count over a screen contradicting it.
+  string needle = 3;
+}
+
+// Goes to the next match, or the previous one, and puts it on screen.
+//
+// Names no pane, unlike every other request here: there is one search at a time, and which
+// pane it is about was settled when somebody typed into the bar. Naming one again would
+// invite a step against a pane the search is not about.
+message FindStep {
+  // `next` or `previous`. Next climbs the pane, because the first match is the newest one
+  // and the ones before it are further up - which is also why the bar draws next as an
+  // upward chevron.
+  string direction = 1;
+}
+
+// Forgets the search, which is what closing the find bar means.
+message EndFind {}
 
 // Calls a pane what somebody wants to call it.
 //
@@ -485,7 +525,32 @@ message Response {
     Attached attached = 3;
     Bindings bindings = 4;
     Appearance appearance = 5;
+    Findings findings = 6;
   }
+}
+
+// What a search found, which is everything a find bar draws.
+//
+// Counts rather than the matches themselves. The bar shows "3 of 47" and the renderer
+// highlights what is on screen by looking for the needle again itself, so nothing above the
+// core needs to know where a match is - and a common needle over a thousand rows would be
+// thousands of positions crossing this seam per keystroke.
+message Findings {
+  uint32 total = 1;
+
+  // Which match is selected, counting from one. Zero when nothing matched, which is already
+  // the answer to "which of nothing" and needs no separate flag.
+  uint32 selected = 2;
+
+  // How many rows were looked at, which is what the bar can honestly claim to have covered.
+  uint32 rows_searched = 3;
+
+  // Whether the pane holds history this search never reached.
+  //
+  // The reason the bar can say so only when it is true. A search that covered everything
+  // should say nothing at all, and a confident "no results" over a fifth of a long pane is
+  // the failure this whole feature was written around.
+  bool truncated = 4;
 }
 
 // Every action Muster has, and the chord asking for it.

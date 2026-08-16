@@ -191,9 +191,27 @@
         ]
       },
       "expect": {
-        "actions": 36,
-        "bound": 33,
-        "distinct_chords": 33
+        "actions": 39,
+        "bound": 36,
+        "distinct_chords": 36
+      }
+    },
+    {
+      "name": "finding is the platform's chords, and walking matches is a chord of its own",
+      "why": "⌘F opens a find and ⌘G walks it in every Mac application that has one, and Ghostty is no exception - it spells the walk `navigate_search:next` and `navigate_search:previous` on exactly these. Walking is two actions rather than keys the find bar swallows, so that they are rebindable and reachable from the menu like everything else Muster does, and so that they work with the keyboard back in the pane, which is where somebody reading matches keeps it.",
+      "given": {
+        "actions": [
+          "find",
+          "find_next",
+          "find_previous"
+        ]
+      },
+      "expect": {
+        "chords": [
+          "find=super+KeyF",
+          "find_next=super+KeyG",
+          "find_previous=shift+super+KeyG"
+        ]
       }
     },
     {

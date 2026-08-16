@@ -62,6 +62,20 @@ pub enum Action {
     ResizeRight,
     ResizeUp,
     ResizeDown,
+    /// Opens the find bar over the pane with the keyboard.
+    ///
+    /// Like [`Action::RenamePane`], what the chord means is "ask me": the needle arrives
+    /// afterwards as an ordinary find request, one per keystroke, and a CLI searching for
+    /// something outright sends that and never this.
+    Find,
+    /// Goes to the next match, and to the previous one.
+    ///
+    /// Next climbs the pane, because the first match is the newest and the ones before it are
+    /// further up. Actions rather than keys the find bar swallows, so that they are rebindable
+    /// and reachable from the menu like everything else Muster does - and because a person
+    /// walking matches usually has the keyboard in the pane rather than in the bar.
+    FindNext,
+    FindPrevious,
     Zoom,
     IncreaseFontSize,
     DecreaseFontSize,
@@ -77,7 +91,7 @@ impl Action {
     /// Deliberately not alphabetical: a menu is read top to bottom, and the order here is what
     /// somebody scanning it expects - making something, then arranging it, then moving around
     /// it. A shell that sorted these would produce a menu nobody can find anything in.
-    pub const ALL: [Action; 36] = [
+    pub const ALL: [Action; 39] = [
         Action::NewTab,
         Action::NextTab,
         Action::PreviousTab,
@@ -107,6 +121,9 @@ impl Action {
         Action::ResizeRight,
         Action::ResizeUp,
         Action::ResizeDown,
+        Action::Find,
+        Action::FindNext,
+        Action::FindPrevious,
         Action::Zoom,
         Action::IncreaseFontSize,
         Action::DecreaseFontSize,
@@ -146,6 +163,9 @@ impl Action {
             Action::ResizeRight => "resize_right",
             Action::ResizeUp => "resize_up",
             Action::ResizeDown => "resize_down",
+            Action::Find => "find",
+            Action::FindNext => "find_next",
+            Action::FindPrevious => "find_previous",
             Action::Zoom => "zoom",
             Action::IncreaseFontSize => "increase_font_size",
             Action::DecreaseFontSize => "decrease_font_size",
@@ -216,6 +236,12 @@ impl Action {
             Action::ResizeRight => Some(Chord::new(Key::ArrowRight, resizing)),
             Action::ResizeUp => Some(Chord::new(Key::ArrowUp, resizing)),
             Action::ResizeDown => Some(Chord::new(Key::ArrowDown, resizing)),
+            // Ghostty's, and the platform's: ⌘F opens a find and ⌘G walks it in every Mac app
+            // that has one. Ghostty spells the walk `navigate_search:next|previous` on exactly
+            // these chords, so somebody arriving from it needs nothing new.
+            Action::Find => Some(Chord::new(Key::KeyF, command)),
+            Action::FindNext => Some(Chord::new(Key::KeyG, command)),
+            Action::FindPrevious => Some(Chord::new(Key::KeyG, shifted)),
             Action::Zoom => Some(Chord::new(Key::Enter, shifted)),
             // The unshifted key rather than the plus printed above it. Ghostty binds both
             // because it lets an action carry several chords; Muster gives each one, and the

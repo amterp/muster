@@ -375,6 +375,62 @@ public enum Core {
     answer.bindings.map { Binding(action: $0.action, key: $0.key, modifiers: $0.modifiers) }
   }
 
+  /// What a search found, which is everything the find bar draws.
+  public struct Findings: Equatable, Sendable {
+    public let total: UInt32
+    /// Which match is selected, counting from one. Zero when nothing matched.
+    public let selected: UInt32
+    /// How many rows the core managed to look at.
+    public let rowsSearched: UInt32
+    /// Whether the pane holds history the search never reached.
+    public let truncated: Bool
+
+    /// Nothing typed, so nothing found. What an empty field shows.
+    public static let none = Findings(total: 0, selected: 0, rowsSearched: 0, truncated: false)
+  }
+
+  /// Looks for text in the pane the keyboard is on, and lands on the first match.
+  ///
+  /// Sent per keystroke: the needle is the whole question every time, never something added
+  /// to. A core that refuses answers `nil`, which the bar draws as no matches rather than as
+  /// an error - the reason is already in the log, and a search box is a poor place to report
+  /// a daemon problem.
+  public static func find(needle: String, daemonID: String = "", paneID: String = "")
+    -> Findings?
+  {
+    var find = Muster_Find()
+    find.daemonID = daemonID
+    find.paneID = paneID
+    find.needle = needle
+    var request = Muster_Request()
+    request.find = find
+    guard case .findings(let answer) = send(request) else { return nil }
+    return read(answer)
+  }
+
+  /// Goes to the next match, or the previous one, and lands on it.
+  public static func stepFind(forward: Bool) -> Findings? {
+    var step = Muster_FindStep()
+    step.direction = forward ? "next" : "previous"
+    var request = Muster_Request()
+    request.findStep = step
+    guard case .findings(let answer) = send(request) else { return nil }
+    return read(answer)
+  }
+
+  /// Forgets the search, which is what closing the find bar means.
+  public static func endFind() {
+    var request = Muster_Request()
+    request.endFind = Muster_EndFind()
+    send(request)
+  }
+
+  static func read(_ answer: Muster_Findings) -> Findings {
+    Findings(
+      total: answer.total, selected: answer.selected,
+      rowsSearched: answer.rowsSearched, truncated: answer.truncated)
+  }
+
   /// Points this window's keyboard at a pane, and tells the daemon somebody looked.
   public static func focus(daemonID: String, paneID: String) {
     var focus = Muster_FocusPane()
@@ -586,6 +642,11 @@ public enum Core {
     // their own work, and this line ends up in a file destined for a bug report.
     case .renamePane: return "rename_pane"
     case .renameTab: return "rename_tab"
+    // The kind, never the needle, for the reason above and more sharply: what somebody is
+    // looking for in their own terminal is the most private thing this seam carries.
+    case .find: return "find"
+    case .findStep: return "find_step"
+    case .endFind: return "end_find"
     case nil: return "(none)"
     }
   }

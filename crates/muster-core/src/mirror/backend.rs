@@ -80,6 +80,45 @@ pub struct Pane {
     pub revision: u64,
 }
 
+/// Where a pane is looking, and how much of it is on screen.
+///
+/// Asked for rather than followed. A backend reports this on every pane payload, and Muster
+/// does not keep it: the one topic that announces a change to it needs a subscription per
+/// pane, so a held copy would be right until somebody touched the wheel. Nothing renders
+/// from this - it exists so that landing on something found deep in a pane's history can be
+/// worked out, and that is worth one round trip at the moment somebody asks.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Viewport {
+    /// How far above the bottom of the history the lowest visible row sits. Zero is a pane
+    /// showing its newest output, which is where a pane nobody has scrolled always is.
+    pub rows_from_bottom: u32,
+    /// How many rows are on screen.
+    pub rows: u32,
+    /// The furthest up this pane can go, which is zero until something has scrolled off it.
+    pub deepest: u32,
+}
+
+impl Viewport {
+    /// Whether a row is already on screen.
+    ///
+    /// The lowest visible row is [`Viewport::rows_from_bottom`] and the screen climbs from
+    /// there, so a viewport at 100 showing 24 rows covers 100 to 123.
+    pub fn shows(&self, rows_from_bottom: u32) -> bool {
+        rows_from_bottom >= self.rows_from_bottom
+            && rows_from_bottom < self.rows_from_bottom.saturating_add(self.rows)
+    }
+
+    /// Where the viewport would have to be for a row to sit in the middle of it.
+    ///
+    /// The middle rather than an edge, because a match at the bottom of a screen is a match
+    /// whose consequences are off it - and the line after an error is usually the reason.
+    /// Clamped to what the pane holds, so asking for a row near either end lands against
+    /// that end rather than nowhere.
+    pub fn centred_on(&self, rows_from_bottom: u32) -> u32 {
+        rows_from_bottom.saturating_sub(self.rows.saturating_sub(1) / 2).min(self.deepest)
+    }
+}
+
 /// The unit that owns one pane tree. Trees hang off tabs, not workspaces.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Tab {
