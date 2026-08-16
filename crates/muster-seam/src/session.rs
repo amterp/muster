@@ -16,8 +16,8 @@ use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 use muster_core::AgentState;
 use muster_core::attention::Attention;
 use muster_core::composition::{
-    Composition, Daemon, DaemonId, Endpoint, PaneKey, Presentation, RegionId, Saved, Step, TabKey,
-    Transport, View, saved,
+    Composition, Daemon, DaemonId, Endpoint, FontSizeChange, PaneKey, Presentation, RegionId,
+    Saved, Step, TabKey, Transport, View, saved,
 };
 use muster_core::config::{Appearance, Config, Feel};
 use muster_core::diagnostics::log;
@@ -1791,6 +1791,26 @@ pub(crate) fn toggle_sidebar() {
     publish();
 }
 
+/// One press of a font-size chord, on the same terms as the sidebar toggle.
+///
+/// The offset is saturated by the setter rather than refused here. Somebody holding the key
+/// down is asking to keep going, and the honest answer at the end of the range is a window that
+/// stops growing - not a refusal for a keystroke they cannot see the result of anyway.
+pub(crate) fn adjust_font_size(change: FontSizeChange) {
+    let presentation = {
+        let mut session = SESSION.lock().expect("a panicking sender poisoned the session");
+        let offset = change.applied(session.presentation.font_size_offset);
+        session.presentation = session.presentation.with_font_size_offset(offset);
+        session.presentation
+    };
+    log::info(
+        "presentation.font_size",
+        fields! { "offset" => presentation.font_size_offset.to_string() },
+    );
+    announce_presentation(presentation);
+    publish();
+}
+
 /// Tells the shell what the window should be showing of itself.
 ///
 /// Sent whole and sent on startup as well as on every change, so a shell holds no default of
@@ -1800,6 +1820,7 @@ fn announce_presentation(presentation: Presentation) {
     ffi::emit(&Event {
         payload: Some(event::Payload::PresentationChanged(PresentationChanged {
             sidebar: presentation.sidebar,
+            font_size_offset: presentation.font_size_offset,
         })),
     });
 }

@@ -72,11 +72,33 @@ fn what_is_written_is_what_comes_back() {
         .open_region(&DaemonId::new("devenv"), WorkspaceId::new("w1"), TabId::new("w1:t2"))
         .expect("the daemon was just attached");
 
-    // Not the default, so a round trip that quietly dropped the table would still fail.
-    let written = Saved::of(&composition, Presentation::default().with_sidebar(false));
+    // Neither at its default, so a round trip that quietly dropped either would still fail.
+    let written = Saved::of(
+        &composition,
+        Presentation::default().with_sidebar(false).with_font_size_offset(3),
+    );
     let read = from_toml(&to_toml(&written)).expect("what this wrote, it can read");
 
     assert_eq!(read, written, "the file lost something between writing and reading it");
+}
+
+/// A font size nobody could have pressed their way to comes back as one they could.
+///
+/// The state file is Muster's to write and a person's to read, so a number that arrived by hand
+/// is not a state to refuse - it is one to bring back inside the range, the same way the setter
+/// does when a key is held down. Refusing would cost the whole arrangement over a font size.
+#[test]
+fn a_hand_edited_font_size_is_brought_back_inside_the_range() {
+    let file = to_toml(&Saved {
+        daemons: Vec::new(),
+        regions: Vec::new(),
+        focused: None,
+        presentation: Presentation::default(),
+    })
+    .replace("font_size_offset = 0", "font_size_offset = 100000");
+
+    let read = from_toml(&file).expect("an out-of-range offset is not an unreadable file");
+    assert_eq!(read.presentation.font_size_offset, Presentation::FONT_SIZE_LIMIT);
 }
 
 #[test]

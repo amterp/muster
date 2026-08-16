@@ -22,6 +22,10 @@ public final class MusterWindow: NSObject {
   private let split = WindowLayout(frame: NSRect(x: 0, y: 0, width: 960, height: 600))
   private var regions: [String: RegionView] = [:]
 
+  /// The font size in force, so a pane made later gets it too. The core owns the number; this
+  /// is the last one it published.
+  private var fontSizeOffset: Int32 = 0
+
   /// Everything the attached daemons hold, whether or not this window is showing it.
   ///
   /// Held here rather than only in the sidebar because it is half of what the sidebar draws
@@ -141,6 +145,33 @@ public final class MusterWindow: NSObject {
   /// once at startup, so this window never has a default of its own to disagree with.
   public func apply(presentation: Presentation) {
     split.sidebarShown = presentation.sidebar
+    // Held as well as applied, because a pane made after this arrives has to be sized too - a
+    // split that opened at the configured size beside four panes somebody had made bigger is
+    // the ragged grid this action exists to avoid.
+    fontSizeOffset = presentation.fontSizeOffset
+    for region in regions.values {
+      for paneID in region.paneIDs {
+        report(region.chrome(for: paneID)?.surface.setFontSizeOffset(fontSizeOffset) ?? [])
+      }
+    }
+  }
+
+  /// Says so when the renderer would not size a pane's text.
+  ///
+  /// Nothing in the suite can catch this: the actions are named by string, and validating one
+  /// needs a live surface. So a version bump that renamed them shows up here rather than as a
+  /// chord that quietly does nothing.
+  private func report(_ refused: [String]) {
+    guard !refused.isEmpty else { return }
+    Core.warn(
+      "renderer.action.refused",
+      [
+        "actions": refused.joined(separator: ", "),
+        "impact": "the text in this pane is whatever size it already was, and the chord that "
+          + "asked will keep doing nothing",
+        "check": "whether libghostty renamed these between deps/ghostty.pin bumps; Muster "
+          + "names them as strings and nothing else can tell",
+      ])
   }
 
   public func apply(daemon: String, health state: String, detail: String) {
@@ -223,6 +254,7 @@ public final class MusterWindow: NSObject {
     do {
       chrome.surface.attach(
         try renderer.makeSurface(in: chrome.surface, command: command), typeable: typeable)
+      report(chrome.surface.setFontSizeOffset(fontSizeOffset))
     } catch {
       // One pane, not the window: the rest keep rendering, and a bug report needs to say
       // which one went missing rather than that something failed.
@@ -339,6 +371,18 @@ extension MusterWindow {
 
   @objc public func zoomPane(_ sender: Any?) {
     Core.zoom()
+  }
+
+  @objc public func increaseFontSize(_ sender: Any?) {
+    Core.adjustFontSize("larger")
+  }
+
+  @objc public func decreaseFontSize(_ sender: Any?) {
+    Core.adjustFontSize("smaller")
+  }
+
+  @objc public func resetFontSize(_ sender: Any?) {
+    Core.adjustFontSize("reset")
   }
 
   @objc public func toggleSidebar(_ sender: Any?) {

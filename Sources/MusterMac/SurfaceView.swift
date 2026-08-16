@@ -82,6 +82,16 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
       height: UInt32(bounds.height * (window?.backingScaleFactor ?? 2)))
   }
 
+  /// Sizes this pane's text, once there is something rendering it.
+  ///
+  /// Silently nothing before a surface is attached, which is the ordinary case at launch: the
+  /// window applies the offset to every pane it has, and a pane whose bridge has not started
+  /// yet gets it when `attach` runs.
+  @discardableResult
+  public func setFontSizeOffset(_ points: Int32) -> [String] {
+    surface?.setFontSizeOffset(points) ?? []
+  }
+
   /// Points this view at a pane, independently of what renders it.
   ///
   /// Separate because the two are separate: a view will eventually be re-pointed at a

@@ -97,6 +97,12 @@ public enum MenuActions {
       title: "Resize Pane Down", selector: #selector(MusterWindow.resizePaneDown(_:)), group: .pane),
     "zoom": Described(
       title: "Zoom Pane", selector: #selector(MusterWindow.zoomPane(_:)), group: .pane),
+    "increase_font_size": Described(
+      title: "Bigger Text", selector: #selector(MusterWindow.increaseFontSize(_:)), group: .view),
+    "decrease_font_size": Described(
+      title: "Smaller Text", selector: #selector(MusterWindow.decreaseFontSize(_:)), group: .view),
+    "reset_font_size": Described(
+      title: "Actual Size", selector: #selector(MusterWindow.resetFontSize(_:)), group: .view),
     "toggle_sidebar": Described(
       title: "Show Agents", selector: #selector(MusterWindow.toggleSidebar(_:)),
       group: .view),

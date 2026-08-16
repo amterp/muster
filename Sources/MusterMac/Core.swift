@@ -245,6 +245,18 @@ public enum Core {
       dividerColor: named(answer.dividerColor))
   }
 
+  /// Makes the text in every pane bigger or smaller, or puts it back.
+  ///
+  /// A direction rather than a size, matching `toggleSidebar`: what a chord means is "one more
+  /// than whatever I have", and the shell does not hold what it has.
+  public static func adjustFontSize(_ change: String) {
+    var adjust = Muster_AdjustFontSize()
+    adjust.change = change
+    var request = Muster_Request()
+    request.adjustFontSize = adjust
+    send(request)
+  }
+
   public static func toggleSidebar() {
     var request = Muster_Request()
     request.toggleSidebar = Muster_ToggleSidebar()
@@ -482,6 +494,7 @@ public enum Core {
     case .setRegionBoundary: return "set_region_boundary"
     case .readBindings: return "read_bindings"
     case .readAppearance: return "read_appearance"
+    case .adjustFontSize: return "adjust_font_size"
     case .bridgeExited: return "bridge_exited"
     case .resizePane: return "resize_pane"
     case .zoomPane: return "zoom_pane"
@@ -535,8 +548,14 @@ public enum Core {
         ])
       window?.apply(roster)
     case .presentationChanged(let changed):
-      let presentation = Presentation(sidebar: changed.sidebar)
-      info("presentation.received", ["sidebar": String(presentation.sidebar)])
+      let presentation = Presentation(
+        sidebar: changed.sidebar, fontSizeOffset: changed.fontSizeOffset)
+      info(
+        "presentation.received",
+        [
+          "sidebar": String(presentation.sidebar),
+          "font_size_offset": String(presentation.fontSizeOffset),
+        ])
       window?.apply(presentation: presentation)
     case nil:
       break

@@ -136,7 +136,7 @@
     },
     {
       "name": "stepping through tabs, one finger up from stepping through panes",
-      "why": "Ghostty's own chords, and the shape says what they do: stepping panes is \u2318[ and \u2318], so stepping tabs is the same gesture with shift. Somebody arriving from the terminal Muster embeds already has this in their hands, and the two pairs being one modifier apart is what makes the pair of them memorable rather than two arbitrary chords.",
+      "why": "Ghostty's own chords, and the shape says what they do: stepping panes is ⌘[ and ⌘], so stepping tabs is the same gesture with shift. Somebody arriving from the terminal Muster embeds already has this in their hands, and the two pairs being one modifier apart is what makes the pair of them memorable rather than two arbitrary chords.",
       "given": {
         "actions": [
           "next_tab",
@@ -152,7 +152,7 @@
     },
     {
       "name": "the numbered tabs, where every tabbed application on this platform puts them",
-      "why": "\u23181 to \u23189 is not a Ghostty convention so much as a platform one - browsers, editors and terminals all have it - so a chord Muster invented instead would be the one thing in the window somebody had to look up. The number is the place in the window's whole tab order, which is what the sidebar lists, so a row's number and the chord that reaches it are the same number.",
+      "why": "⌘1 to ⌘9 is not a Ghostty convention so much as a platform one - browsers, editors and terminals all have it - so a chord Muster invented instead would be the one thing in the window somebody had to look up. The number is the place in the window's whole tab order, which is what the sidebar lists, so a row's number and the chord that reaches it are the same number.",
       "given": {
         "actions": [
           "focus_tab_1",
@@ -177,9 +177,27 @@
         ]
       },
       "expect": {
-        "actions": 30,
-        "bound": 28,
-        "distinct_chords": 28
+        "actions": 33,
+        "bound": 31,
+        "distinct_chords": 31
+      }
+    },
+    {
+      "name": "sizing the text is on the keys every application puts it on",
+      "why": "These three are not Ghostty's, which is the exception worth pinning. Ghostty lets one action carry several chords and binds both `cmd+plus` and `cmd+equal` to growing the text; Muster gives each action one, so it has to choose, and the one to give is the key a hand actually presses - `=` unshifted rather than the `+` printed above it. `cmd+0` for reset is the same convention every browser and editor uses, and none of the three can reach a pane anyway, because a command chord never does.",
+      "given": {
+        "actions": [
+          "increase_font_size",
+          "decrease_font_size",
+          "reset_font_size"
+        ]
+      },
+      "expect": {
+        "chords": [
+          "increase_font_size=super+Equal",
+          "decrease_font_size=super+Minus",
+          "reset_font_size=super+Digit0"
+        ]
       }
     }
   ]

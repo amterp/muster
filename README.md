@@ -131,7 +131,8 @@ modifiers and a key, in any order and any case, spelled the way you would say th
 `opt`, `ctrl`, `shift`, and `left`, `return`, `f5`, `[`. The actions are `new_tab`,
 `next_tab`, `previous_tab`, `focus_tab_1` to `focus_tab_9`, `split_*` for each direction,
 `close_pane`, `next_pane`, `previous_pane`, `focus_*` and `resize_*` for each direction,
-`zoom`, `toggle_sidebar`, and `show_shortcuts`. On macOS these become menu items, which is
+`zoom`, `increase_font_size`, `decrease_font_size`, `reset_font_size`, `toggle_sidebar`, and
+`show_shortcuts`. On macOS these become menu items, which is
 where the platform dispatches a key equivalent from - so a rebound action moves in the menu
 too, and System Settings can move it again.
 
@@ -186,9 +187,15 @@ the buffer that a scroll intent moves.
 
 `~/.muster/state/` is Muster's to write, and holds two files nobody should edit. `window.toml`
 is rewritten whenever the window settles: which tabs it was showing, in what order, at what
-widths, and under `[window]` whether the agent list was open. Delete it and the next launch
+widths, and under `[window]` whether the agent list was open and how far the text was sized
+from what the config file asked for. Delete it and the next launch
 opens fresh. Nothing about a session is in it - what a tab holds is the daemon's answer, asked
 again on every launch.
+
+Text size is the one appearance setting that is also an action. `cmd+=`, `cmd+-` and `cmd+0`
+size every pane in the window at once - not one pane, because a grid you read at a glance is
+harder to read with ragged cell sizes - and the size you land on is remembered under `[window]`
+and comes back on the next launch. `cmd+0` is the way back to whatever `[font] size` says.
 
 `libghostty.conf` is `[font]`, `[colors]` and `[cursor]` restated in the renderer's own
 format, because libghostty has no way to be handed a value except as a file. Rewritten every

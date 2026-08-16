@@ -16,6 +16,17 @@ public protocol PaneSurface: AnyObject {
   func setSize(width: UInt32, height: UInt32)
   func setFocus(_ focused: Bool)
 
+  /// Sizes this pane's text, in points away from what the configuration asked for. Zero puts it
+  /// back. An offset rather than a size because the size it offsets from may be the renderer's
+  /// own, and this side of the seam never learns what that is.
+  ///
+  /// Answers with whatever the renderer would not do, which is empty in every ordinary case.
+  /// A renderer that cannot size text is a real answer rather than an error - what it costs is
+  /// one chord, and the window is otherwise fine - so this is a line for the log rather than a
+  /// throw.
+  @discardableResult
+  func setFontSizeOffset(_ points: Int32) -> [String]
+
   /// Called when the command this surface is running exits, which for a pane means its
   /// bridge is gone. Settable rather than reported once, because whoever owns the surface is
   /// not who needs to know.

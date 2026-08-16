@@ -5,17 +5,26 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-hi",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "**Done.** `increase_font_size`, `decrease_font_size` and `reset_font_size` are ordinary actions - in `Action::ALL`, rebindable through `[keymap]`, and menu items under View.\n\nThe card left two things open; both are decided.\n\n**Per window, not per pane.** Ghostty sizes each surface separately and Muster does not, which is the deliberate difference: the claim is a grid you read at a glance, and one with ragged cell sizes is harder to read. A pane made *after* a resize gets the size in force, so a split does not open at the configured size beside four panes somebody had grown.\n\n**Remembered**, under `[window]` in `window.toml` beside the sidebar flag.\n\n**What is stored is an offset in points, not a size**, and that is the part worth knowing. Muster does not know the size it is offsetting from: `[font] size` is optional, and when it is absent the number is libghostty's and never crosses back over the seam. An offset survives not knowing that, and it is also what a chord means - one point bigger than whatever you had. `cmd+0` sets it to zero, which is the only way back out of a size somebody has pressed themselves into.\n\n**Chords are `cmd+=`, `cmd+-`, `cmd+0`**, and they are the one place Muster deliberately does not copy Ghostty's binding. Ghostty binds both `cmd+plus` and `cmd+equal` because an action there can carry several chords; Muster gives each action one, so it has to pick, and the one to give is the key a hand actually presses.\n\nTwo things worth carrying forward:\n\n- **The renderer actions are driven by string and nothing in the suite can validate the names.** `ghostty_surface_binding_action` needs a live surface, so a GPU and a window. `ghostty_config_trigger` looked like a way to parse-check them and is not - it answers tag 0 for a real action and a nonsense one alike, so a test built on it asserted nothing and was deleted. What replaced it: the call's return value is no longer discarded, and a refusal logs `renderer.action.refused` naming the action. A pin bump that renames one shows up as a log line rather than as a chord that quietly does nothing.\n- **Idempotence is not free.** libghostty's font-size actions are relative, so the shell resets before applying an offset - the core republishes the whole presentation on every change and a new pane is handed the offset in force, so the same number arrives more than once as a matter of course.\n\nVerified in a real window: a saved offset of 5 comes back on the next launch, reaches the shell, and is carried out on a live surface with no refusal.",
+      "created_at_millis": 1786867748147,
+      "id": "c_28ve06En4"
+    }
+  ],
   "created_at_millis": 1786813087538,
   "creator": "Alexander Terp",
   "description": "`cmd+plus` and `cmd+minus` are reflexes in every terminal and Muster has neither. `config.font_size = 0` inherits the configured size once at surface creation (`Renderer.swift`), so the only way to change it is to edit a config and relaunch.\n\nWorth noting this is a Muster *action* rather than an appearance setting, so it is wanted whatever happens to the appearance loan (see the appearance card): it joins `Action::ALL`, becomes rebindable and gets a menu item, like every other action.\n\nTwo things to work out: whether the size is per-window or per-pane (Ghostty does per-surface), and whether a changed size is remembered - it is presentation state, so `[window]` in the state file is the obvious home now that one exists.",
   "id": "a_28Yi1pSIy",
-  "position": "!!6",
+  "position": "!!!!!!!!!U",
   "title": "🔍 Font size is fixed for the life of a launch",
   "type": "feature",
-  "updated_at_millis": 1786813094312,
+  "updated_at_millis": 1786867748147,
   "history": [
     {"field":"column","value":"backlog-lo","at":1786813087538},
-    {"field":"column","value":"backlog-hi","at":1786813094312}
+    {"field":"column","value":"backlog-hi","at":1786813094312},
+    {"field":"column","value":"done","at":1786867748106}
   ]
 }

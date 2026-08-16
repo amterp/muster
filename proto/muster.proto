@@ -42,6 +42,7 @@ message Request {
     FocusTabRelative focus_tab_relative = 23;
     FocusTabAt focus_tab_at = 24;
     ReadAppearance read_appearance = 25;
+    AdjustFontSize adjust_font_size = 26;
   }
 }
 
@@ -124,6 +125,20 @@ message ResizePane {
   // How many cells. Zero means the daemon's own step, which is what a keybinding wants; a CLI
   // or an agent placing a divider exactly says.
   float amount = 4;
+}
+
+// Makes the text in every pane bigger or smaller, or puts it back.
+//
+// Every pane, because Muster's claim is a grid you read at a glance and one with ragged cell
+// sizes is harder to read. That is where it differs from a terminal on purpose: Ghostty sizes
+// each surface separately, and Muster's surfaces are one workspace rather than several windows.
+//
+// The core holds the size and the shell asks for a direction, which is the same shape as
+// ToggleSidebar and for the same reason: what a chord means is "one more than whatever I have",
+// and the shell does not know what it has.
+message AdjustFontSize {
+  // larger, smaller or reset.
+  string change = 1;
 }
 
 // Shows the roster or puts it away.
@@ -598,6 +613,13 @@ message Event {
 message PresentationChanged {
   // Whether the roster is on screen.
   bool sidebar = 1;
+
+  // Points to add to the font size the config file named, or the renderer chose.
+  //
+  // An offset rather than a size, because the core does not know the size it is offsetting
+  // from - `[font] size` is optional, and when it is absent the number belongs to the renderer
+  // and never crosses back. Zero is what a window that nobody has resized reports.
+  int32 font_size_offset = 2;
 }
 
 // Every pane every attached daemon holds, whether or not this window is showing it.

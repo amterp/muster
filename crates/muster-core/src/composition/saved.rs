@@ -152,6 +152,10 @@ pub fn to_toml(saved: &Saved) -> String {
     // they have to already know about to look for.
     let mut window = toml::Table::new();
     window.insert("sidebar".to_string(), toml::Value::Boolean(saved.presentation.sidebar));
+    window.insert(
+        "font_size_offset".to_string(),
+        toml::Value::Integer(i64::from(saved.presentation.font_size_offset)),
+    );
     root.insert("window".to_string(), toml::Value::Table(window));
 
     toml::to_string_pretty(&toml::Value::Table(root))
@@ -236,14 +240,23 @@ pub fn from_toml(text: &str) -> Result<Saved, String> {
     // Absent means the default, which is what a file written before this key existed looks
     // like. Worth reading that way rather than refusing the file: the version above is for a
     // format that moved, and a key that merely arrived has not moved anything.
-    let presentation = Presentation {
-        sidebar: root
-            .get("window")
-            .and_then(toml::Value::as_table)
-            .and_then(|window| window.get("sidebar"))
-            .and_then(toml::Value::as_bool)
-            .unwrap_or(Presentation::default().sidebar),
-    };
+    let window = root.get("window").and_then(toml::Value::as_table);
+    let presentation = Presentation::default()
+        .with_sidebar(
+            window
+                .and_then(|window| window.get("sidebar"))
+                .and_then(toml::Value::as_bool)
+                .unwrap_or(Presentation::default().sidebar),
+        )
+        // Through the setter, so a file somebody hand-edited to a thousand comes back as the
+        // furthest a chord could have taken it rather than as a thousand.
+        .with_font_size_offset(
+            window
+                .and_then(|window| window.get("font_size_offset"))
+                .and_then(toml::Value::as_integer)
+                .and_then(|offset| i32::try_from(offset).ok())
+                .unwrap_or(Presentation::default().font_size_offset),
+        );
 
     Ok(Saved { daemons, regions, focused, presentation })
 }

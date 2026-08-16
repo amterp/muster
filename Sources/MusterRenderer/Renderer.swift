@@ -253,6 +253,41 @@ public final class Surface {
     ghostty_surface_set_focus(surface, focused)
   }
 
+  /// Sizes this pane's text, in points away from what the configuration asked for.
+  ///
+  /// An offset rather than a size, because the size it is offsetting from may be the renderer's
+  /// own - `[font] size` is optional, and nothing outside this module knows what libghostty
+  /// picked. Zero puts it back, which is what makes the reset action a reset rather than a
+  /// number Muster would have to remember.
+  ///
+  /// Driven by a binding action rather than by rebuilding a config, which is what the API
+  /// offers for this and costs no file. The string never escapes this module.
+  ///
+  /// Reset first, always. libghostty's own actions are relative - `increase_font_size:2` adds
+  /// two points to whatever is there - so setting an offset twice would double it. The core
+  /// republishes the whole presentation on every change and a new pane is handed the offset in
+  /// force, so this is called more than once with the same number as a matter of course, and
+  /// has to mean the same thing every time.
+  /// Returns the actions the renderer would not carry out, which is empty in every ordinary
+  /// case. These are named by string and nothing in the suite can check the names: validating
+  /// one needs a live surface, which needs a GPU and a window. So the refusal is reported
+  /// rather than discarded, and a pin bump that renamed an action shows up as a log line
+  /// instead of as a chord that quietly does nothing.
+  @discardableResult
+  public func setFontSizeOffset(_ points: Int32) -> [String] {
+    var refused = act("reset_font_size", [])
+    if points > 0 { refused = act("increase_font_size:\(points)", refused) }
+    if points < 0 { refused = act("decrease_font_size:\(-points)", refused) }
+    return refused
+  }
+
+  private func act(_ action: String, _ refused: [String]) -> [String] {
+    let carried = action.withCString {
+      ghostty_surface_binding_action(surface, $0, UInt(strlen($0)))
+    }
+    return carried ? refused : refused + [action]
+  }
+
   /// Sends committed text straight into the surface's own terminal.
   ///
   /// Only the spike uses this. Muster's panes are fed by a daemon whose VT holds the

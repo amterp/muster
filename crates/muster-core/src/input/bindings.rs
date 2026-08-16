@@ -50,6 +50,9 @@ pub enum Action {
     ResizeUp,
     ResizeDown,
     Zoom,
+    IncreaseFontSize,
+    DecreaseFontSize,
+    ResetFontSize,
     ToggleSidebar,
     ShowShortcuts,
 }
@@ -60,7 +63,7 @@ impl Action {
     /// Deliberately not alphabetical: a menu is read top to bottom, and the order here is what
     /// somebody scanning it expects - making something, then arranging it, then moving around
     /// it. A shell that sorted these would produce a menu nobody can find anything in.
-    pub const ALL: [Action; 30] = [
+    pub const ALL: [Action; 33] = [
         Action::NewTab,
         Action::NextTab,
         Action::PreviousTab,
@@ -89,6 +92,9 @@ impl Action {
         Action::ResizeUp,
         Action::ResizeDown,
         Action::Zoom,
+        Action::IncreaseFontSize,
+        Action::DecreaseFontSize,
+        Action::ResetFontSize,
         Action::ToggleSidebar,
         Action::ShowShortcuts,
     ];
@@ -122,6 +128,9 @@ impl Action {
             Action::ResizeUp => "resize_up",
             Action::ResizeDown => "resize_down",
             Action::Zoom => "zoom",
+            Action::IncreaseFontSize => "increase_font_size",
+            Action::DecreaseFontSize => "decrease_font_size",
+            Action::ResetFontSize => "reset_font_size",
             Action::ToggleSidebar => "toggle_sidebar",
             Action::ShowShortcuts => "show_shortcuts",
         }
@@ -177,6 +186,12 @@ impl Action {
             Action::ResizeUp => Some(Chord::new(Key::ArrowUp, resizing)),
             Action::ResizeDown => Some(Chord::new(Key::ArrowDown, resizing)),
             Action::Zoom => Some(Chord::new(Key::Enter, shifted)),
+            // The unshifted key rather than the plus printed above it. Ghostty binds both
+            // because it lets an action carry several chords; Muster gives each one, and the
+            // one to give is the one a hand actually makes.
+            Action::IncreaseFontSize => Some(Chord::new(Key::Equal, command)),
+            Action::DecreaseFontSize => Some(Chord::new(Key::Minus, command)),
+            Action::ResetFontSize => Some(Chord::new(Key::Digit0, command)),
             // Ghostty has no sidebar, so this one comes from the wider platform instead:
             // ⌘B is what a Mac app with a list down the side puts it on, and no terminal
             // wants the chord for anything, since a command chord never reaches a pane.

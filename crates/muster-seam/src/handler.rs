@@ -9,7 +9,7 @@ use muster_core::diagnostics::log::{self, LogLevel};
 use muster_core::diagnostics::sink::JsonLinesSink;
 use muster_core::fields;
 
-use muster_core::composition::{DaemonId, RegionId, Step};
+use muster_core::composition::{DaemonId, FontSizeChange, RegionId, Step};
 use muster_core::config::{self, CursorStyle};
 use muster_core::input::{CompositionOutcome, Modifiers, ScrollDirection, composition_outcome};
 use muster_core::intent::{BackendIntent, Branch, Side};
@@ -79,6 +79,7 @@ fn handle(request: Request) -> Response {
             session::toggle_sidebar();
             Response::ok()
         }
+        request::Payload::AdjustFontSize(adjust) => adjust_font_size(&adjust.change),
         request::Payload::ZoomPane(zoom) => {
             act(&zoom.daemon_id, &zoom.pane_id, |pane| BackendIntent::ZoomPane { pane })
         }
@@ -96,47 +97,78 @@ fn handle(request: Request) -> Response {
             Response::ok()
         }
         request::Payload::SetRegionBoundary(set) => move_region_boundary(&set),
-        request::Payload::FocusRelative(step) => match Step::parse(&step.direction) {
-            Some(direction) => answer(session::step(direction)),
-            None => Response::failure(format!(
-                "the core does not know a step called {:?}, so the keyboard stayed where it \
-                 was. Only next, previous, left, right, up and down exist; the shell builds \
-                 this from a fixed set, so this is a bug there.",
-                step.direction
-            )),
-        },
+        request::Payload::FocusRelative(step) => focus_relative(&step.direction),
         request::Payload::FocusTabRelative(step) => step_tab(&step.direction),
         request::Payload::FocusTabAt(at) => focus_tab_at(at.place),
-        request::Payload::SetSplitRatio(set) => match resolve_daemon(&set.daemon_id) {
-            Ok(daemon) => submit(
-                &daemon,
-                &BackendIntent::SetSplitRatio {
-                    tab: TabId::new(set.tab_id),
-                    path: set
-                        .path
-                        .into_iter()
-                        .map(|second| if second { Branch::Second } else { Branch::First })
-                        .collect(),
-                    ratio: set.ratio,
-                },
-            ),
-            Err(refusal) => refusal,
-        },
-        request::Payload::Scroll(scroll) => {
-            with_pane("a scroll", |pane| match ScrollDirection::parse(&scroll.direction) {
-                Some(direction) => {
-                    pane.input.scroll(direction, lines(scroll.delta));
-                    Response::ok()
-                }
-                None => Response::failure(format!(
-                    "the core does not know a scroll direction called {:?}, so the wheel did \
-                     nothing. Only up and down exist; the shell builds this from a fixed set, \
-                     so this is a bug there.",
-                    scroll.direction
-                )),
-            })
-        }
+        request::Payload::SetSplitRatio(set) => set_split_ratio(set),
+        request::Payload::Scroll(scroll) => scroll_pane(&scroll),
     }
+}
+
+/// One press of a font-size chord.
+///
+/// A direction rather than a size, matching ToggleSidebar: what the chord means is "one more
+/// than whatever I have", and the shell does not hold what it has.
+fn adjust_font_size(change: &str) -> Response {
+    match FontSizeChange::parse(change) {
+        Some(change) => {
+            session::adjust_font_size(change);
+            Response::ok()
+        }
+        None => Response::failure(format!(
+            "the core does not know a font size change called {change:?}, so the text stayed \
+             the size it was. Only {} exist; the shell builds this from a fixed set, so this \
+             is a bug there.",
+            FontSizeChange::READABLE.join(", "),
+        )),
+    }
+}
+
+/// Moves the keyboard by a direction rather than to a named pane.
+fn focus_relative(direction: &str) -> Response {
+    match Step::parse(direction) {
+        Some(step) => answer(session::step(step)),
+        None => Response::failure(format!(
+            "the core does not know a step called {direction:?}, so the keyboard stayed where \
+             it was. Only next, previous, left, right, up and down exist; the shell builds \
+             this from a fixed set, so this is a bug there."
+        )),
+    }
+}
+
+/// Puts a divider where a drag left it, named by the turns down to it.
+fn set_split_ratio(set: proto::SetSplitRatio) -> Response {
+    match resolve_daemon(&set.daemon_id) {
+        Ok(daemon) => submit(
+            &daemon,
+            &BackendIntent::SetSplitRatio {
+                tab: TabId::new(set.tab_id),
+                path: set
+                    .path
+                    .into_iter()
+                    .map(|second| if second { Branch::Second } else { Branch::First })
+                    .collect(),
+                ratio: set.ratio,
+            },
+        ),
+        Err(refusal) => refusal,
+    }
+}
+
+/// One wheel notch or trackpad gesture, scaled by what the config file asked for.
+fn scroll_pane(scroll: &proto::Scroll) -> Response {
+    with_pane("a scroll", |pane| match ScrollDirection::parse(&scroll.direction) {
+        Some(direction) => {
+            pane.input.scroll(direction, lines(scroll.delta));
+            Response::ok()
+        }
+        None => Response::failure(format!(
+            "the core does not know a scroll direction called {:?}, so the wheel did nothing. \
+             Only up and down exist; the shell builds this from a fixed set, so this is a bug \
+             there.",
+            scroll.direction
+        )),
+    })
 }
 
 /// One press, after the input method has had its turn.

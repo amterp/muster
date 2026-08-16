@@ -124,11 +124,17 @@ private final class RecordingSurface: PaneSurface {
   var buttons: [Bool] = []
   var selectedText: String?
   var onProcessExited: (@MainActor (Bool) -> Void)?
+  /// Every offset asked for, in order, so a test can tell "sized once" from "sized twice".
+  var fontSizeOffsets: [Int32] = []
 
   init(selection: String? = nil) { selectedText = selection }
 
   func setSize(width: UInt32, height: UInt32) {}
   func setFocus(_ focused: Bool) {}
+  func setFontSizeOffset(_ points: Int32) -> [String] {
+    fontSizeOffsets.append(points)
+    return []
+  }
   func mouseMoved(to point: NSPoint, modifiers: NSEvent.ModifierFlags) { positions.append(point) }
   func leftMouse(pressed: Bool, modifiers: NSEvent.ModifierFlags) { buttons.append(pressed) }
 }
@@ -307,4 +313,25 @@ private func scroll(deltaY: CGFloat) -> NSEvent? {
   event.setDoubleValueField(.scrollWheelEventPointDeltaAxis1, value: Double(deltaY))
   event.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1, value: Double(deltaY))
   return NSEvent(cgEvent: event)
+}
+
+// Sizing the text, which is a Muster action rather than a terminal setting - so it is
+// rebindable, in the menu, and remembered across a launch like the sidebar it sits beside.
+
+@Test @MainActor func sizingTheTextReachesWhateverIsRenderingThePane() {
+  let surface = RecordingSurface()
+  let view = view(surface: surface, clipboard: scratchClipboard("fontsize"))
+
+  view.setFontSizeOffset(3)
+  view.setFontSizeOffset(0)
+
+  #expect(surface.fontSizeOffsets == [3, 0])
+}
+
+@Test @MainActor func aPaneWithNothingRenderingItYetIsNotAnError() {
+  // The ordinary case at launch: the window applies the offset to every pane it holds, and a
+  // pane whose bridge has not started has no surface to apply it to. Silently nothing, because
+  // `attach` sizes it the moment one arrives.
+  let view = SurfaceView(frame: NSRect(x: 0, y: 0, width: 100, height: 100))
+  view.setFontSizeOffset(3)
 }
