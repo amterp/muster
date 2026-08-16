@@ -132,12 +132,13 @@ blink = true                   # omit to let the program in the pane decide
 `[keymap]` is partial, so a file that names one action rebinds one action. Chords are
 modifiers and a key, in any order and any case, spelled the way you would say them: `cmd`,
 `opt`, `ctrl`, `shift`, and `left`, `return`, `f5`, `[`. The actions are `new_tab`,
-`next_tab`, `previous_tab`, `focus_tab_1` to `focus_tab_9`, `split_*` for each direction,
-`close_pane`, `next_pane`, `previous_pane`, `focus_*` and `resize_*` for each direction,
-`rename_pane`, `rename_tab`, `zoom`, `increase_font_size`, `decrease_font_size`,
-`reset_font_size`, `toggle_sidebar`, `reload_config`, and `show_shortcuts`. On macOS these
-become menu items, which is where the platform dispatches a key equivalent from - so a rebound
-action moves in the menu too, and System Settings can move it again.
+`next_tab`, `previous_tab`, `split_*` for each direction, `close_pane`, `next_pane`,
+`previous_pane`, `focus_*` and `resize_*` for each direction, `focus_pane_1` to
+`focus_pane_9`, `rename_pane`, `rename_tab`, `zoom`, `increase_font_size`,
+`decrease_font_size`, `reset_font_size`, `toggle_sidebar`, `reload_config`, and
+`show_shortcuts`. On macOS these become menu items, which is where the platform dispatches a
+key equivalent from - so a rebound action moves in the menu too, and System Settings can move
+it again.
 
 Three of them ship with no chord at all. Ghostty has `split_left` and `split_up` as actions and
 binds neither, so Muster does the same rather than inventing a shortcut for them - they are in
@@ -151,11 +152,31 @@ pane move.
 tab once and a pane several times an hour, so the chord goes to `rename_pane` (`cmd+shift+n`)
 and the tab keeps a menu item.
 
-The two ways of moving are different axes rather than two flavours of the same one.
-`next_pane` and the four directions reach every pane the window is **showing**; `next_tab` and
-`focus_tab_N` reach the tabs behind those, which nothing else can get to once the agent list
-is put away. Both cross machines: a window's tabs are one numbered list, so `cmd+3` is the
-third caption down the list whichever daemon holds it.
+**`cmd+1` to `cmd+9` go to a numbered agent.** The number is drawn on its row in the agent
+list, counting down the whole list across every machine, so `cmd+3` is the third row whichever
+daemon holds it. Panes rather than tabs, because the unit here is an agent and an agent is a
+pane: attention routing promises that when one needs you, a keystroke lands you on the pane
+that asked, and only a click used to do that.
+
+It reaches the tabs too. Going to a pane brings its tab on screen, so a number gets you into
+any tab through any pane in it - which is why nine chords are enough for both and why nothing
+else is numbered. Past nine the numbers run out, and the tenth pane is reached by `next_pane`,
+by a direction, or by clicking its row.
+
+The number is a position, so it moves when a pane above it opens or closes. That is the cost
+of numbering the thing that churns, and it is the right way round: the order is yours to
+arrange, and a number that stayed put when you moved its row would be fighting you.
+
+The two ways of moving are still different axes. `next_pane` and the four directions reach
+every pane the window is **showing**; `next_tab` and `previous_tab` walk the tabs behind
+those, including ones no region has on screen.
+
+These used to be `focus_tab_1` to `focus_tab_9`, and the old names are gone rather than kept
+as aliases. A `[keymap]` naming one is refused, and the whole file with it, which is what a
+config carried over from before should get - silently binding `cmd+3` to something other than
+what it used to reach is the one outcome worse than the refusal. Tab captions lose their
+numbers in the same change: two numberings in one list is worse than either, and a tab you
+have not named is now captioned `Tab 2` rather than carrying a chord's number.
 
 **A row in the agent list says two things, and you write the first one.** Underneath is what
 the agent calls itself - Claude sets its terminal title to what it is working on, so the row

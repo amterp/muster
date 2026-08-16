@@ -106,8 +106,8 @@ public final class MusterWindow: NSObject {
     sidebar.onPanePicked = { pane in
       Core.focus(daemonID: pane.daemon, paneID: pane.pane)
     }
-    sidebar.onTabPicked = { place in
-      Core.focus(tabPlace: place)
+    sidebar.onTabPicked = { tab in
+      Core.focus(tab: tab)
     }
     // Both halves name their subject outright rather than leaving it to whatever has the
     // keyboard: the row somebody double-clicked is very often a pane no region is showing,
@@ -526,13 +526,13 @@ extension MusterWindow {
     Core.focus(tabStep: "previous")
   }
 
-  /// Goes to the tab this item was numbered for.
+  /// Goes to the pane this item was numbered for.
   ///
   /// One method for all nine, reading the place off the item's tag. Nine methods differing by
   /// a digit is nine places for one of them to drift, and the number is data anyway.
-  @objc public func focusTabAtPlace(_ sender: Any?) {
+  @objc public func focusPaneAtPlace(_ sender: Any?) {
     guard let item = sender as? NSMenuItem, item.tag > 0 else { return }
-    Core.focus(tabPlace: item.tag)
+    Core.focus(panePlace: item.tag)
   }
 
   @objc public func focusNextPane(_ sender: Any?) {

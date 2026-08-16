@@ -9,12 +9,17 @@ import Testing
 
 @Suite("the sidebar lists what exists")
 struct SidebarTests {
+  /// One pane, numbered as the core would have numbered it.
+  ///
+  /// The place is stated rather than counted here, for the same reason a tab's is: the core
+  /// decides it, and a helper that numbered for itself would make these tests agree with a rule
+  /// the shell does not follow. Defaults to one, since most cases here are about something else.
   private func pane(
-    _ daemon: String, _ id: String, label: String? = nil, subtitle: String = "",
+    _ daemon: String, _ id: String, place: Int = 1, label: String? = nil, subtitle: String = "",
     givenName: String = "", onScreen: Bool = false
   ) -> Roster.Pane {
     Roster.Pane(
-      key: PaneKey(daemon: daemon, pane: id), label: label ?? id, subtitle: subtitle,
+      key: PaneKey(daemon: daemon, pane: id), place: place, label: label ?? id, subtitle: subtitle,
       givenName: givenName, onScreen: onScreen)
   }
 
@@ -62,7 +67,7 @@ struct SidebarTests {
         PaneKey(daemon: "devenv", pane: "w1:p1"): "blocked",
       ])
 
-    let panes = rows.filter { $0.kind == .pane }
+    let panes = rows.filter { $0.isPane }
     #expect(panes.count == 2)
     #expect(panes.map(\.state) == ["working", "blocked"])
   }
@@ -103,7 +108,7 @@ struct SidebarTests {
             ])
         ])
     ])
-    let rows = SidebarModel.rows(roster: roster, states: [:]).filter { $0.kind == .pane }
+    let rows = SidebarModel.rows(roster: roster, states: [:]).filter { $0.isPane }
 
     #expect(rows.map(\.onScreen) == [true, false])
   }
@@ -128,34 +133,65 @@ struct SidebarTests {
     ])
     let rows = SidebarModel.rows(roster: roster, states: [:])
 
-    #expect(rows.map(\.kind) == [.daemon, .pane])
+    #expect(rows.map(\.kind) == [.daemon, .pane(place: 1)])
   }
 
   @Test("a second tab anywhere in the window gives every tab a caption")
   func tabsAppearTogetherOrNotAtAll() {
-    // Including the tabs on a daemon that only holds one. The numbering counts across the
-    // whole window, so showing it in patches would leave somebody counting rows that are not
-    // there to work out what ⌘3 does.
+    // Including the tabs on a daemon that only holds one. Captions in patches would read as a
+    // boundary that comes and goes, which is worse than one that is always there.
     let roster = Roster(daemons: [
       Roster.Daemon(
         id: "local",
         tabs: [
           tab(
             "local", "w1:t1", place: 1, label: "one", onScreen: true,
-            panes: [pane("local", "w1:p1")]),
-          tab("local", "w1:t2", place: 2, label: "two", panes: [pane("local", "w1:p2")]),
+            panes: [pane("local", "w1:p1", place: 1)]),
+          tab(
+            "local", "w1:t2", place: 2, label: "two",
+            panes: [pane("local", "w1:p2", place: 2)]),
         ]),
       Roster.Daemon(
         id: "devenv",
-        tabs: [tab("devenv", "w1:t1", place: 3, label: "three", panes: [pane("devenv", "w1:p1")])]),
+        tabs: [
+          tab(
+            "devenv", "w1:t1", place: 3, label: "three",
+            panes: [pane("devenv", "w1:p1", place: 3)])
+        ]),
     ])
     let rows = SidebarModel.rows(roster: roster, states: [:])
 
     #expect(
       rows.map(\.kind) == [
-        .daemon, .tab(place: 1), .pane, .tab(place: 2), .pane, .daemon, .tab(place: 3), .pane,
+        .daemon, .tab, .pane(place: 1), .tab, .pane(place: 2), .daemon, .tab, .pane(place: 3),
       ])
-    #expect(rows.filter { $0.kind == .tab(place: 3) }.map(\.label) == ["three"])
+    #expect(rows.filter { $0.kind == .tab }.map(\.label) == ["one", "two", "three"])
+  }
+
+  @Test("the number on a row is the pane's place, counting across the whole window")
+  func paneNumbersCrossDaemons() {
+    // The chord's half of the same fact the caption test above covers for tabs: ⌘3 is the third
+    // numbered row down the sidebar, whichever machine holds it. The number comes from the core
+    // rather than from the row's position here, so a shell that renumbered for itself would
+    // show one number and the keyboard would mean another.
+    let roster = Roster(daemons: [
+      Roster.Daemon(
+        id: "local",
+        tabs: [
+          tab(
+            "local", "w1:t1", place: 1, onScreen: true,
+            panes: [pane("local", "w1:p1", place: 1), pane("local", "w1:p2", place: 2)])
+        ]),
+      Roster.Daemon(
+        id: "devenv",
+        tabs: [tab("devenv", "w1:t1", place: 2, panes: [pane("devenv", "w1:p1", place: 3)])]),
+    ])
+
+    let rows = SidebarModel.rows(roster: roster, states: [:])
+
+    #expect(
+      rows.filter { $0.isPane }.map(\.kind)
+        == [.pane(place: 1), .pane(place: 2), .pane(place: 3)])
   }
 
   @Test("a tab caption says whether a region is showing it")
@@ -283,7 +319,7 @@ struct SidebarTests {
         ])
     ])
 
-    let panes = SidebarModel.rows(roster: roster, states: [:]).filter { $0.kind == .pane }
+    let panes = SidebarModel.rows(roster: roster, states: [:]).filter { $0.isPane }
     #expect(panes.map(\.subtitle) == ["first working build", ""])
   }
 
@@ -307,7 +343,7 @@ struct SidebarTests {
         ])
     ])
 
-    let panes = SidebarModel.rows(roster: roster, states: [:]).filter { $0.kind == .pane }
+    let panes = SidebarModel.rows(roster: roster, states: [:]).filter { $0.isPane }
     let heights = panes.map(SidebarModel.height(of:))
     #expect(heights == [SidebarModel.twoLines, SidebarModel.twoLines, SidebarModel.oneLine])
   }
@@ -334,7 +370,7 @@ struct SidebarTests {
     ])
 
     let rows = SidebarModel.rows(roster: roster, states: [:])
-    #expect(rows.first { $0.kind == .tab(place: 1) }?.givenName == "release")
+    #expect(rows.first { $0.kind == .tab }?.givenName == "release")
     #expect(rows.first { $0.pane?.pane == "w1:p1" }?.givenName == "🔥 payments spike")
     #expect(rows.first { $0.pane?.pane == "w1:p2" }?.givenName == "")
   }

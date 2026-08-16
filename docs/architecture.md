@@ -361,18 +361,31 @@ and for a tab it is neither, because herdr has no spelling for it.
 
 **The roster is a tree, because a tab is what a person navigates between.** Daemon, then tab, then pane: a flat list
 of panes cannot say which of them sit side by side, and a region shows one tab, so "where has that agent got to" is a
-question about tabs. Each tab carries a place in one numbering that runs across every attached daemon, and that one
-number is what the list shows, what a numbered chord names, and what stepping walks - three ways to reach a tab that
-cannot disagree, because there is one order. A tab also says whether a region is showing it, which is not the same
-question as its panes being on screen: a zoomed tab is on screen while all but one of its panes are not. Naming is
-the core's, on the same terms as the ordering, and it drops what a backend's own label repeats - herdr names an
-unnamed tab after its position, and Muster already has a better position.
+question about tabs. A tab also says whether a region is showing it, which is not the same question as its panes
+being on screen: a zoomed tab is on screen while all but one of its panes are not. Naming is the core's, on the same
+terms as the ordering, and it drops what a backend's own label repeats - herdr names an unnamed tab after its
+position, and Muster has a better position to write one from.
+
+**One numbering, and it is on the panes.** Every pane carries a place in a single count that runs across every
+attached daemon and every tab, and that number is what the list draws and what ⌘1 to ⌘9 name. It is on panes because
+the unit of this product is an agent and an agent is a pane: the rows carrying the states are pane rows, so a number
+drawn a level above them would be one thing pointing at another. Numbering panes costs the tab axis nothing, because
+focusing a pane surfaces the tab holding it - so the nine chords reach every tab too, through any pane in it. Tabs
+keep a place of their own for stepping and for captioning one nobody has named, and no chord names it: two numberings
+in one list is worse than either, and whichever thing is numbered, only one may be.
+
+The number is positional and it moves when a pane above it closes. That is the cost of numbering the thing that
+churns, and it is the right trade once the order is the user's to arrange: a stable number would keep its value when
+you moved the row, which is the opposite of what the gesture asked for. What it does not fix is a number going stale
+between reading it and pressing it, and the answer to that is elsewhere - a notification names the agent, not the
+chord.
 
 **Moving the keyboard comes in two axes, and the second is what makes the first a guarantee at all.** Panes and
-tabs are different questions: the pane moves reach everything the window is *showing*, and the tab moves reach what
-is behind it. Without the second, a pane in a tab no region has is reachable only by clicking its row - and the list
-can be put away, which would leave those panes with no door. Tab moves have no geometry, because tabs are a list and
-nothing is to the left of a tab; both directions wrap, and a number goes straight to a place.
+tabs are different questions: the *relative* pane moves reach everything the window is *showing*, and the tab moves
+reach what is behind it. Without the second, a pane in a tab no region has would be reachable only by clicking its
+row - and the list can be put away, which would leave those panes with no door. The numbered chords are the third
+route and cut across both, because a place names a pane whether or not anything is showing it. Tab moves have no
+geometry, because tabs are a list and nothing is to the left of a tab; both directions wrap.
 
 **Within the panes on screen, moving comes in two kinds.** Next and previous walk reading order across every region
 and wrap, so between them they reach every pane - that is the guarantee. The four directions are geometric: the core lays the whole
@@ -447,8 +460,8 @@ menu can represent or the platform can rebind.
 
 What that costs is paid in the config file rather than in the vocabulary: an amount a chord would have carried
 becomes a root key, which is what `resize_step` and `scroll_multiplier` are. Where an action genuinely has a small
-closed set of arguments, it becomes that many actions - `focus_tab_1` through `focus_tab_9` are nine names the
-config file and the menu can both say, over one `Action::FocusTab(u8)` in the core. Nine menu items need nine
+closed set of arguments, it becomes that many actions - `focus_pane_1` through `focus_pane_9` are nine names the
+config file and the menu can both say, over one `Action::FocusPane(u8)` in the core. Nine menu items need nine
 actions; the core still holds one intent.
 
 The CLI does not inherit any of this. It names intents directly and passes arguments, because nothing about it is a

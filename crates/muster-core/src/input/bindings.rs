@@ -27,13 +27,6 @@ pub enum Action {
     NewTab,
     NextTab,
     PreviousTab,
-    /// Shows the tab at this place in the window's tab order, counting from one.
-    ///
-    /// One variant carrying a number rather than nine spelled out, because they differ only
-    /// by the digit and a list of nine near-identical arms is a list nobody keeps in step.
-    /// Only 1 to 9 are ever built - [`Action::ALL`] is the whole vocabulary - so the places
-    /// beyond that have no name, no chord and no menu item.
-    FocusTab(u8),
     SplitRight,
     SplitDown,
     SplitLeft,
@@ -53,6 +46,18 @@ pub enum Action {
     FocusRight,
     FocusUp,
     FocusDown,
+    /// Puts the keyboard on the pane at this place in the window's pane order, counting from
+    /// one - the place the sidebar draws beside the row.
+    ///
+    /// One variant carrying a number rather than nine spelled out, because they differ only
+    /// by the digit and a list of nine near-identical arms is a list nobody keeps in step.
+    /// Nine names in the config file over one intent here is the general rule: the file names
+    /// menu items and the core names intents (`architecture.md`, one action path).
+    ///
+    /// Only 1 to 9 are ever built - [`Action::ALL`] is the whole vocabulary - so the places
+    /// beyond that have no name, no chord and no menu item. A tenth pane is reached by
+    /// `next_pane`, by a direction, or by clicking its row.
+    FocusPane(u8),
     ResizeLeft,
     ResizeRight,
     ResizeUp,
@@ -76,15 +81,6 @@ impl Action {
         Action::NewTab,
         Action::NextTab,
         Action::PreviousTab,
-        Action::FocusTab(1),
-        Action::FocusTab(2),
-        Action::FocusTab(3),
-        Action::FocusTab(4),
-        Action::FocusTab(5),
-        Action::FocusTab(6),
-        Action::FocusTab(7),
-        Action::FocusTab(8),
-        Action::FocusTab(9),
         Action::RenameTab,
         Action::SplitRight,
         Action::SplitDown,
@@ -98,6 +94,15 @@ impl Action {
         Action::FocusRight,
         Action::FocusUp,
         Action::FocusDown,
+        Action::FocusPane(1),
+        Action::FocusPane(2),
+        Action::FocusPane(3),
+        Action::FocusPane(4),
+        Action::FocusPane(5),
+        Action::FocusPane(6),
+        Action::FocusPane(7),
+        Action::FocusPane(8),
+        Action::FocusPane(9),
         Action::ResizeLeft,
         Action::ResizeRight,
         Action::ResizeUp,
@@ -117,13 +122,6 @@ impl Action {
             Action::NewTab => "new_tab",
             Action::NextTab => "next_tab",
             Action::PreviousTab => "previous_tab",
-            // A table rather than a format, because the answer is a `&'static str` and a name
-            // built at a call site cannot be one. A place outside it comes back unnameable
-            // rather than borrowing another place's name, so `parse` refuses it and nothing
-            // silently binds ⌘4 to the wrong tab.
-            Action::FocusTab(place) => {
-                TAB_PLACES.get(usize::from(place).wrapping_sub(1)).copied().unwrap_or("focus_tab")
-            }
             Action::SplitRight => "split_right",
             Action::SplitDown => "split_down",
             Action::SplitLeft => "split_left",
@@ -137,6 +135,13 @@ impl Action {
             Action::FocusRight => "focus_right",
             Action::FocusUp => "focus_up",
             Action::FocusDown => "focus_down",
+            // A table rather than a format, because the answer is a `&'static str` and a name
+            // built at a call site cannot be one. A place outside it comes back unnameable
+            // rather than borrowing another place's name, so `parse` refuses it and nothing
+            // silently binds ⌘4 to the wrong pane.
+            Action::FocusPane(place) => {
+                PANE_PLACES.get(usize::from(place).wrapping_sub(1)).copied().unwrap_or("focus_pane")
+            }
             Action::ResizeLeft => "resize_left",
             Action::ResizeRight => "resize_right",
             Action::ResizeUp => "resize_up",
@@ -178,13 +183,6 @@ impl Action {
             // cannot, but the gesture is the one somebody already has.
             Action::NextTab => Some(Chord::new(Key::BracketRight, shifted)),
             Action::PreviousTab => Some(Chord::new(Key::BracketLeft, shifted)),
-            // ⌘1 to ⌘9, as every tabbed thing on this platform has them. The number is the
-            // place in the window's tab order, so it counts across daemons the way the
-            // sidebar does rather than restarting at each machine.
-            Action::FocusTab(place) => Some(Chord::new(
-                TAB_DIGITS.get(usize::from(place).wrapping_sub(1)).copied().unwrap_or(Key::Digit1),
-                command,
-            )),
             Action::SplitRight => Some(Chord::new(Key::KeyD, command)),
             Action::SplitDown => Some(Chord::new(Key::KeyD, shifted)),
             // Unbound, each for its own reason. The two splits are Ghostty parity - it ships
@@ -206,6 +204,14 @@ impl Action {
             Action::FocusRight => Some(Chord::new(Key::ArrowRight, optioned)),
             Action::FocusUp => Some(Chord::new(Key::ArrowUp, optioned)),
             Action::FocusDown => Some(Chord::new(Key::ArrowDown, optioned)),
+            // ⌘1 to ⌘9, where every tabbed application on this platform puts them - pointed at
+            // panes rather than tabs, because an agent is a pane and the rows carrying the
+            // agent states are pane rows. The number counts across daemons the way the sidebar
+            // does rather than restarting at each machine.
+            Action::FocusPane(place) => Some(Chord::new(
+                PANE_DIGITS.get(usize::from(place).wrapping_sub(1)).copied().unwrap_or(Key::Digit1),
+                command,
+            )),
             Action::ResizeLeft => Some(Chord::new(Key::ArrowLeft, resizing)),
             Action::ResizeRight => Some(Chord::new(Key::ArrowRight, resizing)),
             Action::ResizeUp => Some(Chord::new(Key::ArrowUp, resizing)),
@@ -232,21 +238,26 @@ impl Action {
     }
 }
 
-/// What each numbered tab action is called, in place order.
-const TAB_PLACES: [&str; 9] = [
-    "focus_tab_1",
-    "focus_tab_2",
-    "focus_tab_3",
-    "focus_tab_4",
-    "focus_tab_5",
-    "focus_tab_6",
-    "focus_tab_7",
-    "focus_tab_8",
-    "focus_tab_9",
+/// What each numbered pane action is called, in place order.
+///
+/// These used to be `focus_tab_1` through `focus_tab_9`, and the old names are gone rather
+/// than aliased: an action `[keymap]` does not know refuses the whole file and says so, which
+/// is what a config carried over from before should get. Silently binding ⌘3 to a different
+/// thing than it used to reach would be the one outcome worse than the refusal.
+const PANE_PLACES: [&str; 9] = [
+    "focus_pane_1",
+    "focus_pane_2",
+    "focus_pane_3",
+    "focus_pane_4",
+    "focus_pane_5",
+    "focus_pane_6",
+    "focus_pane_7",
+    "focus_pane_8",
+    "focus_pane_9",
 ];
 
-/// The digit key a numbered tab action sits on, in place order.
-const TAB_DIGITS: [Key; 9] = [
+/// The digit key a numbered pane action sits on, in place order.
+const PANE_DIGITS: [Key; 9] = [
     Key::Digit1,
     Key::Digit2,
     Key::Digit3,

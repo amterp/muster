@@ -69,8 +69,8 @@
           "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen"
         ],
         "panes": [
-          "local/w1:p2 tab=w1:t1 label=\"beta\" hidden",
-          "local/w1:p1 tab=w1:t1 label=\"alpha\" hidden"
+          "local/w1:p2 place=1 tab=w1:t1 label=\"beta\" hidden",
+          "local/w1:p1 place=2 tab=w1:t1 label=\"alpha\" hidden"
         ]
       }
     },
@@ -129,8 +129,8 @@
           "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen"
         ],
         "panes": [
-          "local/w1:p1 tab=w1:t1 label=\"alpha\" hidden",
-          "local/w1:p2 tab=w1:t1 label=\"beta\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"alpha\" hidden",
+          "local/w1:p2 place=2 tab=w1:t1 label=\"beta\" hidden"
         ]
       }
     },
@@ -194,8 +194,8 @@
           "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen"
         ],
         "panes": [
-          "local/w1:p1 tab=w1:t1 label=\"alpha\" hidden",
-          "local/w1:p2 tab=w1:t1 label=\"beta\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"alpha\" hidden",
+          "local/w1:p2 place=2 tab=w1:t1 label=\"beta\" hidden"
         ]
       }
     },
@@ -249,7 +249,7 @@
           "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen"
         ],
         "panes": [
-          "local/w1:p1 tab=w1:t1 label=\"muster · claude\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"muster · claude\" hidden"
         ]
       }
     },
@@ -302,7 +302,7 @@
           "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen"
         ],
         "panes": [
-          "local/w1:p1 tab=w1:t1 label=\"rad\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"rad\" hidden"
         ]
       }
     },
@@ -361,8 +361,8 @@
           "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen"
         ],
         "panes": [
-          "local/w1:p1 tab=w1:t1 label=\"w1:p1\" hidden",
-          "local/w1:p2 tab=w1:t1 label=\"w1:p2\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"w1:p1\" hidden",
+          "local/w1:p2 place=2 tab=w1:t1 label=\"w1:p2\" hidden"
         ]
       }
     },
@@ -415,7 +415,7 @@
           "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen"
         ],
         "panes": [
-          "local/w1:p1 tab=w1:t1 label=\"src\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"src\" hidden"
         ]
       }
     },
@@ -483,8 +483,8 @@
           "local/w1:t2 place=2 label=\"t2\" given-name=\"t2\" hidden"
         ],
         "panes": [
-          "local/w1:p1 tab=w1:t1 label=\"shown\" on-screen",
-          "local/w1:p9 tab=w1:t2 label=\"elsewhere\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"shown\" on-screen",
+          "local/w1:p9 place=2 tab=w1:t2 label=\"elsewhere\" hidden"
         ]
       }
     },
@@ -571,8 +571,8 @@
           "devenv/w1:t1 place=2 label=\"t1\" given-name=\"t1\" on-screen"
         ],
         "panes": [
-          "local/w1:p1 tab=w1:t1 label=\"here\" hidden",
-          "devenv/w1:p1 tab=w1:t1 label=\"there\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"here\" hidden",
+          "devenv/w1:p1 place=2 tab=w1:t1 label=\"there\" hidden"
         ]
       }
     },
@@ -654,8 +654,8 @@
           "devenv/w1:t1 place=2 label=\"t1\" given-name=\"t1\" hidden"
         ],
         "panes": [
-          "local/w1:p1 tab=w1:t1 label=\"shown\" hidden",
-          "devenv/w1:p1 tab=w1:t1 label=\"offscreen\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"shown\" hidden",
+          "devenv/w1:p1 place=2 tab=w1:t1 label=\"offscreen\" hidden"
         ]
       }
     },
@@ -711,7 +711,7 @@
           "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen"
         ],
         "panes": [
-          "local/w1:p1 tab=w1:t1 label=\"here\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"here\" hidden"
         ]
       }
     },
@@ -801,14 +801,14 @@
           "devenv/w1:t1 place=2 label=\"t1\" given-name=\"t1\" on-screen"
         ],
         "panes": [
-          "local/w1:p1 tab=w1:t1 label=\"laptop\" hidden",
-          "devenv/w1:p1 tab=w1:t1 label=\"devenv\" on-screen"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"laptop\" hidden",
+          "devenv/w1:p1 place=2 tab=w1:t1 label=\"devenv\" on-screen"
         ]
       }
     },
     {
       "name": "tabs are numbered across the window, not within each daemon",
-      "why": "The number is the place in the list a person is looking at, and that list spans machines - a window showing a laptop beside a devenv is the arrangement this project exists for. Restarting at each daemon would give two tabs the same number, so ⌘2 would have to guess which machine was meant, and the sidebar would be showing a numbering the keyboard does not use.",
+      "why": "The number is the place in the list a person is looking at, and that list spans machines - a window showing a laptop beside a devenv is the arrangement this project exists for. Restarting at each daemon would give two tabs the same number, so two captions would read alike and next_tab would walk an order the sidebar does not show. Panes are counted the same way and for the same reason; the difference is that theirs is what ⌘N names and this one only names the tab.",
       "given": {
         "worlds": {
           "laptop": {
@@ -913,10 +913,10 @@
           "devenv/w1:t2 place=4 label=\"t2\" given-name=\"t2\" hidden"
         ],
         "panes": [
-          "local/w1:p1 tab=w1:t1 label=\"first\" hidden",
-          "local/w1:p2 tab=w1:t2 label=\"second\" hidden",
-          "devenv/w1:p1 tab=w1:t1 label=\"third\" hidden",
-          "devenv/w1:p2 tab=w1:t2 label=\"fourth\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
+          "local/w1:p2 place=2 tab=w1:t2 label=\"second\" hidden",
+          "devenv/w1:p1 place=3 tab=w1:t1 label=\"third\" hidden",
+          "devenv/w1:p2 place=4 tab=w1:t2 label=\"fourth\" hidden"
         ]
       }
     },
@@ -978,8 +978,8 @@
           "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen"
         ],
         "panes": [
-          "local/w1:p1 tab=w1:t1 label=\"zoomed\" on-screen",
-          "local/w1:p2 tab=w1:t1 label=\"behind\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"zoomed\" on-screen",
+          "local/w1:p2 place=2 tab=w1:t1 label=\"behind\" hidden"
         ]
       }
     },
@@ -1048,14 +1048,14 @@
           "local/w2:t1 place=2 label=\"rad\" hidden"
         ],
         "panes": [
-          "local/w1:p1 tab=w1:t1 label=\"muster\" hidden",
-          "local/w2:p1 tab=w2:t1 label=\"rad\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"muster\" hidden",
+          "local/w2:p1 place=2 tab=w2:t1 label=\"rad\" hidden"
         ]
       }
     },
     {
-      "name": "a tab herdr has not named is its number and nothing else",
-      "why": "herdr labels an unnamed tab with its position inside its workspace, so the second tab's label is literally `2` - and Muster already draws a better number beside every row, one that counts across the whole window and is what the numbered chords use. A caption reading `2 · 2` was what passing herdr's through actually produced. So a name that is only digits is dropped, and so is an absent one: the row is never empty, because the place is always there.",
+      "name": "a tab nobody has named is called after its place in the window",
+      "why": "herdr labels an unnamed tab with its position inside its workspace, so the second tab's label is literally `2`, and two daemons would each contribute a `1`. That is not a name, so it is dropped - and something has to take its place, because the caption is now the whole of the row. Muster writes `Tab <place>` from its own numbering, which counts across the window and so cannot collide.\n\nThis used to be empty, back when a number was drawn beside every caption. The numbers moved onto the pane rows, and an empty caption became a row with nothing on it at all - which is worse than a wrong one, because there is nothing to notice.",
       "given": {
         "worlds": {
           "laptop": {
@@ -1099,10 +1099,10 @@
       },
       "expect": {
         "tabs": [
-          "local/w1:t1 place=1 label=\"\" on-screen"
+          "local/w1:t1 place=1 label=\"Tab 1\" on-screen"
         ],
         "panes": [
-          "local/w1:p1 tab=w1:t1 label=\"nameless\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"nameless\" hidden"
         ]
       }
     },
@@ -1218,10 +1218,10 @@
           "devenv/w1:t2 place=4 label=\"t2\" given-name=\"t2\" hidden"
         ],
         "panes": [
-          "local/w1:p1 tab=w1:t1 label=\"first\" hidden",
-          "local/w1:p2 tab=w1:t2 label=\"second\" hidden",
-          "devenv/w1:p1 tab=w1:t1 label=\"third\" hidden",
-          "devenv/w1:p2 tab=w1:t2 label=\"fourth\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
+          "local/w1:p2 place=2 tab=w1:t2 label=\"second\" hidden",
+          "devenv/w1:p1 place=3 tab=w1:t1 label=\"third\" hidden",
+          "devenv/w1:p2 place=4 tab=w1:t2 label=\"fourth\" hidden"
         ]
       }
     },
@@ -1337,10 +1337,10 @@
           "devenv/w1:t2 place=4 label=\"t2\" given-name=\"t2\" hidden"
         ],
         "panes": [
-          "local/w1:p1 tab=w1:t1 label=\"first\" hidden",
-          "local/w1:p2 tab=w1:t2 label=\"second\" hidden",
-          "devenv/w1:p1 tab=w1:t1 label=\"third\" hidden",
-          "devenv/w1:p2 tab=w1:t2 label=\"fourth\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
+          "local/w1:p2 place=2 tab=w1:t2 label=\"second\" hidden",
+          "devenv/w1:p1 place=3 tab=w1:t1 label=\"third\" hidden",
+          "devenv/w1:p2 place=4 tab=w1:t2 label=\"fourth\" hidden"
         ]
       }
     },
@@ -1456,10 +1456,10 @@
           "devenv/w1:t2 place=4 label=\"t2\" given-name=\"t2\" hidden"
         ],
         "panes": [
-          "local/w1:p1 tab=w1:t1 label=\"first\" hidden",
-          "local/w1:p2 tab=w1:t2 label=\"second\" hidden",
-          "devenv/w1:p1 tab=w1:t1 label=\"third\" hidden",
-          "devenv/w1:p2 tab=w1:t2 label=\"fourth\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
+          "local/w1:p2 place=2 tab=w1:t2 label=\"second\" hidden",
+          "devenv/w1:p1 place=3 tab=w1:t1 label=\"third\" hidden",
+          "devenv/w1:p2 place=4 tab=w1:t2 label=\"fourth\" hidden"
         ]
       }
     },
@@ -1575,10 +1575,10 @@
           "devenv/w1:t2 place=4 label=\"t2\" given-name=\"t2\" hidden"
         ],
         "panes": [
-          "local/w1:p1 tab=w1:t1 label=\"first\" hidden",
-          "local/w1:p2 tab=w1:t2 label=\"second\" hidden",
-          "devenv/w1:p1 tab=w1:t1 label=\"third\" hidden",
-          "devenv/w1:p2 tab=w1:t2 label=\"fourth\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
+          "local/w1:p2 place=2 tab=w1:t2 label=\"second\" hidden",
+          "devenv/w1:p1 place=3 tab=w1:t1 label=\"third\" hidden",
+          "devenv/w1:p2 place=4 tab=w1:t2 label=\"fourth\" hidden"
         ]
       }
     },
@@ -1693,16 +1693,16 @@
           "devenv/w1:t2 place=4 label=\"t2\" given-name=\"t2\" hidden"
         ],
         "panes": [
-          "local/w1:p1 tab=w1:t1 label=\"first\" hidden",
-          "local/w1:p2 tab=w1:t2 label=\"second\" hidden",
-          "devenv/w1:p1 tab=w1:t1 label=\"third\" hidden",
-          "devenv/w1:p2 tab=w1:t2 label=\"fourth\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
+          "local/w1:p2 place=2 tab=w1:t2 label=\"second\" hidden",
+          "devenv/w1:p1 place=3 tab=w1:t1 label=\"third\" hidden",
+          "devenv/w1:p2 place=4 tab=w1:t2 label=\"fourth\" hidden"
         ]
       }
     },
     {
-      "name": "a number names the tab at that place, counting from one",
-      "why": "What ⌘3 means. Counting from one rather than zero because the sidebar counts that way and the keyboard has no zero next to the one - and the number a person reads off a row has to be the number that takes them there.",
+      "name": "a number names the pane at that place, counting from one",
+      "why": "What ⌘3 means. Counting from one rather than zero because the sidebar counts that way and the keyboard has no zero next to the one - and the number a person reads off a row has to be the number that takes them there.\n\nThe count runs across daemons and across tabs alike, so the third numbered row is the third pane in the window rather than the third on some machine. Here that lands on a pane the second daemon holds, in a tab nothing is showing: focusing a pane surfaces the tab holding it, so the numbers reach every tab through the panes in it and no tab needs a chord of its own.",
       "given": {
         "worlds": {
           "laptop": {
@@ -1801,7 +1801,7 @@
         "at": 3
       },
       "expect": {
-        "at": "devenv/w1:t1",
+        "at": "devenv/w1:p1",
         "tabs": [
           "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen",
           "local/w1:t2 place=2 label=\"t2\" given-name=\"t2\" hidden",
@@ -1809,16 +1809,16 @@
           "devenv/w1:t2 place=4 label=\"t2\" given-name=\"t2\" hidden"
         ],
         "panes": [
-          "local/w1:p1 tab=w1:t1 label=\"first\" hidden",
-          "local/w1:p2 tab=w1:t2 label=\"second\" hidden",
-          "devenv/w1:p1 tab=w1:t1 label=\"third\" hidden",
-          "devenv/w1:p2 tab=w1:t2 label=\"fourth\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
+          "local/w1:p2 place=2 tab=w1:t2 label=\"second\" hidden",
+          "devenv/w1:p1 place=3 tab=w1:t1 label=\"third\" hidden",
+          "devenv/w1:p2 place=4 tab=w1:t2 label=\"fourth\" hidden"
         ]
       }
     },
     {
-      "name": "a number past the last tab names nothing",
-      "why": "Doing nothing beats landing somewhere. Clamping to the last tab would make ⌘9 mean a different tab every time one opened or closed, which is a chord nobody can build a habit on - and the honest answer to 'go to the ninth tab' in a window of four is that there isn't one.",
+      "name": "a number past the last pane names nothing",
+      "why": "Doing nothing beats landing somewhere. Clamping to the last pane would make ⌘9 mean a different pane every time one opened or closed, which is a chord nobody can build a habit on - and the honest answer to 'go to the ninth pane' in a window of four is that there isn't one.",
       "given": {
         "worlds": {
           "laptop": {
@@ -1925,10 +1925,10 @@
           "devenv/w1:t2 place=4 label=\"t2\" given-name=\"t2\" hidden"
         ],
         "panes": [
-          "local/w1:p1 tab=w1:t1 label=\"first\" hidden",
-          "local/w1:p2 tab=w1:t2 label=\"second\" hidden",
-          "devenv/w1:p1 tab=w1:t1 label=\"third\" hidden",
-          "devenv/w1:p2 tab=w1:t2 label=\"fourth\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
+          "local/w1:p2 place=2 tab=w1:t2 label=\"second\" hidden",
+          "devenv/w1:p1 place=3 tab=w1:t1 label=\"third\" hidden",
+          "devenv/w1:p2 place=4 tab=w1:t2 label=\"fourth\" hidden"
         ]
       }
     },
@@ -1983,7 +1983,7 @@
           "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen"
         ],
         "panes": [
-          "local/w1:p1 tab=w1:t1 label=\"muster · claude\" subtitle=\"first working build\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"muster · claude\" subtitle=\"first working build\" hidden"
         ]
       }
     },
@@ -2037,7 +2037,7 @@
           "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen"
         ],
         "panes": [
-          "local/w1:p1 tab=w1:t1 label=\"muster\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"muster\" hidden"
         ]
       }
     },
@@ -2092,7 +2092,7 @@
           "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen"
         ],
         "panes": [
-          "local/w1:p1 tab=w1:t1 label=\"muster · claude\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"muster · claude\" hidden"
         ]
       }
     },
@@ -2148,7 +2148,7 @@
           "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen"
         ],
         "panes": [
-          "local/w1:p1 tab=w1:t1 label=\"🔥 payments spike\" subtitle=\"first working build\" given-name=\"🔥 payments spike\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"🔥 payments spike\" subtitle=\"first working build\" given-name=\"🔥 payments spike\" hidden"
         ]
       }
     },
@@ -2204,7 +2204,7 @@
           "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen"
         ],
         "panes": [
-          "local/w1:p1 tab=w1:t1 label=\"payments spike\" given-name=\"payments spike\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"payments spike\" given-name=\"payments spike\" hidden"
         ]
       }
     },
@@ -2266,11 +2266,11 @@
       "expect": {
         "tabs": [
           "local/w1:t1 place=1 label=\"release\" given-name=\"release\" on-screen",
-          "local/w1:t2 place=2 label=\"\" hidden"
+          "local/w1:t2 place=2 label=\"Tab 2\" hidden"
         ],
         "panes": [
-          "local/w1:p1 tab=w1:t1 label=\"muster\" hidden",
-          "local/w1:p2 tab=w1:t2 label=\"muster\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"muster\" hidden",
+          "local/w1:p2 place=2 tab=w1:t2 label=\"muster\" hidden"
         ]
       }
     }

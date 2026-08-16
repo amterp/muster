@@ -151,20 +151,34 @@
       }
     },
     {
-      "name": "the numbered tabs, where every tabbed application on this platform puts them",
-      "why": "⌘1 to ⌘9 is not a Ghostty convention so much as a platform one - browsers, editors and terminals all have it - so a chord Muster invented instead would be the one thing in the window somebody had to look up. The number is the place in the window's whole tab order, which is what the sidebar lists, so a row's number and the chord that reaches it are the same number.",
+      "name": "the numbered panes, where every tabbed application on this platform puts them",
+      "why": "⌘1 to ⌘9 is not a Ghostty convention so much as a platform one - browsers, editors and terminals all have it - so a chord Muster invented instead would be the one thing in the window somebody had to look up. What they name is a pane rather than a tab, which is where Muster differs from all of them: the unit of this product is an agent, an agent is a pane, and the rows carrying the agent states are pane rows. The number is the place in the window's whole pane order, which is the number the sidebar draws beside the row, so a row's number and the chord that reaches it are the same number.\n\nThis does not cost the tab axis anything. Focusing a pane surfaces the tab holding it, so nine pane chords reach every tab too - through any pane in it - and next_tab and previous_tab still walk the tabs themselves.",
       "given": {
         "actions": [
-          "focus_tab_1",
-          "focus_tab_2",
-          "focus_tab_9"
+          "focus_pane_1",
+          "focus_pane_2",
+          "focus_pane_9"
         ]
       },
       "expect": {
         "chords": [
-          "focus_tab_1=super+Digit1",
-          "focus_tab_2=super+Digit2",
-          "focus_tab_9=super+Digit9"
+          "focus_pane_1=super+Digit1",
+          "focus_pane_2=super+Digit2",
+          "focus_pane_9=super+Digit9"
+        ]
+      }
+    },
+    {
+      "name": "the tab numbers are gone rather than moved beside the pane numbers",
+      "why": "Two numberings in one sidebar is worse than either: a row reading 3 beside a caption reading 2 is two chords that look alike and mean different things. The old names are refused rather than aliased, so a config file carrying `focus_tab_3` is told so - silently binding ⌘3 to a different thing than it used to reach is the one outcome worse than the refusal.",
+      "given": {
+        "actions": [
+          "focus_tab_1"
+        ]
+      },
+      "expect": {
+        "chords": [
+          "focus_tab_1=(no such action)"
         ]
       }
     },

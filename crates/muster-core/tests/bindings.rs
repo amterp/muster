@@ -32,8 +32,13 @@ fn bindings_conformance() {
         let mut chords = Vec::new();
         for name in wanted {
             let name = name.as_str().unwrap_or_default();
-            let action = Action::parse(name)
-                .ok_or_else(|| CaseError::new(format!("`{name}` is not an action")))?;
+            // A name the vocabulary does not hold is an answer rather than a broken case, so
+            // that a case can pin an action being *gone*. A typo still fails, because it
+            // answers this where the case expected a chord.
+            let Some(action) = Action::parse(name) else {
+                chords.push(format!("{name}=(no such action)"));
+                continue;
+            };
             let chord = bindings
                 .chord(action)
                 .ok_or_else(|| CaseError::new(format!("`{name}` has no default chord")))?;

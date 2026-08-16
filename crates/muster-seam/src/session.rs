@@ -1060,21 +1060,45 @@ pub(crate) fn step_tab(direction: TabStep) -> Result<(), String> {
     focus(&daemon, &pane)
 }
 
-/// Shows the tab at a given place in the window's tab order, counting from one.
+/// Brings a named tab on screen, landing the keyboard on its first pane.
 ///
-/// What ⌘1 to ⌘9 mean. A place past the last tab is refused by name rather than clamped to
-/// the last one: a chord that lands somewhere different every time a tab opens is worse than
-/// a chord that does nothing until there is a tab to do it to.
-pub(crate) fn focus_tab_at(place: usize) -> Result<(), String> {
+/// The mouse's half of what `next_tab` does with the keyboard, through the same [`landing`]
+/// rule so that the two agree about where a tab is entered.
+pub(crate) fn focus_tab(daemon: &DaemonId, tab: &TabId) -> Result<(), String> {
+    let found = {
+        let session = SESSION.lock().expect("a panicking sender poisoned the session");
+        let key = TabKey::new(daemon, tab);
+        match session.roster(&session.view()).tabs().find(|held| held.key == key) {
+            Some(held) => landing(held),
+            None => Err(format!(
+                "this window is not showing a tab called {key}, so the keyboard stayed where \
+                 it was. Most likely it closed while the click was in flight."
+            )),
+        }
+    };
+    let (daemon, pane) = found?;
+    focus(&daemon, &pane)
+}
+
+/// Puts the keyboard on the pane at a given place in the window's pane order.
+///
+/// What ⌘1 to ⌘9 mean. A place past the last pane is refused by name rather than clamped to
+/// the last one: a chord that lands somewhere different every time a pane opens is worse than
+/// a chord that does nothing until there is a pane to do it to.
+///
+/// No `landing` step, unlike stepping tabs: a pane names itself, where a tab has to nominate
+/// one of its own. Reaching a tab nothing is showing still works, because [`focus`] surfaces
+/// the tab holding the pane - which is the argument for numbering panes rather than tabs.
+pub(crate) fn focus_pane_at(place: usize) -> Result<(), String> {
     let found = {
         let session = SESSION.lock().expect("a panicking sender poisoned the session");
         let roster = session.roster(&session.view());
         match roster.at(place) {
-            Some(tab) => landing(tab),
+            Some(pane) => Ok((pane.key.daemon.clone(), pane.key.pane.clone())),
             None => Err(format!(
-                "this window holds {} tabs, so there is no tab {place} to show and the \
+                "this window holds {} panes, so there is no pane {place} to go to and the \
                  keyboard stayed where it was.",
-                roster.tabs().count()
+                roster.panes().count()
             )),
         }
     };

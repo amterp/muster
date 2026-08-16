@@ -409,15 +409,28 @@ public enum Core {
     send(request)
   }
 
-  /// Shows the tab at a place in the window's tab order, counting from one.
+  /// Puts the keyboard on the pane at a place in the window's pane order, counting from one.
   ///
-  /// The place is the core's numbering, which is what the sidebar lists and what next-tab
-  /// walks - so ⌘3 and the third caption down are one tab.
-  public static func focus(tabPlace: Int) {
-    var at = Muster_FocusTabAt()
-    at.place = UInt32(max(0, tabPlace))
+  /// The place is the core's numbering, which is the number the sidebar draws beside the row -
+  /// so ⌘3 and the third numbered row are one pane. A pane in a tab nothing is showing brings
+  /// that tab on screen, which is why there is no numbered chord for a tab.
+  public static func focus(panePlace: Int) {
+    var at = Muster_FocusPaneAt()
+    at.place = UInt32(max(0, panePlace))
     var request = Muster_Request()
-    request.focusTabAt = at
+    request.focusPaneAt = at
+    send(request)
+  }
+
+  /// Brings a named tab on screen, which is what clicking its caption means.
+  ///
+  /// Named rather than numbered: a click knows which tab it hit, and the numbers name panes.
+  public static func focus(tab: TabKey) {
+    var focus = Muster_FocusTab()
+    focus.daemonID = tab.daemon
+    focus.tabID = tab.tab
+    var request = Muster_Request()
+    request.focusTab = focus
     send(request)
   }
 
@@ -550,7 +563,8 @@ public enum Core {
     case .zoomPane: return "zoom_pane"
     case .toggleSidebar: return "toggle_sidebar"
     case .focusTabRelative: return "focus_tab_relative"
-    case .focusTabAt: return "focus_tab_at"
+    case .focusPaneAt: return "focus_pane_at"
+    case .focusTab: return "focus_tab"
     // The kind of request, never the name it carried. A name is text a person wrote about
     // their own work, and this line ends up in a file destined for a bug report.
     case .renamePane: return "rename_pane"

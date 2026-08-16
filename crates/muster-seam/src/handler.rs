@@ -100,7 +100,8 @@ fn handle(request: Request) -> Response {
         request::Payload::SetRegionBoundary(set) => move_region_boundary(&set),
         request::Payload::FocusRelative(step) => focus_relative(&step.direction),
         request::Payload::FocusTabRelative(step) => step_tab(&step.direction),
-        request::Payload::FocusTabAt(at) => focus_tab_at(at.place),
+        request::Payload::FocusPaneAt(at) => focus_pane_at(at.place),
+        request::Payload::FocusTab(tab) => focus_tab(&tab.daemon_id, &tab.tab_id),
         request::Payload::SetSplitRatio(set) => set_split_ratio(set),
         request::Payload::Scroll(scroll) => scroll_pane(&scroll),
         request::Payload::RenamePane(rename) => rename_pane(&rename),
@@ -478,23 +479,35 @@ fn step_tab(direction: &str) -> Response {
     }
 }
 
-/// Shows the tab at a place in the window's tab order, counting from one.
-fn focus_tab_at(place: u32) -> Response {
+/// Brings a named tab on screen, which is what clicking its caption means.
+fn focus_tab(daemon_id: &str, tab_id: &str) -> Response {
+    if daemon_id.is_empty() || tab_id.is_empty() {
+        return Response::failure(
+            "a tab was asked for without naming one, so the keyboard stayed where it was. \
+             Unlike a pane, a tab has no 'the focused one' to fall back to - whatever built \
+             this request had a tab in hand and dropped it.",
+        );
+    }
+    answer(session::focus_tab(&DaemonId::new(daemon_id), &TabId::new(tab_id)))
+}
+
+/// Goes to the pane at a place in the window's pane order, counting from one.
+fn focus_pane_at(place: u32) -> Response {
     let Ok(place) = usize::try_from(place) else {
         return Response::failure(format!(
-            "a tab was asked for at place {place}, which does not fit this machine's index \
+            "a pane was asked for at place {place}, which does not fit this machine's index \
              type. Nothing moved. Places come from the roster and no window holds that many \
-             tabs, so this is a bug in whatever built the request."
+             panes, so this is a bug in whatever built the request."
         ));
     };
     if place == 0 {
         return Response::failure(
-            "a tab was asked for at place zero, so the keyboard stayed where it was. Places \
-             count from one, the way the sidebar lists them and the way ⌘1 reads - so the \
+            "a pane was asked for at place zero, so the keyboard stayed where it was. Places \
+             count from one, the way the sidebar numbers them and the way ⌘1 reads - so the \
              shell building this has an off-by-one.",
         );
     }
-    answer(session::focus_tab_at(place))
+    answer(session::focus_pane_at(place))
 }
 
 /// Moves the line between two regions of the window.

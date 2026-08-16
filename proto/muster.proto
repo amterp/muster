@@ -40,12 +40,13 @@ message Request {
     ReadBindings read_bindings = 21;
     ToggleSidebar toggle_sidebar = 22;
     FocusTabRelative focus_tab_relative = 23;
-    FocusTabAt focus_tab_at = 24;
+    FocusPaneAt focus_pane_at = 24;
     ReadAppearance read_appearance = 25;
     AdjustFontSize adjust_font_size = 26;
     ReloadConfig reload_config = 27;
     RenamePane rename_pane = 28;
     RenameTab rename_tab = 29;
+    FocusTab focus_tab = 30;
   }
 }
 
@@ -403,14 +404,31 @@ message FocusTabRelative {
   string direction = 1;
 }
 
-// Shows the tab at a given place in the window's tab order, and puts the keyboard in it.
+// Brings a named tab on screen, and puts the keyboard in it.
+//
+// What clicking a tab caption in the agent list means. Named rather than numbered, unlike
+// FocusPaneAt: a click already knows exactly which tab it hit, so a place would be a number
+// invented on the way out and resolved back on the way in.
+//
+// Where the keyboard lands inside it is the core's to decide - the tab's first pane in roster
+// order - because going to a tab and reading its rows have to agree about which comes first.
+message FocusTab {
+  string daemon_id = 1;
+  string tab_id = 2;
+}
+
+// Puts the keyboard on the pane at a given place in the window's pane order.
 //
 // What ⌘1 to ⌘9 mean. The place is the roster's numbering, counting from one across every
-// attached daemon, so it agrees with what the sidebar lists and with where next_tab goes.
-message FocusTabAt {
-  // Counting from one. A place past the last tab does nothing, rather than landing on the
-  // last one: ⌘9 meaning something different every time a tab opened would be worse than ⌘9
-  // meaning nothing until there are nine tabs.
+// attached daemon and every tab, so it is the number the sidebar draws beside the row.
+//
+// A pane in a tab nothing is showing brings that tab on screen, because focusing a pane
+// surfaces it - which is why numbering panes reaches every tab too, and why there is no
+// numbered chord for a tab.
+message FocusPaneAt {
+  // Counting from one. A place past the last pane does nothing, rather than landing on the
+  // last one: ⌘9 meaning something different every time a pane opened would be worse than ⌘9
+  // meaning nothing until there are nine panes.
   uint32 place = 1;
 }
 
@@ -762,10 +780,9 @@ message RosterTab {
   string daemon_id = 1;
   string tab_id = 2;
 
-  // Where this tab sits in the window's whole tab order, counting from one. The handle a
-  // numbered chord names and the order next_tab walks, counted across every daemon rather
-  // than within one - a window showing a laptop beside a devenv has one list, and a person
-  // reading it counts down the whole thing.
+  // Where this tab sits in the window's whole tab order, counting from one. The order
+  // next_tab walks, counted across every daemon rather than within one. No chord names it -
+  // ⌘1 to ⌘9 number panes - and it is what a tab nobody named is called.
   uint32 place = 3;
 
   // What to call this tab to somebody who did not open it: the workspace it belongs to when
@@ -809,6 +826,14 @@ message RosterPane {
   // The name somebody gave this pane, empty when nobody has. Carried so a rename can start
   // from what it is already called rather than from a label nobody typed.
   string given_name = 6;
+
+  // Where this pane sits in the window's whole pane order, counting from one. The handle ⌘1
+  // to ⌘9 name, counted across every daemon and every tab - the sidebar is one list, and a
+  // person reading it counts down the whole thing.
+  //
+  // Numbered past nine even though no chord goes that far: the number is what the pane's
+  // position is, and how far to draw them is the sidebar's decision.
+  uint32 place = 7;
 }
 
 // Everything this window is showing, as one message.

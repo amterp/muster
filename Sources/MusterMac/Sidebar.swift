@@ -9,6 +9,9 @@ public struct Roster: Equatable {
   public struct Pane: Equatable {
     public let key: PaneKey
 
+    /// Where this pane sits in the window's whole pane order, counting from one. What ⌘N names.
+    public let place: Int
+
     /// What to call this pane to somebody who did not open it.
     public let label: String
 
@@ -23,10 +26,11 @@ public struct Roster: Equatable {
     public let onScreen: Bool
 
     public init(
-      key: PaneKey, label: String, subtitle: String = "", givenName: String = "",
+      key: PaneKey, place: Int = 0, label: String, subtitle: String = "", givenName: String = "",
       onScreen: Bool
     ) {
       self.key = key
+      self.place = place
       self.label = label
       self.subtitle = subtitle
       self.givenName = givenName
@@ -37,7 +41,8 @@ public struct Roster: Equatable {
   public struct Tab: Equatable {
     public let key: TabKey
 
-    /// Where this tab sits in the window's whole tab order, counting from one. What ⌘N names.
+    /// Where this tab sits in the window's whole tab order, counting from one. Not a chord -
+    /// ⌘N names panes - and the number in the caption of a tab nobody named.
     public let place: Int
 
     /// What to call this tab to somebody who did not open it.
@@ -124,9 +129,10 @@ public enum SidebarModel {
   public enum Kind: Equatable {
     /// A machine's name, over the tabs it holds.
     case daemon
-    /// A tab, over the panes in it. Carries the place a numbered chord names.
-    case tab(place: Int)
-    case pane
+    /// A tab, over the panes in it.
+    case tab
+    /// A pane, carrying the place a numbered chord names.
+    case pane(place: Int)
   }
 
   /// One line in the list.
@@ -170,6 +176,11 @@ public enum SidebarModel {
 
     /// Whether picking this row means something. A daemon heading names no destination.
     public var isDestination: Bool { kind != .daemon }
+
+    public var isPane: Bool {
+      if case .pane = kind { return true }
+      return false
+    }
   }
 
   /// The rows to draw, in order: a daemon heading, then a caption per tab, then its panes.
@@ -185,9 +196,11 @@ public enum SidebarModel {
   /// row saying which tab you are in is a line that answers a question nobody has - and this
   /// is the common case, so paying a level of nesting for it would make the list worse for
   /// most people to make it better for some. The moment a second tab exists anywhere in the
-  /// window, every tab gets its caption and its number, including the tabs on a daemon that
-  /// only holds one: the numbering counts across the whole window, so showing it in patches
-  /// would be worse than not showing it.
+  /// window, every tab gets a caption, including the tabs on a daemon that only holds one:
+  /// captions in patches would read as a boundary that comes and goes.
+  ///
+  /// Pane numbers are drawn either way, because they count across the whole window and a
+  /// window with one tab still has panes for ⌘1 to ⌘9 to name.
   ///
   /// `keyboard` is the pane the core's view says has the keyboard, or nil when no region
   /// does. Passed in rather than derived here: which pane that is arrives on the view, and
@@ -206,14 +219,15 @@ public enum SidebarModel {
         if captions {
           rows.append(
             Row(
-              kind: .tab(place: tab.place), daemon: daemon.id, tab: tab.key, pane: nil,
+              kind: .tab, daemon: daemon.id, tab: tab.key, pane: nil,
               label: tab.label, subtitle: "", givenName: tab.givenName, state: "",
               onScreen: tab.onScreen, hasKeyboard: false))
         }
         for pane in tab.panes {
           rows.append(
             Row(
-              kind: .pane, daemon: daemon.id, tab: tab.key, pane: pane.key, label: pane.label,
+              kind: .pane(place: pane.place), daemon: daemon.id, tab: tab.key, pane: pane.key,
+              label: pane.label,
               subtitle: pane.subtitle, givenName: pane.givenName,
               // A pane the core has said nothing about is unknown, not idle. An agent we have
               // not heard from is not an agent that finished
@@ -287,9 +301,9 @@ public final class SidebarView: NSView {
 
   /// Called when somebody picks a tab caption, meaning they want to be looking at that tab.
   ///
-  /// The mouse's half of what ⌘N and next-tab do with the keyboard, and it goes through the
-  /// same core path: a place in the window's tab order, resolved there.
-  public var onTabPicked: ((Int) -> Void)?
+  /// The mouse's half of what next-tab does with the keyboard. Names the tab rather than
+  /// numbering it: the numbers name panes, and a click already knows which caption it hit.
+  public var onTabPicked: ((TabKey) -> Void)?
 
   /// Called when somebody double-clicks a row, meaning they want to rename what it names.
   ///
@@ -346,8 +360,9 @@ public final class SidebarView: NSView {
     case .pane:
       guard let pane = rows[clicked].pane else { return }
       onPanePicked?(pane)
-    case .tab(let place):
-      onTabPicked?(place)
+    case .tab:
+      guard let tab = rows[clicked].tab else { return }
+      onTabPicked?(tab)
     case .daemon:
       break
     }
@@ -402,7 +417,7 @@ final class SidebarRowView: NSView {
     // Panes indent under their tab caption, and sit flush when there is none. The list is
     // 200pt wide, so a level of nesting that buys nothing is a level that costs a word off
     // every label.
-    indented = row.kind == .pane && row.tab != nil
+    indented = row.isPane && row.tab != nil
     super.init(frame: .zero)
     wantsLayer = true
 
@@ -420,7 +435,7 @@ final class SidebarRowView: NSView {
       name.font = .systemFont(ofSize: 10, weight: .semibold)
       name.stringValue = row.label.uppercased()
       name.textColor = .secondaryLabelColor
-    case .tab(let place):
+    case .tab:
       // The tab on screen is named in full, and the ones behind it are quieter. This says a
       // different thing from the keyboard highlight on purpose: one is where you are
       // looking, the other is where you are typing, and in a two-region window those are
@@ -428,16 +443,20 @@ final class SidebarRowView: NSView {
       name.font = .systemFont(ofSize: 11, weight: row.onScreen ? .semibold : .regular)
       name.stringValue = row.label
       name.textColor = row.onScreen ? .labelColor : .secondaryLabelColor
-      // The number a chord names, drawn where a tab bar would put it. Only up to nine,
-      // because that is how far ⌘N goes - a tenth tab is reachable by next-tab and by
-      // clicking, and a number nothing is bound to would be a promise the keyboard breaks.
-      number.stringValue = place <= 9 ? String(place) : ""
-      number.font = .monospacedDigitSystemFont(ofSize: 10, weight: .regular)
-      number.textColor = .tertiaryLabelColor
-      addSubview(number)
-    case .pane:
+    case .pane(let place):
       name.font = .systemFont(ofSize: 12, weight: .regular)
       name.stringValue = row.label
+      // The number a chord names, beside the dot rather than instead of it: the dot is what
+      // the row is for and the number is how to get there, so a row needs both. Only up to
+      // nine, because that is how far ⌘N goes - a tenth pane is reachable by next-pane, by a
+      // direction and by clicking, and a number nothing is bound to would be a promise the
+      // keyboard breaks.
+      if place >= 1, place <= 9 {
+        number.stringValue = String(place)
+        number.font = .monospacedDigitSystemFont(ofSize: 10, weight: .regular)
+        number.textColor = .tertiaryLabelColor
+        addSubview(number)
+      }
       // A pane no region is showing is reachable, not absent - dimming it says "not here yet"
       // rather than "gone", which is the difference between a row worth clicking and one that
       // looks broken.
@@ -479,19 +498,23 @@ final class SidebarRowView: NSView {
       highlight.frame = bounds.insetBy(dx: 4, dy: 1)
     }
     let left = SidebarRowView.inset + (indented ? SidebarRowView.indent : 0)
+    // Number, then dot, then label. Both are laid out from a running left edge rather than
+    // each from `left`, because a pane row now carries both: the number says how to reach the
+    // row and the dot says why you would want to, and they used to be alternatives only
+    // because a row was either a caption or a pane.
     var textLeft = left
-    if dot.superlayer != nil {
-      dot.frame = CGRect(
-        x: left, y: (bounds.height - SidebarRowView.dotSize) / 2,
-        width: SidebarRowView.dotSize, height: SidebarRowView.dotSize)
-      textLeft = left + SidebarRowView.inset + SidebarRowView.dotSize
-    }
     if number.superview != nil {
       let height = min(bounds.height, number.fittingSize.height)
       number.frame = CGRect(
-        x: left, y: (bounds.height - height) / 2,
+        x: textLeft, y: (bounds.height - height) / 2,
         width: SidebarRowView.numberWidth, height: height)
-      textLeft = left + SidebarRowView.numberWidth + 4
+      textLeft += SidebarRowView.numberWidth + 4
+    }
+    if dot.superlayer != nil {
+      dot.frame = CGRect(
+        x: textLeft, y: (bounds.height - SidebarRowView.dotSize) / 2,
+        width: SidebarRowView.dotSize, height: SidebarRowView.dotSize)
+      textLeft += SidebarRowView.inset + SidebarRowView.dotSize
     }
     // Sized to the text and then centred, rather than given the whole row. A label draws its
     // text at the top of whatever frame it is handed, so a full-height frame puts the words

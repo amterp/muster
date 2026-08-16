@@ -112,6 +112,7 @@ extension Roster {
               panes: tab.panes.map { pane in
                 Roster.Pane(
                   key: PaneKey(daemon: pane.daemonID, pane: pane.paneID),
+                  place: Int(pane.place),
                   label: pane.label,
                   subtitle: pane.subtitle,
                   givenName: pane.givenName,

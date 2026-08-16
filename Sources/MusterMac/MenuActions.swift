@@ -46,12 +46,12 @@ public enum MenuActions {
   /// Keyed by the core's own name for the action.
   public static let byName: [String: Described] = {
     var table = fixed
-    // The numbered tab actions, built rather than written out: they differ only by the digit,
+    // The numbered pane actions, built rather than written out: they differ only by the digit,
     // and nine hand-written entries are nine chances for one of them to drift.
     for place in 1...9 {
-      table["focus_tab_\(place)"] = Described(
-        title: "Tab \(place)", selector: #selector(MusterWindow.focusTabAtPlace(_:)),
-        group: .tab, tag: place)
+      table["focus_pane_\(place)"] = Described(
+        title: "Pane \(place)", selector: #selector(MusterWindow.focusPaneAtPlace(_:)),
+        group: .pane, tag: place)
     }
     return table
   }()

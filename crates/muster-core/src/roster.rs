@@ -46,14 +46,10 @@ pub struct RosterTab {
 
     /// Where this tab sits in the window's whole tab order, counting from one.
     ///
-    /// The handle a numbered chord names, and the same order `next_tab` walks - so the third
-    /// row down the sidebar, ⌘3, and two presses of `next_tab` from the first all mean one
-    /// tab. Counted across every daemon rather than within one, because a window showing a
-    /// laptop beside a devenv has one list and a person reading it counts down the whole
-    /// thing.
-    ///
-    /// It moves when a tab opens or closes ahead of it, which every numbered-tab scheme has
-    /// to live with: a number is a position, and positions shift.
+    /// The order `next_tab` walks, and what a tab nobody has named is called. No chord names
+    /// it: ⌘1 to ⌘9 number panes, because the rows carrying the agent states are pane rows and
+    /// two numberings in one sidebar is worse than either. Counted across every daemon rather
+    /// than within one, because a window showing a laptop beside a devenv is one list.
     pub place: usize,
 
     /// What to call this tab to somebody who did not open it.
@@ -79,6 +75,22 @@ pub struct RosterTab {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RosterPane {
     pub key: PaneKey,
+
+    /// Where this pane sits in the window's whole pane order, counting from one.
+    ///
+    /// The handle ⌘1 to ⌘9 name, so the fourth row down the sidebar and ⌘4 are one pane.
+    /// Counted across every daemon and every tab rather than within one, because the sidebar
+    /// is one list and somebody reading it counts down the whole thing.
+    ///
+    /// Positional: it is read off the row rather than remembered, and it moves when a pane
+    /// opens or closes above it. That is the cost of numbering the thing that churns, and it
+    /// is the right trade once the order is yours to arrange - a number that stayed put when
+    /// you dragged its row somewhere else would be fighting you.
+    ///
+    /// Numbered past nine even though no chord goes that far, because the number is what the
+    /// pane's position *is*; what to draw is the sidebar's decision and it stops at nine.
+    pub place: usize,
+
     /// What to call this pane to somebody who did not open it.
     pub label: String,
     /// What its agent is working on, when that is worth a line of its own.
@@ -168,7 +180,10 @@ impl Roster {
         let on_screen: std::collections::BTreeSet<TabKey> =
             composition.regions().map(|region| TabKey::new(&region.daemon, &region.tab)).collect();
 
-        let mut place = 0;
+        // Two counters, both running across every daemon: panes are what the chords name, and
+        // tabs are numbered only so that one nobody has named still has something to be called.
+        let mut tab_place = 0;
+        let mut pane_place = 0;
         let daemons = ordered
             .into_iter()
             .filter_map(|daemon| Some((daemon, mirror(daemon)?)))
@@ -177,11 +192,11 @@ impl Roster {
                 let tabs = held
                     .tabs()
                     .map(|tab| {
-                        place += 1;
+                        tab_place += 1;
                         RosterTab {
                             key: TabKey::new(daemon, &tab.id),
-                            place,
-                            label: tab_label(held, tab, named),
+                            place: tab_place,
+                            label: tab_label(held, tab, named, tab_place),
                             on_screen: on_screen.contains(&TabKey::new(daemon, &tab.id)),
                             given_name: given_name(tab_own_name(tab)),
                             panes: ordered_panes(held, &tab.id)
@@ -189,7 +204,9 @@ impl Roster {
                                 .map(|pane| {
                                     let key = PaneKey::new(daemon, &pane.id);
                                     let label = pane_label(pane);
+                                    pane_place += 1;
                                     RosterPane {
+                                        place: pane_place,
                                         subtitle: pane_subtitle(pane, &label),
                                         label,
                                         given_name: given_name(pane.name.as_deref()),
@@ -221,13 +238,13 @@ impl Roster {
         self.tabs().flat_map(|tab| tab.panes.iter())
     }
 
-    /// The tab at a given place in the order, counting from one.
+    /// The pane at a given place in the order, counting from one.
     ///
     /// `None` for a place past the end, which is what a numbered chord in a window with fewer
-    /// tabs means. Doing nothing is the right answer there: jumping to the last tab instead
-    /// would make ⌘9 mean something different every time a tab opened.
-    pub fn at(&self, place: usize) -> Option<&RosterTab> {
-        self.tabs().find(|tab| tab.place == place)
+    /// panes means. Doing nothing is the right answer there: landing on the last pane instead
+    /// would make ⌘9 mean something different every time a pane opened.
+    pub fn at(&self, place: usize) -> Option<&RosterPane> {
+        self.panes().find(|pane| pane.place == place)
     }
 
     /// Where the keyboard goes when stepping one tab from the one it is on.
@@ -268,24 +285,6 @@ fn names_its_workspaces(mirror: &Mirror) -> bool {
     mirror.workspaces().filter(|workspace| !workspace.label.is_empty()).count() > 1
 }
 
-/// What to call a tab to somebody who did not open it.
-///
-/// The workspace first, because it is the project the tab belongs to and the only part of a
-/// tab's name that means anything on sight - and only when the daemon holds more than one,
-/// since repeating one project's name down every row says nothing and costs a word off every
-/// label.
-///
-/// **A tab herdr has not named is left nameless rather than given a number.** herdr labels an
-/// unnamed tab with its position inside its workspace, so the label of the second tab is
-/// literally `2` - and every row carries a place of its own already, drawn beside it. Passing
-/// that through produced captions reading `2 · 2`, which was measured in the running app
-/// rather than reasoned about. Muster's place is the better number: it counts across the whole
-/// window, which is what the numbered chords use. A name that is only digits is therefore
-/// dropped, and the row is its number.
-///
-/// The empty answer is a real one and not a hole: nothing here is ever the only thing a row
-/// has, because the place is always drawn. A tab id would fit the space and tell nobody
-/// anything.
 /// The part of a tab's backend label that is somebody's name for it rather than its number.
 ///
 /// herdr gives every tab a label whether or not anyone named it, filling in the tab's
@@ -303,7 +302,29 @@ fn given_name(name: Option<&str>) -> Option<String> {
     name.map(str::trim).filter(|name| !name.is_empty()).map(str::to_string)
 }
 
-fn tab_label(mirror: &Mirror, tab: &crate::mirror::backend::Tab, named: bool) -> String {
+/// What to call a tab to somebody who did not open it.
+///
+/// The workspace first, because it is the project the tab belongs to and the only part of a
+/// tab's name that means anything on sight - and only when the daemon holds more than one,
+/// since repeating one project's name down every row says nothing and costs a word off every
+/// label.
+///
+/// **A tab nobody has named is called `Tab <place>`, which Muster writes rather than reads.**
+/// herdr labels an unnamed tab with its position inside its workspace, so the label of the
+/// second tab is literally `2`, and [`tab_own_name`] drops it - a bare digit is not a name,
+/// and two daemons would each contribute a `1`. Muster's own place counts across the whole
+/// window, so the caption is unique and agrees with the order the list is read in.
+///
+/// This used to be empty, back when a number was drawn beside every caption and the row was
+/// never blank. The numbers now name panes, so an empty answer here would be a row with
+/// nothing on it - which is a worse failure than a wrong one, because there is nothing to
+/// notice.
+fn tab_label(
+    mirror: &Mirror,
+    tab: &crate::mirror::backend::Tab,
+    named: bool,
+    place: usize,
+) -> String {
     let own = tab_own_name(tab).unwrap_or_default();
     let workspace = named
         .then(|| mirror.workspaces().find(|held| held.id == tab.workspace))
@@ -312,6 +333,9 @@ fn tab_label(mirror: &Mirror, tab: &crate::mirror::backend::Tab, named: bool) ->
         .filter(|label| !label.is_empty())
         .unwrap_or_default();
     match (workspace, own) {
+        // Nothing to call it, so Muster writes one. The place is not a chord any more - the
+        // numbers name panes - so this is a name rather than a second thing to press.
+        ("", "") => format!("Tab {place}"),
         ("", own) => own.to_string(),
         (workspace, "") => workspace.to_string(),
         (workspace, own) => format!("{workspace} · {own}"),

@@ -62,7 +62,7 @@ fn roster_conformance() {
                     .get("at")
                     .and_then(Value::as_u64)
                     .and_then(|place| usize::try_from(place).ok())
-                    .map(|place| json!(roster.at(place).map(|tab| tab.key.to_string()))),
+                    .map(|place| json!(roster.at(place).map(|pane| pane.key.to_string()))),
             ),
             ("tabs", Some(json!(roster.tabs().map(describe_tab).collect::<Vec<String>>()))),
             (
@@ -112,8 +112,9 @@ fn described(key: &str, value: Option<&str>) -> String {
 /// without counting rows back up to the heading it belongs to.
 fn describe_pane(tab: &RosterTab, pane: &RosterPane) -> String {
     format!(
-        "{} tab={} label={:?}{}{} {}",
+        "{} place={} tab={} label={:?}{}{} {}",
         pane.key,
+        pane.place,
         tab.key.tab,
         pane.label,
         described("subtitle", pane.subtitle.as_deref()),

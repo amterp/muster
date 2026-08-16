@@ -67,7 +67,7 @@ pub(crate) fn roster(roster: &Roster) -> proto::RosterChanged {
                         // handler already reads it as no place at all - so a number too
                         // large to send arrives as unnameable rather than as a different
                         // tab. No window holds four billion tabs; this is a floor, not a
-                        // case anybody meets.
+                        // case anybody meets. Same for a pane's place, below.
                         place: u32::try_from(tab.place).unwrap_or_default(),
                         label: tab.label.clone(),
                         on_screen: tab.on_screen,
@@ -82,6 +82,7 @@ pub(crate) fn roster(roster: &Roster) -> proto::RosterChanged {
                             .map(|pane| proto::RosterPane {
                                 daemon_id: pane.key.daemon.to_string(),
                                 pane_id: pane.key.pane.to_string(),
+                                place: u32::try_from(pane.place).unwrap_or_default(),
                                 label: pane.label.clone(),
                                 on_screen: pane.on_screen,
                                 subtitle: pane.subtitle.clone().unwrap_or_default(),
