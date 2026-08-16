@@ -264,23 +264,14 @@ fn act(daemon_id: &str, pane_id: &str, build: impl FnOnce(PaneId) -> BackendInte
 /// ignores keys it does not know, so a request that named the pane instead would be accepted
 /// and put the tab wherever that daemon last had focus.
 fn create_tab(create: &proto::CreateTab) -> Response {
+    let cwd = (!create.cwd.is_empty()).then(|| create.cwd.clone());
+    let named = (!create.pane_id.is_empty()).then(|| PaneId::new(&create.pane_id));
+    let Some(pane) = named.or_else(session::focused_pane) else {
+        return open_a_workspace(cwd);
+    };
     let daemon = match resolve_daemon(&create.daemon_id) {
         Ok(daemon) => daemon,
         Err(refusal) => return refusal,
-    };
-    let pane = if create.pane_id.is_empty() {
-        match session::focused_pane() {
-            Some(pane) => pane,
-            None => {
-                return Response::failure(
-                    "no pane has this window's keyboard, so there is no workspace to make a \
-                     tab in. A request that names no pane means the focused one, and this \
-                     window has none.",
-                );
-            }
-        }
-    } else {
-        PaneId::new(&create.pane_id)
     };
 
     let Some((workspace, inherited)) = session::workspace_of(&daemon, &pane) else {
@@ -289,8 +280,31 @@ fn create_tab(create: &proto::CreateTab) -> Response {
              a tab in and nothing was made. Most likely it closed while this was in flight."
         ));
     };
-    let cwd = if create.cwd.is_empty() { inherited } else { Some(create.cwd.clone()) };
-    submit(&daemon, &BackendIntent::CreateTab { workspace, cwd })
+    submit(&daemon, &BackendIntent::CreateTab { workspace, cwd: cwd.or(inherited) })
+}
+
+/// Makes a workspace, when there is no pane to put a tab beside.
+///
+/// What asking for a tab means in a window showing nothing - every pane closed, or the
+/// daemons hold none yet. A tab lives in a workspace and a workspace is named by a pane in
+/// it, so a window with none has nothing to name and a workspace is the only request that
+/// can produce a pane. Without this a window that empties is a window nobody can refill:
+/// every other action is about a pane, and there is no pane.
+///
+/// The first local daemon, and any daemon at all when none of them is local. Launch makes
+/// the same choice and stops at local, because filling an empty window is Muster's own idea
+/// and making things on somebody else's machine uninvited is a bigger claim - but pressing
+/// the key is the invitation, so the rule that guards launch has nothing to guard here.
+fn open_a_workspace(cwd: Option<String>) -> Response {
+    let Some(daemon) = session::first_local_daemon().or_else(session::first_attached_daemon) else {
+        return Response::failure(
+            "this window has no pane to put a tab beside and no daemon to make one on, so \
+             nothing was opened. A window with nothing attached looks like this, and so does \
+             the renderer check - the daemon.unavailable records above say which, if a \
+             daemon was meant to be there.",
+        );
+    };
+    submit(&daemon, &BackendIntent::CreateWorkspace { cwd })
 }
 
 /// The daemon a request means, given what it named.

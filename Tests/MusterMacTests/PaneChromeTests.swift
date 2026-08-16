@@ -122,8 +122,29 @@ struct PaneChromeTests {
   @Test("the renderer check has no pane and says so")
   func rendererCheckIsLabeled() {
     #expect(
-      PaneAppearance.title(paneID: nil, zoomed: false, health: "disconnected", detail: "")
-        .contains("renderer check"))
+      PaneAppearance.title(
+        paneID: nil, zoomed: false, health: "disconnected", detail: "", rendererCheck: true
+      ).contains("renderer check"))
+  }
+
+  @Test("a window whose panes all closed is not the renderer check")
+  func emptyIsNotADiagnosticMode() {
+    // The two look identical on screen and want opposite reactions: one is a diagnostic mode
+    // nobody asked for, the other is a window a keystroke refills. Titling the second as the
+    // first told a user their ordinary window had turned into something else.
+    let title = PaneAppearance.title(
+      paneID: nil, zoomed: false, health: "connected", detail: "", daemon: "local")
+    #expect(title == "muster - no panes")
+  }
+
+  @Test("an empty window still says its daemon went away")
+  func emptyReportsHealth() {
+    // The likeliest reason a window has no panes and nobody closed any. Without this the
+    // window that lost its devenv and the window somebody emptied read the same.
+    let title = PaneAppearance.title(
+      paneID: nil, zoomed: false, health: "disconnected", detail: "", daemon: "devenv")
+    #expect(title.contains("no panes"))
+    #expect(title.contains("disconnected devenv"))
   }
 }
 

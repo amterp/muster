@@ -145,6 +145,46 @@ fn attaching_places_a_pane_where_the_keyboard_can_find_it() {
     a_pane_no_region_shows_can_still_be_reached(&daemon);
     the_window_follows_and_drives_the_tree(&daemon, &second);
     a_new_tab_is_made_and_then_shown(&daemon);
+    // Last, because it empties the session this whole test was built on.
+    an_emptied_window_can_be_refilled(&daemon);
+}
+
+/// Closing the last pane, and getting one back.
+///
+/// A window with no panes was a window nobody could refill. Every request is about a pane -
+/// a split splits one, a close closes one, and a new tab used to need one to name the
+/// workspace to put it in - so the answer to all of them was the same refusal, and the way
+/// out of an empty window was to quit and relaunch.
+///
+/// Driven through the daemon rather than through the core's own close, because what is under
+/// test is what a window does once it is empty, and this reaches that state the way the
+/// commonest one does: the daemon lost the panes and said so.
+fn an_emptied_window_can_be_refilled(daemon: &Daemon) {
+    for pane in panes(daemon) {
+        daemon.call("pane.close", &json!({ "pane_id": pane }));
+    }
+    until(
+        "the window to notice it has nothing left to show",
+        || latest_view().is_some_and(|view| view.regions.is_empty()),
+        || format!("the last view the core published: {:?}", latest_view()),
+    );
+
+    // What ⌘T sends: no daemon, no pane, no directory. There is no pane to read a workspace
+    // off, so a core that only knew how to make a tab beside one has nothing to do here.
+    assert_ok(&answer(request::Payload::CreateTab(CreateTab {
+        daemon_id: String::new(),
+        pane_id: String::new(),
+        cwd: String::new(),
+    })));
+    until(
+        "a pane to come back, and the keyboard with it",
+        || {
+            latest_view().is_some_and(|view| {
+                view.regions.first().is_some_and(|region| !region.pane_id.is_empty())
+            })
+        },
+        || format!("the last view the core published: {:?}", latest_view()),
+    );
 }
 
 /// Making a tab, and the window moving onto it.

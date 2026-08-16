@@ -1271,13 +1271,24 @@ fn open_a_workspace_if_the_window_is_empty() {
 }
 
 /// The first attached daemon on this machine, in the order the config named them.
-fn first_local_daemon() -> Option<DaemonId> {
+pub(crate) fn first_local_daemon() -> Option<DaemonId> {
     let session = SESSION.lock().expect("a panicking sender poisoned the session");
     session
         .composition
         .daemons()
         .find(|daemon| matches!(daemon.endpoint, Endpoint::Local { .. }))
         .map(|daemon| daemon.id.clone())
+}
+
+/// The first daemon this window is attached to at all, local or not.
+///
+/// The fallback for a request that has to reach some daemon and has no pane to find one
+/// from. Kept apart from [`first_local_daemon`] rather than folded into it, because which of
+/// the two a caller wants is a decision about whether Muster is acting on its own or on
+/// somebody's keystroke, and that is not a decision to make by default.
+pub(crate) fn first_attached_daemon() -> Option<DaemonId> {
+    let session = SESSION.lock().expect("a panicking sender poisoned the session");
+    session.composition.daemons().next().map(|daemon| daemon.id.clone())
 }
 
 /// Shows a daemon-owned pane in this window, and points the keyboard at it.

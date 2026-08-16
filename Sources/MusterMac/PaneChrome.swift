@@ -47,35 +47,46 @@ public enum PaneAppearance {
   ///
   /// Zoom is here for a different reason: a zoomed tab and a tab with one pane look identical
   /// on screen, so without this a user has no way to learn why their other panes vanished.
-  /// `problem` is why there is no pane, when there was meant to be one. A window that asked
-  /// for `w9:p99` and got nothing must not be titled as the renderer check, which is what the
-  /// same empty state means when nobody named a pane at all - those two look identical on
-  /// screen and want opposite reactions.
+  ///
+  /// Three different windows have no pane at all, they look identical on screen, and they
+  /// want opposite reactions - so each says which it is. `rendererCheck` is the one with no
+  /// daemon behind it by design. `problem` is the one that asked for `w9:p99` and got
+  /// nothing. Neither is a window whose panes were all closed, which is an ordinary state to
+  /// be in and recoverable from, and titling that one as the renderer check told a user their
+  /// window was a diagnostic mode they had never asked for.
+  ///
   /// `daemon` names whose health this is, because a window can show more than one and only
   /// the unhealthiest reaches the title. Empty leaves it out, which is what a window with
   /// nothing attached has to say.
   public static func title(
     paneID: String?, zoomed: Bool, health: String, detail: String, daemon: String = "",
-    problem: String? = nil
+    problem: String? = nil, rendererCheck: Bool = false
   ) -> String {
     guard let paneID, !paneID.isEmpty else {
+      if rendererCheck { return "muster (renderer check - keyboard not connected)" }
       if let problem { return "muster - \(problem)" }
-      return "muster (renderer check - keyboard not connected)"
+      // The health too, because the commonest reason a window has no panes and did not ask
+      // to is that the daemon holding them went away.
+      return "muster - no panes" + reported(health: health, detail: detail, daemon: daemon)
     }
     var title = "muster - \(paneID)"
     if zoomed {
       title += " · zoomed"
     }
+    return title + reported(health: health, detail: detail, daemon: daemon)
+  }
+
+  /// What a title says about a daemon, which is nothing at all while it is answering.
+  private static func reported(health: String, detail: String, daemon: String) -> String {
     let named = daemon.isEmpty ? "" : " \(daemon)"
     switch health {
     case "connected", "":
-      break
+      return ""
     case "stale":
-      title += detail.isEmpty ? " · stale\(named)" : " · stale\(named) (\(detail))"
+      return detail.isEmpty ? " · stale\(named)" : " · stale\(named) (\(detail))"
     default:
-      title += " · \(health)\(named)"
+      return " · \(health)\(named)"
     }
-    return title
   }
 }
 

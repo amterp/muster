@@ -20,7 +20,14 @@ public final class MusterWindow: NSObject {
   private let sidebar = SidebarView(frame: .zero)
   private let shortcuts = ShortcutsPanel()
   private let split = WindowLayout(frame: NSRect(x: 0, y: 0, width: 960, height: 600))
+  private let empty = EmptyWindowView(frame: .zero)
   private var regions: [String: RegionView] = [:]
+
+  /// Whether this window was opened with no daemon behind it on purpose.
+  ///
+  /// The one empty window that is not worth explaining a way out of, because there is none:
+  /// `--renderer-check` proves the renderer paints and nothing here can make it a pane.
+  private var rendererCheck = false
 
   /// The font size in force, so a pane made later gets it too. The core owns the number; this
   /// is the last one it published.
@@ -76,6 +83,8 @@ public final class MusterWindow: NSObject {
       defer: false)
     super.init()
     split.attach(sidebar: sidebar, strip: strip)
+    strip.attach(empty: empty)
+    empty.apply(EmptyWindow.message(bindings: Core.bindings()))
     window.contentView = split
     window.delegate = self
     window.center()
@@ -118,6 +127,7 @@ public final class MusterWindow: NSObject {
     }
     sidebar.apply(roster: roster, states: states, keyboard: keyboardKey)
     zoomed = focused?.zoomed ?? false
+    empty.apply(showing: !contents.regions.isEmpty)
     applyTitle()
   }
 
@@ -194,6 +204,9 @@ public final class MusterWindow: NSObject {
   /// that did not reload.
   public func apply(bindings: [Core.Binding]) {
     NSApp.mainMenu = AppMenu.build(target: self, bindings: bindings)
+    // The empty window names a chord, so a rebind has to reach it too. A window sitting empty
+    // while somebody edits the config file is exactly when a stale hint would be read.
+    empty.apply(EmptyWindow.message(bindings: bindings))
   }
 
   /// Every divider on screen, region boundaries and pane splits alike.
@@ -219,6 +232,7 @@ public final class MusterWindow: NSObject {
   /// renders and swallows the keyboard - which the title says, because a terminal that
   /// ignores you and does not explain itself is the worst thing this app could ship.
   public func showRendererCheck() {
+    rendererCheck = true
     let region = make(regionID: "renderer-check")
     strip.arrange([(id: "renderer-check", weight: 1, view: region)])
     let chrome = PaneChrome(frame: strip.bounds, surface: SurfaceView(frame: strip.bounds))
@@ -334,7 +348,7 @@ public final class MusterWindow: NSObject {
     let (daemon, state, detail) = worstHealth
     window.title = PaneAppearance.title(
       paneID: keyboardPane, zoomed: zoomed, health: state, detail: detail, daemon: daemon,
-      problem: problem)
+      problem: problem, rendererCheck: rendererCheck)
   }
 }
 
@@ -584,7 +598,17 @@ final class RegionStrip: NSView {
   private var weights: [CGFloat] = []
   private var dividers: [DividerView] = []
 
+  /// What fills the strip when no region does. Behind the regions rather than beside them,
+  /// so it needs no share of the arrangement and a region drawn over it hides it.
+  private var empty: NSView?
+
   override var isFlipped: Bool { true }
+
+  func attach(empty: NSView) {
+    self.empty = empty
+    addSubview(empty, positioned: .below, relativeTo: nil)
+    needsLayout = true
+  }
 
   func arrange(_ regions: [(id: String, weight: CGFloat, view: NSView)]) {
     order = regions.map(\.view)
@@ -595,6 +619,7 @@ final class RegionStrip: NSView {
 
   override func layout() {
     super.layout()
+    empty?.frame = bounds
     guard !order.isEmpty else { return }
     let placements = RegionStripLayout.place(weights: weights, in: bounds)
 

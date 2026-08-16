@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-window-with-no",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "done",
+  "created_at_millis": 1786884034816,
+  "creator": "Alexander Terp",
+  "description": "Closing the last pane left a window nobody could get out of: nothing on\nscreen, a title claiming it was `--renderer-check`, and ⌘T refused\n(\"this window has no daemon its keyboard is on\"). Reported from the real\napp with a run log showing two refused create_tab requests.\n\nTwo defects, both fixed.\n\n**Every request resolved its daemon from the focused region**\n(`handler.rs::resolve_daemon`). No panes means no focused region means no\ndaemon, so ⌘T had nothing to ask - although the local daemon was attached\nand healthy. `create_tab` now falls through to `CreateWorkspace` when\nthere is no pane to name a workspace off, which is what launch has always\ndone for a daemon that holds nothing (`session.rs::open_a_workspace_if_the_window_is_empty`).\nLaunch stops at the first *local* daemon because filling a window is\nMuster's own idea and a remote machine is somebody else's; ⌘T falls back\nto any attached daemon, because pressing the key is the invitation the\nlaunch rule exists to wait for.\n\n**The title lied.** `PaneAppearance.title` returned the renderer-check\nstring for any window with no keyboard pane. Three different windows have\nno pane - the diagnostic mode, an attach that failed, and one whose panes\nwere all closed - and they want opposite reactions. The third now reads\n`muster - no panes`, plus the daemon's health, since the likeliest reason\na window has no panes and nobody closed any is that the daemon went away.\n\nAnd the window now says how to get out of it: two centred lines naming\nthe chord `new_tab` is actually bound to, or the menu item when somebody\nunbound it. Shown after a quarter second, because a cold launch publishes\nan empty view for the ~50ms it takes the daemon to answer with the\nworkspace Muster just asked for, and painting immediately flashed text on\nthe way up.\n\nCovered by `crates/muster-seam/tests/attach.rs` (empties a real session\nand refills it through the core; reproduces the exact refusal without the\nfix), `EmptyWindowTests`, and `PaneChromeTests`. Eyeballed in the running\napp: title read back as \"muster - no panes\" while empty and\n\"muster - w2:p1\" once a workspace arrived.",
+  "id": "a_292Tgvzpb",
+  "position": "!!!!!!!!!6",
+  "title": "🕳️ A window with no panes is a window you can refill",
+  "type": "enhancement",
+  "updated_at_millis": 1786884046251,
+  "history": [
+    {"field":"column","value":"done","at":1786884034816}
+  ]
+}
