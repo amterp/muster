@@ -22,6 +22,7 @@ use muster_core::mirror::backend::{
     WorkspaceId,
 };
 use muster_core::mirror::{BackendEvent, Mirror};
+use muster_core::roster::Roster;
 use muster_herdr::{EventDecoder, FrameDecoder, PaneControlChannel, PaneFrame, PaneStreamEvent};
 use muster_perf::{Baseline, Cost, compare, measure, pending, table, verdict};
 use muster_vt::{KeyEncoder, Terminal};
@@ -175,6 +176,31 @@ fn view_cost() -> Cost {
     })
 }
 
+/// What one changed title costs, which is the budget that decides whether a second line is
+/// affordable at all.
+///
+/// A harness rewrites its terminal title as it works, and every such change republishes the
+/// whole roster - so this lands at frequency times cardinality, which is the shape this file
+/// exists to hold. The frequency half is already answered and is answered by the daemon: herdr
+/// announces only when the *stripped* title changes, so a rotating spinner produces nothing
+/// (`observations/herdr-0.8.0.md` section 16, and `pane_naming.rs` against a real one). What is
+/// left is the per-change cost, and this is it.
+///
+/// Per pane rather than per roster, like `view.build` beside it, so the number stays comparable
+/// as the budgeted window size changes and a build that made it quadratic stops matching.
+fn roster_cost() -> Cost {
+    let (composition, mirror) = full_window(BUDGETED_PANES);
+    let daemon = DaemonId::new("local");
+    let showing = std::collections::BTreeSet::new();
+    measure("roster.build", "ns/pane", BUDGETED_PANES * 200, 20, 5, || {
+        for _ in 0..200 {
+            let roster =
+                Roster::of(&composition, |named| (named == &daemon).then_some(&mirror), &showing);
+            black_box(roster.daemons.len());
+        }
+    })
+}
+
 fn measure_everything(streams: &[Vec<u8>]) -> Vec<Cost> {
     let wire_bytes: usize = streams.iter().map(Vec::len).sum();
     let frames: Vec<PaneFrame> = streams
@@ -285,6 +311,7 @@ fn measure_everything(streams: &[Vec<u8>]) -> Vec<Cost> {
     }));
 
     costs.push(view_cost());
+    costs.push(roster_cost());
 
     // What Muster holds open per pane, which is the half of "fast is a feature" that is fixed
     // cost rather than throughput: a full window is fifteen bound sockets, fifteen threads
@@ -338,10 +365,14 @@ fn full_window(panes: usize) -> (Composition, Mirror) {
                 tab: tab.clone(),
                 workspace: workspace.clone(),
                 agent_state: AgentState::Idle,
-                agent: None,
+                // A harness in every pane, and a title on every one, because that is the
+                // window this is budgeted for and it is also the expensive shape: the roster
+                // decides per row whether a title says anything the label does not, and a
+                // pane with neither would skip that work.
+                agent: Some("claude".to_string()),
                 cwd: "/tmp".to_string(),
                 name: None,
-                title: None,
+                title: Some("first working build".to_string()),
             })
             .collect(),
         layouts: vec![Layout { tab: tab.clone(), root, focused: None, zoomed: None }],

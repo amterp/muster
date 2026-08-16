@@ -188,9 +188,10 @@ impl Roster {
                                 .into_iter()
                                 .map(|pane| {
                                     let key = PaneKey::new(daemon, &pane.id);
+                                    let label = pane_label(pane);
                                     RosterPane {
-                                        label: pane_label(pane),
-                                        subtitle: pane_subtitle(pane),
+                                        subtitle: pane_subtitle(pane, &label),
+                                        label,
                                         given_name: given_name(pane.name.as_deref()),
                                         on_screen: showing.contains(&key),
                                         key,
@@ -393,12 +394,14 @@ fn harness_suffix(pane: &Pane) -> String {
 /// **And only when it says something the first line does not.** A harness that titles itself
 /// after the directory - which Claude does - would otherwise draw the same word twice at
 /// double the height.
-fn pane_subtitle(pane: &Pane) -> Option<String> {
+/// `label` is what the row's first line ended up saying, passed in rather than composed again:
+/// this runs once per pane on every roster, which is once per title change across the window.
+fn pane_subtitle(pane: &Pane, label: &str) -> Option<String> {
     let agent = pane.agent.as_deref().filter(|agent| !agent.is_empty())?;
     let title = pane.title.as_deref().map(str::trim).filter(|title| !title.is_empty())?;
 
     let repeats = |said: &str| said.eq_ignore_ascii_case(title);
-    let already_said = repeats(&pane_label(pane))
+    let already_said = repeats(label)
         || repeats(pane_directory(pane))
         || repeats(pane.cwd.trim_end_matches('/'))
         || repeats(agent);
