@@ -6,6 +6,14 @@
     "backend"
   ],
   "column": "backlog-hi",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "**Measured, from a real drag in a real session** - this card asked for\nthat before committing, and reported as slow and \"spastic\" from the other\nside. The gap is visible, and the late broadcast is not the largest part\nof it.\n\nThree drags pulled out of one run's `intent.submitted` records:\n\n    39 requests over 378 ms  -\u003e 103/s  median gap 10.0 ms  max 20.3 ms\n    23 requests over 230 ms  -\u003e 100/s  median gap 10.0 ms  max 20.2 ms\n    12 requests over 140 ms  -\u003e  86/s  median gap 12.1 ms  max 21.4 ms\n\nSo three causes compound, and this card currently describes only the\nthird:\n\n1. **Nothing coalesces.** One `layout.set_split_ratio` per mouse-moved\n   event, about a hundred a second. Every one is a fresh connect, because\n   the control plane is per-request connect by design.\n2. **Each one blocks the main thread.** `Core.send` calls\n   `dispatcher.dispatch` synchronously, through the C ABI into\n   `session::submit`, which connects and waits. `mouseDragged` is on the\n   main thread, so the UI stalls for a full round trip per frame - and a\n   10 ms median gap between sends is the round trip, not the mouse. The\n   window has no time left to draw the thing being dragged.\n3. **Then the stale broadcasts arrive**, which is what this card is\n   about: about ten drag-frames' worth of positions from ~100 ms ago,\n   each triggering another relayout while the pointer has moved on. That\n   is the shaking.\n\nFixing (3) alone leaves a hundred blocking round trips a second, so the\norder is probably (1), then (3), then (2) if it still matters - coalescing\nis the cheap one and it reduces the other two rather than just hiding\nthem. One request in flight at a time, remember the latest ratio, send it\nwhen the previous returns: the drag then runs at whatever the round trip\nallows instead of queueing behind itself.\n\nWorth noting where this touches doctrine, because it is not an oversight:\n\"nothing renders an intent optimistically... a divider drag is a request,\nand what came of it arrives as the next published view\" is a deliberate\nrule, and a round trip per frame is its consequence. Coalescing keeps the\nrule intact. Moving the divider locally during a drag would not, and that\nis a_26H7bQFg0's question rather than this card's.\n\nNot currently measured by anything: `--perf` budgets per byte, per event\nand per render, and a drag is none of those. If (1) lands, an assertion\nthat a drag of N pixels costs O(round trips) rather than O(mouse events)\nis the thing that would keep it fixed.",
+      "created_at_millis": 1786891033845,
+      "id": "c_295PlgPSR"
+    }
+  ],
   "created_at_millis": 1786832984797,
   "creator": "Alexander Terp",
   "description": "A dragged divider is the one arrangement change that still waits to be told twice.\n\n`pane.swap` and `pane.resize` answer with the settled arrangement, and Muster takes it - which is what makes a leftward split and a held resize chord land immediately rather than a broadcast later (a_28XGcvXEg). `layout.set_split_ratio` answers with one too, and Muster ignores it, because herdr spells that one as the exported *tree* rather than as the flat rectangles every other layout uses. `read_layout` will not read that shape, so it comes back as \"this result states no arrangement\" and the drag falls back to the event stream.\n\nNothing is wrong on screen; it is just the slow path, and a drag is the highest-frequency arrangement change there is - a divider that lags the mouse by a broadcast is the kind of thing that reads as the whole app being slow.\n\nThe work is a second reader in `muster-herdr/src/layout.rs` for herdr's exported tree, and pointing `settled` at it. The mirror needs nothing: `settle` already covers this, and a ratio drag has no intermediate arrangement to suppress.\n\nWorth measuring first, since the case for it rests on the gap being visible: the pair in section 14 was answered in 15 ms against a 108 ms broadcast, and a ratio set is one request rather than two.",
@@ -13,7 +21,7 @@
   "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
   "title": "🖱️ A dragged divider still waits for the broadcast",
   "type": "chore",
-  "updated_at_millis": 1786832984797,
+  "updated_at_millis": 1786891033845,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786832984797}
   ]

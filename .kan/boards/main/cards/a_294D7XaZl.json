@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "should-the-numbered",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1786888164400,
+  "creator": "Alexander Terp",
+  "description": "Today ⌘1-⌘9 name **tabs**, via `RosterTab.place` - one numbering across\nevery attached daemon, drawn beside the tab caption in the sidebar. There\nis no chord that goes to a named pane at all: panes are reached by\ndirection, by `next_pane`, or by clicking a row (a_28Nb8xJyb). Wanting to\njump straight to a specific agent is a gap, and the question is whether\nto fill it by adding a second numbering or by moving the one we have.\n\n**Lean: move it. The numbers should name panes.** Three reasons, in\nincreasing order of weight:\n\n1. **The sidebar already disagrees with itself.** The rows that carry the\n   state dots - the whole point of the product - are pane rows, and the\n   numbers are drawn one level up, beside the captions. The eye lands on\n   the dot and the number is somewhere else. That mismatch is what\n   prompted this card.\n2. **Numbering panes subsumes reaching tabs.** The stated reason numbers\n   sit on tabs is that a tab is otherwise unreachable once the agent list\n   is put away. But focusing a pane in a tab nothing is showing brings\n   that tab on screen by definition - so pane numbers reach every tab\n   too, through any pane in it, and the argument dissolves. The tab axis\n   keeps `next_tab` and `previous_tab`, which is what it is for.\n3. **The unit of this product is the agent, and an agent is a pane.**\n   \"Attention routing\" promises that when an agent needs you, one\n   keystroke lands you on *the pane that asked*. Today no keystroke does\n   that - only a click does.\n\nCosts, stated honestly rather than argued away:\n\n- **Nine chords, fifteen panes.** The target is a window of fifteen\n  agents. Tabs are fewer than panes, so nine numbers cover a larger share\n  of them; moving to panes means ⌘1-9 reaches the first nine and the rest\n  need `next_pane` or the mouse. The current scheme has the same ceiling\n  (the sidebar already draws no number past nine) - it just bites later.\n- **Panes churn faster than tabs.** `place` is positional, and its own\n  doc comment already concedes \"a number is a position, and positions\n  shift\". A tab list shifts rarely; a pane list shifts on every split and\n  every close, which is muscle memory breaking mid-session.\n\nThat second cost is the real open question, and it is worth deciding\nrather than inheriting: **positional or stable?**\n\n- **Positional** - count down the sidebar - is what tabs do now. It reads\n  off the screen with no memory, and it renumbers under you.\n- **Stable** - a number assigned when a pane appears, kept until it dies -\n  survives a split three rows above it, at the cost of gaps and of no\n  longer matching \"count down the list\".\n\nTabs got positional and it is fine, because tabs churn slowly. Panes do\nnot, so the choice may not carry over, and this is the card to make it\non.\n\nTwo consequences to handle rather than discover:\n\n- `focus_tab_1` through `focus_tab_9` would be lying about what they do.\n  Rename to something the config file can say honestly; a `[keymap]`\n  naming the old ones should fail loudly rather than silently do\n  something else. Pre-alpha, so a rename is cheap now and expensive\n  later.\n- The tab captions lose their numbers and the pane rows gain them, which\n  is a simpler sidebar than the one that draws both. Whatever is\n  numbered, only one thing should be - \"three ways to reach a tab cannot\n  disagree\" was the rule that shaped the current scheme, and it applies\n  just as much to the replacement.",
+  "id": "a_294D7XaZl",
+  "position": "!2",
+  "title": "🔢 Should the numbered chords name panes instead of tabs?",
+  "type": "chore",
+  "updated_at_millis": 1786888164400,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1786888164400}
+  ]
+}

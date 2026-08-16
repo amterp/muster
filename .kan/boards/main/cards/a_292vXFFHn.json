@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "say-what-each-agent",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "next",
+  "created_at_millis": 1786885105143,
+  "creator": "Alexander Terp",
+  "description": "A sidebar row reads `nook · claude` - a directory and a harness\n(`roster.rs::pane_label`). At fifteen panes that is fifteen rows saying\nalmost the same thing, and the founding promise is that you can tell\nsessions apart at a glance.\n\nGhostty names its tabs after whatever the program in them is doing.\nThat is not Ghostty being clever: Claude Code sets the terminal title\nwith OSC 2 and the terminal displays it. **herdr already tracks it.**\nRead off a live pane today:\n\n    agent                    'claude'\n    agent_status             'idle'\n    terminal_title           '✳ nook-first-working-build'\n    terminal_title_stripped  'nook-first-working-build'\n\nStripped of the status glyph for us, per pane, in `pane.get` and\n`pane.list`. Nothing upstream is needed - `RosterPane` needs the field\nand the sidebar needs to draw it.\n\n**The daemon is the only possible source, which settles where this\nlives.** libghostty hands the app a title for a surface it is painting,\nbut the sidebar exists to show panes *no region is showing*, and those\nhave no surface. So a renderer-sourced title would be blank on exactly\nthe rows this feature is for.\n\nWorth deciding rather than defaulting:\n\n- **A second line, and when to draw one.** Two lines times fifteen panes\n  is roughly double the height of a list whose value is being glanceable.\n  Lean: draw the second line only when there is a title worth showing, so\n  plain shells stay one line and agents get the room. That is\n  self-limiting in the right direction.\n- **What \"worth showing\" means, which is not \"present\".** oh-my-zsh sets\n  a title by default, usually the directory or the running command - the\n  two things the row already says. So the rule is not \"show it when it\n  exists\" but \"show it when it says something the first line does not\",\n  and that comparison is a decision the core should make once rather than\n  the shell making it per row.\n- **Wrapping or truncating.** Wrapping a long title in a 200pt list makes\n  the row height a function of what the agent is doing, so the list jumps\n  under the reader while an agent works. Lean: one line, tail-truncated,\n  full text on hover. Stability beats completeness in a list you are\n  meant to scan.\n- **Whether the tab caption takes it too**, which is what the screenshot\n  actually shows. A tab holding one agent has an obvious name available.\n  herdr labels tabs by workspace and number, so this would be Muster\n  overriding a daemon label - decidable, but a different decision from\n  the pane row and worth making separately.\n\n**Measure before building**: how often does the title change? Claude\nrewrites it as it works, and a roster republished on every change is a\ncost that lands at frequency times cardinality, which is the budget this\nproject holds itself to. Fifteen agents each rewriting a title is the\ncase to measure, and it may argue for coalescing title changes rather\nthan treating them like any other roster event.\n\n**Do not log it.** A title is derived from what somebody typed to their\nagent. \"Terminals carry secrets, so what you typed is never in the run\nlog unless you ask for it\" applies to this as much as to keystrokes -\nthe field should be carried and drawn, and named but not quoted in any\ndiagnostic.",
+  "id": "a_292vXFFHn",
+  "position": "UUUUUUUUUUUUUUUUUU",
+  "title": "🏷️ Say what each agent is working on, not just where it lives",
+  "type": "feature",
+  "updated_at_millis": 1786885105143,
+  "history": [
+    {"field":"column","value":"next","at":1786885105143}
+  ]
+}

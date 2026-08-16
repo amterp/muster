@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "name-a-pane-or-a-tab",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1786885523664,
+  "creator": "Alexander Terp",
+  "description": "A person running fifteen agents wants to say which is which in their own\nwords - \"🔥 payments spike\", \"🧪 flaky test hunt\" - rather than reading\ndirectories. Pairs with a_292vXFFHn (agent subtext); the two decide one\nrow between them and should be designed together.\n\n**herdr already does all of it.** Measured against the pinned 0.8.0, not\nassumed:\n\n- `pane.rename` and `tab.rename` take a nullable `label`. Emoji work\n  unmodified - `🔥 payments spike` and `🚀 release` both came back\n  byte-identical.\n- The field is **absent when unset**, so \"has a custom name\" needs no\n  sentinel.\n- **A custom name and the agent's own title coexist as separate fields.**\n  Setting OSC 2 in a renamed pane left `label` untouched and filled\n  `terminal_title` beside it. The daemon never overwrites one with the\n  other, so the compatibility this card asks for is already the backend's\n  behaviour and Muster only has to decide presentation.\n- **The name survives a daemon restart; the title does not.** After\n  `server.stop` and a fresh daemon, `label` came back on both the pane\n  and the tab, and `terminal_title` was null - the shell restarted, so\n  nothing had set one yet.\n\nThat last asymmetry is the design, handed over for free: **the user's\nname is durable identity, the agent's title is volatile status.** Which\nis exactly the two lines the sibling card wants - a first line that is\nstable enough to learn, and a second that changes as work happens. So:\n\n- Line one: the custom label when set, else `directory · harness` as\n  today.\n- Line two: the terminal title, still shown for a named pane - naming\n  something must not cost you the ability to see what it is doing.\n- A tab caption takes its own label the same way, over herdr's\n  workspace-and-number default.\n\n**Muster drops the field at the seam today.** `Pane` in\n`mirror/backend.rs` carries `id`, `agent` and `cwd` and no label, while\n`Tab` and `Workspace` both have one. So the tab half is nearly free and\nthe pane half needs the field added.\n\n**The real cost is that Muster has no text input anywhere.** No dialog,\nno sheet, no editable field - this would be the first, and that is the\npart to think about rather than the rename call. Options:\n\n- **Inline edit in the sidebar row** (double-click, Finder-style). Lean:\n  this is where you are already looking at the list and deciding which is\n  which, and it needs no new window.\n- An action with a chord opening a small sheet. More discoverable, more\n  chrome, and a second place the same thing happens.\n- Nothing in the GUI at all: `herdr pane rename` already works from\n  inside a pane, because panes inherit `HERDR_SESSION`. That is the\n  zero-cost path that exists right now, and it is worth saying out loud\n  that it is not good enough - a person should not need the daemon's CLI\n  to name their own window.\n\nEmoji entry is free either way: ⌃⌘Space opens the picker in any real\n`NSTextField`, so this needs no picker of Muster's own.\n\nOne thing that falls out of view = f(daemon state) and is worth keeping:\nany client can rename, including herdr's own TUI, and the name simply\narrives. Nothing here should be Muster-local state, and clearing a name\nis `label: null` rather than an empty string.",
+  "id": "a_2936QHMRa",
+  "position": "!E",
+  "title": "✏️ Name a pane or a tab yourself, and have the name stick",
+  "type": "feature",
+  "updated_at_millis": 1786885523664,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1786885523664}
+  ]
+}

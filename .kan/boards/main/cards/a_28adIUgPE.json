@@ -6,6 +6,14 @@
     "backend"
   ],
   "column": "uncommitted",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "**A sharper argument for the ask than the shell one: the pinned daemon\ncan be told to unpin itself.** herdr's `version_check` and\n`manifest_check` both default to **true**\n(`src/config/model.rs::UpdateConfig::default`), so the daemon Muster\nships - named and checksummed in `deps/herdr.pin`, downloaded and\nverified by `./dev`, staged inside the app bundle - runs its update\nchecks according to a config file Muster does not own.\n\nThat moves this card off ergonomics. Pinning the daemon is the whole\nreason \"green suite means it works\" means anything: a Muster talking to a\ndaemon its corpus was never recorded against is a window whose every\nbehaviour is unverified, which is why `./dev` refuses a daemon whose wire\nschema has moved. None of that is enforceable while the pinned binary\ntakes its update policy from `~/.config/herdr/config.toml`.\n\nAlso worth adding to the ask, because it decides between the two options\nalready listed: **a flag cannot leak, an environment variable has to be\nscrubbed.** `herdr server --config \u003cpath\u003e` is invisible to a pane by\nconstruction. A `HERDR_CONFIG_PATH` would have to be removed from the\nenvironment before spawning each pane, which is a discipline the caller\ncannot verify from outside and a regression nobody would notice - the\nsymptom is a pane reading Muster's daemon config instead of the user's,\nwhich looks like nothing at all until it does.\n\nMuster's side of this is now carded as a_294rihJCP.",
+      "created_at_millis": 1786889739960,
+      "id": "c_294s6mnDX"
+    }
+  ],
   "created_at_millis": 1786817672235,
   "creator": "Alexander Terp",
   "description": "Muster's daemon runs under a herdr session of its own, on a socket of its own, from a binary Muster shipped - and then reads the user's own `~/.config/herdr/config.toml`. A `default_shell` or a `shell_mode` somebody set for their own terminal silently decides what every Muster pane runs, and the corpus Muster is judged against was recorded against neither that config nor any other.\n\n**It cannot be fixed from this side, and that is the ask.** herdr resolves its config directory from `XDG_CONFIG_HOME` and nothing else (`src/config/io.rs`, `config_dir` - there is no flag and no `HERDR_CONFIG_*` variable; the only env vars herdr reads are `HERDR_SOCKET_PATH`, `HERDR_CLIENT_SOCKET_PATH`, `HERDR_SESSION`, `HERDR_BIN_PATH`, `HERDR_ENV`, and the three pane identity ones). A pane's process inherits the daemon's environment, so pointing the daemon at a private config directory points every pane's git, editor, gh and shell at one too. That is a worse fault than the one it fixes, so Muster does not do it.\n\n**The ask:** a way to name the config file independently of `XDG_CONFIG_HOME` - `herdr server --config \u003cpath\u003e`, or a `HERDR_CONFIG_PATH` read only by the server. Either separates \"which config this daemon runs on\" from \"where the programs inside it look for theirs\", which are two different questions that share one variable today.\n\nWorth noting there is already a partial answer in the API that does not reach this: `layout.apply` takes a `LayoutNode` carrying a per-pane `env` map, so herdr can already give one pane an environment of its own. It is only on that path - `pane.split`, `tab.create` and `workspace.create` take no env - and applying a layout is not what a keystroke means, so Muster cannot route ordinary pane creation through it to get there.\n\nUntil then Muster names the file in its run log at daemon start (`daemon.starting`, `config` field), so a pane that opened an unexpected shell is diagnosable rather than mysterious.\n\nRelated: a_28YgGqYq7, whose environment half is fixed - the daemon is now handed an allowlist rather than the launching shell's whole world. This is the half that was left.",
@@ -13,7 +21,7 @@
   "position": "UUUU",
   "title": "🔌 Upstream: a daemon cannot be given a config without giving its panes one",
   "type": "chore",
-  "updated_at_millis": 1786817672235,
+  "updated_at_millis": 1786889739960,
   "history": [
     {"field":"column","value":"uncommitted","at":1786817672235}
   ]

@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "find-in-a-pane-when",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1786885777548,
+  "creator": "Alexander Terp",
+  "description": "⌘F, the way Ghostty ships it. The good half is that libghostty already\ndoes the work; the hard half is that in Muster it would be searching the\nwrong buffer.\n\n**libghostty at our pinned commit (9f9b8d1d0) already has search.** The\nbindings are there - `search:\u003ctext\u003e`, `search_selection`,\n`navigate_search`, `start_search`, `end_search` - and so are the four\nactions it reports back: `START_SEARCH` carrying the needle,\n`END_SEARCH`, `SEARCH_TOTAL` and `SEARCH_SELECTED`. Muster already drives\nlibghostty actions by string name for font sizing, so the door is open\nand the wiring is small.\n\n**But surfaces hold no scrollback, and that is deliberate**\n(architecture.md: \"a frame stream has no history, so surfaces hold no\nscrollback and never handle the wheel\"). Ghostty's find searches a buffer\nGhostty owns. Muster's surface is a viewport the daemon repaints, so\nlifting the implementation gives a find that searches roughly one screen\nand says \"no results\" for text three pages up. That is worse than having\nno find at all, because it answers confidently.\n\n**The daemon owns the history and cannot search it either.** Measured on\nthe pinned herdr 0.8.0:\n\n- No search method exists. `pane.read` and the `pane.output_matched`\n  event are the whole surface area.\n- `pane.read` is capped in practice. A pane whose own\n  `scroll.max_offset_from_bottom` reported **4981** lines returned **998**\n  lines to `--source recent --lines 2000` and the same 998 to\n  `--lines 100000`.\n\nSo a core-side find built on `pane.read` today would silently miss four\nfifths of that pane's history - the same confident wrong answer, one\nlayer up.\n\nWhere find runs is therefore the decision, and it wants making before any\ncode:\n\n- **(a) Ask herdr for search.** Fits view = f(daemon state), and it is\n  the only option that makes the interesting version possible: find\n  across every pane the window holds, including the ones no region is\n  showing. That is a much better feature than find-in-this-pane, and it\n  is the shape of this product - the sidebar already exists to reach work\n  that is not on screen. Costs an upstream dependency. Probably wants its\n  own 🔌 Upstream card.\n- **(b) Core-side over `pane.read`,** which needs the read cap lifted -\n  a smaller upstream ask - and then Muster matches, and lands on a hit by\n  sending a scroll intent. More code here, less waiting on somebody else.\n- **(c) Surface-side via libghostty, scoped honestly to what is on\n  screen.** Cheap, instant, already highlights, and available today. Only\n  acceptable if the UI says that is what it searched, which is a strange\n  thing to have to say in a find bar.\n\nLean: (c) alone is not worth shipping, and (a) is the version worth\nwanting. Worth asking herdr what it thinks before choosing - and worth\nnoticing that a hybrid of (c) for the visible screen and (a) or (b) for\nthe rest means one result list with two sources, which is the kind of\nthing that disagrees at exactly the wrong moment.\n\n**What is liftable regardless of the answer**: the interaction. Ghostty's\nfind bar, ⌘F to open, next/previous, escape to end, and a\n\"3 of 47\" counter fed by `SEARCH_TOTAL` and `SEARCH_SELECTED`. That also\nneeds a text field, which Muster does not have anywhere yet - shared with\na_2936QHMRa (custom names), and the two should agree on what a text input\nlooks like here rather than inventing one each.",
+  "id": "a_293D1mMyO",
+  "position": "!6",
+  "title": "🔎 Find in a pane, when the pane's history is somewhere else",
+  "type": "feature",
+  "updated_at_millis": 1786885777548,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1786885777548}
+  ]
+}

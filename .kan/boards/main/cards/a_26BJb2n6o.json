@@ -5,16 +5,31 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-lo",
+  "column": "backlog-hi",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "A concrete use case landed for this, which is why it moves up: an agent\nin a pane acting as integrator for a parallel workflow - splitting panes\nbelow itself, starting an agent in each, and briefing them. See the card\nthat records it.\n\nVerified today that the *backend* half of that needs nothing from us:\n`$HERDR_PANE_ID` tells a pane where it is, and `herdr pane split`,\n`pane rename` and `pane run` do the rest, from inside the pane. So this\ncard is precisely the remainder - focus, zoom, which tab a region shows,\nthe sidebar - and the remainder is exactly the part herdr cannot reach,\nbecause Muster's keyboard cursor is view-local by design.\n\nOne addition to the description: **an agent has no eyes.** A person can\nsee which panes are on screen and where focus is; an agent must ask. The\nread side (\"what is this window showing\") is at least as important as the\nwrite side, and a CLI that only writes leaves an agent arranging a window\nit cannot look at.",
+      "created_at_millis": 1786888541553,
+      "id": "c_294MvrZ3C"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "**This is the agent surface, and herdr's CLI explicitly is not** - worth\nrecording as a decision rather than leaving to be re-litigated whenever\nsomebody notices that shelling out to `herdr` from a pane already works.\n\nIt does already work, which is the temptation. But it cannot express a\nwindow that spans two daemons - `herdr` in a pane reaches that pane's\ndaemon and no other, so nothing can put a pane on the devenv or ask what\nthe window is showing. It silently truncates anything with a view\nconsequence, because a split made behind Muster's back appears but\nfocuses nothing. And a documented herdr-shaped agent surface would *be*\nthe contract regardless of what the seam says, which is the one thing\n\"we never let one own our contract\" rules out. Nothing depends on it yet;\nthat is what makes this cheap to settle now.\n\n**Ergonomics is the point, not coverage.** Not one verb per herdr verb -\na vocabulary shaped to what Muster means to support, where one intent is\none call. The sharpest evidence: driving this by hand needs a `sleep`\nbetween creating a pane and typing into it, because a pane's program is\nspawned with the pane and text sent before its shell draws a prompt races\nthe first output. The suite already carries a comment about that hazard,\nhaving been caught by it. Every agent scripting this by hand would\nrediscover that wait and get it wrong under load. \"Make a pane below me,\nin this directory, running this\" as a single call moves the race into one\nplace that gets it right, and that is the kind of thing this CLI is for.\n\n**Reads are half the job.** An agent has no eyes: it cannot see which\npanes are on screen or where focus is, so it must be able to ask. A CLI\nthat only writes leaves an agent arranging a window it cannot look at.\n\n**Addressing needs designing with this, not after.** The CLI has to reach\na running GUI process, and something has to say which window. A `MUSTER_*`\nvariable carried into panes answers that and announces the surface at the\nsame time, so `muster` needs no `--window` flag from inside a pane.",
+      "created_at_millis": 1786888857519,
+      "id": "c_294V9TBni"
+    }
+  ],
   "created_at_millis": 1786461806201,
   "creator": "Alexander Terp",
   "description": "Desideratum 9. Backend ops already have herdr's CLI; this covers view ops - focus, arrange, window management - so agents can drive muster the way they drive herdr.",
   "id": "a_26BJb2n6o",
-  "position": "U",
+  "position": "!!U",
   "title": "muster CLI: drive the view layer from scripts and agents",
   "type": "feature",
-  "updated_at_millis": 1786461806201,
+  "updated_at_millis": 1786888857519,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1786461806201}
+    {"field":"column","value":"backlog-lo","at":1786461806201},
+    {"field":"column","value":"backlog-hi","at":1786888541590}
   ]
 }

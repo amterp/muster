@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-keybinding-that",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1786891010078,
+  "creator": "Alexander Terp",
+  "description": "Ghostty spells resize as `cmd+shift+h=resize_split:left,150` - the chord\nnames the action *and* how far it goes. Muster's `[keymap]` is keyed by\naction and every action is parameterless, so there is nowhere to put the\n150.\n\n**Most of what prompted this already works**, and is worth saying before\nanyone builds: `resize_step` is a root key in `~/.muster/config.toml`\n(whole cells, omit for the daemon's own step), and `scroll_multiplier` is\ntoo. A config wanting all four directions to move the same amount - which\nis what the Ghostty snippet above actually does - is one line today.\n\nSo the gap is narrower than it looks, and it is a design question rather\nthan a missing feature: **should a chord be able to carry an argument?**\n\nMuster already has exactly one parameterized action and dodged the\nquestion - `focus_tab_1` through `focus_tab_9` are nine action names for\none action, and the core carries the number as `Action::FocusTab(u8)`\ninternally while the config file sees nine strings. That worked because\nnine is small and the numbers are a closed set. Resize amounts are not\nclosed, so this is where the question gets asked properly.\n\nTwo shapes, and they are not equivalent:\n\n- **Keep the keymap keyed by action, and let a value ride along** -\n  `resize_left = { chord = \"cmd+shift+h\", cells = 20 }`, or a second\n  table. Stays inside the existing rule that an action has one chord, and\n  makes the argument obviously a setting rather than part of the chord.\n- **Key by chord with arguments, as Ghostty does.** More familiar to\n  anyone arriving from Ghostty, and it breaks the current rule -\n  `[keymap]` is keyed by action precisely because an action has one chord\n  and `[text]` is keyed by chord precisely because text has no name to\n  key on. A third scheme needs to justify itself against that split.\n\nWorth deciding rather than defaulting, and there is an ordering argument\nfor deciding it now rather than when the second parameterized action\narrives: whatever this picks, `focus_tab_N` should stop being nine names\nfor one action, and the cost of unpicking that grows with every config\nfile somebody writes.\n\nUnits are the other half. `resize_step` is **cells**; Ghostty's number is\npixels. Cells are the more meaningful unit for a grid of terminals - \"two\nmore rows\" survives a font size change and \"150 pixels\" does not - and it\nmeans a config carried over from Ghostty will move a different distance\nthan it did there. That is the right answer and a surprise worth naming\nin the docs rather than leaving somebody to discover.",
+  "id": "a_295P9LTpd",
+  "position": "!!2",
+  "title": "⌨️ A keybinding that carries an argument, starting with resize amounts",
+  "type": "chore",
+  "updated_at_millis": 1786891010078,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1786891010078}
+  ]
+}
