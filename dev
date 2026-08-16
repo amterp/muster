@@ -487,6 +487,14 @@ fn deps_are_current(pin):
     return true
 
 fn build_deps():
+    pin = read_pin()
+    if deps_are_current(pin):
+        print(dim("libghostty already built at {pin[:12]}"))
+        return
+
+    // Asked for only once there is something to build with it. Every other tier takes deps on
+    // the way past now, so checking first would make zig a requirement for running the suite
+    // on a tree that has libghostty sitting right there.
     stdout = $`zig version`
     installed = stdout.trim()
     if installed != ZIG_VERSION:
@@ -495,11 +503,6 @@ fn build_deps():
         print_err("compiler errors inside ghostty rather than as a version complaint.")
         print_err("Try: brew install zig")
         exit(1)
-
-    pin = read_pin()
-    if deps_are_current(pin):
-        print(dim("libghostty already built at {pin[:12]}"))
-        return
 
     print(dim("building libghostty at {pin[:12]} - several minutes on a cold cache"))
     $`mkdir -p {GHOSTTY_DIR}`
@@ -546,6 +549,28 @@ if not (deps or build or test or lint or format or clean or bundle or contract o
     build = true
     test = true
     lint = true
+
+// A narrowed flag still takes everything it cannot run without, and the two rules below are the
+// whole of that chain. Without them the flags are only safe on a tree the full gate has already
+// been through, which is the tree the person writing them happens to have - so a fresh checkout
+// meets a wall of compiler errors, and the flag that would have prevented it is the one they
+// skipped to save the minute.
+//
+// The suite takes a build, and that is a correctness rule rather than a convenience. The seam's
+// Swift types are generated during `build` and committed nowhere, so a suite that skipped it
+// compiled the shell against whatever was generated last - green while the schema said
+// something else, which is exactly the disagreement `proto/muster.proto` being the one source
+// is meant to make impossible. A fresh checkout at least fails loudly; a checkout with a stale
+// generated file passes.
+if test:
+    build = true
+
+// Compiling anything needs libghostty, which is reproduced from a pin rather than checked in.
+// Lint is on this list because clippy is a compile - the style half of it needs nothing, but
+// the half that runs after the build does. Cheap to demand: a tree that already has libghostty
+// answers with one line, and the freshness check below costs a stamp read and four path tests.
+if build or lint or perf:
+    deps = true
 
 if clean:
     announce("clean")

@@ -23,7 +23,8 @@ fn main() {
     assert!(
         header.exists(),
         "no libghostty-vt header at {}. It is built from deps/ghostty.pin rather than \
-         checked in, so a fresh checkout has none until `./dev -d` has run.",
+         checked in, so a fresh checkout has none until `./dev` has run - any tier that \
+         compiles takes it on the way past, so seeing this means cargo was run directly.",
         header.display()
     );
 

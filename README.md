@@ -223,6 +223,12 @@ the renderer", which is the first question when a colour does not take.
 merge gate's green cannot drift apart. Flags narrow it and cluster: `./dev -t` tests, `./dev -tl` tests and lints,
 `./dev -h` lists them all.
 
+**A narrowed flag still takes what it cannot run without**, so `./dev -t` on a checkout nothing has been built in
+fetches libghostty and generates the seam's types before running anything. Both are near-free once they are there -
+a stamp read and four path checks - and the alternative was worse than slow: the seam's Swift types are generated
+during a build and committed nowhere, so a suite that skipped it ran the shell against whatever was generated last
+and went green while the schema said something else.
+
 `./dev --bundle` assembles `.build/muster.app` around the built binary - a thing you can double-click, keep in the
 Dock, or hand to somebody, with the pinned herdr and both dylibs inside it. Out of the gate because nothing in the
 gate needs one, and it is also the only way to meet the descriptor ceiling launchd imposes on a GUI-launched process.
