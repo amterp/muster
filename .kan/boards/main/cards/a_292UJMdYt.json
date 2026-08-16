@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "the-gate-ran-on-a",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "done",
+  "created_at_millis": 1786884058651,
+  "creator": "Alexander Terp",
+  "description": "`./dev` died in CI at `os = os_raw.trim()` - \"Value '0' (int) is not\ncompatible with expected type 'str'\" - while passing on every\ncontributor's machine. Both were running \"rad v0.11.0\".\n\nRad fills a shell capture by name when every target is spelled `stdout`,\n`stderr` or `code`, and by position otherwise. Rad v0.12 reorders the\npositional form from (code, stdout, stderr) to (stdout, stderr, code).\n`./dev` was written against a local build past the v0.11.0 tag, where\n`os_raw = $\\`uname -s\\`` yields \"Darwin\"; under the released v0.11.0 that\n`deps/rad.pin` names and CI installs, the same line yields the exit code.\n\nSix captures used names of their own and were rewritten to the named\nform, which means the same thing under both Rads. One of them,\n`_, stderr, code = $\\`curl ...\\``, was silently binding curl's stderr to\n`code` under the pinned Rad - it had not been reached yet, and would have\nsurfaced as a download failure reported with the wrong text. The rule is\nnow written down at the top of `./dev` rather than left to be\nrediscovered.\n\nVerified by running the whole gate under the pinned v0.11.0 binary,\nfetched and checksummed the way the workflow fetches it, as well as under\nthe local build.\n\nWorth noticing: the pin's own comment says it \"names the Rad the gate is\nwritten against\", and for a while it did not. Nothing checks that claim,\nand nothing can from inside a script that is already running under the\nanswer. Living with it - the gate is the check, now that the gate can\nactually run - but if it recurs, the cheap version is CI printing the\npinned version beside `rad --version` and failing on a mismatch.",
+  "id": "a_292UJMdYt",
+  "position": "!!!!!!!!!2",
+  "title": "🛠️ The gate ran on a Rad the script was not written against",
+  "type": "chore",
+  "updated_at_millis": 1786884058651,
+  "history": [
+    {"field":"column","value":"done","at":1786884058651}
+  ]
+}

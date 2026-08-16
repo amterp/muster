@@ -53,6 +53,20 @@ PROTO_OUT = "Sources/MusterMac/Generated"
 // Rust side needs no equivalent - cargo tracks the same file itself.
 PROTO_STAMP = "Sources/MusterMac/Generated/.proto.sha256"
 
+// Every command captured here names its targets `stdout`, `stderr` and `code`, and never
+// anything else - not even `_`.
+//
+// Rad fills a capture by name when every target is spelled one of those three, and by
+// position otherwise. Rad v0.12 reorders the positional form from (code, stdout, stderr)
+// to (stdout, stderr, code), so a positional capture means one thing under the pinned Rad
+// and another under a newer one - while the named form means the same under both. This
+// script is read by two Rads that disagree: deps/rad.pin is what CI installs, and a
+// contributor's own rad is whatever they have.
+//
+// It is worth being strict about because the failure is quiet. `uname -s` captured
+// positionally binds the exit code on one side and "Darwin" on the other, and the gate
+// died at the `.trim()` two lines later, naming a type rather than a command.
+
 fn announce(name):
     print(bold("\n▸ {name}"))
 
@@ -93,15 +107,15 @@ fn run_ssh_tier():
 
     // Absolute, because cargo runs an integration test from its own package root and a
     // repo-relative key silently becomes 'no such file' and then 'permission denied'.
-    cwd_raw = $`pwd`
-    root = cwd_raw.trim()
+    stdout = $`pwd`
+    root = stdout.trim()
     key = "{root}/devenv/.ssh/id_ed25519"
     // The container is a local fixture on a port nobody else uses, and its key changes every
     // time it is rebuilt, so pinning its host key would mean editing a file per rebuild.
     options = "-p 2222 -i {key} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 
-    listed = $`MUSTER_DEVENV_HOST=dev@localhost MUSTER_DEVENV_SSH_OPTIONS={options} cargo test --workspace -- --ignored --list`
-    names = listed.split("\n").filter(fn(line) line.ends_with(": test"))
+    stdout = $`MUSTER_DEVENV_HOST=dev@localhost MUSTER_DEVENV_SSH_OPTIONS={options} cargo test --workspace -- --ignored --list`
+    names = stdout.split("\n").filter(fn(line) line.ends_with(": test"))
     if len(names) == 0:
         print_err(red("The remote tier discovered no tests."))
         print_err("An empty tier passes, so this is a failure rather than a green run.")
@@ -366,10 +380,13 @@ fn herdr_asset_name():
     // Assigned before trimming, deliberately: a method chained straight onto a command
     // does not apply, and the failure is silent - `uname -s` compares as "Darwin\n" and
     // every platform looks like Linux.
-    os_raw = $`uname -s`
-    machine_raw = $`uname -m`
-    os = os_raw.trim()
-    machine = machine_raw.trim()
+    //
+    // And assigned to `stdout` rather than a name of its own - this is the line the gate
+    // died on, and the note on captures at the top of this file says why.
+    stdout = $`uname -s`
+    os = stdout.trim()
+    stdout = $`uname -m`
+    machine = stdout.trim()
     system = os == "Darwin" ? "macos" : "linux"
     arch = machine == "arm64" or machine == "aarch64" ? "aarch64" : "x86_64"
     return "herdr-{system}-{arch}"
@@ -379,7 +396,7 @@ fn fetch_herdr(version, asset, cached):
     print(dim("fetching herdr {version} for this platform - about 18 MB, once"))
     $`mkdir -p {HERDR_DIR}/{version}`
     // -f so an HTML error page never lands on disk looking like a binary.
-    _, stderr, code = $`curl -fsSL -o {cached}.part {url}` catch:
+    stdout, stderr, code = $`curl -fsSL -o {cached}.part {url}` catch:
         print_err(red("could not download herdr {version} from {url}"))
         print_err("Impact: no daemon-backed test can run, so the suite cannot verify the")
         print_err("backend adapter, the mirror, or the input path.")
@@ -393,8 +410,8 @@ fn fetch_herdr(version, asset, cached):
 // replaced or truncated between runs and the failure would otherwise surface as a daemon
 // that will not start.
 fn verify_herdr_checksum(want, cached):
-    sum_raw = $`shasum -a 256 {cached}`
-    found = sum_raw.trim().split(" ")[0]
+    stdout = $`shasum -a 256 {cached}`
+    found = stdout.trim().split(" ")[0]
     if found != want:
         print_err(red("{cached} is not the herdr this repo pins."))
         print_err("  expected {want}")
@@ -431,8 +448,8 @@ fn check_herdr_schema(binary, version):
         print_err("test failure rather than by a diff naming the method that moved.")
         print_err("Fix: {binary} api schema --json > {recorded_path}")
         exit(1)
-    live = $`{binary} api schema --json`
-    if live.trim() != recorded.content.trim():
+    stdout = $`{binary} api schema --json`
+    if stdout.trim() != recorded.content.trim():
         print_err(red("herdr {version} reports a different API schema than the one recorded."))
         print_err("Impact: this daemon's wire is not the wire the corpus was recorded")
         print_err("against, so passing tests would prove less than they appear to.")
