@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "upstream-a-tab",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "uncommitted",
+  "created_at_millis": 1786895458475,
+  "creator": "Alexander Terp",
+  "description": "Two halves of one gap in `TabInfo`, both measured against the pinned 0.8.0 (`corpus/herdr-0.8.0/naming/`, `docs/observations/herdr-0.8.0.md` section 16).\n\n**A tab name cannot be cleared.** `tab.rename` declares `label` a required string where `pane.rename` declares it nullable, and `Tab::set_custom_name` wraps whatever it is given in `Some`. So null is a schema violation and empty leaves an empty name that survives a daemon restart:\n\n    tab.list                 label \"1\"          herdr's own position number\n    tab.rename \"release\"     label \"release\"\n    tab.rename \"\"            label \"\"           and there is no way back to \"1\"\n\nMuster gets away with it: `tab_label` already drops an all-digits label to suppress herdr's position number, so an empty label renders as the bare place, which is what an un-named tab renders as. herdr's own interface shows a blank tab.\n\n**And a tab somebody names `42` reads as un-named.** That same all-digits test is the only way to tell a name from a number, because `TabInfo.label` is filled in either way and nothing beside it says which. Pre-existing, but newly reachable now that naming a tab is a menu item rather than a CLI call nobody made.\n\nOne fix covers both: either a nullable `label` on `tab.rename` plus a `custom_name` (or a `named` flag) on `TabInfo`, or a `TabInfo.label` that is null when nobody named it. The second is smaller and answers the question directly.\n\nLow urgency, and the second half is the one that will actually be noticed - by whoever names a tab after a ticket number.",
+  "id": "a_297GsA6sj",
+  "position": "!E",
+  "title": "🔌 Upstream: a tab cannot be un-named, and a tab named `42` disappears",
+  "type": "chore",
+  "updated_at_millis": 1786895462226,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1786895458475},
+    {"field":"column","value":"uncommitted","at":1786895462226}
+  ]
+}

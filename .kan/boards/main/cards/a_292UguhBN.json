@@ -5,16 +5,25 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-hi",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Fixed, but the symptom did not reproduce in the running app, and that\nis worth recording rather than quietly inheriting. `ghostty_init` calls\nGhostty's `ensureLocale`, which derives a locale from CFLocale and\nsetenvs LANG and LANGUAGE across the whole process before Muster starts\nits daemon - measured on a bundle opened under `env -i`. So a Dock\nlaunch was already being rescued, by the renderer, one initialisation\nstep earlier.\n\nThat is an invisible loan on renderer init order: nothing states it, no\ntest holds it, and a libghostty that stopped calling `ensureLocale` - or\na Muster that started its daemon before `ghostty_init` - would break\npanes with no edit to blame. Muster now decides its own daemon's\nlocale, so the loan is repaid rather than the break repaired.",
+      "created_at_millis": 1786898386370,
+      "id": "c_298V2bEth"
+    }
+  ],
   "created_at_millis": 1786884073251,
   "creator": "Alexander Terp",
   "description": "`daemon::carried` allowlists `LANG`, the `LC_*` family and `TERM`, and a\nwindow launched from a terminal gets all of them. A window launched the\nway Muster is meant to be launched - Dock, Finder, Spotlight - gets none:\nlaunchd hands a GUI process `HOME`, `PATH`, `SHELL`, `USER`, `LOGNAME`,\n`TMPDIR`, `SSH_AUTH_SOCK` and little else. Measured on this machine with\na throwaway bundle opened under `env -i`, which is the closest thing to a\ndouble-click a script can arrange.\n\nSo the allowlist carries nothing for them, the daemon runs in the C\nlocale, and every pane inherits it. That is exactly the failure the\nallowlist's own comment says `LANG` is on the list to prevent: \"a pane\nmangles non-ASCII\". `PATH` is the bare `/usr/bin:/bin:/usr/sbin:/sbin`\nfor the same reason, which matters less - a login shell rebuilds it from\nrc files, which is the whole argument for the list being short.\n\nAn allowlist can only carry what exists, so the fix is to supply what\nlaunchd did not. Ghostty derives `LANG` from the macOS locale for this\nreason, and its implementation is the reference. Questions worth\nanswering rather than assuming:\n\n- Is this the shell's or the core's? Deriving a POSIX locale name from\n  `CFLocale` is an OS question and belongs in the shell; deciding that a\n  daemon with no `LANG` gets one is the core's. Probably: the shell\n  reports what the platform says, the core decides whether to carry it.\n- `TERM` has a different answer. herdr sets it per pane, and the value\n  the daemon holds only matters for a process it starts outside one - so\n  the honest fix may be no fix, and a note saying why.\n- What does a run say it did? `daemon.environment` names carried and\n  dropped variables; a supplied one is neither, and should read as\n  supplied.\n\nFound while diagnosing a window whose panes ran `/bin/sh`, which turned\nout to be an unrelated scratch config. `SHELL` itself is fine - launchd\ndoes supply it, so a Dock launch gets the user's real shell.",
   "id": "a_292UguhBN",
-  "position": "!U",
+  "position": "!!!!!!!!!!U",
   "title": "🌐 A Dock-launched Muster has no locale and no TERM",
   "type": "chore",
-  "updated_at_millis": 1786884073251,
+  "updated_at_millis": 1786898386370,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1786884073251}
+    {"field":"column","value":"backlog-hi","at":1786884073251},
+    {"field":"column","value":"done","at":1786898371659}
   ]
 }

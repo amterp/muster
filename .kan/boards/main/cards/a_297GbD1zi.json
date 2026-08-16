@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "upstream-a-pane",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "uncommitted",
+  "created_at_millis": 1786895447961,
+  "creator": "Alexander Terp",
+  "description": "Measured against the pinned 0.8.0 while building the naming feature (`corpus/herdr-0.8.0/naming/`, `docs/observations/herdr-0.8.0.md` section 16).\n\n`pane.rename` emits no event of any kind, and there is no `pane.renamed` topic in the schema to subscribe to. The name became visible to a watching subscriber only when a later title change happened to carry it along on `pane_updated`.\n\nThe caller is fine: `pane.rename` answers with the whole pane payload including the new label, so Muster applies its own renames from the reply the way a split applies its settled layout. **What no client can learn is somebody else's rename.** A name set from herdr's own TUI, or from a second Muster, reaches this window only when the connection next re-snapshots.\n\nTabs do not have this problem - `tab.rename` emits `tab_renamed` with the new label - so the ask is just for the pane half to match: emit `pane_updated` on a rename, or add a `pane.renamed` topic.\n\nLow urgency. One person with one window renames their own panes and sees it immediately.",
+  "id": "a_297GbD1zi",
+  "position": "!U",
+  "title": "🔌 Upstream: a pane rename is announced to nobody",
+  "type": "chore",
+  "updated_at_millis": 1786895462155,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1786895447961},
+    {"field":"column","value":"uncommitted","at":1786895462155}
+  ]
+}

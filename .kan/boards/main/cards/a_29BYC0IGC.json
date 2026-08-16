@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-devenv-pane-runs",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1786905657372,
+  "creator": "Alexander Terp",
+  "description": "Muster now writes the config its daemon reads - `~/.muster/state/herdr.toml`, named to the\ndaemon with `HERDR_CONFIG_PATH` - so `scrollback_bytes` and `[shell]` decide what a local pane\nruns and the pinned daemon's update checks stay off. A pane on the devenv gets none of that.\nAn ssh endpoint attaches to whatever herdr is installed over there, so there is no daemon of\nMuster's to configure and no file of Muster's on that machine to configure it with.\n\nThe result is a window whose two halves disagree about settings the person wrote once. A\nscrollback depth or a shell named in `~/.muster/config.toml` applies to the panes on this\nmachine and silently not to the ones beside them, which is the sort of difference nobody\nreports as a bug because it reads as the remote machine simply being different.\n\n**Per-daemon is the right shape rather than a compromise**, and this is the second reason for\nit: two machines can want different answers - a devenv's shell is not a laptop's - so a single\nMuster-wide daemon config would have to pretend otherwise. What is missing is the delivery,\nnot the model.\n\nNothing new is needed to deliver it. `crates/muster-ssh` already holds an ssh master per\nremote daemon and `Tunnel::control_path()` is already threaded to the shell, so the file rides\nthe connection that is already open - the same trick `muster-bridge` uses to run a command on\nthe far side. The wrinkle is ordering: the file has to land before the daemon reads it, and\ntoday Muster does not start the remote daemon at all.\n\n**Which makes this land naturally with a_28QlRpvKj** (\"Put our own daemon on the devenv\"),\nrather than before it. Once Muster starts the remote daemon it also decides when, and \"write\nthe config, then start it\" is the same sequence the local path already has. Doing it first\nwould mean asking a daemon somebody else started to re-read a config it was not started with,\nwhich reaches only its update checks and leaves what a pane runs where it was.",
+  "id": "a_29BYC0IGC",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "title": "🛰️ A devenv pane runs the settings a laptop pane does",
+  "type": "chore",
+  "updated_at_millis": 1786905657372,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1786905657372}
+  ]
+}

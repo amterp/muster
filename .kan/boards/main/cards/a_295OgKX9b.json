@@ -5,16 +5,17 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "created_at_millis": 1786890992093,
   "creator": "Alexander Terp",
   "description": "Point at one pane, scroll, and a different pane moves - whichever has the\nkeyboard. Ghostty scrolls where the pointer is, and so should Muster:\nreading one agent's output while typing into another is the ordinary case\nin a window of fifteen, and this makes it impossible without first\nclicking away from what you were typing in.\n\n**The right view already receives the event; it just does not say who it\nis.** AppKit hit-tests `scrollWheel` to the view under the pointer, so\n`SurfaceView.scrollWheel` fires on the correct surface. It then calls\n`Core.scroll(direction:delta:)`, and `Scroll` in the proto carries a\ndirection and a delta and nothing else - so the core routes it with\n`with_pane(\"a scroll\", ...)`, which resolves to `session::keyboard_pane()`.\nThe pane identity is discarded one line above where it is needed.\n\nThe shape of the fix, which is small:\n\n- `Scroll` gains a pane and a daemon. Both, not just the pane - two\n  daemons hand out the same ids, and every other pane-addressed message\n  here carries the pair for that reason.\n- `SurfaceView` fills them from the chrome it belongs to. The pattern\n  already exists: a click sends `onFocusRequested` with the pane id, and\n  there is a test pinning that it names the right one.\n- The handler routes to the named pane instead of the keyboard pane.\n\n**Scrolling must not move the keyboard.** Worth stating because the\ntempting implementation is to reuse the focus path, and Ghostty does not\nsteal focus on scroll either - the whole point is reading one pane while\ntyping into another. Two edges mean two things here, as they do\neverywhere else in this window.\n\nDecide while implementing: what a scroll over a pane with no channel does\n(nothing, presumably, and silently rather than as a refusal - the pointer\nbeing somewhere is not a request), and whether the scroll should follow\nthe pointer across a region boundary mid-gesture or stay with the pane it\nstarted on. macOS momentum scrolling makes the second one visible.",
   "id": "a_295OgKX9b",
-  "position": "!!6",
+  "position": "!!!!!!!!!0",
   "title": "🖱️ Scrolling should move the pane under the mouse, not the focused one",
   "type": "chore",
-  "updated_at_millis": 1786890992093,
+  "updated_at_millis": 1786898371618,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1786890992093}
+    {"field":"column","value":"backlog-hi","at":1786890992093},
+    {"field":"column","value":"done","at":1786898371618}
   ]
 }

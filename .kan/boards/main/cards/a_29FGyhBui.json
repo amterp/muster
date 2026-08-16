@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "two-senders-keep-one-request",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1786914528778,
+  "creator": "Alexander Terp",
+  "description": "`SplitRatioSender` (divider drags) and `FindSender` (find keystrokes) each implement the same shape independently: one request in flight, the latest input remembered, and the last one always sent. Both exist because the same problem showed up twice - a per-event round trip over a forwarded socket is tens of milliseconds a keystroke.\n\nThey were left apart deliberately rather than by oversight. The find work would have had to widen into a file another parallel slot was editing, and the two are not actually identical: `FindSender` carries an answer back to draw, `SplitRatioSender` has nothing to return. That difference is the design question a shared version has to answer.\n\nWorth lifting when a third one appears - three examples say what the shape really is, where two can only be guessed at.",
+  "id": "a_29FGyhBui",
+  "position": "6",
+  "title": "♻️ Two senders keep one request in flight, and share no code",
+  "type": "chore",
+  "updated_at_millis": 1786914528778,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1786914528778}
+  ]
+}

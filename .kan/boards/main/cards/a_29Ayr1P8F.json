@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "upstream-a-pane-s",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "uncommitted",
+  "created_at_millis": 1786904298964,
+  "creator": "Alexander Terp",
+  "description": "Measured against the pinned 0.8.0 while building find-in-pane\n(`corpus/herdr-0.8.0/read-depth/`, `docs/observations/herdr-0.8.0.md` section 17).\n\nTwo asks, one card, because the second is the fallback for the first and Muster ships\nagainst the fallback either way.\n\n**1. `pane.read` cannot see past a thousand rows, and cannot page.** `lines` is clamped\nrather than refused - `read_terminal_snapshot` does `lines.min(1000)`\n(`src/app/api_helpers.rs:120`) - so 1001, 2000 and 100000 all returned exactly 1000 rows\nof a pane reporting `max_offset_from_bottom: 2978`. `PaneReadParams` has no offset or\ncursor (`src/api/schema/panes.rs:252-263`), and an `offset` key sent anyway came back a\nnormal success carrying the identical thousand rows, since unknown parameters are\nignored. So there is no arrangement of requests that reaches row 1001.\n\n`truncated` does come back, and it answers a different question - \"there is more history\nthan this\", true even at `lines: 80`. Useful, and not a way to detect the clamp.\n\nThe daemon is not short of the data: herdr's own `snapshot_history` reads\n`recent_unwrapped_ansi(usize::MAX)` (`src/pane.rs:2651-2654`) when it writes a pane down\nfor durability. The whole history is there; only the API declines it.\n\nEither a raised or configurable cap, or an offset to page with. Paging is the better\nshape for a client - it bounds each response while leaving the history reachable - and\nit is also the smaller change.\n\n**2. Nothing on the API searches a pane.** No `pane.search`, no `pane.find`; `pane.read`\nand the `pane.output_matched` event are the whole surface area. A daemon-side search is\nthe version worth wanting, because the daemon holds the buffer and because it is what\nlets a client search panes it is not showing. It also sidesteps ask 1 entirely: a search\nthat runs where the history lives never has to move the history.\n\n**Neither blocks Muster.** Find ships reading and matching client-side, behind a\none-function seam, and a daemon-side search replaces that function's body. What Muster\ncannot do until one of these lands is see past the last thousand rows of a pane, which\nthe find bar says out loud rather than answering \"no results\" for text it never looked\nat.\n\nA third thing worth mentioning if the conversation happens, too small for its own card:\nthere is no absolute scroll. `terminal.scroll` is relative and `pane.scroll` is not a\nmethod, so a client that knows which row it wants must read `offset_from_bottom` and\nscroll by the difference - two round trips on two channels, and wrong if the pane prints\nin between. herdr has the setter internally (`set_scroll_offset_from_bottom`), reachable\nonly through attach-time restoration.",
+  "id": "a_29Ayr1P8F",
+  "position": "UUUUU",
+  "title": "🔌 Upstream: a pane's history stops at a thousand rows, and nothing can search it",
+  "type": "chore",
+  "updated_at_millis": 1786904298964,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1786904298964}
+  ]
+}

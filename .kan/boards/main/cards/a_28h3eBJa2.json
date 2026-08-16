@@ -5,7 +5,7 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -18,11 +18,12 @@
   "creator": "Alexander Terp",
   "description": "A dragged divider is the one arrangement change that still waits to be told twice.\n\n`pane.swap` and `pane.resize` answer with the settled arrangement, and Muster takes it - which is what makes a leftward split and a held resize chord land immediately rather than a broadcast later (a_28XGcvXEg). `layout.set_split_ratio` answers with one too, and Muster ignores it, because herdr spells that one as the exported *tree* rather than as the flat rectangles every other layout uses. `read_layout` will not read that shape, so it comes back as \"this result states no arrangement\" and the drag falls back to the event stream.\n\nNothing is wrong on screen; it is just the slow path, and a drag is the highest-frequency arrangement change there is - a divider that lags the mouse by a broadcast is the kind of thing that reads as the whole app being slow.\n\nThe work is a second reader in `muster-herdr/src/layout.rs` for herdr's exported tree, and pointing `settled` at it. The mirror needs nothing: `settle` already covers this, and a ratio drag has no intermediate arrangement to suppress.\n\nWorth measuring first, since the case for it rests on the gap being visible: the pair in section 14 was answered in 15 ms against a 108 ms broadcast, and a ratio set is one request rather than two.",
   "id": "a_28h3eBJa2",
-  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "position": "!!!!!!!!!!E",
   "title": "🖱️ A dragged divider still waits for the broadcast",
   "type": "chore",
-  "updated_at_millis": 1786891033845,
+  "updated_at_millis": 1786898371698,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1786832984797}
+    {"field":"column","value":"backlog-hi","at":1786832984797},
+    {"field":"column","value":"done","at":1786898371698}
   ]
 }
