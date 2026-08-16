@@ -363,8 +363,30 @@ code.
 
 Every operation - keybinding, menu, CLI, socket API - dispatches the same action into the same core dispatcher;
 invocation surfaces carry no logic of their own (desiderata: parity by construction). The Muster CLI talks to the
-running app over a local IPC endpoint and covers view-layer operations; backend-level operations remain the backend
-CLI's job (herdr already has a good one).
+running app over a local IPC endpoint, and it covers everything Muster does - panes and tabs as well as focus and
+arrangement.
+
+**It is not a view-layer CLI beside the backend's own.** That was the earlier plan, on the reasoning that herdr has a
+good CLI already and Muster should not reimplement it, and three things sank it. A window can be attached to more
+than one daemon, and a backend CLI inside a pane reaches that pane's daemon and no other - so it cannot put a pane on
+the devenv, and cannot answer what the window is showing, because no single daemon knows. Making a pane and landing
+on it is one intent to whoever asked, and splitting it across two CLIs makes the second half unsayable: an
+arrangement made behind Muster's back appears, because view = f(daemon state), but nothing focuses or zooms it and
+the caller has no way to ask. And a documented backend-shaped surface becomes the contract whatever this document
+says, because every script and skill written against it is what a replacement would have to provide - which is the
+one thing "we never let one own our contract" rules out.
+
+So the backend's own CLI is not Muster's agent surface. It stays reachable - herdr sets `HERDR_*` in every pane and
+Muster does not hide that - and it is unsupported: it speaks the backend's vocabulary rather than Muster's, and
+nothing here tracks it.
+
+What that CLI is *not* is a verb-per-backend-verb translation. It is shaped to intents, one call each, because that
+is where the knowledge lives: a pane's program is spawned with the pane, so text sent before its shell has drawn a
+prompt races the program's own first output. Anybody scripting "make a pane and run this in it" by hand rediscovers
+that wait and gets it wrong under load. One call owns it once.
+
+Reads are half of it. A person driving the GUI can see which panes are on screen and where the keyboard is; an agent
+has to ask, and a CLI that only writes leaves one arranging a window it cannot look at.
 
 On macOS a keybinding *is* a menu item, because that is where the platform dispatches a key equivalent. Matching
 chords before the pane sees them would take shortcuts the user rebound in System Settings and make them mean

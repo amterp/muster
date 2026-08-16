@@ -29,7 +29,8 @@ shape.
   renderer ([libghostty](https://github.com/ghostty-org/ghostty) today) sit behind narrow seams we own: the core
   speaks Muster's own vocabulary, each dependency lives in one adapter, and the contract corpus is the executable
   definition of what a replacement - wholesale, or a fork - must provide. We embrace a dependency where it
-  simplifies; we never let one own our contract.
+  simplifies; we never let one own our contract - and the surface a person or an agent drives is part of that
+  contract. Where Muster acts on the answer, the way to ask is Muster's, never the dependency's.
 - **Green suite means it works.** Muster is built largely by AI agents, so the suite carries the confidence an
   author's memory cannot. What makes that achievable here: a thin shell over a thick headless core, so no logic hides
   in the untestable layer; a real, version-pinned herdr behind the backend seam rather than a stand-in, because a
@@ -45,7 +46,8 @@ shape.
   an OS, and the core is portable by construction rather than by intention - it is a different language from the
   shell, so an OS type cannot leak into it by accident. Both chosen organs already run on Linux and Windows.
 - **AI-native surface.** Configuration is files. Every action runs through one shared path exposed to GUI, CLI, and
-  API alike - parity by construction, not by discipline - so agents can drive Muster the way they drive herdr.
+  API alike - parity by construction, not by discipline - so an agent can drive Muster as readily as a person can,
+  through Muster's own surface and in Muster's own vocabulary.
 - **Harness-agnostic.** Strive to support many harnesses.
 
 ## Non-goals
