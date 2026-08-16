@@ -45,7 +45,30 @@ impl BackendChannel for HerdrClient {
                 );
                 None
             }
-            _ => settled(&result, None),
+            _ => {
+                // A mutation the daemon considered and did not perform. It is a success on the
+                // wire, so nothing above notices, and the only symptom is a window that does
+                // not change - which is exactly what a bug in the request looks like too.
+                if let Some(reason) = declined(&result) {
+                    log::warn(
+                        "herdr.intent.declined",
+                        fields! {
+                            "method" => method,
+                            "reason" => reason,
+                            "impact" => "the window is unchanged and correct - the daemon did \
+                                         not do this, and nothing is being rendered that did \
+                                         not happen. What was asked for did not take effect.",
+                            "next" => "the reason is herdr's own word for why. For a swap those \
+                                       are no_neighbor, same_pane, not_found and cross_tab; a \
+                                       cross_tab here means the caller should have sent a move.",
+                        },
+                    );
+                }
+                // Applied even when declined, because the layout an answer carries is the
+                // daemon's current arrangement either way, and a mirror already holding it
+                // settles to a no-op.
+                settled(&result, None)
+            }
         };
         Ok(Outcome {
             created,
@@ -118,6 +141,17 @@ impl HerdrClient {
         }
         settled(swap, Some((pane, created)))
     }
+}
+
+/// Why the daemon did nothing, for a result that says it did nothing.
+///
+/// `changed: false` is a success with a reason beside it rather than an error, and it nests one
+/// level down like every other herdr result - read off the top level it is null, which is
+/// indistinguishable from a mutation that worked. A verb that never reports one answers `None`
+/// here and is left alone.
+fn declined(result: &Value) -> Option<&str> {
+    let changed = nested(result, "changed")?.as_bool()?;
+    (!changed).then(|| nested(result, "reason").and_then(Value::as_str).unwrap_or("(none given)"))
 }
 
 /// The pane a split has to be rearranged against, for an intent herdr cannot do in one request.
@@ -218,6 +252,39 @@ pub fn request(intent: &BackendIntent) -> (&'static str, Value) {
         BackendIntent::ZoomPane { pane } => ("pane.zoom", json!({ "pane_id": pane.as_str() })),
         BackendIntent::ClosePane { pane } => ("pane.close", json!({ "pane_id": pane.as_str() })),
         BackendIntent::FocusPane { pane } => ("pane.focus", json!({ "pane_id": pane.as_str() })),
+        // `source_pane_id` and `target_pane_id`, the same pair the leftward-split rearrange
+        // sends. Note that herdr moves its own cursor to the *source* pane whatever was
+        // focused before (`observations/herdr-0.8.0.md` section 14); Muster's keyboard is its
+        // own and is not moved by this.
+        BackendIntent::SwapPanes { pane, with } => (
+            "pane.swap",
+            json!({ "source_pane_id": pane.as_str(), "target_pane_id": with.as_str() }),
+        ),
+        // `destination` is a tagged object rather than a bare id: herdr's `pane.move` can also
+        // make a tab or a workspace to move into, and the tag is how it tells those apart.
+        // Muster only ever names an existing tab, because a drop landed on a row in one.
+        //
+        // "after" becomes a rightward split of the pane it lands behind. herdr puts a new pane
+        // on the `second` side and reads a split first-then-second, so `right` is exactly one
+        // place later in the order the agent list shows - the ordering the intent asked for,
+        // spelled in the only geometry herdr's `split` accepts (it takes right and down alone).
+        //
+        // `focus` is left false. Moving a pane is arranging the window rather than going
+        // somewhere, and a drag that also took the keyboard would interrupt whatever is being
+        // typed into the pane that had it.
+        BackendIntent::MovePane { pane, tab, after } => (
+            "pane.move",
+            json!({
+                "pane_id": pane.as_str(),
+                "destination": {
+                    "type": "tab",
+                    "tab_id": tab.as_str(),
+                    "target_pane_id": after.as_str(),
+                    "split": "right",
+                },
+                "focus": false,
+            }),
+        ),
         BackendIntent::SetSplitRatio { tab, path, ratio } => (
             "layout.set_split_ratio",
             json!({

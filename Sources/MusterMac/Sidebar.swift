@@ -241,6 +241,24 @@ public enum SidebarModel {
     return rows
   }
 
+  /// Whether dragging one pane onto another row is a gesture Muster can carry out.
+  ///
+  /// Here rather than in the view so that the rule is testable: a decision inside
+  /// `validateDrop` is a decision no test can reach, and this one has a case that is easy to
+  /// get wrong and impossible to see - two daemons hand out the same pane ids, so a rule
+  /// comparing ids alone would call a cross-machine drop legal.
+  ///
+  /// **A drop must land on a pane row on the same daemon.** A daemon heading and a tab caption
+  /// are not places a pane can go. Crossing daemons is refused because a pane is a PTY its
+  /// daemon owns: moving one to another machine would mean killing a process on one host and
+  /// starting a different one on another, which is not what dragging a row looks like it does.
+  ///
+  /// Dropping a row on itself is legal and does nothing, which is what an accidental drag is.
+  public static func canArrange(_ pane: PaneKey, onto row: Row) -> Bool {
+    guard let target = row.pane else { return false }
+    return target.daemon == pane.daemon
+  }
+
   /// The dot beside a row, and whether to draw one at all.
   ///
   /// The same colors the pane borders use, because they are the same five states and a
@@ -313,7 +331,18 @@ public final class SidebarView: NSView {
   /// inside one would be destroyed by an agent going idle mid-word.
   public var onRowRenamed: ((SidebarModel.Row) -> Void)?
 
+  /// Called when somebody drags one agent's row onto another, meaning they want it there.
+  ///
+  /// A request like every other gesture here: which of the two arrangements this is - an
+  /// exchange within a tab, or a move into another one - is decided in the core from where the
+  /// two panes are, and the list changes when the roster that comes back says so.
+  public var onPaneArranged: ((PaneKey, PaneKey) -> Void)?
+
   public private(set) var rows: [SidebarModel.Row] = []
+
+  /// Muster's own pasteboard type, so nothing outside this window can offer a drop this
+  /// accepts and nothing here accepts a file somebody dragged in from the Finder.
+  static let draggedPane = NSPasteboard.PasteboardType("dev.muster.pane")
 
   private let table = NSTableView()
   private let scroll = NSScrollView()
@@ -335,6 +364,11 @@ public final class SidebarView: NSView {
     table.target = self
     table.action = #selector(rowClicked)
     table.doubleAction = #selector(rowDoubleClicked)
+    table.registerForDraggedTypes([SidebarView.draggedPane])
+    // Local only, and a move rather than a copy: there is no second copy of an agent to make,
+    // and nothing outside this window has any use for a pane id.
+    table.setDraggingSourceOperationMask([], forLocal: false)
+    table.setDraggingSourceOperationMask(.move, forLocal: true)
 
     scroll.documentView = table
     scroll.hasVerticalScroller = true
@@ -400,6 +434,56 @@ extension SidebarView: NSTableViewDataSource, NSTableViewDelegate {
   public func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
     guard rows.indices.contains(row) else { return SidebarModel.oneLine }
     return SidebarModel.height(of: rows[row])
+  }
+
+  /// What travels with a dragged row: the pane it names, not the row it was.
+  ///
+  /// A row index would be the obvious payload and would be wrong. Every roster message and
+  /// every agent state rebuilds the whole list, and one of those arriving mid-drag would leave
+  /// the index pointing at a different agent by the time the drop lands. A key survives that,
+  /// because it names the pane rather than its position.
+  public func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int)
+    -> NSPasteboardWriting?
+  {
+    guard rows.indices.contains(row), let pane = rows[row].pane else { return nil }
+    let item = NSPasteboardItem()
+    item.setString("\(pane.daemon)\t\(pane.pane)", forType: SidebarView.draggedPane)
+    return item
+  }
+
+  public func tableView(
+    _ tableView: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int,
+    proposedDropOperation operation: NSTableView.DropOperation
+  ) -> NSDragOperation {
+    // On a row rather than between two. The card's rule is that a drag exchanges two panes,
+    // and an arrangement has no "between" to insert into - so the row you drop on is the place
+    // you are asking for, and retargeting an above-row drop keeps the highlight honest.
+    guard let pane = dragged(info), rows.indices.contains(row) else { return [] }
+    if operation == .above {
+      tableView.setDropRow(row, dropOperation: .on)
+    }
+    return SidebarModel.canArrange(pane, onto: rows[row]) ? .move : []
+  }
+
+  public func tableView(
+    _ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int,
+    dropOperation operation: NSTableView.DropOperation
+  ) -> Bool {
+    guard let pane = dragged(info), rows.indices.contains(row),
+      SidebarModel.canArrange(pane, onto: rows[row]), let onto = rows[row].pane
+    else { return false }
+    onPaneArranged?(pane, onto)
+    return true
+  }
+
+  /// The pane a drag is carrying, or nil when it is carrying something else.
+  private func dragged(_ info: NSDraggingInfo) -> PaneKey? {
+    guard let carried = info.draggingPasteboard.string(forType: SidebarView.draggedPane) else {
+      return nil
+    }
+    let parts = carried.split(separator: "\t", maxSplits: 1, omittingEmptySubsequences: false)
+    guard parts.count == 2 else { return nil }
+    return PaneKey(daemon: String(parts[0]), pane: String(parts[1]))
   }
 }
 

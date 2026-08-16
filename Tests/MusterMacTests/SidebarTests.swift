@@ -168,6 +168,59 @@ struct SidebarTests {
     #expect(rows.filter { $0.kind == .tab }.map(\.label) == ["one", "two", "three"])
   }
 
+  @Test("a row can only be dropped on a pane row belonging to the same daemon")
+  func aDropStaysOnOneMachine() throws {
+    // The case worth a test rather than a glance: two daemons hand out the same pane ids, so a
+    // rule comparing ids alone calls a cross-machine drop legal and the core then resolves the
+    // dragged pane against the wrong mirror and moves a different agent.
+    let roster = Roster(daemons: [
+      Roster.Daemon(
+        id: "local",
+        tabs: [
+          tab(
+            "local", "w1:t1", place: 1, label: "here", onScreen: true,
+            panes: [pane("local", "w1:p1", place: 1), pane("local", "w1:p2", place: 2)])
+        ]),
+      Roster.Daemon(
+        id: "devenv",
+        tabs: [
+          tab(
+            "devenv", "w1:t1", place: 2, label: "there",
+            panes: [pane("devenv", "w1:p1", place: 3)])
+        ]),
+    ])
+    let rows = SidebarModel.rows(roster: roster, states: [:])
+    let dragged = PaneKey(daemon: "local", pane: "w1:p1")
+
+    let sameDaemon = try #require(rows.first { $0.pane == PaneKey(daemon: "local", pane: "w1:p2") })
+    let otherDaemon = try #require(
+      rows.first { $0.pane == PaneKey(daemon: "devenv", pane: "w1:p1") })
+    let caption = try #require(rows.first { $0.kind == .tab })
+    let heading = try #require(rows.first { $0.isHeader })
+
+    #expect(SidebarModel.canArrange(dragged, onto: sameDaemon))
+    // Same pane id, different machine. This is the one a careless rule gets wrong.
+    #expect(!SidebarModel.canArrange(dragged, onto: otherDaemon))
+    #expect(!SidebarModel.canArrange(dragged, onto: caption))
+    #expect(!SidebarModel.canArrange(dragged, onto: heading))
+  }
+
+  @Test("dropping a row on itself is allowed and means nothing")
+  func aDropOnItselfIsNotAnError() throws {
+    // An accidental drag, which is a mistake with no cost. Refusing it would put a cursor
+    // change and a log line in front of somebody who twitched, and the core answers it by
+    // doing nothing.
+    let roster = Roster(daemons: [
+      Roster.Daemon(id: "local", tabs: [tab("local", panes: [pane("local", "w1:p1", place: 1)])])
+    ])
+    let rows = SidebarModel.rows(roster: roster, states: [:])
+    let itself = PaneKey(daemon: "local", pane: "w1:p1")
+
+    let row = try #require(rows.first { $0.isPane })
+
+    #expect(SidebarModel.canArrange(itself, onto: row))
+  }
+
   @Test("the number on a row is the pane's place, counting across the whole window")
   func paneNumbersCrossDaemons() {
     // The chord's half of the same fact the caption test above covers for tabs: ⌘3 is the third

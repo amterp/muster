@@ -47,6 +47,7 @@ message Request {
     RenamePane rename_pane = 28;
     RenameTab rename_tab = 29;
     FocusTab focus_tab = 30;
+    ArrangePane arrange_pane = 31;
   }
 }
 
@@ -402,6 +403,31 @@ message FocusTabRelative {
   // `next` or `previous`. Nothing geometric, because tabs are a list and not an arrangement -
   // there is no tab to the left of a tab.
   string direction = 1;
+}
+
+// Puts one pane where another one is, which is what dropping a row on a row means.
+//
+// One message for both halves of the gesture, because the person dragging made one decision:
+// put this agent there. Which request that becomes is the core's to work out from where the
+// two panes are - the same tab is an exchange, a different tab is a move - and a shell that
+// chose would be a second place that rule lives.
+//
+// **Both panes must be on the same daemon**, and the shell refuses the drop rather than
+// sending this. A pane is a PTY its daemon owns, so moving one to another machine would mean
+// killing a process on one host and starting a different one on another; that is not a move,
+// and there is no honest thing for the core to do with the request.
+//
+// The keyboard does not follow. Arranging the list is not going somewhere, and a drag that
+// took the keyboard would interrupt whatever is being typed into the pane that had it.
+message ArrangePane {
+  string daemon_id = 1;
+
+  // The pane being dragged.
+  string pane_id = 2;
+
+  // The pane whose row it was dropped on. In the same tab the two exchange places; in another
+  // tab the dragged pane joins that tab immediately after this one.
+  string onto_pane_id = 3;
 }
 
 // Brings a named tab on screen, and puts the keyboard in it.

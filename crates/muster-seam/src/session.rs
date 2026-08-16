@@ -776,10 +776,15 @@ pub(crate) fn submit(daemon: &DaemonId, intent: &BackendIntent) -> Result<(), St
             // region would refuse the case the feature exists for: the sidebar lists every
             // pane every daemon holds, and the ones worth naming are the ones no region is
             // showing.
+            // Arranging the list is about things rather than about what is on screen, for the
+            // same reason a rename is: the rows worth dragging are very often the ones no
+            // region is showing, and requiring one would refuse the case the gesture is for.
             BackendIntent::CreateWorkspace { .. }
             | BackendIntent::CreateTab { .. }
             | BackendIntent::RenamePane { .. }
-            | BackendIntent::RenameTab { .. } => None,
+            | BackendIntent::RenameTab { .. }
+            | BackendIntent::SwapPanes { .. }
+            | BackendIntent::MovePane { .. } => None,
             BackendIntent::SplitPane { pane, .. }
             | BackendIntent::ClosePane { pane }
             | BackendIntent::ResizePane { pane, .. }
@@ -1058,6 +1063,52 @@ pub(crate) fn step_tab(direction: TabStep) -> Result<(), String> {
             .to_string()
     })??;
     focus(&daemon, &pane)
+}
+
+/// Puts one pane where another one is, which is what dropping a row on a row means.
+///
+/// Which request that becomes is worked out here rather than by the shell, because it is a
+/// question about where the two panes are and the mirror is what knows: two panes in one tab
+/// exchange places, and a pane dropped on a row in another tab joins that tab behind it. The
+/// person dragging made one decision, so there is one intent name for it and one rule.
+///
+/// Both ends have to be on the daemon named. The shell refuses a drop across daemons before it
+/// gets here, so this is the second line rather than the first - but a pane id is only unique
+/// within its daemon, and resolving one against the wrong mirror would find a different pane
+/// and move it.
+pub(crate) fn arrange_pane(daemon: &DaemonId, pane: &PaneId, onto: &PaneId) -> Result<(), String> {
+    let intent = {
+        let session = SESSION.lock().expect("a panicking sender poisoned the session");
+        let mirror = session
+            .backends
+            .get(daemon)
+            .ok_or_else(|| {
+                format!(
+                    "this window is not following a daemon called {daemon}, so nothing was \
+                     rearranged. A drag crossing daemons should have been refused before it \
+                     was sent."
+                )
+            })?
+            .mirror
+            .lock()
+            .map_err(|_| format!("the mirror for {daemon} was poisoned by a panicking sender"))?;
+        let holding = |pane: &PaneId| {
+            mirror.pane(pane).map(|held| held.tab.clone()).ok_or_else(|| {
+                format!(
+                    "{daemon} holds no pane called {pane}, so nothing was rearranged. Most \
+                         likely it closed while the drag was in flight, which a row in a list \
+                         outlives by a moment."
+                )
+            })
+        };
+        let (from, to) = (holding(pane)?, holding(onto)?);
+        if from == to {
+            BackendIntent::SwapPanes { pane: pane.clone(), with: onto.clone() }
+        } else {
+            BackendIntent::MovePane { pane: pane.clone(), tab: to, after: onto.clone() }
+        }
+    };
+    submit(daemon, &intent)
 }
 
 /// Brings a named tab on screen, landing the keyboard on its first pane.

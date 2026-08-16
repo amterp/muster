@@ -152,6 +152,40 @@ pub enum BackendIntent {
         pane: PaneId,
     },
 
+    /// Exchanges two panes' places in their tab's tree.
+    ///
+    /// What dragging one row past another in the agent list means. An exchange rather than an
+    /// insertion because a tree has no "between": moving a pane to an arbitrary position would
+    /// mean rebuilding the arrangement around it, and there is no reading of that a person
+    /// dragging one row expects.
+    ///
+    /// Both panes are in the same tab. Crossing tabs is [`BackendIntent::MovePane`], which is a
+    /// different request to the backend and answers with two arrangements rather than one.
+    ///
+    /// The adapter already issues its backend's swap as the invisible second half of a leftward
+    /// split; this is the same request asked for on its own.
+    SwapPanes {
+        pane: PaneId,
+        with: PaneId,
+    },
+
+    /// Moves a pane out of its tab and into another one on the same daemon.
+    ///
+    /// `after` is the pane in the destination it lands behind, in the order the tab lays its
+    /// panes out - which is the order the agent list reads. An ordering rather than a side,
+    /// because that is what dragging a row down a list means; the adapter spells it in whatever
+    /// geometry its backend has.
+    ///
+    /// Same daemon only, and that is not a limitation worth working around: a pane is a PTY the
+    /// daemon owns, so "move it to the other machine" would mean killing a process on one host
+    /// and starting a different one on another. That is not a move, and the shell refuses the
+    /// drop rather than sending this.
+    MovePane {
+        pane: PaneId,
+        tab: TabId,
+        after: PaneId,
+    },
+
     /// Moves one divider in a tab's tree.
     SetSplitRatio {
         tab: TabId,

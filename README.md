@@ -185,6 +185,20 @@ out as its directory and the harness in it. `rename_pane` replaces that with any
 emoji included: `🔥 payments spike`. Double-clicking a row asks the same thing, which is worth
 knowing because the rows most worth naming are the ones no split is showing.
 
+**Drag a row and the pane moves with it.** Dropping one agent's row on another exchanges the
+two, so the list you arrange is the window you get - and the numbers move with them, since
+`cmd+3` is whatever the third row now holds. Drop a row on one in a different tab and the agent
+joins that tab, landing directly behind the row you dropped it on.
+
+An exchange rather than an insertion, because an arrangement has no "between": two panes side
+by side can trade places, and there is no other reading of dragging one onto the other. Nothing
+is stored to make this work - the daemon rearranges its own tree and the list is a view of it,
+so the order survives quitting Muster the way the panes themselves do.
+
+A drop onto another machine's row is refused, and the cursor says so while you hover. A pane is
+a process its daemon owns, so moving one across machines would mean killing it here and
+starting a different one there.
+
 The two lines age differently, and that is the point of having both. A name is written down by
 the daemon, so it survives quitting Muster and survives the daemon restarting; a title belongs
 to the program, so a restart loses it until the agent sets one again. Naming something never

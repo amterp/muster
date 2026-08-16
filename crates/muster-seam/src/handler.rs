@@ -102,6 +102,7 @@ fn handle(request: Request) -> Response {
         request::Payload::FocusTabRelative(step) => step_tab(&step.direction),
         request::Payload::FocusPaneAt(at) => focus_pane_at(at.place),
         request::Payload::FocusTab(tab) => focus_tab(&tab.daemon_id, &tab.tab_id),
+        request::Payload::ArrangePane(arrange) => arrange_pane(&arrange),
         request::Payload::SetSplitRatio(set) => set_split_ratio(set),
         request::Payload::Scroll(scroll) => scroll_pane(&scroll),
         request::Payload::RenamePane(rename) => rename_pane(&rename),
@@ -477,6 +478,28 @@ fn step_tab(direction: &str) -> Response {
              fixed set, so this is a bug there."
         )),
     }
+}
+
+/// Puts one pane where another one is, which is what dropping a row on a row means.
+fn arrange_pane(arrange: &proto::ArrangePane) -> Response {
+    if arrange.daemon_id.is_empty() || arrange.pane_id.is_empty() || arrange.onto_pane_id.is_empty()
+    {
+        return Response::failure(
+            "a pane was asked to move without naming both ends of the move, so nothing was \
+             rearranged. Unlike most verbs here there is no 'the focused one' to fall back to: \
+             a drag names two panes by definition, and whatever built this request dropped one.",
+        );
+    }
+    if arrange.pane_id == arrange.onto_pane_id {
+        // Not a refusal. Dropping a row on itself is a gesture somebody makes by accident, and
+        // telling them off for it would put a message in the log for a mistake with no cost.
+        return Response::ok();
+    }
+    answer(session::arrange_pane(
+        &DaemonId::new(&arrange.daemon_id),
+        &PaneId::new(&arrange.pane_id),
+        &PaneId::new(&arrange.onto_pane_id),
+    ))
 }
 
 /// Brings a named tab on screen, which is what clicking its caption means.

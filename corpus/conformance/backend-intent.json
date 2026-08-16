@@ -337,6 +337,45 @@
           "label": ""
         }
       }
+    },
+    {
+      "name": "a drag within one tab exchanges two panes",
+      "why": "The same request the leftward-split rearrange has always sent, asked for on its own. An exchange rather than an insertion because a tree has no 'between': the only well-defined thing a drag can mean over an arrangement is that these two swap places.\n\nBoth ids are named, and `source_pane_id` is the one being dragged. herdr moves its own cursor to the source whatever was focused before, which is a fact about the daemon rather than about Muster - Muster's keyboard is its own and this does not touch it.",
+      "given": {
+        "intent": "swap",
+        "pane": "p1",
+        "with": "p2"
+      },
+      "expect": {
+        "method": "pane.swap",
+        "params": {
+          "source_pane_id": "p1",
+          "target_pane_id": "p2"
+        }
+      }
+    },
+    {
+      "name": "a drag into another tab is a move, and lands behind the row it was dropped on",
+      "why": "herdr refuses a swap across tabs (`cross_tab`), so the other half of the same gesture is a different verb. `destination` is a tagged object because `pane.move` can also make a tab or a workspace to move into; Muster only ever names an existing one, since a drop landed on a row in it.\n\n`split: right` is how 'after' is spelled. herdr puts the moved pane on the `second` side and reads a split first-then-second, so rightward is exactly one place later in the order the agent list shows. Its `SplitDirection` has only `right` and `down`, which is why the intent says an ordering and this says a geometry.\n\n`focus: false` because arranging the list is not going somewhere. A drag that took the keyboard would interrupt whatever was being typed into the pane that had it.",
+      "given": {
+        "intent": "move",
+        "pane": "p1",
+        "tab": "t2",
+        "after": "p2"
+      },
+      "expect": {
+        "method": "pane.move",
+        "params": {
+          "pane_id": "p1",
+          "destination": {
+            "type": "tab",
+            "tab_id": "t2",
+            "target_pane_id": "p2",
+            "split": "right"
+          },
+          "focus": false
+        }
+      }
     }
   ]
 }

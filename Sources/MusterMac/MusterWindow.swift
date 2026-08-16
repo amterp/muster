@@ -109,6 +109,9 @@ public final class MusterWindow: NSObject {
     sidebar.onTabPicked = { tab in
       Core.focus(tab: tab)
     }
+    sidebar.onPaneArranged = { pane, onto in
+      Core.arrange(pane: pane, onto: onto)
+    }
     // Both halves name their subject outright rather than leaving it to whatever has the
     // keyboard: the row somebody double-clicked is very often a pane no region is showing,
     // which is what the list is for.

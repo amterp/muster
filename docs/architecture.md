@@ -380,6 +380,22 @@ you moved the row, which is the opposite of what the gesture asked for. What it 
 between reading it and pressing it, and the answer to that is elsewhere - a notification names the agent, not the
 chord.
 
+**Arranging the list is arranging the window, and Muster stores no order of its own.** Dragging a row is an ordinary
+intent through the one action path: the daemon rearranges its own tree and the list is a view of that, so
+`view = f(daemon state)` holds and the order survives a restart the way the panes do. The alternative - a
+presentation order in `window.toml` beside tab order and widths - buys free-form insertion at the price of a list
+that no longer says where a pane is on screen, and of Muster owning an ordering the daemon has never heard of.
+
+One gesture, two requests, and the choice is the core's. Two panes in one tab exchange places; a pane dropped on a
+row in another tab moves into that tab behind it. The shell knows only which two rows were involved, so it sends
+both and the core picks the verb from where the panes are - a shell that chose would be a second place that rule
+lives, and it would have to read the tree to do it. An exchange rather than an insertion because an arrangement has
+no "between", which is also the constraint the backend imposes: herdr's swap is a pair of ids.
+
+A drop across daemons is refused in the shell, before it becomes a request. A pane is a PTY its daemon owns, so
+moving one to another machine means killing a process on one host and starting a different one on another - not a
+move, and nothing the core could honestly do with the intent.
+
 **Moving the keyboard comes in two axes, and the second is what makes the first a guarantee at all.** Panes and
 tabs are different questions: the *relative* pane moves reach everything the window is *showing*, and the tab moves
 reach what is behind it. Without the second, a pane in a tab no region has would be reachable only by clicking its

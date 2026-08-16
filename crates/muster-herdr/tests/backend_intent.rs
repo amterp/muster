@@ -109,6 +109,12 @@ fn every_intent() -> Vec<BackendIntent> {
         BackendIntent::RenamePane { pane: PaneId::new("p1"), name: None },
         BackendIntent::RenameTab { tab: TabId::new("t1"), name: Some("release".into()) },
         BackendIntent::RenameTab { tab: TabId::new("t1"), name: None },
+        BackendIntent::SwapPanes { pane: PaneId::new("p1"), with: PaneId::new("p2") },
+        BackendIntent::MovePane {
+            pane: PaneId::new("p1"),
+            tab: TabId::new("t2"),
+            after: PaneId::new("p2"),
+        },
     ];
     for intent in &all {
         // Exhaustive on purpose. A variant added without a line above reaches herdr with its
@@ -123,7 +129,9 @@ fn every_intent() -> Vec<BackendIntent> {
             | BackendIntent::CreateWorkspace { .. }
             | BackendIntent::SetSplitRatio { .. }
             | BackendIntent::RenamePane { .. }
-            | BackendIntent::RenameTab { .. } => {}
+            | BackendIntent::RenameTab { .. }
+            | BackendIntent::SwapPanes { .. }
+            | BackendIntent::MovePane { .. } => {}
         }
     }
     all
@@ -177,6 +185,15 @@ fn intent(given: &Value) -> Result<BackendIntent, CaseError> {
             amount: ratio(given),
         }),
         "zoom" => Ok(BackendIntent::ZoomPane { pane: PaneId::new(&text(given, "pane")?) }),
+        "swap" => Ok(BackendIntent::SwapPanes {
+            pane: PaneId::new(&text(given, "pane")?),
+            with: PaneId::new(&text(given, "with")?),
+        }),
+        "move" => Ok(BackendIntent::MovePane {
+            pane: PaneId::new(&text(given, "pane")?),
+            tab: TabId::new(&text(given, "tab")?),
+            after: PaneId::new(&text(given, "after")?),
+        }),
         "focus" => Ok(BackendIntent::FocusPane { pane: PaneId::new(&text(given, "pane")?) }),
         "tab" => Ok(BackendIntent::CreateTab {
             workspace: WorkspaceId::new(&text(given, "workspace")?),

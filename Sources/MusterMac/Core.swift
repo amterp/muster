@@ -422,6 +422,21 @@ public enum Core {
     send(request)
   }
 
+  /// Puts one pane where another is, which is what dropping a row on a row means.
+  ///
+  /// Both ends are named because a drag names two panes by definition. Whether this becomes an
+  /// exchange or a move into another tab is the core's to decide from where they are - the
+  /// shell knows which rows were involved and nothing about the tree they sit in.
+  public static func arrange(pane: PaneKey, onto: PaneKey) {
+    var arrange = Muster_ArrangePane()
+    arrange.daemonID = pane.daemon
+    arrange.paneID = pane.pane
+    arrange.ontoPaneID = onto.pane
+    var request = Muster_Request()
+    request.arrangePane = arrange
+    send(request)
+  }
+
   /// Brings a named tab on screen, which is what clicking its caption means.
   ///
   /// Named rather than numbered: a click knows which tab it hit, and the numbers name panes.
@@ -565,6 +580,7 @@ public enum Core {
     case .focusTabRelative: return "focus_tab_relative"
     case .focusPaneAt: return "focus_pane_at"
     case .focusTab: return "focus_tab"
+    case .arrangePane: return "arrange_pane"
     // The kind of request, never the name it carried. A name is text a person wrote about
     // their own work, and this line ends up in a file destined for a bug report.
     case .renamePane: return "rename_pane"
