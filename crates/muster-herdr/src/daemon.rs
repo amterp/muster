@@ -60,6 +60,7 @@ pub fn start(
     socket_path: &str,
     environment: &BTreeMap<String, String>,
     locale: Option<&str>,
+    config_path: Option<&str>,
 ) -> Result<(), String> {
     log::info(
         "daemon.starting",
@@ -67,16 +68,18 @@ pub fn start(
             "binary" => binary,
             "socket" => socket_path,
             "session" => OWN_SESSION,
-            // Whose config decides what a pane runs. Muster's daemon reads the user's own
-            // herdr config, which it cannot be isolated from without moving every pane's
-            // XDG_CONFIG_HOME too - so the file is named here, where somebody debugging a
-            // pane that opened the wrong shell will find it.
-            "config" => config_file(environment).unwrap_or_default(),
+            // Whose config decides what a pane runs, which is the first question when a pane
+            // opens the wrong shell. Muster's own derived file where there is one, and the
+            // user's herdr config where the shell named nowhere to write one.
+            "config" => config_path
+                .map(ToString::to_string)
+                .or_else(|| config_file(environment))
+                .unwrap_or_default(),
         },
     );
 
     let carried = carried(environment);
-    let supplied = supplied(environment, locale);
+    let supplied = supplied(environment, locale, config_path);
     let dropped: Vec<&str> = environment
         .keys()
         .filter(|name| !carried.contains_key(*name))
@@ -161,9 +164,10 @@ pub fn ensure_running(
     binary: Option<&str>,
     environment: &BTreeMap<String, String>,
     locale: Option<&str>,
-) -> Result<(), String> {
+    config_path: Option<&str>,
+) -> Result<Reached, String> {
     if answers(socket_path) {
-        return Ok(());
+        return Ok(Reached::Adopted);
     }
     let Some(binary) = binary else {
         return Err(format!(
@@ -173,7 +177,70 @@ pub fn ensure_running(
              stages one beside the binary."
         ));
     };
-    start(binary, socket_path, environment, locale)
+    start(binary, socket_path, environment, locale, config_path)?;
+    Ok(Reached::Started)
+}
+
+/// Whether this daemon is one Muster just started or one it found already running.
+///
+/// The difference matters for exactly one thing, and it is not cosmetic: a daemon reads its
+/// config when it starts. One Muster started is running the settings in the file; one it
+/// adopted is running whatever it was started with, however long ago, and has to be asked to
+/// read again.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Reached {
+    Started,
+    Adopted,
+}
+
+/// Asks a daemon to read its config file again.
+///
+/// The lever that makes saving Muster's config file mean something. herdr reads its config at
+/// startup and on request and watches no file, and Muster's daemon is started and never
+/// stopped - so without this a changed setting would wait for a machine to be rebooted.
+///
+/// **What it cannot do is reach a pane that already exists.** herdr takes the shell and the
+/// scrollback limit as arguments when it builds a pane's terminal, so both reach panes opened
+/// afterwards and no others. The update checks are the exception and are the reason to call
+/// this on a daemon Muster adopted: those are cancelled the moment the config is applied.
+///
+/// A failure here is Muster's own file being refused, so it is reported rather than returned:
+/// there is nothing the caller can do about it and nothing about the window is wrong yet.
+pub fn reload_configuration(socket_path: &str) {
+    let answer = HerdrClient::new(socket_path).request("server.reload_config", &json!({}));
+    match answer {
+        Ok(result) => {
+            let status = result
+                .get("config_reload")
+                .and_then(|reload| reload.get("status"))
+                .and_then(|status| status.as_str())
+                .unwrap_or("unknown");
+            log::info(
+                "daemon.config.reloaded",
+                fields! {
+                    "socket" => socket_path,
+                    "status" => status,
+                    "impact" => "panes opened from now on run these settings; panes already \
+                                 open keep the ones they were made with, because the daemon \
+                                 takes both when it builds a pane",
+                },
+            );
+        }
+        Err(failure) => {
+            log::warn(
+                "daemon.config.refused",
+                fields! {
+                    "socket" => socket_path,
+                    "detail" => failure.to_string(),
+                    "impact" => "the daemon is running the settings it was started with, so a \
+                                 setting saved since then reaches no new pane either",
+                    "check" => "the file named in daemon.starting - Muster wrote it, so a \
+                                daemon refusing it is a bug here rather than in anybody's \
+                                config",
+                },
+            );
+        }
+    }
 }
 
 /// The environment Muster resolves its own socket path from.
@@ -241,15 +308,28 @@ fn is_carried(name: &str) -> bool {
 /// names *nothing* in the locale family: a `LANG` supplied beside an inherited `LC_CTYPE` is
 /// the split locale [`is_carried`] already refuses to create, arrived at from the other
 /// direction.
+///
+/// The other entry is `HERDR_CONFIG_PATH`, and it is here rather than beside `HERDR_SESSION`
+/// on the command for one reason: it belongs in the answer to "what was this daemon given
+/// that nobody gave Muster", which is the log line somebody reads when a pane runs the wrong
+/// shell. It names a file Muster wrote from its own config, so that a `default_shell` set for
+/// somebody's own terminal stops deciding what every Muster pane runs. Unlike a private
+/// `XDG_CONFIG_HOME` it moves the config file and nothing else - the socket, the session state
+/// and the data directory all stay where herdr's own rules put them, verified against the
+/// pinned binary rather than only its source.
 pub fn supplied(
     environment: &BTreeMap<String, String>,
     locale: Option<&str>,
+    config_path: Option<&str>,
 ) -> BTreeMap<String, String> {
     let mut supplied = BTreeMap::new();
     if let Some(locale) = locale.filter(|locale| !locale.is_empty())
         && !names_a_locale(environment)
     {
         supplied.insert("LANG".to_string(), locale.to_string());
+    }
+    if let Some(path) = config_path.filter(|path| !path.is_empty()) {
+        supplied.insert("HERDR_CONFIG_PATH".to_string(), path.to_string());
     }
     supplied
 }

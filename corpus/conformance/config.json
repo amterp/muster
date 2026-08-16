@@ -763,7 +763,7 @@
         ]
       },
       "expect": {
-        "refused": "the config file has a key called \"divider_color\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: daemon, keymap, text, option_as_alt, resize_step, scroll_multiplier, pane_padding, font, colors, cursor."
+        "refused": "the config file has a key called \"divider_color\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: daemon, keymap, text, option_as_alt, resize_step, scroll_multiplier, pane_padding, scrollback_bytes, font, colors, cursor, shell."
       }
     },
     {
@@ -884,6 +884,174 @@
       },
       "expect": {
         "refused": "`pane_padding` in the config file is 1.5, and it has to be a whole number of points, zero or more. None of the file was applied. Zero is the one that fits the most rows in a window; leave it out for the renderer's own answer."
+      }
+    },
+    {
+      "name": "what a pane runs and how much it remembers, read as themselves",
+      "why": "The two settings a person previously had to leave Muster to change: scrollback lived in herdr's config file, and what a pane ran was decided by whatever `default_shell` somebody had set for their own terminal. Muster acts on neither and translates both onward, which is the same arrangement `[font]` and `[colors]` already have with the renderer - so this case pins that the file is understood here, and the daemon-config corpus pins what the daemon is then told.",
+      "given": {
+        "file": [
+          "scrollback_bytes = 50000000",
+          "",
+          "[shell]",
+          "command = \"/opt/homebrew/bin/fish\"",
+          "mode = \"login\""
+        ]
+      },
+      "expect": {
+        "daemons": [],
+        "keymap": [],
+        "option_as_alt": "never",
+        "text": [],
+        "panes": [
+          "scrollback_bytes=50000000",
+          "shell.command=/opt/homebrew/bin/fish",
+          "shell.mode=login"
+        ]
+      }
+    },
+    {
+      "name": "a pane that remembers nothing is a real answer",
+      "why": "Zero is defined rather than degenerate - herdr keeps only what is on screen, and has a test of its own saying so. Somebody who does not want an agent's output sitting in a buffer has to be able to say that, and refusing it would be Muster inventing a floor nobody asked for. Same reasoning as `pane_padding = 0`.",
+      "given": {
+        "file": [
+          "scrollback_bytes = 0"
+        ]
+      },
+      "expect": {
+        "daemons": [],
+        "keymap": [],
+        "option_as_alt": "never",
+        "text": [],
+        "panes": [
+          "scrollback_bytes=0"
+        ]
+      }
+    },
+    {
+      "name": "the mode a shell starts in is left to the daemon unless the file says",
+      "why": "`auto` is the default and it is the daemon's own answer, so a file that names only a command changes one thing rather than two. Worth a case because the projection omits a mode equal to the default: without it, a case asserting only `shell.command` would be indistinguishable from one where the mode had silently become `login`.",
+      "given": {
+        "file": [
+          "[shell]",
+          "command = \"/bin/sh\""
+        ]
+      },
+      "expect": {
+        "daemons": [],
+        "keymap": [],
+        "option_as_alt": "never",
+        "text": [],
+        "panes": [
+          "shell.command=/bin/sh"
+        ]
+      }
+    },
+    {
+      "name": "a shell that skips the login files says so in Muster's words",
+      "why": "`non_login` rather than herdr's spelling by coincidence and Muster's by decision - the vocabulary is Muster's, and a replacement daemon translates it. The same point `hollow` makes for the cursor.",
+      "given": {
+        "file": [
+          "[shell]",
+          "mode = \"non_login\""
+        ]
+      },
+      "expect": {
+        "daemons": [],
+        "keymap": [],
+        "option_as_alt": "never",
+        "text": [],
+        "panes": [
+          "shell.mode=non_login"
+        ]
+      }
+    },
+    {
+      "name": "a way of starting a shell nobody has heard of is refused with the three that exist",
+      "why": "`interactive` is what somebody writes who is thinking of the other axis - login versus non-login is not interactive versus not - so the refusal has to list what the three answers actually are rather than only saying no.",
+      "given": {
+        "file": [
+          "[shell]",
+          "mode = \"interactive\""
+        ]
+      },
+      "expect": {
+        "refused": "`mode` in the config file's [shell] is \"interactive\", which is not a way of starting a shell that Muster knows, so none of the file was applied. It is one of `auto`, `login`, `non_login`."
+      }
+    },
+    {
+      "name": "a shell set to nothing is refused rather than read as absent",
+      "why": "herdr reads an empty `default_shell` as \"whatever SHELL says\", which is exactly what leaving the key out means - so an empty string would quietly mean nothing at all. Somebody who typed one was in the middle of something, and the fix is to say so rather than to apply a file that ignores a line in it.",
+      "given": {
+        "file": [
+          "[shell]",
+          "command = \"\""
+        ]
+      },
+      "expect": {
+        "refused": "`command` in the config file's [shell] is empty, and a pane has to run something. None of the file was applied. Leave the key out for the shell this machine already thinks is yours."
+      }
+    },
+    {
+      "name": "a misspelled shell key is refused against the block it was written in",
+      "why": "`shell_mode` is what somebody writes who read herdr's own config file, where the key is spelled that way and sits at the top of `[terminal]`. Naming the block and listing its two keys is the whole fix, and it is the one case where the person is likely to have been reading the daemon's documentation rather than Muster's.",
+      "given": {
+        "file": [
+          "[shell]",
+          "shell_mode = \"login\""
+        ]
+      },
+      "expect": {
+        "refused": "the config file's [shell] has a key called \"shell_mode\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: command, mode."
+      }
+    },
+    {
+      "name": "a shell written as a value is refused with its keys",
+      "why": "`shell = \"/bin/fish\"` is the obvious thing to write, and it is nearly right - it is one key deep. The refusal that names the block and its keys turns a file that does nothing into a one-line fix, the same job the `colors = \"dark\"` case does.",
+      "given": {
+        "file": [
+          "shell = \"/bin/fish\""
+        ]
+      },
+      "expect": {
+        "refused": "`shell` in the config file is a string, and it has to be a block - `[shell]` with its settings under it. None of the file was applied. Known keys there: command, mode."
+      }
+    },
+    {
+      "name": "a shell name holding a control character is refused here rather than by the daemon",
+      "why": "A pasted terminal escape is the way this happens - somebody copies a path out of a coloured `ls` and takes the escape with it. Left alone it reaches the daemon as argv bytes and is refused there, a process and a machine away from whoever typed it, as a split that quietly does nothing.",
+      "given": {
+        "file": [
+          "[shell]",
+          "command = \"/bin/\\u001Bsh\""
+        ]
+      },
+      "expect": {
+        "refused": "`command` in the config file's [shell] is \"/bin/\\u{1b}sh\", which holds a control character. None of the file was applied. A program name is a path - if that is a pasted escape sequence, retype it."
+      }
+    },
+    {
+      "name": "a scrollback size with a fraction in it is refused",
+      "why": "Whole bytes, for the same reason `pane_padding` is whole points: the daemon takes an integer and would round it, so accepting `1.5e6` means the file says one thing and the pane does another. The sentence also says bytes rather than lines, because that is the thing most likely to have been misread.",
+      "given": {
+        "file": [
+          "scrollback_bytes = 1.5"
+        ]
+      },
+      "expect": {
+        "refused": "`scrollback_bytes` in the config file is 1.5, and it has to be a whole number of bytes, zero or more. None of the file was applied. Bytes rather than lines because that is what the daemon measures the buffer in; leave it out for its own answer."
+      }
+    },
+    {
+      "name": "a negative scrollback size is refused",
+      "why": "There is no reading of a negative buffer, and the interesting half is what it must not do: `usize` would wrap it into an enormous positive number on the way to the daemon, and a pane would keep sixteen exabytes of history because somebody typed a minus sign.",
+      "given": {
+        "file": [
+          "scrollback_bytes = -1"
+        ]
+      },
+      "expect": {
+        "refused": "`scrollback_bytes` in the config file is -1, and it has to be a whole number of bytes, zero or more. None of the file was applied. Bytes rather than lines because that is what the daemon measures the buffer in; leave it out for its own answer."
       }
     }
   ]

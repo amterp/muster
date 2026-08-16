@@ -2,7 +2,7 @@
   "concept": "daemon.carried",
   "source": "authored",
   "citation": "README.md desiderata, sessions outlive the app; docs/architecture.md, durability; kan a_28YgGqYq7",
-  "why": "Muster's daemon is started by whichever shell started Muster, and it outlives that shell, that window and that app. Every pane it ever spawns is its child, so whatever it was handed at birth becomes permanent state handed to every agent - which for a tool whose entire purpose is running coding agents is close to the worst place for a stray variable to end up.\n\nThat is not hypothetical. Launching Muster from inside a Claude Code session put that session's CLAUDE_CODE_* markers and its messaging credentials into the daemon; a fresh Claude Code started in a pane read them, silently turned its own transcript saving off, and held another session's IPC token. It persisted after that Muster had quit.\n\nSo the daemon is handed an allowlist rather than an inheritance. A denylist would have to keep up with every tool that invents a variable, and would be wrong until somebody noticed - which is the same shape of failure again.\n\nThe list is short on purpose, and the reason is worth stating: a pane runs a shell, and a shell rebuilds its own world from the user's rc files. Toolchain managers, version switchers and prompts all put themselves back. What has to survive is only what a shell cannot work out for itself - where home is, what to run, and the machine's conventions.\n\nCases below name the whole environment a launch might carry and say which of it reaches the daemon. `carried` is name=value so that a case can show a value surviving intact; `dropped` is names alone.",
+  "why": "Muster's daemon is started by whichever shell started Muster, and it outlives that shell, that window and that app. Every pane it ever spawns is its child, so whatever it was handed at birth becomes permanent state handed to every agent - which for a tool whose entire purpose is running coding agents is close to the worst place for a stray variable to end up.\n\nThat is not hypothetical. Launching Muster from inside a Claude Code session put that session's CLAUDE_CODE_* markers and its messaging credentials into the daemon; a fresh Claude Code started in a pane read them, silently turned its own transcript saving off, and held another session's IPC token. It persisted after that Muster had quit.\n\nSo the daemon is handed an allowlist rather than an inheritance. A denylist would have to keep up with every tool that invents a variable, and would be wrong until somebody noticed - which is the same shape of failure again.\n\nThe list is short on purpose, and the reason is worth stating: a pane runs a shell, and a shell rebuilds its own world from the user's rc files. Toolchain managers, version switchers and prompts all put themselves back. What has to survive is only what a shell cannot work out for itself - where home is, what to run, and the machine's conventions.\n\nCases below name the whole environment a launch might carry and say which of it reaches the daemon. `carried` is name=value so that a case can show a value surviving intact; `dropped` is names alone.\n\n`supplied` carries a second entry now, and it is the one that decides what a pane runs. Muster's daemon used to read the user's own herdr config, so a `default_shell` set for somebody's terminal decided what every Muster pane ran and the pinned daemon took its update policy from a file Muster does not own. It is now handed HERDR_CONFIG_PATH naming a file Muster wrote. That variable moves the config file and nothing else - the socket comes from the config directory, so the XDG variables below still have to survive intact and still decide where this daemon binds.",
   "cases": [
     {
       "name": "a harness's session state does not reach the daemon",
@@ -304,6 +304,86 @@
         ],
         "supplied": [],
         "dropped": []
+      }
+    },
+    {
+      "name": "the daemon is told to read Muster's file rather than the user's",
+      "why": "The whole of this card in one line of environment. A person who wants deeper scrollback should not have to learn that herdr exists, and a `default_shell` set for somebody's own terminal should not decide what every Muster pane runs - so the daemon is pointed at a file Muster derives from its own config. Supplied rather than carried, because nobody handed Muster this: it is Muster's answer, and it belongs in the same list as the locale for the same reason.",
+      "given": {
+        "env": {
+          "HOME": "/Users/a",
+          "PATH": "/usr/bin"
+        },
+        "daemon_config": "/Users/a/.muster/state/herdr.toml"
+      },
+      "expect": {
+        "carried": [
+          "HOME=/Users/a",
+          "PATH=/usr/bin"
+        ],
+        "supplied": [
+          "HERDR_CONFIG_PATH=/Users/a/.muster/state/herdr.toml"
+        ],
+        "dropped": []
+      }
+    },
+    {
+      "name": "the config file moves and the socket does not",
+      "why": "The reason HERDR_CONFIG_PATH is the mechanism rather than a private XDG_CONFIG_HOME. herdr resolves its socket from the config directory and its config file from this variable, so redirecting the file leaves the socket, the session state and the data directory where they were - which is why the case above this one, about the variables the socket path was computed from, still holds unchanged. A private config directory would have moved all four, orphaning a daemon somebody has agents running in.",
+      "given": {
+        "env": {
+          "HOME": "/Users/a",
+          "XDG_CONFIG_HOME": "/Users/a/.config"
+        },
+        "daemon_config": "/Users/a/.muster/state/herdr.toml"
+      },
+      "expect": {
+        "carried": [
+          "HOME=/Users/a",
+          "XDG_CONFIG_HOME=/Users/a/.config"
+        ],
+        "supplied": [
+          "HERDR_CONFIG_PATH=/Users/a/.muster/state/herdr.toml"
+        ],
+        "dropped": []
+      }
+    },
+    {
+      "name": "a launch with nowhere to write one leaves the daemon on the user's own config",
+      "why": "What a window with no Muster home gets, and what every test that names no path gets. The daemon then reads the user's herdr config, which is what it did before this existed - so the fallback is the old behaviour rather than a broken one. Worth a case because the alternative implementation is to supply an empty value, and herdr reads an empty HERDR_CONFIG_PATH as a config file called \"\": a third behaviour, belonging to nobody.",
+      "given": {
+        "env": {
+          "HOME": "/Users/a"
+        }
+      },
+      "expect": {
+        "carried": [
+          "HOME=/Users/a"
+        ],
+        "supplied": [],
+        "dropped": []
+      }
+    },
+    {
+      "name": "a herdr config named by whoever launched Muster does not come along",
+      "why": "The same reasoning as HERDR_SOCKET_PATH one case above: a variable naming a herdr thing belongs to the person's own herdr, and Muster's daemon reads the file Muster wrote. Carrying it would let a stray export in a shell profile decide what every Muster pane runs - the exact fault this whole arrangement exists to remove, arriving by the door built to remove it. It is restored to the panes instead, where it means what its owner meant.",
+      "given": {
+        "env": {
+          "HOME": "/Users/a",
+          "HERDR_CONFIG_PATH": "/Users/a/elsewhere/herdr.toml"
+        },
+        "daemon_config": "/Users/a/.muster/state/herdr.toml"
+      },
+      "expect": {
+        "carried": [
+          "HOME=/Users/a"
+        ],
+        "supplied": [
+          "HERDR_CONFIG_PATH=/Users/a/.muster/state/herdr.toml"
+        ],
+        "dropped": [
+          "HERDR_CONFIG_PATH"
+        ]
       }
     }
   ]

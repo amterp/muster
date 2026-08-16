@@ -79,6 +79,24 @@ fn appearance(appearance: &config::Appearance) -> Vec<String> {
     set
 }
 
+/// What a file said a pane should be, on the same terms as [`appearance`].
+///
+/// Written back out rather than echoed, so a case pins what Muster understood: `non_login`
+/// surviving as `non_login` is what proves the daemon is handed Muster's word for it.
+fn panes(panes: &config::Panes) -> Vec<String> {
+    let mut set = Vec::new();
+    if let Some(bytes) = panes.scrollback_bytes {
+        set.push(format!("scrollback_bytes={bytes}"));
+    }
+    if let Some(command) = &panes.shell.command {
+        set.push(format!("shell.command={command}"));
+    }
+    if panes.shell.mode != config::ShellMode::default() {
+        set.push(format!("shell.mode={}", panes.shell.mode.as_str()));
+    }
+    set
+}
+
 #[test]
 fn config_conformance() {
     let corpus = Conformance::load("config.json");
@@ -122,6 +140,7 @@ fn config_conformance() {
                     "appearance",
                     Some(json!(appearance(&parsed.appearance))).filter(|set| set != &json!([])),
                 ),
+                ("panes", Some(json!(panes(&parsed.panes))).filter(|set| set != &json!([]))),
             ]),
             // The refusal itself, not a code. Whether the sentence names the key somebody
             // mistyped is the whole of what this file is protecting, and a taxonomy of error

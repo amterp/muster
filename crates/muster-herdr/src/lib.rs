@@ -6,10 +6,12 @@
 //! own vocabulary and does not know this crate exists.
 
 pub mod client;
+pub mod config;
 pub mod control_socket;
 pub mod control_stream;
 pub mod daemon;
 pub mod discovery;
+pub mod env;
 pub mod events;
 pub mod frame;
 pub mod intent;
@@ -19,12 +21,14 @@ pub mod snapshot;
 pub mod subscription;
 
 pub use client::HerdrClient;
+pub use config::{herdr_configuration, write_configuration};
 pub use control_socket::PaneControlChannel;
 pub use control_stream::ControlStreamMessage;
 pub use discovery::{discover_socket_path, own_socket_path};
+pub use env::PaneEnvironment;
 pub use events::EventDecoder;
 pub use frame::{FrameDecoder, PaneFrame, PaneStreamEvent};
-pub use intent::{refusal, request};
+pub use intent::{HerdrBackend, refusal, request};
 pub use layout::{read_exported_layout, read_layout};
 pub use pane_channel::HerdrPaneChannel;
 pub use snapshot::{fetch_snapshot, read_snapshot};

@@ -93,6 +93,26 @@ ever seen the daemon's; the one thing that reads it is herdr's host-terminal det
 notification is attributed to. Carrying it meant a Muster launched from Ghostty had its daemon posting notifications
 as Ghostty, to a terminal that was not there.
 
+**The daemon's config is derived, not borrowed, and it follows from the same fact.** A daemon of Muster's own that
+reads a stranger's config file is not a daemon of Muster's own: a `default_shell` somebody set for their own terminal
+decided what every Muster pane ran, and - the sharper half - `version_check` and `manifest_check` default to true, so
+a daemon pinned by version and checksum took its update policy from a file Muster does not own. Pinning it is what
+makes a green suite a claim about anything, and an update check is the one thing that moves it off the pin with
+nobody asking. So Muster derives a config from its own file and names it to the daemon with `HERDR_CONFIG_PATH`, the
+same shape of answer the renderer already gets. What makes that variable the right lever rather than a private
+`XDG_CONFIG_HOME` is that it moves the config file and nothing else: the socket, the session state and the data
+directory stay where herdr's own rules put them, so the escape hatch above still works and a daemon holding somebody's
+agents is not orphaned by an upgrade.
+
+The cost is one leak, and it is answered rather than accepted. A pane's process inherits the daemon's environment, so
+that variable reaches every pane, and `herdr` typed inside one would read Muster's file instead of the person's. Every
+pane-creating call therefore carries the user's own path back in its `env`. A parameter rather than a scrub, because
+the two fail differently: forgetting to scrub is invisible from outside, while a parameter can be asserted - a
+conformance case walks every intent Muster sends and fails any that herdr says could carry an environment and does
+not, so a fourth way of making a pane fails the gate rather than leaking quietly. What it cannot cover is a pane
+Muster did not make: one herdr restores after a daemon restart is built with no launch environment at all. That is a
+stated limit, not a gap to chase.
+
 The guarantee stops at the machine's edge. An SSH endpoint runs a platform this bundle carries no binary for, so a
 remote daemon is still whatever is installed over there. Closing that means putting an agent on the far machine on
 first connection, the way mutagen does.
@@ -209,7 +229,8 @@ codegen - a surface that cannot express an action is a missing message, visible 
 ## Ownership of truth
 
 - **Daemons own structure**: workspaces, tabs, pane trees, panes, scrollback, agent states, process lifetimes.
-  View = f(daemon state).
+  View = f(daemon state). Owning the scrollback buffer is not the same as deciding how deep it goes: that answer,
+  and what a pane runs, are Muster's, translated onward into a config file the daemon reads (the shape, above).
 - **The core owns a mirror**: a derived, disposable cache of daemon structure, bootstrapped from an authoritative
   snapshot plus event subscription, rebuilt after any gap, never patched across one.
 - **A daemon's answer is daemon truth, on the same terms as its events.** Not a prediction and not a patch: a
@@ -535,6 +556,11 @@ API has no setter, so the shell writes a derived config file and hands over its 
 every reload after it, and one mechanism cannot disagree with itself. The derived file is state, lives beside
 `window.toml`, and is rewritten every launch; it is also the answer to "what did Muster actually tell the
 renderer", which is the first question when a colour does not take.
+
+The backend seam does the same thing for the same shape of reason - herdr takes a value only as a file too - with one
+difference worth stating: an appearance naming nothing produces no file at all, because every value in it is
+somebody's preference, while the daemon's is written even when nothing is configured. An unconfigured Muster still
+has an opinion there, and it is that the daemon it pinned does not go looking for its own updates.
 
 ## Degradation
 

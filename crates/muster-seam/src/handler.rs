@@ -763,6 +763,9 @@ fn start(startup: &proto::Startup) -> Response {
     // Before the config too, because applying one can start a daemon and the locale is part of
     // the environment that daemon is born with. Set after, it would reach the second launch.
     session::set_platform_locale(&startup.locale);
+    // Before the config for the sharpest version of that reason: this is where the file that
+    // daemon reads gets written, and `herdr server` reads its config once at startup.
+    session::set_daemon_config_path(&startup.daemon_config_path);
 
     if startup.log_path.is_empty() {
         apply_config(&startup.config_path);
@@ -863,6 +866,10 @@ fn apply_config(path: &str) {
             session::set_pane_input(config.input.clone());
             session::set_feel(config.feel);
             session::set_appearance(config.appearance.clone());
+            // Before following, which is what writes the derived config and starts a daemon
+            // that reads it. Set after, a first launch would give its daemon last launch's
+            // answer about what a pane runs.
+            session::set_panes(config.panes.clone());
             session::set_configured_daemons(&config.daemons);
             session::follow_configured(&config);
         }
@@ -946,6 +953,13 @@ fn reload_config() -> Response {
     session::set_bindings(config.bindings.clone());
     session::set_feel(config.feel);
     session::set_appearance(config.appearance.clone());
+    session::set_panes(config.panes.clone());
+    // Unlike `[[daemon]]`, this one is not left for a relaunch, because a relaunch would not
+    // fix it: the daemon is started and never stopped, so it outlives every launch and would
+    // go on running the settings it was born with until the machine was rebooted. Rewriting
+    // the file and asking the daemon to read it again is what makes saving the file mean
+    // something - as far as it can go, which is panes opened from now on.
+    session::rewrite_daemon_configuration();
     // Recorded even though it is not acted on, so the next reload compares against this file
     // rather than reporting the same unapplied change forever.
     session::set_configured_daemons(&config.daemons);

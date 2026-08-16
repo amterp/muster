@@ -2,7 +2,7 @@
   "concept": "muster.backendIntent.herdrEnvelope",
   "source": "authored",
   "citation": "corpus/herdr-0.8.0/api-schema.json, which herdr generates from its own request types and ./dev checks the running daemon against. Method names and every parameter here are declared there: PaneSplitParams (cwd, direction, env, focus, ratio, target_pane_id, workspace_id), TabCreateParams (cwd, env, focus, label, workspace_id), WorkspaceCreateParams (cwd, env, focus, label), LayoutSetSplitRatioParams (pane_id, path, ratio, tab_id), PaneResizeParams (amount, direction, pane_id), PaneZoomParams (mode, pane_id) whose mode defaults to toggle. The direction pair, and the fact that herdr has only two of the four sides, are recorded in docs/observations/herdr-0.8.0.md section 14.",
-  "why": "herdr ignores a parameter it does not recognise rather than refusing the request (`observations/herdr-0.8.0.md` section 6), so a misspelled key does not fail - it acts on whatever the daemon happened to have focused. `pane.split` is the sharp one: it takes `target_pane_id` where every other pane verb takes `pane_id`, and sending the wrong one splits an arbitrary pane. Against a real daemon holding one workspace and one pane, that is indistinguishable from correct, which is why these are pinned by name here rather than left to the daemon-backed tests. The second half is the direction pair: Muster names a split for the arrangement it produces and herdr for where the new pane goes, and `layout.rs` reads that same pair back in reverse - so getting it wrong here makes a column that reads back as a row.",
+  "why": "herdr ignores a parameter it does not recognise rather than refusing the request (`observations/herdr-0.8.0.md` section 6), so a misspelled key does not fail - it acts on whatever the daemon happened to have focused. `pane.split` is the sharp one: it takes `target_pane_id` where every other pane verb takes `pane_id`, and sending the wrong one splits an arbitrary pane. Against a real daemon holding one workspace and one pane, that is indistinguishable from correct, which is why these are pinned by name here rather than left to the daemon-backed tests. The second half is the direction pair: Muster names a split for the arrangement it produces and herdr for where the new pane goes, and `layout.rs` reads that same pair back in reverse - so getting it wrong here makes a column that reads back as a row.\n\nThe third subject here is the environment a pane-creating call carries, and it is the one whose failure is silent in a new way. Muster points its daemon at a config file of its own with HERDR_CONFIG_PATH, and a pane's process inherits the daemon's environment - so without a restore, `herdr` run inside a Muster pane reads Muster's derived file rather than the person's own. Every case that makes a pane shows the restore, and every case that does not shows its absence, because a reviewer reading one case should not have to hold the other eight in their head. What the cases cannot say is that the set is complete; `every_pane_a_daemon_makes_is_handed_the_users_own_config` says that, by reading which methods herdr declares an `env` on.",
   "cases": [
     {
       "name": "a split names the pane to split, in the key only pane.split uses",
@@ -10,14 +10,20 @@
       "given": {
         "intent": "split",
         "pane": "p1",
-        "side": "right"
+        "side": "right",
+        "env": {
+          "HOME": "/home/a"
+        }
       },
       "expect": {
         "method": "pane.split",
         "params": {
           "target_pane_id": "p1",
           "direction": "right",
-          "focus": true
+          "focus": true,
+          "env": {
+            "HERDR_CONFIG_PATH": "/home/a/.config/herdr/config.toml"
+          }
         }
       }
     },
@@ -27,14 +33,20 @@
       "given": {
         "intent": "split",
         "pane": "p1",
-        "side": "down"
+        "side": "down",
+        "env": {
+          "HOME": "/home/a"
+        }
       },
       "expect": {
         "method": "pane.split",
         "params": {
           "target_pane_id": "p1",
           "direction": "down",
-          "focus": true
+          "focus": true,
+          "env": {
+            "HERDR_CONFIG_PATH": "/home/a/.config/herdr/config.toml"
+          }
         }
       }
     },
@@ -46,7 +58,10 @@
         "pane": "p1",
         "side": "right",
         "ratio": 0.25,
-        "cwd": "/src/muster"
+        "cwd": "/src/muster",
+        "env": {
+          "HOME": "/home/a"
+        }
       },
       "expect": {
         "method": "pane.split",
@@ -55,7 +70,10 @@
           "direction": "right",
           "focus": true,
           "ratio": 0.25,
-          "cwd": "/src/muster"
+          "cwd": "/src/muster",
+          "env": {
+            "HERDR_CONFIG_PATH": "/home/a/.config/herdr/config.toml"
+          }
         }
       }
     },
@@ -65,14 +83,20 @@
       "given": {
         "intent": "split",
         "pane": "p1",
-        "side": "left"
+        "side": "left",
+        "env": {
+          "HOME": "/home/a"
+        }
       },
       "expect": {
         "method": "pane.split",
         "params": {
           "target_pane_id": "p1",
           "direction": "right",
-          "focus": true
+          "focus": true,
+          "env": {
+            "HERDR_CONFIG_PATH": "/home/a/.config/herdr/config.toml"
+          }
         }
       }
     },
@@ -82,14 +106,20 @@
       "given": {
         "intent": "split",
         "pane": "p1",
-        "side": "up"
+        "side": "up",
+        "env": {
+          "HOME": "/home/a"
+        }
       },
       "expect": {
         "method": "pane.split",
         "params": {
           "target_pane_id": "p1",
           "direction": "down",
-          "focus": true
+          "focus": true,
+          "env": {
+            "HERDR_CONFIG_PATH": "/home/a/.config/herdr/config.toml"
+          }
         }
       }
     },
@@ -100,7 +130,10 @@
         "intent": "split",
         "pane": "p1",
         "side": "left",
-        "ratio": 0.25
+        "ratio": 0.25,
+        "env": {
+          "HOME": "/home/a"
+        }
       },
       "expect": {
         "method": "pane.split",
@@ -108,7 +141,10 @@
           "target_pane_id": "p1",
           "direction": "right",
           "focus": true,
-          "ratio": 0.75
+          "ratio": 0.75,
+          "env": {
+            "HERDR_CONFIG_PATH": "/home/a/.config/herdr/config.toml"
+          }
         }
       }
     },
@@ -118,14 +154,20 @@
       "given": {
         "intent": "tab",
         "workspace": "w1",
-        "cwd": "/src/muster"
+        "cwd": "/src/muster",
+        "env": {
+          "HOME": "/home/a"
+        }
       },
       "expect": {
         "method": "tab.create",
         "params": {
           "workspace_id": "w1",
           "focus": true,
-          "cwd": "/src/muster"
+          "cwd": "/src/muster",
+          "env": {
+            "HERDR_CONFIG_PATH": "/home/a/.config/herdr/config.toml"
+          }
         }
       }
     },
@@ -134,13 +176,19 @@
       "why": "Reachable when the pane the keyboard is on has no directory yet. A home directory is a worse answer than the one somebody wanted, and a better one than refusing to make the tab.",
       "given": {
         "intent": "tab",
-        "workspace": "w1"
+        "workspace": "w1",
+        "env": {
+          "HOME": "/home/a"
+        }
       },
       "expect": {
         "method": "tab.create",
         "params": {
           "workspace_id": "w1",
-          "focus": true
+          "focus": true,
+          "env": {
+            "HERDR_CONFIG_PATH": "/home/a/.config/herdr/config.toml"
+          }
         }
       }
     },
@@ -148,13 +196,19 @@
       "name": "a workspace names nothing, and lets herdr label it",
       "why": "The intent asked for when there is nothing: a daemon Muster just started holds no panes. A label invented here would be a second naming scheme for something herdr already names, and the null is explicit because the key exists and Muster is declining it.",
       "given": {
-        "intent": "workspace"
+        "intent": "workspace",
+        "env": {
+          "HOME": "/home/a"
+        }
       },
       "expect": {
         "method": "workspace.create",
         "params": {
           "focus": true,
-          "label": null
+          "label": null,
+          "env": {
+            "HERDR_CONFIG_PATH": "/home/a/.config/herdr/config.toml"
+          }
         }
       }
     },
@@ -374,6 +428,61 @@
             "split": "right"
           },
           "focus": false
+        }
+      }
+    },
+    {
+      "name": "a daemon Muster did not point anywhere is sent nothing to restore",
+      "why": "A daemon named by `socket` in the config file is somebody else's, and a daemon on another machine was reached rather than started - neither had its config redirected, so a pane on either already reads the file it always did. Sending a path anyway would be worse than useless on the remote one: it names a file on this machine, and the pane is on that one.",
+      "given": {
+        "intent": "split",
+        "pane": "p1",
+        "side": "right"
+      },
+      "expect": {
+        "method": "pane.split",
+        "params": {
+          "target_pane_id": "p1",
+          "direction": "right",
+          "focus": true
+        }
+      }
+    },
+    {
+      "name": "a verb that makes no pane carries no environment even where one is known",
+      "why": "Closing a pane, focusing one, moving a divider: herdr declares no `env` on any of them, and it ignores a parameter it does not declare rather than refusing it. So a stray one costs nothing today and is a silent behaviour change the day that method grows one - which is the same shape of fault as the misspelled key this file exists for, arrived at from the other direction.",
+      "given": {
+        "intent": "close",
+        "pane": "p2",
+        "env": {
+          "HOME": "/home/a"
+        }
+      },
+      "expect": {
+        "method": "pane.close",
+        "params": {
+          "pane_id": "p2"
+        }
+      }
+    },
+    {
+      "name": "somebody who names their own herdr config is handed that one back",
+      "why": "HERDR_CONFIG_PATH is herdr's own way of naming a config file, and a person who exported it in their shell profile means it. Restoring the XDG default instead would point their pane at a file they had already said they do not use - which is the whole fault this restore exists to prevent, reintroduced by the fix for it. Precedence follows herdr's own: the explicit path wins, and the config directory answers when nothing does.",
+      "given": {
+        "intent": "workspace",
+        "env": {
+          "HOME": "/home/a",
+          "HERDR_CONFIG_PATH": "/home/a/elsewhere/herdr.toml"
+        }
+      },
+      "expect": {
+        "method": "workspace.create",
+        "params": {
+          "focus": true,
+          "label": null,
+          "env": {
+            "HERDR_CONFIG_PATH": "/home/a/elsewhere/herdr.toml"
+          }
         }
       }
     }

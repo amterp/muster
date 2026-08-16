@@ -154,7 +154,7 @@ fn renaming_through_the_intent_shows_up_without_waiting_for_a_snapshot() {
     // window - which is what the running app did, while the wire-level cases were green.
     // Going through `submit` rather than the raw call is what makes this the real path.
     let (daemon, mirror, _subscription, pane) = session();
-    let client = daemon.client();
+    let client = daemon.backend();
 
     let outcome = client
         .submit(&BackendIntent::RenamePane {

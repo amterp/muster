@@ -32,17 +32,18 @@ from herdrprobe.daemon import IsolatedDaemon  # noqa: E402
 APP = REPO / ".build/arm64-apple-macosx/debug/muster"
 ROOT = Path("/private/tmp/muster-smoke")
 
-# What the probe's own daemon is configured with, for the one check here that starts a daemon
-# without it - the app's, on a scratch home of its own.
-_ISOLATED_HERDR_CONFIG = """\
-[terminal]
-default_shell = "/bin/sh"
-shell_mode = "non_login"
-new_cwd = "current"
-
-[update]
-version_check = false
-manifest_check = false
+# What the app is configured with for the one check here that starts a daemon of its own, on a
+# scratch home of its own.
+#
+# Muster's file rather than herdr's, and that is the point rather than a detail. The app writes
+# the daemon's config now, so a `[terminal]` block put where herdr's own config lives would be
+# read by nobody - the daemon is told to read Muster's file instead. Pinning it here means the
+# fixture goes through the same translation a person's settings do, so a launch that ended up
+# running the wrong shell would fail this check rather than passing it quietly.
+_ISOLATED_MUSTER_CONFIG = """\
+[shell]
+command = "/bin/sh"
+mode = "non_login"
 """
 
 
@@ -428,12 +429,12 @@ def check_cold_start() -> None:
     """
     root = ROOT / "cold"
     shutil.rmtree(root, ignore_errors=True)
-    for directory in ("home", "config/herdr", "state", "data", "cache"):
+    for directory in ("home", "home/.muster", "config/herdr", "state", "data", "cache"):
         (root / directory).mkdir(parents=True, exist_ok=True)
     # The same pinning the probe's daemon does, and for the same reason: a login shell under
     # a scratch HOME exits nonzero, which closes the pane, then the workspace, then the
     # server - so the check would be measuring the fixture rather than the app.
-    (root / "config/herdr/config.toml").write_text(_ISOLATED_HERDR_CONFIG)
+    (root / "home/.muster/config.toml").write_text(_ISOLATED_MUSTER_CONFIG)
     env = {
         **os.environ,
         "HOME": str(root / "home"),
@@ -470,6 +471,26 @@ def check_cold_start() -> None:
             )
         if not socket.exists():
             raise Failure(f"the daemon did not bind Muster's own socket at {socket}")
+        # The daemon reads a config the app derived from the config file above, rather than
+        # whatever herdr config the machine happens to hold. Checked here because it is only
+        # true end to end: the shell decides where that file goes, the core writes it, and the
+        # daemon is told its name on the command that starts it.
+        derived = root / "home/.muster/state/herdr.toml"
+        starting = expect(
+            records, "daemon.starting", "no daemon was started, so nothing was configured"
+        )
+        if starting.get("config") != str(derived):
+            raise Failure(
+                f"the daemon was pointed at {starting.get('config')!r} rather than the file "
+                f"Muster derives at {derived}. Impact: what a pane runs and how deep its "
+                "scrollback is come from a config file Muster did not write, and the pinned "
+                "daemon's update checks are back on."
+            )
+        if not derived.exists():
+            raise Failure(
+                f"the app named {derived} as its daemon's config and wrote no such file, so "
+                "the daemon fell back to defaults for everything including its update checks"
+            )
     finally:
         subprocess.run(
             [str(APP.parent / "herdr"), "server", "stop"],

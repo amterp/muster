@@ -45,6 +45,8 @@ pub struct Config {
     pub feel: Feel,
     /// What the window looks like, pane and chrome alike.
     pub appearance: Appearance,
+    /// What a pane is, for the daemon that makes one.
+    pub panes: Panes,
 }
 
 /// What Muster looks like.
@@ -282,6 +284,80 @@ impl std::fmt::Display for ResizeStep {
     }
 }
 
+/// What a pane is: what it runs, and how much of it a person can scroll back through.
+///
+/// Muster acts on neither. It translates both onward for the daemon, the way [`Appearance`]
+/// is translated onward for the renderer - and it is here for the same reason that one is.
+/// A person who wants deeper scrollback was previously told to learn that herdr exists and
+/// find its config file, and a `default_shell` somebody set for their own terminal decided
+/// what every Muster pane ran. Both are questions about Muster's window, so both are asked
+/// in Muster's file.
+///
+/// Absent means the daemon's own default, on the same terms as an absent colour meaning the
+/// renderer's: Muster has no opinion about which shell somebody uses, and a scrollback depth
+/// written down here would be a transcription of somebody else's answer.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Panes {
+    /// How much of a pane's history the daemon keeps, in bytes.
+    ///
+    /// Bytes rather than lines because that is what the buffer is measured in - a line has
+    /// no fixed size, so a count of them would be a number that did not mean what it said.
+    /// Zero is a real answer, and herdr defines it: a pane that keeps only what is on
+    /// screen.
+    pub scrollback_bytes: Option<u64>,
+
+    /// `[shell]`.
+    pub shell: Shell,
+}
+
+/// What a pane runs, and how it starts.
+///
+/// A block rather than two root keys because they are one subject with two answers, and
+/// nobody sets the second without having thought about the first.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Shell {
+    /// The program a new pane runs.
+    ///
+    /// Absent means the shell the machine already thinks is yours, which is what every
+    /// terminal does and what a pane did before this key existed.
+    pub command: Option<String>,
+
+    pub mode: ShellMode,
+}
+
+/// Whether a pane's shell starts as a login shell.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ShellMode {
+    /// Let the daemon decide, which is what it did before this key existed.
+    #[default]
+    Auto,
+    /// Reads the login files - `.zprofile`, `.profile` - as a terminal's first shell does.
+    Login,
+    /// Skips them, which is faster and is what a subshell would have been.
+    NonLogin,
+}
+
+impl ShellMode {
+    pub const READABLE: [&'static str; 3] = ["auto", "login", "non_login"];
+
+    pub fn read(name: &str) -> Option<ShellMode> {
+        match name {
+            "auto" => Some(ShellMode::Auto),
+            "login" => Some(ShellMode::Login),
+            "non_login" => Some(ShellMode::NonLogin),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ShellMode::Auto => "auto",
+            ShellMode::Login => "login",
+            ShellMode::NonLogin => "non_login",
+        }
+    }
+}
+
 /// A colour, as the config file spells one and as a shell can paint it.
 ///
 /// Three bytes rather than a string, so that reading the file is where a bad colour is
@@ -323,7 +399,7 @@ impl std::fmt::Display for Rgb {
 const DAEMON_KEYS: [&str; 4] = ["id", "socket", "host", "ssh_options"];
 
 /// The keys the file itself may carry.
-const ROOT_KEYS: [&str; 10] = [
+const ROOT_KEYS: [&str; 12] = [
     "daemon",
     "keymap",
     "text",
@@ -331,9 +407,11 @@ const ROOT_KEYS: [&str; 10] = [
     "resize_step",
     "scroll_multiplier",
     "pane_padding",
+    "scrollback_bytes",
     "font",
     "colors",
     "cursor",
+    "shell",
 ];
 
 /// The keys `[font]` may carry.
@@ -353,6 +431,9 @@ const COLOR_KEYS: [&str; 8] = [
 
 /// The keys `[cursor]` may carry.
 const CURSOR_KEYS: [&str; 2] = ["style", "blink"];
+
+/// The keys `[shell]` may carry.
+const SHELL_KEYS: [&str; 2] = ["command", "mode"];
 
 /// Reads a config file's text.
 ///
@@ -401,7 +482,79 @@ pub fn parse(text: &str) -> Result<Config, String> {
         },
         feel: read_feel(root)?,
         appearance: read_appearance(root)?,
+        panes: read_panes(root)?,
     })
+}
+
+/// `scrollback_bytes` and `[shell]`.
+fn read_panes(root: &toml::Table) -> Result<Panes, String> {
+    let mut panes = Panes {
+        scrollback_bytes: None,
+        shell: read_shell(block(root, "shell", &SHELL_KEYS)?.as_ref())?,
+    };
+
+    if let Some(value) = root.get("scrollback_bytes") {
+        panes.scrollback_bytes = Some(
+            value.as_integer().and_then(|bytes| u64::try_from(bytes).ok()).ok_or_else(|| {
+                format!(
+                    "`scrollback_bytes` in the config file is {}, and it has to be a whole \
+                     number of bytes, zero or more. None of the file was applied. Bytes rather \
+                     than lines because that is what the daemon measures the buffer in; leave \
+                     it out for its own answer.",
+                    written(value)
+                )
+            })?,
+        );
+    }
+
+    Ok(panes)
+}
+
+fn read_shell(block: Option<&toml::Table>) -> Result<Shell, String> {
+    let Some(block) = block else { return Ok(Shell::default()) };
+    let mut shell = Shell::default();
+
+    if let Some(command) = string(block, "command", "the config file's [shell]")? {
+        // Refused here rather than left to the daemon, because herdr reads an empty
+        // `default_shell` as "whatever SHELL says" - so an empty string would silently mean
+        // the same as leaving the key out, and somebody who wrote one meant something by it.
+        if command.is_empty() {
+            return Err("`command` in the config file's [shell] is empty, and a pane has to run \
+                        something. None of the file was applied. Leave the key out for the shell \
+                        this machine already thinks is yours."
+                .to_string());
+        }
+        // A control character in a program name reaches the daemon as an environment or an
+        // argv byte and is refused there, a process and a machine away from whoever typed it.
+        if command.chars().any(char::is_control) {
+            return Err(format!(
+                "`command` in the config file's [shell] is {command:?}, which holds a control \
+                 character. None of the file was applied. A program name is a path - if that is \
+                 a pasted escape sequence, retype it."
+            ));
+        }
+        shell.command = Some(command);
+    }
+
+    if let Some(value) = block.get("mode") {
+        let name = value.as_str().ok_or_else(|| {
+            format!(
+                "`mode` in the config file's [shell] is {}, and it has to be one of {}. None of \
+                 the file was applied.",
+                described(value),
+                quoted(&ShellMode::READABLE),
+            )
+        })?;
+        shell.mode = ShellMode::read(name).ok_or_else(|| {
+            format!(
+                "`mode` in the config file's [shell] is {name:?}, which is not a way of starting \
+                 a shell that Muster knows, so none of the file was applied. It is one of {}.",
+                quoted(&ShellMode::READABLE),
+            )
+        })?;
+    }
+
+    Ok(shell)
 }
 
 /// The two knobs, each absent from the file more often than not.

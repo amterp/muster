@@ -35,10 +35,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // an OS question while starting it is the core's.
     // And the state file, which is the same division once more: where a window's arrangement
     // is remembered is an OS question, and what is worth remembering is the core's.
+    // The daemon's own config file is the same division a fourth time: what a pane runs and
+    // how deep its scrollback is are the core's to decide, and where the file telling the
+    // daemon so gets written is an OS question.
     let config = configPath()
     let daemon = herdrPath(executable: CommandLine.arguments[0])
     Core.start(
-      logPath: logPath, configPath: config, herdrPath: daemon, statePath: statePath())
+      logPath: logPath, configPath: config, herdrPath: daemon, statePath: statePath(),
+      daemonConfigPath: daemonConfigPath())
     Core.info(
       "app.launch",
       [

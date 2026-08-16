@@ -20,7 +20,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Duration, Instant};
 
-use muster_herdr::HerdrClient;
+use muster_herdr::{HerdrBackend, HerdrClient, PaneEnvironment};
 use serde_json::{Value, json};
 
 /// A Unix socket path must fit `sockaddr_un.sun_path`: 104 bytes on macOS, 108 on Linux.
@@ -200,6 +200,15 @@ impl Daemon {
             self.socket_path.to_string_lossy().into_owned(),
             Duration::from_secs(5),
         )
+    }
+
+    /// The same daemon, as the thing a `BackendIntent` is submitted to.
+    ///
+    /// The pane environment is empty, which is what a daemon nobody redirected gets: the
+    /// harness writes this daemon's herdr config itself rather than deriving one, so a pane
+    /// on it has nothing to be pointed back at.
+    pub fn backend(&self) -> HerdrBackend {
+        HerdrBackend::new(self.client(), PaneEnvironment::none())
     }
 
     /// Sends a request and unwraps it, naming the method when it fails.

@@ -50,7 +50,7 @@ fn a_swap_exchanges_two_panes_and_leaves_the_shape_alone() {
     let before = arrangement(&mirror, &tab);
 
     daemon
-        .client()
+        .backend()
         .submit(&BackendIntent::SwapPanes { pane: first.clone(), with: second.clone() })
         .expect("herdr accepts a swap of two panes in one tab");
 
@@ -96,7 +96,7 @@ fn a_move_takes_a_pane_into_another_tab_and_lands_it_behind_the_row_it_was_dropp
         .expect("the second tab now holds two panes");
 
     daemon
-        .client()
+        .backend()
         .submit(&BackendIntent::MovePane {
             pane: first.clone(),
             tab: far.clone(),
@@ -137,7 +137,7 @@ fn a_swap_across_tabs_does_nothing_and_says_so_only_in_the_log() {
         .expect("the new tab brings a pane of its own");
 
     daemon
-        .client()
+        .backend()
         .submit(&BackendIntent::SwapPanes { pane: first.clone(), with: elsewhere.clone() })
         .expect("a declined swap is a success on the wire rather than a transport failure");
 

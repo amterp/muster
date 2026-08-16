@@ -55,21 +55,24 @@ pub fn own_socket_path(environment: &BTreeMap<String, String>) -> Option<String>
     Some(format!("{}/sessions/{OWN_SESSION}/herdr.sock", config_base(environment)?))
 }
 
-/// The config file Muster's daemon will read, which is the user's own herdr config.
+/// The config file the user's own herdr reads.
 ///
-/// Reported rather than changed, and that is a limitation rather than a decision. Muster's
-/// daemon is a session of its own but not a world of its own: it reads whatever
-/// `config.toml` the user wrote for their own herdr, so a `default_shell` or a `shell_mode`
-/// changed for their terminal silently changes what Muster's panes do - and the corpus was
-/// recorded against neither.
+/// Not the one Muster's daemon reads - that is a file Muster writes and names with
+/// `HERDR_CONFIG_PATH`, so that a `default_shell` somebody set for their own terminal stops
+/// deciding what every Muster pane runs. This is the file that variable displaces, and it is
+/// worth being able to name for one reason: every pane Muster creates is handed it back, so
+/// that `herdr` run inside a pane reads what it always did rather than Muster's.
 ///
-/// It cannot be isolated from here. herdr resolves its config directory from
-/// `XDG_CONFIG_HOME` and nothing else (`config/io.rs`, `config_dir`), and a pane's process
-/// inherits the daemon's environment - so pointing the daemon at a private directory would
-/// point every pane's git, editor and shell at one too. That is a worse fault than the one it
-/// fixes, so what is left is saying which file is in play, where somebody debugging a
-/// surprising pane will see it.
+/// Precedence follows herdr's own: an explicit `HERDR_CONFIG_PATH` wins outright
+/// (`config/io.rs`, `config_path`), and otherwise the file sits in the config directory. A
+/// rule that skipped the first would hand panes a path belonging to somebody who had already
+/// said, in their shell profile, that they use a different one.
 pub fn config_file(environment: &BTreeMap<String, String>) -> Option<String> {
+    let lookup = |name: &str| environment.get(name).filter(|value| !value.is_empty());
+
+    if let Some(explicit) = lookup("HERDR_CONFIG_PATH") {
+        return Some(explicit.clone());
+    }
     Some(format!("{}/config.toml", config_base(environment)?))
 }
 

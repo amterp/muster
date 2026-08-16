@@ -22,9 +22,13 @@ fn daemon_environment_conformance() {
         // What the platform said this machine's locale is, which the shell reports and only a
         // case about a GUI launch has to name. Absent is a platform that would not say.
         let locale = given.get("locale").and_then(Value::as_str);
+        // Where Muster wrote the config file this daemon is to read, which only the shell can
+        // answer. Absent is a launch that found nowhere to write one, and the daemon then
+        // reads the user's own herdr config the way it did before this existed.
+        let daemon_config = given.get("daemon_config").and_then(Value::as_str);
 
         let carried = carried(&environment);
-        let supplied = supplied(&environment, locale);
+        let supplied = supplied(&environment, locale, daemon_config);
         // All three, because a case about a leak is a case about what was *not* carried, and
         // an expectation that only listed the survivors would pass just as well if the filter
         // let everything through and the case happened to name every variable. `supplied` is

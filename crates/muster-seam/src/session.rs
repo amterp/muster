@@ -19,7 +19,7 @@ use muster_core::composition::{
     Composition, Daemon, DaemonId, Endpoint, FontSizeChange, PaneKey, Presentation, RegionId,
     Saved, Step, TabKey, Transport, View, saved,
 };
-use muster_core::config::{Appearance, Config, Feel};
+use muster_core::config::{Appearance, Config, Feel, Panes};
 use muster_core::diagnostics::log;
 use muster_core::fields;
 use muster_core::input::{Bindings, PaneInput, PaneInputSettings};
@@ -29,8 +29,8 @@ use muster_core::mirror::{Change, Mirror};
 use muster_core::roster::{Roster, RosterTab, TabStep};
 use muster_herdr::subscription::{Notice, Subscription};
 use muster_herdr::{
-    HerdrClient, HerdrPaneChannel, PaneControlChannel, daemon, discover_socket_path,
-    fetch_snapshot, own_socket_path,
+    HerdrBackend, HerdrClient, HerdrPaneChannel, PaneControlChannel, PaneEnvironment, daemon,
+    discover_socket_path, fetch_snapshot, own_socket_path,
 };
 use muster_ssh::{Forward, Tunnel, remote_environment};
 use muster_vt::KeyEncoder;
@@ -132,6 +132,38 @@ pub(crate) fn pane_input() -> PaneInputSettings {
         .unwrap_or_default()
 }
 
+/// What a pane should be, held for the daemon that is about to be started.
+///
+/// Beside [`FEEL`] and read in one place: the moment a local daemon is reached, which is
+/// where the derived config file has to exist before a spawn that takes no arguments.
+static PANES: Mutex<Option<Panes>> = Mutex::new(None);
+
+pub(crate) fn set_panes(panes: Panes) {
+    *PANES.lock().expect("a panicking sender poisoned the pane settings") = Some(panes);
+}
+
+/// What a pane should be, which with no config file is whatever the daemon would have done -
+/// except for the update checks, which Muster turns off either way.
+fn panes() -> Panes {
+    PANES.lock().expect("a panicking sender poisoned the pane settings").clone().unwrap_or_default()
+}
+
+/// Where Muster writes the config file its daemon reads, and what it last wrote there.
+///
+/// The same shape as [`STATE`] and for the same reason: the file is rewritten whenever the
+/// config file is, most rewrites say exactly what the last one did, and a daemon has nothing
+/// to re-read when the text has not moved.
+///
+/// None means the shell named nowhere to write one, which is what every seam test that sets
+/// no path gets. The daemon then reads the user's own herdr config, as it did before this
+/// existed, and the run log says so.
+static DAEMON_CONFIG: Mutex<Option<(String, String)>> = Mutex::new(None);
+
+pub(crate) fn set_daemon_config_path(path: &str) {
+    let mut held = DAEMON_CONFIG.lock().expect("a panicking sender poisoned the daemon config");
+    *held = if path.is_empty() { None } else { Some((path.to_string(), String::new())) };
+}
+
 /// The two knobs, held for whatever asks about them next.
 ///
 /// Beside [`BINDINGS`] and [`PANE_INPUT`], for the same reason: a resize arrives from a
@@ -197,6 +229,68 @@ pub(crate) fn set_state_path(path: &str) {
 struct Reached {
     socket_path: String,
     tunnel: Option<Tunnel>,
+    /// What every pane made on this daemon is handed.
+    ///
+    /// A restore where Muster redirected the daemon's config, and nothing where it did not:
+    /// a daemon somebody named by `socket` and a daemon on another machine were pointed
+    /// somewhere by nobody, so a pane on either already reads what it always did.
+    panes: PaneEnvironment,
+    /// Whether Muster wrote this daemon's config, which is a different question from whether
+    /// a pane needs anything put back - and stays different once a pane carries more than the
+    /// one restored variable.
+    owns_config: bool,
+}
+
+/// Writes the config Muster's daemon reads, and says where it went and whether it moved.
+///
+/// None when the shell named nowhere to write one. The daemon then reads the user's own herdr
+/// config, which is what it did before this existed - so the fallback is the old behaviour
+/// rather than a broken one, and the run log names which file is in play either way.
+///
+/// The flag is whether the text changed since the last write. It is the whole difference
+/// between a daemon that has something to re-read and one that does not: herdr reads its
+/// config at startup and on request, so a file that says what it already said is a request
+/// nobody needs to make.
+fn write_daemon_configuration() -> Option<(String, bool)> {
+    let mut held = DAEMON_CONFIG.lock().expect("a panicking sender poisoned the daemon config");
+    let (path, written) = held.as_mut()?;
+
+    match muster_herdr::write_configuration(path, &panes()) {
+        Ok(text) => {
+            let changed = &text != written;
+            if changed {
+                log::info(
+                    "daemon.config.written",
+                    fields! {
+                        "path" => path.clone(),
+                        "impact" => "a daemon started from here runs these settings; one that \
+                                     was already running keeps what it was started with until \
+                                     it is asked to read this again",
+                    },
+                );
+                *written = text;
+            }
+            Some((path.clone(), changed))
+        }
+        Err(detail) => {
+            log::warn(
+                "daemon.config.failed",
+                fields! {
+                    "path" => path.clone(),
+                    "detail" => detail,
+                    "impact" => "the daemon falls back to the user's own herdr config, so what \
+                                 a pane runs and how deep its scrollback is come from a file \
+                                 Muster did not write - and its update checks are back on, \
+                                 which can move the pinned daemon off its pin",
+                    "check" => "whether that directory exists and is writable",
+                },
+            );
+            // Cleared so a directory that becomes writable again is picked up by the next
+            // write rather than after the settings happen to change twice.
+            written.clear();
+            None
+        }
+    }
 }
 
 /// Opens whatever a daemon's endpoint describes.
@@ -210,9 +304,12 @@ fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, String> {
         // A socket somebody named is a daemon somebody chose, of a version nobody promised.
         // Taken as asked for, and left alone: this is the deliberate way out of the
         // arrangement below, and second-guessing it would leave no way out at all.
-        Endpoint::Local { socket_path: Some(path) } => {
-            Ok(Reached { socket_path: path.clone(), tunnel: None })
-        }
+        Endpoint::Local { socket_path: Some(path) } => Ok(Reached {
+            socket_path: path.clone(),
+            tunnel: None,
+            panes: PaneEnvironment::none(),
+            owns_config: false,
+        }),
         Endpoint::Local { socket_path: None } => {
             let environment = daemon::environment();
             let path = own_socket_path(&environment).ok_or_else(|| {
@@ -222,13 +319,32 @@ fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, String> {
                  in the config file to say outright."
                     .to_string()
             })?;
-            daemon::ensure_running(
+            // Before the spawn rather than beside it: `herdr server` takes no arguments and
+            // reads its config once at startup, so a file written afterwards is a file that
+            // daemon never sees.
+            let config = write_daemon_configuration();
+            let adopted = daemon::ensure_running(
                 &path,
                 daemon_binary().as_deref(),
                 &environment,
                 platform_locale().as_deref(),
+                config.as_ref().map(|(path, _)| path.as_str()),
             )?;
-            Ok(Reached { socket_path: path, tunnel: None })
+            // A daemon left running by an earlier Muster is holding somebody's agents, so it
+            // is reused rather than restarted - but it read its config when it started. Asking
+            // it to read again is what makes a setting saved between launches take effect
+            // without costing anyone a pane.
+            if adopted == daemon::Reached::Adopted
+                && config.as_ref().is_some_and(|(_, moved)| *moved)
+            {
+                daemon::reload_configuration(&path);
+            }
+            let panes = match &config {
+                Some(_) => PaneEnvironment::restoring(&environment),
+                // Nowhere to write one, so nothing was redirected and nothing needs restoring.
+                None => PaneEnvironment::none(),
+            };
+            Ok(Reached { socket_path: path, tunnel: None, panes, owns_config: config.is_some() })
         }
         // A remote is the one place Muster does not yet own its daemon, and the reason is
         // packaging rather than principle: the bundle carries a binary for this machine's
@@ -260,6 +376,11 @@ fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, String> {
             Ok(Reached {
                 socket_path: tunnel.local_socket_path().to_string(),
                 tunnel: Some(tunnel),
+                // Muster neither started this daemon nor wrote its config, so a pane on it
+                // has nothing to restore. Giving it one over here would be Muster naming a
+                // path on the wrong machine.
+                panes: PaneEnvironment::none(),
+                owns_config: false,
             })
         }
     }
@@ -303,6 +424,13 @@ struct Backend {
     /// How this daemon is asked for changes. One per daemon rather than one per pane,
     /// because what these ask for is structure and structure belongs to the daemon.
     channel: Arc<dyn BackendChannel>,
+    /// Whether Muster wrote the config file this daemon reads.
+    ///
+    /// True only for a daemon Muster started itself. A daemon named by `socket` is somebody
+    /// else's and a remote one was reached rather than started, so neither was redirected -
+    /// and asking one of those to re-read its own config would be reaching into a session
+    /// Muster does not own, possibly while its owner is editing that file.
+    owns_config: bool,
     /// Held because dropping it ends the subscription and every thread under it - the
     /// structure stream and one agent watcher per pane.
     _subscription: Subscription,
@@ -398,7 +526,11 @@ impl Session {
             Backend {
                 mirror,
                 tunnel: reached.tunnel,
-                channel: Arc::new(HerdrClient::new(reached.socket_path.clone())),
+                channel: Arc::new(HerdrBackend::new(
+                    HerdrClient::new(reached.socket_path.clone()),
+                    reached.panes,
+                )),
+                owns_config: reached.owns_config,
                 socket_path: reached.socket_path,
                 _subscription: subscription,
             },
@@ -1992,6 +2124,38 @@ pub(crate) fn set_configured_daemons(daemons: &[Daemon]) {
 pub(crate) fn daemons_differ(config: &Config) -> bool {
     let configured = CONFIGURED_DAEMONS.lock().expect("a panicking sender poisoned the settings");
     configured.as_deref().unwrap_or_default() != config.daemons.as_slice()
+}
+
+/// Writes what a pane should be again, and asks the daemons Muster owns to read it.
+///
+/// The counterpart of [`reset_pane_input`] for the settings Muster does not act on itself. It
+/// cannot reach as far: a pane's shell and its scrollback limit are arguments herdr takes when
+/// it builds a pane's terminal, so a reload reaches panes opened afterwards and no others -
+/// the same honest limit `pane_padding` already carries. What it does reach immediately is the
+/// update checks, which is why a daemon started before the file changed still gets asked.
+///
+/// Silent when nothing moved. Most reloads change a colour, and a file that says what it
+/// already said is a request no daemon needs.
+pub(crate) fn rewrite_daemon_configuration() {
+    let Some((_, changed)) = write_daemon_configuration() else { return };
+    if !changed {
+        return;
+    }
+
+    let sockets: Vec<String> = {
+        let session = SESSION.lock().expect("a panicking sender poisoned the session");
+        session
+            .backends
+            .values()
+            .filter(|backend| backend.owns_config)
+            .map(|backend| backend.socket_path.clone())
+            .collect()
+    };
+    // Outside the lock: this is a round trip to another process, and holding the session
+    // through one would stop every event this window is listening for.
+    for socket in &sockets {
+        daemon::reload_configuration(socket);
+    }
 }
 
 /// Points every attached pane at typing settings that have just been read again.

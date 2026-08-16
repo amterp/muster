@@ -19,12 +19,31 @@ use muster_core::mirror::backend::{PaneId, TabId};
 use serde_json::{Value, json};
 
 use crate::client::{Failure, HerdrClient};
+use crate::env::PaneEnvironment;
 use crate::layout::{read_exported_layout, read_layout};
 
-impl BackendChannel for HerdrClient {
+/// One daemon, as the thing Muster sends changes to.
+///
+/// A client and the environment every pane it makes is handed. They are together because a
+/// pane-creating request needs both and nothing else does: the snapshot, the subscription and
+/// the pane channels all hold a bare [`HerdrClient`], for which a pane environment would be a
+/// field that never means anything.
+#[derive(Debug)]
+pub struct HerdrBackend {
+    client: HerdrClient,
+    panes: PaneEnvironment,
+}
+
+impl HerdrBackend {
+    pub fn new(client: HerdrClient, panes: PaneEnvironment) -> HerdrBackend {
+        HerdrBackend { client, panes }
+    }
+}
+
+impl BackendChannel for HerdrBackend {
     fn submit(&self, intent: &BackendIntent) -> Result<Outcome, Refusal> {
-        let (method, params) = request(intent);
-        let result = self.request(method, &params).map_err(|failure| refusal(&failure))?;
+        let (method, params) = request(intent, &self.panes);
+        let result = self.client.request(method, &params).map_err(|failure| refusal(&failure))?;
         let created = created(&result);
         let settled = match (rearranges(intent), &created) {
             (Some(pane), Some(created)) => self.rearrange(pane, created),
@@ -79,11 +98,11 @@ impl BackendChannel for HerdrClient {
     }
 
     fn description(&self) -> &str {
-        self.socket_path()
+        self.client.socket_path()
     }
 }
 
-impl HerdrClient {
+impl HerdrBackend {
     /// Puts a pane herdr has just made on the other side of the one it was split from.
     ///
     /// herdr's `SplitDirection` is `right` and `down`, and a split always puts the new pane on
@@ -98,7 +117,7 @@ impl HerdrClient {
     /// Undoing is the one thing worse than a pane on the wrong side.
     fn rearrange(&self, pane: &PaneId, created: &PaneId) -> Option<SettledLayout> {
         let params = json!({ "source_pane_id": pane.as_str(), "target_pane_id": created.as_str() });
-        let answer = match self.request("pane.swap", &params) {
+        let answer = match self.client.request("pane.swap", &params) {
             Ok(answer) => answer,
             Err(failure) => {
                 // `invalid_pane_swap` rather than one of the four refusal reasons, for a swap
@@ -187,7 +206,12 @@ pub fn refusal(failure: &Failure) -> Refusal {
 /// focused, which against a one-pane daemon is indistinguishable from the right answer. That
 /// is not something a test with a real daemon in it can catch, so the keys are checked here
 /// by name (`corpus/conformance/backend-intent.json`).
-pub fn request(intent: &BackendIntent) -> (&'static str, Value) {
+///
+/// The pane environment is a parameter rather than something read here, and it is why this
+/// takes an argument at all: three of these arms make a pane, and a pane Muster makes has to
+/// be handed the user's own herdr config path back (see [`crate::env`]). Passing it in is
+/// what lets the corpus see it - the same reason this function is public.
+pub fn request(intent: &BackendIntent, panes: &PaneEnvironment) -> (&'static str, Value) {
     match intent {
         BackendIntent::SplitPane { pane, side, ratio, cwd } => {
             let mut params = json!({
@@ -213,6 +237,9 @@ pub fn request(intent: &BackendIntent) -> (&'static str, Value) {
             if let Some(cwd) = cwd {
                 params["cwd"] = json!(cwd);
             }
+            if let Some(env) = panes.as_params() {
+                params["env"] = env;
+            }
             ("pane.split", params)
         }
         BackendIntent::CreateTab { workspace, cwd } => {
@@ -222,6 +249,9 @@ pub fn request(intent: &BackendIntent) -> (&'static str, Value) {
             let mut params = json!({ "workspace_id": workspace.as_str(), "focus": true });
             if let Some(cwd) = cwd {
                 params["cwd"] = json!(cwd);
+            }
+            if let Some(env) = panes.as_params() {
+                params["env"] = env;
             }
             ("tab.create", params)
         }
@@ -236,6 +266,9 @@ pub fn request(intent: &BackendIntent) -> (&'static str, Value) {
             });
             if let Some(cwd) = cwd {
                 params["cwd"] = json!(cwd);
+            }
+            if let Some(env) = panes.as_params() {
+                params["env"] = env;
             }
             ("workspace.create", params)
         }

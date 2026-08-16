@@ -576,6 +576,19 @@ message Startup {
   // rather than an answer; `daemon::supplied` says why Muster gives its own.
   string locale = 7;
 
+  // Where Muster writes the config file its own daemon reads, or empty for nowhere.
+  //
+  // The backend's half of the arrangement the renderer already has. herdr takes a value only
+  // as a file, so Muster derives one from its own config and names it with HERDR_CONFIG_PATH -
+  // which moves the file the daemon reads without moving the socket it binds. That is what
+  // stops a `default_shell` somebody set for their own terminal deciding what every Muster
+  // pane runs, and what keeps a daemon pinned by checksum from looking for its own updates.
+  //
+  // The shell decides where it goes for the same reason it decides where the arrangement does.
+  // Empty is a real state: the daemon then reads the user's own herdr config, which is what it
+  // did before this existed, and the run log names which file is in play.
+  string daemon_config_path = 8;
+
   // trace, debug, info, warn, error. Empty means debug.
   string log_level = 2;
 

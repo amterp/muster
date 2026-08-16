@@ -81,13 +81,14 @@ window looks like, and the rest decides what a keystroke becomes on its way to a
 One directory rather than a file in each of the XDG trees, because Muster's surface is meant
 to be discovered rather than taught - an agent that can list one directory needs no
 documentation to find the whole of it. `XDG_CONFIG_HOME` and its family still decide where
-herdr listens and what herdr reads; they no longer move anything of Muster's.
+herdr listens; they no longer move anything of Muster's, and they no longer decide what
+Muster's own daemon reads.
 
 The rule, so that the next setting has an obvious home: **a setting is Muster's when Muster
-acts on the answer**, including the ones it only translates onward for libghostty. It is the
-daemon's when the daemon owns the thing being configured and Muster never sees it - what a
-pane runs, how deep its scrollback is. And within the file, a table when a subject has
-several answers, a root key when it has one.
+acts on the answer or hands it on**, including the ones it only translates onward - for
+libghostty, and now for herdr. It is the daemon's when it is about the daemon's own interface,
+which Muster never shows you. And within the file, a table when a subject has several answers,
+a root key when it has one.
 
 ```toml
 option_as_alt = "left"         # never (the default) | always | left | right
@@ -95,6 +96,11 @@ resize_step = "20c"            # per resize chord: cells (c) or points (px). Omi
                                # daemon's own step. The unit is required.
 scroll_multiplier = 1.5        # scales what the trackpad or wheel reported
 pane_padding = 2               # points between a pane's text and its edges; 0 fits the most rows
+scrollback_bytes = 50000000    # history a pane keeps; omit for the daemon's own answer
+
+[shell]
+command = "/opt/homebrew/bin/fish"  # omit for whatever this machine thinks your shell is
+mode = "login"                 # auto (the default) | login | non_login
 
 [keymap]
 split_right = "cmd+d"          # the default; Ghostty's, wherever Ghostty has one
@@ -261,15 +267,28 @@ from a Ghostty config if you had one, which is why the whole of `[colors]` is ne
 a rename. If you configured Muster's appearance through Ghostty, that stops working and this
 is where it moves to. `docs/architecture.md` says what the loan cost and why it went.
 
-One thing Muster still does not decide: scrollback depth is the daemon's, because herdr owns
-the buffer that a scroll intent moves.
+`[shell]` and `scrollback_bytes` are the two Muster does not act on at all. What a pane runs
+and how much of it you can scroll back through belong to the daemon that makes the pane - so
+Muster translates them into a file of its own and hands that to the daemon, exactly as it does
+`[font]` and `[colors]` for the renderer. Before this you had to learn that herdr existed and
+find its config file, and a `default_shell` set for your own terminal quietly decided what
+every Muster pane ran.
+
+`scrollback_bytes` is bytes because that is what the buffer is measured in; a line has no
+fixed size, so a count of them would be a number that did not mean what it said. Zero is a
+real answer - a pane that keeps only what is on screen. What is deliberately *not* offered is
+update checking: Muster ships one herdr, pinned by version and checksum, and turns its update
+checks off. A daemon that could be told to go and fetch a different version of itself would
+make "this was tested against the daemon it ships with" mean nothing.
 
 **Saving the file is enough.** Muster watches it and reads it again, and `cmd+shift+,` or
 Reload Configuration asks for the same thing when you would rather say so yourself - the
 watcher dispatches that action rather than being a second way in. Colours, fonts, the cursor,
 the keymap, `[text]`, `option_as_alt`, `resize_step` and `scroll_multiplier` all take effect
 where they are, including in panes that were already open; `pane_padding` reaches panes opened
-afterwards, because that is as far as the renderer takes it.
+afterwards, because that is as far as the renderer takes it. `[shell]` and `scrollback_bytes`
+reach panes opened afterwards too, and for the same shape of reason: the daemon takes both when
+it builds a pane, so a pane you are already typing in keeps what it was made with.
 
 The exception is `[[daemon]]`. Which machines a window is attached to is a question about live
 sessions rather than about settings, and answering it on a save would move panes somebody is
@@ -277,7 +296,7 @@ working in - so a change there is read, noticed, and reported as still wanting a
 file that will not parse changes nothing at all and says so, which means an editor that saves
 halfway through a thought cannot leave you running half a config.
 
-`~/.muster/state/` is Muster's to write, and holds two files nobody should edit. `window.toml`
+`~/.muster/state/` is Muster's to write, and holds three files nobody should edit. `window.toml`
 is rewritten whenever the window settles: which tabs it was showing, in what order, at what
 widths, and under `[window]` whether the agent list was open and how far the text was sized
 from what the config file asked for. Delete it and the next launch
@@ -293,6 +312,15 @@ and comes back on the next launch. `cmd+0` is the way back to whatever `[font] s
 format, because libghostty has no way to be handed a value except as a file. Rewritten every
 launch, so editing it changes nothing - but reading it answers "what did Muster actually tell
 the renderer", which is the first question when a colour does not take.
+
+`herdr.toml` is the same arrangement for the daemon: `[shell]` and `scrollback_bytes` in
+herdr's own format, plus the update checks Muster turns off, handed over by name so it moves
+which file that daemon reads without moving the socket it listens on. Reading it answers "what
+did Muster actually tell the daemon", which is the first question when a pane opens the wrong
+shell. It is written even when you have configured nothing, because the update checks are
+Muster's answer rather than yours - and your own `~/.config/herdr/config.toml` is untouched,
+still read by your own herdr, and handed back to every pane Muster opens so that `herdr` typed
+inside one reads what it always did.
 
 ## Building
 

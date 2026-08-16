@@ -96,7 +96,7 @@ fn until(what: &str, mut ready: impl FnMut() -> bool) {
 #[test]
 fn splitting_leftward_never_shows_the_pane_on_the_right() {
     let (daemon, mirror, _subscription, tab, pane) = session();
-    let client = daemon.client();
+    let client = daemon.backend();
     let watcher = Watcher::on(&mirror, tab.clone());
 
     let outcome = client
@@ -141,7 +141,7 @@ fn splitting_rightward_still_costs_one_request_and_no_suppression() {
     // The control. Two of the four sides are a split and nothing else, and an adapter that
     // started swapping on all of them would pass every test above while doubling the work.
     let (daemon, mirror, _subscription, tab, pane) = session();
-    let client = daemon.client();
+    let client = daemon.backend();
 
     let outcome = client
         .submit(&BackendIntent::SplitPane {
@@ -173,7 +173,7 @@ fn resizes_faster_than_the_daemon_announces_them_do_not_walk_backwards() {
     // divider back one step per event. herdr answers `pane.resize` with the settled layout for
     // the same reason it answers a swap with one.
     let (daemon, mirror, _subscription, tab, pane) = session();
-    let client = daemon.client();
+    let client = daemon.backend();
     client
         .submit(&BackendIntent::SplitPane {
             pane: pane.clone(),
@@ -222,7 +222,7 @@ fn closing_a_pane_a_leftward_split_made_collapses_the_tab() {
     // square on screen that nothing can dismiss, because the tree the view is withholding
     // still names a pane the tab no longer holds.
     let (daemon, mirror, _subscription, tab, pane) = session();
-    let client = daemon.client();
+    let client = daemon.backend();
 
     let outcome = client
         .submit(&BackendIntent::SplitPane {
@@ -260,7 +260,7 @@ fn a_dragged_divider_lands_on_the_answer_rather_than_the_broadcast() {
     // where about ten frames' worth of positions from a hundred milliseconds ago each triggered
     // another relayout while the pointer had moved on. That is the shaking.
     let (daemon, mirror, _subscription, tab, pane) = session();
-    let client = daemon.client();
+    let client = daemon.backend();
     client
         .submit(&BackendIntent::SplitPane {
             pane: pane.clone(),

@@ -1,17 +1,20 @@
 //! What Muster asks herdr for, in herdr's own words. Cases live in
 //! corpus/conformance/backend-intent.json.
 //!
-//! Two checks, and the second is the one that generalises. The cases pin the envelope Muster
-//! builds; `every_parameter_is_one_herdr_declares` pins it against the schema herdr generates
-//! from its own request types - so an intent added later gets the misspelled-key check for
-//! free, without anybody remembering to write a case for it.
+//! Three checks, and the last two are the ones that generalise. The cases pin the envelope
+//! Muster builds; `every_parameter_is_one_herdr_declares` pins it against the schema herdr
+//! generates from its own request types - so an intent added later gets the misspelled-key
+//! check for free, without anybody remembering to write a case for it. And
+//! `every_pane_a_daemon_makes_is_handed_the_users_own_config` reads the same schema from the
+//! other direction: any method herdr says takes an environment is one Muster has to send one
+//! on, so a fourth way of making a pane fails here rather than leaking quietly.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use conformance::{CaseError, Conformance, fields, repo_root};
 use muster_core::intent::{BackendIntent, Branch, Side};
 use muster_core::mirror::backend::{PaneId, TabId, WorkspaceId};
-use muster_herdr::request;
+use muster_herdr::{PaneEnvironment, request};
 use serde_json::{Value, json};
 
 #[test]
@@ -22,12 +25,88 @@ fn backend_intent_conformance() {
     let corpus = Conformance::load("backend-intent.json");
 
     let ran = corpus.run(|given| {
-        let (method, params) = request(&intent(given)?);
+        let (method, params) = request(&intent(given)?, &pane_environment(given));
         Ok(fields([("method", Some(json!(method))), ("params", Some(params))]))
     });
 
     assert_eq!(ran, corpus.cases.len());
     assert!(ran > 0);
+}
+
+/// Every pane-creating request Muster sends carries the user's own herdr config path.
+///
+/// The gate for the leak this restore exists to close. Muster points its daemon at a config
+/// file of its own with `HERDR_CONFIG_PATH`, and a pane inherits the daemon's environment - so
+/// `herdr` run inside a Muster pane would read Muster's file rather than the person's own.
+///
+/// Read from herdr's recorded schema rather than from a list kept here, which is what makes it
+/// a gate rather than a reminder: herdr declares `env` on exactly the calls that make a pane,
+/// so a fifth one appearing in a pin bump has to be decided about rather than missed. The one
+/// it declares and Muster does not send is named below for that reason.
+#[test]
+fn every_pane_a_daemon_makes_is_handed_the_users_own_config() {
+    let schema = recorded_schema();
+    let restoring = PaneEnvironment::restoring(&environment([("HOME", "/home/a")]));
+    let expected = json!({ "HERDR_CONFIG_PATH": "/home/a/.config/herdr/config.toml" });
+
+    let mut covered = BTreeSet::new();
+    for intent in every_intent() {
+        let (method, params) = request(&intent, &restoring);
+        let sent = params.get("env");
+        if declared_parameters(&schema, method).is_some_and(|declared| declared.contains("env")) {
+            assert_eq!(
+                sent,
+                Some(&expected),
+                "`{method}` makes a pane and was sent {sent:?} rather than the user's own herdr \
+                 config path.\n  Impact: `herdr` run inside that pane reads the config file \
+                 Muster wrote for its daemon instead of the person's own, which looks like \
+                 nothing at all until somebody wonders why their settings stopped applying.\n  \
+                 Fix: add the env to that arm of `request` in crates/muster-herdr/src/intent.rs."
+            );
+            covered.insert(method.to_string());
+        } else {
+            assert_eq!(
+                sent, None,
+                "`{method}` makes no pane and was sent an environment anyway.\n  Impact: herdr \
+                 ignores a parameter it does not declare, so this is dead weight on the wire \
+                 today and a silent behaviour change the day it declares one."
+            );
+        }
+    }
+
+    let declares_env = methods_declaring(&schema, "env");
+    let unsent: Vec<&String> = declares_env.difference(&covered).collect();
+    assert_eq!(
+        unsent,
+        vec!["plugin.pane.open"],
+        "the methods herdr says take an environment are no longer the ones Muster covers plus \
+         `plugin.pane.open`.\n  Impact: a way of making a pane that carries no restore leaks \
+         Muster's daemon config into that pane, and a method that stopped taking one means \
+         this check is now asserting nothing.\n  Check: what moved in \
+         corpus/herdr-<version>/api-schema.json since the pin was last bumped. Muster sends no \
+         plugin calls, which is why that one is expected here rather than covered."
+    );
+}
+
+/// The pane environment a case asks for: a restore derived from the environment it names, or
+/// nothing at all.
+///
+/// The launching environment rather than the answer, so a case pins the derivation too - which
+/// file a pane is pointed back at is exactly the thing that would be wrong in silence.
+fn pane_environment(given: &Value) -> PaneEnvironment {
+    match given.get("env").and_then(Value::as_object) {
+        None => PaneEnvironment::none(),
+        Some(named) => PaneEnvironment::restoring(
+            &named
+                .iter()
+                .map(|(name, value)| (name.clone(), value.as_str().unwrap_or_default().to_string()))
+                .collect(),
+        ),
+    }
+}
+
+fn environment<const N: usize>(named: [(&str, &str); N]) -> BTreeMap<String, String> {
+    named.iter().map(|(name, value)| ((*name).to_string(), (*value).to_string())).collect()
 }
 
 #[test]
@@ -39,7 +118,8 @@ fn every_parameter_is_one_herdr_declares() {
     let schema = recorded_schema();
 
     for intent in every_intent() {
-        let (method, params) = request(&intent);
+        let (method, params) =
+            request(&intent, &PaneEnvironment::restoring(&environment([("HOME", "/home/a")])));
         let declared = declared_parameters(&schema, method).unwrap_or_else(|| {
             panic!(
                 "herdr's recorded schema declares no method `{method}`.\n  Impact: this \
@@ -163,6 +243,25 @@ fn declared_parameters(schema: &Value, method: &str) -> Option<BTreeSet<String>>
     let name = reference.rsplit('/').next()?;
     let properties = schema["schemas"]["request"]["$defs"][name]["properties"].as_object()?;
     Some(properties.keys().cloned().collect())
+}
+
+/// Every method herdr declares one named parameter on.
+///
+/// The same walk as [`declared_parameters`] from the other end: that answers "what does this
+/// method take", and this answers "which methods take this". Both are needed to say that the
+/// set Muster covers is the set herdr offers, minus the one deliberately left out.
+fn methods_declaring(schema: &Value, parameter: &str) -> BTreeSet<String> {
+    let Some(methods) = schema["schemas"]["request"]["oneOf"].as_array() else {
+        return BTreeSet::new();
+    };
+    methods
+        .iter()
+        .filter_map(|entry| entry["properties"]["method"]["const"].as_str())
+        .filter(|method| {
+            declared_parameters(schema, method).is_some_and(|declared| declared.contains(parameter))
+        })
+        .map(str::to_string)
+        .collect()
 }
 
 /// One case's `given`, as the intent it describes.
