@@ -2938,8 +2938,8 @@
       }
     },
     {
-      "name": "a name and a title arrive on a pane and are reported once",
-      "why": "The two better things a sidebar row can say than `directory · harness`. A name is what somebody called this pane and a title is what its program last called itself; herdr keeps them as separate fields and setting one never touches the other (observations/herdr-0.8.0.md section 16), so a pane can carry both and a row can show both.\n\nOne change rather than two, because a row is redrawn once whatever moved on it.",
+      "name": "a title arrives on a pane, and a name riding beside it is not taken",
+      "why": "The two better things a sidebar row can say than `directory · harness`. A name is what somebody called this pane and a title is what its program last called itself; herdr keeps them as separate fields and setting one never touches the other (observations/herdr-0.8.0.md section 16).\n\nOnly the title is taken from an event. A `label` riding an event is not news - herdr announces a rename to nobody and counts nothing for one - so it is whatever was true when the payload was built, and the pane already has a better answer or is about to get one from a snapshot. The case that made this rule is below.\n\nOne change rather than two, because a row is redrawn once whatever moved on it.",
       "given": {
         "snapshot": {
           "panes": [
@@ -2959,7 +2959,8 @@
             "workspace": "w1",
             "cwd": "/src/muster",
             "name": "🔥 payments spike",
-            "title": "first working build"
+            "title": "first working build",
+            "revision": 1
           }
         ]
       },
@@ -2974,7 +2975,6 @@
         },
         "names": {
           "w1:p1": {
-            "name": "🔥 payments spike",
             "title": "first working build"
           }
         },
@@ -3082,8 +3082,8 @@
       }
     },
     {
-      "name": "a replayed pane does not put back a name the snapshot moved past",
-      "why": "Found in the running app, with every layer under it green. A pane renamed from another client showed its *old* name in the window, and stayed wrong.\n\nThe absent-means-keep rule above is only half the defence. herdr's replay is a ring buffer of past events, and a subscription's replay is drained *after* the snapshot rather than before it - so what arrives is not a payload missing the fields, it is a payload carrying what they used to say. Keeping it would be applying an event the mirror has already moved past.\n\n`revision` is the ordering that settles it, and it is herdr's own: it counts terminal titles and metadata tokens, which is exactly these two fields and nothing else (observations/herdr-0.8.0.md sections 10 and 16). A payload older than what is held says nothing about either field. It is deliberately not a general fence - cwd and the harness are not what revision counts, so they still take the newest thing that arrived.",
+      "name": "a replayed pane puts back neither an old name nor an old title",
+      "why": "Found in the running app, with every layer under it green. A pane renamed from another client showed its *old* name in the window and stayed wrong.\n\nRefusing an absent field was only half the defence. herdr's replay is a ring buffer of past events and a subscription drains it *after* the snapshot, so what arrives is not a payload missing the fields - it is a payload carrying what they used to say.\n\nThe two fields need different answers because the backend orders one and not the other. `revision` moves on a changed stripped title and on nothing else - not an agent changing state, and measured here, not a rename either - so it orders the title and an older payload loses.\n\nNothing orders a name. herdr announces a rename to nobody and stamps no counter for one, so a `label` on an event is not news: it is whatever was true when that event was built. A structure event therefore never writes the name of a pane already held, and a snapshot is the only authority. That costs exactly one thing, and it is small because it was nearly true anyway: a rename made by another client arrives on the next re-snapshot rather than at once.",
       "given": {
         "snapshot": {
           "panes": [

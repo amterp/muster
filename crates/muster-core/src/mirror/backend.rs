@@ -62,6 +62,22 @@ pub struct Pane {
     /// removed by the backend. Volatile status: a restart loses it, because the process
     /// that would set it again is new (`observations/herdr-0.8.0.md` section 16).
     pub title: Option<String>,
+    /// How many times the backend has changed this pane's [`Pane::title`].
+    ///
+    /// The ordering between two payloads about one pane, and it is the backend's own rather
+    /// than a clock. Needed because a backend may replay an event the mirror has already
+    /// moved past, and a title that goes backwards is a row saying an agent is doing
+    /// something it finished ten minutes ago.
+    ///
+    /// **The title and nothing else.** herdr's `revision` moves on a changed stripped title
+    /// and on no other event - not an agent changing state, and not a rename
+    /// (`~/src/herdr/src/terminal/state.rs`, and `observations/herdr-0.8.0.md` sections 10
+    /// and 16). So it orders this one field, and reading it as a general freshness stamp
+    /// would be wrong in the one case that matters: a rename leaves it untouched.
+    ///
+    /// Zero for a backend that counts nothing, which makes every payload equally current -
+    /// the same behaviour as before this existed.
+    pub revision: u64,
 }
 
 /// The unit that owns one pane tree. Trees hang off tabs, not workspaces.

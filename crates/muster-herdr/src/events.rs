@@ -211,6 +211,7 @@ fn read_pane(value: &Value) -> Option<Pane> {
         // as "not stated", which is what a pane whose cwd herdr could not resolve is.
         cwd: text(value, "cwd").to_string(),
         name: optional(value, "label"),
+        revision: value.get("revision").and_then(Value::as_u64).unwrap_or_default(),
         // The stripped spelling, so the activity glyph a harness spins in front of its
         // title never reaches a reader. herdr strips it and announces only when the
         // stripped text changes, which is what makes a spinning agent cost nothing

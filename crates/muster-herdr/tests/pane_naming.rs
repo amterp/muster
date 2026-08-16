@@ -56,6 +56,17 @@ fn held(mirror: &Arc<Mutex<Mirror>>, pane: &PaneId) -> (Option<String>, Option<S
     (pane.name.clone(), pane.title.clone())
 }
 
+/// Takes a fresh snapshot into the mirror, which is how a name reaches a client at all.
+///
+/// herdr announces a rename to nobody and stamps no counter for one, so nothing on the event
+/// stream is evidence about a name. What a reconnect does, done deliberately.
+fn resnapshot(daemon: &Daemon, mirror: &Arc<Mutex<Mirror>>) {
+    let fetched = daemon.call("session.snapshot", &json!({}));
+    let (snapshot, _dropped) =
+        read_snapshot(fetched.get("snapshot").expect("a snapshot with no snapshot in it"));
+    mirror.lock().unwrap().bootstrap(snapshot);
+}
+
 fn until(what: &str, mut ready: impl FnMut() -> bool) {
     let deadline = Instant::now() + Duration::from_secs(10);
     while Instant::now() < deadline {
@@ -118,11 +129,15 @@ fn a_name_and_a_title_sit_beside_each_other_and_neither_overwrites_the_other() {
     until("the title to arrive", || held(&mirror, &pane).1.is_some());
 
     daemon.call("pane.rename", &json!({ "pane_id": pane.as_str(), "label": "🔥 payments spike" }));
-    // herdr announces a rename to nobody, so nothing arrives until the next title change
-    // carries the name along. That is the finding rather than a flaw in the test: this is
-    // what a second client actually experiences.
+    resnapshot(&daemon, &mirror);
+
+    // The compatibility the whole feature rests on: herdr keeps the two as separate fields
+    // and setting one never touches the other, so a title arriving after a rename leaves the
+    // name where it is - and it arrives on the stream, without another snapshot.
     set_title(&daemon, &pane, "second working build");
-    until("the name to reach the mirror", || held(&mirror, &pane).0.is_some());
+    until("a later title to arrive", || {
+        held(&mirror, &pane).1.as_deref() == Some("second working build")
+    });
 
     assert_eq!(
         held(&mirror, &pane),
@@ -132,15 +147,46 @@ fn a_name_and_a_title_sit_beside_each_other_and_neither_overwrites_the_other() {
 }
 
 #[test]
+fn a_reconnect_does_not_put_back_a_name_the_session_has_moved_past() {
+    // The bug this file was extended for, and the one only a real daemon reproduces: the
+    // replay is a ring buffer of past events, drained after the snapshot rather than before,
+    // so a rename made before a client connected arrives twice - once correctly on the
+    // snapshot, then again as the payload that preceded it.
+    let (daemon, _first, _subscription, pane) = session();
+
+    daemon.call("pane.rename", &json!({ "pane_id": pane.as_str(), "label": "🔥 payments spike" }));
+    set_title(&daemon, &pane, "first working build");
+    thread::sleep(Duration::from_millis(800));
+    daemon.call("pane.rename", &json!({ "pane_id": pane.as_str(), "label": "🧪 flaky test hunt" }));
+    thread::sleep(Duration::from_millis(400));
+
+    // A second client, arriving now, which is what a reconnect looks like from the daemon's
+    // side: snapshot first, then every event the ring still holds.
+    let fresh = Arc::new(Mutex::new(Mirror::new()));
+    let _following = Subscription::start(
+        daemon.socket_path().to_string_lossy().into_owned(),
+        Arc::clone(&fresh),
+        Arc::new(|_| {}),
+    );
+    until("the fresh mirror to see the pane", || fresh.lock().unwrap().panes().count() == 1);
+    thread::sleep(Duration::from_millis(800));
+
+    assert_eq!(
+        held(&fresh, &pane).0.as_deref(),
+        Some("🧪 flaky test hunt"),
+        "a replayed event put back a name the session had moved past, so the window shows one \
+         thing and the daemon holds another and nothing ever corrects it"
+    );
+}
+
+#[test]
 fn a_name_cleared_by_somebody_else_arrives_only_on_a_fresh_snapshot() {
     let (daemon, mirror, _subscription, pane) = session();
 
     daemon.call("pane.rename", &json!({ "pane_id": pane.as_str(), "label": "🔥 payments spike" }));
     set_title(&daemon, &pane, "first working build");
-    until("the name and the title to arrive", || {
-        let (name, title) = held(&mirror, &pane);
-        name.is_some() && title.is_some()
-    });
+    resnapshot(&daemon, &mirror);
+    assert_eq!(held(&mirror, &pane).0.as_deref(), Some("🔥 payments spike"));
 
     // Null rather than empty, which is the only spelling herdr's schema accepts for a pane
     // and the only one that clears.
@@ -150,10 +196,9 @@ fn a_name_cleared_by_somebody_else_arrives_only_on_a_fresh_snapshot() {
         held(&mirror, &pane).1.as_deref() == Some("second working build")
     });
 
-    // Still named, and deliberately. Two things have to be true at once for a clear to
-    // arrive on the stream, and neither is: herdr announces a rename to nobody, and an
-    // event may not clear a field it omits, because its replay omits both fields on every
-    // reconnect (`observations/herdr-0.8.0.md` section 16).
+    // Still named, and deliberately. Nothing on the stream is evidence about a name: herdr
+    // announces a rename to nobody and stamps no counter for one, so a `label` riding a
+    // title change is whatever was true when that payload was built rather than news.
     //
     // Muster's own clears do not go through here at all - a rename is applied from the
     // answer herdr gives it, the way a split is. What this pins is the limit for a rename
@@ -161,13 +206,10 @@ fn a_name_cleared_by_somebody_else_arrives_only_on_a_fresh_snapshot() {
     assert_eq!(
         held(&mirror, &pane).0.as_deref(),
         Some("🔥 payments spike"),
-        "an event cleared a name, which means a reconnect can wipe every name in the window"
+        "an event wrote a name, which is what lets a reconnect put back one already moved past"
     );
 
-    let fetched = daemon.call("session.snapshot", &json!({}));
-    let (snapshot, _dropped) =
-        read_snapshot(fetched.get("snapshot").expect("a snapshot with no snapshot in it"));
-    mirror.lock().unwrap().bootstrap(snapshot);
+    resnapshot(&daemon, &mirror);
 
     assert_eq!(
         held(&mirror, &pane),

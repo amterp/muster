@@ -69,6 +69,7 @@ pub fn read_snapshot(snapshot: &Value) -> (Snapshot, usize) {
             agent: value.get("agent").and_then(Value::as_str).map(str::to_string),
             cwd: text(value, "cwd").to_string(),
             name: optional(value, "label"),
+            revision: value.get("revision").and_then(Value::as_u64).unwrap_or_default(),
             title: optional(value, "terminal_title_stripped"),
         })
     });

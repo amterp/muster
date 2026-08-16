@@ -373,6 +373,7 @@ fn full_window(panes: usize) -> (Composition, Mirror) {
                 cwd: "/tmp".to_string(),
                 name: None,
                 title: Some("first working build".to_string()),
+                revision: 1,
             })
             .collect(),
         layouts: vec![Layout { tab: tab.clone(), root, focused: None, zoomed: None }],

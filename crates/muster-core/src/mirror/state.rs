@@ -319,19 +319,37 @@ impl Mirror {
                 };
                 pane.agent_state = before.agent_state;
                 pane.agent = pane.agent.or_else(|| before.agent.clone());
-                // The same reasoning as agent state above, measured rather than assumed.
-                // herdr's replay is a ring buffer of past events rather than a fresh
-                // statement, so reconnecting replays the pane's *creation* payload - which
-                // carries no name and no title, because neither existed yet
-                // (`observations/herdr-0.8.0.md` section 16). That replay is drained after
-                // the snapshot, not before it, so letting an absent field clear one would
-                // wipe every name and title in the window on every reconnect.
+                // Two more fields structure events may not simply write, for the same reason
+                // as agent state above and measured rather than assumed. herdr's replay is a
+                // ring buffer of past events rather than a fresh statement of the world, and
+                // a subscription drains it *after* its snapshot - so a reconnect replays the
+                // pane's creation payload, which carries neither field because neither
+                // existed yet, and then replays whatever came after it carrying what they
+                // used to say. Applying either on top of the snapshot is going backwards.
                 //
-                // The cost of the other direction, stated because it is real: a title its
-                // program genuinely clears stays on screen until the next title change or
-                // the next snapshot. That is a stale subtitle, against losing all of them.
-                pane.name = pane.name.or_else(|| before.name.clone());
-                pane.title = pane.title.or_else(|| before.title.clone());
+                // **A name is never taken from an event on a pane already held.** herdr
+                // announces a rename to nobody and stamps no counter for one, so a `label`
+                // on an event is not news: it is whatever was true when that event was
+                // built, and there is nothing to order it by. A snapshot is the only
+                // authority, which costs exactly one thing - a rename made by another client
+                // reaches this window on the next re-snapshot rather than at once. That was
+                // nearly true anyway, since nothing announces one; what is bought is that a
+                // reconnect can no longer put back a name the session has moved past. Found
+                // in the running app, with every layer under it green.
+                //
+                // **A title is taken when it is not older than what is held**, because that
+                // one herdr does count: `revision` moves on a changed stripped title and on
+                // nothing else, so it orders exactly this field. An absent title still means
+                // "this payload does not speak to it" rather than "cleared", or a reconnect
+                // would wipe every one in the window - and the cost of that direction is a
+                // title its program genuinely clears staying until the next change.
+                pane.name.clone_from(&before.name);
+                if pane.revision >= before.revision {
+                    pane.title = pane.title.or_else(|| before.title.clone());
+                } else {
+                    pane.title.clone_from(&before.title);
+                    pane.revision = before.revision;
+                }
                 // What the pane is called, which is not structure and is not state. A pane
                 // that changed directory is listed under a name it no longer has until
                 // something else happens to move, and on a quiet session that is never.

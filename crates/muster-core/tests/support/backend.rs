@@ -86,6 +86,10 @@ pub(crate) fn read_pane(given: &Value) -> Pane {
         cwd: text(given, "cwd"),
         name: optional(given, "name"),
         title: optional(given, "title"),
+        // Absent is zero, so a case that is not about ordering does not have to number every
+        // pane it mentions. Two payloads at zero are equally current, which is what a backend
+        // that counts nothing would look like.
+        revision: given.get("revision").and_then(Value::as_u64).unwrap_or_default(),
     }
 }
 

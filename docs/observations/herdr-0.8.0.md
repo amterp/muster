@@ -841,14 +841,26 @@ and passing `""` sets an empty name that survives a daemon restart:
     tab.rename "release"     label "release"
     tab.rename ""            label ""           and there is no way back to "1"
 
-**A replayed `pane_created` carries neither name nor title.** Subscribing afresh to a
-session whose pane was both named and titled replayed a `pane_created` holding
-`revision: 0`, `agent_status: "unknown"`, and no `label` or `terminal_title` key at all -
-the payload as of when the pane was made, not as of now. The consequence for a mirror is
-the one `agent_status` already has (section 10, and the event model in
-`architecture.md`): a `pane_created` may not clear a name or a title that is already
-held, because absent there means "not recorded" rather than "not set". `pane_updated`
-and `session.snapshot` are the two payloads that speak for the present.
+**The replay is a log of past events, not a statement of the present, and it is drained
+after the snapshot.** Subscribing afresh to a session whose pane was both named and titled
+replayed a `pane_created` holding `revision: 0`, `agent_status: "unknown"`, and no `label`
+or `terminal_title` key at all - the payload as of when the pane was made. A client that
+snapshots on connect therefore applies the snapshot first and the history afterwards, which
+is backwards, and this goes wrong in two ways rather than one.
+
+Absent fields are the first. A `pane_created` may not clear a name or a title already held,
+because absent there means "not recorded" rather than "not set" - the same fence
+`agent_status` already sits behind (section 10, and the event model in `architecture.md`).
+
+Stale values are the second, and they need a different answer per field, because **herdr
+orders the title and does not order the name**. `revision` counts changed *stripped* titles
+and nothing else: not an agent changing state (section 10), and measured here, not a rename
+either - renaming a pane twice left it where it was. So an older payload can be recognised
+and dropped for the title, and cannot be for the name. With no ordering and no announcement,
+a `label` on an event carries no information a snapshot does not carry better, and the only
+safe rule is that a structure event never writes the name of a pane already held. The cost
+is one round trip of latency on somebody else's rename, which was nearly the situation
+anyway.
 
 **A restart keeps the name and loses the title**, which is the asymmetry the whole
 feature rests on. After `server.stop` and a fresh daemon, `label` came back on the pane
