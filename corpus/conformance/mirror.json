@@ -2936,6 +2936,150 @@
           "paneRemoved:w1:p1:announced"
         ]
       }
+    },
+    {
+      "name": "a name and a title arrive on a pane and are reported once",
+      "why": "The two better things a sidebar row can say than `directory · harness`. A name is what somebody called this pane and a title is what its program last called itself; herdr keeps them as separate fields and setting one never touches the other (observations/herdr-0.8.0.md section 16), so a pane can carry both and a row can show both.\n\nOne change rather than two, because a row is redrawn once whatever moved on it.",
+      "given": {
+        "snapshot": {
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "cwd": "/src/muster"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "paneUpserted",
+            "id": "w1:p1",
+            "tab": "w1:t1",
+            "workspace": "w1",
+            "cwd": "/src/muster",
+            "name": "🔥 payments spike",
+            "title": "first working build"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1"
+        ],
+        "tabs": [],
+        "workspaces": [],
+        "agentStates": {
+          "w1:p1": "unknown"
+        },
+        "names": {
+          "w1:p1": {
+            "name": "🔥 payments spike",
+            "title": "first working build"
+          }
+        },
+        "layouts": {},
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "paneRelabelled:w1:p1"
+        ]
+      }
+    },
+    {
+      "name": "a replayed pane does not clear a name or a title",
+      "why": "The measured reason this is not simply 'apply what arrived'. herdr's replay is a ring buffer of past events rather than a fresh statement of the world, so reconnecting replays the pane's *creation* payload - which carries neither field, because neither existed when the pane was made. That replay is drained after the snapshot rather than before it, so treating an absent field as a clear would wipe every name and every title in the window on each reconnect.\n\nSame fence as agent state, for the same reason and from the same recording (observations/herdr-0.8.0.md section 16). What it costs is stated where the code makes the choice: a title a program genuinely clears lingers until the next title change or the next snapshot.",
+      "given": {
+        "snapshot": {
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "cwd": "/src/muster",
+              "name": "🔥 payments spike",
+              "title": "first working build"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "paneUpserted",
+            "id": "w1:p1",
+            "tab": "w1:t1",
+            "workspace": "w1",
+            "cwd": "/src/muster"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1"
+        ],
+        "tabs": [],
+        "workspaces": [],
+        "agentStates": {
+          "w1:p1": "unknown"
+        },
+        "names": {
+          "w1:p1": {
+            "name": "🔥 payments spike",
+            "title": "first working build"
+          }
+        },
+        "layouts": {},
+        "focus": {},
+        "health": "connected",
+        "changes": []
+      }
+    },
+    {
+      "name": "a snapshot is allowed to drop a name a pane no longer has",
+      "why": "The other half of the rule above, and what keeps it from being a leak. Clearing a name is real - `pane.rename` takes a null label and answers with a pane that has none - and a snapshot is a fresh statement of the whole world rather than a replayed fragment, so it is the one payload that may say a field is gone. Without this a cleared name would be unclearable for the life of the connection.",
+      "given": {
+        "snapshot": {
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "cwd": "/src/muster",
+              "name": "🔥 payments spike",
+              "title": "first working build"
+            }
+          ]
+        },
+        "resnapshot": {
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "cwd": "/src/muster",
+              "title": "first working build"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "panes": [
+          "w1:p1"
+        ],
+        "tabs": [],
+        "workspaces": [],
+        "agentStates": {
+          "w1:p1": "unknown"
+        },
+        "names": {
+          "w1:p1": {
+            "title": "first working build"
+          }
+        },
+        "layouts": {},
+        "focus": {},
+        "health": "connected",
+        "changes": []
+      }
     }
   ]
 }

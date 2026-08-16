@@ -1,7 +1,7 @@
 {
   "concept": "backend-events",
   "source": "recorded",
-  "regenerate": "tools/herdr-probe/probe lifecycle agent-states",
+  "regenerate": "tools/herdr-probe/probe lifecycle agent-states naming",
   "why": "herdr's wire, translated into Muster's vocabulary - the one place a JSON key from a dependency is allowed to appear. Kept apart from mirror.json so a failure says which of two things broke: these cases go red when herdr changes what it sends, those go red when our fold over it is wrong. Every payload here is a line a real daemon emitted, copied from corpus/herdr-0.8.0/, except where a case is explicitly about a shape we have not seen and want to survive.",
   "cases": [
     {
@@ -219,6 +219,22 @@
         "events": [
           "paneRemoved:w1:p3",
           "paneRemoved:w1:p2"
+        ],
+        "unknownKinds": []
+      }
+    },
+    {
+      "name": "a changed title and a name arrive on the same event a pane update always used",
+      "why": "The live route by which a sidebar learns what an agent is doing. herdr has no `pane.renamed` topic and announces a rename to nobody, so both fields ride `pane_updated` or reach a client only on the next snapshot (observations/herdr-0.8.0.md section 16).\n\nThe stripped spelling is what is read, not the raw one. Both lines here carry `terminal_title` and `terminal_title_stripped`, and a harness rotates an activity glyph through the raw field several times a second - reading that one would redraw a row per spin, and herdr already did the work of telling them apart.\n\nThe second line is the one that shows a name and a title on one payload, which is why they are decoded as two fields rather than one: a person's name for a pane is durable and its title is not.",
+      "given": {
+        "chunks": [
+          "{\"data\": {\"pane\": {\"agent_status\": \"unknown\", \"cwd\": \"/private/tmp\", \"focused\": true, \"foreground_cwd\": \"/private/tmp\", \"pane_id\": \"w1:p1\", \"revision\": 1, \"scroll\": {\"max_offset_from_bottom\": 0, \"offset_from_bottom\": 0, \"viewport_rows\": 23}, \"tab_id\": \"w1:t1\", \"terminal_id\": \"term_6592b733a50861\", \"terminal_title\": \"first working build\", \"terminal_title_stripped\": \"first working build\", \"workspace_id\": \"w1\"}, \"type\": \"pane_updated\"}, \"event\": \"pane_updated\"}\n{\"data\": {\"pane\": {\"agent_status\": \"unknown\", \"cwd\": \"/private/tmp\", \"focused\": true, \"foreground_cwd\": \"/private/tmp\", \"label\": \"🔥 payments spike\", \"pane_id\": \"w1:p1\", \"revision\": 2, \"scroll\": {\"max_offset_from_bottom\": 0, \"offset_from_bottom\": 0, \"viewport_rows\": 23}, \"tab_id\": \"w1:t1\", \"terminal_id\": \"term_6592b733a50861\", \"terminal_title\": \"second working build\", \"terminal_title_stripped\": \"second working build\", \"workspace_id\": \"w1\"}, \"type\": \"pane_updated\"}, \"event\": \"pane_updated\"}\n"
+        ]
+      },
+      "expect": {
+        "events": [
+          "paneUpserted:w1:p1 tab=w1:t1 workspace=w1 state=unknown cwd=/private/tmp title=first working build",
+          "paneUpserted:w1:p1 tab=w1:t1 workspace=w1 state=unknown cwd=/private/tmp name=🔥 payments spike title=second working build"
         ],
         "unknownKinds": []
       }

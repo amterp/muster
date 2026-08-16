@@ -47,14 +47,25 @@ fn describe(event: &BackendEvent) -> String {
             format!("tabUpserted:{} workspace={} label={}", tab.id, tab.workspace, tab.label)
         }
         BackendEvent::TabRemoved(id) => format!("tabRemoved:{id}"),
-        BackendEvent::PaneUpserted(pane) => format!(
-            "paneUpserted:{} tab={} workspace={} state={} cwd={}",
-            pane.id,
-            pane.tab,
-            pane.workspace,
-            pane.agent_state.as_str(),
-            pane.cwd
-        ),
+        // Name and title are appended only when the payload carried one, so a case about
+        // structure reads as it always did and a case about naming shows what it is about.
+        // Absent is the ordinary state of both: most panes are unnamed and most programs
+        // set no title.
+        BackendEvent::PaneUpserted(pane) => {
+            let named = |key: &str, value: &Option<String>| {
+                value.as_ref().map(|value| format!(" {key}={value}")).unwrap_or_default()
+            };
+            format!(
+                "paneUpserted:{} tab={} workspace={} state={} cwd={}{}{}",
+                pane.id,
+                pane.tab,
+                pane.workspace,
+                pane.agent_state.as_str(),
+                pane.cwd,
+                named("name", &pane.name),
+                named("title", &pane.title),
+            )
+        }
         BackendEvent::PaneRemoved(id) => format!("paneRemoved:{id}"),
         BackendEvent::LayoutUpserted(layout) => {
             let mut described = format!("layoutUpserted:{} tree={}", layout.tab, layout.root);

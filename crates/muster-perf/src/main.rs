@@ -340,6 +340,8 @@ fn full_window(panes: usize) -> (Composition, Mirror) {
                 agent_state: AgentState::Idle,
                 agent: None,
                 cwd: "/tmp".to_string(),
+                name: None,
+                title: None,
             })
             .collect(),
         layouts: vec![Layout { tab: tab.clone(), root, focused: None, zoomed: None }],

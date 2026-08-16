@@ -60,6 +60,7 @@ fn mirror_conformance() {
             ("tabs", Some(json!(ids(mirror.tabs().map(|t| t.id.as_str()))))),
             ("workspaces", Some(json!(ids(mirror.workspaces().map(|w| w.id.as_str()))))),
             ("agentStates", Some(agent_states(&mirror))),
+            ("names", named(&mirror)),
             ("layouts", Some(layouts(&mirror))),
             ("focus", Some(focus(mirror.focus()))),
             ("health", Some(json!(mirror.health().as_str()))),
@@ -85,6 +86,25 @@ fn focus(focus: &Focus) -> Value {
         ("tab", focus.tab.as_ref().map(|id| json!(id.as_str()))),
         ("pane", focus.pane.as_ref().map(|id| json!(id.as_str()))),
     ])
+}
+
+/// The name somebody gave a pane and the title its program set, for the panes that have
+/// either.
+///
+/// Absent when no pane in the case has one, on the same reasoning as `focus` above: most
+/// cases here are about structure and would otherwise carry a map of empty objects.
+fn named(mirror: &Mirror) -> Option<Value> {
+    let mut map = serde_json::Map::new();
+    for pane in mirror.panes() {
+        let described = fields([
+            ("name", pane.name.as_ref().map(|name| json!(name))),
+            ("title", pane.title.as_ref().map(|title| json!(title))),
+        ]);
+        if described.as_object().is_some_and(|held| !held.is_empty()) {
+            map.insert(pane.id.to_string(), described);
+        }
+    }
+    (!map.is_empty()).then_some(Value::Object(map))
 }
 
 fn agent_states(mirror: &Mirror) -> Value {

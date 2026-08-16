@@ -84,6 +84,8 @@ pub(crate) fn read_pane(given: &Value) -> Pane {
         agent_state: AgentState::from_backend(&text(given, "agentState")),
         agent: optional(given, "agent"),
         cwd: text(given, "cwd"),
+        name: optional(given, "name"),
+        title: optional(given, "title"),
     }
 }
 

@@ -55,6 +55,13 @@ pub struct Pane {
     /// `AgentState::Unknown`: a pane can run no agent at all and be perfectly idle.
     pub agent: Option<String>,
     pub cwd: String,
+    /// What a person called this pane, if anybody has. Durable identity: the backend
+    /// writes it down, so it comes back after a daemon restart.
+    pub name: Option<String>,
+    /// What the program in the pane last called itself, with any activity glyph already
+    /// removed by the backend. Volatile status: a restart loses it, because the process
+    /// that would set it again is new (`observations/herdr-0.8.0.md` section 16).
+    pub title: Option<String>,
 }
 
 /// The unit that owns one pane tree. Trees hang off tabs, not workspaces.

@@ -319,10 +319,26 @@ impl Mirror {
                 };
                 pane.agent_state = before.agent_state;
                 pane.agent = pane.agent.or_else(|| before.agent.clone());
+                // The same reasoning as agent state above, measured rather than assumed.
+                // herdr's replay is a ring buffer of past events rather than a fresh
+                // statement, so reconnecting replays the pane's *creation* payload - which
+                // carries no name and no title, because neither existed yet
+                // (`observations/herdr-0.8.0.md` section 16). That replay is drained after
+                // the snapshot, not before it, so letting an absent field clear one would
+                // wipe every name and title in the window on every reconnect.
+                //
+                // The cost of the other direction, stated because it is real: a title its
+                // program genuinely clears stays on screen until the next title change or
+                // the next snapshot. That is a stale subtitle, against losing all of them.
+                pane.name = pane.name.or_else(|| before.name.clone());
+                pane.title = pane.title.or_else(|| before.title.clone());
                 // What the pane is called, which is not structure and is not state. A pane
                 // that changed directory is listed under a name it no longer has until
                 // something else happens to move, and on a quiet session that is never.
-                let relabelled = pane.cwd != before.cwd || pane.agent != before.agent;
+                let relabelled = pane.cwd != before.cwd
+                    || pane.agent != before.agent
+                    || pane.name != before.name
+                    || pane.title != before.title;
                 self.panes.insert(id.clone(), pane);
                 if relabelled { vec![Change::PaneRelabelled(id)] } else { Vec::new() }
             }

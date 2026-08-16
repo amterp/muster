@@ -210,6 +210,12 @@ fn read_pane(value: &Value) -> Option<Pane> {
         // Optional in herdr's schema even though every recording carries it. Empty reads
         // as "not stated", which is what a pane whose cwd herdr could not resolve is.
         cwd: text(value, "cwd").to_string(),
+        name: optional(value, "label"),
+        // The stripped spelling, so the activity glyph a harness spins in front of its
+        // title never reaches a reader. herdr strips it and announces only when the
+        // stripped text changes, which is what makes a spinning agent cost nothing
+        // (`observations/herdr-0.8.0.md` section 16).
+        title: optional(value, "terminal_title_stripped"),
     })
 }
 
@@ -223,4 +229,12 @@ fn id(value: &Value, key: &str) -> Option<String> {
 
 fn text<'a>(value: &'a Value, key: &str) -> &'a str {
     value.get(key).and_then(Value::as_str).unwrap_or_default()
+}
+
+/// A field that may be absent, null, or empty, where all three mean "nothing to show".
+///
+/// Distinct from [`text`], which flattens those to `""`: for a name or a title the
+/// difference between "" and nothing is a blank line drawn under a row.
+fn optional(value: &Value, key: &str) -> Option<String> {
+    value.get(key).and_then(Value::as_str).filter(|text| !text.is_empty()).map(str::to_string)
 }

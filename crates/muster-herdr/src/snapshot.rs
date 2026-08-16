@@ -68,6 +68,8 @@ pub fn read_snapshot(snapshot: &Value) -> (Snapshot, usize) {
             agent_state: AgentState::from_backend(text(value, "agent_status")),
             agent: value.get("agent").and_then(Value::as_str).map(str::to_string),
             cwd: text(value, "cwd").to_string(),
+            name: optional(value, "label"),
+            title: optional(value, "terminal_title_stripped"),
         })
     });
 
@@ -128,4 +130,10 @@ fn id(value: &Value, key: &str) -> Option<String> {
 
 fn text<'a>(value: &'a Value, key: &str) -> &'a str {
     value.get(key).and_then(Value::as_str).unwrap_or_default()
+}
+
+/// A field that may be absent, null, or empty, where all three mean "nothing to show".
+/// Same reasoning as on the event path: `""` and nothing differ by a blank line on screen.
+fn optional(value: &Value, key: &str) -> Option<String> {
+    value.get(key).and_then(Value::as_str).filter(|text| !text.is_empty()).map(str::to_string)
 }
