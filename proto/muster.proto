@@ -164,6 +164,17 @@ message ResizePane {
   // How many cells. Zero means the daemon's own step, which is what a keybinding wants; a CLI
   // or an agent placing a divider exactly says.
   float amount = 4;
+
+  // How big one cell is on the surface this resize came from, in points. Zero means the caller
+  // could not measure one.
+  //
+  // Sent because `resize_step` may be written in points and the daemon resizes a grid, so
+  // something has to divide. Only the shell can measure a cell - it belongs to a live surface
+  // and moves with the font size - and only the core should do the arithmetic, so the shell
+  // reports and the core divides. A caller with no surface sends nothing and gets the daemon's
+  // own step, which is a smaller wrong answer than a distance guessed from a font nobody knows.
+  float cell_width = 5;
+  float cell_height = 6;
 }
 
 // Makes the text in every pane bigger or smaller, or puts it back.

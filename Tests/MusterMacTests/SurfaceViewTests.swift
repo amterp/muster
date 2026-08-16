@@ -89,6 +89,29 @@ private func view(_ recorder: RecordingDispatcher) -> SurfaceView {
   #expect(asked.map(\.1) == [3])
 }
 
+@Test @MainActor func aCellIsReportedInPointsRatherThanBackingPixels() {
+  // libghostty measures in backing pixels and every dimension a config file names is points,
+  // so somebody who wrote `resize_step = "16px"` on a retina display means two cells here, not
+  // one. Converted in the view because that is where AppKit keeps the scale factor.
+  let recording = RecordingSurface()
+  recording.cellPixelSize = (width: 16, height: 34)
+  let surface = view(surface: recording, clipboard: NSPasteboard.general)
+
+  // No window, so the view falls back to the 2x it assumes everywhere else it needs a scale.
+  let cell = surface.cellPointSize
+
+  #expect(cell?.width == 8)
+  #expect(cell?.height == 17)
+}
+
+@Test @MainActor func aSurfaceNothingHasSizedYetReportsNoCellRatherThanZero() {
+  // Zero would reach the core as a cell of no width and be divided by. Nil says "could not
+  // measure", which the core answers with the daemon's own step.
+  let surface = view(surface: RecordingSurface(), clipboard: NSPasteboard.general)
+
+  #expect(surface.cellPointSize == nil)
+}
+
 @Test @MainActor func aWheelOverAPaneNeverAsksForTheKeyboard() {
   // The whole point of the feature: reading one agent's output while typing into another. A
   // scroll that also focused would make that impossible in exactly the case it exists for.
@@ -128,6 +151,8 @@ private final class RecordingSurface: PaneSurface {
   var onProcessExited: (@MainActor (Bool) -> Void)?
   /// Every offset asked for, in order, so a test can tell "sized once" from "sized twice".
   var fontSizeOffsets: [Int32] = []
+  /// In backing pixels, as libghostty answers. Nil is a surface nothing has sized yet.
+  var cellPixelSize: (width: UInt32, height: UInt32)?
 
   init(selection: String? = nil) { selectedText = selection }
 

@@ -151,6 +151,46 @@ fn malformed_toml_is_refused_with_the_parser_s_account_of_it() {
     );
 }
 
+/// Turning a step in points into the cells the daemon resizes by.
+///
+/// Native rather than a corpus case: the corpus judges what a config file *means*, and this is
+/// arithmetic done later, on a measurement no config file contains. Pinning it here keeps the
+/// numbers beside the rule they came from.
+#[test]
+fn a_step_in_points_becomes_the_cells_that_fit_in_it() {
+    let step = config::ResizeStep::Points(150);
+
+    // A cell is roughly 8 points wide and 17 tall, which is the asymmetry two units exist for:
+    // one number in points crosses about as much screen either way, where one number in cells
+    // does not.
+    assert_eq!(step.cells(Some(8.0)), Some(19.0), "150 points is about nineteen columns");
+    assert_eq!(step.cells(Some(17.0)), Some(9.0), "the same 150 points is about nine rows");
+}
+
+#[test]
+fn a_step_in_cells_needs_no_measurement_and_ignores_the_one_it_is_given() {
+    let step = config::ResizeStep::Cells(4);
+
+    assert_eq!(step.cells(None), Some(4.0));
+    assert_eq!(step.cells(Some(8.0)), Some(4.0), "cells are the identity case of the conversion");
+}
+
+#[test]
+fn a_step_too_small_to_cross_a_cell_still_moves_one() {
+    // Rounding alone would answer zero, which reaches the seam as proto3's unset and silently
+    // becomes the daemon's own step - a chord that looks broken rather than small.
+    assert_eq!(config::ResizeStep::Points(3).cells(Some(17.0)), Some(1.0));
+}
+
+#[test]
+fn a_step_in_points_with_nothing_to_divide_by_has_no_answer() {
+    // The caller is expected to fall back to the daemon's own step and say so. Inventing a
+    // number here would be wrong by whatever the font happens to be.
+    assert_eq!(config::ResizeStep::Points(150).cells(None), None);
+    assert_eq!(config::ResizeStep::Points(150).cells(Some(0.0)), None, "a cell of no width");
+    assert_eq!(config::ResizeStep::Points(150).cells(Some(f32::NAN)), None);
+}
+
 /// The bindings this file moved, spelled `action=chord` in bit order.
 ///
 /// Against the defaults rather than in full, because a case listing fifteen unchanged

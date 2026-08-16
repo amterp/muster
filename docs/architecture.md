@@ -438,6 +438,22 @@ chords before the pane sees them would take shortcuts the user rebound in System
 something else, and would hide from every menu what the app can do. So the menu is where Muster's own actions live,
 and each item does nothing but dispatch.
 
+**The intent is parameterized; the action is not.** `CreateTab { workspace, cwd }` takes arguments, and `new_tab` is
+a parameterless name that dispatches it with defaults. That split falls out of the menu: an item has exactly one key
+equivalent, and that is also the handle System Settings needs to rebind it, so an action name has nowhere to put an
+argument and `[keymap]` stays keyed by action. Ghostty's chord-keyed form - `cmd+shift+h=resize_split:left,150` -
+lets a config name two chords for one action, or a binding with no action name at all, and neither is something the
+menu can represent or the platform can rebind.
+
+What that costs is paid in the config file rather than in the vocabulary: an amount a chord would have carried
+becomes a root key, which is what `resize_step` and `scroll_multiplier` are. Where an action genuinely has a small
+closed set of arguments, it becomes that many actions - `focus_tab_1` through `focus_tab_9` are nine names the
+config file and the menu can both say, over one `Action::FocusTab(u8)` in the core. Nine menu items need nine
+actions; the core still holds one intent.
+
+The CLI does not inherit any of this. It names intents directly and passes arguments, because nothing about it is a
+menu - which is the whole point of separating the two, and why the constraint stops at the keymap.
+
 Something the app notices on its own is a *trigger* for an action, never a second way of doing it. The config-file
 watcher is the worked example: saving the file dispatches `reload_config`, the same action a chord, a menu item and
 a CLI dispatch. That is what keeps "one action path" true of things nobody pressed - the alternative is a second

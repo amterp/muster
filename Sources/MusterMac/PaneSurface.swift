@@ -40,6 +40,13 @@ public protocol PaneSurface: AnyObject {
 
   /// What is selected in this pane, or nil when nothing is.
   var selectedText: String? { get }
+
+  /// How big one cell is, in backing pixels, or nil before the surface has been sized.
+  ///
+  /// Only a live surface knows: it is the font's own measurement and it moves with the text
+  /// size. The core needs it to read a `resize_step` written in points, since the daemon
+  /// resizes a grid and something has to divide.
+  var cellPixelSize: (width: UInt32, height: UInt32)? { get }
 }
 
 extension Surface: PaneSurface {}

@@ -206,14 +206,20 @@ public enum Core {
   ///
   /// A direction rather than a divider: which one moves is a question about a tree the person
   /// pressing the key is not looking at, and only the daemon holds the rectangles to answer it.
+  /// `cell` is how big one cell is on the surface the chord happened on, in points, and lets
+  /// the core read a `resize_step` written in points. Omitting it means "could not measure",
+  /// which the core answers with the daemon's own step rather than a guess.
   public static func resize(
-    direction: String, amount: Float = 0, daemonID: String = "", paneID: String = ""
+    direction: String, amount: Float = 0, cell: (width: Float, height: Float)? = nil,
+    daemonID: String = "", paneID: String = ""
   ) {
     var resize = Muster_ResizePane()
     resize.daemonID = daemonID
     resize.paneID = paneID
     resize.direction = direction
     resize.amount = amount
+    resize.cellWidth = cell?.width ?? 0
+    resize.cellHeight = cell?.height ?? 0
     var request = Muster_Request()
     request.resizePane = resize
     send(request)

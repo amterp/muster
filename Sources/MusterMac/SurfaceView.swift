@@ -91,6 +91,20 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
       height: UInt32(bounds.height * (window?.backingScaleFactor ?? 2)))
   }
 
+  /// How big one cell is in points, which is what the core divides a `resize_step` by.
+  ///
+  /// Points rather than the backing pixels the renderer answers in, because every dimension a
+  /// config file names - `pane_padding`, `[font] size` - is points, and two length keys in one
+  /// file that mean different things is a trap. The scale factor is read here for the same
+  /// reason `setSize` writes it here: AppKit keeps it on the window, which the renderer has no
+  /// business knowing about.
+  public var cellPointSize: (width: Float, height: Float)? {
+    guard let pixels = surface?.cellPixelSize else { return nil }
+    let scale = Float(window?.backingScaleFactor ?? 2)
+    guard scale > 0 else { return nil }
+    return (Float(pixels.width) / scale, Float(pixels.height) / scale)
+  }
+
   /// Sizes this pane's text, once there is something rendering it.
   ///
   /// Silently nothing before a surface is attached, which is the ordinary case at launch: the

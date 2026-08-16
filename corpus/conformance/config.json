@@ -438,10 +438,10 @@
     },
     {
       "name": "the two knobs, each read as itself",
-      "why": "A resize step in cells and a scroll multiplier that scales whatever the input device reported. Grouped in one case because they share nothing but a shape - each is a single value with a defensible default - and separate cases would be two copies of the same assertion. The divider colour used to sit beside them and now sits with the other colours, because somebody picking colours picks all of them at once.",
+      "why": "A resize step with its unit, and a scroll multiplier that scales whatever the input device reported. Grouped in one case because they share nothing but a shape - each is a single value with a defensible default - and separate cases would be two copies of the same assertion. The divider colour used to sit beside them and now sits with the other colours, because somebody picking colours picks all of them at once.",
       "given": {
         "file": [
-          "resize_step = 2",
+          "resize_step = \"2c\"",
           "scroll_multiplier = 1.5"
         ]
       },
@@ -451,8 +451,44 @@
         "option_as_alt": "never",
         "text": [],
         "feel": [
-          "resize_step=2",
+          "resize_step=2c",
           "scroll_multiplier=1.5"
+        ]
+      }
+    },
+    {
+      "name": "a step in points, which is the other unit and the other arithmetic",
+      "why": "A cell is about 8 by 17 points, so `\"2c\"` moves a divider twice as far up and down as it does side to side, and four symmetric chords that travel visibly different distances is not what a hand expects. Points are what a nudge is felt in. Both units are read back out spelled the way they were written, which is what pins that Muster kept the distinction rather than converting one into the other at parse time - it cannot, because the size of a cell is not known here.",
+      "given": {
+        "file": [
+          "resize_step = \"150px\""
+        ]
+      },
+      "expect": {
+        "daemons": [],
+        "keymap": [],
+        "option_as_alt": "never",
+        "text": [],
+        "feel": [
+          "resize_step=150px"
+        ]
+      }
+    },
+    {
+      "name": "space around the number and its unit is not a refusal",
+      "why": "TOML keeps whatever is inside the quotes, so `\" 20c \"` arrives with the spaces on it. Refusing that would be refusing a typo nobody can see in their own file, and there is no second reading of it to be wrong about.",
+      "given": {
+        "file": [
+          "resize_step = \" 20 c \""
+        ]
+      },
+      "expect": {
+        "daemons": [],
+        "keymap": [],
+        "option_as_alt": "never",
+        "text": [],
+        "feel": [
+          "resize_step=20c"
         ]
       }
     },
@@ -476,10 +512,9 @@
     },
     {
       "name": "a whole number and a decimal are the same number",
-      "why": "TOML tells an integer from a float and nobody writing `resize_step = 2` means anything different from `2.0`. Refusing the integer would be a parser detail leaking into a file somebody hand-edits, and the error would say 'has to be a number' about a number.",
+      "why": "TOML tells an integer from a float and nobody writing `scroll_multiplier = 2` means anything different from `2.0`. Refusing the integer would be a parser detail leaking into a file somebody hand-edits, and the error would say 'has to be a number' about a number. This case used to cover `resize_step` too, which now takes a string and cannot be written either way.",
       "given": {
         "file": [
-          "resize_step = 2",
           "scroll_multiplier = 2"
         ]
       },
@@ -489,7 +524,6 @@
         "option_as_alt": "never",
         "text": [],
         "feel": [
-          "resize_step=2",
           "scroll_multiplier=2"
         ]
       }
@@ -520,11 +554,23 @@
       "why": "Zero is what proto3 uses for a field nobody set, so a zero reaching the seam would silently mean 'the daemon's own step' - the file would say one thing and the window would do another. Refusing here means the only way to get the daemon's step is to not name one, which is one answer rather than two spellings of it. The refusal quotes the value rather than its type: `is a number, and it has to be a whole number` reads like a bug in Muster.",
       "given": {
         "file": [
-          "resize_step = 0"
+          "resize_step = \"0c\""
         ]
       },
       "expect": {
-        "refused": "`resize_step` in the config file is 0, and it has to be a whole number of cells, at least one. None of the file was applied. Leave it out to keep the daemon's own step, which is what a chord meant before this key existed."
+        "refused": "`resize_step` in the config file is `0c`, so a resize chord would move nothing. Name a distance of at least one, or leave the key out to keep the daemon's own step. None of the file was applied."
+      }
+    },
+    {
+      "name": "a resize step with no unit is refused, and told what to write instead",
+      "why": "`resize_step = 2` is the form that shipped, so this refusal is the one an existing config file meets, and the only one where Muster knows the number the person already chose. Handing it back in both spellings makes the fix a copy rather than a decision. A bare number is refused rather than read as cells because that is the whole of what makes two units safe: a bare `20` beside a suffixed `\"150px\"` is a form you have to know rather than read.",
+      "given": {
+        "file": [
+          "resize_step = 2"
+        ]
+      },
+      "expect": {
+        "refused": "`resize_step` in the config file is 2, and it needs a unit now. None of the file was applied. Write `\"2c\"` to keep moving that many cells, or `\"2px\"` to move that many points instead. Two units, each spelled out, so there is nothing to guess."
       }
     },
     {
@@ -553,27 +599,51 @@
       }
     },
     {
-      "name": "a knob written as a string is refused rather than parsed",
-      "why": "TOML has numbers and this is one, so accepting `\"2\"` would be Muster inventing a second spelling for something the format already has. Saying so names the key, which is the whole job of this refusal.",
+      "name": "a quoted number with no unit is still a number with no unit",
+      "why": "Quoting is what the new spelling asks for, so somebody halfway to it writes `\"2\"` and stops. The string arrives where a unit is read rather than where a type is checked, so it earns the sentence about units rather than the one about quoting - which is the useful half, since the quotes are already right.",
       "given": {
         "file": [
           "resize_step = \"2\""
         ]
       },
       "expect": {
-        "refused": "`resize_step` in the config file is a string, and it has to be a whole number of cells, at least one. None of the file was applied. Leave it out to keep the daemon's own step, which is what a chord meant before this key existed."
+        "refused": "`resize_step` in the config file is `2`, which is not a distance Muster can read. Write a whole number and a unit: `\"20c\"` moves twenty cells, and `\"150px\"` moves a hundred and fifty points. None of the file was applied."
+      }
+    },
+    {
+      "name": "a unit Muster does not have is refused rather than guessed at",
+      "why": "There are two units and no third one to fall back on, so a unit nobody reads has to be a refusal - defaulting `em` to cells would move a divider a distance the file never named. Two is also why the refusal can afford to list them both.",
+      "given": {
+        "file": [
+          "resize_step = \"20em\""
+        ]
+      },
+      "expect": {
+        "refused": "`resize_step` in the config file is `20em`, which is not a distance Muster can read. Write a whole number and a unit: `\"20c\"` moves twenty cells, and `\"150px\"` moves a hundred and fifty points. None of the file was applied."
+      }
+    },
+    {
+      "name": "a resize step that moves backwards is refused",
+      "why": "A negative step is a resize chord that shrinks where its arrow points, which is the opposite of what the chord says. There is no direction to smuggle in here the way there might be in a scroll multiplier: the four resize actions already name their own directions, so a sign would be a second, quieter way of saying the same thing.",
+      "given": {
+        "file": [
+          "resize_step = \"-3c\""
+        ]
+      },
+      "expect": {
+        "refused": "`resize_step` in the config file is `-3c`, which is not a distance Muster can read. Write a whole number and a unit: `\"20c\"` moves twenty cells, and `\"150px\"` moves a hundred and fifty points. None of the file was applied."
       }
     },
     {
       "name": "a resize step with a fraction in it is refused",
-      "why": "A chord cannot mean half a cell. `ResizePane.amount` is a float at the seam so a CLI can place a divider exactly, but that is a different question from how far one keypress moves - and accepting `1.5` here would be a number the terminal has nowhere to put, silently rounded by whichever layer noticed first.",
+      "why": "A chord cannot mean half a cell. `ResizePane.amount` is a float at the seam so a CLI can place a divider exactly, but that is a different question from how far one keypress moves - and accepting `1.5` here would be a number the terminal has nowhere to put, silently rounded by whichever layer noticed first. The refusal offers the two spellings in the abstract rather than handing back `1.5`, because `\"1.5c\"` would be advice that fails for the same reason.",
       "given": {
         "file": [
           "resize_step = 1.5"
         ]
       },
       "expect": {
-        "refused": "`resize_step` in the config file is 1.5, and it has to be a whole number of cells, at least one. None of the file was applied. Leave it out to keep the daemon's own step, which is what a chord meant before this key existed."
+        "refused": "`resize_step` in the config file is 1.5, and it needs a unit now. None of the file was applied. Write a whole number and a unit - `\"20c\"` for cells, `\"150px\"` for points. Two units, each spelled out, so there is nothing to guess."
       }
     },
     {
@@ -724,7 +794,7 @@
     },
     {
       "name": "a font size written as a string is refused as a number would be",
-      "why": "TOML has numbers and this is one, matching the same refusal for `resize_step`. Worth its own case because the sentence has to name the block: `size` is a key two blocks could plausibly have, and the file being refused whole means the reader has only this sentence to go on.",
+      "why": "TOML has numbers and this is one, so quoting it is Muster being asked for a second spelling the format already has. Worth its own case because the sentence has to name the block: `size` is a key two blocks could plausibly have, and the file being refused whole means the reader has only this sentence to go on.",
       "given": {
         "file": [
           "[font]",
@@ -806,7 +876,7 @@
     },
     {
       "name": "a padding with a fraction in it is refused",
-      "why": "Whole points, matching `resize_step`'s whole cells. A renderer takes an integer here and would round it, so accepting `1.5` means the file says one thing and the window does another.",
+      "why": "A renderer takes an integer here and would round it, so accepting `1.5` means the file says one thing and the window does another. Bare rather than suffixed, unlike `resize_step`: a suffix is worth its cost only where two units are genuinely plausible, and nobody wants padding in cells.",
       "given": {
         "file": [
           "pane_padding = 1.5"

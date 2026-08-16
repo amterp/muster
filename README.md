@@ -91,7 +91,8 @@ several answers, a root key when it has one.
 
 ```toml
 option_as_alt = "left"         # never (the default) | always | left | right
-resize_step = 2                # cells per resize chord; omit for the daemon's own step
+resize_step = "20c"            # per resize chord: cells (c) or points (px). Omit for the
+                               # daemon's own step. The unit is required.
 scroll_multiplier = 1.5        # scales what the trackpad or wheel reported
 pane_padding = 2               # points between a pane's text and its edges; 0 fits the most rows
 
@@ -180,13 +181,35 @@ consulted. It is keyed by chord where `[keymap]` is keyed by action, because an 
 one chord and text has no name to key on.
 
 The other three root keys are small answers a terminal is expected to let you change, each
-one line because each is one value. `resize_step` is how many cells a resize chord moves a
-divider; omit it and the daemon decides, which is what a chord meant before the key existed.
+one line because each is one value. `resize_step` is how far a resize chord moves a divider;
+omit it and the daemon decides, which is what a chord meant before the key existed.
 `scroll_multiplier` scales whatever your trackpad or wheel reported, so `1` is the device's
 own answer and `0.5` is half of it - a multiplier rather than a line count, because how big
 one notch is belongs to the device. `pane_padding` is the space between a pane's text and its
 edges, one number for both axes; `0` is what fits the most rows into a window of fifteen
 agents.
+
+**`resize_step` takes a unit, and it is required**: `"20c"` is twenty cells, `"150px"` is a
+hundred and fifty points. Two units because neither one is right for everybody. A cell is
+about 8 by 17 points, so one number in cells moves a divider roughly twice as far up and down
+as it does side to side, and four symmetric chords that travel visibly different distances is
+not what a hand expects. Cells keep their own advantage: they survive a font size change,
+where a distance in points does not, and `cmd+=` is a thing people press. Requiring the suffix
+on both is what makes having two safe - a bare `20` meaning cells beside a suffixed `"150px"`
+is a form you have to know rather than read. `c` rather than `cells` follows kitty, which
+spells this same ambiguity that way.
+
+Two consequences worth stating rather than leaving you to find. The bare `resize_step = 2`
+that Muster used to take no longer parses, and the refusal hands you back both spellings of
+the number you already chose. And Ghostty's `cmd+shift+h=resize_split:left,150` becomes
+`resize_step` here rather than a chord that carries its own argument, because on macOS an
+action is a menu item and a menu item has one key equivalent - so a chord cannot hold a value.
+Ghostty's `150` is pixels; write `"150px"` for the same distance, and `"150c"` will move a
+hundred and fifty *cells*.
+
+`pane_padding` stays a bare number of points, which is a decision rather than an oversight: a
+unit is worth its cost only where two of them are genuinely plausible, and nobody wants
+padding measured in cells.
 
 `[font]`, `[colors]` and `[cursor]` are the window's appearance, and every one of them is
 optional. **Leave a value out and you get the renderer's own default, not one Muster
@@ -209,9 +232,9 @@ the buffer that a scroll intent moves.
 **Saving the file is enough.** Muster watches it and reads it again, and `cmd+shift+,` or
 Reload Configuration asks for the same thing when you would rather say so yourself - the
 watcher dispatches that action rather than being a second way in. Colours, fonts, the cursor,
-the keymap, `[text]` and `option_as_alt` all take effect where they are, including in panes
-that were already open; `pane_padding` reaches panes opened afterwards, because that is as far
-as the renderer takes it.
+the keymap, `[text]`, `option_as_alt`, `resize_step` and `scroll_multiplier` all take effect
+where they are, including in panes that were already open; `pane_padding` reaches panes opened
+afterwards, because that is as far as the renderer takes it.
 
 The exception is `[[daemon]]`. Which machines a window is attached to is a question about live
 sessions rather than about settings, and answering it on a save would move panes somebody is

@@ -171,16 +171,12 @@ impl CursorStyle {
 /// name - a resize that moves too far, a trackpad that scrolls too slowly.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Feel {
-    /// How many cells a resize chord moves a divider.
+    /// How far a resize chord moves a divider.
     ///
     /// `None` leaves it to the daemon, which is what a keybinding meant before this existed
     /// and remains the default: herdr sizes its own rectangles and has an answer already.
-    /// Naming a number is for somebody who finds that answer too coarse or too fine.
-    ///
-    /// Whole cells, unlike the `amount` it becomes at the seam. That field is a float so a
-    /// CLI can place a divider exactly; a chord cannot mean half a cell, and accepting `1.5`
-    /// here would be a number the terminal has nowhere to put.
-    pub resize_step: Option<u16>,
+    /// Naming a distance is for somebody who finds that answer too coarse or too fine.
+    pub resize_step: Option<ResizeStep>,
 
     /// What one notch of the wheel is worth, in lines.
     ///
@@ -193,6 +189,96 @@ pub struct Feel {
 impl Default for Feel {
     fn default() -> Feel {
         Feel { resize_step: None, scroll_multiplier: 1.0 }
+    }
+}
+
+/// How far a resize chord moves a divider, and in what.
+///
+/// Two units because neither one is right for everybody. A cell is about 8 by 17 points, so a
+/// single number in cells moves a divider roughly twice as far up and down as it does side to
+/// side, and four symmetric chords that travel visibly different distances is not what a hand
+/// expects - points are what a nudge is felt in. Cells keep their own advantage: they survive
+/// a font size change, where a distance in points does not, and `cmd+=` is a thing people
+/// press.
+///
+/// `px` is screen points, the same unit as `pane_padding` and `[font] size`, rather than
+/// backing pixels. Two length keys in one file that mean different things is a trap, and on
+/// this platform a number somebody calls a pixel is a point almost everywhere they meet one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResizeStep {
+    Cells(u16),
+    Points(u16),
+}
+
+impl ResizeStep {
+    /// Reads `20c` or `150px`, and says what it could not read.
+    ///
+    /// **The suffix is required**, and that is the whole of what makes two units safe: a bare
+    /// `20` meaning cells beside a suffixed `"150px"` is a form you have to know rather than
+    /// read, and there is no reading of a bare number that is obviously right. Spelled `c`
+    /// rather than `cells` because kitty already spells this exact ambiguity that way, so
+    /// somebody arriving from a terminal that solved it has one less thing to learn.
+    pub fn parse(text: &str) -> Result<ResizeStep, String> {
+        let trimmed = text.trim();
+        let unreadable = || {
+            format!(
+                "`resize_step` in the config file is `{text}`, which is not a distance Muster \
+                 can read. Write a whole number and a unit: `\"20c\"` moves twenty cells, and \
+                 `\"150px\"` moves a hundred and fifty points."
+            )
+        };
+
+        let (digits, step): (&str, fn(u16) -> ResizeStep) =
+            if let Some(digits) = trimmed.strip_suffix("px") {
+                (digits, ResizeStep::Points)
+            } else if let Some(digits) = trimmed.strip_suffix('c') {
+                (digits, ResizeStep::Cells)
+            } else {
+                return Err(unreadable());
+            };
+
+        let distance: u16 = digits.trim().parse().map_err(|_| unreadable())?;
+        if distance == 0 {
+            return Err(format!(
+                "`resize_step` in the config file is `{text}`, so a resize chord would move \
+                 nothing. Name a distance of at least one, or leave the key out to keep the \
+                 daemon's own step."
+            ));
+        }
+        Ok(step(distance))
+    }
+
+    /// This step in cells, along an axis whose cell measures `cell_points` points.
+    ///
+    /// The conversion lives here rather than in the shell so that every caller gets the same
+    /// arithmetic - a chord today, and the CLI when it arrives. Cells are the identity case
+    /// of it, which is why supporting both units costs close to nothing once the shell
+    /// measures a cell at all.
+    ///
+    /// Rounded to a whole cell and floored at one, because the daemon resizes a grid: a step
+    /// too small to move a column is a chord that looks broken, and the person who asked for
+    /// `"4px"` on a wide font meant the smallest nudge available rather than none.
+    ///
+    /// `None` when a step in points meets a caller that could not measure a cell. The caller
+    /// is expected to fall back to the daemon's own step and say so, because a distance
+    /// guessed here would be wrong by whatever the font happens to be.
+    pub fn cells(self, cell_points: Option<f32>) -> Option<f32> {
+        match self {
+            ResizeStep::Cells(cells) => Some(f32::from(cells)),
+            ResizeStep::Points(points) => {
+                let cell = cell_points.filter(|cell| cell.is_finite() && *cell > 0.0)?;
+                Some((f32::from(points) / cell).round().max(1.0))
+            }
+        }
+    }
+}
+
+impl std::fmt::Display for ResizeStep {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ResizeStep::Cells(cells) => write!(f, "{cells}c"),
+            ResizeStep::Points(points) => write!(f, "{points}px"),
+        }
     }
 }
 
@@ -323,19 +409,9 @@ fn read_feel(root: &toml::Table) -> Result<Feel, String> {
     let mut feel = Feel::default();
 
     if let Some(value) = root.get("resize_step") {
-        let step = value
-            .as_integer()
-            .and_then(|step| u16::try_from(step).ok())
-            .filter(|step| *step > 0)
-            .ok_or_else(|| {
-                format!(
-                    "`resize_step` in the config file is {}, and it has to be a whole number \
-                     of cells, at least one. None of the file was applied. Leave it out to \
-                     keep the daemon's own step, which is what a chord meant before this key \
-                     existed.",
-                    written(value)
-                )
-            })?;
+        let text = value.as_str().ok_or_else(|| unsuffixed(value))?;
+        let step = ResizeStep::parse(text)
+            .map_err(|why| format!("{why} None of the file was applied."))?;
         feel.resize_step = Some(step);
     }
 
@@ -527,7 +603,7 @@ fn read_cursor(block: Option<&toml::Table>) -> Result<Cursor, String> {
 }
 
 /// A number the file may have written as an integer or a float, since TOML tells them apart
-/// and nobody writing `resize_step = 2` means anything different from `2.0`.
+/// and nobody writing `scroll_multiplier = 2` means anything different from `2.0`.
 ///
 /// Whole numbers are converted through `i32`, which is exact where `i64 as f64` is not. What
 /// that refuses is a knob past two billion, and every knob here is a handful of cells or a
@@ -819,8 +895,8 @@ fn strings(block: &toml::Table, key: &str, where_: &str) -> Result<Option<Vec<St
 /// What a value is, for a message that has to say why it was refused.
 /// A value as the file wrote it, when that is more use than its type.
 ///
-/// A refusal about `resize_step = 0` should say `0` - the type is not what is wrong with it,
-/// and "is a number, and it has to be a whole number" reads like a bug in Muster. Anything
+/// A refusal about `pane_padding = 1.5` should say `1.5` - the type is not what is wrong with
+/// it, and "is a number, and it has to be a whole number" reads like a bug in Muster. Anything
 /// that is not a number falls back to naming the type, which is all there is to say about a
 /// string where a count belongs.
 fn written(value: &Value) -> String {
@@ -829,6 +905,30 @@ fn written(value: &Value) -> String {
         Value::Float(number) => number.to_string(),
         other => described(other).to_string(),
     }
+}
+
+/// `resize_step` written without a unit, which is the form that used to work.
+///
+/// Its own sentence rather than the generic refusal, because somebody meeting this is reading
+/// a file that parsed yesterday: what they need is the new spelling of the number they
+/// already chose, not an account of what is wrong with it. A value that is not a number gets
+/// the plain form, since there is no number to hand back.
+fn unsuffixed(value: &Value) -> String {
+    // Only a whole number gets its own value handed back, because only a whole number is a
+    // legal step: offering `"1.5c"` to somebody who wrote `1.5` would be advice that fails.
+    let advice = match value {
+        Value::Integer(whole) if *whole > 0 => format!(
+            "Write `\"{whole}c\"` to keep moving that many cells, or `\"{whole}px\"` to move \
+             that many points instead."
+        ),
+        _ => "Write a whole number and a unit - `\"20c\"` for cells, `\"150px\"` for points."
+            .to_string(),
+    };
+    format!(
+        "`resize_step` in the config file is {}, and it needs a unit now. None of the file was \
+         applied. {advice} Two units, each spelled out, so there is nothing to guess.",
+        written(value)
+    )
 }
 
 fn described(value: &Value) -> &'static str {

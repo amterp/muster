@@ -70,8 +70,23 @@ public final class MusterWindow: NSObject {
   /// two daemons hand out the same ones, so a sidebar keyed on the id alone would light up a
   /// devenv row for a laptop pane.
   private var keyboardKey: PaneKey?
+
+  /// Which region the keyboard is in, kept so that a chord can reach the surface it happened
+  /// on. Held beside `keyboardKey` rather than searched for, because the pane id in that key
+  /// is only unique within its own daemon.
+  private var focusedRegionID: String?
   private var zoomed = false
   private var problem: String?
+
+  /// The surface the keyboard is on, or nil when nothing is rendering yet.
+  ///
+  /// Only a live surface can say how big a cell is, and only the pane a chord happened on has
+  /// the right answer: the font size is one window-wide setting, but a pane whose surface has
+  /// not been sized yet has no measurement at all.
+  private var keyboardSurface: SurfaceView? {
+    guard let region = focusedRegionID, let pane = keyboardKey?.pane else { return nil }
+    return regions[region]?.chrome(for: pane)?.surface
+  }
 
   public init(renderer: Renderer, executable: String) {
     self.renderer = renderer
@@ -137,6 +152,7 @@ public final class MusterWindow: NSObject {
 
     keyboardPane = contents.keyboardPane
     let focused = contents.regions.first { $0.id == contents.focusedRegion }
+    focusedRegionID = focused?.id
     keyboardKey = focused.flatMap { region in
       region.keyboardPane.map { PaneKey(daemon: region.daemon, pane: $0) }
     }
@@ -454,20 +470,22 @@ extension MusterWindow {
     Core.closePane()
   }
 
+  // Each of the four reports the cell it is resizing by, because `resize_step` may be written
+  // in points and only a live surface can say how many points a cell is.
   @objc public func resizePaneLeft(_ sender: Any?) {
-    Core.resize(direction: "left")
+    Core.resize(direction: "left", cell: keyboardSurface?.cellPointSize)
   }
 
   @objc public func resizePaneRight(_ sender: Any?) {
-    Core.resize(direction: "right")
+    Core.resize(direction: "right", cell: keyboardSurface?.cellPointSize)
   }
 
   @objc public func resizePaneUp(_ sender: Any?) {
-    Core.resize(direction: "up")
+    Core.resize(direction: "up", cell: keyboardSurface?.cellPointSize)
   }
 
   @objc public func resizePaneDown(_ sender: Any?) {
-    Core.resize(direction: "down")
+    Core.resize(direction: "down", cell: keyboardSurface?.cellPointSize)
   }
 
   @objc public func zoomPane(_ sender: Any?) {

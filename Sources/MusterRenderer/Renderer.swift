@@ -329,6 +329,21 @@ public final class Surface {
     return (size.columns, size.rows)
   }
 
+  /// How big one cell is, in backing pixels.
+  ///
+  /// The core needs a cell's size to read a `resize_step` written in points, and only a live
+  /// surface knows it: it is the font's own measurement and it moves whenever the text is
+  /// resized. Reported in the unit libghostty answers in, on the same terms as `setSize` -
+  /// whoever owns the view owns the scale factor, because that is where AppKit keeps it.
+  ///
+  /// `nil` before the surface has been sized, which the caller reports as "could not measure"
+  /// rather than papering over with a guess.
+  public var cellPixelSize: (width: UInt32, height: UInt32)? {
+    let size = ghostty_surface_size(surface)
+    guard size.cell_width_px > 0, size.cell_height_px > 0 else { return nil }
+    return (size.cell_width_px, size.cell_height_px)
+  }
+
   // Selection, which is the surface's own business and nobody else's.
   //
   // Unlike a keystroke, a drag over a pane never reaches the daemon: the selection is made

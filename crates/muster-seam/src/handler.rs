@@ -639,11 +639,29 @@ fn resize_pane(resize: &proto::ResizePane) -> Response {
     // so the two are safely the same answer. What a keystroke means by "unset" is the config
     // file's `resize_step`, and what that means by absent is the daemon's own step - resolved
     // here rather than in the shell, so a CLI asking for the same thing gets the same answer.
-    // Widened here rather than stored wide: the seam's field is a float so a CLI can place a
-    // divider exactly, and a chord's step is whole cells. Every u16 is a float exactly.
-    let amount = (resize.amount > 0.0)
-        .then_some(resize.amount)
-        .or_else(|| session::feel().resize_step.map(f32::from));
+    //
+    // A step written in points needs the cell the chord happened on, and which side of the
+    // cell depends on which way the divider moves: a horizontal chord divides by its width, a
+    // vertical one by its height. That asymmetry is the whole reason points are offered.
+    let step = session::feel().resize_step;
+    let cell = match direction {
+        Side::Left | Side::Right => resize.cell_width,
+        Side::Up | Side::Down => resize.cell_height,
+    };
+    let measured = (cell > 0.0).then_some(cell);
+    let configured = step.and_then(|step| step.cells(measured));
+    if let Some(step) = step.filter(|_| configured.is_none()) {
+        log::warn(
+            "config.resizeStep.unmeasured",
+            fields! {
+                "step" => step,
+                "direction" => direction.as_str(),
+                "impact" => "this resize moved the daemon's own step instead of the distance                              the config file asked for",
+                "detail" => "a step in points has to be divided by the size of a cell, and                               this caller reported none. A chord always reports one, so                               this is either a surface nothing has measured yet or a                               caller with no surface at all - spelling the step in cells                               makes it independent of either.",
+            },
+        );
+    }
+    let amount = (resize.amount > 0.0).then_some(resize.amount).or(configured);
     act(&resize.daemon_id, &resize.pane_id, |pane| BackendIntent::ResizePane {
         pane,
         direction,
