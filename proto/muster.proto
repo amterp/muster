@@ -44,7 +44,44 @@ message Request {
     ReadAppearance read_appearance = 25;
     AdjustFontSize adjust_font_size = 26;
     ReloadConfig reload_config = 27;
+    RenamePane rename_pane = 28;
+    RenameTab rename_tab = 29;
   }
+}
+
+// Calls a pane what somebody wants to call it.
+//
+// A person running fifteen agents wants to say which is which in their own words. The name is
+// the daemon's to keep rather than Muster's to remember: any client can set one and it comes
+// back after a daemon restart, so a name held up here would be invisible to every other client
+// and lost on a restart.
+message RenamePane {
+  string daemon_id = 1;
+
+  // Empty means the pane the keyboard is on, which is what a chord and a menu item mean.
+  string pane_id = 2;
+
+  // Empty takes the name away, leaving the pane called after its directory again. Empty rather
+  // than an absent field because a name nobody could have typed - the empty one - is not a
+  // state worth being able to ask for, and one spelling for "no name" is fewer than two.
+  string name = 3;
+}
+
+// Calls a tab what somebody wants to call it.
+//
+// Separate from RenamePane rather than one verb over a target, because the two are not the
+// same operation underneath: a tab rename is announced to every client and a pane rename is
+// announced to none, and only a pane's can be fully undone.
+message RenameTab {
+  string daemon_id = 1;
+
+  // Empty means the tab the keyboard's pane is in.
+  string tab_id = 2;
+
+  // Empty asks for the name to be taken away. How completely that happens is the backend's
+  // answer rather than a promise made here: herdr leaves such a tab nameless rather than
+  // restoring its number, and Muster's own caption then draws the place.
+  string name = 3;
 }
 
 // Asks which chord means what.

@@ -174,6 +174,34 @@ public enum Core {
     send(request)
   }
 
+  /// Calls a pane what somebody wants to call it.
+  ///
+  /// An empty name takes the name away, leaving the pane called after its directory again -
+  /// one spelling for "no name" rather than two that draw the same.
+  public static func renamePane(name: String, daemonID: String = "", paneID: String = "") {
+    var rename = Muster_RenamePane()
+    rename.daemonID = daemonID
+    rename.paneID = paneID
+    rename.name = name
+    var request = Muster_Request()
+    request.renamePane = rename
+    send(request)
+  }
+
+  /// Calls a tab what somebody wants to call it.
+  ///
+  /// An empty tab id means the tab the keyboard's pane is in, which is what a menu item means -
+  /// there is no other way for one to point at a tab.
+  public static func renameTab(name: String, daemonID: String = "", tabID: String = "") {
+    var rename = Muster_RenameTab()
+    rename.daemonID = daemonID
+    rename.tabID = tabID
+    rename.name = name
+    var request = Muster_Request()
+    request.renameTab = rename
+    send(request)
+  }
+
   /// Grows the focused pane against its neighbour, by the daemon's own step.
   ///
   /// A direction rather than a divider: which one moves is a question about a tree the person
@@ -517,6 +545,10 @@ public enum Core {
     case .toggleSidebar: return "toggle_sidebar"
     case .focusTabRelative: return "focus_tab_relative"
     case .focusTabAt: return "focus_tab_at"
+    // The kind of request, never the name it carried. A name is text a person wrote about
+    // their own work, and this line ends up in a file destined for a bug report.
+    case .renamePane: return "rename_pane"
+    case .renameTab: return "rename_tab"
     case nil: return "(none)"
     }
   }

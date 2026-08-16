@@ -772,7 +772,14 @@ pub(crate) fn submit(daemon: &DaemonId, intent: &BackendIntent) -> Result<(), St
         // find for a workspace that does not exist yet, and the one it produces is opened by
         // the reconcile behind the daemon's own event.
         let region = match intent {
-            BackendIntent::CreateWorkspace { .. } | BackendIntent::CreateTab { .. } => None,
+            // A rename is about a thing rather than about what is on screen, and requiring a
+            // region would refuse the case the feature exists for: the sidebar lists every
+            // pane every daemon holds, and the ones worth naming are the ones no region is
+            // showing.
+            BackendIntent::CreateWorkspace { .. }
+            | BackendIntent::CreateTab { .. }
+            | BackendIntent::RenamePane { .. }
+            | BackendIntent::RenameTab { .. } => None,
             BackendIntent::SplitPane { pane, .. }
             | BackendIntent::ClosePane { pane }
             | BackendIntent::ResizePane { pane, .. }
@@ -800,7 +807,7 @@ pub(crate) fn submit(daemon: &DaemonId, intent: &BackendIntent) -> Result<(), St
     log::info(
         "intent.submitted",
         fields! {
-            "intent" => format!("{intent:?}"),
+            "intent" => intent.redacted(),
             "backend" => channel.description(),
             "created" => outcome.as_ref().ok().and_then(|outcome| outcome.created.clone())
                 .map(|pane| pane.to_string()).unwrap_or_default(),
@@ -1421,6 +1428,17 @@ pub(crate) fn workspace_of(
     // directory somebody chose - and a tab started in "" would be started in `/`.
     let cwd = (!held.cwd.is_empty()).then(|| held.cwd.clone());
     Some((held.workspace.clone(), cwd))
+}
+
+/// Which tab a daemon holds this pane in.
+///
+/// What "rename this tab" means when nobody named a tab: the one holding the pane the keyboard
+/// is on. `None` when the daemon does not hold the pane, which is a pane that closed while a
+/// keystroke was in flight rather than a state to recover from.
+pub(crate) fn tab_of(daemon: &DaemonId, pane: &PaneId) -> Option<TabId> {
+    let session = SESSION.lock().expect("a panicking sender poisoned the session");
+    let mirror = session.backends.get(daemon)?.mirror.lock().ok()?;
+    Some(mirror.pane(pane)?.tab.clone())
 }
 
 /// Which followed daemon holds this pane, and where in it.

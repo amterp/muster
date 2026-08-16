@@ -133,12 +133,12 @@ modifiers and a key, in any order and any case, spelled the way you would say th
 `opt`, `ctrl`, `shift`, and `left`, `return`, `f5`, `[`. The actions are `new_tab`,
 `next_tab`, `previous_tab`, `focus_tab_1` to `focus_tab_9`, `split_*` for each direction,
 `close_pane`, `next_pane`, `previous_pane`, `focus_*` and `resize_*` for each direction,
-`zoom`, `increase_font_size`, `decrease_font_size`, `reset_font_size`, `toggle_sidebar`,
-`reload_config`, and `show_shortcuts`. On macOS these become menu items, which is
-where the platform dispatches a key equivalent from - so a rebound action moves in the menu
-too, and System Settings can move it again.
+`rename_pane`, `rename_tab`, `zoom`, `increase_font_size`, `decrease_font_size`,
+`reset_font_size`, `toggle_sidebar`, `reload_config`, and `show_shortcuts`. On macOS these
+become menu items, which is where the platform dispatches a key equivalent from - so a rebound
+action moves in the menu too, and System Settings can move it again.
 
-Two of them ship with no chord at all. Ghostty has `split_left` and `split_up` as actions and
+Three of them ship with no chord at all. Ghostty has `split_left` and `split_up` as actions and
 binds neither, so Muster does the same rather than inventing a shortcut for them - they are in
 the menu, one click away and one `[keymap]` line from a chord. Which of the four sides costs
 herdr one request and which costs two is not something you can tell from here, and that is the
@@ -146,11 +146,31 @@ point: herdr splits rightward and downward only, so the other two are a split an
 and Muster takes the arrangement from the daemon's own answer rather than letting you watch the
 pane move.
 
+`rename_tab` is the third, and that one is Muster's own call rather than Ghostty's: you name a
+tab once and a pane several times an hour, so the chord goes to `rename_pane` (`cmd+shift+n`)
+and the tab keeps a menu item.
+
 The two ways of moving are different axes rather than two flavours of the same one.
 `next_pane` and the four directions reach every pane the window is **showing**; `next_tab` and
 `focus_tab_N` reach the tabs behind those, which nothing else can get to once the agent list
 is put away. Both cross machines: a window's tabs are one numbered list, so `cmd+3` is the
 third caption down the list whichever daemon holds it.
+
+**A row in the agent list says two things, and you write the first one.** Underneath is what
+the agent calls itself - Claude sets its terminal title to what it is working on, so the row
+reads `chasing a flaky test` while it does - and on top is what to call the pane, which starts
+out as its directory and the harness in it. `rename_pane` replaces that with anything you like,
+emoji included: `🔥 payments spike`. Double-clicking a row asks the same thing, which is worth
+knowing because the rows most worth naming are the ones no split is showing.
+
+The two lines age differently, and that is the point of having both. A name is written down by
+the daemon, so it survives quitting Muster and survives the daemon restarting; a title belongs
+to the program, so a restart loses it until the agent sets one again. Naming something never
+costs you the second line. Naming it nothing - an empty field - gives you the directory back.
+
+A second line is drawn only for a pane with an agent in it, and only when the title says
+something the first line does not. A plain shell sets a title too, usually the directory you
+are already reading, and fifteen rows of that would be thirty lines saying fifteen things.
 
 `option_as_alt` is the one that decides whether `opt+t` reaches an agent. macOS treats option
 as a composing key, so by default it produces `†` and a program waiting for `alt+t` never

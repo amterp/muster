@@ -169,17 +169,17 @@
       }
     },
     {
-      "name": "no two actions share a chord, and the two without one are named",
-      "why": "Two actions on the same chord is one of them silently never firing - which on macOS shows up as a menu item that looks bound and does nothing. So distinct chords has to equal bound actions exactly.\n\nBound is two short of the whole table, and that is the deliberate part. Muster's chords are Ghostty's, and Ghostty has `new_split:left` and `new_split:up` as actions and ships neither on one - so shipping a chord for them would be Muster inventing a shortcut the terminal it embeds chose not to. They are still published, because a shell builds its menu from this list and on macOS an action with no menu item is one nothing can reach: what they ship without is the shortcut, not the action. Anything else falling off the bound count is a chord lost by accident.",
+      "name": "no two actions share a chord, and the three without one are named",
+      "why": "Two actions on the same chord is one of them silently never firing - which on macOS shows up as a menu item that looks bound and does nothing. So distinct chords has to equal bound actions exactly.\n\nBound is three short of the whole table, and that is the deliberate part. Muster's chords are Ghostty's, and Ghostty has `new_split:left` and `new_split:up` as actions and ships neither on one - so shipping a chord for them would be Muster inventing a shortcut the terminal it embeds chose not to. `rename_tab` is the third and is Muster's own call: it has no Ghostty equivalent either way, and a tab is named once where a pane is named several times an hour, so the chord goes to `rename_pane` and the menu carries the tab. They are all still published, because a shell builds its menu from this list and on macOS an action with no menu item is one nothing can reach: what they ship without is the shortcut, not the action. Anything else falling off the bound count is a chord lost by accident.",
       "given": {
         "actions": [
           "*"
         ]
       },
       "expect": {
-        "actions": 34,
-        "bound": 32,
-        "distinct_chords": 32
+        "actions": 36,
+        "bound": 33,
+        "distinct_chords": 33
       }
     },
     {
@@ -197,6 +197,20 @@
           "increase_font_size=super+Equal",
           "decrease_font_size=super+Minus",
           "reset_font_size=super+Digit0"
+        ]
+      }
+    },
+    {
+      "name": "naming a pane is on a chord of Musters own",
+      "why": "The one action here that has no Ghostty equivalent to copy, so the chord is a choice rather than parity. A command chord never reaches a pane, so nothing in a terminal wanted it, and naming panes is what somebody does in a window of fifteen agents.\n\nRenaming is also the first thing in Muster that asks a person for text before it can do anything, so what the action means is \"ask me\" rather than \"name it this\" - a CLI naming a pane outright sends the rename request and never this. Its sibling rename_tab ships with no chord at all and is counted among the unbound above.",
+      "given": {
+        "actions": [
+          "rename_pane"
+        ]
+      },
+      "expect": {
+        "chords": [
+          "rename_pane=shift+super+KeyN"
         ]
       }
     }

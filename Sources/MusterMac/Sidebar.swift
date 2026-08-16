@@ -291,6 +291,14 @@ public final class SidebarView: NSView {
   /// same core path: a place in the window's tab order, resolved there.
   public var onTabPicked: ((Int) -> Void)?
 
+  /// Called when somebody double-clicks a row, meaning they want to rename what it names.
+  ///
+  /// The list is where you are already looking to decide which agent is which, so it is where
+  /// renaming should start. It dispatches the same action the menu item does rather than
+  /// editing in place: a roster or a state arriving rebuilds every row, so an editor living
+  /// inside one would be destroyed by an agent going idle mid-word.
+  public var onRowRenamed: ((SidebarModel.Row) -> Void)?
+
   public private(set) var rows: [SidebarModel.Row] = []
 
   private let table = NSTableView()
@@ -312,6 +320,7 @@ public final class SidebarView: NSView {
     table.delegate = self
     table.target = self
     table.action = #selector(rowClicked)
+    table.doubleAction = #selector(rowDoubleClicked)
 
     scroll.documentView = table
     scroll.hasVerticalScroller = true
@@ -342,6 +351,14 @@ public final class SidebarView: NSView {
     case .daemon:
       break
     }
+  }
+
+  /// A double-click asks to rename. A daemon heading names nothing renameable, so it does
+  /// nothing - the machine's name is not Muster's to change.
+  @objc private func rowDoubleClicked() {
+    let clicked = table.clickedRow
+    guard rows.indices.contains(clicked), rows[clicked].isDestination else { return }
+    onRowRenamed?(rows[clicked])
   }
 }
 

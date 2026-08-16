@@ -275,6 +275,68 @@
           "pane_id": "p1"
         }
       }
+    },
+    {
+      "name": "naming a pane sends the name under herdr's own key",
+      "why": "The ordinary case. `label` is herdr's word for a name somebody gave a pane, and it sits beside the terminal title rather than replacing it - the daemon never writes one over the other, so a named pane still says what it is doing.\n\nEmoji go through unchanged, which is worth a case rather than an assumption: this is a field a person types into and `🔥 payments spike` is the sort of thing they type.",
+      "given": {
+        "intent": "rename-pane",
+        "pane": "p1",
+        "name": "🔥 payments spike"
+      },
+      "expect": {
+        "method": "pane.rename",
+        "params": {
+          "pane_id": "p1",
+          "label": "🔥 payments spike"
+        }
+      }
+    },
+    {
+      "name": "taking a pane's name away is a null, not an empty string",
+      "why": "herdr's `label` on a pane is nullable, and null is its spelling for having no name - an empty string would be a name that renders as a blank row and cannot be told from an unnamed one.\n\nSending the key at all is the load-bearing part. Omitting it leaves the name alone, so a clear that sent nothing would look like it worked and change nothing.",
+      "given": {
+        "intent": "rename-pane",
+        "pane": "p1"
+      },
+      "expect": {
+        "method": "pane.rename",
+        "params": {
+          "pane_id": "p1",
+          "label": null
+        }
+      }
+    },
+    {
+      "name": "naming a tab uses the tab's own verb",
+      "why": "A tab and a pane are renamed by different requests, and the tab's is the one every client hears about: herdr emits `tab.renamed` with the new label and emits nothing at all for a pane (observations/herdr-0.8.0.md section 16).",
+      "given": {
+        "intent": "rename-tab",
+        "tab": "t1",
+        "name": "release"
+      },
+      "expect": {
+        "method": "tab.rename",
+        "params": {
+          "tab_id": "t1",
+          "label": "release"
+        }
+      }
+    },
+    {
+      "name": "taking a tab's name away is an empty string, because herdr has no null for it",
+      "why": "The asymmetry, and the reason these are two intents rather than one verb over a target. `tab.rename` declares `label` a required string where `pane.rename` declares it nullable, so a null is a schema violation and the empty string is all there is.\n\nIt does not do what it looks like it does, and that is recorded rather than papered over: herdr keeps the empty name instead of restoring the tab's position number, and the empty name survives a daemon restart. Muster's own caption reads an all-digits or empty label as unnamed and draws its own place, so the window is right and herdr's interface is left showing a blank tab. The upstream ask is for a nullable label here.",
+      "given": {
+        "intent": "rename-tab",
+        "tab": "t1"
+      },
+      "expect": {
+        "method": "tab.rename",
+        "params": {
+          "tab_id": "t1",
+          "label": ""
+        }
+      }
     }
   ]
 }

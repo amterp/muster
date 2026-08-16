@@ -63,6 +63,10 @@ public enum MenuActions {
       title: "Next Tab", selector: #selector(MusterWindow.focusNextTab(_:)), group: .tab),
     "previous_tab": Described(
       title: "Previous Tab", selector: #selector(MusterWindow.focusPreviousTab(_:)), group: .tab),
+    // The trailing ellipsis is the platform's promise that picking this asks something before
+    // it does anything, which is what separates these two from every other item here.
+    "rename_tab": Described(
+      title: "Rename Tab…", selector: #selector(MusterWindow.renameTab(_:)), group: .tab),
     "split_right": Described(
       title: "Split Right", selector: #selector(MusterWindow.splitRight(_:)), group: .pane),
     "split_down": Described(
@@ -71,6 +75,8 @@ public enum MenuActions {
       title: "Split Left", selector: #selector(MusterWindow.splitLeft(_:)), group: .pane),
     "split_up": Described(
       title: "Split Up", selector: #selector(MusterWindow.splitUp(_:)), group: .pane),
+    "rename_pane": Described(
+      title: "Rename Pane…", selector: #selector(MusterWindow.renamePane(_:)), group: .pane),
     "close_pane": Described(
       title: "Close Pane", selector: #selector(MusterWindow.closePane(_:)), group: .pane),
     "next_pane": Described(

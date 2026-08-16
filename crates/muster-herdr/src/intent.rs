@@ -221,6 +221,25 @@ pub fn request(intent: &BackendIntent) -> (&'static str, Value) {
                 "ratio": ratio,
             }),
         ),
+        // Null rather than an absent key, because herdr's `label` is nullable here and null is
+        // its spelling for taking the name away. Sending nothing would leave the name alone,
+        // which is a different request.
+        BackendIntent::RenamePane { pane, name } => (
+            "pane.rename",
+            json!({
+                "pane_id": pane.as_str(),
+                "label": name.as_ref().map_or(Value::Null, |name| json!(name)),
+            }),
+        ),
+        // An empty string where the pane above sends null, because herdr's `tab.rename` takes a
+        // required string and refuses a null. It does not restore the tab's number either - the
+        // tab is left holding an empty name that survives a daemon restart
+        // (`observations/herdr-0.8.0.md` section 16). Muster's own caption reads that as
+        // unnamed and draws the place, so the window is right and herdr's own interface is not.
+        BackendIntent::RenameTab { tab, name } => (
+            "tab.rename",
+            json!({ "tab_id": tab.as_str(), "label": name.clone().unwrap_or_default() }),
+        ),
     }
 }
 

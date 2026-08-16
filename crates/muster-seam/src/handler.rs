@@ -103,7 +103,59 @@ fn handle(request: Request) -> Response {
         request::Payload::FocusTabAt(at) => focus_tab_at(at.place),
         request::Payload::SetSplitRatio(set) => set_split_ratio(set),
         request::Payload::Scroll(scroll) => scroll_pane(&scroll),
+        request::Payload::RenamePane(rename) => rename_pane(&rename),
+        request::Payload::RenameTab(rename) => rename_tab(&rename),
     }
+}
+
+/// Calls a pane what somebody wants to call it.
+///
+/// Trimmed, and blank reads as taking the name away. A name of spaces is a row that looks
+/// empty and cannot be told from an unnamed one, so there is one spelling for "no name"
+/// rather than two that render alike.
+fn rename_pane(rename: &proto::RenamePane) -> Response {
+    let name = wanted_name(&rename.name);
+    act(&rename.daemon_id, &rename.pane_id, |pane| BackendIntent::RenamePane { pane, name })
+}
+
+/// Calls a tab what somebody wants to call it.
+///
+/// A tab named outright when the caller said which, and otherwise the tab holding the pane
+/// the keyboard is on - which is what a chord and a menu item mean, since neither can point
+/// at a tab any other way.
+fn rename_tab(rename: &proto::RenameTab) -> Response {
+    let daemon = match resolve_daemon(&rename.daemon_id) {
+        Ok(daemon) => daemon,
+        Err(refusal) => return refusal,
+    };
+    let name = wanted_name(&rename.name);
+
+    if !rename.tab_id.is_empty() {
+        return submit(
+            &daemon,
+            &BackendIntent::RenameTab { tab: TabId::new(&rename.tab_id), name },
+        );
+    }
+    let Some(pane) = session::focused_pane() else {
+        return Response::failure(
+            "no pane has this window's keyboard, so there was no tab to rename. A request that \
+             names no tab means the one the keyboard is in, and this window has no keyboard - \
+             the attach failed earlier, or the pane it succeeded on exited.",
+        );
+    };
+    let Some(tab) = session::tab_of(&daemon, &pane) else {
+        return Response::failure(format!(
+            "the daemon {daemon} holds no pane called {pane}, so there is no tab to rename and \
+             nothing was changed. Most likely it closed while this was in flight."
+        ));
+    };
+    submit(&daemon, &BackendIntent::RenameTab { tab, name })
+}
+
+/// What a rename was asking for: a name, or none at all.
+fn wanted_name(asked: &str) -> Option<String> {
+    let asked = asked.trim();
+    (!asked.is_empty()).then(|| asked.to_string())
 }
 
 /// One press of a font-size chord.

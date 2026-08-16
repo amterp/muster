@@ -102,6 +102,13 @@ fn every_intent() -> Vec<BackendIntent> {
             path: vec![Branch::Second],
             ratio: 0.6,
         },
+        // Both directions of both renames, because clearing is spelled differently from
+        // naming and differently again between a pane and a tab - which is the whole hazard
+        // this file exists to catch.
+        BackendIntent::RenamePane { pane: PaneId::new("p1"), name: Some("🔥 payments".into()) },
+        BackendIntent::RenamePane { pane: PaneId::new("p1"), name: None },
+        BackendIntent::RenameTab { tab: TabId::new("t1"), name: Some("release".into()) },
+        BackendIntent::RenameTab { tab: TabId::new("t1"), name: None },
     ];
     for intent in &all {
         // Exhaustive on purpose. A variant added without a line above reaches herdr with its
@@ -114,7 +121,9 @@ fn every_intent() -> Vec<BackendIntent> {
             | BackendIntent::FocusPane { .. }
             | BackendIntent::CreateTab { .. }
             | BackendIntent::CreateWorkspace { .. }
-            | BackendIntent::SetSplitRatio { .. } => {}
+            | BackendIntent::SetSplitRatio { .. }
+            | BackendIntent::RenamePane { .. }
+            | BackendIntent::RenameTab { .. } => {}
         }
     }
     all
@@ -193,6 +202,16 @@ fn intent(given: &Value) -> Result<BackendIntent, CaseError> {
                 ratio: ratio(given).unwrap_or_default(),
             })
         }
+        // An absent `name` is asking for the name to be taken away, which is a different
+        // request from naming something and is spelled differently on the wire.
+        "rename-pane" => Ok(BackendIntent::RenamePane {
+            pane: PaneId::new(&text(given, "pane")?),
+            name: given.get("name").and_then(Value::as_str).map(str::to_string),
+        }),
+        "rename-tab" => Ok(BackendIntent::RenameTab {
+            tab: TabId::new(&text(given, "tab")?),
+            name: given.get("name").and_then(Value::as_str).map(str::to_string),
+        }),
         other => Err(CaseError::new(format!("`{other}` is not an intent this driver knows"))),
     }
 }

@@ -195,7 +195,7 @@
         ]
       },
       "expect": {
-        "refused": "`splitt_right` in the config file's [keymap] is not something Muster does, so none of the file was applied. What it does: new_tab, next_tab, previous_tab, focus_tab_1, focus_tab_2, focus_tab_3, focus_tab_4, focus_tab_5, focus_tab_6, focus_tab_7, focus_tab_8, focus_tab_9, split_right, split_down, split_left, split_up, close_pane, next_pane, previous_pane, focus_left, focus_right, focus_up, focus_down, resize_left, resize_right, resize_up, resize_down, zoom, increase_font_size, decrease_font_size, reset_font_size, toggle_sidebar, reload_config, show_shortcuts."
+        "refused": "`splitt_right` in the config file's [keymap] is not something Muster does, so none of the file was applied. What it does: new_tab, next_tab, previous_tab, focus_tab_1, focus_tab_2, focus_tab_3, focus_tab_4, focus_tab_5, focus_tab_6, focus_tab_7, focus_tab_8, focus_tab_9, rename_tab, split_right, split_down, split_left, split_up, rename_pane, close_pane, next_pane, previous_pane, focus_left, focus_right, focus_up, focus_down, resize_left, resize_right, resize_up, resize_down, zoom, increase_font_size, decrease_font_size, reset_font_size, toggle_sidebar, reload_config, show_shortcuts."
       }
     },
     {

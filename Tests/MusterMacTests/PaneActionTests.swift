@@ -370,6 +370,48 @@ struct AppMenuTests {
     #expect(items.count == 2)
     #expect(items.allSatisfy { $0.target == nil })
   }
+
+  @MainActor
+  @Test("a rename sends the name, and an empty one asks for the name to be taken away")
+  func renamingSendsWhatWasTyped() {
+    let recorder = recorder()
+    let before = recorder.requests.count
+
+    Core.renamePane(name: "🔥 payments spike")
+    Core.renamePane(name: "")
+    Core.renameTab(name: "release")
+
+    let panes = recorder.sent(since: before) {
+      if case .renamePane = $0.payload { true } else { false }
+    }
+    #expect(panes.map { $0.renamePane.name } == ["🔥 payments spike", ""])
+    // Empty means the pane the keyboard feeds, the same as every other item here. A row
+    // double-clicked in the list names its pane instead, because it is very often a pane no
+    // region is showing.
+    #expect(panes.allSatisfy { $0.renamePane.paneID.isEmpty && $0.renamePane.daemonID.isEmpty })
+
+    let tabs = recorder.sent(since: before) {
+      if case .renameTab = $0.payload { true } else { false }
+    }
+    #expect(tabs.map { $0.renameTab.name } == ["release"])
+  }
+
+  @MainActor
+  @Test("a row double-clicked in the list names its own pane, not whatever has the keyboard")
+  func renamingFromTheListNamesItsSubject() {
+    // The rows worth naming are the ones nothing is showing - that is what the list is for -
+    // so a rename that meant "the focused pane" would rename the wrong one every time.
+    let recorder = recorder()
+    let before = recorder.requests.count
+
+    Core.renamePane(name: "flaky test hunt", daemonID: "devenv", paneID: "w1:p7")
+
+    let sent = recorder.sent(since: before) {
+      if case .renamePane = $0.payload { true } else { false }
+    }
+    #expect(sent.map { $0.renamePane.daemonID } == ["devenv"])
+    #expect(sent.map { $0.renamePane.paneID } == ["w1:p7"])
+  }
 }
 
 private func click() -> NSEvent {

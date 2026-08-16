@@ -160,6 +160,65 @@ pub enum BackendIntent {
         /// The first child's share afterwards, between 0 and 1.
         ratio: f32,
     },
+
+    /// Calls a pane what somebody wants to call it.
+    ///
+    /// The name is the backend's to keep, which is the whole reason this is an intent rather
+    /// than something Muster remembers: any client can set one, herdr writes it down, and it
+    /// comes back after a daemon restart. Muster holding its own would be a second answer that
+    /// no other client could see and that a restart would strand.
+    RenamePane {
+        pane: PaneId,
+        /// `None` takes the name away, leaving the pane called after its directory again.
+        name: Option<String>,
+    },
+
+    /// Calls a tab what somebody wants to call it.
+    ///
+    /// Separate from [`BackendIntent::RenamePane`] rather than one verb over a target, because
+    /// the two are not the same operation underneath: herdr announces a tab rename and says
+    /// nothing at all about a pane one, and only the pane's can be undone.
+    RenameTab {
+        tab: TabId,
+        /// `None` asks for the name to be taken away, which no backend has to be able to do
+        /// completely. herdr cannot: its `tab.rename` takes a required string, so the adapter
+        /// sends an empty one and the tab is left nameless rather than renumbered
+        /// (`observations/herdr-0.8.0.md` section 16). The intent says what was asked for; how
+        /// far a backend can honour it is the adapter's to report.
+        name: Option<String>,
+    },
+}
+
+impl BackendIntent {
+    /// This intent as a log line: everything about it except anything somebody typed.
+    ///
+    /// A name is text a person wrote about their own work - "🔥 payments spike" says what they
+    /// are doing and possibly who for - and the run log is a file destined for a bug report.
+    /// The same rule keystrokes already follow: what was pressed is recorded by shape rather
+    /// than by content, and what a name says is recorded as whether there was one
+    /// (`architecture.md`, the diagnostic log).
+    ///
+    /// Everything else is its ordinary debug form, because a split's side and a resize's step
+    /// are facts about Muster rather than about the person using it.
+    pub fn redacted(&self) -> String {
+        match self {
+            BackendIntent::RenamePane { pane, name } => {
+                format!("RenamePane {{ pane: {pane}, name: {} }}", named(name.as_deref()))
+            }
+            BackendIntent::RenameTab { tab, name } => {
+                format!("RenameTab {{ tab: {tab}, name: {} }}", named(name.as_deref()))
+            }
+            other => format!("{other:?}"),
+        }
+    }
+}
+
+/// Whether a rename asked for a name or asked for none, without saying what it was.
+fn named(name: Option<&str>) -> &'static str {
+    match name {
+        Some(_) => "<given>",
+        None => "<cleared>",
+    }
 }
 
 /// An arrangement a daemon stated in its answer, and what that answer left behind.

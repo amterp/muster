@@ -94,6 +94,21 @@ public final class MusterWindow: NSObject {
     sidebar.onTabPicked = { place in
       Core.focus(tabPlace: place)
     }
+    // Both halves name their subject outright rather than leaving it to whatever has the
+    // keyboard: the row somebody double-clicked is very often a pane no region is showing,
+    // which is what the list is for.
+    sidebar.onRowRenamed = { [weak self] row in
+      guard let self else { return }
+      if let pane = row.pane {
+        askToName(subject: "pane", current: row.givenName) { name in
+          Core.renamePane(name: name, daemonID: pane.daemon, paneID: pane.pane)
+        }
+      } else if let tab = row.tab {
+        askToName(subject: "tab", current: row.givenName) { name in
+          Core.renameTab(name: name, daemonID: tab.daemon, tabID: tab.tab)
+        }
+      }
+    }
     applyTitle()
   }
 
@@ -394,6 +409,45 @@ extension MusterWindow {
 
   @objc public func newTab(_ sender: Any?) {
     Core.createTab()
+  }
+
+  /// Names the pane the keyboard is on, having asked what to call it.
+  ///
+  /// The core decides which pane that is, as it does for every other item here - the roster is
+  /// read only to start the field off with the name this pane already has, and a window whose
+  /// roster has not caught up asks for a name from empty rather than refusing.
+  @objc public func renamePane(_ sender: Any?) {
+    askToName(subject: "pane", current: namedPane(keyboardKey)?.givenName ?? "") { name in
+      Core.renamePane(name: name)
+    }
+  }
+
+  /// Names the tab the keyboard's pane is in, having asked what to call it.
+  @objc public func renameTab(_ sender: Any?) {
+    askToName(subject: "tab", current: tabHolding(keyboardKey)?.givenName ?? "") { name in
+      Core.renameTab(name: name)
+    }
+  }
+
+  /// Runs the sheet, and sends what came back.
+  ///
+  /// Shared by the menu items and by a double-click in the list, so that all three are one
+  /// path rather than three that drift. Nothing is drawn optimistically: the request goes out
+  /// and the name appears when the daemon's answer comes back as the next roster.
+  func askToName(subject: String, current: String, then send: @escaping (String) -> Void) {
+    RenameSheet.ask(on: window, subject: subject, current: current, then: send)
+  }
+
+  /// This window's roster entry for a pane, if it has one.
+  func namedPane(_ key: PaneKey?) -> Roster.Pane? {
+    guard let key else { return nil }
+    return roster.panes.first { $0.key == key }
+  }
+
+  /// The tab holding a pane, as the roster listed it.
+  func tabHolding(_ key: PaneKey?) -> Roster.Tab? {
+    guard let key else { return nil }
+    return roster.tabs.first { tab in tab.panes.contains { $0.key == key } }
   }
 
   @objc public func closePane(_ sender: Any?) {

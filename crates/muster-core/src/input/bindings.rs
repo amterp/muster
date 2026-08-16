@@ -38,6 +38,14 @@ pub enum Action {
     SplitDown,
     SplitLeft,
     SplitUp,
+    /// Asks the shell for a name for a pane, and renames it to whatever comes back.
+    ///
+    /// The one action here that needs something from the person before it can be dispatched,
+    /// which is why the name is not part of it: what a chord means is "ask me", and the answer
+    /// arrives as an ordinary rename request afterwards. A CLI naming a pane outright sends
+    /// that request and never this.
+    RenamePane,
+    RenameTab,
     ClosePane,
     NextPane,
     PreviousPane,
@@ -64,7 +72,7 @@ impl Action {
     /// Deliberately not alphabetical: a menu is read top to bottom, and the order here is what
     /// somebody scanning it expects - making something, then arranging it, then moving around
     /// it. A shell that sorted these would produce a menu nobody can find anything in.
-    pub const ALL: [Action; 34] = [
+    pub const ALL: [Action; 36] = [
         Action::NewTab,
         Action::NextTab,
         Action::PreviousTab,
@@ -77,10 +85,12 @@ impl Action {
         Action::FocusTab(7),
         Action::FocusTab(8),
         Action::FocusTab(9),
+        Action::RenameTab,
         Action::SplitRight,
         Action::SplitDown,
         Action::SplitLeft,
         Action::SplitUp,
+        Action::RenamePane,
         Action::ClosePane,
         Action::NextPane,
         Action::PreviousPane,
@@ -118,6 +128,8 @@ impl Action {
             Action::SplitDown => "split_down",
             Action::SplitLeft => "split_left",
             Action::SplitUp => "split_up",
+            Action::RenamePane => "rename_pane",
+            Action::RenameTab => "rename_tab",
             Action::ClosePane => "close_pane",
             Action::NextPane => "next_pane",
             Action::PreviousPane => "previous_pane",
@@ -175,8 +187,18 @@ impl Action {
             )),
             Action::SplitRight => Some(Chord::new(Key::KeyD, command)),
             Action::SplitDown => Some(Chord::new(Key::KeyD, shifted)),
-            // Unbound, as Ghostty ships them. See `default_chord`.
-            Action::SplitLeft | Action::SplitUp => None,
+            // Unbound, each for its own reason. The two splits are Ghostty parity - it ships
+            // `new_split:left` and `new_split:up` with no chord, so Muster invents none
+            // either. Renaming a tab has no Ghostty equivalent at all, and is something done
+            // once per tab where renaming a pane is done several times an hour: the chord
+            // goes to the common one and the menu carries this. `[keymap]` is one line away
+            // for anybody who disagrees with either.
+            Action::SplitLeft | Action::SplitUp | Action::RenameTab => None,
+            // Muster's own, since Ghostty has no equivalent. ⌘⇧N is free on this platform for
+            // a terminal - a command chord never reaches a pane - and naming panes is what
+            // somebody does in a window of fifteen agents, which is the size this was built
+            // for.
+            Action::RenamePane => Some(Chord::new(Key::KeyN, shifted)),
             Action::ClosePane => Some(Chord::new(Key::KeyW, command)),
             Action::NextPane => Some(Chord::new(Key::BracketRight, command)),
             Action::PreviousPane => Some(Chord::new(Key::BracketLeft, command)),
