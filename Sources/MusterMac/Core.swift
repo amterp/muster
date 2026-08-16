@@ -221,7 +221,11 @@ public enum Core {
     guard case .appearance(let answer) = send(request) else {
       return Appearance(pane: MusterRenderer.Appearance(), dividerColor: nil)
     }
+    return read(answer)
+  }
 
+  /// One decoding for the launch-time read and the reload event, so the two cannot drift.
+  static func read(_ answer: Muster_Appearance) -> Appearance {
     // Empty is how a string field says "nothing was named", so it becomes nil rather than an
     // empty family name or a colour of no digits.
     let named = { (value: String) in value.isEmpty ? nil : value }
@@ -254,6 +258,16 @@ public enum Core {
     adjust.change = change
     var request = Muster_Request()
     request.adjustFontSize = adjust
+    send(request)
+  }
+
+  /// Reads the config file again, and makes the window match it.
+  ///
+  /// Nothing comes back on this call: what changed arrives as the events the core sends, the
+  /// same way a view does. So the file watcher and the menu item are one path rather than two.
+  public static func reloadConfig() {
+    var request = Muster_Request()
+    request.reloadConfig = Muster_ReloadConfig()
     send(request)
   }
 
@@ -312,9 +326,13 @@ public enum Core {
     var request = Muster_Request()
     request.readBindings = Muster_ReadBindings()
     guard case .bindings(let answer) = send(request) else { return [] }
-    return answer.bindings.map {
-      Binding(action: $0.action, key: $0.key, modifiers: $0.modifiers)
-    }
+    return read(answer)
+  }
+
+  /// One decoding for the launch-time read and the reload event, on the same terms as
+  /// `read(_:)` for appearance.
+  static func read(_ answer: Muster_Bindings) -> [Binding] {
+    answer.bindings.map { Binding(action: $0.action, key: $0.key, modifiers: $0.modifiers) }
   }
 
   /// Points this window's keyboard at a pane, and tells the daemon somebody looked.
@@ -495,6 +513,7 @@ public enum Core {
     case .readBindings: return "read_bindings"
     case .readAppearance: return "read_appearance"
     case .adjustFontSize: return "adjust_font_size"
+    case .reloadConfig: return "reload_config"
     case .bridgeExited: return "bridge_exited"
     case .resizePane: return "resize_pane"
     case .zoomPane: return "zoom_pane"
@@ -538,6 +557,14 @@ public enum Core {
           "keyboard": contents.keyboardPane ?? "",
         ])
       window?.apply(contents)
+    case .appearanceChanged(let changed):
+      let appearance = read(changed.appearance)
+      info("appearance.received", ["divider": appearance.dividerColor ?? "(platform)"])
+      window?.apply(appearance: appearance)
+    case .bindingsChanged(let changed):
+      let bindings = read(changed.bindings)
+      info("bindings.received", ["actions": String(bindings.count)])
+      window?.apply(bindings: bindings)
     case .rosterChanged(let changed):
       let roster = Roster(changed)
       info(

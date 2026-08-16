@@ -17,7 +17,7 @@ use muster_core::mirror::backend::{PaneId, TabId};
 use muster_core::roster::TabStep;
 
 use crate::convert;
-use crate::proto::{self, Request, Response, request, response};
+use crate::proto::{self, Request, Response, event, request, response};
 use crate::session::{self, AttachError, AttachedPane};
 use prost::Message;
 
@@ -80,6 +80,7 @@ fn handle(request: Request) -> Response {
             Response::ok()
         }
         request::Payload::AdjustFontSize(adjust) => adjust_font_size(&adjust.change),
+        request::Payload::ReloadConfig(_) => reload_config(),
         request::Payload::ZoomPane(zoom) => {
             act(&zoom.daemon_id, &zoom.pane_id, |pane| BackendIntent::ZoomPane { pane })
         }
@@ -317,37 +318,37 @@ fn resolve_daemon(daemon_id: &str) -> Result<DaemonId, Response> {
 /// OS, only the machine knows what monospace fonts it has, and a palette written down in the
 /// core would be a transcription of somebody else's rather than a decision.
 fn read_appearance() -> Response {
+    Response { payload: Some(response::Payload::Appearance(Box::new(appearance_message()))) }
+}
+
+/// What Muster should look like, as the config file left it.
+///
+/// One builder for the read and the event, on the same terms as `bindings_message`.
+fn appearance_message() -> proto::Appearance {
     let appearance = session::appearance();
     let color = |value: Option<config::Rgb>| value.map(|c| c.to_string()).unwrap_or_default();
 
-    Response {
-        payload: Some(response::Payload::Appearance(Box::new(proto::Appearance {
-            font_family: appearance.font.family.unwrap_or_default(),
-            font_size: appearance.font.size.unwrap_or_default(),
+    proto::Appearance {
+        font_family: appearance.font.family.unwrap_or_default(),
+        font_size: appearance.font.size.unwrap_or_default(),
 
-            background: color(appearance.colors.background),
-            foreground: color(appearance.colors.foreground),
-            cursor: color(appearance.colors.cursor),
-            cursor_text: color(appearance.colors.cursor_text),
-            selection_background: color(appearance.colors.selection_background),
-            selection_foreground: color(appearance.colors.selection_foreground),
-            palette: appearance
-                .colors
-                .palette
-                .map(|entries| entries.iter().map(ToString::to_string).collect())
-                .unwrap_or_default(),
+        background: color(appearance.colors.background),
+        foreground: color(appearance.colors.foreground),
+        cursor: color(appearance.colors.cursor),
+        cursor_text: color(appearance.colors.cursor_text),
+        selection_background: color(appearance.colors.selection_background),
+        selection_foreground: color(appearance.colors.selection_foreground),
+        palette: appearance
+            .colors
+            .palette
+            .map(|entries| entries.iter().map(ToString::to_string).collect())
+            .unwrap_or_default(),
 
-            cursor_style: appearance
-                .cursor
-                .style
-                .map(CursorStyle::as_str)
-                .unwrap_or_default()
-                .into(),
-            cursor_blink: appearance.cursor.blink,
-            pane_padding: appearance.pane_padding.map(u32::from),
+        cursor_style: appearance.cursor.style.map(CursorStyle::as_str).unwrap_or_default().into(),
+        cursor_blink: appearance.cursor.blink,
+        pane_padding: appearance.pane_padding.map(u32::from),
 
-            divider_color: color(appearance.colors.divider),
-        }))),
+        divider_color: color(appearance.colors.divider),
     }
 }
 
@@ -463,29 +464,53 @@ fn open_window() -> Response {
 /// rebinding one thing: a file that moves `split_right` moves the menu item, and on macOS the
 /// menu item is the binding.
 fn read_bindings() -> Response {
-    Response {
-        payload: Some(response::Payload::Bindings(proto::Bindings {
-            // An action on no chord is published with an empty key rather than left out. It
-            // is still a menu item - a shortcut is not the only way to pick one - and on
-            // macOS an action with no item is an action nothing can reach.
-            bindings: session::bindings()
-                .all()
-                .map(|(action, chord)| proto::Binding {
-                    action: action.as_str().to_string(),
-                    key: chord.map(|chord| chord.key.as_str().to_string()).unwrap_or_default(),
-                    modifiers: chord
-                        .into_iter()
-                        .flat_map(|chord| {
-                            Modifiers::ALL_NAMES.into_iter().filter(move |(_, bit)| {
-                                Modifiers::CHORD.contains(*bit) && chord.modifiers.contains(*bit)
-                            })
+    Response { payload: Some(response::Payload::Bindings(bindings_message())) }
+}
+
+/// Which chord means what, as the config file left it.
+///
+/// One builder for the read and the event, so the answer a launch gets and the answer a reload
+/// sends cannot drift into two shapes.
+fn bindings_message() -> proto::Bindings {
+    proto::Bindings {
+        // An action on no chord is published with an empty key rather than left out. It
+        // is still a menu item - a shortcut is not the only way to pick one - and on
+        // macOS an action with no item is an action nothing can reach.
+        bindings: session::bindings()
+            .all()
+            .map(|(action, chord)| proto::Binding {
+                action: action.as_str().to_string(),
+                key: chord.map(|chord| chord.key.as_str().to_string()).unwrap_or_default(),
+                modifiers: chord
+                    .into_iter()
+                    .flat_map(|chord| {
+                        Modifiers::ALL_NAMES.into_iter().filter(move |(_, bit)| {
+                            Modifiers::CHORD.contains(*bit) && chord.modifiers.contains(*bit)
                         })
-                        .map(|(name, _)| name.to_string())
-                        .collect(),
-                })
-                .collect(),
-        })),
+                    })
+                    .map(|(name, _)| name.to_string())
+                    .collect(),
+            })
+            .collect(),
     }
+}
+
+/// Tells the shell the chords moved, which on macOS is what rebuilds the menu.
+fn announce_bindings() {
+    crate::ffi::emit(&proto::Event {
+        payload: Some(event::Payload::BindingsChanged(proto::BindingsChanged {
+            bindings: Some(bindings_message()),
+        })),
+    });
+}
+
+/// Tells the shell what the window should look like now.
+fn announce_appearance() {
+    crate::ffi::emit(&proto::Event {
+        payload: Some(event::Payload::AppearanceChanged(proto::AppearanceChanged {
+            appearance: Some(appearance_message()),
+        })),
+    });
 }
 
 /// Splits a pane, putting the new one on the named side of it.
@@ -655,6 +680,7 @@ fn apply_config(path: &str) {
     if path.is_empty() {
         return;
     }
+    session::set_config_path(path);
     let text = match std::fs::read_to_string(path) {
         Ok(text) => text,
         Err(error) => {
@@ -685,6 +711,7 @@ fn apply_config(path: &str) {
             session::set_pane_input(config.input.clone());
             session::set_feel(config.feel);
             session::set_appearance(config.appearance.clone());
+            session::set_configured_daemons(&config.daemons);
             session::follow_configured(&config);
         }
         Err(refusal) => log::warn(
@@ -696,6 +723,94 @@ fn apply_config(path: &str) {
             },
         ),
     }
+}
+
+/// Reads the config file again, and makes the window match it.
+///
+/// What a relaunch used to be for. Everything a file can say takes effect except which daemons
+/// are attached: attaching and detaching on a file save is a question about live sessions rather
+/// than about settings, and getting it wrong costs somebody their panes. So a `[[daemon]]` change
+/// is read, noticed, and reported as still needing a relaunch.
+///
+/// A refusal leaves the running configuration exactly as it was, which is the same
+/// whole-or-nothing rule the file already has, one level up: the alternative is a window running
+/// half of a file somebody is still editing.
+fn reload_config() -> Response {
+    let path = session::config_path();
+    if path.is_empty() {
+        log::info("config.reload.none", fields! {});
+        return Response::ok();
+    }
+
+    let text = match std::fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(error) => {
+            log::warn(
+                "config.reload.unreadable",
+                fields! {
+                    "path" => path.clone(),
+                    "detail" => error.to_string(),
+                    "impact" => "nothing changed; the window is still running the settings it \
+                                 started with",
+                    "check" => "whether the file still exists - it was readable at launch",
+                },
+            );
+            return Response::ok();
+        }
+    };
+
+    let config = match config::parse(&text) {
+        Ok(config) => config,
+        Err(refusal) => {
+            log::warn(
+                "config.reload.refused",
+                fields! {
+                    "path" => path.clone(),
+                    "detail" => refusal,
+                    "impact" => "nothing changed; the window is still running the settings it \
+                                 started with, so this is a file to fix rather than a window to \
+                                 restart",
+                },
+            );
+            return Response::ok();
+        }
+    };
+
+    // Named before anything is applied, because it is the one thing a reload cannot do and the
+    // person who just edited that block is about to wonder why nothing happened.
+    if session::daemons_differ(&config) {
+        log::warn(
+            "config.reload.daemons",
+            fields! {
+                "path" => path.clone(),
+                "impact" => "every other setting in the file took effect, but which daemons \
+                             this window is attached to did not",
+                "check" => "relaunch to pick up a [[daemon]] change; attaching and detaching \
+                            live would move panes somebody is working in",
+            },
+        );
+    }
+
+    session::set_bindings(config.bindings.clone());
+    session::set_feel(config.feel);
+    session::set_appearance(config.appearance.clone());
+    // Recorded even though it is not acted on, so the next reload compares against this file
+    // rather than reporting the same unapplied change forever.
+    session::set_configured_daemons(&config.daemons);
+    // Last of the four, because it is the one that reaches into panes that already exist.
+    session::reset_pane_input(&config.input);
+
+    log::info(
+        "config.reload.read",
+        fields! {
+            "path" => path,
+            "option_as_alt" => config.input.option_as_alt.as_str(),
+            "text_bindings" => config.input.text.len().to_string(),
+        },
+    );
+    announce_bindings();
+    announce_appearance();
+    Response::ok()
 }
 
 fn write(record: proto::LogRecord) -> Response {

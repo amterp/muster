@@ -131,6 +131,26 @@ pub(crate) fn feel() -> Feel {
     FEEL.lock().expect("a panicking sender poisoned the settings").unwrap_or_default()
 }
 
+/// The config file this run was started with, so a reload knows what to read again.
+///
+/// Held rather than re-derived: where the file lives is the shell's answer, given once at
+/// startup, and a core that went looking for one itself would be a second answer to a question
+/// it does not own.
+static CONFIG_PATH: Mutex<Option<String>> = Mutex::new(None);
+
+pub(crate) fn set_config_path(path: &str) {
+    *CONFIG_PATH.lock().expect("a panicking sender poisoned the settings") = Some(path.to_string());
+}
+
+/// The file to read again, or empty when this run was started without one.
+pub(crate) fn config_path() -> String {
+    CONFIG_PATH
+        .lock()
+        .expect("a panicking sender poisoned the settings")
+        .clone()
+        .unwrap_or_default()
+}
+
 /// What the window should look like, held the same way and for the same reason.
 ///
 /// Cloned on read rather than copied, because a palette and a font family are not `Copy`. It
@@ -1789,6 +1809,80 @@ pub(crate) fn toggle_sidebar() {
     log::info("presentation.sidebar", fields! { "shown" => presentation.sidebar });
     announce_presentation(presentation);
     publish();
+}
+
+/// The `[[daemon]]` blocks the running configuration was built from.
+///
+/// Held separately from what is attached, because those are different questions and only one of
+/// them is about the file. A config naming no daemons still ends up with one attached - Muster
+/// starts its own when nothing answers - so comparing a new file against what is attached would
+/// report a change on every reload of a file that never mentioned a daemon at all.
+static CONFIGURED_DAEMONS: Mutex<Option<Vec<Daemon>>> = Mutex::new(None);
+
+pub(crate) fn set_configured_daemons(daemons: &[Daemon]) {
+    *CONFIGURED_DAEMONS.lock().expect("a panicking sender poisoned the settings") =
+        Some(daemons.to_vec());
+}
+
+/// Whether a file names a different set of daemons from the one this window was built from.
+///
+/// The one thing a reload does not act on, so it is the one thing worth asking about: a
+/// `[[daemon]]` change is a question about live sessions rather than about settings, and
+/// applying it would move panes somebody is working in.
+///
+/// Compared by what a person wrote rather than by what came of it - a daemon that is named and
+/// failed to attach is not a difference, it is the same wish and the same disappointment.
+pub(crate) fn daemons_differ(config: &Config) -> bool {
+    let configured = CONFIGURED_DAEMONS.lock().expect("a panicking sender poisoned the settings");
+    configured.as_deref().unwrap_or_default() != config.daemons.as_slice()
+}
+
+/// Points every attached pane at typing settings that have just been read again.
+///
+/// Every pane or none, which is the whole reason this exists rather than only setting the
+/// static: a reload that reached the static alone would take effect on panes opened afterwards
+/// and leave the rest as they were, so what `option_as_alt` meant would depend on when each
+/// pane happened to be opened.
+///
+/// A pane whose encoder will not build keeps the one it had. That is the better of two bad
+/// answers - the alternative is a pane that stops typing - and it is loud, because the pane it
+/// happens to is named.
+pub(crate) fn reset_pane_input(settings: &PaneInputSettings) {
+    set_pane_input(settings.clone());
+
+    let panes: Vec<(DaemonId, PaneId, Arc<AttachedPane>)> = {
+        let session = SESSION.lock().expect("a panicking sender poisoned the session");
+        session
+            .panes
+            .iter()
+            .flat_map(|(daemon, panes)| {
+                panes
+                    .iter()
+                    .map(move |(pane, held)| (daemon.clone(), pane.clone(), Arc::clone(held)))
+            })
+            .collect()
+    };
+
+    let mut resettled = 0usize;
+    for (daemon, pane, held) in &panes {
+        match KeyEncoder::new(settings.profile()) {
+            Ok(encoder) => {
+                held.input.resettle(Arc::new(encoder), settings);
+                resettled += 1;
+            }
+            Err(error) => log::warn(
+                "config.reload.encoder",
+                fields! {
+                    "daemon" => daemon.to_string(),
+                    "pane" => pane.to_string(),
+                    "detail" => error.to_string(),
+                    "impact" => "this pane keeps the typing settings it was attached with, so                                  it now disagrees with the rest of the window about what                                  option means",
+                    "check" => "libghostty-vt is behind this; a relaunch rebuilds every                                 encoder from scratch",
+                },
+            ),
+        }
+    }
+    log::info("config.reload.typing", fields! { "panes" => resettled.to_string() });
 }
 
 /// One press of a font-size chord, on the same terms as the sidebar toggle.

@@ -371,6 +371,12 @@ chords before the pane sees them would take shortcuts the user rebound in System
 something else, and would hide from every menu what the app can do. So the menu is where Muster's own actions live,
 and each item does nothing but dispatch.
 
+Something the app notices on its own is a *trigger* for an action, never a second way of doing it. The config-file
+watcher is the worked example: saving the file dispatches `reload_config`, the same action a chord, a menu item and
+a CLI dispatch. That is what keeps "one action path" true of things nobody pressed - the alternative is a second
+implementation that drifts from the first, and a bug report where the answer depends on how the reload was asked
+for.
+
 Nothing renders an intent optimistically. A split, a close, a focus and a divider drag are all requests, and what
 came of them arrives as the next published view - so a window can never show an arrangement no daemon agreed to. The
 one thing an intent may settle locally is where Muster's own keyboard lands, because that is Muster's state and not

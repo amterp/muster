@@ -131,8 +131,8 @@ modifiers and a key, in any order and any case, spelled the way you would say th
 `opt`, `ctrl`, `shift`, and `left`, `return`, `f5`, `[`. The actions are `new_tab`,
 `next_tab`, `previous_tab`, `focus_tab_1` to `focus_tab_9`, `split_*` for each direction,
 `close_pane`, `next_pane`, `previous_pane`, `focus_*` and `resize_*` for each direction,
-`zoom`, `increase_font_size`, `decrease_font_size`, `reset_font_size`, `toggle_sidebar`, and
-`show_shortcuts`. On macOS these become menu items, which is
+`zoom`, `increase_font_size`, `decrease_font_size`, `reset_font_size`, `toggle_sidebar`,
+`reload_config`, and `show_shortcuts`. On macOS these become menu items, which is
 where the platform dispatches a key equivalent from - so a rebound action moves in the menu
 too, and System Settings can move it again.
 
@@ -155,8 +155,7 @@ as a composing key, so by default it produces `†` and a program waiting for `a
 hears it. Naming a side keeps accented characters on the other hand. `[text]` is the escape
 hatch beneath all of that: a chord bound there sends exactly those bytes and no encoder is
 consulted. It is keyed by chord where `[keymap]` is keyed by action, because an action has
-one chord and text has no name to key on. Both are read once at launch, so changing either
-means relaunching.
+one chord and text has no name to key on.
 
 The other three root keys are small answers a terminal is expected to let you change, each
 one line because each is one value. `resize_step` is how many cells a resize chord moves a
@@ -184,6 +183,19 @@ is where it moves to. `docs/architecture.md` says what the loan cost and why it 
 
 One thing Muster still does not decide: scrollback depth is the daemon's, because herdr owns
 the buffer that a scroll intent moves.
+
+**Saving the file is enough.** Muster watches it and reads it again, and `cmd+shift+,` or
+Reload Configuration asks for the same thing when you would rather say so yourself - the
+watcher dispatches that action rather than being a second way in. Colours, fonts, the cursor,
+the keymap, `[text]` and `option_as_alt` all take effect where they are, including in panes
+that were already open; `pane_padding` reaches panes opened afterwards, because that is as far
+as the renderer takes it.
+
+The exception is `[[daemon]]`. Which machines a window is attached to is a question about live
+sessions rather than about settings, and answering it on a save would move panes somebody is
+working in - so a change there is read, noticed, and reported as still wanting a relaunch. A
+file that will not parse changes nothing at all and says so, which means an editor that saves
+halfway through a thought cannot leave you running half a config.
 
 `~/.muster/state/` is Muster's to write, and holds two files nobody should edit. `window.toml`
 is rewritten whenever the window settles: which tabs it was showing, in what order, at what

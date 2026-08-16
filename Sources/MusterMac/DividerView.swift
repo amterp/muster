@@ -50,12 +50,28 @@ final class DividerView: NSView {
   /// Muster's own chrome rather than the renderer's, so this is the one colour in `[colors]`
   /// that no renderer paints - it arrives on the same answer as the rest because a person
   /// picking colours picks all of them at once.
-  static let color: NSColor = {
-    guard let named = Core.appearance().dividerColor, let parsed = NSColor(hex: named) else {
-      return .separatorColor
-    }
+  /// Read once at launch and settable afterwards, because a config file can be read again.
+  ///
+  /// A `var` rather than the `let` this was: reading the core per divider would be a round trip
+  /// per line on every relayout, and reading it once for the life of the process was a colour a
+  /// reload could not change. Set from the one event that carries it, and every divider already
+  /// on screen is repainted at the same moment.
+  private(set) static var color: NSColor = paint(nil)
+
+  /// A named colour, or the platform's own separator when the config file gave none.
+  private static func paint(_ named: String?) -> NSColor {
+    guard let named, let parsed = NSColor(hex: named) else { return .separatorColor }
     return parsed
-  }()
+  }
+
+  static func repaint(with named: String?) {
+    color = paint(named)
+  }
+
+  /// Takes the colour in force, for a divider that was already on screen when it changed.
+  func recolor() {
+    layer?.backgroundColor = DividerView.color.cgColor
+  }
 
   required init?(coder: NSCoder) {
     fatalError("muster builds its views in code")
@@ -98,4 +114,14 @@ extension NSColor {
       blue: CGFloat(value & 0xff) / 255,
       alpha: 1)
   }
+}
+
+/// Takes the chrome half of an appearance - the line between two regions, and nothing else.
+///
+/// Public because the launch path reads the appearance before there is a window to hand it to:
+/// the renderer is built from the other half, and building it is what the window needs. After
+/// launch the window applies both halves itself, from the event the core sends.
+@MainActor
+public func adoptChrome(_ appearance: Core.Appearance) {
+  DividerView.repaint(with: appearance.dividerColor)
 }

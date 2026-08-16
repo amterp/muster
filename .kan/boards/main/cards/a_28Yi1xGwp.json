@@ -5,17 +5,27 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-hi",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "**Done, both triggers, one path.** `reload_config` is an ordinary action - rebindable, in the menu under View, on `cmd+shift+,` (Ghostty's own chord for the same job). A file watcher dispatches *that action* rather than being a second way in, which is what keeps \"one action path\" true of something nobody pressed. Written into architecture.md as a rule: something the app notices on its own is a trigger for an action, never a second implementation of it.\n\n**The card's hard part - per-pane encoders - is done properly rather than skipped.** `PaneInput` now holds its encoder, keymap and settings behind one `RwLock`, and a reload replaces all of them in every attached pane. Every pane or none: the card was right that a window whose panes disagree depending on when each was opened is worse than needing a relaunch. `crates/muster-bridge/tests/typing_reload.rs` is the proof, and it is a real one - the pane is opened *before* the file changes and typed into *after*, and it was confirmed to fail (timeout waiting for `^[t`) with the rebuild stubbed out.\n\nThe lock is on the keystroke path, so it was measured: `input.encode` is indistinguishable from the same benchmark on the unchanged tree. One read guard per keystroke, and what comes out of it is owned or an `Arc` clone, so nothing is held across a send.\n\n**What reload does not do: change which daemons are attached.** Read, noticed, reported, left for a relaunch - attaching and detaching on a save is a question about live sessions, and getting it wrong costs somebody their panes.\n\n**A refusal changes nothing at all**, which matters more here than at launch: an editor that saves halfway through a thought must not leave a window running half a config. Verified in a real window - a misspelled key logged `config.reload.refused` naming it, the derived renderer config was left untouched, and the window carried on.\n\nThree things found on the way:\n\n- **The watcher must watch the directory, not the file.** Every editor saves by writing a temporary file and renaming it over the original, which replaces the inode - a watch on the file fires once, for the deletion, then watches something nothing will ever write to again. Verified by saving that way.\n- **`ReadAppearance`'s own comment said \"when it can change, it becomes an event\", and now it can.** Both exist, and the split is between two moments rather than redundant: a launch needs the answer before the renderer is built and before any event loop runs, so it asks; a reload happens while the window is up, so the core tells it. Same for bindings.\n- **Comparing the file's daemons against the *attached* ones was wrong** and shipped for about an hour. A config naming no daemons still ends up with one attached, because Muster starts its own - so every reload of a file that never mentioned a daemon reported a change. Caught by running it. It compares against the last-applied file now.\n\n`DividerView.color` stopped being a `static let`, as the card's sibling predicted it would have to.",
+      "created_at_millis": 1786869336455,
+      "id": "c_28wJJtodb"
+    }
+  ],
   "created_at_millis": 1786813087619,
   "creator": "Alexander Terp",
   "description": "Every config key is read once at `Startup`: `apply_config` parses the file and hands the results to statics (`BINDINGS`, `PANE_INPUT`), and a pane's encoder is built from them at attach. So editing `config.toml` does nothing until the app restarts.\n\nAcceptable while the file is small. Irritating during exactly the phase where somebody is tuning it, which is the daily-driving phase, and the phase Muster is in now.\n\nThe awkward part is not re-reading the file, it is what to do with what is already open. Bindings are easy - the menu is rebuilt from them. Typing settings are not: an encoder is built per pane at attach, so a reload either rebuilds every pane's encoder or leaves a window whose panes disagree depending on when each was opened. That second outcome is worse than needing a relaunch, and is why this was left alone rather than half-done.\n\nWorth deciding: whether reload is a first-class action (rebindable, in the menu, dispatchable by the CLI) or something that happens when the file changes on disk. The first is honest about when it happens; the second is what people expect.",
   "id": "a_28Yi1xGwp",
-  "position": "!!E",
+  "position": "!!!!!!!!!E",
   "title": "♻️ Changing the config means relaunching",
   "type": "feature",
-  "updated_at_millis": 1786813094260,
+  "updated_at_millis": 1786869336455,
   "history": [
     {"field":"column","value":"backlog-lo","at":1786813087619},
-    {"field":"column","value":"backlog-hi","at":1786813094260}
+    {"field":"column","value":"backlog-hi","at":1786813094260},
+    {"field":"column","value":"next","at":1786867771289},
+    {"field":"column","value":"done","at":1786869095715}
   ]
 }

@@ -174,6 +174,39 @@ public final class MusterWindow: NSObject {
       ])
   }
 
+  /// Repaints the window after the config file was read again.
+  ///
+  /// The panes are libghostty's to repaint and the dividers are Muster's, which is the same
+  /// split the launch path makes - the core sends one answer and the shell hands each half to
+  /// whoever draws it.
+  public func apply(appearance: Core.Appearance) {
+    renderer.apply(appearance: appearance.pane)
+    DividerView.repaint(with: appearance.dividerColor)
+    for divider in dividers() {
+      divider.recolor()
+    }
+  }
+
+  /// Rebuilds the menu after the config file was read again.
+  ///
+  /// On macOS this is the whole of rebinding: a key equivalent on a menu item is where the
+  /// platform dispatches a chord from, so a menu that still carries the old ones is a config
+  /// that did not reload.
+  public func apply(bindings: [Core.Binding]) {
+    NSApp.mainMenu = AppMenu.build(target: self, bindings: bindings)
+  }
+
+  /// Every divider on screen, region boundaries and pane splits alike.
+  private func dividers() -> [DividerView] {
+    var found: [DividerView] = []
+    var pending: [NSView] = [split]
+    while let view = pending.popLast() {
+      if let divider = view as? DividerView { found.append(divider) }
+      pending.append(contentsOf: view.subviews)
+    }
+    return found
+  }
+
   public func apply(daemon: String, health state: String, detail: String) {
     health[daemon] = DaemonHealth(state: state, detail: detail)
     applyTitle()
@@ -383,6 +416,10 @@ extension MusterWindow {
 
   @objc public func resetFontSize(_ sender: Any?) {
     Core.adjustFontSize("reset")
+  }
+
+  @objc public func reloadConfig(_ sender: Any?) {
+    Core.reloadConfig()
   }
 
   @objc public func toggleSidebar(_ sender: Any?) {

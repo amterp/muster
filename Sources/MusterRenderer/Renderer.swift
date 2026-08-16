@@ -70,7 +70,10 @@ private func rendererCloseSurface(_ userdata: UnsafeMutableRawPointer?, _ proces
 @MainActor
 public final class Renderer {
   private let app: ghostty_app_t
-  private let config: ghostty_config_t
+  /// Replaced when the config file is read again, and freed with the app.
+  private var config: ghostty_config_t
+  /// Where the derived config is written, kept so a reload writes to the same place.
+  private let configPath: String
 
   /// What libghostty made of the configuration Muster handed it, if anything.
   ///
@@ -109,6 +112,7 @@ public final class Renderer {
     }
     ghostty_config_finalize(config)
     self.config = config
+    self.configPath = configPath
     self.diagnostics = Renderer.complaints(about: config)
 
     // Six callbacks, and a spike owes real answers to none of them.
@@ -159,6 +163,29 @@ public final class Renderer {
 
   public func setFocus(_ focused: Bool) {
     ghostty_app_set_focus(app, focused)
+  }
+
+  /// Repaints every surface from an appearance that has just been read again.
+  ///
+  /// A whole new config handle rather than a mutation, because there is no setter: the same
+  /// file-and-load path a launch takes, handed to `ghostty_app_update_config`, which pushes it
+  /// to every surface. Colours, cursor and font size take effect immediately; padding and
+  /// scrollback are documented as reaching new surfaces only.
+  ///
+  /// The old handle is kept and the new one dropped on failure, so a config that will not build
+  /// leaves the window looking exactly as it did rather than half repainted.
+  public func apply(appearance: Appearance) {
+    let lines = ghosttyConfiguration(appearance)
+    guard let updated = ghostty_config_new() else { return }
+    if !lines.isEmpty, write(lines, to: configPath) {
+      configPath.withCString { ghostty_config_load_file(updated, $0) }
+    }
+    ghostty_config_finalize(updated)
+    diagnostics = Renderer.complaints(about: updated)
+
+    ghostty_app_update_config(app, updated)
+    ghostty_config_free(config)
+    config = updated
   }
 
   /// Creates a surface that renders into `view`, running `command`.

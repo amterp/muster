@@ -54,6 +54,7 @@ pub enum Action {
     DecreaseFontSize,
     ResetFontSize,
     ToggleSidebar,
+    ReloadConfig,
     ShowShortcuts,
 }
 
@@ -63,7 +64,7 @@ impl Action {
     /// Deliberately not alphabetical: a menu is read top to bottom, and the order here is what
     /// somebody scanning it expects - making something, then arranging it, then moving around
     /// it. A shell that sorted these would produce a menu nobody can find anything in.
-    pub const ALL: [Action; 33] = [
+    pub const ALL: [Action; 34] = [
         Action::NewTab,
         Action::NextTab,
         Action::PreviousTab,
@@ -96,6 +97,7 @@ impl Action {
         Action::DecreaseFontSize,
         Action::ResetFontSize,
         Action::ToggleSidebar,
+        Action::ReloadConfig,
         Action::ShowShortcuts,
     ];
 
@@ -132,6 +134,7 @@ impl Action {
             Action::DecreaseFontSize => "decrease_font_size",
             Action::ResetFontSize => "reset_font_size",
             Action::ToggleSidebar => "toggle_sidebar",
+            Action::ReloadConfig => "reload_config",
             Action::ShowShortcuts => "show_shortcuts",
         }
     }
@@ -196,6 +199,9 @@ impl Action {
             // ⌘B is what a Mac app with a list down the side puts it on, and no terminal
             // wants the chord for anything, since a command chord never reaches a pane.
             Action::ToggleSidebar => Some(Chord::new(Key::KeyB, command)),
+            // Ghostty's own, and one of the few chords it has that Muster's config file needs
+            // for the same job.
+            Action::ReloadConfig => Some(Chord::new(Key::Comma, shifted)),
             // Where a list of shortcuts lives in most things that have one. Nothing in a
             // terminal wants it, and it is the chord somebody presses when they are looking
             // for exactly this.

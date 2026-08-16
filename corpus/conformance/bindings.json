@@ -177,9 +177,9 @@
         ]
       },
       "expect": {
-        "actions": 33,
-        "bound": 31,
-        "distinct_chords": 31
+        "actions": 34,
+        "bound": 32,
+        "distinct_chords": 32
       }
     },
     {

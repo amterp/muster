@@ -6,7 +6,7 @@
 //! about macOS - the two things it needs from the outside, an encoder and a channel, arrive
 //! as traits.
 
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 
 use super::{
     KeyEncoding, KeyEvent, Keymap, PaneChannel, PaneInputSettings, PaneIntent, Resolution,
@@ -18,14 +18,17 @@ use crate::fields;
 pub struct PaneInput {
     channel: Arc<dyn PaneChannel>,
     server_channel: Option<Arc<dyn PaneChannel>>,
-    encoder: Arc<dyn KeyEncoding>,
-    keymap: Keymap,
-
-    /// Held beside the encoder rather than only inside it, because option-as-alt takes two
-    /// steps and they must be the same answer: the encoder's flag opens the alt-prefix
-    /// branch, and this decides whether the keystroke arrives in a shape that reaches it.
-    /// Both come from one [`PaneInputSettings`] for that reason.
-    settings: PaneInputSettings,
+    /// Everything a config file decides about typing, replaceable together.
+    ///
+    /// Behind one lock rather than three, and behind a lock at all because a reload has to
+    /// reach panes that already exist. The alternative the card for this rejected was leaving
+    /// open panes on the settings they were attached with, which makes a window's behaviour
+    /// depend on when each pane happened to be opened - worse than needing a relaunch.
+    ///
+    /// One read per keystroke, uncontended in every ordinary case: the only writer is a reload,
+    /// which happens when somebody saves a file. What comes out of the guard is owned or an
+    /// `Arc` clone, so nothing is held across the send.
+    typing: RwLock<Typing>,
 
     /// Everything leaves through here, in order.
     ///
@@ -39,6 +42,17 @@ pub struct PaneInput {
     /// The one-shot warning lives inside the same lock because it is written on exactly the
     /// path this serializes.
     outbound: Mutex<Outbound>,
+}
+
+struct Typing {
+    encoder: Arc<dyn KeyEncoding>,
+    keymap: Keymap,
+
+    /// Held beside the encoder rather than only inside it, because option-as-alt takes two
+    /// steps and they must be the same answer: the encoder's flag opens the alt-prefix
+    /// branch, and this decides whether the keystroke arrives in a shape that reaches it.
+    /// Both come from one [`PaneInputSettings`] for that reason.
+    settings: PaneInputSettings,
 }
 
 #[derive(Default)]
@@ -68,17 +82,42 @@ impl PaneInput {
         PaneInput {
             channel,
             server_channel,
-            encoder,
-            keymap: settings.keymap(),
-            settings: settings.clone(),
+            typing: RwLock::new(Typing {
+                encoder,
+                keymap: settings.keymap(),
+                settings: settings.clone(),
+            }),
             outbound: Mutex::new(Outbound::default()),
         }
     }
 
+    /// Points this pane at a config file that has been read again.
+    ///
+    /// Every pane or none. A reload that reached only the panes opened since would leave a
+    /// window whose panes disagree about what `option_as_alt` means, and which of them is
+    /// right would depend on when each was opened - a thing nobody can see and nobody can
+    /// debug.
+    ///
+    /// The encoder is passed in for the reason it is at construction: building one is fallible,
+    /// and a pane that kept typing on its old settings is a better outcome than a pane that
+    /// stops typing at all.
+    pub fn resettle(&self, encoder: Arc<dyn KeyEncoding>, settings: &PaneInputSettings) {
+        let mut typing = self.typing.write().expect("a panicking sender poisoned the settings");
+        *typing = Typing { encoder, keymap: settings.keymap(), settings: settings.clone() };
+    }
+
     pub fn send(&self, key: &KeyEvent) {
+        // One read of the settings for the whole keystroke, so a reload landing mid-send
+        // cannot resolve the keymap under one file and encode under the next. What comes out
+        // is owned or an `Arc` clone, so the guard is gone before anything is delivered.
+        let (resolution, resolved, encoder) = {
+            let typing = self.typing.read().expect("a panicking sender poisoned the settings");
+            (typing.keymap.resolve(key), typing.settings.as_alt(key), Arc::clone(&typing.encoder))
+        };
+
         // Precedence: the keymap gets first refusal, and the encoder only sees what it
         // declines (architecture.md, input precedence).
-        match self.keymap.resolve(key) {
+        match resolution {
             Resolution::Text(bytes) => {
                 log::debug(
                     "input.bound.text",
@@ -111,10 +150,9 @@ impl PaneInput {
         // After the keymap and before the encoder. A chord bound in the config is bound
         // whatever option means, because the keymap matches on which modifiers are held and
         // never on what the layout did with them.
-        let resolved = self.settings.as_alt(key);
         let key = resolved.as_ref().unwrap_or(key);
 
-        let Ok(bytes) = self.encoder.encode(key) else {
+        let Ok(bytes) = encoder.encode(key) else {
             log::warn(
                 "input.encode.failed",
                 fields! {
@@ -211,7 +249,7 @@ impl PaneInput {
             return;
         };
         log::debug("input.key.server", fields! { "key" => key.key.as_str(), "name" => name });
-        let local = self.encoder.encode(key).unwrap_or_default();
+        let local = self.encoder().encode(key).unwrap_or_default();
         self.deliver_over(
             &PaneIntent::Key { name: name.to_string() },
             server.as_ref(),
@@ -220,10 +258,15 @@ impl PaneInput {
     }
 
     fn send_locally_encoded(&self, key: &KeyEvent) {
-        match self.encoder.encode(key) {
+        match self.encoder().encode(key) {
             Ok(bytes) if !bytes.is_empty() => self.deliver(&PaneIntent::Input(bytes)),
             _ => {}
         }
+    }
+
+    /// The encoder in force, cloned out rather than borrowed so no lock is held across a send.
+    fn encoder(&self) -> Arc<dyn KeyEncoding> {
+        Arc::clone(&self.typing.read().expect("a panicking sender poisoned the settings").encoder)
     }
 
     fn deliver(&self, intent: &PaneIntent) {

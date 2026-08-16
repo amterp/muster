@@ -12,6 +12,8 @@ import MusterRenderer
 final class AppDelegate: NSObject, NSApplicationDelegate {
   private var muster: MusterWindow?
   private var renderer: Renderer?
+  /// Held for the life of the app; dropping it stops the watch.
+  private var watcher: ConfigWatcher?
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     // Before the core, because the core attaches daemons as it starts and every one of those
@@ -62,8 +64,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       // The core decides what the window should look like, because that is what the config
       // file said; the shell decides where the renderer's derived copy of it goes, because
       // that is an OS question - the same division every other path here draws.
+      // One read, two halves: the renderer paints inside a pane and Muster paints the line
+      // between two of them. After this the core sends the same answer as an event whenever
+      // the file is read again.
+      let appearance = Core.appearance()
+      adoptChrome(appearance)
       let renderer = try Renderer(
-        appearance: Core.appearance().pane, configPath: rendererConfigPath())
+        appearance: appearance.pane, configPath: rendererConfigPath())
       for complaint in renderer.diagnostics {
         Core.warn(
           "renderer.config.rejected",
@@ -108,6 +115,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.terminate(nil)
         return
       }
+      // After the window is up, so a save landing during launch cannot ask for a reload
+      // before there is anything to repaint. Nothing to watch when no config file was found:
+      // the reload action still works and finds nothing, which is the same answer.
+      if let config {
+        let watcher = ConfigWatcher(path: config) { Core.reloadConfig() }
+        self.watcher = watcher
+        if !watcher.start() {
+          Core.warn(
+            "config.watch.failed",
+            [
+              "path": config,
+              "impact": "editing the config file will not take effect on its own; the Reload "
+                + "Configuration menu item and its chord still work",
+              "check": "whether the directory holding it is readable",
+            ])
+        }
+      }
+
       renderer.setFocus(true)
       Core.info("app.ready", ["typeable": String(attached)])
     } catch {

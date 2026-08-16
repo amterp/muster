@@ -106,6 +106,9 @@ public enum MenuActions {
     "toggle_sidebar": Described(
       title: "Show Agents", selector: #selector(MusterWindow.toggleSidebar(_:)),
       group: .view),
+    "reload_config": Described(
+      title: "Reload Configuration", selector: #selector(MusterWindow.reloadConfig(_:)),
+      group: .view),
     "show_shortcuts": Described(
       title: "muster Shortcuts", selector: #selector(MusterWindow.showShortcuts(_:)),
       group: .help),

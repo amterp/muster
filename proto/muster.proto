@@ -43,6 +43,7 @@ message Request {
     FocusTabAt focus_tab_at = 24;
     ReadAppearance read_appearance = 25;
     AdjustFontSize adjust_font_size = 26;
+    ReloadConfig reload_config = 27;
   }
 }
 
@@ -62,8 +63,9 @@ message ReadBindings {}
 // code holds the brush is not something a person picking colours should have to know. The shell
 // splits this answer; the core does not.
 //
-// A read like ReadBindings rather than an event, because it is answered once at launch and does
-// not change while the app runs. When it can change, it becomes an event.
+// Asked at launch, when the renderer is being built and no event loop is running yet. It can
+// change after that, and when it does the core sends AppearanceChanged - so the two exist for
+// the two moments rather than one being redundant.
 message ReadAppearance {}
 
 // What Muster should look like.
@@ -140,6 +142,18 @@ message AdjustFontSize {
   // larger, smaller or reset.
   string change = 1;
 }
+
+// Reads the config file again, and makes the window match it.
+//
+// What a relaunch used to be for. Everything a file can say takes effect except which daemons
+// are attached: attaching and detaching on a save is a question about live sessions rather than
+// about settings, and getting it wrong costs somebody their panes - so a `[[daemon]]` change is
+// noticed, reported, and left for a relaunch.
+//
+// An action rather than something that only happens when the file changes, because the file
+// watcher dispatches this rather than being a second path to it. That is what keeps one action
+// path honest: a chord, a menu item, a CLI and a saved file all arrive here.
+message ReloadConfig {}
 
 // Shows the roster or puts it away.
 //
@@ -602,7 +616,28 @@ message Event {
     ViewChanged view_changed = 4;
     RosterChanged roster_changed = 5;
     PresentationChanged presentation_changed = 6;
+    AppearanceChanged appearance_changed = 7;
+    BindingsChanged bindings_changed = 8;
   }
+}
+
+// What Muster should look like, after the config file was read again.
+//
+// The event half of ReadAppearance, and the reason that message's comment said "when it can
+// change, it becomes an event". Both exist, and the split is between the two moments rather
+// than redundant: a launch needs the answer before the renderer is built and before any event
+// loop is running, so it asks; a reload happens while the window is up, so the core tells it.
+message AppearanceChanged {
+  Appearance appearance = 1;
+}
+
+// Which chord means what, after the config file was read again.
+//
+// The same pairing as AppearanceChanged, for the same reason. On macOS this rebuilds the menu,
+// which is the whole of rebinding there - a key equivalent on a menu item is how the platform
+// decides what a chord means.
+message BindingsChanged {
+  Bindings bindings = 1;
 }
 
 // The window's own chrome, as the core decided it.
