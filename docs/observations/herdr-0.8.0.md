@@ -795,3 +795,67 @@ tab's lifetime from its contents.
 
 Evidence: recorded live against the pinned daemon while fixing the sidebar caption bug,
 2026-08-15.
+
+## 16. The two names a pane has, and which of them a client is told about
+
+A pane carries a `label` somebody chose and a `terminal_title` its program set, and
+herdr keeps them apart: setting one never touches the other. That separation is what
+lets a sidebar row show a durable name and a changing status at once, so it is worth
+saying which is which.
+
+    label                    "🔥 payments spike"     set by pane.rename, kept by herdr
+    terminal_title           "✢ first working build" whatever the program last wrote
+    terminal_title_stripped  "first working build"   the same, minus one activity glyph
+
+Stripping removes a single leading braille spinner or Claude activity glyph when a
+space follows it, and answers nothing at all when what is left is empty
+(`~/src/herdr/src/terminal/title.rs`). Both title fields are absent until a program
+writes one; `label` is absent until somebody sets one, in 1942 recorded pane objects
+across this corpus, so "has a name" needs no sentinel.
+
+**A changed title is announced, and a rotating spinner is free.** One OSC 2 write
+produced exactly one `pane_updated`, carrying the new title on the event itself rather
+than only in an answer to a later question. Five spinner glyphs rotated in front of an
+unchanged title produced none, because herdr compares the *stripped* title before it
+emits (`~/src/herdr/src/app/terminal_titles.rs:46`). This matters for the budget: a
+harness rewriting its spinner several times a second costs a client nothing, and only
+the text a person would read reaches the wire. The headless server runs the same sync
+loop as the TUI (`~/src/herdr/src/server/headless.rs:574`), so none of this depends on
+anybody having herdr's own interface open.
+
+**A rename is not announced at all.** `pane.rename` emitted no event of any kind - not
+`pane_updated`, and there is no `pane.renamed` topic in the schema to subscribe to. The
+name became visible to a subscriber only when a later title change happened to carry it
+along. `pane.rename` does answer with the whole pane payload including the new label, so
+a client learns about its own rename from the reply, which is the same shape as a split
+answering with its settled layout (section 14). What no client can currently learn is
+somebody *else's* rename. Tabs do not have this problem: `tab.rename` emits `tab_renamed`
+with the new label.
+
+**A tab cannot be un-named.** `tab.rename` declares `label` a required string where
+`pane.rename` declares it nullable, and `Tab::set_custom_name` wraps whatever it is given
+in `Some` (`~/src/herdr/src/workspace/tab.rs:204`). Passing `null` is a schema violation
+and passing `""` sets an empty name that survives a daemon restart:
+
+    tab.list                 label "1"          herdr's own position number
+    tab.rename "release"     label "release"
+    tab.rename ""            label ""           and there is no way back to "1"
+
+**A replayed `pane_created` carries neither name nor title.** Subscribing afresh to a
+session whose pane was both named and titled replayed a `pane_created` holding
+`revision: 0`, `agent_status: "unknown"`, and no `label` or `terminal_title` key at all -
+the payload as of when the pane was made, not as of now. The consequence for a mirror is
+the one `agent_status` already has (section 10, and the event model in
+`architecture.md`): a `pane_created` may not clear a name or a title that is already
+held, because absent there means "not recorded" rather than "not set". `pane_updated`
+and `session.snapshot` are the two payloads that speak for the present.
+
+**A restart keeps the name and loses the title**, which is the asymmetry the whole
+feature rests on. After `server.stop` and a fresh daemon, `label` came back on the pane
+and `terminal_title` was null: herdr wrote the name down, and the process that would set
+a title again is new. A name is durable identity, a title is volatile status.
+
+Evidence: `corpus/herdr-0.8.0/naming/` - `FACTS.json` for the verdicts, `events.ndjson`
+for what a subscriber saw, `replay.ndjson` and `replayed-pane-created.json` for the
+replay, `before-restart.snapshot.json` and `after-restart.snapshot.json` for the
+restart. Re-record with `tools/herdr-probe/probe naming`.

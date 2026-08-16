@@ -1442,6 +1442,226 @@ def split_sides(daemon, rec: Recorder) -> None:
             rec.note(f"a swap naming no target: {error}")
 
 
+# --------------------------------------------------------------------------- 16
+
+# OSC 2 sets the window title, which is what a coding harness writes as it works.
+# Sent through the pane's own shell rather than injected, so what herdr sees is what
+# an agent would actually produce.
+def _set_title(client, pane_id: str, title: str) -> None:
+    client.request("pane.send_text",
+                   {"pane_id": pane_id, "text": f"printf '\\033]2;{title}\\007'\n"})
+
+
+def naming(daemon, rec: Recorder) -> None:
+    """The two names a pane can have, and which of them survives what.
+
+    A sidebar row says `directory · harness` today, which at fifteen agents is fifteen
+    rows saying nearly the same thing. Two better sources of text sit on herdr's pane
+    payload and Muster reads neither: `terminal_title_stripped`, which the agent writes
+    as it works, and `label`, which a person sets and herdr keeps.
+
+    Three things this settles that nothing has recorded before.
+
+    Whether a changed title is *delivered*. `pane.updated` is in every subscription list
+    the probe uses and has never once appeared in the corpus, so the one live route by
+    which a title could reach a mirror is unverified - and a feature built on an event
+    that never fires looks correct in every test that does not involve a real agent.
+
+    What a title change *costs*, which is the budget question. A harness rewrites its
+    title as it works, and Muster republishes its whole roster per relabel, so the rate
+    matters at frequency times cardinality. herdr's source says only a change in the
+    *stripped* title is announced, which would make a rotating spinner free; that is
+    worth a recording rather than a reading.
+
+    And whether a replayed `pane_created` carries the title, which decides whether an
+    absent field means "no title" or "ask again". Muster already has to special-case
+    `agent_status` for exactly this reason.
+    """
+    client = RecordingClient(daemon.client(), rec)
+    _new_workspace(client)
+    time.sleep(0.5)
+
+    def pane(pane_id="w1:p1"):
+        return client.request("pane.get", {"pane_id": pane_id})["pane"]
+
+    def tab(tab_id="w1:t1"):
+        listed = client.request("tab.list", {"workspace_id": "w1"})["tabs"]
+        return next(t for t in listed if t["tab_id"] == tab_id)
+
+    # Absent rather than empty is what lets "has a name" be a question with no sentinel.
+    fresh = pane()
+    rec.fact("pane_label_key_present_when_unset", "label" in fresh)
+    rec.fact("pane_terminal_title_when_unset", fresh.get("terminal_title"))
+    rec.fact("pane_keys_when_unnamed", sorted(fresh.keys()))
+
+    with daemon.client().subscribe(STRUCTURE_SUBSCRIPTIONS) as stream:
+        time.sleep(1.0)
+        seen = len(stream.snapshot())
+
+        # 1. A title arrives, and something says so.
+        _set_title(client, "w1:p1", "first working build")
+        time.sleep(1.5)
+        delivered = stream.snapshot()[seen:]
+        seen += len(delivered)
+        titled = pane()
+        rec.fact("title_change_event_kinds",
+                 sorted({e.get("event") for e in delivered if "event" in e}))
+        rec.fact("title_change_pane_updated_count",
+                 len([e for e in delivered if e.get("event") == "pane_updated"]))
+        rec.fact("terminal_title_after_osc2", titled.get("terminal_title"))
+        rec.fact("terminal_title_stripped_after_osc2", titled.get("terminal_title_stripped"))
+
+        # The event's own payload, not what a follow-up question answered. This is the
+        # live route a mirror reads, so whether the title rides the event decides
+        # whether a sidebar can be kept current without asking again per change.
+        announced = next((e.get("data", {}).get("pane", {}) for e in delivered
+                          if e.get("event") == "pane_updated"), {})
+        rec.fact("pane_updated_payload_carries_the_title",
+                 announced.get("terminal_title_stripped"))
+        rec.fact("pane_updated_payload_keys", sorted(announced.keys()))
+        rec.note(f"a title set with OSC 2 delivered {len(delivered)} event(s): "
+                 f"{sorted({e.get('event') for e in delivered if 'event' in e})}; "
+                 f"the event itself carried "
+                 f"{announced.get('terminal_title_stripped')!r}")
+
+        # 2. The cost question. A spinner glyph rotating in front of an unchanged title
+        # is the high-frequency case - Claude rewrites it several times a second - and
+        # what it costs a client is the whole budget argument.
+        for glyph in ("✳", "✻", "·", "✽", "✢"):
+            _set_title(client, "w1:p1", f"{glyph} first working build")
+            time.sleep(0.3)
+        time.sleep(1.0)
+        spun = stream.snapshot()[seen:]
+        seen += len(spun)
+        rec.fact("spinner_rotation_pane_updated_count",
+                 len([e for e in spun if e.get("event") == "pane_updated"]))
+        rec.fact("terminal_title_keeps_the_glyph", pane().get("terminal_title"))
+        rec.fact("terminal_title_stripped_drops_the_glyph",
+                 pane().get("terminal_title_stripped"))
+        rec.note(f"five spinner rotations over one unchanged title: "
+                 f"{len([e for e in spun if e.get('event') == 'pane_updated'])} pane_updated event(s)")
+
+        # 3. A name a person gave it. Emoji because that is what the feature is for, and
+        # because a byte-mangling round trip would only show up on one.
+        chosen = "🔥 payments spike"
+        answered = client.request("pane.rename", {"pane_id": "w1:p1", "label": chosen})
+        time.sleep(1.0)
+
+        # Whether a rename is *announced*, which decides whether a client can learn
+        # about one it did not make. herdr has no `pane.renamed` topic at all, so the
+        # only route is `pane.updated` - and if that does not fire either, a window
+        # renamed from another client stays wrong until something else moves the pane.
+        renames = stream.snapshot()[seen:]
+        seen += len(renames)
+        rec.fact("pane_rename_event_kinds",
+                 sorted({e.get("event") for e in renames if "event" in e}))
+        rec.fact("pane_rename_announces_itself",
+                 any(e.get("event") == "pane_updated" for e in renames))
+        rec.fact("pane_rename_answers_with_the_pane",
+                 answered.get("pane", {}).get("label"))
+        rec.note(f"a pane rename announced {sorted({e.get('event') for e in renames if 'event' in e})} "
+                 f"and answered with label={answered.get('pane', {}).get('label')!r}")
+
+        named = pane()
+        rec.fact("pane_label_after_rename", named.get("label"))
+        rec.fact("pane_label_survives_emoji_unmodified", named.get("label") == chosen)
+        # The compatibility the naming feature depends on: naming something must not
+        # cost you the ability to see what it is doing.
+        rec.fact("terminal_title_after_rename", named.get("terminal_title_stripped"))
+        rec.fact("name_and_title_coexist",
+                 bool(named.get("label")) and bool(named.get("terminal_title_stripped")))
+        rec.note(f"a renamed pane keeps its title beside the name: "
+                 f"label={bool(named.get('label'))} title={bool(named.get('terminal_title_stripped'))}")
+
+        # 4. A title set after the name must not overwrite it, or the two fields are
+        # really one field with two writers.
+        _set_title(client, "w1:p1", "second working build")
+        time.sleep(1.2)
+        both = pane()
+        rec.fact("rename_survives_a_later_title", both.get("label") == chosen)
+        rec.fact("terminal_title_stripped_after_later_osc2",
+                 both.get("terminal_title_stripped"))
+
+        # 5. Clearing. Nullable on the pane, and the question is what it leaves behind.
+        client.request("pane.rename", {"pane_id": "w1:p1", "label": None})
+        time.sleep(0.5)
+        cleared = pane()
+        rec.fact("pane_label_after_null_rename", cleared.get("label"))
+        rec.fact("null_clears_a_pane_name", not cleared.get("label"))
+
+        # 6. The tab half, which is not symmetrical with the pane half. `tab.rename`
+        # declares `label` a required string rather than a nullable one, so there may be
+        # no way back to herdr's own numbering once a tab has been named.
+        before_named = tab()
+        client.request("tab.rename", {"tab_id": "w1:t1", "label": "release"})
+        time.sleep(0.6)
+        renamed_tab = stream.snapshot()[seen:]
+        seen += len(renamed_tab)
+        rec.fact("tab_rename_announces_itself",
+                 any(e.get("event") == "tab_renamed" for e in renamed_tab))
+        rec.fact("tab_label_before_rename", before_named.get("label"))
+        rec.fact("tab_label_after_rename", tab().get("label"))
+        try:
+            client.request("tab.rename", {"tab_id": "w1:t1", "label": ""})
+            time.sleep(0.4)
+            rec.fact("tab_label_after_empty_rename", tab().get("label"))
+            rec.fact("empty_string_restores_a_tab_number",
+                     tab().get("label") == before_named.get("label"))
+        except Exception as error:  # noqa: BLE001 - a refusal is the finding
+            rec.fact("tab_label_after_empty_rename", {"raised": str(error)})
+            rec.fact("empty_string_restores_a_tab_number", False)
+        rec.note(f"a tab named and then emptied: {before_named.get('label')!r} -> "
+                 f"{'release'!r} -> {tab().get('label')!r}")
+
+        rec.write_text("events.ndjson", "".join(
+            json.dumps(e, sort_keys=True) + "\n" for e in stream.snapshot()))
+
+    # 7. Does a client that arrives late learn the title? Muster reconnects by
+    # subscribing and reading the replay, and herdr replays a synthetic pane_created per
+    # pane - so whether that payload is built from current state decides whether an
+    # absent title means "none" or "stale, ask again". `agent_status` already needs the
+    # second answer, which is why this is worth knowing rather than assuming.
+    client.request("pane.rename", {"pane_id": "w1:p1", "label": "🔥 payments spike"})
+    _set_title(client, "w1:p1", "third working build")
+    time.sleep(1.2)
+    with daemon.client().subscribe(STRUCTURE_SUBSCRIPTIONS) as stream:
+        time.sleep(1.2)
+        replay = stream.snapshot()
+    rec.write_text("replay.ndjson", "".join(
+        json.dumps(e, sort_keys=True) + "\n" for e in replay))
+    replayed = next((e.get("data", {}).get("pane", {}) for e in replay
+                     if e.get("event") == "pane_created"
+                     and e.get("data", {}).get("pane", {}).get("pane_id") == "w1:p1"), {})
+    rec.write_json("replayed-pane-created.json", replayed)
+    rec.fact("replayed_pane_created_carries_the_title",
+             replayed.get("terminal_title_stripped"))
+    rec.fact("replayed_pane_created_carries_the_name", replayed.get("label"))
+    rec.note(f"a fresh subscription's replayed pane_created: "
+             f"title={replayed.get('terminal_title_stripped')!r} "
+             f"name={replayed.get('label')!r}")
+
+    # 8. The asymmetry the whole design rests on: a name is something herdr wrote down,
+    # a title is something a process said. A restart keeps the first and cannot keep the
+    # second, because the process that would say it again is new.
+    before_restart = client.request("session.snapshot")["snapshot"]
+    rec.write_json("before-restart.snapshot.json", before_restart)
+    daemon.stop()
+    time.sleep(1.0)
+    daemon.start()
+    time.sleep(1.5)
+    client = RecordingClient(daemon.client(), rec)
+    after_restart = client.request("session.snapshot")["snapshot"]
+    rec.write_json("after-restart.snapshot.json", after_restart)
+    survivor = next((p for p in after_restart["panes"] if p["pane_id"] == "w1:p1"), {})
+    rec.fact("pane_label_survives_daemon_restart", survivor.get("label"))
+    rec.fact("terminal_title_survives_daemon_restart", survivor.get("terminal_title"))
+    rec.fact("tab_label_survives_daemon_restart",
+             next((t.get("label") for t in after_restart.get("tabs", [])
+                   if t.get("tab_id") == "w1:t1"), None))
+    rec.note(f"across a daemon restart: name={survivor.get('label')!r} "
+             f"title={survivor.get('terminal_title')!r}")
+
+
 ALL = {
     "snapshot": snapshot,
     "frames": frames,
@@ -1455,4 +1675,5 @@ ALL = {
     "layout": layout,
     "split-sides": split_sides,
     "durability": durability,
+    "naming": naming,
 }

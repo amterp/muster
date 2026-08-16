@@ -1,0 +1,16 @@
+{
+  "agent_status": "unknown",
+  "cwd": "/private/tmp",
+  "focused": true,
+  "foreground_cwd": "/private/tmp",
+  "pane_id": "w1:p1",
+  "revision": 0,
+  "scroll": {
+    "max_offset_from_bottom": 0,
+    "offset_from_bottom": 0,
+    "viewport_rows": 24
+  },
+  "tab_id": "w1:t1",
+  "terminal_id": "term_6592b733a50861",
+  "workspace_id": "w1"
+}
