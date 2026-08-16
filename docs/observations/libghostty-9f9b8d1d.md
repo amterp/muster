@@ -198,3 +198,68 @@ came back as a failing cross-oracle test - herdr's own `pane.read` of a screen a
 libghostty-vt's replay of the frames describing that same screen
 (`corpus/herdr-0.8.0/frame-fidelity/`). A snapshot alone would have recorded the wrong
 screen as the expectation and passed forever.
+
+## 9. Configuring it without a config file
+
+Measured 2026-08-16, cutting the loan that let a Ghostty config decide what a Muster pane
+looks like. The question was whether an embedder can hand libghostty its own appearance
+values at all, since everything else about the seam depends on the answer.
+
+**There is no setter.** No `ghostty_config_set`, no string or memory loader. The only ways
+into a `ghostty_config_t` are the four `load_*` functions (`include/ghostty.h:1097-1100`).
+`Config.loadIter` in Zig takes any iterator of `--key=value` strings and is the natural
+hook for one, but it is not exported to C in this revision.
+
+**Two of the four work for an embedder, and only one of them twice.**
+
+`ghostty_config_load_cli_args` takes no arguments - it reads `global.args()`, which is
+whatever was handed to `ghostty_init` (`src/global.zig:74`). Nothing requires that be the
+process's real `argv`, so synthesizing `--key=value` strings works and reaches the parser.
+It is one-shot: `ghostty_init` assigns `var state: ?GlobalState` unconditionally, so
+changing the values later means re-initializing libghostty's global runtime underneath a
+live app.
+
+`ghostty_config_load_file` takes an absolute path and reads the same syntax without the
+dashes - `key = value`, one per line, `#` comments. It composes: a second file read into a
+second handle gives a second set of values, which is what `ghostty_app_update_config`
+wants. **This is the one Muster uses**, for both the first launch and every reload after
+it, because two mechanisms for one job is a way for launch and reload to disagree. The path
+being absolute is asserted rather than refused, so in a ReleaseFast build a relative one is
+undefined rather than an error.
+
+Worth being explicit that today's call is a *latent* bug as well as a design one: Muster
+passes its own `CommandLine.unsafeArgv` to `ghostty_init`, so `muster --pane w1:p1` is
+already being offered to libghostty as configuration. Nothing has come of it because
+nothing calls `load_cli_args`, but the fix is the same either way - hand it a program name
+and nothing else.
+
+**Nothing about a bad config file is fatal, and both kinds are reported.** A key
+libghostty does not know and a value it cannot parse each append a diagnostic and leave the
+rest of the file applied:
+
+```
+config:2:not-a-ghostty-key: unknown field
+config:1:cursor-style: invalid value "wobble", valid values are: bar, block, underline, block_hollow
+```
+
+Drain them with `ghostty_config_diagnostics_count` and `ghostty_config_get_diagnostic`. For
+Muster this is not a user-facing error path: the person's own file was already parsed and
+refused by the core, so a diagnostic here means Muster's own translation emitted something
+libghostty does not accept, and the log says so.
+
+**`ghostty_config_get` reads back less than you can write.** It answers for
+`?[:0]const u8`, `bool`, `u8`/`u32`, `i16`, `f32`/`f64`, any enum (as its tag name), and
+structs carrying a `cval()` - Color and Palette among them (`src/config/c_get.zig`). It
+returns false for everything else, which includes two things Muster sets:
+`selection-background` and `selection-foreground` are `?TerminalColor`, a union with no
+`cval`, and `window-padding-x`/`-y` are a plain struct with none either. Those apply and
+cannot be read.
+
+So the oracle for a translation test is two-sided, and both sides are needed: every
+C-readable key reads back the value Muster meant, and the diagnostics count is zero -
+which is what covers the keys that cannot be read, since a wrong key name or an
+unparseable value would show up there.
+
+One trap in the readback worth naming, because it fails quietly. The out-pointer's type is
+decided by the key and nothing checks it: reading `font-size`, an `f32`, into a `Double`
+returns true and yields `-1.0000002441229299` rather than the 17 that was set.

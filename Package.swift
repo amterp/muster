@@ -70,6 +70,9 @@ let package = Package(
       ]
     ),
     .executableTarget(name: "muster", dependencies: ["MusterMac", "MusterRenderer"]),
-    .testTarget(name: "MusterMacTests", dependencies: ["MusterMac"]),
+    // GhosttyKit directly, not through MusterRenderer: the appearance translation is asserted
+    // by handing its output to the real libghostty and reading back what it made of it, which
+    // needs the C API in the test's own scope. No surface, no GPU - just a config handle.
+    .testTarget(name: "MusterMacTests", dependencies: ["MusterMac", "GhosttyKit"]),
   ]
 )
