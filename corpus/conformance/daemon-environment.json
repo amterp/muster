@@ -22,6 +22,7 @@
           "HOME=/Users/a",
           "PATH=/usr/bin"
         ],
+        "supplied": [],
         "dropped": [
           "CLAUDE_CODE_CHILD_SESSION",
           "CLAUDE_CODE_MESSAGING_SOCKET",
@@ -52,12 +53,13 @@
           "XDG_RUNTIME_DIR=/run/user/501",
           "XDG_STATE_HOME=/Users/a/.local/state"
         ],
+        "supplied": [],
         "dropped": []
       }
     },
     {
       "name": "a pane gets a shell that works",
-      "why": "The other half of the allowlist, and the reason it is not simply HOME. A daemon with no PATH spawns a shell that cannot run `ls`; one with no SHELL has nothing to spawn. USER and LOGNAME are what a git author or a home-directory lookup reads, and no shell can invent them.",
+      "why": "The other half of the allowlist, and the reason it is not simply HOME. A daemon with no PATH spawns a shell that cannot run `ls`; one with no SHELL has nothing to spawn. USER and LOGNAME are what a git author or a home-directory lookup reads, and no shell can invent them.\n\nTERM is here to be dropped, and that is a deliberate absence rather than an oversight. No pane ever sees the daemon's: herdr sets TERM=xterm-256color per pane unconditionally, because a pane is rendered by herdr's own terminal layer rather than by whatever launched the app. The one thing that does read the daemon's own is herdr's host-terminal detection, which decides who a notification is attributed to - so carrying xterm-ghostty meant a daemon posting notifications as Ghostty, to a terminal that is not there. Dropping it also makes a terminal launch and a Dock launch give the daemon the same environment, and a Dock launch never had one.",
       "given": {
         "env": {
           "PATH": "/opt/homebrew/bin:/usr/bin",
@@ -74,12 +76,14 @@
           "LOGNAME=amterp",
           "PATH=/opt/homebrew/bin:/usr/bin",
           "SHELL=/bin/zsh",
-          "TERM=xterm-ghostty",
           "TMPDIR=/var/folders/x/T/",
           "TZ=Australia/Sydney",
           "USER=amterp"
         ],
-        "dropped": []
+        "supplied": [],
+        "dropped": [
+          "TERM"
+        ]
       }
     },
     {
@@ -100,6 +104,7 @@
           "LC_CTYPE=UTF-8",
           "LC_TIME=en_AU.UTF-8"
         ],
+        "supplied": [],
         "dropped": []
       }
     },
@@ -117,6 +122,7 @@
           "HOME=/Users/a",
           "SSH_AUTH_SOCK=/private/tmp/ssh-XXXX/agent.1"
         ],
+        "supplied": [],
         "dropped": []
       }
     },
@@ -134,6 +140,7 @@
         "carried": [
           "HOME=/Users/a"
         ],
+        "supplied": [],
         "dropped": [
           "HERDR_SESSION",
           "HERDR_SOCKET_PATH"
@@ -157,6 +164,7 @@
         "carried": [
           "HOME=/Users/a"
         ],
+        "supplied": [],
         "dropped": [
           "GOPATH",
           "NVM_DIR",
@@ -180,6 +188,7 @@
         "carried": [
           "HOME=/Users/a"
         ],
+        "supplied": [],
         "dropped": [
           "LANG",
           "PATH"
@@ -194,6 +203,106 @@
       },
       "expect": {
         "carried": [],
+        "supplied": [],
+        "dropped": []
+      }
+    },
+    {
+      "name": "a window launched from the Dock is given the locale nobody gave it",
+      "why": "launchd hands a GUI process the environment below and nothing more - no LANG, no LC_* - so the allowlist has no locale to carry and a daemon started from it would run in the C locale, handing that to every pane it spawns. That is exactly what LANG is on the list to prevent, and an allowlist cannot carry what is absent. The environment here is measured rather than imagined: a bundle opened under `env -i`, which is the closest thing to a double-click a script can arrange.\n\nWorth knowing why nothing looks broken in the app today. Building the renderer calls Ghostty's own ensureLocale, which derives a locale from CFLocale and setenvs it into the whole process before Muster starts its daemon - so the daemon gets one by way of the renderer. That is a loan of the same kind as the fonts and colours Muster used to take from a Ghostty config, and less visible: it depends on the renderer being built first, and a renderer that stopped doing it would drop every pane to the C locale in silence. This case is Muster's own answer, which is why it is here rather than left to a dependency.",
+      "given": {
+        "env": {
+          "HOME": "/Users/amterp",
+          "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+          "SHELL": "/bin/zsh",
+          "USER": "amterp",
+          "LOGNAME": "amterp",
+          "TMPDIR": "/var/folders/x/T/",
+          "SSH_AUTH_SOCK": "/private/tmp/com.apple.launchd.x/Listeners"
+        },
+        "locale": "en_AU.UTF-8"
+      },
+      "expect": {
+        "carried": [
+          "HOME=/Users/amterp",
+          "LOGNAME=amterp",
+          "PATH=/usr/bin:/bin:/usr/sbin:/sbin",
+          "SHELL=/bin/zsh",
+          "SSH_AUTH_SOCK=/private/tmp/com.apple.launchd.x/Listeners",
+          "TMPDIR=/var/folders/x/T/",
+          "USER=amterp"
+        ],
+        "supplied": [
+          "LANG=en_AU.UTF-8"
+        ],
+        "dropped": []
+      }
+    },
+    {
+      "name": "a window launched from a terminal keeps the locale it was handed",
+      "why": "The other launch, and the reason this is not simply 'always set LANG'. A shell exports its own, and the value a person has configured beats one derived from a system setting they may never have looked at - so what the platform says is only consulted when nothing else answered.",
+      "given": {
+        "env": {
+          "HOME": "/Users/amterp",
+          "LANG": "en_US.UTF-8",
+          "PATH": "/opt/homebrew/bin:/usr/bin"
+        },
+        "locale": "en_AU.UTF-8"
+      },
+      "expect": {
+        "carried": [
+          "HOME=/Users/amterp",
+          "LANG=en_US.UTF-8",
+          "PATH=/opt/homebrew/bin:/usr/bin"
+        ],
+        "supplied": [],
+        "dropped": []
+      }
+    },
+    {
+      "name": "a locale that is half set is left half set rather than completed",
+      "why": "Carrying some of the locale family is worse than carrying none, which is why LC_ is a prefix in the allowlist. Supplying a LANG beside an inherited LC_CTYPE would create exactly that split from the other direction: a daemon whose ctype and whose language were decided by different machines. Whoever set one variable and not the others meant something by it, and this is not the place to guess what.",
+      "given": {
+        "env": {
+          "HOME": "/Users/amterp",
+          "LC_CTYPE": "UTF-8"
+        },
+        "locale": "en_AU.UTF-8"
+      },
+      "expect": {
+        "carried": [
+          "HOME=/Users/amterp",
+          "LC_CTYPE=UTF-8"
+        ],
+        "supplied": [],
+        "dropped": []
+      }
+    },
+    {
+      "name": "a platform that will not name a locale has none invented for it",
+      "why": "The same rule the empty environment gets: what cannot be answered is left unanswered. A locale written down here would be a transcription of somebody else's machine, put into a process that outlives the app and handed to every pane it ever spawns. The C locale is at least honest about being a default.",
+      "given": {
+        "env": {
+          "HOME": "/Users/amterp",
+          "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+          "SHELL": "/bin/zsh",
+          "USER": "amterp",
+          "LOGNAME": "amterp",
+          "TMPDIR": "/var/folders/x/T/",
+          "SSH_AUTH_SOCK": "/private/tmp/com.apple.launchd.x/Listeners"
+        }
+      },
+      "expect": {
+        "carried": [
+          "HOME=/Users/amterp",
+          "LOGNAME=amterp",
+          "PATH=/usr/bin:/bin:/usr/sbin:/sbin",
+          "SHELL=/bin/zsh",
+          "SSH_AUTH_SOCK=/private/tmp/com.apple.launchd.x/Listeners",
+          "TMPDIR=/var/folders/x/T/",
+          "USER=amterp"
+        ],
+        "supplied": [],
         "dropped": []
       }
     }

@@ -22,6 +22,10 @@ use serde_json::json;
 /// its own transcript.
 const HARNESS_MARKER: &str = "CLAUDE_CODE_CHILD_SESSION";
 
+/// What the shell would report the platform's locale as. Nothing here reads the machine's own,
+/// so this passes the same on a Mac set to anything.
+const PLATFORM_LOCALE: &str = "en_AU.UTF-8";
+
 /// A credential, so the test fails loudly on the case that matters most.
 const HARNESS_TOKEN: &str = "CLAUDE_CODE_MESSAGING_TOKEN";
 
@@ -57,7 +61,10 @@ fn a_pane_does_not_inherit_the_launching_sessions_private_state() {
         socket.len()
     );
 
-    daemon::start(&binary(), &socket, &environment).expect("the pinned daemon should start");
+    // No LANG anywhere in the environment above, which is what launchd hands a GUI process -
+    // so this is the launch that used to leave every pane in the C locale.
+    daemon::start(&binary(), &socket, &environment, Some(PLATFORM_LOCALE))
+        .expect("the pinned daemon should start");
     let client = HerdrClient::new(&socket);
     let stopped = Stop(socket.clone());
 
@@ -118,6 +125,16 @@ fn a_pane_does_not_inherit_the_launching_sessions_private_state() {
         "a pane's shell has no HOME.\n  Impact: anything reading a config or a history file \
          in a pane looks in the wrong place. Scrubbing went too far.\n  The pane held: \
          {names:?}"
+    );
+    assert!(
+        written.lines().any(|line| line == format!("LANG={PLATFORM_LOCALE}")),
+        "a pane's shell has no LANG, though the shell reported one and nothing in the \
+         environment named a locale.\n  Impact: every pane runs in the C locale and mangles \
+         non-ASCII. launchd hands a GUI process no LANG and an allowlist cannot carry what is \
+         absent, so a Dock launch has nothing else to fall back on - the app happens to be \
+         rescued by the renderer setting one, and nothing here links a renderer.\n  Check \
+         daemon::supplied, and that daemon::start still passes what it builds.\n  The pane \
+         held: {names:?}"
     );
 
     let _ = std::fs::remove_dir_all(&root);

@@ -33,6 +33,7 @@ public enum Core {
     startup.configPath = configPath ?? ""
     startup.herdrPath = herdrPath ?? ""
     startup.statePath = statePath ?? ""
+    startup.locale = platformLocale() ?? ""
     startup.logLevel = ProcessInfo.processInfo.environment["MUSTER_LOG_LEVEL"] ?? ""
     startup.process = process
     var request = Muster_Request()

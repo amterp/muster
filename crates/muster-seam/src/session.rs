@@ -66,6 +66,22 @@ fn daemon_binary() -> Option<String> {
     DAEMON_BINARY.lock().expect("a panicking sender poisoned the daemon binary").clone()
 }
 
+/// What locale this machine is set to, as the shell read it off the platform.
+///
+/// Held for the same reason the daemon binary is: only the shell can ask macOS what the user
+/// picked, and only the core decides what a daemon is entitled to. None means the platform
+/// would not name one, and nothing is invented in its place.
+static PLATFORM_LOCALE: Mutex<Option<String>> = Mutex::new(None);
+
+pub(crate) fn set_platform_locale(locale: &str) {
+    let mut held = PLATFORM_LOCALE.lock().expect("a panicking sender poisoned the locale");
+    *held = if locale.is_empty() { None } else { Some(locale.to_string()) };
+}
+
+fn platform_locale() -> Option<String> {
+    PLATFORM_LOCALE.lock().expect("a panicking sender poisoned the locale").clone()
+}
+
 /// Where this window's arrangement is remembered, and what was last written there.
 ///
 /// The text rather than the record, so that deciding whether to write is a string compare
@@ -206,7 +222,12 @@ fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, String> {
                  in the config file to say outright."
                     .to_string()
             })?;
-            daemon::ensure_running(&path, daemon_binary().as_deref(), &environment)?;
+            daemon::ensure_running(
+                &path,
+                daemon_binary().as_deref(),
+                &environment,
+                platform_locale().as_deref(),
+            )?;
             Ok(Reached { socket_path: path, tunnel: None })
         }
         // A remote is the one place Muster does not yet own its daemon, and the reason is

@@ -654,6 +654,9 @@ fn start(startup: &proto::Startup) -> Response {
     // attaching publishes, and a publish before this is one that would write the arrangement
     // out to nowhere - or worse, read it back after it had been replaced.
     session::set_state_path(&startup.state_path);
+    // Before the config too, because applying one can start a daemon and the locale is part of
+    // the environment that daemon is born with. Set after, it would reach the second launch.
+    session::set_platform_locale(&startup.locale);
 
     if startup.log_path.is_empty() {
         apply_config(&startup.config_path);

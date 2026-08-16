@@ -469,6 +469,21 @@ message Startup {
   // fresh every time, which is what it did before this existed.
   string state_path = 6;
 
+  // What locale this machine is set to, as a POSIX name like `en_AU.UTF-8`. Empty when the
+  // platform would not name one.
+  //
+  // Reported rather than obeyed: what the core does with it is the core's, and today that is
+  // handing the daemon a LANG when nothing else supplied one. The split is the same one the
+  // log path draws - only the shell can ask macOS what the user picked, and only the core
+  // decides what a daemon is entitled to.
+  //
+  // Here because a window launched from the Dock has no environment worth the name. launchd
+  // hands a GUI process HOME, PATH, SHELL, USER, LOGNAME, TMPDIR and little else - no LANG,
+  // no LC_* - and an allowlist can only carry what exists. Today the renderer's own startup
+  // happens to leave a locale in the process before the daemon is started, which is a loan
+  // rather than an answer; `daemon::supplied` says why Muster gives its own.
+  string locale = 7;
+
   // trace, debug, info, warn, error. Empty means debug.
   string log_level = 2;
 

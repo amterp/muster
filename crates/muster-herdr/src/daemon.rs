@@ -50,6 +50,8 @@ pub fn answers(socket_path: &str) -> bool {
 /// [`carried`]. Everything the launching shell held would otherwise become permanent state in
 /// a process that outlives the app and hands it to every pane it ever spawns.
 ///
+/// What launchd did not give a GUI process is put back, and that is the whole of [`supplied`].
+///
 /// `HERDR_SESSION` rather than `--session`, so it reaches the panes the daemon spawns too.
 /// That is what makes `herdr pane list` inside a Muster pane talk to the daemon that owns it
 /// rather than to whatever the user's own herdr would find.
@@ -57,6 +59,7 @@ pub fn start(
     binary: &str,
     socket_path: &str,
     environment: &BTreeMap<String, String>,
+    locale: Option<&str>,
 ) -> Result<(), String> {
     log::info(
         "daemon.starting",
@@ -73,6 +76,7 @@ pub fn start(
     );
 
     let carried = carried(environment);
+    let supplied = supplied(environment, locale);
     let dropped: Vec<&str> = environment
         .keys()
         .filter(|name| !carried.contains_key(*name))
@@ -81,10 +85,15 @@ pub fn start(
     // Names, never values: this log is meant to be attachable to a bug report, and an
     // environment holds tokens (`architecture.md`, the diagnostic log). The names are what
     // somebody asking "why does my pane not see FOO" needs, and they are not secrets.
+    //
+    // Three lists rather than two, because a supplied variable is neither carried nor
+    // dropped - it was never in the environment to be either. Reading a Dock launch's log
+    // without it, the honest question "where did LANG come from" has no answer in the file.
     log::info(
         "daemon.environment",
         fields! {
             "carried" => carried.keys().cloned().collect::<Vec<String>>().join(","),
+            "supplied" => supplied.keys().cloned().collect::<Vec<String>>().join(","),
             "dropped_count" => dropped.len().to_string(),
             "dropped" => dropped.join(","),
         },
@@ -94,6 +103,7 @@ pub fn start(
         .arg("server")
         .env_clear()
         .envs(&carried)
+        .envs(&supplied)
         .env("HERDR_SESSION", OWN_SESSION)
         // Its own process group, so that Muster quitting - or being killed with the terminal
         // it was launched from - does not take the agents with it.
@@ -150,6 +160,7 @@ pub fn ensure_running(
     socket_path: &str,
     binary: Option<&str>,
     environment: &BTreeMap<String, String>,
+    locale: Option<&str>,
 ) -> Result<(), String> {
     if answers(socket_path) {
         return Ok(());
@@ -162,7 +173,7 @@ pub fn ensure_running(
              stages one beside the binary."
         ));
     };
-    start(binary, socket_path, environment)
+    start(binary, socket_path, environment, locale)
 }
 
 /// The environment Muster resolves its own socket path from.
@@ -208,6 +219,48 @@ fn is_carried(name: &str) -> bool {
     name.starts_with("LC_") || CARRIED.contains(&name)
 }
 
+/// What Muster gives its daemon that nobody handed Muster.
+///
+/// The other half of [`carried`], and it exists because an allowlist can only carry what is
+/// there. A window launched the way Muster is meant to be launched - Dock, Finder, Spotlight -
+/// is started by launchd, which hands a GUI process `HOME`, `PATH`, `SHELL`, `USER`,
+/// `LOGNAME`, `TMPDIR` and little else. No `LANG`, no `LC_*`.
+///
+/// **Today a daemon gets one anyway, and that is the reason this exists rather than evidence
+/// that it need not.** `ghostty_init` calls Ghostty's own `ensureLocale`, which derives a
+/// locale from `CFLocale` and `setenv`s it into the whole process - so by the time Muster
+/// starts a daemon the environment it reads has a `LANG` in it that no shell put there.
+/// Measured: a bundle opened under `env -i` gives its daemon `LANG=en_AU.UTF-8` and a
+/// `LANGUAGE` beside it, which is Ghostty's pair and nothing else's. That is a loan, of the
+/// same kind as the fonts and colours Muster used to take from a Ghostty config file: it is
+/// invisible from here, it depends on the renderer being built before the daemon is started,
+/// and it is the day a renderer changes that every pane silently drops to the C locale.
+///
+/// So Muster answers the question itself. `locale` is what the platform said, which only the
+/// shell can ask. Whether a daemon gets it is decided here, and only when the environment
+/// names *nothing* in the locale family: a `LANG` supplied beside an inherited `LC_CTYPE` is
+/// the split locale [`is_carried`] already refuses to create, arrived at from the other
+/// direction.
+pub fn supplied(
+    environment: &BTreeMap<String, String>,
+    locale: Option<&str>,
+) -> BTreeMap<String, String> {
+    let mut supplied = BTreeMap::new();
+    if let Some(locale) = locale.filter(|locale| !locale.is_empty())
+        && !names_a_locale(environment)
+    {
+        supplied.insert("LANG".to_string(), locale.to_string());
+    }
+    supplied
+}
+
+/// Whether anything in this environment already decides what the locale is.
+fn names_a_locale(environment: &BTreeMap<String, String>) -> bool {
+    environment
+        .iter()
+        .any(|(name, value)| !value.is_empty() && (name == "LANG" || name.starts_with("LC_")))
+}
+
 /// The variables Muster's daemon carries, and why each one is here.
 ///
 /// Anything not on this list is a variable a pane's own shell can rebuild, or one that
@@ -231,13 +284,20 @@ const CARRIED: &[&str] = &[
     "USER",
     "LOGNAME",
     // The machine's conventions. Wrong or missing, and a pane mangles non-ASCII or writes
-    // scratch files somewhere unexpected.
+    // scratch files somewhere unexpected. A launch that supplies no locale at all gets one
+    // anyway - see `supplied`.
     "LANG",
     "TZ",
     "TMPDIR",
-    // What the terminal is. herdr sets this for a pane, but a daemon with none of its own has
-    // nothing to fall back on when it starts a process outside one.
-    "TERM",
+    // TERM is deliberately absent, and this note is the whole reason to look for it here.
+    //
+    // No pane has ever seen the daemon's: herdr sets `TERM=xterm-256color` per pane
+    // unconditionally, because a pane is rendered by herdr's own terminal layer rather than by
+    // whatever launched the app. The one thing that does read the daemon's own is herdr's
+    // host-terminal detection, which decides who a notification is attributed to - so carrying
+    // it meant a Muster launched from Ghostty had its daemon posting notifications as Ghostty,
+    // to a terminal that is not there. A Dock launch never had one, so dropping it also makes
+    // the two ways of starting Muster give the daemon the same environment.
     // The user's own ssh agent. A deliberate inclusion rather than an oversight: this is a
     // credential channel, and a pane that cannot `git push` or reach a devenv is a pane
     // somebody stops using. It is the person's own agent, it is what every terminal emulator

@@ -76,6 +76,23 @@ Not hypothetical. Launching Muster from inside a coding-agent session put that s
 credentials into the daemon and from there into every pane, where a fresh agent read them, believed it was a child of
 another session, and stopped saving its transcript - and it persisted after that Muster had quit.
 
+**An allowlist can only carry what exists, so a little is supplied.** Muster is meant to be launched from the Dock,
+and launchd hands a GUI process `HOME`, `PATH`, `SHELL`, `USER`, `LOGNAME`, `TMPDIR`, `SSH_AUTH_SOCK` and little
+else - no locale at all, which is the exact absence `LANG` is on the list to prevent. Nothing looks broken today, and
+the reason is a loan rather than an answer: building the renderer derives a locale from the platform and puts it in
+the whole process, so the environment Muster reads a moment later has a `LANG` in it that no shell set. That is the
+same borrowing as the fonts and colours Muster used to take from a Ghostty config file, and less visible - it depends
+on the renderer being built before the daemon is started, and the day a renderer changes, every pane drops to the C
+locale in silence. So Muster answers it: the shell reports what the platform says, because only it can ask macOS, and
+the core decides whether a daemon gets it - only when nothing in the environment named a locale, since one half
+inherited and one half supplied is the split the allowlist already refuses to create. The run log names supplied
+variables as a third list beside carried and dropped, so "where did this come from" has an answer.
+
+`TERM` is not one of them, and its absence is the more useful fact. herdr sets a pane's `TERM` itself, so no pane has
+ever seen the daemon's; the one thing that reads it is herdr's host-terminal detection, which decides who a
+notification is attributed to. Carrying it meant a Muster launched from Ghostty had its daemon posting notifications
+as Ghostty, to a terminal that was not there.
+
 The guarantee stops at the machine's edge. An SSH endpoint runs a platform this bundle carries no binary for, so a
 remote daemon is still whatever is installed over there. Closing that means putting an agent on the far machine on
 first connection, the way mutagen does.
