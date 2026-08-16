@@ -77,6 +77,9 @@
           "w1:p1": "unknown",
           "w1:p2": "working"
         },
+        "tabLabels": {
+          "w1:t1": "1"
+        },
         "layouts": {},
         "focus": {
           "workspace": "w1",
@@ -159,6 +162,9 @@
         "agentStates": {
           "w1:p1": "idle"
         },
+        "tabLabels": {
+          "w1:t1": "1"
+        },
         "layouts": {},
         "focus": {
           "workspace": "w1",
@@ -226,6 +232,9 @@
         ],
         "agentStates": {
           "w1:p1": "idle"
+        },
+        "tabLabels": {
+          "w1:t1": "1"
         },
         "layouts": {},
         "focus": {},
@@ -298,6 +307,9 @@
         "agentStates": {
           "w1:p1": "idle"
         },
+        "tabLabels": {
+          "w1:t1": "1"
+        },
         "layouts": {},
         "focus": {},
         "health": "connected",
@@ -352,6 +364,9 @@
         "workspaces": [],
         "agentStates": {
           "w1:p1": "idle"
+        },
+        "tabLabels": {
+          "w1:t1": "1"
         },
         "layouts": {},
         "focus": {},
@@ -868,6 +883,9 @@
           "w1:p1": "idle",
           "w1:p2": "idle"
         },
+        "tabLabels": {
+          "w1:t1": "1"
+        },
         "layouts": {},
         "focus": {
           "workspace": "w1",
@@ -1031,6 +1049,9 @@
           "w1:p1": "blocked",
           "w1:p3": "idle"
         },
+        "tabLabels": {
+          "w1:t1": "1"
+        },
         "layouts": {},
         "focus": {},
         "health": "connected",
@@ -1102,6 +1123,9 @@
         "agentStates": {
           "w1:p1": "idle",
           "w1:p2": "idle"
+        },
+        "tabLabels": {
+          "w1:t1": "1"
         },
         "layouts": {
           "w1:t1": "columns(w1:p1, w1:p2@0.5)"
@@ -1186,6 +1210,9 @@
           "w1:p1": "idle",
           "w1:p2": "idle"
         },
+        "tabLabels": {
+          "w1:t1": "1"
+        },
         "layouts": {
           "w1:t1": "columns(w1:p1, w1:p2@0.5)"
         },
@@ -1269,6 +1296,9 @@
           "w1:p1": "idle",
           "w1:p2": "idle"
         },
+        "tabLabels": {
+          "w1:t1": "1"
+        },
         "layouts": {
           "w1:t1": "columns(w1:p1, w1:p2@0.3)"
         },
@@ -1342,6 +1372,9 @@
         "agentStates": {
           "w1:p1": "idle",
           "w1:p2": "idle"
+        },
+        "tabLabels": {
+          "w1:t1": "1"
         },
         "layouts": {
           "w1:t1": "columns(w1:p1, w1:p2@0.5) zoomed=w1:p2"
@@ -1420,6 +1453,9 @@
         ],
         "agentStates": {
           "w1:p1": "idle"
+        },
+        "tabLabels": {
+          "w1:t1": "1"
         },
         "layouts": {
           "w1:t1": "w1:p1"
@@ -1584,6 +1620,9 @@
           "w1:p2": "idle",
           "w1:p3": "idle"
         },
+        "tabLabels": {
+          "w1:t1": "1"
+        },
         "layouts": {
           "w1:t1": "columns(w1:p1, rows(w1:p2, w1:p3@0.5)@0.5)"
         },
@@ -1684,6 +1723,9 @@
           "w1:p1": "idle",
           "w1:p2": "idle"
         },
+        "tabLabels": {
+          "w1:t1": "1"
+        },
         "layouts": {},
         "focus": {},
         "health": "connected",
@@ -1764,6 +1806,9 @@
         "agentStates": {
           "w1:p1": "idle",
           "w1:p2": "idle"
+        },
+        "tabLabels": {
+          "w1:t1": "1"
         },
         "layouts": {
           "w1:t1": "columns(w1:p2, w1:p1@0.5)"
@@ -1882,6 +1927,9 @@
           "w1:p1": "idle",
           "w1:p2": "idle"
         },
+        "tabLabels": {
+          "w1:t1": "1"
+        },
         "layouts": {
           "w1:t1": "columns(w1:p1, w1:p2@0.7)"
         },
@@ -1976,6 +2024,9 @@
         "agentStates": {
           "w1:p1": "idle",
           "w1:p2": "idle"
+        },
+        "tabLabels": {
+          "w1:t1": "1"
         },
         "layouts": {
           "w1:t1": "columns(w1:p2, w1:p1@0.5)"
@@ -2080,6 +2131,9 @@
         "agentStates": {
           "w1:p1": "idle",
           "w1:p2": "idle"
+        },
+        "tabLabels": {
+          "w1:t1": "1"
         },
         "layouts": {
           "w1:t1": "columns(w1:p1, w1:p2@0.5)"
@@ -2186,6 +2240,9 @@
           "w1:p1": "idle",
           "w1:p2": "idle"
         },
+        "tabLabels": {
+          "w1:t1": "1"
+        },
         "layouts": {
           "w1:t1": "columns(w1:p1, w1:p2@0.5)"
         },
@@ -2291,6 +2348,9 @@
           "w1:p1": "idle",
           "w1:p2": "idle"
         },
+        "tabLabels": {
+          "w1:t1": "1"
+        },
         "layouts": {
           "w1:t1": "columns(w1:p2, w1:p1@0.5)"
         },
@@ -2383,6 +2443,9 @@
         "agentStates": {
           "w1:p1": "idle",
           "w1:p2": "idle"
+        },
+        "tabLabels": {
+          "w1:t1": "1"
         },
         "layouts": {
           "w1:t1": "columns(w1:p2, w1:p1@0.5)"
@@ -2502,6 +2565,9 @@
         ],
         "agentStates": {
           "w1:p3": "idle"
+        },
+        "tabLabels": {
+          "w1:t1": "1"
         },
         "layouts": {
           "w1:t1": "w1:p3"
@@ -2799,6 +2865,9 @@
         "agentStates": {
           "w1:p1": "unknown"
         },
+        "tabLabels": {
+          "w1:t1": "1"
+        },
         "layouts": {},
         "focus": {},
         "health": "connected",
@@ -2850,6 +2919,9 @@
         "workspaces": [],
         "agentStates": {
           "w1:p1": "unknown"
+        },
+        "tabLabels": {
+          "w1:t1": "1"
         },
         "layouts": {},
         "focus": {},
@@ -3130,6 +3202,83 @@
         "focus": {},
         "health": "connected",
         "changes": []
+      }
+    },
+    {
+      "name": "a replayed tab does not put back the number it was made with",
+      "why": "The same replay hazard as a pane's name, one level up, and it hid for longer because until tabs could be renamed from inside Muster nobody made one move. A tab renamed to `release` drew no caption at all: the replayed `tab_created` carried herdr's original label - the tab's position, `1` - and the caption drops an all-digits label to suppress exactly that number, so the row went blank.\n\nherdr does announce a tab rename, unlike a pane's, so the two events are told apart rather than fenced off wholesale. `tab_created` says a tab exists and is replayed forever; `tab_renamed` says what it is called and is news. Creation therefore names a tab only the first time it is seen.",
+      "given": {
+        "snapshot": {
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "release"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "tabUpserted",
+            "id": "w1:t1",
+            "workspace": "w1",
+            "label": "1"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [],
+        "tabs": [
+          "w1:t1"
+        ],
+        "workspaces": [],
+        "agentStates": {},
+        "tabLabels": {
+          "w1:t1": "release"
+        },
+        "layouts": {},
+        "focus": {},
+        "health": "connected",
+        "changes": []
+      }
+    },
+    {
+      "name": "a tab rename is news, and is applied",
+      "why": "The other half. herdr emits `tab.renamed` with the new label, so a tab named from another client - its own TUI, a second Muster, a script - reaches this window at once rather than waiting for a snapshot. That is the difference from a pane, which herdr renames silently, and it is why creation and renaming are two events here rather than one upsert.",
+      "given": {
+        "snapshot": {
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "tabRenamed",
+            "id": "w1:t1",
+            "label": "release"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [],
+        "tabs": [
+          "w1:t1"
+        ],
+        "workspaces": [],
+        "agentStates": {},
+        "tabLabels": {
+          "w1:t1": "release"
+        },
+        "layouts": {},
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "tabRelabelled:w1:t1"
+        ]
       }
     }
   ]

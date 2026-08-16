@@ -61,6 +61,7 @@ fn mirror_conformance() {
             ("workspaces", Some(json!(ids(mirror.workspaces().map(|w| w.id.as_str()))))),
             ("agentStates", Some(agent_states(&mirror))),
             ("names", named(&mirror)),
+            ("tabLabels", tab_labels(&mirror)),
             ("layouts", Some(layouts(&mirror))),
             ("focus", Some(focus(mirror.focus()))),
             ("health", Some(json!(mirror.health().as_str()))),
@@ -102,6 +103,20 @@ fn named(mirror: &Mirror) -> Option<Value> {
         ]);
         if described.as_object().is_some_and(|held| !held.is_empty()) {
             map.insert(pane.id.to_string(), described);
+        }
+    }
+    (!map.is_empty()).then_some(Value::Object(map))
+}
+
+/// What each tab is called, for the cases that are about that.
+///
+/// Absent when no tab has a label, on the same reasoning as `focus` above: most cases here
+/// are about structure and would otherwise carry a map of empty strings.
+fn tab_labels(mirror: &Mirror) -> Option<Value> {
+    let mut map = serde_json::Map::new();
+    for tab in mirror.tabs() {
+        if !tab.label.is_empty() {
+            map.insert(tab.id.to_string(), json!(tab.label));
         }
     }
     (!map.is_empty()).then_some(Value::Object(map))
