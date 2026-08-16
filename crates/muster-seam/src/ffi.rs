@@ -8,6 +8,8 @@
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::Mutex;
 
+use muster_core::diagnostics::poison;
+
 use crate::dispatch;
 use crate::proto::Event;
 use prost::Message;
@@ -21,6 +23,9 @@ pub type EventCallback = extern "C" fn(bytes: *const u8, len: usize);
 
 static CALLBACK: Mutex<Option<EventCallback>> = Mutex::new(None);
 
+/// What this file calls the registration lock when it reports one recovered.
+const WHAT: &str = "event-callback";
+
 /// Tells the shell something it did not ask about.
 ///
 /// Silently does nothing when no shell is listening, which is the ordinary state in a test
@@ -30,7 +35,7 @@ static CALLBACK: Mutex<Option<EventCallback>> = Mutex::new(None);
 /// dispatching a request is ordinary and must not deadlock against the registration it
 /// went through to get here.
 pub fn emit(event: &Event) {
-    let callback = *CALLBACK.lock().expect("a panicking registrant poisoned the callback");
+    let callback = *poison::lock(&CALLBACK, WHAT);
     let Some(callback) = callback else { return };
     let bytes = event.encode_to_vec();
     callback(bytes.as_ptr(), bytes.len());
@@ -40,7 +45,7 @@ pub fn emit(event: &Event) {
 /// The pointer must be null or a function that stays callable for the process's life.
 #[unsafe(no_mangle)]
 pub extern "C" fn muster_set_event_callback(callback: Option<EventCallback>) {
-    *CALLBACK.lock().expect("a panicking registrant poisoned the callback") = callback;
+    *poison::lock(&CALLBACK, WHAT) = callback;
 }
 
 /// # Safety
@@ -69,12 +74,22 @@ pub unsafe extern "C" fn muster_dispatch(
     // A panic unwinding into C is undefined behavior, and the shell's own failures arrive
     // here as data. Turning one into a null answer costs a keystroke; letting it cross
     // costs the window.
+    //
+    // "Later requests still work" is a claim about the locks rather than about this guard,
+    // and it is only true because a poisoned one is recovered rather than re-panicked on
+    // (`muster_core::diagnostics::poison`). Catching the panic here while every later
+    // acquisition of the lock it died under panicked in turn would have made this message
+    // a lie: the window would have gone on rendering pane output from the data plane while
+    // ignoring every key, which is the failure that is hardest to report because nothing
+    // about it looks like a crash.
     let Ok(response) = catch_unwind(AssertUnwindSafe(|| dispatch(bytes))) else {
         eprintln!(
             "muster: the core panicked answering a request, so this one went unanswered.\n\
-             The app keeps running and later requests are unaffected, but whatever this \
-             one was about did not happen. The backtrace above names the core function; \
-             it is a bug in muster-seam or below, not in the shell."
+             The app keeps running and later requests are answered, but whatever this one \
+             was about did not happen, and any state the panic was part-way through \
+             writing is left as it was - `lock.poisoned` in the run log says which, if \
+             any. The backtrace above names the core function; it is a bug in muster-seam \
+             or below, not in the shell."
         );
         // SAFETY: checked non-null above.
         unsafe { *out_len = 0 };

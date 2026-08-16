@@ -103,9 +103,31 @@ struct Installed {
 static INSTALLED: RwLock<Option<Installed>> = RwLock::new(None);
 static INCLUDES_INPUT: OnceLock<bool> = OnceLock::new();
 
+/// Recovers the log lock rather than reporting that it could not be taken.
+///
+/// The one lock in Muster that [`crate::diagnostics::poison`] cannot serve, because that
+/// module reports a poisoned lock *by logging* and this is the lock it would take to do
+/// it. So the recovery is spelled out here and stays silent.
+///
+/// Silence is the right answer rather than a compromise. A sink that panics mid-write - a
+/// full disk, a closed file - poisons this lock, and the alternative is a process that has
+/// lost the ability to say anything about itself at the exact moment it has something to
+/// say. Losing one record beats losing the log (`README.md`, every run explains itself).
+macro_rules! recovered {
+    ($slot:expr) => {
+        match $slot {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                INSTALLED.clear_poison();
+                poisoned.into_inner()
+            }
+        }
+    };
+}
+
 /// Turns logging on for this process.
 pub fn install(sink: Box<dyn LogSink>, process: impl Into<String>, minimum: LogLevel) {
-    let mut slot = INSTALLED.write().expect("the log lock was poisoned by a panicking writer");
+    let mut slot = recovered!(INSTALLED.write());
     *slot = Some(Installed { sink, minimum, process: process.into() });
 }
 
@@ -145,12 +167,12 @@ pub fn includes_input() -> bool {
 ///
 /// For call sites where building the fields is itself work worth skipping.
 pub fn enabled(level: LogLevel) -> bool {
-    let slot = INSTALLED.read().expect("the log lock was poisoned by a panicking writer");
+    let slot = recovered!(INSTALLED.read());
     slot.as_ref().is_some_and(|installed| level >= installed.minimum)
 }
 
 pub fn emit(level: LogLevel, event: &str, fields: BTreeMap<String, String>) {
-    let slot = INSTALLED.read().expect("the log lock was poisoned by a panicking writer");
+    let slot = recovered!(INSTALLED.read());
     let Some(installed) = slot.as_ref() else {
         return;
     };

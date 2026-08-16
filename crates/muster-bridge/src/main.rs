@@ -17,6 +17,7 @@ use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::{Arc, Mutex};
 
 use muster_core::diagnostics::log::{self, LogLevel};
+use muster_core::diagnostics::poison;
 use muster_core::fields;
 use muster_herdr::{ControlStreamMessage, FrameDecoder, PaneStreamEvent};
 
@@ -217,7 +218,7 @@ fn herdr_binary() -> std::ffi::OsString {
 }
 
 fn send(input: &HerdrInput, message: &ControlStreamMessage) {
-    let mut input = input.lock().expect("a panicking writer poisoned herdr's stdin");
+    let mut input = poison::lock(input, "herdr-stdin");
     // Nowhere useful to report a failed write: herdr has gone, and the frame pump is about
     // to notice and say so with the reason it was given.
     let _ = input.write_all(&message.wire_format());
@@ -273,7 +274,7 @@ fn relay(socket: UnixStream, input: &HerdrInput) {
                 },
             },
         );
-        let mut herdr = input.lock().expect("a panicking writer poisoned herdr's stdin");
+        let mut herdr = poison::lock(input, "herdr-stdin");
         if herdr.write_all(&line).is_err() {
             return;
         }

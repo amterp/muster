@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use muster_core::diagnostics::log;
+use muster_core::diagnostics::{log, poison};
 use muster_core::fields;
 
 /// What one master forwards, and how it is reached.
@@ -155,9 +155,7 @@ impl Tunnel {
             }
             // Exited early means the forward was refused, and ssh has already said why on the
             // stderr this process inherits.
-            if let Ok(mut child) = self.child.lock()
-                && let Ok(Some(status)) = child.try_wait()
-            {
+            if let Ok(Some(status)) = poison::lock(&self.child, "ssh-child").try_wait() {
                 return Err(format!(
                     "ssh to {} ended before it forwarded anything ({status}). That daemon's \
                      panes are absent from the window and nothing else is affected. Its own \
@@ -206,11 +204,9 @@ impl Tunnel {
                 if stopping.load(Ordering::Relaxed) {
                     return;
                 }
-                let alive = child
-                    .lock()
-                    .ok()
-                    .and_then(|mut held| held.try_wait().ok())
-                    .is_some_and(|exited| exited.is_none());
+                let alive = poison::lock(&child, "ssh-child")
+                    .try_wait()
+                    .is_ok_and(|exited| exited.is_none());
                 if alive {
                     attempt = 0;
                     continue;
@@ -234,9 +230,7 @@ impl Tunnel {
                 let _ = std::fs::remove_file(&forward.local_socket);
                 match spawn(&forward) {
                     Ok(fresh) => {
-                        if let Ok(mut held) = child.lock() {
-                            *held = fresh;
-                        }
+                        *poison::lock(&child, "ssh-child") = fresh;
                         log::info("tunnel.reopened", fields! { "host" => forward.host.clone() });
                     }
                     Err(refusal) => log::warn(
@@ -257,7 +251,8 @@ impl Tunnel {
 impl Drop for Tunnel {
     fn drop(&mut self) {
         self.stopping.store(true, Ordering::Relaxed);
-        if let Ok(mut child) = self.child.lock() {
+        {
+            let mut child = poison::lock(&self.child, "ssh-child");
             let _ = child.kill();
             let _ = child.wait();
         }

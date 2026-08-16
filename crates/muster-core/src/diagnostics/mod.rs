@@ -9,6 +9,7 @@
 
 pub mod clock;
 pub mod log;
+pub mod poison;
 pub mod sink;
 
 pub use clock::{format_iso8601, monotonic_now, monotonic_since, wall_clock_millis};

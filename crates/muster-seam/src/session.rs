@@ -20,7 +20,7 @@ use muster_core::composition::{
     Saved, Step, TabKey, Transport, View, saved,
 };
 use muster_core::config::{Appearance, Config, Feel, Panes};
-use muster_core::diagnostics::log;
+use muster_core::diagnostics::{log, poison};
 use muster_core::fields;
 use muster_core::find::{Found, Needle};
 use muster_core::input::{Bindings, PaneInput, PaneInputSettings, ScrollDirection};
@@ -59,12 +59,12 @@ const LOCAL: &str = "local";
 static DAEMON_BINARY: Mutex<Option<String>> = Mutex::new(None);
 
 pub(crate) fn set_daemon_binary(path: &str) {
-    let mut held = DAEMON_BINARY.lock().expect("a panicking sender poisoned the daemon binary");
+    let mut held = poison::lock(&DAEMON_BINARY, "daemon-binary");
     *held = if path.is_empty() { None } else { Some(path.to_string()) };
 }
 
 fn daemon_binary() -> Option<String> {
-    DAEMON_BINARY.lock().expect("a panicking sender poisoned the daemon binary").clone()
+    poison::lock(&DAEMON_BINARY, "daemon-binary").clone()
 }
 
 /// What locale this machine is set to, as the shell read it off the platform.
@@ -75,12 +75,12 @@ fn daemon_binary() -> Option<String> {
 static PLATFORM_LOCALE: Mutex<Option<String>> = Mutex::new(None);
 
 pub(crate) fn set_platform_locale(locale: &str) {
-    let mut held = PLATFORM_LOCALE.lock().expect("a panicking sender poisoned the locale");
+    let mut held = poison::lock(&PLATFORM_LOCALE, "locale");
     *held = if locale.is_empty() { None } else { Some(locale.to_string()) };
 }
 
 fn platform_locale() -> Option<String> {
-    PLATFORM_LOCALE.lock().expect("a panicking sender poisoned the locale").clone()
+    poison::lock(&PLATFORM_LOCALE, "locale").clone()
 }
 
 /// Where this window's arrangement is remembered, and what was last written there.
@@ -101,12 +101,12 @@ static STATE: Mutex<Option<(String, String)>> = Mutex::new(None);
 static BINDINGS: Mutex<Option<Bindings>> = Mutex::new(None);
 
 pub(crate) fn set_bindings(bindings: Bindings) {
-    *BINDINGS.lock().expect("a panicking sender poisoned the bindings") = Some(bindings);
+    *poison::lock(&BINDINGS, "bindings") = Some(bindings);
 }
 
 /// The bindings in force, which with no config file is what Muster ships.
 pub(crate) fn bindings() -> Bindings {
-    BINDINGS.lock().expect("a panicking sender poisoned the bindings").clone().unwrap_or_default()
+    poison::lock(&BINDINGS, "bindings").clone().unwrap_or_default()
 }
 
 /// What the config file said about typing, held for the panes attached after it was read.
@@ -121,16 +121,12 @@ pub(crate) fn bindings() -> Bindings {
 static PANE_INPUT: Mutex<Option<PaneInputSettings>> = Mutex::new(None);
 
 pub(crate) fn set_pane_input(settings: PaneInputSettings) {
-    *PANE_INPUT.lock().expect("a panicking sender poisoned the input settings") = Some(settings);
+    *poison::lock(&PANE_INPUT, "input-settings") = Some(settings);
 }
 
 /// The typing settings in force, which with no config file is what Muster ships.
 pub(crate) fn pane_input() -> PaneInputSettings {
-    PANE_INPUT
-        .lock()
-        .expect("a panicking sender poisoned the input settings")
-        .clone()
-        .unwrap_or_default()
+    poison::lock(&PANE_INPUT, "input-settings").clone().unwrap_or_default()
 }
 
 /// What a pane should be, held for the daemon that is about to be started.
@@ -140,13 +136,13 @@ pub(crate) fn pane_input() -> PaneInputSettings {
 static PANES: Mutex<Option<Panes>> = Mutex::new(None);
 
 pub(crate) fn set_panes(panes: Panes) {
-    *PANES.lock().expect("a panicking sender poisoned the pane settings") = Some(panes);
+    *poison::lock(&PANES, "pane-settings") = Some(panes);
 }
 
 /// What a pane should be, which with no config file is whatever the daemon would have done -
 /// except for the update checks, which Muster turns off either way.
 fn panes() -> Panes {
-    PANES.lock().expect("a panicking sender poisoned the pane settings").clone().unwrap_or_default()
+    poison::lock(&PANES, "pane-settings").clone().unwrap_or_default()
 }
 
 /// Where Muster writes the config file its daemon reads, and what it last wrote there.
@@ -161,7 +157,7 @@ fn panes() -> Panes {
 static DAEMON_CONFIG: Mutex<Option<(String, String)>> = Mutex::new(None);
 
 pub(crate) fn set_daemon_config_path(path: &str) {
-    let mut held = DAEMON_CONFIG.lock().expect("a panicking sender poisoned the daemon config");
+    let mut held = poison::lock(&DAEMON_CONFIG, "daemon-config");
     *held = if path.is_empty() { None } else { Some((path.to_string(), String::new())) };
 }
 
@@ -172,12 +168,12 @@ pub(crate) fn set_daemon_config_path(path: &str) {
 static FEEL: Mutex<Option<Feel>> = Mutex::new(None);
 
 pub(crate) fn set_feel(feel: Feel) {
-    *FEEL.lock().expect("a panicking sender poisoned the settings") = Some(feel);
+    *poison::lock(&FEEL, "settings") = Some(feel);
 }
 
 /// The knobs in force, which with no config file is what Muster ships.
 pub(crate) fn feel() -> Feel {
-    FEEL.lock().expect("a panicking sender poisoned the settings").unwrap_or_default()
+    poison::lock(&FEEL, "settings").unwrap_or_default()
 }
 
 /// The config file this run was started with, so a reload knows what to read again.
@@ -188,16 +184,12 @@ pub(crate) fn feel() -> Feel {
 static CONFIG_PATH: Mutex<Option<String>> = Mutex::new(None);
 
 pub(crate) fn set_config_path(path: &str) {
-    *CONFIG_PATH.lock().expect("a panicking sender poisoned the settings") = Some(path.to_string());
+    *poison::lock(&CONFIG_PATH, "settings") = Some(path.to_string());
 }
 
 /// The file to read again, or empty when this run was started without one.
 pub(crate) fn config_path() -> String {
-    CONFIG_PATH
-        .lock()
-        .expect("a panicking sender poisoned the settings")
-        .clone()
-        .unwrap_or_default()
+    poison::lock(&CONFIG_PATH, "settings").clone().unwrap_or_default()
 }
 
 /// What the window should look like, held the same way and for the same reason.
@@ -208,17 +200,17 @@ pub(crate) fn config_path() -> String {
 static APPEARANCE: Mutex<Option<Appearance>> = Mutex::new(None);
 
 pub(crate) fn set_appearance(appearance: Appearance) {
-    *APPEARANCE.lock().expect("a panicking sender poisoned the settings") = Some(appearance);
+    *poison::lock(&APPEARANCE, "settings") = Some(appearance);
 }
 
 /// The appearance in force, which with no config file is every value absent - so the renderer
 /// paints what it would have painted anyway.
 pub(crate) fn appearance() -> Appearance {
-    APPEARANCE.lock().expect("a panicking sender poisoned the settings").clone().unwrap_or_default()
+    poison::lock(&APPEARANCE, "settings").clone().unwrap_or_default()
 }
 
 pub(crate) fn set_state_path(path: &str) {
-    let mut held = STATE.lock().expect("a panicking sender poisoned the saved arrangement");
+    let mut held = poison::lock(&STATE, "saved-arrangement");
     *held = if path.is_empty() { None } else { Some((path.to_string(), String::new())) };
 }
 
@@ -253,7 +245,7 @@ struct Reached {
 /// config at startup and on request, so a file that says what it already said is a request
 /// nobody needs to make.
 fn write_daemon_configuration() -> Option<(String, bool)> {
-    let mut held = DAEMON_CONFIG.lock().expect("a panicking sender poisoned the daemon config");
+    let mut held = poison::lock(&DAEMON_CONFIG, "daemon-config");
     let (path, written) = held.as_mut()?;
 
     match muster_herdr::write_configuration(path, &panes()) {
@@ -577,7 +569,7 @@ impl Session {
     /// that grows.
     fn prune(&mut self, daemon: &DaemonId) {
         let Some(backend) = self.backends.get(daemon) else { return };
-        let Ok(mirror) = backend.mirror.lock() else { return };
+        let mirror = poison::lock(&backend.mirror, "mirror");
 
         self.composition.reconcile(daemon, &mirror);
         let attached = self.panes.entry(daemon.clone()).or_default();
@@ -601,7 +593,7 @@ impl Session {
         // holds the session across both.
         let wanted: Vec<PaneId> = {
             let Some(backend) = self.backends.get(daemon) else { return };
-            let Ok(mirror) = backend.mirror.lock() else { return };
+            let mirror = poison::lock(&backend.mirror, "mirror");
             let attached = self.panes.entry(daemon.clone()).or_default();
 
             self.composition
@@ -709,7 +701,7 @@ impl Session {
     /// Scoped to the daemon rather than searched, for the reason every other lookup here is:
     /// two daemons hand out `w1:p1`, and a search would let one answer for the other's pane.
     fn agent_state(&self, pane: &PaneKey) -> Option<AgentState> {
-        let mirror = self.backends.get(&pane.daemon)?.mirror.lock().ok()?;
+        let mirror = poison::lock(&self.backends.get(&pane.daemon)?.mirror, "mirror");
         mirror.agent_state(&pane.pane)
     }
 
@@ -726,7 +718,7 @@ impl Session {
         let Some((region, pane)) = self.wanted_panes.get(daemon).cloned() else { return false };
         {
             let Some(backend) = self.backends.get(daemon) else { return false };
-            let Ok(mirror) = backend.mirror.lock() else { return false };
+            let mirror = poison::lock(&backend.mirror, "mirror");
             // Not yet described. Left in place rather than dropped, on the same terms as a
             // wanted tab: the event is on its way, and forgetting it here is a split whose
             // pane never takes the keyboard.
@@ -743,7 +735,7 @@ impl Session {
         let Some(tab) = self.wanted_tabs.get(daemon).cloned() else { return false };
         let workspace = {
             let Some(backend) = self.backends.get(daemon) else { return false };
-            let Ok(mirror) = backend.mirror.lock() else { return false };
+            let mirror = poison::lock(&backend.mirror, "mirror");
             // Not yet described. Left in place rather than dropped: the event is on its way,
             // and forgetting it here is a new tab nothing ever shows.
             let Some(held) = mirror.tab(&tab) else { return false };
@@ -763,20 +755,13 @@ impl Session {
     /// row, and both leave the keyboard where it was.
     fn surface(&mut self, daemon: &DaemonId, pane: &PaneId) -> Result<RegionId, String> {
         let (workspace, tab) = {
-            let mirror = self
-                .backends
-                .get(daemon)
-                .ok_or_else(|| {
-                    format!(
-                        "this window is not following a daemon called {daemon}, so there is \
-                         nothing to show {pane} in and the keyboard stayed where it was."
-                    )
-                })?
-                .mirror
-                .lock()
-                .map_err(|_| {
-                    format!("the mirror for {daemon} was poisoned by a panicking sender")
-                })?;
+            let backend = self.backends.get(daemon).ok_or_else(|| {
+                format!(
+                    "this window is not following a daemon called {daemon}, so there is \
+                     nothing to show {pane} in and the keyboard stayed where it was."
+                )
+            })?;
+            let mirror = poison::lock(&backend.mirror, "mirror");
             let held = mirror.pane(pane).ok_or_else(|| {
                 format!(
                     "{daemon} holds no pane called {pane}, so the keyboard stayed where it \
@@ -803,7 +788,7 @@ impl Session {
         let mirrors: BTreeMap<&DaemonId, MutexGuard<'_, Mirror>> = self
             .backends
             .iter()
-            .filter_map(|(id, backend)| Some((id, backend.mirror.lock().ok()?)))
+            .map(|(id, backend)| (id, poison::lock(&backend.mirror, "mirror")))
             .collect();
         View::of(
             &self.composition,
@@ -838,7 +823,7 @@ impl Session {
         let mirrors: BTreeMap<&DaemonId, MutexGuard<'_, Mirror>> = self
             .backends
             .iter()
-            .filter_map(|(id, backend)| Some((id, backend.mirror.lock().ok()?)))
+            .map(|(id, backend)| (id, poison::lock(&backend.mirror, "mirror")))
             .collect();
         Roster::of(
             &self.composition,
@@ -873,7 +858,7 @@ impl Session {
     /// daemon's regions is one this window is not showing, and nothing here will act on it.
     fn region_holding(&self, daemon: &DaemonId, pane: &PaneId) -> Option<RegionId> {
         let backend = self.backends.get(daemon)?;
-        let held = backend.mirror.lock().ok()?;
+        let held = poison::lock(&backend.mirror, "mirror");
         self.composition
             .regions()
             .find(|region| {
@@ -898,7 +883,7 @@ impl Session {
 
 /// The pane this window's keyboard feeds, if it has one.
 pub(crate) fn keyboard_pane() -> Option<Arc<AttachedPane>> {
-    SESSION.lock().expect("a panicking sender poisoned the session").keyboard_pane()
+    poison::lock(&SESSION, "session").keyboard_pane()
 }
 
 /// One named pane, if this window has a channel open to it.
@@ -906,7 +891,7 @@ pub(crate) fn keyboard_pane() -> Option<Arc<AttachedPane>> {
 /// For the input that is addressed rather than focused, which today is the wheel. Absent means
 /// no channel, not no pane: a pane whose bridge has not finished starting is the ordinary case.
 pub(crate) fn attached_pane(daemon: &DaemonId, pane: &PaneId) -> Option<Arc<AttachedPane>> {
-    SESSION.lock().expect("a panicking sender poisoned the session").attached_pane(daemon, pane)
+    poison::lock(&SESSION, "session").attached_pane(daemon, pane)
 }
 
 /// Asks the daemon showing this window for a change.
@@ -923,7 +908,7 @@ pub(crate) fn attached_pane(daemon: &DaemonId, pane: &PaneId) -> Option<Arc<Atta
 /// every other daemon behind a wedged one.
 pub(crate) fn submit(daemon: &DaemonId, intent: &BackendIntent) -> Result<(), String> {
     let (region, channel) = {
-        let session = SESSION.lock().expect("a panicking sender poisoned the session");
+        let session = poison::lock(&SESSION, "session");
         // Which region this is about, for the keyboard afterwards. None is an answer rather
         // than a failure for an intent that names nothing existing - there is no region to
         // find for a workspace that does not exist yet, and the one it produces is opened by
@@ -994,7 +979,7 @@ pub(crate) fn submit(daemon: &DaemonId, intent: &BackendIntent) -> Result<(), St
     // it yet, and a region pointed at a tab the mirror does not know is dropped by the next
     // reconcile. The reconcile behind the daemon's own event is where it becomes visible.
     if let Some(tab) = outcome.as_ref().ok().and_then(|outcome| outcome.created_tab.clone()) {
-        let mut session = SESSION.lock().expect("a panicking sender poisoned the session");
+        let mut session = poison::lock(&SESSION, "session");
         session.wanted_tabs.insert(daemon.clone(), tab);
     }
 
@@ -1008,11 +993,9 @@ pub(crate) fn submit(daemon: &DaemonId, intent: &BackendIntent) -> Result<(), St
     if let Ok(outcome) = &outcome
         && let Some(settled) = outcome.settled.clone()
     {
-        let session = SESSION.lock().expect("a panicking sender poisoned the session");
-        if let Some(backend) = session.backends.get(daemon)
-            && let Ok(mut mirror) = backend.mirror.lock()
-        {
-            moved = !mirror.settle(settled).is_empty();
+        let session = poison::lock(&SESSION, "session");
+        if let Some(backend) = session.backends.get(daemon) {
+            moved = !poison::lock(&backend.mirror, "mirror").settle(settled).is_empty();
         }
     }
 
@@ -1024,11 +1007,9 @@ pub(crate) fn submit(daemon: &DaemonId, intent: &BackendIntent) -> Result<(), St
     if let Ok(outcome) = &outcome
         && let Some((pane, name)) = outcome.renamed.clone()
     {
-        let session = SESSION.lock().expect("a panicking sender poisoned the session");
-        if let Some(backend) = session.backends.get(daemon)
-            && let Ok(mut mirror) = backend.mirror.lock()
-        {
-            moved |= !mirror.rename(&pane, name).is_empty();
+        let session = poison::lock(&SESSION, "session");
+        if let Some(backend) = session.backends.get(daemon) {
+            moved |= !poison::lock(&backend.mirror, "mirror").rename(&pane, name).is_empty();
         }
     }
 
@@ -1039,7 +1020,7 @@ pub(crate) fn submit(daemon: &DaemonId, intent: &BackendIntent) -> Result<(), St
     if let (Some(region), Some(created)) =
         (region, outcome.as_ref().ok().and_then(|outcome| outcome.created.clone()))
     {
-        let mut session = SESSION.lock().expect("a panicking sender poisoned the session");
+        let mut session = poison::lock(&SESSION, "session");
         session.wanted_panes.insert(daemon.clone(), (region, created));
         moved = true;
     }
@@ -1081,7 +1062,7 @@ pub(crate) fn bridge_exited(daemon: &str, pane: &str, process_alive: bool) {
 /// subscription's own health reporting is what speaks for a daemon that has stopped answering.
 fn resnapshot(daemon: &DaemonId, why: &str) {
     let Some((socket_path, mirror)) = ({
-        let session = SESSION.lock().expect("a panicking sender poisoned the session");
+        let session = poison::lock(&SESSION, "session");
         session
             .backends
             .get(daemon)
@@ -1109,7 +1090,7 @@ fn resnapshot(daemon: &DaemonId, why: &str) {
     };
 
     let changes = {
-        let Ok(mut mirror) = mirror.lock() else { return };
+        let mut mirror = poison::lock(&mirror, "mirror");
         mirror.bootstrap(snapshot)
     };
     log::info(
@@ -1146,7 +1127,7 @@ fn not_showing(daemon: &DaemonId) -> String {
 /// worth undoing a focus move the user can see happened.
 pub(crate) fn focus(daemon: &DaemonId, pane: &PaneId) -> Result<(), String> {
     {
-        let mut session = SESSION.lock().expect("a panicking sender poisoned the session");
+        let mut session = poison::lock(&SESSION, "session");
         let region = match session.region_holding(daemon, pane) {
             Some(region) => region,
             // Not on screen, which is the interesting half. An agent that finished or is
@@ -1168,7 +1149,7 @@ pub(crate) fn focus(daemon: &DaemonId, pane: &PaneId) -> Result<(), String> {
 /// exists. So unlike every other drag in this app, this one settles here.
 pub(crate) fn set_region_boundary(left: RegionId, ratio: f32) {
     {
-        let mut session = SESSION.lock().expect("a panicking sender poisoned the session");
+        let mut session = poison::lock(&SESSION, "session");
         session.composition.set_boundary(left, ratio);
     }
     publish();
@@ -1181,7 +1162,7 @@ pub(crate) fn set_region_boundary(left: RegionId, ratio: f32) {
 /// to be the one the keyboard just left.
 pub(crate) fn step(direction: Step) -> Result<(), String> {
     let stepped = {
-        let session = SESSION.lock().expect("a panicking sender poisoned the session");
+        let session = poison::lock(&SESSION, "session");
         session.view().step(direction).and_then(|(region, pane)| {
             Some((session.composition.region(region)?.daemon.clone(), pane))
         })
@@ -1206,7 +1187,7 @@ pub(crate) fn step(direction: Step) -> Result<(), String> {
 /// leave the other machine's tabs unreachable whenever no region was on it.
 pub(crate) fn step_tab(direction: TabStep) -> Result<(), String> {
     let stepped = {
-        let session = SESSION.lock().expect("a panicking sender poisoned the session");
+        let session = poison::lock(&SESSION, "session");
         let from = session
             .composition
             .focused_region()
@@ -1235,20 +1216,15 @@ pub(crate) fn step_tab(direction: TabStep) -> Result<(), String> {
 /// and move it.
 pub(crate) fn arrange_pane(daemon: &DaemonId, pane: &PaneId, onto: &PaneId) -> Result<(), String> {
     let intent = {
-        let session = SESSION.lock().expect("a panicking sender poisoned the session");
-        let mirror = session
-            .backends
-            .get(daemon)
-            .ok_or_else(|| {
-                format!(
-                    "this window is not following a daemon called {daemon}, so nothing was \
-                     rearranged. A drag crossing daemons should have been refused before it \
-                     was sent."
-                )
-            })?
-            .mirror
-            .lock()
-            .map_err(|_| format!("the mirror for {daemon} was poisoned by a panicking sender"))?;
+        let session = poison::lock(&SESSION, "session");
+        let backend = session.backends.get(daemon).ok_or_else(|| {
+            format!(
+                "this window is not following a daemon called {daemon}, so nothing was \
+                 rearranged. A drag crossing daemons should have been refused before it \
+                 was sent."
+            )
+        })?;
+        let mirror = poison::lock(&backend.mirror, "mirror");
         let holding = |pane: &PaneId| {
             mirror.pane(pane).map(|held| held.tab.clone()).ok_or_else(|| {
                 format!(
@@ -1274,7 +1250,7 @@ pub(crate) fn arrange_pane(daemon: &DaemonId, pane: &PaneId, onto: &PaneId) -> R
 /// rule so that the two agree about where a tab is entered.
 pub(crate) fn focus_tab(daemon: &DaemonId, tab: &TabId) -> Result<(), String> {
     let found = {
-        let session = SESSION.lock().expect("a panicking sender poisoned the session");
+        let session = poison::lock(&SESSION, "session");
         let key = TabKey::new(daemon, tab);
         match session.roster(&session.view()).tabs().find(|held| held.key == key) {
             Some(held) => landing(held),
@@ -1299,7 +1275,7 @@ pub(crate) fn focus_tab(daemon: &DaemonId, tab: &TabId) -> Result<(), String> {
 /// the tab holding the pane - which is the argument for numbering panes rather than tabs.
 pub(crate) fn focus_pane_at(place: usize) -> Result<(), String> {
     let found = {
-        let session = SESSION.lock().expect("a panicking sender poisoned the session");
+        let session = poison::lock(&SESSION, "session");
         let roster = session.roster(&session.view());
         match roster.at(place) {
             Some(pane) => Ok((pane.key.daemon.clone(), pane.key.pane.clone())),
@@ -1336,7 +1312,7 @@ fn landing(tab: &RosterTab) -> Result<(DaemonId, PaneId), String> {
 
 /// The pane this window's keyboard feeds, named.
 pub(crate) fn focused_pane() -> Option<PaneId> {
-    let session = SESSION.lock().expect("a panicking sender poisoned the session");
+    let session = poison::lock(&SESSION, "session");
     session.composition.focused_region()?.pane.clone()
 }
 
@@ -1346,7 +1322,7 @@ pub(crate) fn focused_pane() -> Option<PaneId> {
 /// focused pane: a menu item is about what is in front of the user and has nothing else to
 /// say.
 pub(crate) fn focused_daemon() -> Option<DaemonId> {
-    let session = SESSION.lock().expect("a panicking sender poisoned the session");
+    let session = poison::lock(&SESSION, "session");
     session.composition.focused_region().map(|region| region.daemon.clone())
 }
 
@@ -1391,7 +1367,7 @@ fn attach_daemon(daemon: &Daemon) -> Result<(), String> {
             "dropped" => dropped.to_string(),
         },
     );
-    let mut session = SESSION.lock().expect("a panicking sender poisoned the session");
+    let mut session = poison::lock(&SESSION, "session");
     let seeded = session.follow(daemon, reached, snapshot);
     // Before reporting, and explicitly: reporting reads the mirror back through the session
     // and reaches the shell, which may answer by dispatching. Both want this lock.
@@ -1442,7 +1418,7 @@ pub(crate) fn open() -> Result<(), String> {
 /// the default rather than holding one.
 fn restore_presentation() {
     let presentation = saved_arrangement().map(|saved| saved.presentation).unwrap_or_default();
-    SESSION.lock().expect("a panicking sender poisoned the session").presentation = presentation;
+    poison::lock(&SESSION, "session").presentation = presentation;
     announce_presentation(presentation);
 }
 
@@ -1461,13 +1437,12 @@ fn restore_presentation() {
 fn reopen_what_was_left() {
     let Some(saved) = saved_arrangement() else { return };
 
-    let mut session = SESSION.lock().expect("a panicking sender poisoned the session");
+    let mut session = poison::lock(&SESSION, "session");
     let restorable = saved.restorable(|daemon, tab| {
         session
             .backends
             .get(daemon)
-            .and_then(|backend| backend.mirror.lock().ok().map(|mirror| mirror.tab(tab).is_some()))
-            .unwrap_or(false)
+            .is_some_and(|backend| poison::lock(&backend.mirror, "mirror").tab(tab).is_some())
     });
     if restorable.regions.is_empty() {
         return;
@@ -1526,7 +1501,7 @@ fn follow_implicitly_if_nothing_else() -> Result<(), String> {
 /// follows. A window that built one itself would be a second place layout is decided.
 fn open_a_workspace_if_the_window_is_empty() {
     let empty = {
-        let session = SESSION.lock().expect("a panicking sender poisoned the session");
+        let session = poison::lock(&SESSION, "session");
         session.composition.regions().next().is_none()
     };
     if !empty {
@@ -1564,7 +1539,7 @@ fn open_a_workspace_if_the_window_is_empty() {
 
 /// The first attached daemon on this machine, in the order the config named them.
 pub(crate) fn first_local_daemon() -> Option<DaemonId> {
-    let session = SESSION.lock().expect("a panicking sender poisoned the session");
+    let session = poison::lock(&SESSION, "session");
     session
         .composition
         .daemons()
@@ -1579,7 +1554,7 @@ pub(crate) fn first_local_daemon() -> Option<DaemonId> {
 /// the two a caller wants is a decision about whether Muster is acting on its own or on
 /// somebody's keystroke, and that is not a decision to make by default.
 pub(crate) fn first_attached_daemon() -> Option<DaemonId> {
-    let session = SESSION.lock().expect("a panicking sender poisoned the session");
+    let session = poison::lock(&SESSION, "session");
     session.composition.daemons().next().map(|daemon| daemon.id.clone())
 }
 
@@ -1606,7 +1581,7 @@ pub(crate) fn attach(pane_id: &str) -> Result<Arc<AttachedPane>, AttachError> {
     })?;
 
     let attached = {
-        let mut session = SESSION.lock().expect("a panicking sender poisoned the session");
+        let mut session = poison::lock(&SESSION, "session");
 
         // This pane's channel by hand, before the rest. The reconcile below opens one for
         // every other pane in the tab and logs whatever refuses; this one has a caller
@@ -1644,16 +1619,16 @@ pub(crate) fn attach(pane_id: &str) -> Result<Arc<AttachedPane>, AttachError> {
 }
 
 fn following_anything() -> bool {
-    let session = SESSION.lock().expect("a panicking sender poisoned the session");
+    let session = poison::lock(&SESSION, "session");
     !session.backends.is_empty()
 }
 
 fn panes_followed() -> usize {
-    let session = SESSION.lock().expect("a panicking sender poisoned the session");
+    let session = poison::lock(&SESSION, "session");
     session
         .backends
         .values()
-        .filter_map(|backend| backend.mirror.lock().ok())
+        .map(|backend| poison::lock(&backend.mirror, "mirror"))
         .map(|mirror| mirror.panes().count())
         .sum()
 }
@@ -1669,8 +1644,8 @@ pub(crate) fn workspace_of(
     daemon: &DaemonId,
     pane: &PaneId,
 ) -> Option<(WorkspaceId, Option<String>)> {
-    let session = SESSION.lock().expect("a panicking sender poisoned the session");
-    let mirror = session.backends.get(daemon)?.mirror.lock().ok()?;
+    let session = poison::lock(&SESSION, "session");
+    let mirror = poison::lock(&session.backends.get(daemon)?.mirror, "mirror");
     let held = mirror.pane(pane)?;
     // An empty directory is the daemon saying it does not know, which is different from a
     // directory somebody chose - and a tab started in "" would be started in `/`.
@@ -1684,8 +1659,8 @@ pub(crate) fn workspace_of(
 /// is on. `None` when the daemon does not hold the pane, which is a pane that closed while a
 /// keystroke was in flight rather than a state to recover from.
 pub(crate) fn tab_of(daemon: &DaemonId, pane: &PaneId) -> Option<TabId> {
-    let session = SESSION.lock().expect("a panicking sender poisoned the session");
-    let mirror = session.backends.get(daemon)?.mirror.lock().ok()?;
+    let session = poison::lock(&SESSION, "session");
+    let mirror = poison::lock(&session.backends.get(daemon)?.mirror, "mirror");
     Some(mirror.pane(pane)?.tab.clone())
 }
 
@@ -1696,10 +1671,10 @@ pub(crate) fn tab_of(daemon: &DaemonId, pane: &PaneId) -> Option<TabId> {
 /// carrying only the name has not said which. Named as a hazard here rather than silently
 /// resolved, because the day it bites, the window will have attached the wrong machine.
 fn locate(pane: &PaneId) -> Option<(DaemonId, WorkspaceId, TabId)> {
-    let session = SESSION.lock().expect("a panicking sender poisoned the session");
+    let session = poison::lock(&SESSION, "session");
     let mut found: Option<(DaemonId, WorkspaceId, TabId)> = None;
     for (id, backend) in &session.backends {
-        let Ok(mirror) = backend.mirror.lock() else { continue };
+        let mirror = poison::lock(&backend.mirror, "mirror");
         let Some(held) = mirror.pane(pane) else { continue };
         if let Some((first, ..)) = &found {
             log::warn(
@@ -1726,13 +1701,13 @@ fn locate(pane: &PaneId) -> Option<(DaemonId, WorkspaceId, TabId)> {
 /// Muster has no better answer to invent. A daemon that has published no tabs yet gets
 /// nothing and is picked up by the next reconcile.
 fn open_remaining_regions() {
-    let mut session = SESSION.lock().expect("a panicking sender poisoned the session");
+    let mut session = poison::lock(&SESSION, "session");
     let wanted: Vec<(DaemonId, WorkspaceId, TabId)> = session
         .backends
         .iter()
         .filter(|(id, _)| !session.composition.regions().any(|region| &&region.daemon == id))
         .filter_map(|(id, backend)| {
-            let mirror = backend.mirror.lock().ok()?;
+            let mirror = poison::lock(&backend.mirror, "mirror");
             let tab = mirror.focus().tab.clone()?;
             let held = mirror.tab(&tab)?;
             Some((id.clone(), held.workspace.clone(), tab))
@@ -1756,7 +1731,7 @@ fn open_remaining_regions() {
 /// this was half-written would otherwise come back to a file that parses as far as the third
 /// region and stops.
 fn save(composition: &Composition, presentation: Presentation) {
-    let mut held = STATE.lock().expect("a panicking sender poisoned the saved arrangement");
+    let mut held = poison::lock(&STATE, "saved-arrangement");
     let Some((path, written)) = held.as_mut() else { return };
 
     let text = saved::to_toml(&Saved::of(composition, presentation));
@@ -1797,7 +1772,7 @@ fn save(composition: &Composition, presentation: Presentation) {
 /// one - and refusing to open at all over a state file would be the wrong trade by a mile.
 fn saved_arrangement() -> Option<Saved> {
     let path = {
-        let held = STATE.lock().expect("a panicking sender poisoned the saved arrangement");
+        let held = poison::lock(&STATE, "saved-arrangement");
         held.as_ref().map(|(path, _)| path.clone())?
     };
     let text = std::fs::read_to_string(&path).ok()?;
@@ -1831,7 +1806,7 @@ fn publish() {
     // waiting to be noticed and have now been - re-announced below, after the shell has been
     // handed the arrangement they appear in.
     let (view, roster, settled) = {
-        let mut session = SESSION.lock().expect("a panicking sender poisoned the session");
+        let mut session = poison::lock(&SESSION, "session");
         // Before the view is built, and over every daemon rather than whichever one prompted
         // this. Several paths change what is on screen without going near a reconcile:
         // showing a tab that was just created, surfacing a pane from the sidebar, giving a
@@ -1905,7 +1880,7 @@ fn publish() {
 /// session would deadlock against it on the same thread.
 fn reconcile(daemon: &DaemonId) {
     let showed = {
-        let mut session = SESSION.lock().expect("a panicking sender poisoned the session");
+        let mut session = poison::lock(&SESSION, "session");
         session.reconcile(daemon);
         // A tab Muster asked for, now that the daemon has said what is in it. Here rather
         // than at the moment it was asked for, because until this event a region showing it
@@ -2052,7 +2027,7 @@ fn report(daemon: &DaemonId, change: &Change) {
     // between `idle` and `done`.
     match change {
         Change::AgentStateChanged { pane, from, to } => {
-            let mut session = SESSION.lock().expect("a panicking sender poisoned the session");
+            let mut session = poison::lock(&SESSION, "session");
             session.attention.observed(&PaneKey::new(daemon, pane), *from, *to);
         }
         // A pane that was already finished when this window arrived. Muster saw no transition
@@ -2060,7 +2035,7 @@ fn report(daemon: &DaemonId, change: &Change) {
         // after it is Muster's own (`muster_core::attention`).
         Change::PaneAdded(pane) => {
             let key = PaneKey::new(daemon, pane);
-            let mut session = SESSION.lock().expect("a panicking sender poisoned the session");
+            let mut session = poison::lock(&SESSION, "session");
             if let Some(backend) = session.agent_state(&key) {
                 session.attention.first_seen(&key, backend);
             }
@@ -2098,7 +2073,7 @@ fn announce_state(pane: &PaneKey) {
 /// Then `done` is decided here rather than accepted from the daemon, because the daemon
 /// cannot see this window (`attention`).
 fn presented(pane: &PaneKey) -> Option<AgentState> {
-    let session = SESSION.lock().expect("a panicking sender poisoned the session");
+    let session = poison::lock(&SESSION, "session");
     let backend = session.agent_state(pane)?;
     Some(session.attention.presented(pane, backend))
 }
@@ -2116,7 +2091,7 @@ fn presented(pane: &PaneKey) -> Option<AgentState> {
 /// place that remembers to save would be a second place that can forget.
 pub(crate) fn toggle_sidebar() {
     let presentation = {
-        let mut session = SESSION.lock().expect("a panicking sender poisoned the session");
+        let mut session = poison::lock(&SESSION, "session");
         session.presentation = session.presentation.with_sidebar(!session.presentation.sidebar);
         session.presentation
     };
@@ -2159,7 +2134,7 @@ pub(crate) fn find(daemon: &DaemonId, pane: &PaneId, needle: &Needle) -> Result<
     let search = Search { daemon: daemon.clone(), pane: pane.clone(), found, selected };
     let findings = search.findings();
     land(&search);
-    SESSION.lock().expect("a panicking sender poisoned the session").search = Some(search);
+    poison::lock(&SESSION, "session").search = Some(search);
     Ok(findings)
 }
 
@@ -2168,7 +2143,7 @@ pub(crate) fn find(daemon: &DaemonId, pane: &PaneId, needle: &Needle) -> Result<
 /// Wraps at both ends, because a list somebody is stepping through has no reason to stop
 /// having reached one end of it - and the alternative is a chord that silently does nothing.
 pub(crate) fn step_find(forward: bool) -> Result<Findings, String> {
-    let mut session = SESSION.lock().expect("a panicking sender poisoned the session");
+    let mut session = poison::lock(&SESSION, "session");
     let Some(search) = session.search.as_mut() else {
         return Err("nothing is being searched for, so there was no next match to go to. The \
                     find bar sends this, so either it is open with nothing typed in it or the \
@@ -2200,7 +2175,7 @@ pub(crate) fn step_find(forward: bool) -> Result<Findings, String> {
 
 /// Forgets the search, which is what closing the find bar means.
 pub(crate) fn end_find() {
-    SESSION.lock().expect("a panicking sender poisoned the session").search = None;
+    poison::lock(&SESSION, "session").search = None;
 }
 
 impl Search {
@@ -2265,14 +2240,12 @@ fn land(search: &Search) {
 
 /// The way to one daemon, or why there is not one.
 fn channel(daemon: &DaemonId) -> Result<Arc<dyn BackendChannel>, String> {
-    SESSION.lock().expect("a panicking sender poisoned the session").channel_of(daemon).ok_or_else(
-        || {
-            format!(
-                "the daemon {daemon} is in this window's composition and is not being followed, \
+    poison::lock(&SESSION, "session").channel_of(daemon).ok_or_else(|| {
+        format!(
+            "the daemon {daemon} is in this window's composition and is not being followed, \
                  which is a bug in the core rather than a state to recover from"
-            )
-        },
-    )
+        )
+    })
 }
 
 /// The `[[daemon]]` blocks the running configuration was built from.
@@ -2284,8 +2257,7 @@ fn channel(daemon: &DaemonId) -> Result<Arc<dyn BackendChannel>, String> {
 static CONFIGURED_DAEMONS: Mutex<Option<Vec<Daemon>>> = Mutex::new(None);
 
 pub(crate) fn set_configured_daemons(daemons: &[Daemon]) {
-    *CONFIGURED_DAEMONS.lock().expect("a panicking sender poisoned the settings") =
-        Some(daemons.to_vec());
+    *poison::lock(&CONFIGURED_DAEMONS, "settings") = Some(daemons.to_vec());
 }
 
 /// Whether a file names a different set of daemons from the one this window was built from.
@@ -2297,7 +2269,7 @@ pub(crate) fn set_configured_daemons(daemons: &[Daemon]) {
 /// Compared by what a person wrote rather than by what came of it - a daemon that is named and
 /// failed to attach is not a difference, it is the same wish and the same disappointment.
 pub(crate) fn daemons_differ(config: &Config) -> bool {
-    let configured = CONFIGURED_DAEMONS.lock().expect("a panicking sender poisoned the settings");
+    let configured = poison::lock(&CONFIGURED_DAEMONS, "settings");
     configured.as_deref().unwrap_or_default() != config.daemons.as_slice()
 }
 
@@ -2318,7 +2290,7 @@ pub(crate) fn rewrite_daemon_configuration() {
     }
 
     let sockets: Vec<String> = {
-        let session = SESSION.lock().expect("a panicking sender poisoned the session");
+        let session = poison::lock(&SESSION, "session");
         session
             .backends
             .values()
@@ -2347,7 +2319,7 @@ pub(crate) fn reset_pane_input(settings: &PaneInputSettings) {
     set_pane_input(settings.clone());
 
     let panes: Vec<(DaemonId, PaneId, Arc<AttachedPane>)> = {
-        let session = SESSION.lock().expect("a panicking sender poisoned the session");
+        let session = poison::lock(&SESSION, "session");
         session
             .panes
             .iter()
@@ -2388,7 +2360,7 @@ pub(crate) fn reset_pane_input(settings: &PaneInputSettings) {
 /// stops growing - not a refusal for a keystroke they cannot see the result of anyway.
 pub(crate) fn adjust_font_size(change: FontSizeChange) {
     let presentation = {
-        let mut session = SESSION.lock().expect("a panicking sender poisoned the session");
+        let mut session = poison::lock(&SESSION, "session");
         let offset = change.applied(session.presentation.font_size_offset);
         session.presentation = session.presentation.with_font_size_offset(offset);
         session.presentation
@@ -2418,7 +2390,7 @@ fn announce_presentation(presentation: Presentation) {
 pub(crate) fn window_focused(focused: bool) {
     log::info("window.focus", fields! { "focused" => focused });
     let settled = {
-        let mut session = SESSION.lock().expect("a panicking sender poisoned the session");
+        let mut session = poison::lock(&SESSION, "session");
         session.attention.window_focused(focused)
     };
     for pane in &settled {

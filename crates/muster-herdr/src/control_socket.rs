@@ -19,7 +19,7 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use muster_core::diagnostics::log;
+use muster_core::diagnostics::{log, poison};
 use muster_core::fields;
 
 use crate::control_stream::ControlStreamMessage;
@@ -129,7 +129,7 @@ impl PaneControlChannel {
                 // The newest bridge wins, because the one it replaced belongs to a surface
                 // that has already been thrown away. Dropping the old stream here closes it,
                 // which is how that bridge learns to exit.
-                *accepting.lock().expect("a panicking sender poisoned the channel") = Some(stream);
+                *poison::lock(&accepting, "pane-control-channel") = Some(stream);
                 log::info(
                     "channel.connected",
                     fields! { "path" => &accept_path, "connection" => connections.to_string() },
@@ -164,7 +164,7 @@ impl PaneControlChannel {
     /// the surface starting and the bridge dialing back - and is a real problem after that,
     /// which is why the caller is told rather than the failure being swallowed here.
     pub fn send(&self, message: &ControlStreamMessage) -> bool {
-        let mut slot = self.client.lock().expect("a panicking sender poisoned the channel");
+        let mut slot = poison::lock(&self.client, "pane-control-channel");
         let Some(stream) = slot.as_mut() else { return false };
         match stream.write_all(&message.wire_format()) {
             Ok(()) => true,

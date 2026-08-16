@@ -19,6 +19,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use muster_core::AgentState;
+use muster_core::diagnostics::poison;
 use muster_core::mirror::backend::PaneId;
 use muster_core::mirror::{Change, Mirror};
 use serde_json::{Value, json};
@@ -135,9 +136,7 @@ impl Drop for Subscription {
         // Shut the socket down rather than waiting for the read to return. The thread is
         // parked in `read` with no timeout, and a flag alone would not be noticed until
         // the daemon happened to say something.
-        if let Ok(stream) = self.stream.lock()
-            && let Some(stream) = stream.as_ref()
-        {
+        if let Some(stream) = poison::lock(&self.stream, "subscription-stream").as_ref() {
             let _ = stream.shutdown(Shutdown::Both);
         }
     }
@@ -172,9 +171,8 @@ fn run(
     while running.load(Ordering::Relaxed) {
         match connect(socket_path, &structure) {
             Ok(stream) => {
-                if let Ok(mut slot) = shared_stream.lock() {
-                    *slot = Some(stream.try_clone().expect("could not share the subscription"));
-                }
+                *poison::lock(shared_stream, "subscription-stream") =
+                    Some(stream.try_clone().expect("could not share the subscription"));
                 if connected_before {
                     report(Notice::Reconnected);
                 }
@@ -190,21 +188,18 @@ fn run(
                 agents.follow();
                 let detail = stream_events(stream, mirror, report, running, &mut agents);
 
-                if let Ok(mut slot) = shared_stream.lock() {
-                    *slot = None;
-                }
+                *poison::lock(shared_stream, "subscription-stream") = None;
                 if !running.load(Ordering::Relaxed) {
                     return;
                 }
-                if let Ok(mut mirror) = mirror.lock() {
-                    mirror.mark_stale();
-                }
+                poison::lock(mirror, "mirror").mark_stale();
                 report(Notice::Stale { detail });
             }
             Err(detail) => {
-                if let Ok(mut mirror) = mirror.lock() {
+                {
                     // Disconnected rather than stale on a failed dial: nothing has been
                     // reached, so there is no last good answer to label as aging.
+                    let mut mirror = poison::lock(mirror, "mirror");
                     if connected_before { mirror.mark_stale() } else { mirror.mark_disconnected() }
                 }
                 report(Notice::Stale { detail });
@@ -276,10 +271,7 @@ fn read_line(stream: &mut UnixStream) -> Option<Vec<u8>> {
 
 fn bootstrap(socket_path: &str, mirror: &Arc<Mutex<Mirror>>, report: &Report) {
     let Ok((snapshot, dropped)) = fetch_snapshot(socket_path) else { return };
-    let changes = match mirror.lock() {
-        Ok(mut mirror) => mirror.bootstrap(snapshot),
-        Err(_) => return,
-    };
+    let changes = poison::lock(mirror, "mirror").bootstrap(snapshot);
     report(Notice::Bootstrapped { changes, dropped });
 }
 
@@ -312,9 +304,9 @@ fn stream_events(
         // Applied under the lock, reported outside it. A report that reads the mirror -
         // which is what rendering a change means - would otherwise deadlock against the
         // thread that is still holding it.
-        let changes: Vec<Change> = match mirror.lock() {
-            Ok(mut mirror) => events.into_iter().flat_map(|event| mirror.apply(event)).collect(),
-            Err(_) => return "the mirror was poisoned".to_string(),
+        let changes: Vec<Change> = {
+            let mut mirror = poison::lock(mirror, "mirror");
+            events.into_iter().flat_map(|event| mirror.apply(event)).collect()
         };
         // After the changes are applied, so the set of panes it reads is the current one.
         // Cheap when nothing structural happened, which is most events.
@@ -357,9 +349,7 @@ struct Watcher {
 
 impl Drop for Watcher {
     fn drop(&mut self) {
-        if let Ok(stream) = self.stream.lock()
-            && let Some(stream) = stream.as_ref()
-        {
+        if let Some(stream) = poison::lock(&self.stream, "watcher-stream").as_ref() {
             let _ = stream.shutdown(Shutdown::Both);
         }
     }
@@ -390,7 +380,7 @@ impl AgentWatchers {
 
     /// Brings the set of watchers in line with the panes the mirror holds.
     fn follow(&mut self) {
-        let Ok(mirror) = self.mirror.lock() else { return };
+        let mirror = poison::lock(&self.mirror, "mirror");
         let wanted: Vec<PaneId> = mirror.panes().map(|pane| pane.id.clone()).collect();
         drop(mirror);
 
@@ -420,10 +410,8 @@ impl AgentWatchers {
             // things retrying the same failure is how a dead daemon gets dialed sixteen
             // times a second.
             let Ok(mut stream) = connect(&socket_path, &subscription) else { return };
-            if let Ok(shared) = stream.try_clone()
-                && let Ok(mut slot) = held.lock()
-            {
-                *slot = Some(shared);
+            if let Ok(shared) = stream.try_clone() {
+                *poison::lock(&held, "watcher-stream") = Some(shared);
             }
 
             // Subscribed, and now ask what was missed on the way here. This thread is spawned
@@ -477,7 +465,7 @@ fn read_agent_state(
     mirror: &Arc<Mutex<Mirror>>,
 ) -> Option<Vec<Change>> {
     // Read before asking, so the answer can be refused if the subscription overtook it.
-    let expected = mirror.lock().ok().and_then(|held| held.agent_state(pane))?;
+    let expected = poison::lock(mirror, "mirror").agent_state(pane)?;
 
     let answer = HerdrClient::new(socket_path)
         .request("pane.get", &json!({ "pane_id": pane.as_str() }))
@@ -486,6 +474,6 @@ fn read_agent_state(
     // already unwrapped by the client.
     let state = AgentState::from_backend(answer.get("pane")?.get("agent_status")?.as_str()?);
 
-    let mut held = mirror.lock().ok()?;
+    let mut held = poison::lock(mirror, "mirror");
     Some(held.seed_agent_state(pane, state, Some(expected)))
 }

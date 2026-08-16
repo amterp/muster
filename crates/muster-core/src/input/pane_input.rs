@@ -12,7 +12,7 @@ use super::{
     KeyEncoding, KeyEvent, Keymap, PaneChannel, PaneInputSettings, PaneIntent, Resolution,
     ScrollDirection,
 };
-use crate::diagnostics::log;
+use crate::diagnostics::{log, poison};
 use crate::fields;
 
 pub struct PaneInput {
@@ -279,7 +279,7 @@ impl PaneInput {
         target: &dyn PaneChannel,
         fallback: Option<&PaneIntent>,
     ) {
-        let mut outbound = self.outbound.lock().expect("a panicking sender poisoned the lock");
+        let mut outbound = poison::lock(&self.outbound, "pane-outbound");
         if target.deliver(intent) {
             return;
         }
