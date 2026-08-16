@@ -238,6 +238,21 @@
         ],
         "unknownKinds": []
       }
+    },
+    {
+      "name": "a tab rename is its own event, and carries the label on the envelope",
+      "why": "Read separately from a creation rather than folded into one upsert, because a subscription replays creations forever and each carries the label the tab was made with - herdr's is the tab's position. Folding them together lets a replay put a number back over somebody's name, and the caption then drops that number as a number, so the row goes blank rather than wrong.\n\nThe shape differs too: the label rides the envelope's data here, where every other tab event nests a whole `tab` object. A reader that looked for the nested one would decode this as nothing.",
+      "given": {
+        "chunks": [
+          "{\"data\": {\"label\": \"release\", \"tab_id\": \"w1:t1\", \"type\": \"tab_renamed\", \"workspace_id\": \"w1\"}, \"event\": \"tab_renamed\"}\n"
+        ]
+      },
+      "expect": {
+        "events": [
+          "tabRenamed:w1:t1 label=release"
+        ],
+        "unknownKinds": []
+      }
     }
   ]
 }

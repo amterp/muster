@@ -295,14 +295,32 @@ impl Mirror {
                 }
             }
             BackendEvent::WorkspaceRemoved(id) => self.remove_workspace(&id),
-            BackendEvent::TabUpserted(tab) => {
+            // A tab that already exists keeps the name it already has. This event says a tab
+            // exists, and a backend may replay it forever - herdr's carries the label the tab
+            // was made with, which is its position, so applying one to a renamed tab puts a
+            // number back over somebody's name. What the caption then does makes it worse
+            // rather than obvious: it drops an all-digits label to suppress that very number,
+            // so the row goes blank instead of wrong. Renaming has its own event below.
+            BackendEvent::TabUpserted(mut tab) => {
                 let id = tab.id.clone();
-                if self.tabs.insert(id.clone(), tab).is_some() {
-                    Vec::new()
-                } else {
-                    vec![Change::TabAdded(id)]
+                if let Some(before) = self.tabs.get(&id) {
+                    tab.label.clone_from(&before.label);
+                    self.tabs.insert(id, tab);
+                    return Vec::new();
                 }
+                self.tabs.insert(id.clone(), tab);
+                vec![Change::TabAdded(id)]
             }
+            // Only for a tab already held: a rename of something this mirror has never heard
+            // of is not a tab it can invent, since the event carries a name and nothing else.
+            // The creation it missed will arrive, or the next snapshot will.
+            BackendEvent::TabRenamed { tab, label } => match self.tabs.get_mut(&tab) {
+                Some(held) if held.label != label => {
+                    held.label = label;
+                    vec![Change::TabRelabelled(tab)]
+                }
+                _ => Vec::new(),
+            },
             BackendEvent::TabRemoved(id) => self.remove_tab(&id),
             // Structure only, on a pane that already exists. A backend that carries agent
             // state on its structure events is a second writer for it, and the older of

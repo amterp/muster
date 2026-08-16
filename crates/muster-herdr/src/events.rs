@@ -104,9 +104,18 @@ fn decode(line: &[u8]) -> Decoded {
         "workspace_closed" => id(data, "workspace_id")
             .or_else(|| data.get("workspace").and_then(|w| id(w, "workspace_id")))
             .map(|id| BackendEvent::WorkspaceRemoved(WorkspaceId::new(id))),
-        "tab_created" | "tab_renamed" => {
-            data.get("tab").and_then(read_tab).map(BackendEvent::TabUpserted)
-        }
+        "tab_created" => data.get("tab").and_then(read_tab).map(BackendEvent::TabUpserted),
+        // Not the same event as a creation, though the two used to be read as one. A
+        // creation carries the label the tab was made with - herdr's is the tab's position -
+        // and a subscription replays it forever, so folding them together lets a replay put
+        // a number back over somebody's name. A rename is announced only when it happens.
+        //
+        // The label rides the envelope here rather than a nested `tab`, unlike every other
+        // tab event, so this reads its own shape.
+        "tab_renamed" => id(data, "tab_id").map(|tab| BackendEvent::TabRenamed {
+            tab: TabId::new(tab),
+            label: text(data, "label").to_string(),
+        }),
         "tab_closed" => id(data, "tab_id").map(|id| BackendEvent::TabRemoved(TabId::new(id))),
         "pane_created" | "pane_updated" => {
             data.get("pane").and_then(read_pane).map(BackendEvent::PaneUpserted)

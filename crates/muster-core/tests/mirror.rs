@@ -160,6 +160,7 @@ fn describe(change: &Change) -> String {
         }
         Change::PaneRelabelled(pane) => format!("paneRelabelled:{pane}"),
         Change::TabAdded(tab) => format!("tabAdded:{tab}"),
+        Change::TabRelabelled(tab) => format!("tabRelabelled:{tab}"),
         Change::TabRemoved(tab) => format!("tabRemoved:{tab}"),
         Change::LayoutChanged(tab) => format!("layoutChanged:{tab}"),
         Change::WorkspaceAdded(workspace) => format!("workspaceAdded:{workspace}"),
@@ -178,6 +179,10 @@ fn read_event(given: &Value) -> BackendEvent {
             label: text(given, "label"),
         }),
         "workspaceRemoved" => BackendEvent::WorkspaceRemoved(WorkspaceId::new(text(given, "id"))),
+        "tabRenamed" => BackendEvent::TabRenamed {
+            tab: TabId::new(text(given, "id")),
+            label: text(given, "label"),
+        },
         "tabUpserted" => BackendEvent::TabUpserted(Tab {
             id: TabId::new(text(given, "id")),
             workspace: WorkspaceId::new(text(given, "workspace")),

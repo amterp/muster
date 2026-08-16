@@ -1,11 +1,16 @@
 //! What a backend tells Muster changed.
 //!
 //! Upsert rather than created-and-updated, deliberately. `events.subscribe` replays the
-//! current session as synthetic creation events, so a client that snapshots and then
-//! subscribes is told every existing entity was just created
-//! (`docs/observations/herdr-0.8.0.md` section 1). Collapsing the two makes convergence a
-//! property of the vocabulary rather than a rule each adapter has to remember, and there
-//! is no other information in the distinction: both carry the whole entity.
+//! current session as creation events, so a client that snapshots and then subscribes is
+//! told every existing entity was just created (`docs/observations/herdr-0.8.0.md`
+//! section 1). Collapsing the two makes convergence a property of the vocabulary rather
+//! than a rule each adapter has to remember.
+//!
+//! **Where the two carry different information, they stay two.** That replay is a log of
+//! past events rather than a statement of the present, so a creation says what an entity
+//! was called when it was made and a rename says what it is called now - and a mirror that
+//! read them as one lets a reconnect put an old name back. `TabRenamed` is that case; a
+//! pane's name has no announcement at all and so is taken only from a snapshot (section 16).
 
 use crate::AgentState;
 use crate::mirror::backend::{Layout, Pane, PaneId, Tab, TabId, Workspace, WorkspaceId};
@@ -19,6 +24,17 @@ pub enum BackendEvent {
     WorkspaceUpserted(Workspace),
     WorkspaceRemoved(WorkspaceId),
     TabUpserted(Tab),
+    /// A tab somebody renamed, which is a different fact from a tab existing.
+    ///
+    /// Two events rather than one upsert because a backend may replay the first forever and
+    /// the second is news. herdr's creation event carries the label the tab was made with -
+    /// its position - so a replay of it puts back a number over whatever the tab is now
+    /// called, and the caption then drops that number as a number and the row goes blank.
+    /// Renaming is announced separately and only when it happens, so it can be trusted.
+    TabRenamed {
+        tab: TabId,
+        label: String,
+    },
     TabRemoved(TabId),
     PaneUpserted(Pane),
     /// A pane is gone, however it went. The backend distinguishes a pane a client closed
@@ -84,6 +100,10 @@ pub enum Change {
     /// updates is a pane the user cannot find twice.
     PaneRelabelled(PaneId),
     TabAdded(TabId),
+    /// What this tab is called has moved. The same shape as [`Change::PaneRelabelled`] and
+    /// for the same reason: a caption that never updates is a tab somebody named and cannot
+    /// find again.
+    TabRelabelled(TabId),
     TabRemoved(TabId),
     /// This tab's tree is not the one it was. Carries the tab rather than the tree,
     /// because every reader has the mirror in hand and only some of them want to walk it.
@@ -121,6 +141,7 @@ impl Change {
             Change::AgentStateChanged { .. }
                 | Change::AgentTransitionsMissed { .. }
                 | Change::PaneRelabelled(_)
+                | Change::TabRelabelled(_)
                 | Change::FocusChanged
         )
     }
@@ -138,7 +159,8 @@ impl Change {
     /// per-event cost the budget is drawn against, and a full window of agents is the common
     /// case rather than the rare one.
     pub fn republishes(&self) -> bool {
-        self.moves_structure() || matches!(self, Change::PaneRelabelled(_))
+        self.moves_structure()
+            || matches!(self, Change::PaneRelabelled(_) | Change::TabRelabelled(_))
     }
 
     /// The pane whose agent state the shell has to be told about, if any.

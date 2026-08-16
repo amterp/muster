@@ -46,6 +46,7 @@ fn describe(event: &BackendEvent) -> String {
         BackendEvent::TabUpserted(tab) => {
             format!("tabUpserted:{} workspace={} label={}", tab.id, tab.workspace, tab.label)
         }
+        BackendEvent::TabRenamed { tab, label } => format!("tabRenamed:{tab} label={label}"),
         BackendEvent::TabRemoved(id) => format!("tabRemoved:{id}"),
         // Name and title are appended only when the payload carried one, so a case about
         // structure reads as it always did and a case about naming shows what it is about.
