@@ -37,6 +37,10 @@ surface per visible pane. Deliberately thin: it wires OS events into the core an
 nothing more. Its failure modes should be wiring failures - that is what makes it testable by a small smoke layer
 (see `testing.md`).
 
+The macOS shell is AppKit, and **SwiftUI appears in exactly one file**: the find bar, which was ported from
+Ghostty's rather than rebuilt. That is the rule rather than the current state - one hosted overlay is contained, and
+a second rendering system spreading through the window is the kind of thickening this layer is defined against.
+
 **Core** (headless, OS-free, Rust). The view-model and the only place decisions live: the mirror of each daemon's
 state, the action dispatcher, keymap policy, attention routing, configuration. The core never touches an OS API, a
 real clock, or a socket directly - those arrive through injected edges.
@@ -141,6 +145,14 @@ whatever size it has, and the pane's own geometry follows from the controller as
 scroll, spawn. Small on purpose - everything the view needs, nothing any particular backend happens to offer. The
 contract corpus at this seam is the executable form of this vocabulary and the definition any replacement backend
 (fork or wholesale) must satisfy.
+
+**Two of them are questions rather than requests, and find is why.** A backend is asked what a pane's history holds
+and where its viewport is looking; neither changes anything, so neither is an intent. Find is the only caller, and
+the shape it wants is one method: a backend that searches its own scrollback answers directly, and one that does not
+reads the history back and matches it in the core. herdr is the second kind and has no search at all
+(`observations/herdr-0.8.0.md` section 17), so the day it grows one is a change to one function body. What no backend
+gets to decide is what a match *is* - plain substring, ASCII case folding - because the renderer marks the ones on
+screen with its own matcher, and two answers to "how many are there" is the one thing a find bar cannot have.
 
 Agent states are working / blocked / idle / done / **unknown** - five, not four; unknown renders as itself, never as
 success. State is daemon truth, but one of the five is computed from a client-side input, so the vocabulary has to
@@ -528,8 +540,15 @@ boundary, which is Muster's own composition and never reaches a daemon.
 ## The renderer seam
 
 The renderer gets the same treatment as the backend: a narrow contract in Muster's terms - create a surface in a
-region, run a pane channel into it, resize it, read its grid (the test oracle) - and nothing libghostty-shaped
-escapes the seam. Today the only way to feed an embedded ghostty surface is the command it spawns; the embedding
+region, run a pane channel into it, resize it, mark text on it, read its grid (the test oracle) - and nothing
+libghostty-shaped escapes the seam.
+
+**Marking text is a division of labour rather than a second implementation.** libghostty has a full search, and it
+covers the scrollback of a terminal it owns - which is not the situation here, because a surface is repainted from a
+frame stream and holds no history. So the core searches, against what the daemon hands over, and the renderer is
+asked only to mark occurrences of a string on the screen it has already painted. There is still exactly one answer to
+how many matches exist and it is the core's. What the renderer refuses comes back rather than throwing, on the same
+terms as sizing text: a renderer that cannot mark costs the marks and nothing else, and that is a line for the log. Today the only way to feed an embedded ghostty surface is the command it spawns; the embedding
 header has no byte-feed API. The pane channel is therefore delivered by a bridge subprocess the surface runs. That
 is a fact about current libghostty, not a choice - re-verify on upgrades, and revisit if upstream grows a direct
 feed.
