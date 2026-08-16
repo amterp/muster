@@ -9,10 +9,13 @@ import Testing
 
 @Suite("the sidebar lists what exists")
 struct SidebarTests {
-  private func pane(_ daemon: String, _ id: String, label: String? = nil, onScreen: Bool = false)
-    -> Roster.Pane
-  {
-    Roster.Pane(key: PaneKey(daemon: daemon, pane: id), label: label ?? id, onScreen: onScreen)
+  private func pane(
+    _ daemon: String, _ id: String, label: String? = nil, subtitle: String = "",
+    givenName: String = "", onScreen: Bool = false
+  ) -> Roster.Pane {
+    Roster.Pane(
+      key: PaneKey(daemon: daemon, pane: id), label: label ?? id, subtitle: subtitle,
+      givenName: givenName, onScreen: onScreen)
   }
 
   /// One tab, numbered as the core would have numbered it.
@@ -263,5 +266,76 @@ struct SidebarTests {
 
     let back = SidebarModel.widths(in: 960, shown: true)
     #expect(back.sidebar == SidebarModel.width)
+  }
+
+  @Test("a row carries what its agent is doing, and most rows carry nothing")
+  func theSecondLineTravelsToTheRow() {
+    let roster = Roster(daemons: [
+      Roster.Daemon(
+        id: "local",
+        tabs: [
+          tab(
+            "local",
+            panes: [
+              pane("local", "w1:p1", label: "muster · claude", subtitle: "first working build"),
+              pane("local", "w1:p2", label: "src"),
+            ])
+        ])
+    ])
+
+    let panes = SidebarModel.rows(roster: roster, states: [:]).filter { $0.kind == .pane }
+    #expect(panes.map(\.subtitle) == ["first working build", ""])
+  }
+
+  @Test("a row with a second line is taller, and only that row")
+  func onlyASecondLineCostsHeight() {
+    // The reason this is asserted rather than left to look right: a list of fifteen agents is
+    // read by scanning it, and a height that varied with what an agent happened to be writing
+    // would move every row below it whenever one of them wrote a longer sentence. Two heights
+    // and no more means the only thing that can move a row is a title arriving or leaving.
+    let roster = Roster(daemons: [
+      Roster.Daemon(
+        id: "local",
+        tabs: [
+          tab(
+            "local",
+            panes: [
+              pane("local", "w1:p1", subtitle: "first working build"),
+              pane("local", "w1:p2", subtitle: "a very much longer sentence about the work"),
+              pane("local", "w1:p3"),
+            ])
+        ])
+    ])
+
+    let panes = SidebarModel.rows(roster: roster, states: [:]).filter { $0.kind == .pane }
+    let heights = panes.map(SidebarModel.height(of:))
+    #expect(heights == [SidebarModel.twoLines, SidebarModel.twoLines, SidebarModel.oneLine])
+  }
+
+  @Test("a rename starts from what somebody typed, not from what is drawn")
+  func theGivenNameIsCarriedSeparately() {
+    // `muster · claude` is composed here from a directory and a harness, and offering it as
+    // the starting text of a rename would ask somebody to delete a name they never wrote. An
+    // unnamed pane starts empty; a named one starts from its name and not from its caption,
+    // which for a tab may carry the workspace in front of it.
+    let roster = Roster(daemons: [
+      Roster.Daemon(
+        id: "local",
+        tabs: [
+          Roster.Tab(
+            key: TabKey(daemon: "local", tab: "w1:t1"), place: 1, label: "one · release",
+            onScreen: true, givenName: "release",
+            panes: [
+              pane("local", "w1:p1", label: "🔥 payments spike", givenName: "🔥 payments spike"),
+              pane("local", "w1:p2", label: "muster · claude"),
+            ]),
+          tab("local", "w1:t2", place: 2, panes: [pane("local", "w1:p3")]),
+        ])
+    ])
+
+    let rows = SidebarModel.rows(roster: roster, states: [:])
+    #expect(rows.first { $0.kind == .tab(place: 1) }?.givenName == "release")
+    #expect(rows.first { $0.pane?.pane == "w1:p1" }?.givenName == "🔥 payments spike")
+    #expect(rows.first { $0.pane?.pane == "w1:p2" }?.givenName == "")
   }
 }

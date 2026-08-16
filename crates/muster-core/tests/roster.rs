@@ -88,12 +88,22 @@ fn roster_conformance() {
 /// hides it.
 fn describe_tab(tab: &RosterTab) -> String {
     format!(
-        "{} place={} label={:?} {}",
+        "{} place={} label={:?}{} {}",
         tab.key,
         tab.place,
         tab.label,
+        described("given-name", tab.given_name.as_deref()),
         if tab.on_screen { "on-screen" } else { "hidden" }
     )
+}
+
+/// An optional part of a line, printed only when it says something.
+///
+/// Most rows have neither a name somebody typed nor a second line, so printing both always
+/// would put `given-name="" subtitle=""` on every line of every case here and bury what each
+/// one is actually about.
+fn described(key: &str, value: Option<&str>) -> String {
+    value.map(|value| format!(" {key}={value:?}")).unwrap_or_default()
 }
 
 /// One pane, as a line, with the tab it sits under.
@@ -102,10 +112,12 @@ fn describe_tab(tab: &RosterTab) -> String {
 /// without counting rows back up to the heading it belongs to.
 fn describe_pane(tab: &RosterTab, pane: &RosterPane) -> String {
     format!(
-        "{} tab={} label={:?} {}",
+        "{} tab={} label={:?}{}{} {}",
         pane.key,
         tab.key.tab,
         pane.label,
+        described("subtitle", pane.subtitle.as_deref()),
+        described("given-name", pane.given_name.as_deref()),
         if pane.on_screen { "on-screen" } else { "hidden" }
     )
 }

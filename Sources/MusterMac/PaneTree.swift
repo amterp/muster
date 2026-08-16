@@ -108,10 +108,13 @@ extension Roster {
               place: Int(tab.place),
               label: tab.label,
               onScreen: tab.onScreen,
+              givenName: tab.givenName,
               panes: tab.panes.map { pane in
                 Roster.Pane(
                   key: PaneKey(daemon: pane.daemonID, pane: pane.paneID),
                   label: pane.label,
+                  subtitle: pane.subtitle,
+                  givenName: pane.givenName,
                   onScreen: pane.onScreen)
               })
           })

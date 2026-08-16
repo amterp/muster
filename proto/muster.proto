@@ -730,21 +730,37 @@ message RosterTab {
 
   // In the order this tab's tree lays them out.
   repeated RosterPane panes = 6;
+
+  // The name somebody gave this tab, empty when nobody has. Not recoverable from `label`,
+  // which may carry the workspace in front of it - a rename has to start from what was
+  // typed rather than from what is drawn.
+  string given_name = 7;
 }
 
 message RosterPane {
   string daemon_id = 1;
   string pane_id = 2;
 
-  // What to call this pane to somebody who did not open it - its directory, and the harness
-  // detected in it when there is one. Decided in the core, because a shell naming panes for
-  // itself would be a second place that decision lives.
+  // What to call this pane to somebody who did not open it - the name somebody gave it, or
+  // failing that its directory and the harness detected in it. Decided in the core, because
+  // a shell naming panes for itself would be a second place that decision lives.
   string label = 3;
 
   // Whether a region is showing it right now. Resolved here rather than left to a shell
   // comparing this against the view: the two arrive separately, and a shell joining them
   // would render a pane as hidden for as long as they disagreed.
   bool on_screen = 4;
+
+  // What this pane's agent is working on, empty when there is nothing worth a second line.
+  //
+  // Empty is the ordinary answer and the reason this is affordable: a line under every row
+  // doubles the height of a list whose value is being glanceable, so the core draws one only
+  // for a pane with a detected harness whose title says something the label does not.
+  string subtitle = 5;
+
+  // The name somebody gave this pane, empty when nobody has. Carried so a rename can start
+  // from what it is already called rather than from a label nobody typed.
+  string given_name = 6;
 }
 
 // Everything this window is showing, as one message.

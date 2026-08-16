@@ -66,6 +66,12 @@ pub struct RosterTab {
     /// is what a region shows, and a pane is what the tree inside it renders.
     pub on_screen: bool,
 
+    /// The name somebody gave this tab, if anybody has, on the same terms as a pane's.
+    ///
+    /// Not derivable from `label` above, which may carry the tab's workspace in front of the
+    /// name and drops a name that is only digits. Renaming has to start from what was typed.
+    pub given_name: Option<String>,
+
     pub panes: Vec<RosterPane>,
 }
 
@@ -75,6 +81,19 @@ pub struct RosterPane {
     pub key: PaneKey,
     /// What to call this pane to somebody who did not open it.
     pub label: String,
+    /// What its agent is working on, when that is worth a line of its own.
+    ///
+    /// Absent for most panes, and that is the design rather than a gap: a second line on
+    /// every row doubles the height of a list whose whole value is being glanceable. See
+    /// [`pane_subtitle`] for when one is drawn.
+    pub subtitle: Option<String>,
+    /// The name somebody gave this pane, if anybody has - the raw text, not the composed
+    /// label above.
+    ///
+    /// Carried so that asking to rename a pane can start from what it is already called
+    /// rather than from `muster · claude`, which nobody typed. Absent means unnamed, which
+    /// is what "has a name" is asked of without a sentinel.
+    pub given_name: Option<String>,
     /// Whether a region is showing it right now.
     ///
     /// Here rather than left to the shell to work out by comparing against the view: the two
@@ -164,12 +183,15 @@ impl Roster {
                             place,
                             label: tab_label(held, tab, named),
                             on_screen: on_screen.contains(&TabKey::new(daemon, &tab.id)),
+                            given_name: given_name(tab_own_name(tab)),
                             panes: ordered_panes(held, &tab.id)
                                 .into_iter()
                                 .map(|pane| {
                                     let key = PaneKey::new(daemon, &pane.id);
                                     RosterPane {
                                         label: pane_label(pane),
+                                        subtitle: pane_subtitle(pane),
+                                        given_name: given_name(pane.name.as_deref()),
                                         on_screen: showing.contains(&key),
                                         key,
                                     }
@@ -263,9 +285,25 @@ fn names_its_workspaces(mirror: &Mirror) -> bool {
 /// The empty answer is a real one and not a hole: nothing here is ever the only thing a row
 /// has, because the place is always drawn. A tab id would fit the space and tell nobody
 /// anything.
-fn tab_label(mirror: &Mirror, tab: &crate::mirror::backend::Tab, named: bool) -> String {
+/// The part of a tab's backend label that is somebody's name for it rather than its number.
+///
+/// herdr gives every tab a label whether or not anyone named it, filling in the tab's
+/// position within its workspace, so "is this named" cannot be asked of presence. The
+/// all-digits test is what separates the two, and it is why a tab somebody names `42`
+/// reads as unnamed: herdr's `TabInfo` offers no way to tell those apart
+/// (`observations/herdr-0.8.0.md` section 16).
+fn tab_own_name(tab: &crate::mirror::backend::Tab) -> Option<&str> {
     let own = tab.label.trim();
-    let own = if own.is_empty() || own.chars().all(|c| c.is_ascii_digit()) { "" } else { own };
+    (!own.is_empty() && !own.chars().all(|c| c.is_ascii_digit())).then_some(own)
+}
+
+/// Trims a backend's answer and reads blank as absent, so "has a name" is one question.
+fn given_name(name: Option<&str>) -> Option<String> {
+    name.map(str::trim).filter(|name| !name.is_empty()).map(str::to_string)
+}
+
+fn tab_label(mirror: &Mirror, tab: &crate::mirror::backend::Tab, named: bool) -> String {
+    let own = tab_own_name(tab).unwrap_or_default();
     let workspace = named
         .then(|| mirror.workspaces().find(|held| held.id == tab.workspace))
         .flatten()
@@ -305,19 +343,64 @@ fn ordered_panes<'a>(mirror: &'a Mirror, tab: &'a TabId) -> Vec<&'a Pane> {
 
 /// What to call a pane to somebody who did not open it.
 ///
-/// The directory first, because for a window full of coding agents that is what tells two
-/// panes apart - the ids are `w1:p1` and `w1:p2`, which say nothing, and a terminal title
-/// is whatever the program last felt like setting. The harness follows when one was
-/// detected, because "which of these is the one running claude" is the other question asked
-/// of a list like this.
+/// **A name somebody gave it wins**, because it is the only line here that was written by a
+/// person for this pane rather than derived from where it happens to be. It is also the
+/// durable one: herdr writes a name down, so it comes back after a daemon restart, where
+/// everything below is worked out afresh each time (`observations/herdr-0.8.0.md` section
+/// 16).
+///
+/// Failing that, the directory first, because for a window full of coding agents that is
+/// what tells two panes apart - the ids are `w1:p1` and `w1:p2`, which say nothing. The
+/// harness follows when one was detected, because "which of these is the one running claude"
+/// is the other question asked of a list like this.
 ///
 /// The id is the last resort rather than the first, and it is better than an empty row: a
 /// pane with no directory is still a pane somebody has to be able to point at.
 fn pane_label(pane: &Pane) -> String {
-    let directory = pane.cwd.trim_end_matches('/').rsplit('/').next().unwrap_or_default();
-    let directory = if directory.is_empty() { pane.id.as_str() } else { directory };
-    match &pane.agent {
-        Some(agent) if !agent.is_empty() => format!("{directory} · {agent}"),
-        _ => directory.to_string(),
+    if let Some(name) = pane.name.as_deref().map(str::trim).filter(|name| !name.is_empty()) {
+        return name.to_string();
     }
+    format!("{}{}", pane_directory(pane), harness_suffix(pane))
+}
+
+fn pane_directory(pane: &Pane) -> &str {
+    let directory = pane.cwd.trim_end_matches('/').rsplit('/').next().unwrap_or_default();
+    if directory.is_empty() { pane.id.as_str() } else { directory }
+}
+
+fn harness_suffix(pane: &Pane) -> String {
+    match &pane.agent {
+        Some(agent) if !agent.is_empty() => format!(" · {agent}"),
+        _ => String::new(),
+    }
+}
+
+/// The second line of a pane's row: what its agent is working on, when that is worth a line.
+///
+/// The founding promise is that fifteen panes can be told apart at a glance, and fifteen rows
+/// reading `<directory> · claude` cannot do it. A harness already publishes what it is doing
+/// as its terminal title, so the material is there - the decision is when drawing it earns
+/// the height, and it is made here rather than in a sidebar so that the CLI and an agent get
+/// the same answer as the window (`architecture.md`, attention routing).
+///
+/// **Only a pane with a detected harness gets one.** A plain shell sets a title too, and
+/// oh-my-zsh's default is `<user>@<host>:<path>` - the row's own first line, spelled longer.
+/// Suppressing that by matching on shell prompt conventions would be a guess about somebody's
+/// dotfiles; requiring a harness is a fact the daemon reports. What it costs is stated rather
+/// than hidden: a pane running something that titles itself usefully, which herdr recognized
+/// no agent in, stays on one line.
+///
+/// **And only when it says something the first line does not.** A harness that titles itself
+/// after the directory - which Claude does - would otherwise draw the same word twice at
+/// double the height.
+fn pane_subtitle(pane: &Pane) -> Option<String> {
+    let agent = pane.agent.as_deref().filter(|agent| !agent.is_empty())?;
+    let title = pane.title.as_deref().map(str::trim).filter(|title| !title.is_empty())?;
+
+    let repeats = |said: &str| said.eq_ignore_ascii_case(title);
+    let already_said = repeats(&pane_label(pane))
+        || repeats(pane_directory(pane))
+        || repeats(pane.cwd.trim_end_matches('/'))
+        || repeats(agent);
+    (!already_said).then(|| title.to_string())
 }

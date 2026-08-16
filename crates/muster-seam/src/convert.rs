@@ -71,6 +71,11 @@ pub(crate) fn roster(roster: &Roster) -> proto::RosterChanged {
                         place: u32::try_from(tab.place).unwrap_or_default(),
                         label: tab.label.clone(),
                         on_screen: tab.on_screen,
+                        // Empty is how a string field says nothing was named, the same
+                        // spelling the appearance vocabulary uses. An optional carrying a
+                        // name nobody could have typed - the empty one - is not a state
+                        // worth a wire representation.
+                        given_name: tab.given_name.clone().unwrap_or_default(),
                         panes: tab
                             .panes
                             .iter()
@@ -79,6 +84,8 @@ pub(crate) fn roster(roster: &Roster) -> proto::RosterChanged {
                                 pane_id: pane.key.pane.to_string(),
                                 label: pane.label.clone(),
                                 on_screen: pane.on_screen,
+                                subtitle: pane.subtitle.clone().unwrap_or_default(),
+                                given_name: pane.given_name.clone().unwrap_or_default(),
                             })
                             .collect(),
                     })

@@ -339,6 +339,26 @@ it. Order and label are decisions and live in the core, so the sidebar, the CLI 
 Structure only, like the view: what an agent is doing keeps its own per-pane message, because a roster is stable and
 a state blinks.
 
+**A pane is named twice over, and the two age differently.** A name somebody typed is durable identity - the daemon
+writes it down, so it survives a daemon restart - and it wins over anything derived, because it is the only line
+written for that pane rather than worked out from where it sits. Under it, when there is something to say, goes what
+the agent calls itself: volatile status, lost on a restart because the process that would set it again is new
+(`observations/herdr-0.8.0.md` section 16). Between them a row has a first line stable enough to learn and a second
+that changes as work happens, which is what fifteen rows reading `<directory> · claude` could never do.
+
+The second line is drawn only for a pane with a detected harness whose title says something the first line does not,
+and that rule is the core's on the same terms as the ordering. A plain shell titles itself too - usually with the
+path the row already leads with - so "draw it when it exists" would double the height of the list to repeat it, and
+suppressing that by matching shell prompt conventions would be a guess about somebody's dotfiles where a detected
+harness is a fact the daemon reports. A row is one line or two and never taller: a height that varied with the length
+of what an agent wrote would move the rows below it while somebody was reading them.
+
+Naming is an ordinary intent through the one action path, so a chord, a menu item, the CLI and an agent all reach it,
+and nothing is rendered optimistically - a rename is applied from what the daemon answers, the way a split is. That
+answer is the only route there is for Muster's own renames: herdr emits no event for one at all, so a rename made by
+another client arrives when the connection next re-snapshots. Clearing a name is a null rather than an empty string,
+and for a tab it is neither, because herdr has no spelling for it.
+
 **The roster is a tree, because a tab is what a person navigates between.** Daemon, then tab, then pane: a flat list
 of panes cannot say which of them sit side by side, and a region shows one tab, so "where has that agent got to" is a
 question about tabs. Each tab carries a place in one numbering that runs across every attached daemon, and that one

@@ -12,12 +12,24 @@ public struct Roster: Equatable {
     /// What to call this pane to somebody who did not open it.
     public let label: String
 
+    /// What its agent is working on, when the core decided that was worth a line. Empty for
+    /// most panes, which is what keeps a list of fifteen readable at a glance.
+    public let subtitle: String
+
+    /// The name somebody gave this pane, empty when nobody has. What a rename starts from.
+    public let givenName: String
+
     /// Whether a region is showing it right now.
     public let onScreen: Bool
 
-    public init(key: PaneKey, label: String, onScreen: Bool) {
+    public init(
+      key: PaneKey, label: String, subtitle: String = "", givenName: String = "",
+      onScreen: Bool
+    ) {
       self.key = key
       self.label = label
+      self.subtitle = subtitle
+      self.givenName = givenName
       self.onScreen = onScreen
     }
   }
@@ -35,13 +47,21 @@ public struct Roster: Equatable {
     /// panes being on screen - a zoomed tab is on screen while all but one of them are not.
     public let onScreen: Bool
 
+    /// The name somebody gave this tab, empty when nobody has. What a rename starts from -
+    /// not recoverable from `label`, which may carry the tab's workspace in front of it.
+    public let givenName: String
+
     public let panes: [Pane]
 
-    public init(key: TabKey, place: Int, label: String, onScreen: Bool, panes: [Pane]) {
+    public init(
+      key: TabKey, place: Int, label: String, onScreen: Bool, givenName: String = "",
+      panes: [Pane]
+    ) {
       self.key = key
       self.place = place
       self.label = label
       self.onScreen = onScreen
+      self.givenName = givenName
       self.panes = panes
     }
   }
@@ -123,6 +143,14 @@ public enum SidebarModel {
     public let pane: PaneKey?
     public let label: String
 
+    /// A second line under the label, or empty for no second line. Only pane rows ever have
+    /// one, and most of those do not: what earns it is decided in the core.
+    public let subtitle: String
+
+    /// The name somebody gave this row's subject, empty when nobody has. What a rename starts
+    /// from, so that renaming `muster · claude` opens an empty field rather than that text.
+    public let givenName: String
+
     /// The backend's spelling of what this pane's agent is doing, or `unknown` when the core
     /// has said nothing about it yet. Empty on the rows that are not panes.
     public let state: String
@@ -172,19 +200,21 @@ public enum SidebarModel {
     for daemon in roster.daemons where !daemon.tabs.isEmpty {
       rows.append(
         Row(
-          kind: .daemon, daemon: daemon.id, tab: nil, pane: nil, label: daemon.id, state: "",
-          onScreen: true, hasKeyboard: false))
+          kind: .daemon, daemon: daemon.id, tab: nil, pane: nil, label: daemon.id, subtitle: "",
+          givenName: "", state: "", onScreen: true, hasKeyboard: false))
       for tab in daemon.tabs {
         if captions {
           rows.append(
             Row(
               kind: .tab(place: tab.place), daemon: daemon.id, tab: tab.key, pane: nil,
-              label: tab.label, state: "", onScreen: tab.onScreen, hasKeyboard: false))
+              label: tab.label, subtitle: "", givenName: tab.givenName, state: "",
+              onScreen: tab.onScreen, hasKeyboard: false))
         }
         for pane in tab.panes {
           rows.append(
             Row(
               kind: .pane, daemon: daemon.id, tab: tab.key, pane: pane.key, label: pane.label,
+              subtitle: pane.subtitle, givenName: pane.givenName,
               // A pane the core has said nothing about is unknown, not idle. An agent we have
               // not heard from is not an agent that finished
               // (`corpus/conformance/agent-state.json`).
@@ -206,6 +236,18 @@ public enum SidebarModel {
   /// data rather than as calm.
   public static func dotColor(state: String) -> NSColor {
     PaneAppearance.borderColor(state: state)
+  }
+
+  /// How tall a row is.
+  ///
+  /// **Two heights and no more**, and deliberately not a function of how long the text is. A
+  /// list of fifteen agents is read by scanning it, so a height that varied with what an agent
+  /// happened to be writing would move every row below it each time one of them wrote a longer
+  /// sentence. The only thing that can move a row is a second line arriving or going away.
+  public static let oneLine: CGFloat = 20
+  public static let twoLines: CGFloat = 32
+  public static func height(of row: Row) -> CGFloat {
+    row.subtitle.isEmpty ? oneLine : twoLines
   }
 
   /// Wide enough for a directory and a harness name, narrow enough to leave a full window of
@@ -260,7 +302,10 @@ public final class SidebarView: NSView {
     column.resizingMask = .autoresizingMask
     table.addTableColumn(column)
     table.headerView = nil
-    table.rowSizeStyle = .small
+    // Custom rather than `.small`, because a row is one line or two depending on whether its
+    // agent said what it is working on, and a table with a size style of its own ignores what
+    // `heightOfRow` answers.
+    table.rowSizeStyle = .custom
     table.selectionHighlightStyle = .regular
     table.backgroundColor = .clear
     table.dataSource = self
@@ -318,6 +363,12 @@ extension SidebarView: NSTableViewDataSource, NSTableViewDelegate {
   public func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
     rows.indices.contains(row) && rows[row].isDestination
   }
+
+  /// Rows are one line or two, so the table cannot use a single row height any more.
+  public func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
+    guard rows.indices.contains(row) else { return SidebarModel.oneLine }
+    return SidebarModel.height(of: rows[row])
+  }
 }
 
 /// One row: a state dot or a tab number, a name, and whether anything is showing it.
@@ -325,6 +376,7 @@ extension SidebarView: NSTableViewDataSource, NSTableViewDelegate {
 final class SidebarRowView: NSView {
   private let dot = CALayer()
   private let name = NSTextField(labelWithString: "")
+  private let subtitle = NSTextField(labelWithString: "")
   private let number = NSTextField(labelWithString: "")
   private let highlight = CALayer()
   private let indented: Bool
@@ -376,7 +428,22 @@ final class SidebarRowView: NSView {
       dot.backgroundColor = SidebarModel.dotColor(state: row.state).cgColor
       dot.cornerRadius = SidebarRowView.dotSize / 2
       layer?.addSublayer(dot)
+      if !row.subtitle.isEmpty {
+        subtitle.font = .systemFont(ofSize: 10, weight: .regular)
+        subtitle.stringValue = row.subtitle
+        subtitle.textColor = .secondaryLabelColor
+        // Truncated rather than wrapped, and the full text on hover. Wrapping would make a
+        // row's height a function of what its agent is doing, so the list would jump under
+        // somebody reading it every time an agent wrote a longer sentence. In a list whose
+        // whole value is being scannable, a stable row beats a complete one.
+        subtitle.lineBreakMode = .byTruncatingTail
+        subtitle.toolTip = row.subtitle
+        addSubview(subtitle)
+      }
     }
+    // Long directory names truncate rather than spilling past the row, for the same reason.
+    name.lineBreakMode = .byTruncatingTail
+    name.toolTip = row.label
     addSubview(name)
   }
 
@@ -412,9 +479,20 @@ final class SidebarRowView: NSView {
     // Sized to the text and then centred, rather than given the whole row. A label draws its
     // text at the top of whatever frame it is handed, so a full-height frame puts the words
     // above the dot beside them - which reads as the dot being wrong rather than the text.
+    let width = max(0, bounds.width - textLeft - SidebarRowView.inset)
     let textHeight = min(bounds.height, name.fittingSize.height)
+    guard subtitle.superview != nil else {
+      name.frame = CGRect(
+        x: textLeft, y: (bounds.height - textHeight) / 2, width: width, height: textHeight)
+      return
+    }
+    // Two lines share the row: the pair is centred together, so a one-line row and a two-line
+    // row read as the same list rather than as two lists. The dot stays on the row's centre
+    // rather than on the first line's, which keeps the column of dots straight.
+    let secondHeight = min(bounds.height, subtitle.fittingSize.height)
+    let top = (bounds.height - textHeight - secondHeight) / 2
     name.frame = CGRect(
-      x: textLeft, y: (bounds.height - textHeight) / 2,
-      width: max(0, bounds.width - textLeft - SidebarRowView.inset), height: textHeight)
+      x: textLeft, y: top + secondHeight, width: width, height: textHeight)
+    subtitle.frame = CGRect(x: textLeft, y: top, width: width, height: secondHeight)
   }
 }

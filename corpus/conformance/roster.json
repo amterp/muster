@@ -66,7 +66,7 @@
       },
       "expect": {
         "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" on-screen"
+          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen"
         ],
         "panes": [
           "local/w1:p2 tab=w1:t1 label=\"beta\" hidden",
@@ -126,7 +126,7 @@
       },
       "expect": {
         "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" on-screen"
+          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen"
         ],
         "panes": [
           "local/w1:p1 tab=w1:t1 label=\"alpha\" hidden",
@@ -191,7 +191,7 @@
       },
       "expect": {
         "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" on-screen"
+          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen"
         ],
         "panes": [
           "local/w1:p1 tab=w1:t1 label=\"alpha\" hidden",
@@ -201,7 +201,7 @@
     },
     {
       "name": "a pane is named by its directory and the harness in it",
-      "why": "The two things that tell coding-agent panes apart. The id says nothing to anybody, and a terminal title is whatever the program last set it to. The directory answers 'which project' and the harness answers 'which of these is running claude', which are the two questions a list like this gets asked.",
+      "why": "The two things that tell coding-agent panes apart when nobody has said otherwise. The id says nothing to anybody; the directory answers 'which project' and the harness answers 'which of these is running claude', which are the two questions a list like this gets asked.\n\nThis used to argue that a terminal title is whatever the program last felt like setting, and therefore worth nothing. That was wrong about coding agents, which set it to what they are working on, and it is now the second line of the row. It stays off the first line for the reason the old wording was reaching for: a title changes as work happens, and the line you learn a pane by should not.",
       "given": {
         "worlds": {
           "laptop": {
@@ -246,7 +246,7 @@
       },
       "expect": {
         "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" on-screen"
+          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen"
         ],
         "panes": [
           "local/w1:p1 tab=w1:t1 label=\"muster · claude\" hidden"
@@ -299,7 +299,7 @@
       },
       "expect": {
         "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" on-screen"
+          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen"
         ],
         "panes": [
           "local/w1:p1 tab=w1:t1 label=\"rad\" hidden"
@@ -358,7 +358,7 @@
       },
       "expect": {
         "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" on-screen"
+          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen"
         ],
         "panes": [
           "local/w1:p1 tab=w1:t1 label=\"w1:p1\" hidden",
@@ -412,7 +412,7 @@
       },
       "expect": {
         "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" on-screen"
+          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen"
         ],
         "panes": [
           "local/w1:p1 tab=w1:t1 label=\"src\" hidden"
@@ -479,8 +479,8 @@
       },
       "expect": {
         "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" on-screen",
-          "local/w1:t2 place=2 label=\"t2\" hidden"
+          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen",
+          "local/w1:t2 place=2 label=\"t2\" given-name=\"t2\" hidden"
         ],
         "panes": [
           "local/w1:p1 tab=w1:t1 label=\"shown\" on-screen",
@@ -567,8 +567,8 @@
       },
       "expect": {
         "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" on-screen",
-          "devenv/w1:t1 place=2 label=\"t1\" on-screen"
+          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen",
+          "devenv/w1:t1 place=2 label=\"t1\" given-name=\"t1\" on-screen"
         ],
         "panes": [
           "local/w1:p1 tab=w1:t1 label=\"here\" hidden",
@@ -650,8 +650,8 @@
       },
       "expect": {
         "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" on-screen",
-          "devenv/w1:t1 place=2 label=\"t1\" hidden"
+          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen",
+          "devenv/w1:t1 place=2 label=\"t1\" given-name=\"t1\" hidden"
         ],
         "panes": [
           "local/w1:p1 tab=w1:t1 label=\"shown\" hidden",
@@ -708,7 +708,7 @@
       },
       "expect": {
         "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" on-screen"
+          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen"
         ],
         "panes": [
           "local/w1:p1 tab=w1:t1 label=\"here\" hidden"
@@ -797,8 +797,8 @@
       },
       "expect": {
         "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" on-screen",
-          "devenv/w1:t1 place=2 label=\"t1\" on-screen"
+          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen",
+          "devenv/w1:t1 place=2 label=\"t1\" given-name=\"t1\" on-screen"
         ],
         "panes": [
           "local/w1:p1 tab=w1:t1 label=\"laptop\" hidden",
@@ -907,10 +907,10 @@
       },
       "expect": {
         "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" on-screen",
-          "local/w1:t2 place=2 label=\"t2\" hidden",
-          "devenv/w1:t1 place=3 label=\"t1\" on-screen",
-          "devenv/w1:t2 place=4 label=\"t2\" hidden"
+          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen",
+          "local/w1:t2 place=2 label=\"t2\" given-name=\"t2\" hidden",
+          "devenv/w1:t1 place=3 label=\"t1\" given-name=\"t1\" on-screen",
+          "devenv/w1:t2 place=4 label=\"t2\" given-name=\"t2\" hidden"
         ],
         "panes": [
           "local/w1:p1 tab=w1:t1 label=\"first\" hidden",
@@ -975,7 +975,7 @@
       },
       "expect": {
         "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" on-screen"
+          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen"
         ],
         "panes": [
           "local/w1:p1 tab=w1:t1 label=\"zoomed\" on-screen",
@@ -1212,10 +1212,10 @@
       "expect": {
         "stepped": "devenv/w1:t1",
         "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" on-screen",
-          "local/w1:t2 place=2 label=\"t2\" hidden",
-          "devenv/w1:t1 place=3 label=\"t1\" on-screen",
-          "devenv/w1:t2 place=4 label=\"t2\" hidden"
+          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen",
+          "local/w1:t2 place=2 label=\"t2\" given-name=\"t2\" hidden",
+          "devenv/w1:t1 place=3 label=\"t1\" given-name=\"t1\" on-screen",
+          "devenv/w1:t2 place=4 label=\"t2\" given-name=\"t2\" hidden"
         ],
         "panes": [
           "local/w1:p1 tab=w1:t1 label=\"first\" hidden",
@@ -1331,10 +1331,10 @@
       "expect": {
         "stepped": "local/w1:t1",
         "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" on-screen",
-          "local/w1:t2 place=2 label=\"t2\" hidden",
-          "devenv/w1:t1 place=3 label=\"t1\" on-screen",
-          "devenv/w1:t2 place=4 label=\"t2\" hidden"
+          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen",
+          "local/w1:t2 place=2 label=\"t2\" given-name=\"t2\" hidden",
+          "devenv/w1:t1 place=3 label=\"t1\" given-name=\"t1\" on-screen",
+          "devenv/w1:t2 place=4 label=\"t2\" given-name=\"t2\" hidden"
         ],
         "panes": [
           "local/w1:p1 tab=w1:t1 label=\"first\" hidden",
@@ -1450,10 +1450,10 @@
       "expect": {
         "stepped": "devenv/w1:t2",
         "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" on-screen",
-          "local/w1:t2 place=2 label=\"t2\" hidden",
-          "devenv/w1:t1 place=3 label=\"t1\" on-screen",
-          "devenv/w1:t2 place=4 label=\"t2\" hidden"
+          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen",
+          "local/w1:t2 place=2 label=\"t2\" given-name=\"t2\" hidden",
+          "devenv/w1:t1 place=3 label=\"t1\" given-name=\"t1\" on-screen",
+          "devenv/w1:t2 place=4 label=\"t2\" given-name=\"t2\" hidden"
         ],
         "panes": [
           "local/w1:p1 tab=w1:t1 label=\"first\" hidden",
@@ -1569,10 +1569,10 @@
       "expect": {
         "stepped": "local/w1:t1",
         "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" on-screen",
-          "local/w1:t2 place=2 label=\"t2\" hidden",
-          "devenv/w1:t1 place=3 label=\"t1\" on-screen",
-          "devenv/w1:t2 place=4 label=\"t2\" hidden"
+          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen",
+          "local/w1:t2 place=2 label=\"t2\" given-name=\"t2\" hidden",
+          "devenv/w1:t1 place=3 label=\"t1\" given-name=\"t1\" on-screen",
+          "devenv/w1:t2 place=4 label=\"t2\" given-name=\"t2\" hidden"
         ],
         "panes": [
           "local/w1:p1 tab=w1:t1 label=\"first\" hidden",
@@ -1687,10 +1687,10 @@
       "expect": {
         "stepped": "devenv/w1:t2",
         "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" on-screen",
-          "local/w1:t2 place=2 label=\"t2\" hidden",
-          "devenv/w1:t1 place=3 label=\"t1\" on-screen",
-          "devenv/w1:t2 place=4 label=\"t2\" hidden"
+          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen",
+          "local/w1:t2 place=2 label=\"t2\" given-name=\"t2\" hidden",
+          "devenv/w1:t1 place=3 label=\"t1\" given-name=\"t1\" on-screen",
+          "devenv/w1:t2 place=4 label=\"t2\" given-name=\"t2\" hidden"
         ],
         "panes": [
           "local/w1:p1 tab=w1:t1 label=\"first\" hidden",
@@ -1803,10 +1803,10 @@
       "expect": {
         "at": "devenv/w1:t1",
         "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" on-screen",
-          "local/w1:t2 place=2 label=\"t2\" hidden",
-          "devenv/w1:t1 place=3 label=\"t1\" on-screen",
-          "devenv/w1:t2 place=4 label=\"t2\" hidden"
+          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen",
+          "local/w1:t2 place=2 label=\"t2\" given-name=\"t2\" hidden",
+          "devenv/w1:t1 place=3 label=\"t1\" given-name=\"t1\" on-screen",
+          "devenv/w1:t2 place=4 label=\"t2\" given-name=\"t2\" hidden"
         ],
         "panes": [
           "local/w1:p1 tab=w1:t1 label=\"first\" hidden",
@@ -1919,16 +1919,358 @@
       "expect": {
         "at": null,
         "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" on-screen",
-          "local/w1:t2 place=2 label=\"t2\" hidden",
-          "devenv/w1:t1 place=3 label=\"t1\" on-screen",
-          "devenv/w1:t2 place=4 label=\"t2\" hidden"
+          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen",
+          "local/w1:t2 place=2 label=\"t2\" given-name=\"t2\" hidden",
+          "devenv/w1:t1 place=3 label=\"t1\" given-name=\"t1\" on-screen",
+          "devenv/w1:t2 place=4 label=\"t2\" given-name=\"t2\" hidden"
         ],
         "panes": [
           "local/w1:p1 tab=w1:t1 label=\"first\" hidden",
           "local/w1:p2 tab=w1:t2 label=\"second\" hidden",
           "devenv/w1:p1 tab=w1:t1 label=\"third\" hidden",
           "devenv/w1:p2 tab=w1:t2 label=\"fourth\" hidden"
+        ]
+      }
+    },
+    {
+      "name": "an agent's own title is the second line of its row",
+      "why": "The founding promise is that fifteen agents can be told apart at a glance, and fifteen rows reading `<directory> · claude` cannot do it: they say where a session lives, never what it is doing. A harness already publishes what it is doing as its terminal title, so nothing has to be invented - only carried and drawn.\n\nIn the core rather than in the sidebar because it is a decision, and the CLI and an agent asking what the window holds must get the same answer as the person reading it.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/Users/a/src/muster",
+                "agent": "claude",
+                "title": "first working build"
+              }
+            ],
+            "layouts": []
+          }
+        },
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          }
+        ],
+        "regions": [
+          {
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          }
+        ]
+      },
+      "expect": {
+        "tabs": [
+          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen"
+        ],
+        "panes": [
+          "local/w1:p1 tab=w1:t1 label=\"muster · claude\" subtitle=\"first working build\" hidden"
+        ]
+      }
+    },
+    {
+      "name": "a pane with no harness gets no second line, whatever it calls itself",
+      "why": "A shell sets a title too. oh-my-zsh's default is `<user>@<host>:<path>`, which is the row's own first line spelled longer, and most panes in a window are a shell somebody left open - so a rule of 'draw it when it exists' would double the height of the list to repeat it.\n\nRequiring a detected harness is a fact the daemon reports, where suppressing shell titles by shape would be a guess about somebody's dotfiles. The cost is real and is accepted here rather than hidden: a pane running something that titles itself usefully, which herdr recognized no agent in, stays on one line.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/Users/a/src/muster",
+                "title": "amterp@Mac:~/src/muster"
+              }
+            ],
+            "layouts": []
+          }
+        },
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          }
+        ],
+        "regions": [
+          {
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          }
+        ]
+      },
+      "expect": {
+        "tabs": [
+          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen"
+        ],
+        "panes": [
+          "local/w1:p1 tab=w1:t1 label=\"muster\" hidden"
+        ]
+      }
+    },
+    {
+      "name": "a title that only repeats the row is not drawn twice",
+      "why": "Claude titles itself after the directory it was started in, which is the word the first line already leads with. Drawing it would cost double the height to say the same thing, so what is tested is not 'is there a title' but 'does it say anything the row does not'.\n\nCompared against the label, the directory, the whole path and the harness, because a title matching any of them is a title the reader has already read.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/Users/a/src/muster",
+                "agent": "claude",
+                "title": "muster"
+              }
+            ],
+            "layouts": []
+          }
+        },
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          }
+        ],
+        "regions": [
+          {
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          }
+        ]
+      },
+      "expect": {
+        "tabs": [
+          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen"
+        ],
+        "panes": [
+          "local/w1:p1 tab=w1:t1 label=\"muster · claude\" hidden"
+        ]
+      }
+    },
+    {
+      "name": "a name somebody gave a pane replaces the directory and the harness",
+      "why": "A person running fifteen agents wants to say which is which in their own words. Their name wins over anything derived because it is the only line here that was written for this pane rather than worked out from where it happens to be - and it is the durable one: herdr writes a name down, so it survives a daemon restart, where the directory and the harness are re-derived each time (observations/herdr-0.8.0.md section 16).\n\nThe raw text travels beside the label so that asking to rename can start from what was typed rather than from a composed label nobody chose.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/Users/a/src/muster",
+                "agent": "claude",
+                "name": "🔥 payments spike",
+                "title": "first working build"
+              }
+            ],
+            "layouts": []
+          }
+        },
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          }
+        ],
+        "regions": [
+          {
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          }
+        ]
+      },
+      "expect": {
+        "tabs": [
+          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen"
+        ],
+        "panes": [
+          "local/w1:p1 tab=w1:t1 label=\"🔥 payments spike\" subtitle=\"first working build\" given-name=\"🔥 payments spike\" hidden"
+        ]
+      }
+    },
+    {
+      "name": "naming a pane does not cost you the ability to see what it is doing",
+      "why": "The two lines answer different questions and both stay: a name is durable identity and a title is volatile status. herdr keeps them as separate fields and setting one never touches the other, so a row that dropped the title on being named would be throwing away something the daemon still holds.\n\nThe comparison that suppresses a repeated title now runs against the name, not the directory, because the first line is what the reader actually read.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/Users/a/src/muster",
+                "agent": "claude",
+                "name": "payments spike",
+                "title": "payments spike"
+              }
+            ],
+            "layouts": []
+          }
+        },
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          }
+        ],
+        "regions": [
+          {
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          }
+        ]
+      },
+      "expect": {
+        "tabs": [
+          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen"
+        ],
+        "panes": [
+          "local/w1:p1 tab=w1:t1 label=\"payments spike\" given-name=\"payments spike\" hidden"
+        ]
+      }
+    },
+    {
+      "name": "a tab carries the name it was given, and an unnamed one carries none",
+      "why": "Renaming a tab has to start from what somebody typed, and that is not recoverable from the caption: the caption may carry the tab's workspace in front of the name, and it drops a name that is only digits.\n\nThat last rule is why an unnamed tab reports no name at all rather than reporting herdr's own label. herdr labels an unnamed tab with its position inside its workspace, so presence cannot answer 'is this named' - and the same test means a tab somebody names `42` reads as unnamed, which is a limit of herdr's TabInfo rather than a choice made here.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "release"
+              },
+              {
+                "id": "w1:t2",
+                "workspace": "w1",
+                "label": "2"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/Users/a/src/muster"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/Users/a/src/muster"
+              }
+            ],
+            "layouts": []
+          }
+        },
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          }
+        ],
+        "regions": [
+          {
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          }
+        ]
+      },
+      "expect": {
+        "tabs": [
+          "local/w1:t1 place=1 label=\"release\" given-name=\"release\" on-screen",
+          "local/w1:t2 place=2 label=\"\" hidden"
+        ],
+        "panes": [
+          "local/w1:p1 tab=w1:t1 label=\"muster\" hidden",
+          "local/w1:p2 tab=w1:t2 label=\"muster\" hidden"
         ]
       }
     }
