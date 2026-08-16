@@ -5,17 +5,26 @@
   "area": [
     "renderer"
   ],
-  "column": "backlog-hi",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "**Closed: the loan is gone, and `ghostty_config_load_default_files` with it.**\n\nWhat replaced it: `[font]`, `[colors]` and `[cursor]` in `~/.muster/config.toml`, plus a root `pane_padding`. Parsed and refused by the core, published on one `Appearance` read (the old `ReadStyle`/`Style`, renamed and grown - `divider_color` now rides on it as `[colors] divider`), translated by `ghosttyConfiguration` in `MusterRenderer`. That function is the only place in Muster that knows a ghostty config key exists; nothing ghostty-shaped appears in `crates/`, in the schema, or in the corpus.\n\n**The card asked whether inheriting stays as a fallback, becomes an opt-in, or goes. It goes**, with no `inherit_ghostty` escape hatch. An opt-in would have kept the seam's hole open for the sake of a first launch.\n\n**On \"Muster having an opinion\":** it deliberately has none. Absent means the renderer's own default rather than one invented here. Muster has no opinion about which monospace font a machine has, and a sixteen-entry default palette in the core would be a transcription of somebody else's rather than a decision. So a replacement renderer must supply defaults for anything unnamed, which is now stated in architecture.md as a limit of the contract rather than left as a gap.\n\n**One mechanism finding worth carrying forward** (docs/observations/libghostty-9f9b8d1d.md section 9, measured before any of this was built): libghostty's C API has no setter. Feeding it a synthesized argv works - `ghostty_config_load_cli_args` reads whatever went to `ghostty_init`, not the process's own arguments - but `ghostty_init` reassigns process-global state, so it is one-shot. A derived config file was chosen instead, because it serves both the first launch and every reload after it, and one mechanism cannot disagree with itself. That matters for a_28Yi1xGwp: reload is now `ghostty_app_update_config` with a fresh handle, which is cheap.\n\nAlso fixed on the way: Muster was passing its own `CommandLine.unsafeArgv` to `ghostty_init`, so `muster --pane w1:p1` was already being offered to libghostty as configuration. It now gets a program name and nothing else.",
+      "created_at_millis": 1786866528956,
+      "id": "c_28v8Hfbjv"
+    }
+  ],
   "created_at_millis": 1786813087465,
   "creator": "Alexander Terp",
   "description": "`Renderer.init` calls `ghostty_config_load_default_files`, so fonts, colours and cursor style come from whatever config libghostty finds on disk - in practice a Ghostty config. Decided 2026-08-15 to keep it for now, because it costs nothing and panes look right on a first launch, and written down in `docs/architecture.md` beside the renderer seam so it stops being invisible.\n\nThis card is the exit. Two reasons it has to exist:\n\n- **It is the one place the renderer is not behind the contract.** Muster's appearance is decided by a file Muster does not define, and a replacement renderer would have nothing to read. The seam's whole claim is that each dependency lives in one adapter.\n- **Somebody without a Ghostty config gets libghostty's defaults**, which is not the same as Muster having an opinion. Right now Muster has none.\n\nThe shape is Muster's own appearance vocabulary in its own config file, translated by the shell for whichever renderer is behind the seam. Worth deciding whether inheriting stays as a fallback, an explicit opt-in, or goes.\n\nNot urgent, and deliberately so: nothing in the keystroke path leans on the loan (`option_as_alt` reads Muster's config, not libghostty's), so this is about the seam's integrity rather than about anything being broken.",
   "id": "a_28Yi1hLyM",
-  "position": "!!2",
+  "position": "!!!!!!!!0",
   "title": "🎨 Muster's appearance comes from a file belonging to another app",
   "type": "chore",
-  "updated_at_millis": 1786813094364,
+  "updated_at_millis": 1786866528956,
   "history": [
     {"field":"column","value":"backlog-lo","at":1786813087465},
-    {"field":"column","value":"backlog-hi","at":1786813094364}
+    {"field":"column","value":"backlog-hi","at":1786813094364},
+    {"field":"column","value":"done","at":1786866495210}
   ]
 }
