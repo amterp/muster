@@ -9,6 +9,42 @@ import Testing
 // places to fix when the seam changes shape. What a suite still owns is its own fixtures - the
 // view it builds and the gesture it drives.
 
+/// Records what a view asked of the thing rendering it, and answers with a fixed selection.
+///
+/// Here rather than in one suite because a real `Surface` wants a GPU, a window and a
+/// libghostty runtime, so every suite about what the shell decides needs one of these - and
+/// two copies would drift the moment `PaneSurface` grows a method.
+@MainActor
+final class RecordingSurface: PaneSurface {
+  var positions: [NSPoint] = []
+  var buttons: [Bool] = []
+  var selectedText: String?
+  var onProcessExited: (@MainActor (Bool) -> Void)?
+  /// Every offset asked for, in order, so a test can tell "sized once" from "sized twice".
+  var fontSizeOffsets: [Int32] = []
+  /// In backing pixels, as libghostty answers. Nil is a surface nothing has sized yet.
+  var cellPixelSize: (width: UInt32, height: UInt32)?
+  /// Every needle it was asked to mark, `nil` for a clear, so a test can tell one from none.
+  var highlighted: [String?] = []
+  /// What this surface will not do, for the tests about a renderer that refuses.
+  var refuses: [String] = []
+
+  init(selection: String? = nil) { selectedText = selection }
+
+  func setSize(width: UInt32, height: UInt32) {}
+  func setFocus(_ focused: Bool) {}
+  func setFontSizeOffset(_ points: Int32) -> [String] {
+    fontSizeOffsets.append(points)
+    return []
+  }
+  func highlight(_ text: String?) -> [String] {
+    highlighted.append(text)
+    return refuses
+  }
+  func mouseMoved(to point: NSPoint, modifiers: NSEvent.ModifierFlags) { positions.append(point) }
+  func leftMouse(pressed: Bool, modifiers: NSEvent.ModifierFlags) { buttons.append(pressed) }
+}
+
 /// Answers every request with `ok` and keeps what it was asked.
 ///
 /// Locked, because not every request arrives on the thread that asked for it: a divider

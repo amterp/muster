@@ -7,10 +7,17 @@ and Ghostty contributors, licensed under the MIT License.
 
 Specifically:
 
-  Sources/muster/KeyTranslation.swift ports the NSEvent-to-key-event heuristics
+  Sources/MusterMac/KeyTranslation.swift ports the NSEvent-to-key-event heuristics
   from macos/Sources/Ghostty/NSEvent+Extension.swift - which modifiers a keyboard
   layout consumed, how to read an unshifted codepoint, and which characters must
   not reach a terminal as text.
+
+  Sources/MusterMac/FindBar.swift ports the find bar from
+  macos/Sources/Ghostty/Surface View/SurfaceView.swift (SurfaceSearchOverlay) and
+  macos/Sources/Helpers/Backport.swift (BackportSelectionTextField) - the layout,
+  the corner-snapping drag, the button style, and what escape and return do. What
+  it counts is Muster's own: the search runs in Muster's core against history held
+  by a session daemon, not in the renderer.
 
   Sources/MusterCore/Input/Key.generated.swift and
   Sources/MusterVT/KeyMapping.generated.swift are generated from Ghostty's

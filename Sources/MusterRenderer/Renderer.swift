@@ -308,6 +308,21 @@ public final class Surface {
     return refused
   }
 
+  /// Marks every occurrence of some text on screen, and clears the marks for nil.
+  ///
+  /// libghostty draws these itself once told what to look for: the colours are config keys and
+  /// the rectangles never leave it, so nothing here paints. Its own matcher is a plain
+  /// substring with ASCII case folding, which is the rule whoever counts these has to follow
+  /// too - a count that disagreed with the marks under it would be worse than no marks.
+  ///
+  /// `end_search` rather than an empty needle for clearing. An empty `search:` cancels the
+  /// search and deliberately leaves any interface up, which for an embedder means the marks
+  /// stay (`observations/libghostty-9f9b8d1d.md` section 10).
+  public func highlight(_ text: String?) -> [String] {
+    guard let text, !text.isEmpty else { return act("end_search", []) }
+    return act("search:\(text)", [])
+  }
+
   private func act(_ action: String, _ refused: [String]) -> [String] {
     let carried = action.withCString {
       ghostty_surface_binding_action(surface, $0, UInt(strlen($0)))

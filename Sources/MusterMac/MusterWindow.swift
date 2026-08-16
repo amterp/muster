@@ -88,6 +88,10 @@ public final class MusterWindow: NSObject {
     return regions[region]?.chrome(for: pane)?.surface
   }
 
+  /// The find bar, once somebody has asked for one. Built on demand and kept afterwards, so
+  /// that closing it and opening it again returns to the needle it was last used with.
+  private var findBar: FindBar?
+
   public init(renderer: Renderer, executable: String) {
     self.renderer = renderer
     self.executable = executable
@@ -446,6 +450,72 @@ extension MusterWindow {
     askToName(subject: "tab", current: tabHolding(keyboardKey)?.givenName ?? "") { name in
       Core.renameTab(name: name)
     }
+  }
+
+  /// Opens the find bar over the pane the keyboard is on, or refocuses the one already up.
+  ///
+  /// The bar follows the keyboard rather than staying where it was opened: a find is about a
+  /// pane, and one hanging over a pane nobody is searching would count matches in another.
+  @objc public func find(_ sender: Any?) {
+    guard let chrome = keyboardChrome() else {
+      // The renderer check, and a window whose every pane closed. Nothing to search and
+      // nothing worth interrupting somebody about - the menu item is there because the menu
+      // is built from the core's whole action list, not from what is currently possible.
+      Core.warn(
+        "find.noPane",
+        [
+          "impact": "the find bar did not open, because no pane has this window's keyboard.",
+          "check": "whether this is the renderer check, or a window whose panes have all "
+            + "exited - the attach records above say which",
+        ])
+      return
+    }
+    let bar = findBar ?? makeFindBar()
+    bar.show(over: chrome)
+    NotificationCenter.default.post(name: .musterFindFocus, object: nil)
+  }
+
+  @objc public func findNext(_ sender: Any?) {
+    findBar?.step(forward: true)
+  }
+
+  @objc public func findPrevious(_ sender: Any?) {
+    findBar?.step(forward: false)
+  }
+
+  private func makeFindBar() -> FindBar {
+    let bar = FindBar()
+    bar.onReturnToPane = { [weak self] in
+      guard let chrome = self?.keyboardChrome() else { return }
+      self?.window.makeFirstResponder(chrome.surface)
+    }
+    bar.onRefused = { [weak self] refused in self?.reportUnmarked(refused) }
+    findBar = bar
+    return bar
+  }
+
+  /// Says so when the renderer would not mark what a find turned up.
+  ///
+  /// Separate from `report` because the consequence is different and so is what to check. The
+  /// counter and the scrolling are the core's and are unaffected; what is lost is the marks
+  /// on screen, so the pane scrolls to a match nothing points at.
+  private func reportUnmarked(_ refused: [String]) {
+    guard !refused.isEmpty else { return }
+    Core.warn(
+      "renderer.action.refused",
+      [
+        "actions": refused.joined(separator: ", "),
+        "impact": "matches are counted and scrolled to and not marked on screen, so the pane "
+          + "lands on something with nothing pointing at it",
+        "check": "whether libghostty renamed its search actions between deps/ghostty.pin "
+          + "bumps; Muster names them as strings and nothing else can tell",
+      ])
+  }
+
+  /// The chrome of the pane this window's keyboard feeds.
+  func keyboardChrome() -> PaneChrome? {
+    guard let key = keyboardKey else { return nil }
+    return regions.values.first { $0.daemonID == key.daemon }?.chrome(for: key.pane)
   }
 
   /// Runs the sheet, and sends what came back.

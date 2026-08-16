@@ -103,6 +103,14 @@ public enum MenuActions {
       title: "Resize Pane Down", selector: #selector(MusterWindow.resizePaneDown(_:)), group: .pane),
     "zoom": Described(
       title: "Zoom Pane", selector: #selector(MusterWindow.zoomPane(_:)), group: .pane),
+    // The ellipsis for the same reason as the two renames: picking it asks something before
+    // anything happens. The two steps carry none - they act on what is already being asked.
+    "find": Described(
+      title: "Find…", selector: #selector(MusterWindow.find(_:)), group: .pane),
+    "find_next": Described(
+      title: "Find Next", selector: #selector(MusterWindow.findNext(_:)), group: .pane),
+    "find_previous": Described(
+      title: "Find Previous", selector: #selector(MusterWindow.findPrevious(_:)), group: .pane),
     "increase_font_size": Described(
       title: "Bigger Text", selector: #selector(MusterWindow.increaseFontSize(_:)), group: .view),
     "decrease_font_size": Described(

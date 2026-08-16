@@ -142,30 +142,6 @@ private func view(_ recorder: RecordingDispatcher) -> SurfaceView {
 // grid libghostty painted is where a drag lands, so the oracle here is the surface rather than
 // the seam.
 
-/// Records what the view asked of the thing rendering it, and answers with a fixed selection.
-@MainActor
-private final class RecordingSurface: PaneSurface {
-  var positions: [NSPoint] = []
-  var buttons: [Bool] = []
-  var selectedText: String?
-  var onProcessExited: (@MainActor (Bool) -> Void)?
-  /// Every offset asked for, in order, so a test can tell "sized once" from "sized twice".
-  var fontSizeOffsets: [Int32] = []
-  /// In backing pixels, as libghostty answers. Nil is a surface nothing has sized yet.
-  var cellPixelSize: (width: UInt32, height: UInt32)?
-
-  init(selection: String? = nil) { selectedText = selection }
-
-  func setSize(width: UInt32, height: UInt32) {}
-  func setFocus(_ focused: Bool) {}
-  func setFontSizeOffset(_ points: Int32) -> [String] {
-    fontSizeOffsets.append(points)
-    return []
-  }
-  func mouseMoved(to point: NSPoint, modifiers: NSEvent.ModifierFlags) { positions.append(point) }
-  func leftMouse(pressed: Bool, modifiers: NSEvent.ModifierFlags) { buttons.append(pressed) }
-}
-
 @MainActor
 private func view(
   surface: RecordingSurface, clipboard: NSPasteboard,

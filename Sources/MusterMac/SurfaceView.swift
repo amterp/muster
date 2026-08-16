@@ -115,6 +115,16 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
     surface?.setFontSizeOffset(points) ?? []
   }
 
+  /// Marks what a find turned up, once there is something rendering this pane.
+  ///
+  /// Silently nothing before a surface is attached, on the same terms as sizing the text: a
+  /// pane whose bridge has not started has nothing on screen to mark, and refusing would be
+  /// reporting a renderer problem for a pane with no renderer yet.
+  @discardableResult
+  public func highlight(_ text: String?) -> [String] {
+    surface?.highlight(text) ?? []
+  }
+
   /// Points this view at a pane, independently of what renders it.
   ///
   /// Separate because the two are separate: a view will eventually be re-pointed at a
