@@ -44,6 +44,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         "config": config ?? "(none)",
         "input_recorded": String(Core.includesInput),
       ])
+    if let stranded = strandedConfigPath() {
+      Core.warn(
+        "config.moved",
+        [
+          "found": stranded,
+          "expected": "$MUSTER_HOME/config.toml, or ~/.muster/config.toml",
+          "impact":
+            "none of it was read, so this window is attached to whatever Muster could find "
+            + "for itself and every keymap, appearance and typing setting is the default",
+          "fix": "move the file to ~/.muster/config.toml",
+        ])
+    }
     DescriptorLimit.report(descriptors)
 
     do {

@@ -9,25 +9,32 @@ import Testing
 @Test func theStateFileSitsWhereRegeneratedFilesBelong() {
   // Not beside the config file. That one is written by a person and would be surprising to
   // find rewritten; this one is written by Muster on every change.
-  #expect(
-    statePath(environment: ["HOME": "/home/a"]) == "/home/a/.local/state/muster/window.toml")
+  #expect(statePath(environment: ["HOME": "/home/a"]) == "/home/a/.muster/state/window.toml")
 }
 
-@Test func xdgMovesIt() {
+@Test func musterHomeMovesTheStateFile() {
   // Which is how every test and every recording gets its own, rather than sharing the
   // developer's real one.
   #expect(
-    statePath(environment: ["XDG_STATE_HOME": "/xdg", "HOME": "/home/a"])
-      == "/xdg/muster/window.toml")
+    statePath(environment: ["MUSTER_HOME": "/scratch", "HOME": "/home/a"])
+      == "/scratch/state/window.toml")
 }
 
-@Test func anExplicitPathWins() {
+@Test func xdgDoesNotMoveTheStateFile() {
+  // It did until Muster's files moved into one home, and it still moves herdr's - so a reader
+  // could reasonably expect it to move this too. Pinned rather than assumed.
+  #expect(
+    statePath(environment: ["XDG_STATE_HOME": "/xdg", "HOME": "/home/a"])
+      == "/home/a/.muster/state/window.toml")
+}
+
+@Test func anExplicitStatePathWins() {
   #expect(
     statePath(environment: ["MUSTER_STATE": "/tmp/one.toml", "HOME": "/home/a"])
       == "/tmp/one.toml")
 }
 
-@Test func anEmptyExplicitPathMeansRememberNothing() {
+@Test func anEmptyExplicitStatePathMeansRememberNothing() {
   // The difference between "look somewhere else" and "do not remember", which a script or a
   // test needs and which an absent variable cannot say.
   #expect(statePath(environment: ["MUSTER_STATE": "", "HOME": "/home/a"]) == nil)

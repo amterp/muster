@@ -70,9 +70,15 @@ how you run your agents.
 
 ## Configuring
 
-Two files, both optional, both TOML. `~/.config/muster/config.toml` is yours to write:
-`[[daemon]]` blocks name the machines a window attaches to, `[keymap]` rebinds any of
-Muster's own actions, and the rest decides what a keystroke becomes on its way to a pane.
+Everything Muster owns lives in `~/.muster`, and `MUSTER_HOME` moves the lot. Two files in
+it, both optional, both TOML. `~/.muster/config.toml` is yours to write: `[[daemon]]` blocks
+name the machines a window attaches to, `[keymap]` rebinds any of Muster's own actions, and
+the rest decides what a keystroke becomes on its way to a pane.
+
+One directory rather than a file in each of the XDG trees, because Muster's surface is meant
+to be discovered rather than taught - an agent that can list one directory needs no
+documentation to find the whole of it. `XDG_CONFIG_HOME` and its family still decide where
+herdr listens and what herdr reads; they no longer move anything of Muster's.
 
 ```toml
 option_as_alt = "left"         # never (the default) | always | left | right
@@ -135,7 +141,7 @@ libghostty finds on disk, which today means a Ghostty config if you have one - a
 than the design, and `docs/architecture.md` says what it costs. And scrollback depth is the
 daemon's, because herdr owns the buffer that a scroll intent moves.
 
-`~/.local/state/muster/window.toml` is Muster's, rewritten whenever the window settles: which
+`~/.muster/state/window.toml` is Muster's, rewritten whenever the window settles: which
 tabs it was showing, in what order, at what widths, and under `[window]` whether the agent
 list was open. Delete it and the next launch opens fresh. Nothing about a session is in it -
 what a tab holds is the daemon's answer, asked again on every launch.
