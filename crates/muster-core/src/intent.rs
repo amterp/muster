@@ -10,6 +10,7 @@
 //! Muster owns. herdr spells a split as the direction the new pane went; a window asks for a
 //! side, because that is the question a person answered when they pressed the key.
 
+use crate::find::{Found, Needle};
 use crate::mirror::backend::{Layout, PaneId, TabId, WorkspaceId};
 
 /// A direction on screen, as a person means it.
@@ -350,6 +351,19 @@ impl std::fmt::Display for Refusal {
 pub trait BackendChannel: Send + Sync + std::fmt::Debug {
     /// Asks, and says why not.
     fn submit(&self, intent: &BackendIntent) -> Result<Outcome, Refusal>;
+
+    /// Looks for text in a pane, and changes nothing.
+    ///
+    /// The one read here, and the one place find is swappable. A backend that searches its
+    /// own history answers this directly; one that does not reads the history back and
+    /// matches it with `find::hits_in`, which is what herdr's adapter does today. Either
+    /// way the answer is the same shape and everything above it is the same code, so
+    /// gaining a daemon-side search is one function body rather than a feature rewritten.
+    ///
+    /// A read rather than an intent because nothing changes: `BackendIntent` is what Muster
+    /// asks a backend to *do*, and putting a question in it would make `Outcome` - a
+    /// statement about a change just made - carry answers to things that changed nothing.
+    fn find(&self, pane: &PaneId, needle: &Needle) -> Result<Found, Refusal>;
 
     /// What this channel is talking to, for the log.
     fn description(&self) -> &str;

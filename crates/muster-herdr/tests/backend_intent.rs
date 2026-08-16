@@ -14,7 +14,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use conformance::{CaseError, Conformance, fields, repo_root};
 use muster_core::intent::{BackendIntent, Branch, Side};
 use muster_core::mirror::backend::{PaneId, TabId, WorkspaceId};
-use muster_herdr::{PaneEnvironment, request};
+use muster_herdr::{PaneEnvironment, read_request, request};
 use serde_json::{Value, json};
 
 #[test]
@@ -25,7 +25,14 @@ fn backend_intent_conformance() {
     let corpus = Conformance::load("backend-intent.json");
 
     let ran = corpus.run(|given| {
-        let (method, params) = request(&intent(given)?, &pane_environment(given));
+        // The one case kind that is not an intent. A find changes nothing, so it is a read
+        // rather than something `BackendIntent` could hold - and it is pinned here anyway,
+        // because the hazard is the same one: `recent` and `recent_unwrapped` are both
+        // valid values that herdr accepts, and only one of them can be scrolled to.
+        let (method, params) = match text(given, "intent")?.as_str() {
+            "find-read" => read_request(&PaneId::new(&text(given, "pane")?)),
+            _ => request(&intent(given)?, &pane_environment(given)),
+        };
         Ok(fields([("method", Some(json!(method))), ("params", Some(params))]))
     });
 
@@ -117,9 +124,7 @@ fn every_parameter_is_one_herdr_declares() {
     // the keys built here.
     let schema = recorded_schema();
 
-    for intent in every_intent() {
-        let (method, params) =
-            request(&intent, &PaneEnvironment::restoring(&environment([("HOME", "/home/a")])));
+    for (method, params) in every_request() {
         let declared = declared_parameters(&schema, method).unwrap_or_else(|| {
             panic!(
                 "herdr's recorded schema declares no method `{method}`.\n  Impact: this \
@@ -141,6 +146,21 @@ fn every_parameter_is_one_herdr_declares() {
              one that takes `target_pane_id` where the rest take `pane_id`."
         );
     }
+}
+
+/// Everything Muster puts on herdr's request socket, so the schema check covers all of it.
+///
+/// The intents, plus the one read: a find changes nothing, so it is not a `BackendIntent`,
+/// and it would go unchecked if this walked the enum alone.
+fn every_request() -> Vec<(&'static str, Value)> {
+    // An environment on every one, so that `env` is a parameter the schema check actually
+    // sees. Built empty, the pane-creating requests would carry no `env` key and the one
+    // check that would notice herdr declaring one Muster never fills in would pass blind.
+    let panes = PaneEnvironment::restoring(&environment([("HOME", "/home/a")]));
+    let mut all: Vec<(&'static str, Value)> =
+        every_intent().iter().map(|intent| request(intent, &panes)).collect();
+    all.push(read_request(&PaneId::new("p1")));
+    all
 }
 
 /// One of every intent, so the schema check covers the whole vocabulary.

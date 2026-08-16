@@ -485,6 +485,23 @@
           }
         }
       }
+    },
+    {
+      "name": "a find reads a pane's rows, not its lines",
+      "why": "The one request here that changes nothing, and the choice of source is the whole of it. `recent` returns grid rows, so a match's place in the answer is already the offset to scroll to; `recent_unwrapped` returns whole logical lines and would leave every hit unlocatable. Both are valid values and herdr would accept either, so nothing but this pins which one a find is built on. `lines` is herdr's own ceiling - it clamps to a thousand silently - and `strip_ansi` is its default, sent anyway because a default that moved would start matching escape codes.",
+      "given": {
+        "intent": "find-read",
+        "pane": "p1"
+      },
+      "expect": {
+        "method": "pane.read",
+        "params": {
+          "pane_id": "p1",
+          "source": "recent",
+          "lines": 1000,
+          "strip_ansi": true
+        }
+      }
     }
   ]
 }

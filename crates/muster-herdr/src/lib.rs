@@ -28,7 +28,7 @@ pub use discovery::{discover_socket_path, own_socket_path};
 pub use env::PaneEnvironment;
 pub use events::EventDecoder;
 pub use frame::{FrameDecoder, PaneFrame, PaneStreamEvent};
-pub use intent::{HerdrBackend, refusal, request};
+pub use intent::{HerdrBackend, read_request, refusal, request};
 pub use layout::{read_exported_layout, read_layout};
 pub use pane_channel::HerdrPaneChannel;
 pub use snapshot::{fetch_snapshot, read_snapshot};
