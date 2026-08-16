@@ -413,17 +413,9 @@ public enum Core {
     send(request)
   }
 
-  /// Moves one divider, named by the turns from its tab's root.
-  public static func setSplitRatio(daemonID: String, tab: String, path: [Bool], ratio: CGFloat) {
-    var set = Muster_SetSplitRatio()
-    set.daemonID = daemonID
-    set.tabID = tab
-    set.path = path
-    set.ratio = Float(ratio)
-    var request = Muster_Request()
-    request.setSplitRatio = set
-    send(request)
-  }
+  // Moving a divider is deliberately not here. It is the one request a drag produces a hundred
+  // times a second, so it goes through `SplitRatioSender` - which keeps one in flight and sends
+  // the latest position when that returns, rather than blocking the main thread per frame.
 
   public static func trace(_ event: String, _ fields: [String: String] = [:]) {
     record("trace", event, fields)

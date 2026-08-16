@@ -59,6 +59,13 @@ public final class RegionView: NSView {
   public private(set) var herdrSocket: String?
   private var tab: String = ""
 
+  /// Carries divider positions to the core without stalling the drag. One per region rather
+  /// than one per divider, because a person drags one line at a time and a sender per pooled
+  /// view would let two of them be in flight at once.
+  ///
+  /// Reachable so a test can wait for the round trip it started; the app never looks at it.
+  public let dividerPositions = SplitRatioSender()
+
   public init(frame: NSRect, startPane: @escaping StartPane) {
     self.startPane = startPane
     super.init(frame: frame)
@@ -191,7 +198,8 @@ public final class RegionView: NSView {
       let path = placement.path
       divider.onDrag = { [weak self] ratio in
         guard let self else { return }
-        Core.setSplitRatio(daemonID: self.daemonID, tab: self.tab, path: path, ratio: ratio)
+        self.dividerPositions.send(
+          daemonID: self.daemonID, tab: self.tab, path: path, ratio: ratio)
       }
       divider.axis = placement.axis
       divider.area = placement.area

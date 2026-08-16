@@ -241,33 +241,80 @@ mod suppression_is_bounded {
         assert_eq!(mirror.layout(&TabId::new("w1:t1")), Some(&rightward));
     }
 
+    /// One tab at a named divider position, which is the only thing a drag changes.
+    fn at(ratio: f32) -> Layout {
+        let mut layout = tree("w1:p1", "w1:p2");
+        if let LayoutNode::Split { ratio: held, .. } = &mut layout.root {
+            *held = ratio;
+        }
+        layout
+    }
+
+    /// How many positions a real drag has in flight at once.
+    ///
+    /// About a hundred requests a second against a broadcast a hundred milliseconds behind
+    /// (kan a_28h3eBJa2), so ten. The bound has to cover this or a drag lands back where the
+    /// gesture began, which is what it did.
+    const A_DRAG: u16 = 10;
+
+    /// The divider positions a gesture of this length passes through, in order.
+    ///
+    /// Spaced so that every one is exact in an `f32` and distinct from the rest: a test whose
+    /// positions rounded into each other would be asserting on float noise rather than on
+    /// suppression.
+    fn positions(count: u16) -> Vec<f32> {
+        (1..=count).map(|step| f32::from(step) / 1024.0).collect()
+    }
+
     #[test]
-    fn more_answers_than_the_bound_drop_the_oldest_rather_than_growing() {
-        // What a resize chord held down produces: answers outrunning their own broadcasts. The
-        // list is capped, so the arrangement furthest behind stops being suppressed - one
-        // frame of a divider jumping backwards, which is what happens today anyway. The
-        // alternative is a list that grows for as long as somebody holds a key.
+    fn a_whole_drags_worth_of_answers_is_remembered() {
+        // The regression. A dragged divider is the fastest thing that produces answers ahead of
+        // their own broadcasts, and every position between the answer and its broadcast has to
+        // be recognisable as news already heard. A bound sized for a resize chord at key-repeat
+        // speed is three times too small for this, and what that looks like is a divider
+        // snapping back to where the drag started.
         let mut mirror = session();
-        let ratios = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6];
-        let at = |ratio: f32| {
-            let mut layout = tree("w1:p1", "w1:p2");
-            if let LayoutNode::Split { ratio: held, .. } = &mut layout.root {
-                *held = ratio;
-            }
-            layout
-        };
-        for ratio in ratios {
-            mirror.settle(SettledLayout { layout: at(ratio), stale: None });
+        let dragged = positions(A_DRAG);
+        for ratio in &dragged {
+            mirror.settle(SettledLayout { layout: at(*ratio), stale: None });
         }
 
-        // Six answers, and the mirror held one arrangement before each: the first five are
-        // candidates for suppression and only the last four fit.
+        // Every position the drag passed through, broadcast in the order herdr would.
+        for ratio in &dragged[..dragged.len() - 1] {
+            assert!(
+                mirror.apply(BackendEvent::LayoutUpserted(at(*ratio))).is_empty(),
+                "the broadcast for {ratio} was applied, so the divider jumped back to it \
+                 mid-drag"
+            );
+        }
+        assert_eq!(
+            mirror.layout(&TabId::new("w1:t1")),
+            Some(&at(*dragged.last().expect("a drag has positions"))),
+            "the tab did not stay where the drag left it"
+        );
+    }
+
+    #[test]
+    fn more_answers_than_the_bound_drop_the_oldest_rather_than_growing() {
+        // The list is capped, so something going faster than any gesture stops suppressing the
+        // arrangement furthest behind - one frame of a divider jumping backwards. The
+        // alternative is a list that grows for as long as anything keeps asking.
+        //
+        // Deliberately not written against the bound's own number: what has to hold is that
+        // there is one, and how big it is comes from a measurement that has already moved once.
+        let mut mirror = session();
+        let far_past_any_gesture = positions(1_000);
+        for ratio in &far_past_any_gesture {
+            mirror.settle(SettledLayout { layout: at(*ratio), stale: None });
+        }
+
+        let oldest = at(far_past_any_gesture[0]);
         assert!(
-            !mirror.apply(BackendEvent::LayoutUpserted(at(0.1))).is_empty(),
-            "the oldest arrangement is still being suppressed, so the list grew past its bound"
+            !mirror.apply(BackendEvent::LayoutUpserted(oldest.clone())).is_empty(),
+            "the oldest arrangement is still being suppressed, so the list grew unbounded"
         );
         // Which puts the tab back where that broadcast said, since nothing is suppressing it.
-        assert_eq!(mirror.layout(&TabId::new("w1:t1")), Some(&at(0.1)));
+        assert_eq!(mirror.layout(&TabId::new("w1:t1")), Some(&oldest));
     }
 }
 

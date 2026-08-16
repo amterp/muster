@@ -19,12 +19,21 @@ use crate::mirror::event::{BackendEvent, Change};
 
 /// How many arrangements one tab may be remembered as having moved past.
 ///
-/// A bound rather than a judgement: what fills this is answers that have outrun their own
-/// broadcast, and a resize chord held down is the only thing that produces more than one at a
-/// time. Overflowing drops the oldest, which costs one frame of a divider jumping backwards -
-/// exactly what happens today, and only under a chord already going faster than the daemon
-/// can announce.
-const SUPERSEDED_LIMIT: usize = 4;
+/// A leak bound rather than a tuning knob. What fills it is answers that have outrun their own
+/// broadcast, so how many there can be is decided by two measured numbers: how fast the fastest
+/// thing that moves a divider goes, and how far behind the daemon's broadcast is. Overflowing
+/// drops the oldest, and the oldest is the one whose broadcast is about to arrive - so the cost
+/// is the divider jumping back to where the gesture began.
+///
+/// Sized for a dragged divider, which is the fastest of them at about a hundred requests a
+/// second against a broadcast a hundred milliseconds behind (`observations/herdr-0.8.0.md`
+/// section 14, and kan a_28h3eBJa2) - so roughly ten arrangements are in flight at the worst
+/// moment. Four was sized for a held resize chord at key-repeat speed and is three times too
+/// small for a drag, which is what made a drag land back at its first position. The headroom
+/// above ten is deliberate and nearly free: an entry is one tree, and being too small is
+/// visible on screen while being too large costs a few hundred bytes on a tab nobody is
+/// dragging.
+const SUPERSEDED_LIMIT: usize = 32;
 
 /// What the backend says is true, as far as this mirror knows.
 ///

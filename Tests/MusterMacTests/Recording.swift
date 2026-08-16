@@ -10,12 +10,21 @@ import Testing
 // view it builds and the gesture it drives.
 
 /// Answers every request with `ok` and keeps what it was asked.
+///
+/// Locked, because not every request arrives on the thread that asked for it: a divider
+/// position leaves on a background queue, so a test reading this while one is in flight would
+/// otherwise be racing an array it is appending to.
 final class RecordingDispatcher: Dispatcher, @unchecked Sendable {
-  private(set) var requests: [Muster_Request] = []
+  private let lock = NSLock()
+  private var recorded: [Muster_Request] = []
+
+  var requests: [Muster_Request] {
+    lock.withLock { recorded }
+  }
 
   func dispatch(_ request: [UInt8]) -> [UInt8] {
     if let decoded = try? Muster_Request(serializedBytes: request) {
-      requests.append(decoded)
+      lock.withLock { recorded.append(decoded) }
     }
     var response = Muster_Response()
     response.ok = Muster_Ok()
@@ -43,6 +52,23 @@ func recorder() -> RecordingDispatcher {
   let recorder = RecordingDispatcher()
   Core.dispatcher = recorder
   return recorder
+}
+
+/// Waits for something the main thread will do on its own, or says what it was waiting for.
+///
+/// For the one path that does not answer inline: a divider position goes to a background queue
+/// and comes back on the main actor, so a test that asserted straight after asking would be
+/// racing the round trip it started.
+@MainActor
+func until(
+  _ what: String, within seconds: Double = 5, _ ready: @MainActor () -> Bool
+) async {
+  let deadline = Date().addingTimeInterval(seconds)
+  while Date() < deadline {
+    if ready() { return }
+    try? await Task.sleep(nanoseconds: 1_000_000)
+  }
+  Issue.record("timed out after \(seconds)s waiting for \(what)")
 }
 
 /// A wheel notch, at the position the caller says.

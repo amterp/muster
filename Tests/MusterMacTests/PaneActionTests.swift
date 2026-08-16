@@ -10,6 +10,13 @@ import Testing
 // wired to the wrong one of these is invisible on screen until you try it: a split that
 // resizes, a close that focuses.
 
+/// The divider positions that reached the core since a mark.
+private func ratios(_ recorder: RecordingDispatcher, since mark: Int) -> [Muster_Request] {
+  recorder.sent(since: mark) {
+    if case .setSplitRatio = $0.payload { true } else { false }
+  }
+}
+
 @Suite("pane actions cross the seam")
 struct PaneActionTests {
   @MainActor
@@ -63,7 +70,7 @@ struct PaneActionTests {
 
   @MainActor
   @Test("a divider drag says which daemon's tab it is moving")
-  func aDragNamesItsDaemon() {
+  func aDragNamesItsDaemon() async {
     // Tabs collide across daemons exactly as panes do, and a ratio applied to the wrong tab
     // resizes a split the user is not looking at.
     let recorder = recorder()
@@ -83,9 +90,12 @@ struct PaneActionTests {
     let divider = region.subviews.compactMap { $0 as? DividerView }.first
     divider?.onDrag?(0.3)
 
-    let sent = recorder.sent(since: before) {
-      if case .setSplitRatio = $0.payload { true } else { false }
+    // Awaited, because a divider position leaves on a background queue rather than inline -
+    // that is what keeps a drag from stalling the main thread once per frame.
+    await until("the divider position to reach the core") {
+      !ratios(recorder, since: before).isEmpty
     }
+    let sent = ratios(recorder, since: before)
     #expect(sent.map { $0.setSplitRatio.daemonID } == ["devenv"])
     #expect(sent.map { $0.setSplitRatio.tabID } == ["w1:t1"])
   }
@@ -140,18 +150,54 @@ struct PaneActionTests {
 
   @MainActor
   @Test("dragging a divider names it by the turns down to it")
-  func aDragCarriesThePath() {
+  func aDragCarriesThePath() async {
     // A divider has no id - it is a position in a shape that changes under it - so the path
     // is the whole address. A wrong one silently resizes a different split.
     let recorder = recorder()
+    let before = recorder.requests.count
 
-    Core.setSplitRatio(daemonID: "local", tab: "w1:t1", path: [true, false], ratio: 0.25)
+    // Handed the recorder rather than left to find it. `Core.dispatcher` is one global that
+    // every test here swaps, and this send is answered on another thread - so a sender that
+    // read the global would deliver into whichever test got there next.
+    SplitRatioSender(dispatcher: recorder)
+      .send(daemonID: "local", tab: "w1:t1", path: [true, false], ratio: 0.25)
 
-    #expect(recorder.requests.count == 1)
-    let set = recorder.requests[0].setSplitRatio
-    #expect(set.tabID == "w1:t1")
-    #expect(set.path == [true, false])
-    #expect(abs(set.ratio - 0.25) < 0.001)
+    await until("the divider position to reach the core") {
+      !ratios(recorder, since: before).isEmpty
+    }
+    let sent = ratios(recorder, since: before)
+    #expect(sent.count == 1)
+    #expect(sent[0].setSplitRatio.tabID == "w1:t1")
+    #expect(sent[0].setSplitRatio.path == [true, false])
+    #expect(abs(sent[0].setSplitRatio.ratio - 0.25) < 0.001)
+  }
+
+  @MainActor
+  @Test("a drag sends the position the pointer reached, not every one it passed")
+  func aDragCoalescesBehindTheRoundTrip() async {
+    // The reason this request leaves through a sender at all. A drag produces about a hundred
+    // mouse-moved events a second and each send is a round trip, so sending them one after
+    // another queues the gesture behind itself and the divider lags the pointer. One in flight,
+    // the latest position remembered, and everything asked for while a request was out
+    // collapses into the position the pointer is at now.
+    let recorder = recorder()
+    let sender = SplitRatioSender(dispatcher: recorder)
+    let before = recorder.requests.count
+
+    for ratio in [0.3, 0.4, 0.5, 0.6, 0.7] {
+      sender.send(daemonID: "local", tab: "w1:t1", path: [], ratio: ratio)
+    }
+
+    // Two rather than five: the first goes straight out, and the four asked for while it was
+    // out become one carrying the last of them.
+    await until("the drag to run out of positions to send") {
+      ratios(recorder, since: before).count >= 2
+    }
+    let sent = ratios(recorder, since: before)
+    #expect(sent.count == 2)
+    // Never an abandoned position. Whatever else is dropped, where the pointer ended up is
+    // where the divider has to be, or a gesture ends somewhere the user did not leave it.
+    #expect(sent.last.map { abs($0.setSplitRatio.ratio - 0.7) < 0.001 } == true)
   }
 
   @MainActor

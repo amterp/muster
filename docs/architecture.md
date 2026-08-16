@@ -215,13 +215,21 @@ codegen - a surface that cannot express an action is a missing message, visible 
 - **A daemon's answer is daemon truth, on the same terms as its events.** Not a prediction and not a patch: a
   statement about a change the daemon has just made, arriving on the request channel instead of the broadcast one.
   Both may be applied; neither may be assumed, and Muster still never writes anything it was not told. Timing is
-  why it is worth having two channels: herdr answers a swap or a resize with the settled arrangement in about a
-  millisecond and broadcasts the same arrangement about a hundred later, so a mirror that waits to be told twice
-  renders the arrangement it is moving away from (`observations/herdr-0.8.0.md`, section 14). Between the answer
-  and its broadcast the mirror is ahead of its own stream, so it remembers the arrangements the tab has passed
-  through and drops each one once when it arrives - matched by shape rather than by whole layout, because the
-  cursors beside a tree move on their own terms. Bounded by construction: an entry is spent on its first match,
-  so nothing is suppressed indefinitely and a wrong guess costs one frame rather than a stuck window.
+  why it is worth having two channels: herdr answers a swap, a resize or a divider position with the settled
+  arrangement in about a millisecond and broadcasts the same arrangement about a hundred later, so a mirror that
+  waits to be told twice renders the arrangement it is moving away from (`observations/herdr-0.8.0.md`, section
+  14). Between the answer and its broadcast the mirror is ahead of its own stream, so it remembers the arrangements
+  the tab has passed through and drops each one once when it arrives - matched by shape rather than by whole
+  layout, because the cursors beside a tree move on their own terms. Bounded by construction: an entry is spent on
+  its first match, so nothing is suppressed indefinitely and a wrong guess costs one frame rather than a stuck
+  window. How many may be remembered at once follows from the fastest thing that produces them, which is a dragged
+  divider at about a hundred a second - roughly ten in flight, and a bound sized for anything slower is a drag that
+  snaps back to where the gesture began.
+
+  Reading an answer costs a reader per shape the daemon states one in, and herdr has two: flat rectangles for
+  everything it broadcasts and for most answers, its own exported tree for a divider position. Muster reads both
+  and tells them apart by which keys a payload has rather than by which verb answered, so a daemon that starts
+  answering with either needs no change.
 - **The core owns composition**: which daemons are attached, and which (daemon, workspace, tab) shows in which
   window region. Mixing is at tab granularity: a region displays one tab's pane tree, rendered from daemon truth;
   regions from different daemons sit side by side. Muster does not own an outer split tree over panes - that would
@@ -421,6 +429,15 @@ came of them arrives as the next published view - so a window can never show an 
 one thing an intent may settle locally is where Muster's own keyboard lands, because that is Muster's state and not
 the daemon's: a split hands back the pane it made, and that pane takes the keyboard, because that is what pressing
 the key meant.
+
+**A request may also be waited for off the main thread, and a divider drag is the one that has to be.** Every other
+gesture is one request; a drag is one per mouse-moved event, about a hundred a second, and the seam is entered
+synchronously - so the window spent whole gestures inside a round trip and had no time left to draw the line being
+dragged. The position is handed over instead: one request in flight, the latest position remembered, and what
+arrived while a request was out goes next. A gesture then runs at whatever the round trip allows rather than
+queueing behind itself, and the position it ends on is always sent, because the remembered one is always the last
+asked for. This is contained to that request rather than made general - the other drag in the window moves a region
+boundary, which is Muster's own composition and never reaches a daemon.
 
 ## The renderer seam
 

@@ -1,0 +1,532 @@
+{
+  "concept": "herdr.layout.export",
+  "why": "herdr states a tab's arrangement in two shapes, and this is the second one. Everything that arrives unasked-for describes it as flat rectangles, which `layout-reconstruction.json` covers; `layout.export` and the result of `layout.set_split_ratio` describe it as a tree, with the parent and child links stated outright.\n\nThe second shape earns a reader because of which verb uses it. A mutation that answers with the arrangement it settled on puts the window about a hundred milliseconds ahead of the broadcast describing the same thing (`observations/herdr-0.8.0.md` section 14), and `layout.set_split_ratio` is a dragged divider - the highest-frequency arrangement change there is. Without this the answer read as 'no arrangement stated' and every drag waited to be told.\n\nReading a stated tree is easier than rebuilding one from rectangles, so what these cases are mostly about is refusing. This is untrusted input from a dependency that ships weekly, and the failure that matters is not a crash but a plausible tree assembled out of something nobody described - which looks like a rendering bug and is not. Cases that refuse are here in the same number as cases that succeed, matching the standard the rectangles corpus already sets.",
+  "source": "recorded",
+  "regenerate": "tools/herdr-probe/probe layout",
+  "cases": [
+    {
+      "name": "a divider drag answers with the arrangement it settled on",
+      "why": "The case this reader exists for. `layout.set_split_ratio` answers with the whole tree and broadcasts the same tree about a hundred milliseconds later, so a client that reads its own answer is a hundred milliseconds ahead of one that waits - and a drag is the highest-frequency arrangement change there is. This is the answer to a drag that set the root divider to 0.3, and the 0.3 in the tree is that request having landed.",
+      "given": {
+        "focused_pane_id": "w1:p1",
+        "root": {
+          "direction": "right",
+          "first": {
+            "direction": "down",
+            "first": {
+              "cwd": "/private/tmp",
+              "pane_id": "w1:p1",
+              "type": "pane"
+            },
+            "ratio": 0.5,
+            "second": {
+              "direction": "right",
+              "first": {
+                "cwd": "/private/tmp",
+                "pane_id": "w1:p3",
+                "type": "pane"
+              },
+              "ratio": 0.5,
+              "second": {
+                "cwd": "/private/tmp",
+                "pane_id": "w1:p4",
+                "type": "pane"
+              },
+              "type": "split"
+            },
+            "type": "split"
+          },
+          "ratio": 0.3,
+          "second": {
+            "direction": "down",
+            "first": {
+              "cwd": "/private/tmp",
+              "pane_id": "w1:p2",
+              "type": "pane"
+            },
+            "ratio": 0.5,
+            "second": {
+              "cwd": "/private/tmp",
+              "pane_id": "w1:p5",
+              "type": "pane"
+            },
+            "type": "split"
+          },
+          "type": "split"
+        },
+        "tab_id": "w1:t1",
+        "workspace_id": "w1",
+        "zoomed": false
+      },
+      "expect": {
+        "read": true,
+        "tab": "w1:t1",
+        "tree": "columns(rows(w1:p1, columns(w1:p3, w1:p4@0.5)@0.5), rows(w1:p2, w1:p5@0.5)@0.3)",
+        "focused": "w1:p1"
+      }
+    },
+    {
+      "name": "the same tab a split deeper",
+      "why": "The other arrangement the same session was recorded in, so the reader is judged on more than one shape from the run that matters. Six panes, and the extra split is nested under a first child along the axis it is already split on - which is the shape that makes rebuilding from rectangles hard, and which costs this reader nothing, because herdr states the parent and child links outright.",
+      "given": {
+        "focused_pane_id": "w1:p1",
+        "root": {
+          "direction": "right",
+          "first": {
+            "direction": "down",
+            "first": {
+              "cwd": "/private/tmp",
+              "pane_id": "w1:p1",
+              "type": "pane"
+            },
+            "ratio": 0.5,
+            "second": {
+              "direction": "right",
+              "first": {
+                "direction": "right",
+                "first": {
+                  "cwd": "/private/tmp",
+                  "pane_id": "w1:p3",
+                  "type": "pane"
+                },
+                "ratio": 0.5,
+                "second": {
+                  "cwd": "/private/tmp",
+                  "pane_id": "w1:p6",
+                  "type": "pane"
+                },
+                "type": "split"
+              },
+              "ratio": 0.5,
+              "second": {
+                "cwd": "/private/tmp",
+                "pane_id": "w1:p4",
+                "type": "pane"
+              },
+              "type": "split"
+            },
+            "type": "split"
+          },
+          "ratio": 0.3,
+          "second": {
+            "direction": "down",
+            "first": {
+              "cwd": "/private/tmp",
+              "pane_id": "w1:p2",
+              "type": "pane"
+            },
+            "ratio": 0.5,
+            "second": {
+              "cwd": "/private/tmp",
+              "pane_id": "w1:p5",
+              "type": "pane"
+            },
+            "type": "split"
+          },
+          "type": "split"
+        },
+        "tab_id": "w1:t1",
+        "workspace_id": "w1",
+        "zoomed": false
+      },
+      "expect": {
+        "read": true,
+        "tab": "w1:t1",
+        "tree": "columns(rows(w1:p1, columns(columns(w1:p3, w1:p6@0.5), w1:p4@0.5)@0.5), rows(w1:p2, w1:p5@0.5)@0.3)",
+        "focused": "w1:p1"
+      }
+    },
+    {
+      "name": "two panes, which is the shape a first split produces",
+      "why": "The commonest arrangement there is, and worth a case of its own rather than being assumed to fall out of the deep ones: the recursion has to stop at a leaf, and a reader that only ever handled splits under splits would still pass every case above.",
+      "given": {
+        "focused_pane_id": "w1:p1",
+        "root": {
+          "direction": "right",
+          "first": {
+            "cwd": "/private/tmp",
+            "pane_id": "w1:p1",
+            "type": "pane"
+          },
+          "ratio": 0.5,
+          "second": {
+            "cwd": "/private/tmp",
+            "pane_id": "w1:p2",
+            "type": "pane"
+          },
+          "type": "split"
+        },
+        "tab_id": "w1:t1",
+        "workspace_id": "w1",
+        "zoomed": false
+      },
+      "expect": {
+        "read": true,
+        "tab": "w1:t1",
+        "tree": "columns(w1:p1, w1:p2@0.5)",
+        "focused": "w1:p1"
+      }
+    },
+    {
+      "name": "three panes, from a session doing something else",
+      "why": "Recorded while the lifecycle transcript was exercising something unrelated, which is the point: an arrangement nobody arranged for this corpus.",
+      "given": {
+        "focused_pane_id": "w1:p1",
+        "root": {
+          "direction": "right",
+          "first": {
+            "cwd": "/private/tmp",
+            "pane_id": "w1:p1",
+            "type": "pane"
+          },
+          "ratio": 0.5,
+          "second": {
+            "direction": "down",
+            "first": {
+              "cwd": "/private/tmp",
+              "pane_id": "w1:p2",
+              "type": "pane"
+            },
+            "ratio": 0.5,
+            "second": {
+              "cwd": "/private/tmp",
+              "pane_id": "w1:p3",
+              "type": "pane"
+            },
+            "type": "split"
+          },
+          "type": "split"
+        },
+        "tab_id": "w1:t1",
+        "workspace_id": "w1",
+        "zoomed": false
+      },
+      "expect": {
+        "read": true,
+        "tab": "w1:t1",
+        "tree": "columns(w1:p1, rows(w1:p2, w1:p3@0.5)@0.5)",
+        "focused": "w1:p1"
+      }
+    },
+    {
+      "name": "sixteen panes at every depth the recording reached",
+      "why": "The ceiling the layout transcript climbed to. A recursive reader is where a deep tree either works or silently loses a branch, and sixteen panes is a window of fifteen agents plus the one you are in - which is the size Muster is built for rather than an arbitrary large number.",
+      "given": {
+        "focused_pane_id": "w1:p2",
+        "root": {
+          "direction": "right",
+          "first": {
+            "direction": "down",
+            "first": {
+              "direction": "right",
+              "first": {
+                "cwd": "/private/tmp",
+                "pane_id": "w1:p1",
+                "type": "pane"
+              },
+              "ratio": 0.5,
+              "second": {
+                "cwd": "/private/tmp",
+                "pane_id": "w1:pC",
+                "type": "pane"
+              },
+              "type": "split"
+            },
+            "ratio": 0.5,
+            "second": {
+              "direction": "right",
+              "first": {
+                "cwd": "/private/tmp",
+                "pane_id": "w1:p3",
+                "type": "pane"
+              },
+              "ratio": 0.5,
+              "second": {
+                "cwd": "/private/tmp",
+                "pane_id": "w1:pD",
+                "type": "pane"
+              },
+              "type": "split"
+            },
+            "type": "split"
+          },
+          "ratio": 0.3,
+          "second": {
+            "direction": "down",
+            "first": {
+              "direction": "right",
+              "first": {
+                "direction": "right",
+                "first": {
+                  "direction": "down",
+                  "first": {
+                    "cwd": "/private/tmp",
+                    "pane_id": "w1:p2",
+                    "type": "pane"
+                  },
+                  "ratio": 0.5,
+                  "second": {
+                    "cwd": "/private/tmp",
+                    "pane_id": "w1:pE",
+                    "type": "pane"
+                  },
+                  "type": "split"
+                },
+                "ratio": 0.5,
+                "second": {
+                  "cwd": "/private/tmp",
+                  "pane_id": "w1:p8",
+                  "type": "pane"
+                },
+                "type": "split"
+              },
+              "ratio": 0.5,
+              "second": {
+                "direction": "right",
+                "first": {
+                  "direction": "down",
+                  "first": {
+                    "cwd": "/private/tmp",
+                    "pane_id": "w1:p6",
+                    "type": "pane"
+                  },
+                  "ratio": 0.5,
+                  "second": {
+                    "cwd": "/private/tmp",
+                    "pane_id": "w1:pF",
+                    "type": "pane"
+                  },
+                  "type": "split"
+                },
+                "ratio": 0.5,
+                "second": {
+                  "cwd": "/private/tmp",
+                  "pane_id": "w1:p9",
+                  "type": "pane"
+                },
+                "type": "split"
+              },
+              "type": "split"
+            },
+            "ratio": 0.5,
+            "second": {
+              "direction": "right",
+              "first": {
+                "direction": "right",
+                "first": {
+                  "direction": "down",
+                  "first": {
+                    "cwd": "/private/tmp",
+                    "pane_id": "w1:p5",
+                    "type": "pane"
+                  },
+                  "ratio": 0.5,
+                  "second": {
+                    "cwd": "/private/tmp",
+                    "pane_id": "w1:pG",
+                    "type": "pane"
+                  },
+                  "type": "split"
+                },
+                "ratio": 0.5,
+                "second": {
+                  "cwd": "/private/tmp",
+                  "pane_id": "w1:pA",
+                  "type": "pane"
+                },
+                "type": "split"
+              },
+              "ratio": 0.5,
+              "second": {
+                "direction": "right",
+                "first": {
+                  "direction": "down",
+                  "first": {
+                    "cwd": "/private/tmp",
+                    "pane_id": "w1:p7",
+                    "type": "pane"
+                  },
+                  "ratio": 0.5,
+                  "second": {
+                    "cwd": "/private/tmp",
+                    "pane_id": "w1:pH",
+                    "type": "pane"
+                  },
+                  "type": "split"
+                },
+                "ratio": 0.5,
+                "second": {
+                  "cwd": "/private/tmp",
+                  "pane_id": "w1:pB",
+                  "type": "pane"
+                },
+                "type": "split"
+              },
+              "type": "split"
+            },
+            "type": "split"
+          },
+          "type": "split"
+        },
+        "tab_id": "w1:t1",
+        "workspace_id": "w1",
+        "zoomed": false
+      },
+      "expect": {
+        "read": true,
+        "tab": "w1:t1",
+        "tree": "columns(rows(columns(w1:p1, w1:pC@0.5), columns(w1:p3, w1:pD@0.5)@0.5), rows(columns(columns(rows(w1:p2, w1:pE@0.5), w1:p8@0.5), columns(rows(w1:p6, w1:pF@0.5), w1:p9@0.5)@0.5), columns(columns(rows(w1:p5, w1:pG@0.5), w1:pA@0.5), columns(rows(w1:p7, w1:pH@0.5), w1:pB@0.5)@0.5)@0.5)@0.3)",
+        "focused": "w1:p2"
+      }
+    },
+    {
+      "name": "a node whose kind is not one herdr has published is refused whole",
+      "why": "The failure that matters for a reader of a dependency that ships weekly: not a crash, but a plausible tree built out of something nobody described. A herdr that adds a third kind of node - a stack, a tabbed group - would otherwise have half of it rendered as though the other half did not exist, which puts panes in places no daemon agreed to. Refusing means the caller keeps the arrangement it had and waits for the broadcast, which is what every arrangement change did before this reader existed.",
+      "given": {
+        "tab_id": "w1:t1",
+        "focused_pane_id": "w1:p1",
+        "root": {
+          "type": "split",
+          "direction": "right",
+          "ratio": 0.5,
+          "first": {
+            "type": "pane",
+            "pane_id": "w1:p1",
+            "cwd": "/tmp"
+          },
+          "second": {
+            "type": "stack",
+            "panes": [
+              "w1:p2",
+              "w1:p3"
+            ]
+          }
+        },
+        "zoomed": false
+      },
+      "expect": {
+        "read": false
+      }
+    },
+    {
+      "name": "a split along an axis this reader has no name for is refused",
+      "why": "herdr names a split for where the new pane went, and has two directions. A third - or a spelling change - is the same kind of event as an unknown node, and gets the same answer for the same reason. Guessing an axis is a window rendered ninety degrees out.",
+      "given": {
+        "tab_id": "w1:t1",
+        "focused_pane_id": "w1:p1",
+        "root": {
+          "type": "split",
+          "direction": "diagonal",
+          "ratio": 0.5,
+          "first": {
+            "type": "pane",
+            "pane_id": "w1:p1",
+            "cwd": "/tmp"
+          },
+          "second": {
+            "type": "pane",
+            "pane_id": "w1:p2",
+            "cwd": "/tmp"
+          }
+        },
+        "zoomed": false
+      },
+      "expect": {
+        "read": false
+      }
+    },
+    {
+      "name": "a split missing a child is refused rather than collapsed",
+      "why": "A split with one child is not an arrangement, and the tempting repair - render the child alone - would show a window with a pane silently missing from it. A pane that vanished from the screen while the daemon still holds it is the symptom that has cost this project the most time.",
+      "given": {
+        "tab_id": "w1:t1",
+        "focused_pane_id": "w1:p1",
+        "root": {
+          "type": "split",
+          "direction": "right",
+          "ratio": 0.5,
+          "first": {
+            "type": "pane",
+            "pane_id": "w1:p1",
+            "cwd": "/tmp"
+          }
+        },
+        "zoomed": false
+      },
+      "expect": {
+        "read": false
+      }
+    },
+    {
+      "name": "a tree with no tab to put it in is refused",
+      "why": "Every consumer keys an arrangement by its tab, so one that arrived without an id has nowhere to go - and the mirror would either drop it later or, worse, apply it to whichever tab happened to be first. The same rule the rectangles reader already applies, stated here so the two cannot drift.",
+      "given": {
+        "focused_pane_id": "w1:p1",
+        "root": {
+          "type": "pane",
+          "pane_id": "w1:p1",
+          "cwd": "/tmp"
+        },
+        "zoomed": false
+      },
+      "expect": {
+        "read": false
+      }
+    },
+    {
+      "name": "the flat shape is not read by this reader",
+      "why": "The two readers are told apart by which keys a payload has rather than by which verb answered, so each has to refuse the other's shape outright. A reader that accepted both loosely would turn a payload neither describes into a tree, which is the whole failure mode both of them exist to refuse.",
+      "given": {
+        "tab_id": "w1:t1",
+        "focused_pane_id": "w1:p1",
+        "panes": [
+          {
+            "pane_id": "w1:p1",
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 80,
+              "height": 24
+            }
+          }
+        ],
+        "splits": [],
+        "zoomed": false
+      },
+      "expect": {
+        "read": false
+      }
+    },
+    {
+      "name": "a zoomed tab names the pane that is filling it",
+      "why": "herdr publishes a bare flag and leaves every pane where it was, so the pane that is actually on screen is the tab's focused one - and putting the two together is this reader's job rather than every caller's. The same rule the rectangles reader applies, and it has to be the same or a zoom would look different depending on which verb answered.",
+      "given": {
+        "tab_id": "w1:t1",
+        "focused_pane_id": "w1:p2",
+        "root": {
+          "type": "split",
+          "direction": "right",
+          "ratio": 0.5,
+          "first": {
+            "type": "pane",
+            "pane_id": "w1:p1",
+            "cwd": "/tmp"
+          },
+          "second": {
+            "type": "pane",
+            "pane_id": "w1:p2",
+            "cwd": "/tmp"
+          }
+        },
+        "zoomed": true
+      },
+      "expect": {
+        "read": true,
+        "tab": "w1:t1",
+        "tree": "columns(w1:p1, w1:p2@0.5)",
+        "focused": "w1:p2",
+        "zoomed": "w1:p2"
+      }
+    }
+  ]
+}

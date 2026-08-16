@@ -1,10 +1,16 @@
-//! herdr's rectangles, rebuilt into Muster's tree.
+//! herdr's rectangles, rebuilt into Muster's tree - and its own tree, taken as it comes.
 //!
 //! herdr publishes a tab's arrangement twice and neither form is the one a view wants.
 //! `layout.export` has the tree but none of the live fields and costs a request of its own;
 //! `layout_updated` and a snapshot's `layouts[]` are live and free but describe the
 //! arrangement as a flat list of pane rectangles plus a flat list of split borders, with no
 //! parent or child links between them.
+//!
+//! Both are read here, because both arrive without being asked for. Everything that pushes
+//! uses the rectangles, and so does every mutation that answers with a settled arrangement -
+//! except `layout.set_split_ratio`, which answers with the exported tree. That one is a
+//! dragged divider, the highest-frequency arrangement change there is, so the second reader is
+//! what keeps a drag on the answer rather than on the broadcast a hundred milliseconds later.
 //!
 //! Rebuilding the tree from those rectangles is exact, and recorded as such: for every
 //! split in the exported tree there is a border covering exactly the panes beneath it, with
@@ -85,10 +91,54 @@ pub fn read_layout(value: &Value) -> Option<Layout> {
         });
     }
 
+    Some(assemble(value, tab, build(root_rect, &panes, &borders)?))
+}
+
+/// Reads one tab's arrangement from herdr's exported tree.
+///
+/// The second shape herdr states an arrangement in, and the reason there are two readers
+/// rather than one. `layout.export` publishes it, and so does the result of
+/// `layout.set_split_ratio` - which is the one that matters, because a client that reads its
+/// own answer sees a dragged divider about a hundred milliseconds before the broadcast
+/// describing it arrives (`observations/herdr-0.8.0.md` section 14).
+///
+/// Easier than the rectangles and not a replacement for them: the tree is exact but carries no
+/// live fields, so everything that arrives unasked-for is still the flat shape. The two are
+/// told apart by which key they have - `panes` against `root` - rather than by asking the
+/// caller, so a verb that starts answering with either needs no change here.
+pub fn read_exported_layout(value: &Value) -> Option<Layout> {
+    let tab = TabId::new(non_empty(value, "tab_id")?);
+    Some(assemble(value, tab, read_node(value.get("root")?)?))
+}
+
+/// One node of an exported tree, and everything under it.
+///
+/// A node states its own kind, so an unknown one is `None` rather than a guess: a shape this
+/// does not recognise is a herdr that publishes something new, and rendering half of it would
+/// put panes in places no daemon agreed to.
+fn read_node(value: &Value) -> Option<LayoutNode> {
+    match value.get("type").and_then(Value::as_str)? {
+        "pane" => Some(LayoutNode::Pane(PaneId::new(non_empty(value, "pane_id")?))),
+        "split" => Some(LayoutNode::Split {
+            axis: axis(value.get("direction").and_then(Value::as_str)?)?,
+            ratio: ratio(value)?,
+            first: Box::new(read_node(value.get("first")?)?),
+            second: Box::new(read_node(value.get("second")?)?),
+        }),
+        _ => None,
+    }
+}
+
+/// The fields both shapes carry, put around whichever tree was read.
+///
+/// Total, because everything that can fail has already failed by here: a tab and a tree are
+/// what a reader has to produce, and the rest is a cursor and a flag that mean the same thing
+/// absent as they do false.
+fn assemble(value: &Value, tab: TabId, root: LayoutNode) -> Layout {
     let focused = value.get("focused_pane_id").and_then(Value::as_str).map(PaneId::new);
-    Some(Layout {
+    Layout {
         tab,
-        root: build(root_rect, &panes, &borders)?,
+        root,
         // Only when something is zoomed, and then it is the tab's focused pane: herdr
         // publishes a bare flag and leaves every pane at its ordinary rect, so this is the
         // one place the two get put together (`observations/herdr-0.8.0.md` section 13).
@@ -98,7 +148,7 @@ pub fn read_layout(value: &Value) -> Option<Layout> {
             None
         },
         focused,
-    })
+    }
 }
 
 /// The node covering exactly this rectangle, or nothing if the rectangles do not agree.

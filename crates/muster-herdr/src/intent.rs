@@ -19,7 +19,7 @@ use muster_core::mirror::backend::{PaneId, TabId};
 use serde_json::{Value, json};
 
 use crate::client::{Failure, HerdrClient};
-use crate::layout::read_layout;
+use crate::layout::{read_exported_layout, read_layout};
 
 impl BackendChannel for HerdrClient {
     fn submit(&self, intent: &BackendIntent) -> Result<Outcome, Refusal> {
@@ -268,22 +268,28 @@ fn swaps(side: Side) -> bool {
 
 /// The arrangement a herdr result states, when it states one.
 ///
-/// `pane.swap` and `pane.resize` both answer with the whole settled layout in the same shape
-/// `layout_updated` carries, which is what makes this one reader rather than two - and what
-/// makes an answer usable as truth rather than as a hint (`intent.rs`, `SettledLayout`).
+/// Reading a mutation's own answer rather than waiting to be told is what keeps the window on
+/// the arrangement that exists: herdr broadcasts the same tree about a hundred milliseconds
+/// later, and a client that only listens renders the arrangement being moved away from for six
+/// frames and then jumps (`observations/herdr-0.8.0.md` section 14).
 ///
-/// `layout.set_split_ratio` answers with a layout too and is deliberately not covered: its is
-/// the exported *tree* rather than the flat rectangles, so it needs a second reader. A dragged
-/// divider therefore still waits for the broadcast, which is what it did before any of this.
-/// Silently, because `read_layout` will not read that shape and `None` is already the answer
-/// for a result that states no arrangement.
+/// Two shapes, because herdr states one in two ways. `pane.swap` and `pane.resize` answer with
+/// the flat rectangles `layout_updated` carries; `layout.set_split_ratio` answers with the
+/// exported tree. Tried in that order and with no branch on the verb - which shape a result
+/// carries is the result's own business, and naming each one here would be a table to keep in
+/// step with a daemon that ships weekly.
+///
+/// A result that carries neither is `None`, which is the same answer as a result that states
+/// no arrangement at all - and the right one, because the caller then waits for the broadcast,
+/// which is what every arrangement change did before any of this.
 ///
 /// `swapped` names the pair a compound intent exchanged, and is what lets the arrangement
 /// herdr published between the two halves be reconstructed: its swap exchanges the ids sitting
 /// in two places and leaves the places alone, so the tree it was is the tree it became with
 /// those two ids put back.
 fn settled(result: &Value, swapped: Option<(&PaneId, &PaneId)>) -> Option<SettledLayout> {
-    let layout = read_layout(nested(result, "layout")?)?;
+    let stated = nested(result, "layout")?;
+    let layout = read_layout(stated).or_else(|| read_exported_layout(stated))?;
     let stale = swapped.map(|(one, other)| layout.with_panes_exchanged(one, other));
     Some(SettledLayout { layout, stale })
 }

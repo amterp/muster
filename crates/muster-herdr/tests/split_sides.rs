@@ -249,3 +249,81 @@ fn closing_a_pane_a_leftward_split_made_collapses_the_tab() {
         "the tab kept a tree naming a pane the daemon no longer holds"
     );
 }
+
+#[test]
+fn a_dragged_divider_lands_on_the_answer_rather_than_the_broadcast() {
+    // A drag, which is the same shape as the held resize above and arrives faster: one request
+    // per mouse-moved event, each answered long before the previous one is broadcast. The
+    // difference is that herdr states this arrangement as its exported tree rather than as the
+    // flat rectangles every other layout uses, so until there was a reader for that shape the
+    // answer read as "no arrangement stated" and every drag fell back to the event stream -
+    // where about ten frames' worth of positions from a hundred milliseconds ago each triggered
+    // another relayout while the pointer had moved on. That is the shaking.
+    let (daemon, mirror, _subscription, tab, pane) = session();
+    let client = daemon.client();
+    client
+        .submit(&BackendIntent::SplitPane {
+            pane: pane.clone(),
+            side: Side::Right,
+            ratio: None,
+            cwd: Some("/tmp".into()),
+        })
+        .expect("a real daemon refused a split it can do");
+    until("the tree to reach the mirror", || {
+        mirror.lock().unwrap().layout(&tab).is_some_and(|layout| layout.root.panes().len() == 2)
+    });
+
+    let watcher = Watcher::on(&mirror, tab.clone());
+    // A pointer crossing the pane, at the granularity a drag actually produces - and entirely
+    // to one side of where the divider was resting, so that every position the watcher can
+    // catch is further along the gesture than the one before it. A drag that started on the
+    // other side would make the first legitimate step look like the backwards jump this is
+    // watching for, and whether the watcher caught that step at all is a race.
+    let dragged: Vec<f32> = (6..=9u8).map(|step| f32::from(step) / 10.0).collect();
+    for ratio in &dragged {
+        let outcome = client
+            .submit(&BackendIntent::SetSplitRatio {
+                tab: tab.clone(),
+                path: Vec::new(),
+                ratio: *ratio,
+            })
+            .expect("a real daemon refused a ratio it can set");
+        let settled = outcome.settled.expect(
+            "layout.set_split_ratio answered with no arrangement, so a drag is back to waiting \
+             for the broadcast. herdr states this one as its exported tree - check that \
+             read_exported_layout still reads what the daemon publishes",
+        );
+        mirror.lock().unwrap().settle(settled);
+    }
+    thread::sleep(PAST_THE_SECOND_PUBLISH);
+
+    let (settled, other) = {
+        let held = mirror.lock().unwrap();
+        let other = held
+            .panes()
+            .map(|held| held.id.clone())
+            .find(|id| *id != pane)
+            .expect("the split gave this tab a second pane");
+        (held.layout(&tab).map(|layout| layout.root.to_string()), other)
+    };
+    assert_eq!(
+        settled,
+        Some(format!("columns({pane}, {other}@0.9)")),
+        "the divider did not come to rest where the drag left it. Landing back at the ratio \
+         the drag started from is the superseded bound overflowing: every arrangement between \
+         an answer and its broadcast has to be remembered, and a drag produces about ten of \
+         them"
+    );
+
+    let ratios: Vec<f32> = watcher
+        .arrangements()
+        .iter()
+        .filter_map(|tree| tree.rsplit_once('@')?.1.trim_end_matches(')').parse().ok())
+        .collect();
+    assert!(ratios.len() > 1, "nothing about the divider was observed moving: {ratios:?}");
+    assert!(
+        ratios.windows(2).all(|pair| pair[0] <= pair[1]),
+        "the divider moved back toward where it came from mid-drag, which is a stale broadcast \
+         overtaking the answer that superseded it: {ratios:?}"
+    );
+}
