@@ -311,7 +311,11 @@ codegen - a surface that cannot express an action is a missing message, visible 
   never *routes* input by reading
   it, so another client moving daemon focus never yanks Muster's keyboard. Both halves are one action to whoever
   clicked, so one request does both: the keyboard moves whatever the daemon answers, and a refused write is worth a
-  log line rather than undoing a focus move the user watched happen.
+  log line rather than undoing a focus move the user watched happen. Rendering follows the same rule wherever a
+  daemon's answer is a bare flag beside its own cursor: herdr says a tab is zoomed and leaves which pane to its
+  focused one, so Muster reads the flag and fills the region with the pane its own keyboard is on. Reading the
+  daemon's cursor there would let another client decide what this window paints, and would leave ⌘2 inside a zoomed
+  tab typing into a pane nobody can see.
 - **A tree that disagrees with its tab is not an arrangement.** A tab's pane list and its pane tree arrive as
   separate events with no order between them, so the tree can name fewer panes than the tab holds or more, and a
   subscription that has just bootstrapped replays layout events - walking a tab backwards through arrangements it

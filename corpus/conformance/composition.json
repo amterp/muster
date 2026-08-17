@@ -1587,8 +1587,8 @@
       }
     },
     {
-      "name": "a zoomed tab shows the one pane, not the tree",
-      "why": "herdr spells zoom as a flag and keeps publishing every pane at its ordinary unzoomed rect, so a renderer handed the tree paints all of them while the daemon is showing one. Resolving it here rather than flagging it for the shell is what keeps the shell renderable-as-told; the flag survives only so the chrome can say so, because a zoomed tab and a one-pane tab look identical.",
+      "name": "a zoomed tab shows the pane this window's keyboard is on",
+      "why": "herdr spells zoom as a flag and keeps publishing every pane at its ordinary unzoomed rect, so a renderer handed the tree paints all of them while the daemon is showing one. Resolving it here rather than flagging it for the shell is what keeps the shell renderable-as-told; the flag survives only so the chrome can say so, because a zoomed tab and a one-pane tab look identical. Which pane fills it is this window's own answer and not the daemon's: herdr's flag sits beside its focused pane, and daemon focus is one value shared with every client, so reading it would let another client decide what this window renders. Here that other client zoomed p2 while this window's keyboard is on p1, and p1 is what fills the region - anything else is somebody typing into a pane they cannot see.",
       "given": {
         "attached": [
           "w1:p1",
@@ -1680,7 +1680,111 @@
         "focusedRegion": "r0",
         "focusedPane": "w1:p1",
         "view": [
-          "r0 tab=w1:t1 w1:p2* zoomed"
+          "r0 tab=w1:t1 w1:p1* zoomed"
+        ]
+      }
+    },
+    {
+      "name": "moving the keyboard inside a zoomed tab moves what is on screen",
+      "why": "⌘2 in a zoomed tab used to leave the previous pane filling the region, so the keyboard fed a pane nobody could see. herdr publishes `layout_updated` when a pane appears or goes and never for a focus change (observations/herdr-0.8.0.md section 10), so the cursor its zoom flag sits beside is stale from the moment focus moves - which is why the zoomed pane has to be read off this window's own keyboard rather than off the daemon's. The tab stays zoomed: what moved is which pane fills it, not whether one does.",
+      "given": {
+        "attached": [
+          "w1:p1",
+          "w1:p2",
+          "w1:p3"
+        ],
+        "worlds": {
+          "zoomed on p2": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "w1"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ],
+            "layouts": [
+              {
+                "tab": "w1:t1",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p1",
+                  "second": {
+                    "axis": "columns",
+                    "ratio": 0.5,
+                    "first": "w1:p2",
+                    "second": "w1:p3"
+                  }
+                },
+                "zoomed": "w1:p2"
+              }
+            ]
+          }
+        },
+        "steps": [
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/herdr-local.sock"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "zoomed on p2"
+          },
+          {
+            "do": "focusPane",
+            "region": "r0",
+            "pane": "w1:p3"
+          }
+        ]
+      },
+      "expect": {
+        "daemons": [
+          "local local=/tmp/herdr-local.sock"
+        ],
+        "regions": [
+          "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p3"
+        ],
+        "focusedRegion": "r0",
+        "focusedPane": "w1:p3",
+        "view": [
+          "r0 tab=w1:t1 w1:p3* zoomed"
         ]
       }
     },

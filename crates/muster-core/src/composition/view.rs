@@ -162,7 +162,26 @@ impl View {
                         // publishing every pane's ordinary rect while a tab is zoomed, so a
                         // renderer handed the whole tree paints all of them while the daemon
                         // is showing one (`observations/herdr-0.8.0.md` section 13).
-                        let zoomed = layout.zoomed.clone().map(LayoutNode::Pane);
+                        //
+                        // Which pane fills it is this window's own answer, not the daemon's.
+                        // The backend spells zoom as a bare flag beside the tab's focused
+                        // pane, and daemon focus is one value shared with every client - so
+                        // reading it here would let another client decide what this window
+                        // renders, against the rule that cursors are written and not read
+                        // (`architecture.md`). It is also the only answer that keeps the
+                        // window honest: the keyboard feeds `region.pane`, and a zoom showing
+                        // anything else is somebody typing into a pane they cannot see.
+                        //
+                        // Not hypothetical. herdr emits `layout_updated` when a pane appears
+                        // or goes and never for a focus change (`observations/herdr-0.8.0.md`
+                        // section 10), so the flag's companion cursor goes stale the moment
+                        // ⌘2 moves the keyboard inside a zoomed tab.
+                        let zoomed = layout
+                            .zoomed
+                            .is_some()
+                            .then(|| region.pane.clone().or_else(|| layout.zoomed.clone()))
+                            .flatten()
+                            .map(LayoutNode::Pane);
                         build(
                             zoomed.as_ref().unwrap_or(&layout.root),
                             &region.daemon,

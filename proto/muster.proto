@@ -1291,6 +1291,10 @@ message ViewRegion {
   // Whether `root` is one pane filling the region rather than the tab's whole tree. Already
   // resolved, so a shell that ignores this renders the right thing; it exists so the chrome
   // can say so, because a zoomed tab and a one-pane tab are otherwise identical on screen.
+  //
+  // The pane filling it is `pane_id` above - the one this window's keyboard feeds. A backend
+  // spells zoom as a flag beside its own focused pane, and that cursor is shared with every
+  // client, so which pane fills the region is Muster's answer rather than the daemon's.
   bool zoomed = 6;
 
   // How this region's panes are reached, when they are on another machine. Both empty means
