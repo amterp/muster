@@ -120,5 +120,11 @@ fn describe(channel: &str, intent: &PaneIntent) -> Value {
             ("direction", Some(json!(direction.as_str()))),
             ("lines", Some(json!(lines))),
         ]),
+        PaneIntent::Resize { columns, rows } => fields([
+            ("channel", Some(json!(channel))),
+            ("intent", Some(json!("resize"))),
+            ("columns", Some(json!(columns))),
+            ("rows", Some(json!(rows))),
+        ]),
     }
 }

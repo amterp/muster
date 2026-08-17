@@ -1,3 +1,4 @@
+import AppKit
 import CMuster
 import Foundation
 import MusterRenderer
@@ -44,6 +45,30 @@ public enum Core {
     var request = Muster_Request()
     request.startup = startup
     send(request)
+    watchForTermination()
+  }
+
+  /// Tells the core when this process is going away.
+  ///
+  /// The one thing about its own lifetime the core cannot see: it is a dylib, and a dylib does
+  /// not get to notice its host terminating. What it does about it - handing every pane back at
+  /// the size its daemon draws it at, because the daemon holds a pane at its controller's
+  /// geometry and never lets go - has to happen while this window's bridges are still alive to
+  /// relay it, so this is sent synchronously and the core answers when it is done.
+  ///
+  /// Registered here rather than in the app delegate, because this is the shell's one edge onto
+  /// the core and the delegate is deliberately a thing that decides nothing.
+  ///
+  /// `willTerminate` rather than a window closing: quitting is what leaves a session behind,
+  /// and ⌘Q does not close windows on the way out.
+  private static func watchForTermination() {
+    NotificationCenter.default.addObserver(
+      forName: NSApplication.willTerminateNotification, object: nil, queue: .main
+    ) { _ in
+      var request = Muster_Request()
+      request.quitting = Muster_Quitting()
+      send(request)
+    }
   }
 
   /// Whether records may carry what the user actually typed.
@@ -744,6 +769,7 @@ public enum Core {
     case .find: return "find"
     case .findStep: return "find_step"
     case .endFind: return "end_find"
+    case .quitting: return "quitting"
     case nil: return "(none)"
     }
   }

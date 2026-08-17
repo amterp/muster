@@ -6,15 +6,16 @@
 //! counter reaches a client here and nowhere else
 //! (`observations/herdr-0.8.0.md` section 10).
 
+use std::collections::BTreeMap;
 use std::time::Duration;
 
 use muster_core::AgentState;
-use muster_core::mirror::backend::{Focus, Pane, Snapshot, Tab, Workspace, WorkspaceId};
+use muster_core::mirror::backend::{Focus, Pane, PaneId, Snapshot, Tab, Workspace, WorkspaceId};
 use muster_core::names::Names;
 use serde_json::{Value, json};
 
 use crate::client::{Failure, HerdrClient};
-use crate::layout::read_layout;
+use crate::layout::{PaneCells, read_layout, unattached_sizes};
 
 /// Asks a daemon for its whole session, once.
 ///
@@ -44,6 +45,43 @@ pub fn fetch_snapshot_within(
     let client = HerdrClient::new(socket_path.to_string());
     let result = client.request_within("session.snapshot", &json!({}), allowance)?;
     Ok(read_snapshot(result.get("snapshot").unwrap_or(&Value::Null), names))
+}
+
+/// Asks a daemon how big each of its panes should be with nothing driving it.
+///
+/// The same call as [`fetch_snapshot`] and a different reader, because the answer is one the
+/// mirror deliberately does not keep: the rectangles are cells in a terminal area herdr keeps
+/// for itself, and the moment one reaches the core it looks like geometry a window could use
+/// (`layout.rs`). What comes back here is a size to hand a pane back at, and nothing renders
+/// from it.
+///
+/// One call per daemon rather than one per pane, because the caller is a window on its way out
+/// and a round trip per pane is fifteen of them between the chord and the process ending.
+pub fn fetch_unattached_sizes(
+    socket_path: &str,
+    names: &Names,
+) -> Result<BTreeMap<PaneId, PaneCells>, Failure> {
+    let client = HerdrClient::new(socket_path.to_string());
+    let result = client.request("session.snapshot", &json!({}))?;
+    Ok(unattached_sizes(result.get("snapshot").unwrap_or(&Value::Null), names))
+}
+
+/// How many rows one pane's terminal has right now, by the daemon's own account.
+///
+/// The only dimension herdr reports. A pane's payload carries `scroll.viewport_rows` and no
+/// columns at all (`corpus/herdr-0.8.0/api-schema.json`), which makes this half an oracle - and
+/// half is enough for the one caller: a window on its way out, checking that the resize it sent
+/// down a pane's control stream actually arrived before the bridge relaying it is killed.
+///
+/// `None` for a daemon that will not answer or a pane it no longer holds. Both mean the same
+/// thing to that caller - stop waiting - and neither is worth a record of its own while the
+/// window is closing.
+pub fn pane_rows(socket_path: &str, names: &Names, pane: &PaneId) -> Option<u16> {
+    let client = HerdrClient::new(socket_path.to_string());
+    let backend = names.backend_pane(pane).ok()?;
+    let result = client.request("pane.get", &json!({ "pane_id": backend.as_str() })).ok()?;
+    let rows = result.get("pane")?.get("scroll")?.get("viewport_rows")?.as_u64()?;
+    u16::try_from(rows).ok()
 }
 
 /// Reads the `snapshot` object out of a `session.snapshot` result.

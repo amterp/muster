@@ -3021,6 +3021,138 @@ fn no_pane_to_size() -> String {
         .to_string()
 }
 
+/// Hands every attached pane back at the size its daemon lays it out at.
+///
+/// The shell's word that this process is going away, acted on before its bridges are killed.
+/// A controlling client holds a pane's terminal at its own geometry and herdr does not release
+/// that on detach, so a Muster that quits leaves every pane it touched sized to a window that
+/// no longer exists - and the herdr TUI somebody opens next inherits it
+/// (`observations/herdr-0.8.0.md` section 4).
+///
+/// Not the size the pane had before Muster arrived, which nothing can answer: herdr publishes a
+/// pane's rows and never its columns. The daemon's own layout is the answer instead, and it is
+/// the one that matters - what is about to draw these panes is herdr itself.
+///
+/// Waited for rather than fired and forgotten. The resize leaves over the pane's control
+/// socket, is relayed by a bridge this process is about to kill, and lands in the daemon a
+/// moment later; without the wait, quitting races the thing it is trying to do. `viewport_rows`
+/// is what the daemon will say back - the one dimension it reports - so that is what is
+/// watched.
+pub(crate) fn quitting() {
+    let daemons: Vec<(DaemonId, String, Names)> = {
+        let session = poison::lock(&SESSION, "session");
+        session
+            .backends
+            .iter()
+            .map(|(id, backend)| (id.clone(), backend.socket_path.clone(), backend.names.clone()))
+            .collect()
+    };
+
+    let mut unreachable = 0usize;
+    let mut wanted: Vec<(DaemonId, PaneId, u16)> = Vec::new();
+    for (daemon, socket_path, names) in &daemons {
+        // Outside the session lock: this is a round trip, and a wedged daemon must not hold up
+        // the ones that are answering while somebody is waiting to quit.
+        let sizes = match muster_herdr::fetch_unattached_sizes(socket_path, names) {
+            Ok(sizes) => sizes,
+            Err(failure) => {
+                log::warn(
+                    "quit.geometry.unknown",
+                    fields! {
+                        "daemon" => daemon.to_string(),
+                        "detail" => failure.to_string(),
+                        "impact" => "this daemon's panes keep the size this window gave them, so \
+                                     a terminal opened on them next renders into a grid the \
+                                     wrong shape until something resizes it",
+                        "check" => "whether that daemon is still answering at all - it is being \
+                                    asked one last question on the way out",
+                    },
+                );
+                continue;
+            }
+        };
+
+        let panes: Vec<(PaneId, Arc<AttachedPane>)> = {
+            let session = poison::lock(&SESSION, "session");
+            session
+                .panes
+                .get(daemon)
+                .into_iter()
+                .flatten()
+                .map(|(pane, held)| (pane.clone(), Arc::clone(held)))
+                .collect()
+        };
+        for (pane, held) in panes {
+            // Only panes this window is driving. A pane it never attached to was never held at
+            // Muster's geometry, and resizing one would be moving something Muster did not move.
+            let Some(cells) = sizes.get(&pane) else { continue };
+            if held.input.resize(cells.columns, cells.rows) {
+                wanted.push((daemon.clone(), pane, cells.rows));
+            } else {
+                // A pane whose bridge has already gone. Its hold is whatever that bridge left,
+                // and there is no longer a route to it - this window's only way onto a pane's
+                // terminal is the stream its bridge holds open.
+                unreachable += 1;
+            }
+        }
+    }
+
+    let settled = wait_for_geometry(&daemons, &wanted);
+    let missed = wanted.len() - settled + unreachable;
+    log::info(
+        "quit.geometry.restored",
+        fields! {
+            "asked" => wanted.len().to_string(),
+            "settled" => settled.to_string(),
+            "unreachable" => unreachable.to_string(),
+            "impact" => if missed == 0 {
+                String::new()
+            } else {
+                format!(
+                    "{missed} pane(s) keep the size this window gave them, so a terminal opened \
+                     on them renders into a grid the wrong shape until something resizes it"
+                )
+            },
+        },
+    );
+}
+
+/// Waits until the daemons agree that the panes are the size they were asked to be.
+///
+/// Rows, because rows are what herdr reports back: a pane's `viewport_rows` is the one
+/// dimension in its payload, and columns are in none of it. Half an oracle answers the question
+/// that is actually being asked here, which is whether the message arrived at all.
+///
+/// Bounded, and short. This is between somebody pressing ⌘Q and the window going, so the honest
+/// trade is a moment of delay against a pane handed back wrong - and a daemon that has stopped
+/// answering has already been reported by the fetch above.
+fn wait_for_geometry(
+    daemons: &[(DaemonId, String, Names)],
+    wanted: &[(DaemonId, PaneId, u16)],
+) -> usize {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(1500);
+    let mut settled = 0;
+    let mut waiting: Vec<&(DaemonId, PaneId, u16)> = wanted.iter().collect();
+    while !waiting.is_empty() && std::time::Instant::now() < deadline {
+        waiting.retain(|(daemon, pane, rows)| {
+            let Some((_, socket_path, names)) = daemons.iter().find(|(id, ..)| id == daemon) else {
+                return false;
+            };
+            match muster_herdr::pane_rows(socket_path, names, pane) {
+                Some(reported) if reported == *rows => {
+                    settled += 1;
+                    false
+                }
+                _ => true,
+            }
+        });
+        if !waiting.is_empty() {
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        }
+    }
+    settled
+}
+
 /// Tells the shell what the window should be showing of itself.
 ///
 /// Sent whole and sent on startup as well as on every change, so a shell holds no default of

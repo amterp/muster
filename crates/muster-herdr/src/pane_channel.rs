@@ -29,6 +29,9 @@ impl ControlStreamMessage {
             PaneIntent::Scroll { direction, lines } => {
                 Some(ControlStreamMessage::Scroll { direction: *direction, lines: *lines })
             }
+            PaneIntent::Resize { columns, rows } => {
+                Some(ControlStreamMessage::Resize { columns: *columns, rows: *rows })
+            }
             PaneIntent::Text(_) | PaneIntent::Key { .. } => None,
         }
     }
@@ -90,9 +93,12 @@ impl PaneChannel for HerdrPaneChannel {
         let params = match intent {
             PaneIntent::Text(text) => json!({ "pane_id": self.pane_id, "text": text }),
             PaneIntent::Key { name } => json!({ "pane_id": self.pane_id, "keys": [name] }),
-            // Not this channel's job. Bytes already encoded belong on the control stream,
-            // and a scroll is answered there against the same live state.
-            PaneIntent::Input(_) | PaneIntent::Scroll { .. } => return false,
+            // Not this channel's job. Bytes already encoded belong on the control stream, a
+            // scroll is answered there against the same live state, and a pane's size follows
+            // whichever client is driving it - which is the stream and never a request.
+            PaneIntent::Input(_) | PaneIntent::Scroll { .. } | PaneIntent::Resize { .. } => {
+                return false;
+            }
         };
 
         let started = std::time::Instant::now();
@@ -145,5 +151,6 @@ fn label(intent: &PaneIntent) -> String {
         PaneIntent::Text(_) => "text".to_string(),
         PaneIntent::Input(_) => "input".to_string(),
         PaneIntent::Scroll { .. } => "scroll".to_string(),
+        PaneIntent::Resize { columns, rows } => format!("resize:{columns}x{rows}"),
     }
 }

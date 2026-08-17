@@ -239,6 +239,20 @@ impl PaneInput {
         self.deliver(&PaneIntent::Scroll { direction, lines });
     }
 
+    /// Sets the pane's grid size, and says whether the daemon heard.
+    ///
+    /// The one thing here that is not input. It travels on this channel because a pane's size
+    /// follows whichever client is driving it, and this is the channel that drives - the
+    /// window's own resizes never reach here, because the surface's PTY carries those straight
+    /// to the bridge. The one caller is Muster on its way out, handing a pane back.
+    ///
+    /// Answers rather than logs its own failure, unlike everything above: a keystroke that does
+    /// not arrive is a keystroke, and a pane not handed back is worth naming in one record
+    /// beside the others rather than in fifteen.
+    pub fn resize(&self, columns: u16, rows: u16) -> bool {
+        self.channel.deliver(&PaneIntent::Resize { columns, rows })
+    }
+
     /// Hands a key to the daemon to encode, because we would get it wrong.
     ///
     /// Falls back to local encoding rather than dropping the key: a guessed arrow beats no

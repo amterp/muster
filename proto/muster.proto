@@ -56,8 +56,31 @@ message Request {
     ReadWindowFrame read_window_frame = 37;
     SetWindowFrame set_window_frame = 38;
     ReportFontFamily report_font_family = 39;
+    Quitting quitting = 40;
   }
 }
+
+// This process is going away, and its panes should be handed back.
+//
+// The one thing the core cannot see for itself. A dylib does not get to notice its host
+// terminating, and everything the core would want to do about it has to happen before the
+// window's bridges are killed - so the shell says, synchronously, and the core answers when
+// it has finished.
+//
+// What it does is put each pane's grid back. A backend holds a pane's terminal at whatever
+// size the last controlling client set and does not release it, so a Muster that quits leaves
+// every pane it touched sized to a window that no longer exists and whoever picks the session
+// up next inherits that (`observations/herdr-0.8.0.md` section 4). "Sessions outlive the app"
+// is the promise this protects: a rough Muster should never cost a workday, and handing back
+// mis-sized panes costs one.
+//
+// Muster's own, until the backend does it. This is a defect upstream rather than a design, and
+// the day it releases the hold itself is the day this becomes a no-op rather than a second
+// answer.
+//
+// Nothing is published in reply. The window is closing; a view it would repaint has nowhere to
+// go, and a shell waiting on this is waiting to exit.
+message Quitting {}
 
 // What this machine had to say about the font family the config named.
 //

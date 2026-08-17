@@ -129,6 +129,13 @@ fn handle(request: Request) -> Response {
             session::end_find();
             Response::ok()
         }
+        // Answered when the panes have been handed back, not when the message was read. The
+        // shell is holding its own termination open on this reply, which is the whole point:
+        // everything here has to happen while its bridges are still alive to relay it.
+        request::Payload::Quitting(_) => {
+            session::quitting();
+            Response::ok()
+        }
     }
 }
 

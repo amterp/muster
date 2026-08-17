@@ -328,8 +328,15 @@ codegen - a surface that cannot express an action is a missing message, visible 
   are not dragged to that size - the daemon re-renders the screen into each viewer's own requested viewport - so
   concurrent TUI viewing is degraded by seeing a larger screen reflowed into a smaller window, not by resizing.
   The hold does **not** release when Muster detaches: a pane keeps the last geometry its controller set. Leaving a
-  user's panes sized to a window that no longer exists is the sharp edge of "sessions outlive everything", and
-  restoring geometry on detach is Muster's job until herdr does it.
+  user's panes sized to a window that no longer exists is the sharp edge of "sessions outlive everything", so Muster
+  hands every pane it was driving back on the way out, and will until herdr releases the hold itself.
+  **Back to the daemon's layout, not to what the pane was.** What it was is not recoverable by any client - herdr
+  publishes a pane's rows and its columns nowhere - and it is not the more useful answer either: herdr does not
+  resize an unattached pane when its tab is rearranged, so a pane that has been split since is at a size nothing
+  will draw it at. Its rectangle in the daemon's own layout is what the next client renders, which is what makes it
+  the size worth handing back. That rectangle is in cells of a terminal area herdr keeps for itself, fixed whether
+  a client is attached or not, and the pane's grid is one column narrower than it
+  (`observations/herdr-0.8.0.md` section 4, and `crates/muster-seam/tests/geometry.rs` for the measurement).
 - **The shell owns nothing.** Surfaces are disposable renders of a pane channel. A surface attaching to a live pane
   starts with a full repaint and never assumes it saw the start of the stream. Closing a window destroys surfaces
   and touches no session.

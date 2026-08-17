@@ -20,6 +20,13 @@
 //!
 //! The rectangles stop here. They are cells in a terminal area herdr keeps for itself -
 //! fixed whether a client is attached or not - so what leaves this module is proportions.
+//!
+//! One number derived from them leaves too, and it is not geometry a window could use: how
+//! big a pane's grid should be when nothing is driving it ([`unattached_sizes`]). That the
+//! area is herdr's own and does not move with a client is exactly what makes it the right
+//! answer to hand a pane back on the way out.
+
+use std::collections::BTreeMap;
 
 use muster_core::mirror::backend::{Layout, LayoutNode, PaneId, SplitAxis, TabId};
 use muster_core::names::Names;
@@ -205,6 +212,66 @@ fn candidates<'a>(
 
 /// herdr names a split for where the new pane went; a view needs to know how to arrange
 /// two children that were split long ago.
+/// How big each pane's grid should be with nothing driving it, from a whole snapshot.
+///
+/// The size to hand a pane back on the way out. herdr holds a pane's terminal at whatever size
+/// the last controlling client set and never puts it back, so quitting Muster leaves every pane
+/// it touched sized to a window that no longer exists - and herdr's own TUI inherits that
+/// (`observations/herdr-0.8.0.md` section 4).
+///
+/// The rectangles answer it because they are the one thing here that is *not* about a client:
+/// herdr lays a tab out in a terminal area of its own, fixed at 54x23 through a control stream
+/// attaching at 200x50 and detaching again. So this is not the size the pane had before Muster
+/// arrived - herdr publishes that nowhere, and columns are not in the pane object at all - it
+/// is the size herdr itself would draw the pane at, which is the size that matters to whatever
+/// picks the session up next.
+///
+/// Empty for a snapshot whose layouts will not read, which leaves every pane where it is: a
+/// pane at the wrong size is bad and a pane resized to a number nobody derived is worse.
+pub fn unattached_sizes(snapshot: &Value, names: &Names) -> BTreeMap<PaneId, PaneCells> {
+    let mut sizes = BTreeMap::new();
+    for layout in snapshot.get("layouts").and_then(Value::as_array).into_iter().flatten() {
+        for pane in layout.get("panes").and_then(Value::as_array).into_iter().flatten() {
+            let Some(id) = non_empty(pane, "pane_id").map(|id| names.pane(&id)) else { continue };
+            let Some(rect) = pane.get("rect").and_then(rect) else { continue };
+            let Some(cells) = PaneCells::inside(rect) else { continue };
+            sizes.insert(id, cells);
+        }
+    }
+    sizes
+}
+
+/// How big one pane's grid is, in cells.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PaneCells {
+    pub columns: u16,
+    pub rows: u16,
+}
+
+impl PaneCells {
+    /// The columns herdr keeps for itself inside a pane's rectangle.
+    ///
+    /// Measured rather than reasoned about: a pane laid out at 54x23 runs a PTY of 53x23 with
+    /// nothing attached (`corpus/herdr-0.8.0/geometry/FACTS.json`, `pty_size_no_viewer` against
+    /// `layout_rect_no_viewer`). Whatever herdr spends it on, the width is one less than the
+    /// rectangle and the height is the rectangle's.
+    ///
+    /// Pinned by `crates/muster-seam/tests/geometry.rs`, which reads a real pane's `stty size`
+    /// on both sides of a Muster that came and went - so a herdr that changes this fails as a
+    /// number that does not match rather than as panes that come back a column narrow.
+    const BORDER_COLUMNS: i64 = 1;
+
+    /// The grid inside a rectangle, or nothing when the rectangle has no room for one.
+    ///
+    /// A pane cannot be zero cells wide, and a rectangle that says so is a payload that did not
+    /// read rather than a pane to resize into nothing.
+    fn inside(rect: Rect) -> Option<PaneCells> {
+        let columns = u16::try_from((rect.width - PaneCells::BORDER_COLUMNS).max(0)).ok()?;
+        let rows = u16::try_from(rect.height.max(0)).ok()?;
+        (columns > 0 && rows > 0).then_some(PaneCells { columns, rows })
+    }
+}
+
 fn axis(direction: &str) -> Option<SplitAxis> {
     match direction {
         "right" => Some(SplitAxis::Columns),

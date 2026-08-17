@@ -52,6 +52,16 @@ pub enum PaneIntent {
 
     /// A wheel movement, which the backend routes against the pane's mouse mode.
     Scroll { direction: ScrollDirection, lines: u16 },
+
+    /// How big the pane's grid should be, in cells.
+    ///
+    /// Not on the input path at all, and here anyway because this is the one channel that can
+    /// carry it: a pane's size follows whichever client is driving it, and driving it is what
+    /// this channel does. The window's own resizes never come through here - the surface's PTY
+    /// carries those, which is why the bridge needs no channel for them - so the one caller is
+    /// Muster letting go, handing a pane back at a size the daemon will lay it out at rather
+    /// than at the size of a window that no longer exists.
+    Resize { columns: u16, rows: u16 },
 }
 
 /// Where a pane's intents go.
