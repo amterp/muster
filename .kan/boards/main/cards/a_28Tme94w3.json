@@ -5,16 +5,17 @@
   "area": [
     "shell"
   ],
-  "column": "next",
+  "column": "done",
   "created_at_millis": 1786801348658,
   "creator": "Alexander Terp",
   "description": "Running an agent in a pane raises TCC prompts attributed to Muster.app - \"Muster.app wants to access files managed by Dropbox\" when Claude Code touches a synced folder. The attribution itself is right and is what every terminal does: macOS charges file access to the responsible process, which is the nearest bundled app up the ancestry, so anything run inside Ghostty or Terminal prompts as Ghostty or Terminal. Granting once should be the end of it.\n\nIt will not be, because the grant cannot stick. `codesign -dv` on the bundle reports `Signature=adhoc` and `TeamIdentifier=not set`, and an ad-hoc signature carries no stable code identity - TCC keys the grant to the cdhash, which changes on every `./dev --bundle`. So every rebuild is a different app as far as macOS is concerned, and every permission has to be given again. That is a papercut in development and unshippable in a release.\n\nThree things, separable:\n\n1. A stable signing identity. A self-signed certificate in the keychain is enough to make grants survive a rebuild, and is a developer-machine step rather than a repo change. Developer ID plus notarization is the shipping answer and belongs with going public.\n\n2. Usage descriptions in Info.plist. We set none, so the prompts macOS lets us word - Desktop, Documents, Downloads, network volumes - say nothing about why Muster is asking. Cheap, and it is the difference between a prompt somebody accepts and one they refuse. The File Provider prompt in the report is not one of these; its text is Dropbox's.\n\n3. The consequence of sessions outliving the app, which is ours alone. The daemon is a child of the app and every pane's program is a child of the daemon, so the responsible process for an agent is whichever Muster started that daemon - including after that Muster has quit, and including for panes a later Muster is showing. Whether TCC then re-prompts, denies, or carries the grant is not something we know, and it decides whether permissions behave consistently across relaunches. Worth measuring before deciding anything: it may argue for the daemon being started by launchd rather than by the app.\n\nReported from a real window, 2026-08-15.",
   "id": "a_28Tme94w3",
-  "position": "!U",
+  "position": "UUUUUUUUUUUUUUUUUUUUUU",
   "title": "🔐 macOS keeps asking Muster for permission, and will keep asking",
-  "updated_at_millis": 1786811428198,
+  "updated_at_millis": 1786986508450,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786801348658},
-    {"field":"column","value":"next","at":1786811428198}
+    {"field":"column","value":"next","at":1786811428198},
+    {"field":"column","value":"done","at":1786984105133}
   ]
 }

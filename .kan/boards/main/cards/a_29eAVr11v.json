@@ -2,19 +2,20 @@
   "_v": 3,
   "alias": "a-subscription-test",
   "alias_explicit": false,
-  "column": "backlog-hi",
+  "column": "done",
   "created_at_millis": 1786973862244,
   "creator": "Alexander Terp",
   "description": "`dropping_the_handle_stops_the_thread` in `crates/muster-herdr/tests/subscription.rs` failed one full-gate run with `timed out after 10s waiting for the first bootstrap`, and passed on its own immediately afterwards. The gate runs several daemon-backed tests at once, each spawning its own herdr, so the deadline is against a daemon competing for the machine rather than against a broken subscription.\n\nA flake in the gate is worse than a slow test: it teaches whoever hits it to re-run rather than to read. Either the deadline is sized for a loaded runner, or the test waits on something deterministic - the daemon answering ping - before starting to count.",
   "id": "a_29eAVr11v",
-  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "position": "UUUUUUUUUUUUUUUUUUUU",
   "tags": [
     "testing"
   ],
   "title": "🧪 A subscription test times out under a loaded gate",
   "type": "chore",
-  "updated_at_millis": 1786973862244,
+  "updated_at_millis": 1786982434444,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1786973862244}
+    {"field":"column","value":"backlog-hi","at":1786973862244},
+    {"field":"column","value":"done","at":1786982421945}
   ]
 }

@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "should-launchd-start",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1786983168509,
+  "creator": "Alexander Terp",
+  "description": "macOS charges a protected request - a folder, the camera, AppleScript - to the responsible process, and for a pane's program that is whichever Muster started its daemon. Measured on 26.4.1 and written up in `docs/observations/macos-26.4.1.md`: it holds while that Muster is alive, and the moment it exits every surviving pane becomes its own responsible process. A later Muster cannot adopt them - responsibility is fixed when a process is spawned and nothing lets an app claim a chain it did not start.\n\nSo today a permission behaves one way before the first relaunch and another way after it, under two different names, and neither prompt says which case you are in. That is the part worth fixing; the panes still work.\n\nA daemon started by launchd would be its own responsible process from the first moment, so every pane it ever makes is attributed the same way whether or not a Muster is running. That is consistency rather than a fix: prompts would name the daemon rather than Muster, and a grant to Muster.app would stop covering panes at all.\n\nWhat it costs is the thing that makes `architecture.md`'s \"Muster ships its daemon and talks to no other\" simple: the daemon stops being the app's own child, so which daemon a window is attached to becomes a question about an installed job rather than about a process Muster started. It also adds something somebody has to install, on a project whose current answer to \"how do I get herdr\" is \"you don't\".\n\nWorth deciding rather than defaulting:\n\n- **Whether consistency is worth losing Muster's own name on the prompt.** A prompt reading `herdr` explains less to the person answering it than one reading Muster, even if it is the same answer every time.\n- **Whether a third option exists.** Muster could re-exec the daemon on a relaunch it finds orphaned, trading the surviving processes for consistent attribution - which is the one thing the durability guarantee exists to prevent, so probably not, but it should be written down as considered.\n- **What it does to the SSH case.** A remote daemon is already outside all of this, so any answer here is about the local one only.\n\nComes out of a_28Tme94w3, which fixed the wording of the prompts and left this decision open.",
+  "id": "a_29i4bxafd",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "title": "🔐 Should launchd start the daemon, so permissions behave the same every launch?",
+  "type": "chore",
+  "updated_at_millis": 1786983168509,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1786983168509}
+  ]
+}

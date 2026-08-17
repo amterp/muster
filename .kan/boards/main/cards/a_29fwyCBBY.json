@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-pane-can-be-placed",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1786978108213,
+  "creator": "Alexander Terp",
+  "description": "`pane new` can build any arrangement you like: `--pane` picks what to split and `--left --right --up --down` picks the side, so a two-by-two is a split down, then a split right off each of the two rows. What no surface offers is changing an arrangement that already exists.\n\nThe gap has teeth because the panes worth rearranging are the panes you least want to close. Getting the split order wrong is easy - three `pane new --down` in a row gives a column of four rather than a grid - and the only correction available is `pane close` plus `pane new`, which ends whatever was running. A daemon-owned pane tree exists so that a pane's contents outlive the app; having to destroy one to move it is the opposite of that.\n\nThe capability is here and has exactly one caller. herdr's `pane.move` takes a target pane and a direction, and `BackendIntent::MovePane` sends it (`crates/muster-herdr/src/intent.rs:645`). What reaches that intent is a single gesture: a sidebar drop, and only when the drop crosses tabs. A drop inside one tab resolves to `SwapPanes` (`crates/muster-seam/src/session.rs:1556-1560`), which exchanges two panes' places and leaves the shape of the tree alone.\n\n|                   | place a new pane | reshape the tree | exchange two panes |\n|-------------------|------------------|------------------|--------------------|\n| CLI               | yes              | -                | -                  |\n| chord             | yes              | -                | -                  |\n| drag across tabs  | -                | yes              | -                  |\n| drag within a tab | -                | -                | yes                |\n\nNo column of that table is served by more than one surface, which is the parity the desiderata ask for going missing in three places at once. `muster pane` carries `new`, `rename`, `send` and `close`, and the seam's payloads (`crates/muster-cli/src/args.rs:22`) carry `SplitPane`, `ZoomPane`, `FocusPane`, `RenamePane`, `SendToPane` and `ClosePane` - so this wants a payload on the seam rather than only a verb in clap. The keymap has no move action either, and neither does Ghostty.\n\nWorth deciding rather than defaulting:\n\n- **Whether one verb covers both.** Move and swap are separate intents already and both are unreachable from outside. Exposing one and not the other leaves the same hole somewhere else.\n- **How a direction is spelled.** `pane new` takes `--left --right --up --down`, so either `muster pane move --pane X --right-of Y` or `--pane X --right --onto Y`. The first reads as a preposition, the second reuses flags people already know from splitting.\n- **Whether it earns a chord.** Every other pane verb has one. Moving a pane is arranging the window rather than going somewhere, which is the argument that already keeps the keyboard off `pane new`.\n- **What leftward and upward cost.** herdr's `SplitDirection` is `right` and `down` alone, for `pane.move` as much as for `pane.split` - so the other two sides are a move plus a rearrange, exactly as `split_left` and `split_up` already are.\n\nFound 2026-08-17, by an agent that opened three worker panes with `pane new --down`, was then asked for a grid, and had nothing to offer but closing three working agents and starting again.",
+  "id": "a_29fwyCBBY",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "title": "🔲 A pane can be placed, but never moved afterwards",
+  "type": "feature",
+  "updated_at_millis": 1786978264522,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1786978108213}
+  ]
+}

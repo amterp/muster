@@ -5,16 +5,18 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "created_at_millis": 1786869414655,
   "creator": "Alexander Terp",
   "description": "Absent `[font] family` means the renderer's own monospace, which is the design. A family that is *named* and not installed is a different case, and Muster currently says nothing about it: the value goes into the derived libghostty config, libghostty accepts it (a family name is a string, not an enum), falls back to a system font, and paints. No diagnostic, no log line, no difference on screen from a typo.\n\nSo `family = \"Fira Cod\"` looks exactly like `family = \"Fira Code\"` on a machine that has neither, and exactly like success on a machine that has one.\n\nThe core cannot answer this - which fonts a machine has is not something a portable core knows, and it is the one appearance value where the machine has the better answer. It is the shell's, and probably `NSFontManager.availableFontFamilies` or a CoreText query at the point the appearance is translated.\n\nWorth deciding rather than defaulting:\n\n- **A warning or a refusal.** Refusing would be consistent with how the core treats a colour it cannot read, but the two are not alike: a bad colour is wrong everywhere, and a font is wrong only on this machine. Somebody syncing one config across a laptop and a devenv would find their file refused on one of them.\n- **Whether to say what it fell back to.** \"Fira Code is not installed; panes are using Menlo\" is the actionable version, and it needs the shell to ask what was actually picked rather than what was asked for.\n- **Whether monospace is worth checking too.** A proportional family renders, badly, and the grid stops lining up - which reads as a Muster bug rather than as a config one.\n\nNot urgent: naming a font you do not have is a self-correcting mistake for anybody who looks at the window. It is on the list because the whole point of the appearance work was that a setting which does not take effect should say so, and this is the one that does not.",
   "id": "a_28wLM0hbC",
-  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "position": "!!!!!!!!!!!!!!!U",
   "title": "🔤 A font family nobody installed is a window nobody can read",
   "type": "chore",
-  "updated_at_millis": 1786869414655,
+  "updated_at_millis": 1786984782882,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1786869414655}
+    {"field":"column","value":"backlog-hi","at":1786869414655},
+    {"field":"column","value":"in-progress","at":1786982422124},
+    {"field":"column","value":"done","at":1786984782882}
   ]
 }

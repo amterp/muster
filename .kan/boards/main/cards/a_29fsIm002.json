@@ -1,0 +1,15 @@
+{
+  "_v": 3,
+  "id": "a_29fsIm002",
+  "alias": "zoom-in-out-should",
+  "alias_explicit": false,
+  "title": "zoom in/out should be per pane, but right now is across all panes",
+  "creator": "Alexander Terp",
+  "created_at_millis": 1786977928780,
+  "updated_at_millis": 1786977928780,
+  "column": "backlog-hi",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1786977928780}
+  ]
+}

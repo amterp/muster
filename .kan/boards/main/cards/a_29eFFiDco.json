@@ -5,16 +5,18 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "created_at_millis": 1786974044438,
   "creator": "Alexander Terp",
   "description": "`events.rs` leaves `tab_moved` in the unknown set, so a tab dragged elsewhere by another client keeps the place it arrived in - `crates/muster-core/src/mirror/ordered.rs:22-25` says so outright.\n\n`pane_moved` was in the same position and was settled by recording one (a_29LNsfI7u): the probe's `arranging` scenario drives a real move, and the recording showed the event carries the whole pane with its new tab, that the answer's trees are under names Muster's reader does not match, and that nothing else states the change. Decoding it was then obvious rather than a guess.\n\nThis is the same job for tabs, and the scenario is the place to do it: add a `tab.move` to `arranging`, record what herdr broadcasts and what the answer carries, then decide whether the mirror can hold an order at all. Worth doing together with whatever settles tab ordering generally, since a mirror that reads `tab_moved` but has nowhere to put the order gains nothing.",
   "id": "a_29eFFiDco",
-  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUU",
   "title": "🔀 tab_moved is unread, so tab order is arrival order",
   "type": "chore",
-  "updated_at_millis": 1786974044438,
+  "updated_at_millis": 1786988798666,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1786974044438}
+    {"field":"column","value":"backlog-hi","at":1786974044438},
+    {"field":"column","value":"in-progress","at":1786982998800},
+    {"field":"column","value":"done","at":1786986686460}
   ]
 }

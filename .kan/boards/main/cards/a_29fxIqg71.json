@@ -1,0 +1,15 @@
+{
+  "_v": 3,
+  "id": "a_29fxIqg71",
+  "alias": "if-in-zoomed-in-mode",
+  "alias_explicit": false,
+  "title": "if in zoomed-in mode (cmd+shift+enter) and you then switch panes with e.g. cmd+2, then right now it continues displaying the previous zoomed pane. should instead display the new pane, also zoomed",
+  "creator": "Alexander Terp",
+  "created_at_millis": 1786978121020,
+  "updated_at_millis": 1786978121020,
+  "column": "backlog-hi",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1786978121020}
+  ]
+}
