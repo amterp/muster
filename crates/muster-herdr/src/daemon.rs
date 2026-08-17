@@ -61,6 +61,7 @@ pub fn start(
     environment: &BTreeMap<String, String>,
     locale: Option<&str>,
     config_path: Option<&str>,
+    commands: Option<&str>,
 ) -> Result<(), String> {
     log::info(
         "daemon.starting",
@@ -79,7 +80,7 @@ pub fn start(
     );
 
     let carried = carried(environment);
-    let supplied = supplied(environment, locale, config_path);
+    let supplied = supplied(environment, locale, config_path, commands);
     let dropped: Vec<&str> = environment
         .keys()
         .filter(|name| !carried.contains_key(*name))
@@ -165,6 +166,7 @@ pub fn ensure_running(
     environment: &BTreeMap<String, String>,
     locale: Option<&str>,
     config_path: Option<&str>,
+    commands: Option<&str>,
 ) -> Result<Reached, String> {
     if answers(socket_path) {
         return Ok(Reached::Adopted);
@@ -177,7 +179,7 @@ pub fn ensure_running(
              stages one beside the binary."
         ));
     };
-    start(binary, socket_path, environment, locale, config_path)?;
+    start(binary, socket_path, environment, locale, config_path, commands)?;
     Ok(Reached::Started)
 }
 
@@ -321,6 +323,7 @@ pub fn supplied(
     environment: &BTreeMap<String, String>,
     locale: Option<&str>,
     config_path: Option<&str>,
+    commands: Option<&str>,
 ) -> BTreeMap<String, String> {
     let mut supplied = BTreeMap::new();
     if let Some(locale) = locale.filter(|locale| !locale.is_empty())
@@ -331,7 +334,37 @@ pub fn supplied(
     if let Some(path) = config_path.filter(|path| !path.is_empty()) {
         supplied.insert("HERDR_CONFIG_PATH".to_string(), path.to_string());
     }
+    if let Some(path) = commands
+        .filter(|path| !path.is_empty())
+        .and_then(|commands| with_commands(environment, commands))
+    {
+        supplied.insert("PATH".to_string(), path);
+    }
     supplied
+}
+
+/// `PATH` with Muster's own command directory in front of it.
+///
+/// The one entry here that is Muster's, on a variable that was inherited - so `PATH` ends up in
+/// both this list and [`carried`], which is the honest description of a value that was handed over
+/// and then added to. It is in this half because this is the list somebody reads when `muster` is
+/// not found in a pane.
+///
+/// In front rather than behind, so a pane reaches the CLI belonging to the window it is drawn in
+/// rather than one somebody installed years ago and forgot. macOS `path_helper` appends to an
+/// inherited PATH rather than replacing it, so the entry survives a pane's login shell.
+///
+/// None when there is nothing to do. Already on the PATH is the common case for anybody who put
+/// the directory in their own profile, and adding it again would lengthen the PATH of every daemon
+/// Muster ever starts. An *empty* PATH is left empty on purpose: a one-entry PATH holding only
+/// Muster's commands is a pane whose shell cannot run `ls`, which is worse than a pane with no
+/// `muster` in it.
+fn with_commands(environment: &BTreeMap<String, String>, commands: &str) -> Option<String> {
+    let path = environment.get("PATH").filter(|path| !path.is_empty())?;
+    if path.split(':').any(|entry| entry == commands) {
+        return None;
+    }
+    Some(format!("{commands}:{path}"))
 }
 
 /// Whether anything in this environment already decides what the locale is.

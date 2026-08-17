@@ -25,7 +25,7 @@ public enum Core {
   public static func start(
     logPath: String?, configPath: String? = nil, daemonPath: String? = nil,
     statePath: String? = nil, daemonConfigPath: String? = nil, paneNamesPath: String? = nil,
-    commandSocketPath: String? = nil, process: String = "app"
+    commandSocketPath: String? = nil, commandsPath: String? = nil, process: String = "app"
   ) {
     muster_set_event_callback(coreEventArrived)
 
@@ -37,6 +37,7 @@ public enum Core {
     startup.daemonConfigPath = daemonConfigPath ?? ""
     startup.paneNamesPath = paneNamesPath ?? ""
     startup.commandSocketPath = commandSocketPath ?? ""
+    startup.commandsPath = commandsPath ?? ""
     startup.locale = platformLocale() ?? ""
     startup.logLevel = ProcessInfo.processInfo.environment["MUSTER_LOG_LEVEL"] ?? ""
     startup.process = process

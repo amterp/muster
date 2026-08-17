@@ -86,6 +86,24 @@ fn platform_locale() -> Option<String> {
     poison::lock(&PLATFORM_LOCALE, "locale").clone()
 }
 
+/// The directory Muster keeps its own commands in, for the daemons it starts.
+///
+/// Held here rather than asked for at each start, on the same terms as the locale above: it is a
+/// question only the shell can answer, and it is needed in the middle of attaching a daemon.
+///
+/// None means this build has no CLI to offer, and then a daemon's PATH is left exactly as it was
+/// inherited - a pane simply has no `muster` in it.
+static COMMANDS: Mutex<Option<String>> = Mutex::new(None);
+
+pub(crate) fn set_commands_path(path: &str) {
+    let mut held = poison::lock(&COMMANDS, "commands");
+    *held = if path.is_empty() { None } else { Some(path.to_string()) };
+}
+
+fn commands_path() -> Option<String> {
+    poison::lock(&COMMANDS, "commands").clone()
+}
+
 /// Where this window's arrangement is remembered, and what was last written there.
 ///
 /// The text rather than the record, so that deciding whether to write is a string compare
@@ -536,6 +554,7 @@ fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, String> {
                 &environment,
                 platform_locale().as_deref(),
                 config.as_ref().map(|(path, _)| path.as_str()),
+                commands_path().as_deref(),
             )?;
             // A daemon left running by an earlier Muster is holding somebody's agents, so it
             // is reused rather than restarted - but it read its config when it started. Asking

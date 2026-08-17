@@ -47,10 +47,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // means trying the ones that are there - so left alone they make the CLI slower to answer
     // and harder to trust with every crash.
     sweepDeadCommandSockets()
+    // Refreshed at every launch rather than installed once: the CLI this points at moves with the
+    // app, and a stale `muster` on somebody's PATH would talk to a window it no longer matches.
+    // Nil means this build staged none, and the core is then told nothing rather than a directory
+    // holding a link that cannot run.
+    let commands = refreshMusterCommand(
+      executable: CommandLine.arguments[0], commands: commandsPath())
     Core.start(
       logPath: logPath, configPath: config, daemonPath: daemon, statePath: statePath(),
       daemonConfigPath: daemonConfigPath(), paneNamesPath: paneNamesPath(),
-      commandSocketPath: commandSocketPath())
+      commandSocketPath: commandSocketPath(), commandsPath: commands)
     Core.info(
       "app.launch",
       [

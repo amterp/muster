@@ -385,6 +385,84 @@
           "HERDR_CONFIG_PATH"
         ]
       }
+    },
+    {
+      "name": "a pane can reach the muster command belonging to its own window",
+      "why": "The whole of how an agent in a pane comes to be able to drive the window it is drawn in. Every pane is a child of the daemon, so the daemon's PATH is the pane's PATH, and Muster's own command directory goes on the front of it. In front rather than behind, so a pane reaches the CLI of the window it is in rather than one somebody installed years ago; macOS path_helper appends to an inherited PATH rather than replacing it, so the entry survives a pane's login shell. PATH is in both lists here, which is the honest description of a variable that was inherited and then added to - and this is the list somebody reads when `muster` is not found in a pane.",
+      "given": {
+        "env": {
+          "HOME": "/Users/a",
+          "PATH": "/usr/bin:/bin"
+        },
+        "commands": "/Users/a/.muster/bin"
+      },
+      "expect": {
+        "carried": [
+          "HOME=/Users/a",
+          "PATH=/usr/bin:/bin"
+        ],
+        "supplied": [
+          "PATH=/Users/a/.muster/bin:/usr/bin:/bin"
+        ],
+        "dropped": []
+      }
+    },
+    {
+      "name": "a directory already on the PATH is not put there twice",
+      "why": "Anybody who added this to their own shell profile would otherwise have it prepended again on every launch, and a daemon adopted from an earlier Muster hands its PATH to every pane it ever spawns. The entry is already doing its job; a second copy only makes the value longer and the log harder to read.",
+      "given": {
+        "env": {
+          "HOME": "/Users/a",
+          "PATH": "/Users/a/.muster/bin:/usr/bin"
+        },
+        "commands": "/Users/a/.muster/bin"
+      },
+      "expect": {
+        "carried": [
+          "HOME=/Users/a",
+          "PATH=/Users/a/.muster/bin:/usr/bin"
+        ],
+        "supplied": [],
+        "dropped": []
+      }
+    },
+    {
+      "name": "an empty PATH is left empty rather than filled with one entry",
+      "why": "A PATH holding only Muster's commands is a pane whose shell cannot run `ls`, which is worse than a pane with no `muster` in it - and nothing here can honestly say what the rest of the PATH should be. An empty value is not carried either, so the shell in that pane builds its own from scratch, which is what it did before this existed.",
+      "given": {
+        "env": {
+          "HOME": "/Users/a",
+          "PATH": ""
+        },
+        "commands": "/Users/a/.muster/bin"
+      },
+      "expect": {
+        "carried": [
+          "HOME=/Users/a"
+        ],
+        "supplied": [],
+        "dropped": [
+          "PATH"
+        ]
+      }
+    },
+    {
+      "name": "a build that staged no command changes nobody's PATH",
+      "why": "The state a checkout without a staged CLI is in, and it has to be a quiet one: the window works exactly as it did before any of this existed, and a pane simply finds no `muster`. Inventing a directory to name would put a path on every daemon's PATH that holds nothing.",
+      "given": {
+        "env": {
+          "HOME": "/Users/a",
+          "PATH": "/usr/bin"
+        }
+      },
+      "expect": {
+        "carried": [
+          "HOME=/Users/a",
+          "PATH=/usr/bin"
+        ],
+        "supplied": [],
+        "dropped": []
+      }
     }
   ]
 }

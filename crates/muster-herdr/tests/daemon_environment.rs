@@ -26,9 +26,13 @@ fn daemon_environment_conformance() {
         // answer. Absent is a launch that found nowhere to write one, and the daemon then
         // reads the user's own herdr config the way it did before this existed.
         let daemon_config = given.get("daemon_config").and_then(Value::as_str);
+        // The directory this build's `muster` command sits in, which the shell decides and puts a
+        // link in. Absent is a build that staged no CLI, and then a pane's PATH is whatever it
+        // inherited.
+        let commands = given.get("commands").and_then(Value::as_str);
 
         let carried = carried(&environment);
-        let supplied = supplied(&environment, locale, daemon_config);
+        let supplied = supplied(&environment, locale, daemon_config, commands);
         // All three, because a case about a leak is a case about what was *not* carried, and
         // an expectation that only listed the survivors would pass just as well if the filter
         // let everything through and the case happened to name every variable. `supplied` is

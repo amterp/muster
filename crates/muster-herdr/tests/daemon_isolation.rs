@@ -63,7 +63,7 @@ fn a_pane_does_not_inherit_the_launching_sessions_private_state() {
 
     // No LANG anywhere in the environment above, which is what launchd hands a GUI process -
     // so this is the launch that used to leave every pane in the C locale.
-    daemon::start(&binary(), &socket, &environment, Some(PLATFORM_LOCALE), None)
+    daemon::start(&binary(), &socket, &environment, Some(PLATFORM_LOCALE), None, None)
         .expect("the pinned daemon should start");
     let client = HerdrClient::new(&socket);
     let stopped = Stop(socket.clone());

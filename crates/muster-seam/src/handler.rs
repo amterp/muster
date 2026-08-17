@@ -936,6 +936,10 @@ fn start(startup: &proto::Startup) -> Response {
     // Before the config for the sharpest version of that reason: this is where the file that
     // daemon reads gets written, and `herdr server` reads its config once at startup.
     session::set_daemon_config_path(&startup.daemon_config_path);
+    // Before the config for the same reason once more: applying one can start a daemon, and this
+    // is part of the environment that daemon is born with - so a pane it spawns has `muster` on
+    // its PATH from the first one onwards.
+    session::set_commands_path(&startup.commands_path);
 
     if startup.log_path.is_empty() {
         apply_config(&startup.config_path);

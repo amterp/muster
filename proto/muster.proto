@@ -780,6 +780,19 @@ message Startup {
   // no endpoint wanted - the window then answers only its own shell.
   string command_socket_path = 10;
 
+  // The directory Muster keeps its own commands in, or empty for none.
+  //
+  // Put on the PATH of every daemon the core starts, and so on the PATH of every pane those
+  // daemons spawn. That is the whole of how a program inside a pane comes to be able to run
+  // `muster` at all: the alternative is asking every user to install something, which makes the
+  // surface taught rather than found.
+  //
+  // The shell decides where it goes and puts a link to this build's CLI in it, for the same
+  // reason it decides where the log goes. Empty is a real state and not a failure - this build
+  // staged no CLI, or there is nowhere to write one, and then a pane simply has no `muster` and
+  // the window works exactly as it did before this existed.
+  string commands_path = 11;
+
   // trace, debug, info, warn, error. Empty means debug.
   string log_level = 2;
 

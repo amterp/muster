@@ -74,7 +74,9 @@ fn a_pane_runs_the_shell_musters_own_config_names() {
         socket.len()
     );
 
-    daemon::start(&binary(), &socket, &environment, Some(PLATFORM_LOCALE), Some(&derived))
+    // No command directory: this test is about which config file a pane's shell reads, and putting
+    // a `muster` on that shell's PATH would be a second thing changing at the same time.
+    daemon::start(&binary(), &socket, &environment, Some(PLATFORM_LOCALE), Some(&derived), None)
         .expect("the pinned daemon should start");
     let stopped = Stop(socket.clone());
 

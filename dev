@@ -170,6 +170,10 @@ fn stage_helpers():
     stdout = $`swift build --show-bin-path`
     swift_bin = stdout.trim()
     stage(target = "target/debug/muster-bridge", into = "{swift_bin}/muster-bridge")
+    // The CLI, staged under a different name than cargo built it under: the app's own executable
+    // is already `muster`, and the two would collide in one directory. The app puts a link called
+    // `muster` in ~/.muster/bin pointing here, which is what a pane finds on its PATH.
+    stage(target = "target/debug/muster", into = "{swift_bin}/muster-cli")
     herdr = herdr_binary()
     stage(target = herdr, into = "{swift_bin}/herdr")
 
@@ -208,6 +212,7 @@ fn build_bundle():
     // beside the running executable and one rule has to cover the dev build and the bundle.
     $`cp {swift_bin}/muster {contents}/MacOS/muster`
     $`cp {swift_bin}/muster-bridge {contents}/MacOS/muster-bridge`
+    $`cp {swift_bin}/muster-cli {contents}/MacOS/muster-cli`
     $`cp {swift_bin}/herdr {contents}/MacOS/herdr`
     $`cp target/debug/libmuster.dylib {contents}/Frameworks/libmuster.dylib`
     $`cp {GHOSTTY_DIR}/zig-out/lib/libghostty-vt.dylib {contents}/Frameworks/libghostty-vt.dylib`
@@ -285,6 +290,7 @@ fn sign_bundle(swift_bin, contents):
     $`codesign -f -s - {contents}/Frameworks/libghostty-vt.dylib`
     $`codesign -f -s - {contents}/Frameworks/libmuster.dylib`
     $`codesign -f -s - {contents}/MacOS/muster-bridge`
+    $`codesign -f -s - {contents}/MacOS/muster-cli`
     $`codesign -f -s - {contents}/MacOS/herdr`
 
     // The entitlement SwiftPM signs a debug build with: it is what lets a debugger attach,
