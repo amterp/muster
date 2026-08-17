@@ -6,6 +6,8 @@
 //! counter reaches a client here and nowhere else
 //! (`observations/herdr-0.8.0.md` section 10).
 
+use std::time::Duration;
+
 use muster_core::AgentState;
 use muster_core::mirror::backend::{Focus, Pane, Snapshot, Tab, TabId, Workspace, WorkspaceId};
 use muster_core::names::Names;
@@ -25,8 +27,22 @@ use crate::layout::read_layout;
 /// Asking twice costs nothing. Bootstrap replaces rather than merges, and replacing a
 /// picture with the same picture reports no changes at all.
 pub fn fetch_snapshot(socket_path: &str, names: &Names) -> Result<(Snapshot, usize), Failure> {
+    fetch_snapshot_within(socket_path, names, HerdrClient::DEFAULT_TIMEOUT)
+}
+
+/// The same, for a caller that can say how long the answer is worth waiting for.
+///
+/// The default above is the client's, which is short because that client sits on the input
+/// path and a wedged daemon must not take the keyboard with it. A caller for whom nothing
+/// renders until this answers is not on the input path and should not be held to a keystroke's
+/// budget - the subscription's bootstrap is the one that is not, and it says why.
+pub fn fetch_snapshot_within(
+    socket_path: &str,
+    names: &Names,
+    allowance: Duration,
+) -> Result<(Snapshot, usize), Failure> {
     let client = HerdrClient::new(socket_path.to_string());
-    let result = client.request("session.snapshot", &json!({}))?;
+    let result = client.request_within("session.snapshot", &json!({}), allowance)?;
     Ok(read_snapshot(result.get("snapshot").unwrap_or(&Value::Null), names))
 }
 

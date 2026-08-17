@@ -632,9 +632,7 @@ fn a_daemon_that_will_not_describe_its_session_is_reported_and_tried_again() {
     // bootstraps - and the mirror stays empty for the life of the process. Three connections
     // means the subscription came back after the snapshot failed rather than settling down to
     // stream events into a mirror with no world in it.
-    until("the subscription to dial again after the snapshot failed", || {
-        daemon.connections() >= 3
-    });
+    until("the subscription to dial again after the snapshot failed", || daemon.connections() >= 3);
 
     assert_ne!(
         mirror.lock().unwrap().health(),

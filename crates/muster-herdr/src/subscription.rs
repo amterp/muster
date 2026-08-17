@@ -25,9 +25,9 @@ use muster_core::mirror::{Change, Mirror};
 use muster_core::names::Names;
 use serde_json::{Value, json};
 
-use crate::client::HerdrClient;
+use crate::client::{Failure, HerdrClient};
 use crate::events::EventDecoder;
-use crate::snapshot::fetch_snapshot;
+use crate::snapshot::fetch_snapshot_within;
 
 /// What the subscription tells its owner, as it happens.
 ///
@@ -173,6 +173,12 @@ fn run(
 ) {
     let mut attempt = 0usize;
     let mut connected_before = false;
+    // Two flags rather than one, because they answer different questions and a failed
+    // bootstrap is where the two part company. Whether to say "reconnected" is about the
+    // socket; whether the mirror is stale or disconnected is about whether it has ever held a
+    // session, and a connection that was acknowledged and then said nothing has not given it
+    // one.
+    let mut held_a_session = false;
 
     let structure: Vec<Value> = STRUCTURE.iter().map(|kind| json!({ "type": kind })).collect();
     let mut agents = AgentWatchers::new(socket_path, mirror, report, names);
@@ -184,22 +190,56 @@ fn run(
                     report(Notice::Reconnected);
                 }
                 connected_before = true;
-                attempt = 0;
 
                 // Snapshot after subscribing, never before. Between a snapshot and a
                 // later subscribe there is a window in which an event fires and reaches
                 // nobody, and it is invisible: the mirror would be wrong in a way no
                 // counter reports. Subscribing first makes the overlap a duplicate
                 // instead, which upsert already absorbs.
-                bootstrap(socket_path, mirror, report, names);
-                agents.follow();
-                let detail = stream_events(stream, mirror, report, running, &mut agents, names);
+                let detail = match bootstrap(socket_path, mirror, report, names) {
+                    Ok(()) => {
+                        held_a_session = true;
+                        // Reset here rather than on the dial, so that a daemon which keeps
+                        // accepting and keeps failing to describe itself backs off like any
+                        // other failure instead of being asked again every fifty milliseconds.
+                        attempt = 0;
+
+                        agents.follow();
+                        stream_events(stream, mirror, report, running, &mut agents, names)
+                    }
+                    // A connection with no session behind it is worse than no connection.
+                    // Every event on it describes a change to a world the mirror does not
+                    // have, and nothing would ever fetch that world again: the connection is
+                    // healthy, so there is no reconnect, and a reconnect is the only thing
+                    // that bootstraps. Streaming it anyway is how a snapshot that took
+                    // slightly too long became a window that stayed empty until the daemon
+                    // restarted. So this ends the attempt, which puts it back on the backoff
+                    // loop below like any other failure.
+                    Err(failure) => {
+                        drop(stream);
+                        format!(
+                            "the daemon acknowledged the subscription and then would not \
+                             describe its session ({failure})"
+                        )
+                    }
+                };
 
                 *poison::lock(shared_stream, "subscription-stream") = None;
                 if !running.load(Ordering::Relaxed) {
                     return;
                 }
-                poison::lock(mirror, "mirror").mark_stale(&detail);
+                {
+                    // Stale once a session has been held, disconnected before that, on the
+                    // same terms as a failed dial: a mirror that never got a snapshot has no
+                    // last good answer to label as aging, and calling an empty one stale would
+                    // offer a session nobody has ever seen as one that merely needs refreshing.
+                    let mut mirror = poison::lock(mirror, "mirror");
+                    if held_a_session {
+                        mirror.mark_stale(&detail);
+                    } else {
+                        mirror.mark_disconnected(&detail);
+                    }
+                }
                 report(Notice::Stale { detail });
             }
             Err(detail) => {
@@ -210,7 +250,7 @@ fn run(
                     // Disconnected rather than stale on a failed dial: nothing has been
                     // reached, so there is no last good answer to label as aging.
                     let mut mirror = poison::lock(mirror, "mirror");
-                    if connected_before {
+                    if held_a_session {
                         mirror.mark_stale(&detail);
                     } else {
                         mirror.mark_disconnected(&detail);
@@ -300,10 +340,34 @@ fn read_line(stream: &mut UnixStream) -> Option<Vec<u8>> {
     Some(line)
 }
 
-fn bootstrap(socket_path: &str, mirror: &Arc<Mutex<Mirror>>, report: &Report, names: &Names) {
-    let Ok((snapshot, dropped)) = fetch_snapshot(socket_path, names) else { return };
+/// How long the session is worth waiting for before the attempt counts as failed.
+///
+/// Not the client's own default, which is 500ms because that client sits on the input path and
+/// a wedged daemon must not take the keyboard with it. Nothing renders until this call answers,
+/// so giving up on a daemon that is merely busy costs the whole window rather than one
+/// keystroke - and giving up used to cost it permanently.
+///
+/// Five seconds against a snapshot measured at 0.7ms (`docs/testing.md`). The bound it has to
+/// clear is a machine under load rather than a daemon under load, which is why it is nowhere
+/// near the measurement: the harness allows twenty seconds for a daemon's first ping and
+/// `client_connection.rs` spends ten on a call that waits for something to happen. Past five
+/// the retry below is the better answer anyway, because by then the window has been told.
+const SESSION_ALLOWANCE: Duration = Duration::from_secs(5);
+
+/// Rebuilds the mirror from the daemon's own answer, so events have a world to describe.
+///
+/// Answers with the failure rather than swallowing it. What used to be here discarded it and
+/// returned, and the caller carried straight on to streaming - see `run` for what that cost.
+fn bootstrap(
+    socket_path: &str,
+    mirror: &Arc<Mutex<Mirror>>,
+    report: &Report,
+    names: &Names,
+) -> Result<(), Failure> {
+    let (snapshot, dropped) = fetch_snapshot_within(socket_path, names, SESSION_ALLOWANCE)?;
     let changes = poison::lock(mirror, "mirror").bootstrap(snapshot);
     report(Notice::Bootstrapped { changes, dropped });
+    Ok(())
 }
 
 /// Reads until the daemon hangs up, and says why it stopped.
