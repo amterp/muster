@@ -20,14 +20,11 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 muster-core.workspace = true
 muster-herdr.workspace = true
+muster-proto.workspace = true
 muster-ssh.workspace = true
 libc.workspace = true
 prost.workspace = true
 muster-vt.workspace = true
-
-[build-dependencies]
-prost-build = "0.14"
-protox = "0.9"
 
 # What attaching does can only be judged against a real daemon: the answer to "which tab is
 # this pane in" is the daemon's, and a stand-in would be Muster's own guess at it.

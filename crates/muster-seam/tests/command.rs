@@ -15,7 +15,7 @@ use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 
 use herdr_harness::Daemon;
-use muster::command::{LARGEST_MESSAGE, read_frame, write_frame};
+use muster::proto::frame::{LARGEST_MESSAGE, read_frame, write_frame};
 use muster::proto::{
     OpenWindow, ReadWindow, Request, Response, SendToPane, SplitPane, Startup, Window, request,
     response,

@@ -19,8 +19,14 @@ pub mod command;
 mod convert;
 pub mod ffi;
 mod handler;
-pub mod proto;
 mod session;
+
+/// Muster's vocabulary, under the name the rest of this crate has always called it.
+///
+/// A separate crate since the CLI existed, because a client has to be able to link the schema
+/// without linking this one - and re-exported rather than referred to directly so that the
+/// seam's own code, and the tests that drive it, read the same as before.
+pub use muster_proto as proto;
 
 pub use ffi::emit;
 pub use handler::dispatch;

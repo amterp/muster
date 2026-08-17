@@ -3,10 +3,12 @@ resolver = "3"
 members = [
     "crates/conformance",
     "crates/herdr-harness",
-    "crates/muster-core",
     "crates/muster-bridge",
+    "crates/muster-cli",
+    "crates/muster-core",
     "crates/muster-herdr",
     "crates/muster-perf",
+    "crates/muster-proto",
     "crates/muster-seam",
     "crates/muster-ssh",
     "crates/muster-vt",
@@ -24,8 +26,10 @@ conformance = { path = "crates/conformance" }
 flexid = "0.1"
 herdr-harness = { path = "crates/herdr-harness" }
 libc = "0.2"
+muster-cli = { path = "crates/muster-cli" }
 muster-core = { path = "crates/muster-core" }
 muster-herdr = { path = "crates/muster-herdr" }
+muster-proto = { path = "crates/muster-proto" }
 muster-seam = { path = "crates/muster-seam" }
 muster-ssh = { path = "crates/muster-ssh" }
 muster-vt = { path = "crates/muster-vt" }

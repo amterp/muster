@@ -1,0 +1,15 @@
+[package]
+name = "muster-proto"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+prost.workspace = true
+
+[build-dependencies]
+prost-build = "0.14"
+protox = "0.9"
+
+[lints]
+workspace = true
