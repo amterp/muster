@@ -1047,3 +1047,56 @@ is enough for a swap and is not enough for a move, and the difference is exactly
 Evidence: `corpus/herdr-0.8.0/arranging/` - `FACTS.json` for the event kinds, payload keys
 and answer shapes, `wire.ndjson` for the requests and their replies, `events.ndjson` for
 what each subscriber saw. Re-record with `tools/herdr-probe/probe arranging`.
+
+## 21. A tab moved is announced to nobody but whoever named `tab.moved`, and to them it states the whole new order
+
+**A tab reordered announces exactly one event, and nothing else says it happened.** A client
+subscribed to every one of the twenty-four structural kinds saw a single event for a real
+`tab.move`: `tab_moved`, with no `layout_updated` and no `tab_focused` beside it. Drop
+`tab.moved` from that list and a further move announces **nothing at all**, while the order
+changes anyway: the list stood at `w1:t3, w1:t1, w1:t2` and came out `w1:t1, w1:t3, w1:t2`,
+with the subscriber told none of it. That is a sharper version of section 20's finding rather
+than a repeat of it. A pane carried between tabs at least announced `layout_updated` to an unsubscribed
+client, so something arrived and was merely insufficient; a tab moved reaches such a client as
+silence, and Muster is exactly that client - `tab.moved` is not in its subscription list, so
+no run has ever received one and the decoder's unknown-kind warning could not have fired for
+it either.
+
+**The payload states the whole new order, absolutely.** Keys are `insert_index`, `tab_id`,
+`tabs`, `type`, `workspace_id`, and `tabs` is an array of the same `TabInfo` a snapshot
+carries - in the order they now sit. So there is nothing to compute: a client applies the
+sequence it is given, which is what the event model asks for (absolute values, never deltas).
+The array is that workspace's tabs rather than the session's; the recording had one workspace,
+and herdr builds it from `tab_list_info(ws_idx)` at `src/app/api/tabs.rs:206`.
+
+**A tab keeps its id across a move.** Measured directly: the same three ids before and after,
+in a different order. Worth stating because herdr's `tab_id` *looks* positional - `w1:t3` - and
+if it were, this would be three renames rather than one reorder and no mirror keyed by id could
+follow it. The id is built from a number stored on the tab, and moving the tab carries the
+number with it.
+
+**A tab's label is positional, and this event is the only thing that renumbers it.** An unnamed
+tab's label is its place, so moving one relabels every unnamed tab in the workspace: `w1:t1`
+went from `1` to `2` and `w1:t3` from `3` to `1`, while `w1:t2` kept the name `second` somebody
+had given it. Two consequences, and they point in opposite directions. Anything drawing herdr's
+labels has no way to keep them current without reading this event. And anything that reads the
+event must not take the labels from it: a tab's label has one writer, `tab_renamed`, precisely
+because a replayed creation label puts a number back over somebody's name (section 16), and
+these are the same numbers. Muster discards an all-digits label and draws its own place, so for
+Muster this is a field to ignore rather than a second thing to fix.
+
+**A move that moves nothing announces nothing, and still answers with the list.** Asked to put
+a tab at the index it already held, herdr sent no event at all and answered `tab_list` as
+usual. So silence is safe to read as "the order did not change", and a caller cannot tell a
+declined move from a performed one by looking at its answer - which is the shape of
+`a_29e9bxN9r` in a place nobody was looking for it.
+
+**The answer carries the settled order.** `tab.move` answers `tab_list { tabs }`, so a caller
+is a round trip ahead of its own subscription the way it is for a swap (section 14) - unlike a
+pane move, whose trees arrive under names nothing reads (section 20). Nothing in Muster reorders
+tabs today, so this is a fact held in reserve rather than one being acted on.
+
+Evidence: `corpus/herdr-0.8.0/arranging/` - `FACTS.json` for the event kinds, the order before
+and after, the payload and the label renumbering, `wire.ndjson` for the requests and their
+replies, `events.ndjson` for what each subscriber saw. Re-record with
+`tools/herdr-probe/probe arranging`.

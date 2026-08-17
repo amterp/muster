@@ -172,6 +172,7 @@ fn describe(change: &Change) -> String {
         Change::TabAdded(tab) => format!("tabAdded:{tab}"),
         Change::TabRelabelled(tab) => format!("tabRelabelled:{tab}"),
         Change::TabRemoved(tab) => format!("tabRemoved:{tab}"),
+        Change::TabsReordered(workspace) => format!("tabsReordered:{workspace}"),
         Change::LayoutChanged(tab) => format!("layoutChanged:{tab}"),
         Change::WorkspaceAdded(workspace) => format!("workspaceAdded:{workspace}"),
         Change::WorkspaceRelabelled(workspace) => format!("workspaceRelabelled:{workspace}"),
@@ -200,6 +201,16 @@ fn read_event(given: &Value) -> BackendEvent {
             label: text(given, "label"),
         }),
         "tabRemoved" => BackendEvent::TabRemoved(TabId::new(text(given, "id"))),
+        "tabsReordered" => BackendEvent::TabsReordered {
+            workspace: WorkspaceId::new(text(given, "workspace")),
+            order: given["order"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .map(TabId::new)
+                .collect(),
+        },
         "paneUpserted" => BackendEvent::PaneUpserted(read_pane(given)),
         "paneRemoved" => BackendEvent::PaneRemoved(PaneId::new(text(given, "id"))),
         "layoutUpserted" => BackendEvent::LayoutUpserted(read_layout(given)),

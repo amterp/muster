@@ -3479,6 +3479,381 @@
           "paneAdded:w1:p2"
         ]
       }
+    },
+    {
+      "name": "a tab reordered elsewhere takes the place the daemon gave it",
+      "why": "Tab order used to be arrival order outright, and this is the whole of what changed: the mirror keys tabs by id, so the order was whatever a snapshot happened to list and nothing could move it afterwards. herdr states the settled list rather than an offset, so it is adopted as given. The change is reported so the roster republishes - the places it draws are read off this order, and a mirror that held the new one while the window drew the old would be the same bug quieter.",
+      "given": {
+        "snapshot": {
+          "workspaces": [
+            {
+              "id": "w1",
+              "label": "tmp"
+            }
+          ],
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            },
+            {
+              "id": "w1:t2",
+              "workspace": "w1",
+              "label": "second"
+            },
+            {
+              "id": "w1:t3",
+              "workspace": "w1",
+              "label": "3"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            },
+            {
+              "id": "w1:p2",
+              "tab": "w1:t2",
+              "workspace": "w1",
+              "agentState": "idle"
+            },
+            {
+              "id": "w1:p3",
+              "tab": "w1:t3",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "tabsReordered",
+            "workspace": "w1",
+            "order": [
+              "w1:t3",
+              "w1:t1",
+              "w1:t2"
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1",
+          "w1:p2",
+          "w1:p3"
+        ],
+        "tabs": [
+          "w1:t3",
+          "w1:t1",
+          "w1:t2"
+        ],
+        "workspaces": [
+          "w1"
+        ],
+        "agentStates": {
+          "w1:p1": "idle",
+          "w1:p2": "idle",
+          "w1:p3": "idle"
+        },
+        "tabLabels": {
+          "w1:t1": "1",
+          "w1:t2": "second",
+          "w1:t3": "3"
+        },
+        "layouts": {},
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "tabsReordered:w1"
+        ]
+      }
+    },
+    {
+      "name": "a reorder that restates the order it already had is not news",
+      "why": "A subscription replays a session on every reconnect, so the mirror is re-told things it already knows - and this one republishes the whole window when it is reported. Silence for an order that did not move keeps a reconnect from costing a redraw per workspace, and is the same rule TabRenamed already follows for a label that did not change.",
+      "given": {
+        "snapshot": {
+          "workspaces": [
+            {
+              "id": "w1",
+              "label": "tmp"
+            }
+          ],
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            },
+            {
+              "id": "w1:t2",
+              "workspace": "w1",
+              "label": "second"
+            },
+            {
+              "id": "w1:t3",
+              "workspace": "w1",
+              "label": "3"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            },
+            {
+              "id": "w1:p2",
+              "tab": "w1:t2",
+              "workspace": "w1",
+              "agentState": "idle"
+            },
+            {
+              "id": "w1:p3",
+              "tab": "w1:t3",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "tabsReordered",
+            "workspace": "w1",
+            "order": [
+              "w1:t1",
+              "w1:t2",
+              "w1:t3"
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1",
+          "w1:p2",
+          "w1:p3"
+        ],
+        "tabs": [
+          "w1:t1",
+          "w1:t2",
+          "w1:t3"
+        ],
+        "workspaces": [
+          "w1"
+        ],
+        "agentStates": {
+          "w1:p1": "idle",
+          "w1:p2": "idle",
+          "w1:p3": "idle"
+        },
+        "tabLabels": {
+          "w1:t1": "1",
+          "w1:t2": "second",
+          "w1:t3": "3"
+        },
+        "layouts": {},
+        "focus": {},
+        "health": "connected",
+        "changes": []
+      }
+    },
+    {
+      "name": "a reorder naming a tab the mirror has never held places the rest anyway",
+      "why": "The order and the census are different questions. A tab created a moment ago may be in the daemon's list before its own creation event has been applied, and refusing the whole order over it would leave every other tab where it was for a reason nobody could see. The unknown name is skipped without consuming a place, so the tabs that are held land in the stated sequence rather than shifted by one - which would be an order nobody sent.",
+      "given": {
+        "snapshot": {
+          "workspaces": [
+            {
+              "id": "w1",
+              "label": "tmp"
+            }
+          ],
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            },
+            {
+              "id": "w1:t2",
+              "workspace": "w1",
+              "label": "second"
+            },
+            {
+              "id": "w1:t3",
+              "workspace": "w1",
+              "label": "3"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            },
+            {
+              "id": "w1:p2",
+              "tab": "w1:t2",
+              "workspace": "w1",
+              "agentState": "idle"
+            },
+            {
+              "id": "w1:p3",
+              "tab": "w1:t3",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "tabsReordered",
+            "workspace": "w1",
+            "order": [
+              "w1:t9",
+              "w1:t3",
+              "w1:t1",
+              "w1:t2"
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1",
+          "w1:p2",
+          "w1:p3"
+        ],
+        "tabs": [
+          "w1:t3",
+          "w1:t1",
+          "w1:t2"
+        ],
+        "workspaces": [
+          "w1"
+        ],
+        "agentStates": {
+          "w1:p1": "idle",
+          "w1:p2": "idle",
+          "w1:p3": "idle"
+        },
+        "tabLabels": {
+          "w1:t1": "1",
+          "w1:t2": "second",
+          "w1:t3": "3"
+        },
+        "layouts": {},
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "tabsReordered:w1"
+        ]
+      }
+    },
+    {
+      "name": "reordering one workspace's tabs leaves another workspace's where they were",
+      "why": "herdr scopes the list to one workspace, and the mirror holds one flat order across all of a daemon's workspaces - so applying the list wholesale would have to invent where the other workspace's tabs go. Only the places the named tabs already hold are permuted, so a tab of w2 sitting between two of w1 stays sitting between them. Nothing states a cross-workspace order and nothing here makes one up.",
+      "given": {
+        "snapshot": {
+          "workspaces": [
+            {
+              "id": "w1",
+              "label": "one"
+            },
+            {
+              "id": "w2",
+              "label": "two"
+            }
+          ],
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            },
+            {
+              "id": "w2:t1",
+              "workspace": "w2",
+              "label": "1"
+            },
+            {
+              "id": "w1:t2",
+              "workspace": "w1",
+              "label": "2"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            },
+            {
+              "id": "w2:p1",
+              "tab": "w2:t1",
+              "workspace": "w2",
+              "agentState": "idle"
+            },
+            {
+              "id": "w1:p2",
+              "tab": "w1:t2",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "tabsReordered",
+            "workspace": "w1",
+            "order": [
+              "w1:t2",
+              "w1:t1"
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1",
+          "w2:p1",
+          "w1:p2"
+        ],
+        "tabs": [
+          "w1:t2",
+          "w2:t1",
+          "w1:t1"
+        ],
+        "workspaces": [
+          "w1",
+          "w2"
+        ],
+        "agentStates": {
+          "w1:p1": "idle",
+          "w1:p2": "idle",
+          "w2:p1": "idle"
+        },
+        "tabLabels": {
+          "w1:t1": "1",
+          "w1:t2": "2",
+          "w2:t1": "1"
+        },
+        "layouts": {},
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "tabsReordered:w1"
+        ]
+      }
     }
   ]
 }

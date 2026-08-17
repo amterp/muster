@@ -36,6 +36,21 @@ pub enum BackendEvent {
         label: String,
     },
     TabRemoved(TabId),
+    /// One workspace's tabs, in the order they now sit.
+    ///
+    /// The whole order rather than the tab that moved and where it went, because that is what
+    /// the backend states: herdr's `tab_moved` carries the settled list and is the only thing
+    /// that says a tab moved at all - a client that has not named the event sees nothing while
+    /// the order changes under it (`observations/herdr-0.8.0.md` section 21).
+    ///
+    /// Order only. The payload carries a whole description of every tab, and taking anything
+    /// else from it would make this a second writer for a field that has one: an unnamed tab's
+    /// backend label is its position, so every one of them is relabelled by a move, and those
+    /// are the same numbers [`BackendEvent::TabRenamed`] exists to keep out.
+    TabsReordered {
+        workspace: WorkspaceId,
+        order: Vec<TabId>,
+    },
     PaneUpserted(Pane),
     /// A pane is gone, however it went. The backend distinguishes a pane a client closed
     /// from one whose program ended, and Muster does not: both mean the surface should
@@ -105,6 +120,12 @@ pub enum Change {
     /// find again.
     TabRelabelled(TabId),
     TabRemoved(TabId),
+    /// This workspace's tabs sit in a different order than they did.
+    ///
+    /// Carries the workspace rather than the order, on the same terms
+    /// [`Change::LayoutChanged`] carries a tab rather than a tree: every reader has the mirror
+    /// in hand, and the one that cares walks it.
+    TabsReordered(WorkspaceId),
     /// This tab's tree is not the one it was. Carries the tab rather than the tree,
     /// because every reader has the mirror in hand and only some of them want to walk it.
     LayoutChanged(TabId),
@@ -134,8 +155,10 @@ impl Change {
     /// Whether this can have moved something composition names.
     ///
     /// Agent state and daemon focus cannot: one is a property of a pane that still exists,
-    /// and the other is a cursor Muster writes and never reads. Everything else moves a tab
-    /// or a pane, and both are things a region is holding on to.
+    /// and the other is a cursor Muster writes and never reads. A reorder cannot either -
+    /// composition names a tab, and every tab it named is still there and still in the same
+    /// workspace. Everything else moves a tab or a pane, and both are things a region is
+    /// holding on to.
     ///
     /// A false positive costs a reconcile and a republish that change nothing. A false
     /// negative leaves a region pointing at a tab the daemon has closed, which is why the
@@ -147,6 +170,7 @@ impl Change {
                 | Change::AgentTransitionsMissed { .. }
                 | Change::PaneRelabelled(_)
                 | Change::TabRelabelled(_)
+                | Change::TabsReordered(_)
                 | Change::WorkspaceRelabelled(_)
                 | Change::FocusChanged
         )
@@ -170,6 +194,7 @@ impl Change {
                 self,
                 Change::PaneRelabelled(_)
                     | Change::TabRelabelled(_)
+                    | Change::TabsReordered(_)
                     | Change::WorkspaceRelabelled(_)
             )
     }

@@ -361,6 +361,19 @@ impl Mirror {
         }
     }
 
+    /// Puts one workspace's tabs in the order the backend says they now sit.
+    ///
+    /// Adopted rather than checked against the tabs held: an order naming one this has never
+    /// heard of is not an order to refuse, because the tab's own creation is on its way and
+    /// every other tab would sit where it was for a reason nobody could see.
+    ///
+    /// Silent when nothing moved, so a re-stated order costs a comparison rather than a
+    /// republish of the whole window. A subscription replays a session's orders on reconnect,
+    /// which makes that the common case rather than the rare one.
+    fn reorder_tabs(&mut self, workspace: WorkspaceId, order: &[TabId]) -> Vec<Change> {
+        if self.tabs.reorder(order) { vec![Change::TabsReordered(workspace)] } else { Vec::new() }
+    }
+
     fn apply_inner(&mut self, event: BackendEvent) -> Vec<Change> {
         match event {
             BackendEvent::WorkspaceUpserted(workspace) => self.upsert_workspace(workspace),
@@ -392,6 +405,9 @@ impl Mirror {
                 _ => Vec::new(),
             },
             BackendEvent::TabRemoved(id) => self.remove_tab(&id),
+            BackendEvent::TabsReordered { workspace, order } => {
+                self.reorder_tabs(workspace, &order)
+            }
             // Structure only, on a pane that already exists. A backend that carries agent
             // state on its structure events is a second writer for it, and the older of
             // the two: herdr replays the session as it stood when the subscription opened,

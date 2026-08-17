@@ -5,6 +5,7 @@ use std::fmt::Write as _;
 
 use conformance::{Conformance, fields};
 use muster_core::mirror::BackendEvent;
+use muster_core::mirror::backend::TabId;
 use muster_core::names::{Mint, Names};
 use muster_herdr::EventDecoder;
 use serde_json::{Value, json};
@@ -49,6 +50,10 @@ fn describe(event: &BackendEvent) -> String {
         }
         BackendEvent::TabRenamed { tab, label } => format!("tabRenamed:{tab} label={label}"),
         BackendEvent::TabRemoved(id) => format!("tabRemoved:{id}"),
+        BackendEvent::TabsReordered { workspace, order } => {
+            let order: Vec<&str> = order.iter().map(TabId::as_str).collect();
+            format!("tabsReordered:{workspace} order={}", order.join(","))
+        }
         // Name and title are appended only when the payload carried one, so a case about
         // structure reads as it always did and a case about naming shows what it is about.
         // Absent is the ordinary state of both: most panes are unnamed and most programs

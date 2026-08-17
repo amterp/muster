@@ -22,6 +22,7 @@ class Recorder:
         self._t0 = time.monotonic()
         self._notes: list[str] = []
         self._facts: dict[str, Any] = {}
+        self._appended: set[str] = set()
         self.write_json(
             "META.json",
             {
@@ -37,6 +38,17 @@ class Recorder:
         return int((time.monotonic() - self._t0) * 1000)
 
     def append_ndjson(self, name: str, obj: dict) -> None:
+        """Appends within one run, and starts fresh on the next one.
+
+        Append mode is what makes a transcript ordered, and on its own it also made one
+        accumulate: `META.json`, `FACTS.json` and `NOTES.txt` are whole-file writes, so a
+        second run replaced those and concatenated onto this. What got committed then reads
+        as one exchange and is several, with `t_ms` resetting partway down - which is worse
+        than a stale file, because the facts beside it describe only the last run.
+        """
+        if name not in self._appended:
+            self._appended.add(name)
+            (self.dir / name).unlink(missing_ok=True)
         with (self.dir / name).open("a") as f:
             f.write(json.dumps({"t_ms": self.t_ms(), **obj}, sort_keys=True) + "\n")
 

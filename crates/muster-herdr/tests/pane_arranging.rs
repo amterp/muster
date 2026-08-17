@@ -276,6 +276,56 @@ fn a_move_reaches_a_window_that_is_only_listening() {
     assert_eq!(tab_of(&live, &first), far, "the pane's own record still names the old tab");
 }
 
+/// A tab reordered by somebody else reaches a window that is only listening.
+///
+/// The tab half of the test above, and it needs the live route even more than the pane half
+/// does: a re-snapshot would prove herdr moved the tab, which was never in doubt. What was in
+/// doubt is whether a window hears about it, and the measured answer was no - `tab_moved` goes
+/// only to a client that named `tab.moved`, and to one that did not it is not even accompanied
+/// by a `layout_updated` (`observations/herdr-0.8.0.md` section 21). So the order changed under
+/// a window with nothing at all arriving to say so.
+///
+/// Muster causes none of these, which is why this drives the daemon directly rather than
+/// through an intent. Another client, or herdr's own TUI, is the whole scenario.
+#[test]
+fn a_tab_reordered_by_somebody_else_reaches_a_window_that_is_only_listening() {
+    let (daemon, mirror, _tab, _first, _second) = a_tab_of_two();
+    daemon.call("tab.create", &json!({ "focus": false }));
+    daemon.call("tab.create", &json!({ "focus": false }));
+    resnapshot(&daemon, &mirror);
+    let before = tab_order(&mirror);
+    assert_eq!(before.len(), 3, "three tabs make an insert distinguishable from an exchange");
+
+    let live = Arc::new(Mutex::new(Mirror::new()));
+    let _subscription = Subscription::start(
+        daemon.socket_path().to_string_lossy().into_owned(),
+        Arc::clone(&live),
+        Arc::new(|_| {}),
+        daemon.names(),
+    );
+    until("the subscription to describe every tab", || tab_order(&live) == before);
+
+    // The last tab to the front, which is the largest move three tabs allow. Asked of the
+    // daemon in its own vocabulary because Muster has no intent for it.
+    let moving = before.last().expect("three tabs").clone();
+    daemon.call("tab.move", &json!({ "tab_id": moving.as_str(), "insert_index": 0 }));
+
+    let expected: Vec<TabId> = std::iter::once(moving.clone())
+        .chain(before.iter().filter(|tab| *tab != &moving).cloned())
+        .collect();
+    until("the listening window to hold the order the daemon settled on", || {
+        tab_order(&live) == expected
+    });
+}
+
+/// Every tab the mirror holds, in the order it holds them.
+///
+/// The order is the whole subject, so this is deliberately not sorted - unlike `recorded_in`
+/// below, where membership is the question and an order would be a claim it cannot make.
+fn tab_order(mirror: &Arc<Mutex<Mirror>>) -> Vec<TabId> {
+    mirror.lock().unwrap().tabs().map(|tab| tab.id.clone()).collect()
+}
+
 /// Which panes the mirror records as belonging to a tab, sorted so the comparison is about
 /// membership rather than about an order this says nothing about.
 ///

@@ -59,6 +59,15 @@ def _panes(client):
     return client.request("session.snapshot")["snapshot"]["panes"]
 
 
+def _tab_list(client):
+    """Every tab herdr holds, in the order it holds them.
+
+    `tab.list` rather than the session snapshot, because the order is the subject: the answer
+    is a list and its sequence is the only statement of where each tab sits.
+    """
+    return client.request("tab.list", {})["tabs"]
+
+
 def _status(client):
     return {p["pane_id"]: p.get("agent_status") for p in _panes(client)}
 
@@ -1866,6 +1875,20 @@ def arranging(daemon, rec: Recorder) -> None:
     A swap within one tab is recorded beside it as the control: no pane changes tab, so
     if it announces the same event with the same payload shape, then the event alone
     cannot be what tells a client a tab changed.
+
+    Then the same three questions for a *tab* dragged elsewhere, which is the remaining
+    reordering event Muster leaves unread (a_29eFFiDco). Muster does not cause this one -
+    nothing in the window reorders tabs - so what is at stake is a tab moved by another
+    client or by herdr's own TUI, and today it keeps the place it arrived in. The extra
+    question a tab raises and a pane does not is whether the mirror can hold a stated
+    order at all: an event that says only "this tab moved" needs an insertion computed
+    from a list Muster does not have, where one that states the whole new order can be
+    applied wholesale. Which of those it is, and whether it is scoped to one workspace,
+    is what decides the shape of the fix rather than merely its existence.
+
+    A move to the index a tab already has is recorded beside it as that half's control.
+    If it announces nothing, then "no event arrived" is safe to read as "nothing moved";
+    if it announces a reorder that is not one, an applier has to compare before applying.
     """
     client = RecordingClient(daemon.client(), rec)
     _new_workspace(client)
@@ -1983,6 +2006,104 @@ def arranging(daemon, rec: Recorder) -> None:
                  any(e.get("event") == "pane_moved" for e in unasked))
         rec.note(f"a client subscribed to everything but pane.moved saw "
                  f"{sorted({e.get('event') for e in unasked if 'event' in e})}")
+
+    # 4. The tab half. A third tab, so that an insert is distinguishable from a swap of two:
+    # with only two tabs every reorder is the same permutation and a payload stating "the
+    # whole new order" cannot be told from one stating "these two exchanged".
+    client.request("tab.create", {"cwd": "/tmp", "label": None, "focus": False})
+    time.sleep(0.6)
+    tabs_before = _tab_list(client)
+    rec.fact("tab_order_before", [t["tab_id"] for t in tabs_before])
+    rec.fact("tab_labels_before", {t["tab_id"]: t.get("label") for t in tabs_before})
+    workspace = tabs_before[0].get("workspace_id")
+
+    with daemon.client().subscribe(STRUCTURE_SUBSCRIPTIONS) as stream:
+        time.sleep(1.0)
+        seen = len(stream.snapshot())
+
+        # The last tab to the front, which is the largest move the arrangement allows and
+        # the one whose effect on every other tab's position is unambiguous.
+        moving_tab = tabs_before[-1]["tab_id"]
+        tab_moved_answer = client.request(
+            "tab.move", {"tab_id": moving_tab, "insert_index": 0})
+        time.sleep(1.2)
+        tab_events = stream.snapshot()[seen:]
+        seen += len(tab_events)
+
+        rec.fact("tab_move_event_kinds",
+                 sorted({e.get("event") for e in tab_events if "event" in e}))
+        rec.fact("tab_move_announces_tab_moved",
+                 any(e.get("event") == "tab_moved" for e in tab_events))
+
+        announced_tab = next((e.get("data", {}) for e in tab_events
+                              if e.get("event") == "tab_moved"), {})
+        rec.fact("tab_moved_payload_keys", sorted(announced_tab.keys()))
+        rec.fact("tab_moved_payload", announced_tab)
+
+        # The question that decides the shape of the fix. A payload that states the whole
+        # new order can be applied as it stands; one that states only which tab moved needs
+        # an insertion computed against a list, and the mirror keys tabs by id.
+        listed = announced_tab.get("tabs")
+        rec.fact("tab_moved_states_whole_order", isinstance(listed, list) and len(listed) > 1)
+        rec.fact("tab_moved_order",
+                 [t.get("tab_id") for t in listed] if isinstance(listed, list) else None)
+        rec.fact("tab_moved_workspaces_named",
+                 sorted({t.get("workspace_id") for t in listed})
+                 if isinstance(listed, list) else None)
+
+        # Whether the caller settles its own window from the answer, as it can for a swap
+        # and cannot for a pane move.
+        rec.fact("tab_move_answer_payload_keys", _payload_keys(tab_moved_answer))
+        rec.fact("tab_move_answer", tab_moved_answer)
+
+        # Whether a move is a rename in disguise. herdr builds a tab id from a stored number
+        # and its label from a position, so these two are expected to disagree - and if the
+        # ids moved, reading this event as a reorder would be wrong.
+        tabs_after = _tab_list(client)
+        rec.fact("tab_order_after", [t["tab_id"] for t in tabs_after])
+        rec.fact("tab_labels_after", {t["tab_id"]: t.get("label") for t in tabs_after})
+        rec.fact("tab_move_keeps_tab_ids",
+                 sorted(t["tab_id"] for t in tabs_before)
+                 == sorted(t["tab_id"] for t in tabs_after))
+        rec.fact("tab_move_renumbers_labels",
+                 {t["tab_id"]: t.get("label") for t in tabs_before}
+                 != {t["tab_id"]: t.get("label") for t in tabs_after})
+        rec.note(f"a tab moved to the front announced "
+                 f"{sorted({e.get('event') for e in tab_events if 'event' in e})}; "
+                 f"the tab_moved payload carried {sorted(announced_tab.keys())}")
+
+        # The control for this half: a move to the index it already has.
+        settled = client.request(
+            "tab.move", {"tab_id": moving_tab, "insert_index": 0})
+        time.sleep(1.2)
+        noop_events = stream.snapshot()[seen:]
+        rec.fact("tab_move_noop_event_kinds",
+                 sorted({e.get("event") for e in noop_events if "event" in e}))
+        rec.fact("tab_move_noop_announces_tab_moved",
+                 any(e.get("event") == "tab_moved" for e in noop_events))
+        rec.fact("tab_move_noop_answer_payload_keys", _payload_keys(settled))
+        rec.note(f"moving a tab to the place it already had announced "
+                 f"{sorted({e.get('event') for e in noop_events if 'event' in e})}")
+
+        rec.write_text("events.ndjson", "".join(
+            json.dumps(e, sort_keys=True) + "\n" for e in stream.snapshot()))
+
+    # 5. And whether asking matters, the same control the pane half runs.
+    without_tab = [s for s in STRUCTURE_SUBSCRIPTIONS if s["type"] != "tab.moved"]
+    with daemon.client().subscribe(without_tab) as stream:
+        time.sleep(1.0)
+        seen = len(stream.snapshot())
+        client.request("tab.move", {"tab_id": moving_tab, "insert_index": 2})
+        time.sleep(1.5)
+        unasked = stream.snapshot()[seen:]
+        rec.fact("tab_move_event_kinds_without_subscribing",
+                 sorted({e.get("event") for e in unasked if "event" in e}))
+        rec.fact("tab_moved_arrives_unsubscribed",
+                 any(e.get("event") == "tab_moved" for e in unasked))
+        rec.note(f"a client subscribed to everything but tab.moved saw "
+                 f"{sorted({e.get('event') for e in unasked if 'event' in e})}")
+        rec.fact("tab_order_finally", [t["tab_id"] for t in _tab_list(client)])
+    rec.fact("workspace_of_moved_tabs", workspace)
 
 
 

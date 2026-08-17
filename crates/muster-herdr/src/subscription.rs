@@ -75,7 +75,7 @@ pub enum Notice {
 /// `pane_id` and no unparameterized subscription carries the same information
 /// (`observations/herdr-0.8.0.md` section 11), so agent state costs a connection per pane
 /// and is subscribed separately.
-pub const STRUCTURE: [&str; 17] = [
+pub const STRUCTURE: [&str; 18] = [
     "workspace.created",
     "workspace.updated",
     "workspace.renamed",
@@ -85,6 +85,11 @@ pub const STRUCTURE: [&str; 17] = [
     "tab.renamed",
     "tab.closed",
     "tab.focused",
+    // A tab reordered, which nothing in Muster causes - another client, or herdr's own TUI.
+    // Named here because it is the *only* thing that says so: a client subscribed to every
+    // other structural kind sees nothing at all while the order changes under it, where a pane
+    // move at least produced a `layout.updated` (`observations/herdr-0.8.0.md` section 21).
+    "tab.moved",
     "pane.created",
     "pane.updated",
     "pane.closed",

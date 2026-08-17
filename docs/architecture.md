@@ -424,6 +424,14 @@ terms as the ordering, and it drops what a backend's own label repeats - herdr n
 position, and Muster has a better position to write one from. Each row carries the tab's Muster name beside its place,
 so reading the roster and acting on what it says are the same vocabulary.
 
+**The order within a daemon is the daemon's, and the numbering over it is Muster's.** Those are different claims and
+both are needed. A tab's place among its workspace's tabs is something the backend states - on a snapshot as a list, and
+on a reorder as the whole settled list again - so a tab somebody drags elsewhere in another client moves here too, and
+the mirror adopts the sequence rather than deriving one. What Muster owns is the count laid over the result: one number
+running across every attached daemon, which no daemon could produce because no daemon knows the others exist. The order
+*between* two workspaces is the one thing neither owns, so it stays the order they arrived in
+(`mirror/ordered.rs`).
+
 **One numbering, and it is on the panes.** Every pane carries a place in a single count that runs across every
 attached daemon and every tab, and that number is what the list draws and what ⌘1 to ⌘9 name. It is on panes because
 the unit of this product is an agent and an agent is a pane: the rows carrying the states are pane rows, so a number

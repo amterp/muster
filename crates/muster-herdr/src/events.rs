@@ -12,7 +12,7 @@ use std::collections::BTreeSet;
 
 use muster_core::AgentState;
 use muster_core::mirror::BackendEvent;
-use muster_core::mirror::backend::{Pane, Tab, Workspace, WorkspaceId};
+use muster_core::mirror::backend::{Pane, Tab, TabId, Workspace, WorkspaceId};
 use muster_core::names::Names;
 use serde_json::Value;
 
@@ -29,14 +29,16 @@ pub struct EventDecoder {
     names: Names,
     pending: Vec<u8>,
     /// Every unknown name ever seen, so each is reported once. herdr defines 29 event
-    /// kinds and Muster reads 14, and a log line per pane per second is how a run log stops
+    /// kinds and Muster reads 15, and a log line per pane per second is how a run log stops
     /// being read.
     ///
     /// This used to say the rest arrive whether or not anyone asks for them, which is not
-    /// true and mattered: a move was measured reaching nobody who had not named
-    /// `pane.moved` (`observations/herdr-0.8.0.md` section 20). So an unknown name here is
-    /// evidence about a kind Muster *subscribed* to, and a kind it never asked for produces
-    /// no evidence at all - which is a quieter gap than this set was built to catch.
+    /// true and mattered twice: a pane move was measured reaching nobody who had not named
+    /// `pane.moved`, and a tab move reaches such a client as complete silence - not even the
+    /// `layout_updated` a pane move at least produced (`observations/herdr-0.8.0.md` sections
+    /// 20 and 21). So an unknown name here is evidence about a kind Muster *subscribed* to,
+    /// and a kind it never asked for produces no evidence at all - which is a quieter gap
+    /// than this set was built to catch.
     unknown_seen: BTreeSet<String>,
     unknown_pending: Vec<String>,
 }
@@ -144,6 +146,17 @@ fn decode(line: &[u8], names: &Names) -> Decoded {
             label: text(data, "label").to_string(),
         }),
         "tab_closed" => id(data, "tab_id").map(|id| BackendEvent::TabRemoved(names.tab(&id))),
+        // A tab dragged elsewhere, by another client or by herdr's own TUI - Muster has no
+        // gesture that causes one. The payload states the whole new order for one workspace, so
+        // this reads as a sequence rather than as an insertion computed from a place: an
+        // absolute value, which is what applying twice being applying once requires.
+        //
+        // Every other field is left alone deliberately. `insert_index` is the request restated
+        // and says nothing the list does not; the `TabInfo`s carry labels, and an unnamed tab's
+        // label is its position, so a move relabels all of them - which is exactly the
+        // renumbering `tab_renamed` exists to be the only writer of
+        // (`observations/herdr-0.8.0.md` sections 16 and 21).
+        "tab_moved" => reordered(data, names),
         // The third name for the same payload, and the one that carries a pane to a
         // different tab. Muster is what causes these - a row dropped on a row in another tab
         // is a `pane.move` - and the pane it carries already states the tab it landed in, so
@@ -212,12 +225,17 @@ fn decode(line: &[u8], names: &Names) -> Decoded {
         // set keeps meaning "herdr is sending something we have never seen", which is the
         // drift signal. These describe things the mirror does not model.
         //
-        // Deliberately short. The reordering events are absent because they plausibly do
-        // change what the mirror holds and no recording exists of one - leaving them
-        // unknown means the first arrival says so in the run log rather than being
-        // silently correct-looking. `pane_moved` was in that position until a recording
-        // was made of one, and it turned out to change the mirror; `tab_moved` is the
-        // remaining one, and is why tab order is arrival order (a_29eFFiDco).
+        // Deliberately short. Both of herdr's reordering events for things the mirror models
+        // are read rather than listed here: each was left unknown while no recording of one
+        // existed, so that a first arrival announced itself in the run log rather than looking
+        // silently correct, and each turned out to change what the mirror holds
+        // (`observations/herdr-0.8.0.md` sections 20 and 21). What remains below describes
+        // things the mirror has no place for at all.
+        //
+        // `workspace_moved` and `workspace_reordered` are not here and not read: Muster never
+        // subscribes to them, so they arrive nowhere and this set would be making a claim about
+        // a kind it has no evidence for. Whether a workspace order is worth holding is a
+        // question about a thing nothing draws.
         "pane_output_changed"
         | "pane.output_matched"
         | "pane.scroll_changed"
@@ -238,6 +256,24 @@ fn read_workspace(value: &Value) -> Option<Workspace> {
     Some(Workspace {
         id: WorkspaceId::new(id(value, "workspace_id")?),
         label: text(value, "label").to_string(),
+    })
+}
+
+/// One workspace's tabs, in the order a `tab_moved` says they now sit.
+///
+/// `None` when the payload will not read, which is reported as drift rather than dropped: an
+/// order this cannot parse is an order the window would go on drawing wrongly with nothing
+/// said. An empty list reads as no order, for the same reason.
+fn reordered(data: &Value, names: &Names) -> Option<BackendEvent> {
+    let listed = data.get("tabs")?.as_array()?;
+    let order: Vec<TabId> =
+        listed.iter().filter_map(|tab| id(tab, "tab_id")).map(|tab| names.tab(&tab)).collect();
+    if order.is_empty() {
+        return None;
+    }
+    Some(BackendEvent::TabsReordered {
+        workspace: WorkspaceId::new(id(data, "workspace_id")?),
+        order,
     })
 }
 
