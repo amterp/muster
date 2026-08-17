@@ -495,13 +495,22 @@ fn build_deps():
     // Asked for only once there is something to build with it. Every other tier takes deps on
     // the way past now, so checking first would make zig a requirement for running the suite
     // on a tree that has libghostty sitting right there.
-    stdout = $`zig version`
+    // Caught, because a missing zig and a wrong zig are the same question to whoever is
+    // about to be stopped by it, and only one of them used to get an answer. Uncaught, an
+    // absent binary raised Rad's own "command exited with code 127" against the raw command
+    // line - which is the first-run friction the README already calls out for a missing rad.
+    stdout, stderr, code = $`zig version` catch:
+        print_err(red("zig {ZIG_VERSION} is required to build libghostty, and none is installed."))
+        print_err("Try: brew install zig@0.16")
+        exit(1)
     installed = stdout.trim()
     if installed != ZIG_VERSION:
         print_err(red("zig {ZIG_VERSION} is required; found {installed}."))
         print_err("libghostty pins its own minimum, and a mismatch surfaces as a wall of")
         print_err("compiler errors inside ghostty rather than as a version complaint.")
-        print_err("Try: brew install zig")
+        // The versioned formula rather than the bare one: `zig` tracks upstream stable and
+        // will drift off this pin, so the fix that reads right today stops working silently.
+        print_err("Try: brew install zig@0.16")
         exit(1)
 
     print(dim("building libghostty at {pin[:12]} - several minutes on a cold cache"))
