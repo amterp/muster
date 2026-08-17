@@ -20,6 +20,7 @@ use muster_core::intent::{BackendChannel, BackendIntent};
 use muster_core::mirror::Mirror;
 use muster_core::mirror::backend::{PaneId, TabId};
 use muster_herdr::snapshot::read_snapshot;
+use muster_herdr::subscription::Subscription;
 use serde_json::json;
 
 /// A daemon holding one tab of two panes, side by side.
@@ -214,4 +215,85 @@ fn until(what: &str, mut ready: impl FnMut() -> bool) {
         thread::sleep(Duration::from_millis(5));
     }
     panic!("timed out after 10s waiting for {what}");
+}
+
+#[test]
+fn a_move_reaches_a_window_that_is_only_listening() {
+    // Every other test in this file re-snapshots, which asks the daemon what it holds and so
+    // proves the move happened rather than that a running window would ever see it. This one
+    // takes the live route and nothing else: one subscription, and whatever it is told.
+    //
+    // What it reads is the mirror's own record of which tab holds which pane, NOT the tab's
+    // tree. The tree is kept current by `layout_updated` either way, and asserting on it
+    // passes whether or not a move was understood - which is the trap this test exists to
+    // avoid. The record is what `View::of` compares the tree against, and a tab whose two
+    // answers disagree has its tree withheld: so with the move unread, both tabs stop
+    // redrawing rather than showing it.
+    //
+    // Two things had to be true for a window to follow a move and neither was: herdr sends
+    // `pane_moved` only to a client that named `pane.moved` in its subscription and Muster's
+    // list did not, and the decoder dropped the name anyway.
+    let (daemon, mirror, _tab, first, second) = a_tab_of_two();
+    daemon.call("tab.create", &json!({ "focus": false }));
+    resnapshot(&daemon, &mirror);
+    let elsewhere = order(&mirror)
+        .into_iter()
+        .find(|pane| pane != &first && pane != &second)
+        .expect("the new tab brings a pane of its own");
+    let far = tab_of(&mirror, &elsewhere);
+    let home = tab_of(&mirror, &first);
+
+    // From here the mirror is fed by the subscription alone. Started after the arrangement is
+    // built so that the bootstrap describes it and every later change has to arrive as an
+    // event.
+    let live = Arc::new(Mutex::new(Mirror::new()));
+    let _subscription = Subscription::start(
+        daemon.socket_path().to_string_lossy().into_owned(),
+        Arc::clone(&live),
+        Arc::new(|_| {}),
+        daemon.names(),
+    );
+    // The whole arrangement, not a part of it: a bootstrap arrives over several events, and
+    // waiting for one tab would start the move against a mirror still filling the other in.
+    until("the subscription to describe the whole session", || {
+        recorded_in(&live, &home) == sorted([&first, &second])
+            && recorded_in(&live, &far) == sorted([&elsewhere])
+    });
+
+    daemon
+        .backend()
+        .submit(&BackendIntent::MovePane {
+            pane: first.clone(),
+            tab: far.clone(),
+            after: elsewhere.clone(),
+        })
+        .expect("herdr accepts a move into another tab");
+
+    until("the tab it landed in to hold it", || {
+        recorded_in(&live, &far) == sorted([&elsewhere, &first])
+    });
+    // The tab it left, which is the half easy to forget: a mirror that learned the destination
+    // and not the origin still holds a tab whose panes disagree with its tree, and that tab is
+    // one that stops redrawing.
+    until("the tab it left to stop naming it", || recorded_in(&live, &home) == sorted([&second]));
+    assert_eq!(tab_of(&live, &first), far, "the pane's own record still names the old tab");
+}
+
+/// Which panes the mirror records as belonging to a tab, sorted so the comparison is about
+/// membership rather than about an order this says nothing about.
+///
+/// Deliberately not the tab's tree, which is what `in_tab` reads. `View::of` withholds a
+/// tree whenever these two disagree, so this is the answer that decides whether a window
+/// draws anything at all.
+fn sorted<const N: usize>(panes: [&PaneId; N]) -> Vec<PaneId> {
+    let mut expected: Vec<PaneId> = panes.into_iter().cloned().collect();
+    expected.sort();
+    expected
+}
+
+fn recorded_in(mirror: &Arc<Mutex<Mirror>>, tab: &TabId) -> Vec<PaneId> {
+    let mirror = mirror.lock().unwrap();
+    let mut held: Vec<PaneId> = mirror.panes_in_tab(tab).map(|pane| pane.id.clone()).collect();
+    held.sort();
+    held
 }

@@ -1008,3 +1008,42 @@ ever put next to a daemon.
 Evidence: `a_resize_amount_is_a_share_of_the_region_and_saturates_above_a_half` in
 `crates/muster-herdr/tests/split_sides.rs`, which is the table above, re-derived against
 `deps/herdr.pin` on every run of `./dev -t`.
+
+## 20. A pane moved between tabs is announced only to whoever asked for that event by name
+
+**`pane_moved` does not arrive unless it is subscribed to by name.** A client that
+subscribed to all sixteen of the other structural kinds, and drove a real `pane.move`,
+saw one event: `layout_updated`. Subscribing to `pane.moved` as well, the same move
+announced five - `layout_updated`, `pane_moved`, `pane_focused`, `tab_focused`,
+`workspace_focused`. This matters more than it reads: Muster's own subscription list did
+not name it, so the event it needed most was one no run had ever received, and the
+decoder's unknown-kind warning could never have fired for it either. A kind nobody
+subscribes to leaves no evidence at all.
+
+**The payload carries the whole pane, already stating the tab it landed in.** Keys are
+`pane`, `previous_pane_id`, `previous_tab_id`, `previous_workspace_id`, `type`, and the
+nested `pane` is the same shape `pane_created` and `pane_updated` carry - so it reads as
+an upsert rather than needing a verb of its own.
+
+**Nothing else states the move.** No `pane_updated` follows one: measured zero across the
+whole exchange. And `pane.move`'s answer, which is the other route a client could learn
+from, carries its trees under `source_layout` and `target_layout` - where `pane.swap`
+answers with a key named plainly `layout`. Muster's adapter looks one level down for
+exactly `layout`, so it settles a swap from its own answer and settles nothing from a
+move. Both trees are sitting in that reply, under names nothing reads.
+
+**Why that combination is worse than either half.** A tab's tree is withheld while the
+panes it names disagree with the panes the mirror holds, which is the right behaviour when
+a tree is momentarily ahead of its panes. With the move unread, the disagreement is
+permanent rather than momentary: the pane's tab is never updated, so both the tab it left
+and the tab it joined stop redrawing rather than showing the move. Muster is what causes
+these events - a row dropped on a row in another tab - so this was reachable from the
+product's own drag-to-swap.
+
+**A swap within one tab is the control.** It announces `layout_updated` alone, changes no
+pane's tab, and answers with a settled `layout` the caller can apply directly. So the tree
+is enough for a swap and is not enough for a move, and the difference is exactly the tab.
+
+Evidence: `corpus/herdr-0.8.0/arranging/` - `FACTS.json` for the event kinds, payload keys
+and answer shapes, `wire.ndjson` for the requests and their replies, `events.ndjson` for
+what each subscriber saw. Re-record with `tools/herdr-probe/probe arranging`.

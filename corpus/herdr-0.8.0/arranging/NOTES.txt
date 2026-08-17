@@ -1,0 +1,3 @@
+[  3994ms] a swap within one tab announced ['layout_updated']
+[  5510ms] a move across tabs announced ['layout_updated', 'pane_focused', 'pane_moved', 'tab_focused', 'workspace_focused']; the pane_moved payload carried ['pane', 'previous_pane_id', 'previous_tab_id', 'previous_workspace_id', 'type']
+[  8542ms] a client subscribed to everything but pane.moved saw ['layout_updated']

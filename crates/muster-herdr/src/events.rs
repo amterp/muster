@@ -29,8 +29,14 @@ pub struct EventDecoder {
     names: Names,
     pending: Vec<u8>,
     /// Every unknown name ever seen, so each is reported once. herdr defines 29 event
-    /// kinds and Muster reads 13; the rest arrive on a subscription whether or not anyone
-    /// wants them, and a log line per pane per second is how a run log stops being read.
+    /// kinds and Muster reads 14, and a log line per pane per second is how a run log stops
+    /// being read.
+    ///
+    /// This used to say the rest arrive whether or not anyone asks for them, which is not
+    /// true and mattered: a move was measured reaching nobody who had not named
+    /// `pane.moved` (`observations/herdr-0.8.0.md` section 20). So an unknown name here is
+    /// evidence about a kind Muster *subscribed* to, and a kind it never asked for produces
+    /// no evidence at all - which is a quieter gap than this set was built to catch.
     unknown_seen: BTreeSet<String>,
     unknown_pending: Vec<String>,
 }
@@ -136,7 +142,18 @@ fn decode(line: &[u8], names: &Names) -> Decoded {
             label: text(data, "label").to_string(),
         }),
         "tab_closed" => id(data, "tab_id").map(|id| BackendEvent::TabRemoved(TabId::new(id))),
-        "pane_created" | "pane_updated" => {
+        // The third name for the same payload, and the one that carries a pane to a
+        // different tab. Muster is what causes these - a row dropped on a row in another tab
+        // is a `pane.move` - and the pane it carries already states the tab it landed in, so
+        // it upserts like the other two rather than needing a verb of its own
+        // (`observations/herdr-0.8.0.md` section 20).
+        //
+        // Reading it is not optional the way it looks. A tab's tree is withheld while the
+        // panes in it disagree with the panes the mirror thinks it holds, and nothing else
+        // states the new tab: `pane.move` answers with both trees under names this adapter
+        // does not read, and no `pane_updated` follows. So a move that was not decoded froze
+        // both tabs rather than showing it.
+        "pane_created" | "pane_updated" | "pane_moved" => {
             data.get("pane").and_then(|pane| read_pane(pane, names)).map(BackendEvent::PaneUpserted)
         }
         // Two names for one outcome. A pane whose program ended emits `pane_exited` and
@@ -193,10 +210,12 @@ fn decode(line: &[u8], names: &Names) -> Decoded {
         // set keeps meaning "herdr is sending something we have never seen", which is the
         // drift signal. These describe things the mirror does not model.
         //
-        // Deliberately short. `pane_moved` and the reordering events are absent because
-        // they plausibly do change what the mirror holds and no recording exists of one -
-        // leaving them unknown means the first arrival says so in the run log rather than
-        // being silently correct-looking.
+        // Deliberately short. The reordering events are absent because they plausibly do
+        // change what the mirror holds and no recording exists of one - leaving them
+        // unknown means the first arrival says so in the run log rather than being
+        // silently correct-looking. `pane_moved` was in that position until a recording
+        // was made of one, and it turned out to change the mirror; `tab_moved` is the
+        // remaining one, and is why tab order is arrival order (a_29eFFiDco).
         "pane_output_changed"
         | "pane.output_matched"
         | "pane.scroll_changed"

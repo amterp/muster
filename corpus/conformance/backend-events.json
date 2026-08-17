@@ -253,6 +253,21 @@
         ],
         "unknownKinds": []
       }
+    },
+    {
+      "name": "a pane carried into another tab is upserted with the tab it landed in",
+      "why": "The event Muster itself causes: a row dropped on a row in a different tab sends pane.move, and this is what comes back. It carries the whole pane, already stating the new tab, so it reads as an upsert like pane_created and pane_updated rather than needing a verb of its own. Reading it is what keeps both tabs on screen - a tab's tree is withheld while its panes disagree with the panes the mirror holds, and nothing else ever states the move: pane.move answers with both trees under names the adapter does not read, and no pane_updated follows. The payload is a recording, not an invention (corpus/herdr-0.8.0/arranging).",
+      "given": {
+        "chunks": [
+          "{\"event\":\"pane_moved\",\"data\":{\"pane\":{\"agent_status\":\"unknown\",\"cwd\":\"/private/tmp\",\"focused\":false,\"foreground_cwd\":\"/private/tmp\",\"pane_id\":\"w1:p1\",\"revision\":0,\"scroll\":{\"max_offset_from_bottom\":0,\"offset_from_bottom\":0,\"viewport_rows\":23},\"tab_id\":\"w1:t2\",\"terminal_id\":\"term_6593e52635a081\",\"workspace_id\":\"w1\"},\"previous_pane_id\":\"w1:p1\",\"previous_tab_id\":\"w1:t1\",\"previous_workspace_id\":\"w1\",\"type\":\"pane_moved\"}}\n"
+        ]
+      },
+      "expect": {
+        "events": [
+          "paneUpserted:w1:p1 tab=w1:t2 workspace=w1 state=unknown cwd=/private/tmp"
+        ],
+        "unknownKinds": []
+      }
     }
   ]
 }

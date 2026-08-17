@@ -75,7 +75,7 @@ pub enum Notice {
 /// `pane_id` and no unparameterized subscription carries the same information
 /// (`observations/herdr-0.8.0.md` section 11), so agent state costs a connection per pane
 /// and is subscribed separately.
-pub const STRUCTURE: [&str; 16] = [
+pub const STRUCTURE: [&str; 17] = [
     "workspace.created",
     "workspace.updated",
     "workspace.renamed",
@@ -90,6 +90,12 @@ pub const STRUCTURE: [&str; 16] = [
     "pane.closed",
     "pane.exited",
     "pane.focused",
+    // A pane carried into another tab, which Muster itself causes whenever a row is dropped
+    // on a row in a different one. Measured absent from every other subscription in this
+    // list - a client that asks for all sixteen of the others sees only `layout.updated` for
+    // a move (`observations/herdr-0.8.0.md` section 20) - so this is the only route by which
+    // the pane's new tab is ever stated.
+    "pane.moved",
     "pane.agent_detected",
     // The only live description of how a tab arranges its panes. Absent, the mirror still
     // gets a tree from every snapshot and would look correct until somebody split

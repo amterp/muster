@@ -1,0 +1,200 @@
+{
+  "layout_after_move": {
+    "layout": {
+      "focused_pane_id": "w1:p2",
+      "root": {
+        "cwd": "/private/tmp",
+        "pane_id": "w1:p2",
+        "type": "pane"
+      },
+      "tab_id": "w1:t1",
+      "workspace_id": "w1",
+      "zoomed": false
+    },
+    "type": "layout_export"
+  },
+  "move_announces_pane_moved": true,
+  "move_answer": {
+    "move_result": {
+      "changed": true,
+      "focused_pane_id": "w1:p3",
+      "pane": {
+        "agent_status": "unknown",
+        "cwd": "/private/tmp",
+        "focused": false,
+        "foreground_cwd": "/private/tmp",
+        "pane_id": "w1:p1",
+        "revision": 0,
+        "scroll": {
+          "max_offset_from_bottom": 0,
+          "offset_from_bottom": 0,
+          "viewport_rows": 23
+        },
+        "tab_id": "w1:t2",
+        "terminal_id": "term_6593e52635a081",
+        "workspace_id": "w1"
+      },
+      "previous_pane_id": "w1:p1",
+      "previous_tab_id": "w1:t1",
+      "previous_workspace_id": "w1",
+      "source_layout": {
+        "area": {
+          "height": 23,
+          "width": 54,
+          "x": 26,
+          "y": 1
+        },
+        "focused_pane_id": "w1:p2",
+        "panes": [
+          {
+            "focused": true,
+            "pane_id": "w1:p2",
+            "rect": {
+              "height": 23,
+              "width": 54,
+              "x": 26,
+              "y": 1
+            }
+          }
+        ],
+        "splits": [],
+        "tab_id": "w1:t1",
+        "workspace_id": "w1",
+        "zoomed": false
+      },
+      "target_layout": {
+        "area": {
+          "height": 23,
+          "width": 54,
+          "x": 26,
+          "y": 1
+        },
+        "focused_pane_id": "w1:p3",
+        "panes": [
+          {
+            "focused": true,
+            "pane_id": "w1:p3",
+            "rect": {
+              "height": 23,
+              "width": 27,
+              "x": 26,
+              "y": 1
+            }
+          },
+          {
+            "focused": false,
+            "pane_id": "w1:p1",
+            "rect": {
+              "height": 23,
+              "width": 27,
+              "x": 53,
+              "y": 1
+            }
+          }
+        ],
+        "splits": [
+          {
+            "direction": "right",
+            "id": "split_0_root",
+            "ratio": 0.5,
+            "rect": {
+              "height": 23,
+              "width": 54,
+              "x": 26,
+              "y": 1
+            }
+          }
+        ],
+        "tab_id": "w1:t2",
+        "workspace_id": "w1",
+        "zoomed": false
+      }
+    },
+    "type": "pane_move"
+  },
+  "move_answer_layout_keys": [
+    "source_layout",
+    "target_layout"
+  ],
+  "move_answer_payload_keys": [
+    "changed",
+    "focused_pane_id",
+    "pane",
+    "previous_pane_id",
+    "previous_tab_id",
+    "previous_workspace_id",
+    "source_layout",
+    "target_layout"
+  ],
+  "move_event_kinds": [
+    "layout_updated",
+    "pane_focused",
+    "pane_moved",
+    "tab_focused",
+    "workspace_focused"
+  ],
+  "move_event_kinds_without_subscribing": [
+    "layout_updated"
+  ],
+  "move_pane_updated_count": 0,
+  "move_pane_updated_tabs": [],
+  "pane_moved_arrives_unsubscribed": false,
+  "pane_moved_names_the_new_tab": true,
+  "pane_moved_payload": {
+    "pane": {
+      "agent_status": "unknown",
+      "cwd": "/private/tmp",
+      "focused": false,
+      "foreground_cwd": "/private/tmp",
+      "pane_id": "w1:p1",
+      "revision": 0,
+      "scroll": {
+        "max_offset_from_bottom": 0,
+        "offset_from_bottom": 0,
+        "viewport_rows": 23
+      },
+      "tab_id": "w1:t2",
+      "terminal_id": "term_6593e52635a081",
+      "workspace_id": "w1"
+    },
+    "previous_pane_id": "w1:p1",
+    "previous_tab_id": "w1:t1",
+    "previous_workspace_id": "w1",
+    "type": "pane_moved"
+  },
+  "pane_moved_payload_keys": [
+    "pane",
+    "previous_pane_id",
+    "previous_tab_id",
+    "previous_workspace_id",
+    "type"
+  ],
+  "panes_before_any_move": [
+    "w1:p1",
+    "w1:p2",
+    "w1:p3"
+  ],
+  "swap_answer_layout_keys": [
+    "layout"
+  ],
+  "swap_answer_payload_keys": [
+    "changed",
+    "focused_pane_id",
+    "layout",
+    "source_pane_id",
+    "target_pane_id"
+  ],
+  "swap_event_kinds": [
+    "layout_updated"
+  ],
+  "tab_of_each_pane_after": {
+    "w1:p1": "w1:t2",
+    "w1:p2": "w1:t1",
+    "w1:p3": "w1:t2"
+  },
+  "tab_of_each_pane_before": {
+    "w1:p1": "w1:t1",
+    "w1:p2": "w1:t1",
+    "w1:p3": "w1:t2"
+  }
+}

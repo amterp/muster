@@ -1839,6 +1839,192 @@ def read_depth(daemon, rec: Recorder) -> None:
                  f"identical to the read without one: {paged == plain}")
 
 
+
+def arranging(daemon, rec: Recorder) -> None:
+    """Moving a pane, which Muster now causes and does not read.
+
+    `events.rs` keeps `pane_moved` out of the ignored set on purpose, with a comment
+    saying no recording of one exists. Drag-to-swap now makes one: a row dropped on
+    another sends a swap, a row dropped on a row in a different tab sends a move, and
+    herdr broadcasts something Muster logs as an event it has never seen.
+
+    What this settles is whether that event has to be read, and there are two halves.
+
+    The broadcast half: which events a *passive* client sees for each of the two, and
+    whether the payload carries the pane's new tab. Muster's mirror sets a pane's tab
+    from `pane_created` and `pane_updated` only, and it withholds a tab's tree whenever
+    the tree's panes disagree with the panes it thinks that tab holds - so a cross-tab
+    move that is announced without a tab would leave both tabs frozen rather than
+    showing the move.
+
+    The answer half: what the *caller* is told. herdr answers some mutations with the
+    settled layout, and if `pane.move` does that then the tab the request named
+    recovers on its own answer and only the other one is stuck. That is the difference
+    between a one-sided failure and a two-sided one, and it is not visible from the
+    code.
+
+    A swap within one tab is recorded beside it as the control: no pane changes tab, so
+    if it announces the same event with the same payload shape, then the event alone
+    cannot be what tells a client a tab changed.
+    """
+    client = RecordingClient(daemon.client(), rec)
+    _new_workspace(client)
+    time.sleep(0.5)
+
+    # Two panes in the first tab, and a second tab with one of its own, which is the
+    # arrangement a drag across tabs needs.
+    client.request("pane.split", {"direction": "right"})
+    time.sleep(0.4)
+    first_tab_panes = [p["pane_id"] for p in _panes(client)]
+    made = client.request("tab.create", {"cwd": "/tmp", "label": "second", "focus": False})
+    second_tab = made.get("tab", {}).get("tab_id") or made.get("tab_id")
+    time.sleep(0.6)
+    elsewhere = [p["pane_id"] for p in _panes(client) if p["pane_id"] not in first_tab_panes]
+    rec.fact("panes_before_any_move", sorted(p["pane_id"] for p in _panes(client)))
+    rec.fact("tab_of_each_pane_before",
+             {p["pane_id"]: p.get("tab_id") for p in _panes(client)})
+
+    with daemon.client().subscribe(STRUCTURE_SUBSCRIPTIONS) as stream:
+        time.sleep(1.0)
+        seen = len(stream.snapshot())
+
+        # 1. The control: a swap inside one tab. Nothing changes tab, so whatever this
+        # announces is what a move announces *minus* the part about moving.
+        source, target = first_tab_panes[0], first_tab_panes[1]
+        swapped = client.request(
+            "pane.swap", {"source_pane_id": source, "target_pane_id": target})
+        time.sleep(1.2)
+        swap_events = stream.snapshot()[seen:]
+        seen += len(swap_events)
+        rec.fact("swap_event_kinds",
+                 sorted({e.get("event") for e in swap_events if "event" in e}))
+        # Named the way a client has to find it: every herdr result nests its payload
+        # under a key beside `type`, so what decides whether a caller can settle its own
+        # window is the key one level down, not the top level.
+        rec.fact("swap_answer_payload_keys", _payload_keys(swapped))
+        rec.fact("swap_answer_layout_keys", _layout_keys(swapped))
+        rec.note(f"a swap within one tab announced "
+                 f"{sorted({e.get('event') for e in swap_events if 'event' in e})}")
+
+        # 2. The one Muster causes and cannot read: a pane into another tab.
+        moving = first_tab_panes[0]
+        moved = client.request("pane.move", {
+            "pane_id": moving,
+            "destination": {
+                "type": "tab",
+                "tab_id": second_tab,
+                "target_pane_id": elsewhere[0],
+                "split": "right",
+            },
+            "focus": False,
+        })
+        time.sleep(1.5)
+        move_events = stream.snapshot()[seen:]
+        seen += len(move_events)
+
+        rec.fact("move_event_kinds",
+                 sorted({e.get("event") for e in move_events if "event" in e}))
+        rec.fact("move_announces_pane_moved",
+                 any(e.get("event") == "pane_moved" for e in move_events))
+
+        # The payload itself, because that is the only thing a client can apply. If the
+        # new tab is not in here, reading the event is not enough on its own.
+        announced = next((e.get("data", {}) for e in move_events
+                          if e.get("event") == "pane_moved"), {})
+        rec.fact("pane_moved_payload_keys", sorted(announced.keys()))
+        rec.fact("pane_moved_payload", announced)
+        rec.fact("pane_moved_names_the_new_tab",
+                 _tab_in(announced) is not None)
+
+        # What the caller is told, which decides whether the requesting window recovers
+        # without reading the event at all.
+        rec.fact("move_answer_payload_keys", _payload_keys(moved))
+        rec.fact("move_answer_layout_keys", _layout_keys(moved))
+        rec.fact("move_answer", moved)
+
+        # And whether anything else says the tab changed - a pane_updated carrying the
+        # new tab would mean the mirror is already correct without reading pane_moved.
+        updates = [e.get("data", {}).get("pane", {}) for e in move_events
+                   if e.get("event") == "pane_updated"]
+        rec.fact("move_pane_updated_count", len(updates))
+        rec.fact("move_pane_updated_tabs", [u.get("tab_id") for u in updates])
+        rec.note(f"a move across tabs announced "
+                 f"{sorted({e.get('event') for e in move_events if 'event' in e})}; "
+                 f"the pane_moved payload carried {sorted(announced.keys())}")
+
+    time.sleep(0.5)
+    rec.fact("tab_of_each_pane_after",
+             {p["pane_id"]: p.get("tab_id") for p in _panes(client)})
+    rec.fact("layout_after_move", client.request("layout.export", {}))
+
+    # 3. Whether asking matters. `events.rs` says the kinds Muster does not read "arrive on
+    # a subscription whether or not anyone wants them", which decides whether reading an
+    # event is enough on its own or whether the subscription list has to name it too. Every
+    # structural kind except this one, so the only difference is the asking.
+    without = [s for s in STRUCTURE_SUBSCRIPTIONS if s["type"] != "pane.moved"]
+    with daemon.client().subscribe(without) as stream:
+        time.sleep(1.0)
+        seen = len(stream.snapshot())
+        client.request("pane.move", {
+            "pane_id": moving,
+            "destination": {
+                "type": "tab",
+                "tab_id": first_tab_panes[1].split(":")[0] + ":t1",
+                "target_pane_id": first_tab_panes[1],
+                "split": "right",
+            },
+            "focus": False,
+        })
+        time.sleep(1.5)
+        unasked = stream.snapshot()[seen:]
+        rec.fact("move_event_kinds_without_subscribing",
+                 sorted({e.get("event") for e in unasked if "event" in e}))
+        rec.fact("pane_moved_arrives_unsubscribed",
+                 any(e.get("event") == "pane_moved" for e in unasked))
+        rec.note(f"a client subscribed to everything but pane.moved saw "
+                 f"{sorted({e.get('event') for e in unasked if 'event' in e})}")
+
+
+
+def _payload_keys(answer):
+    """The keys of a herdr result's payload, which sits one level down beside `type`."""
+    if not isinstance(answer, dict):
+        return None
+    for key, value in answer.items():
+        if key != "type" and isinstance(value, dict):
+            return sorted(value.keys())
+    return sorted(answer.keys())
+
+
+def _layout_keys(answer):
+    """Every key in that payload whose name ends in `layout`, in the order found.
+
+    Muster's adapter looks one level down for a key called exactly `layout`, so a verb
+    that answers with a tree under any other name is a verb whose answer it ignores.
+    """
+    if not isinstance(answer, dict):
+        return []
+    for key, value in answer.items():
+        if key != "type" and isinstance(value, dict):
+            return sorted(k for k in value if k.endswith("layout"))
+    return []
+
+
+def _tab_in(payload: dict):
+    """The tab id anywhere in a pane_moved payload, wherever herdr happens to put it."""
+    if not isinstance(payload, dict):
+        return None
+    for key in ("tab_id", "to_tab_id", "destination_tab_id", "new_tab_id"):
+        if payload.get(key):
+            return payload[key]
+    for value in payload.values():
+        if isinstance(value, dict):
+            found = _tab_in(value)
+            if found:
+                return found
+    return None
+
+
 ALL = {
     "snapshot": snapshot,
     "frames": frames,
@@ -1854,4 +2040,5 @@ ALL = {
     "durability": durability,
     "naming": naming,
     "read-depth": read_depth,
+    "arranging": arranging,
 }
