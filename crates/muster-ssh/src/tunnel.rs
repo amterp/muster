@@ -8,6 +8,8 @@ use std::time::{Duration, Instant};
 use muster_core::diagnostics::{log, poison};
 use muster_core::fields;
 
+use crate::remote::Remote;
+
 /// What one master forwards, and how it is reached.
 #[derive(Debug, Clone)]
 pub struct Forward {
@@ -133,6 +135,15 @@ impl Tunnel {
     /// The master's control socket, for a command that wants to ride this connection.
     pub fn control_path(&self) -> &str {
         &self.forward.control_path
+    }
+
+    /// The machine at the other end, as something that can be asked to do things.
+    ///
+    /// A value rather than a borrow, so that holding one does not hold the tunnel still. It
+    /// stops working when the tunnel is dropped, which is the honest lifetime: the master is
+    /// what makes it free.
+    pub fn remote(&self) -> Remote {
+        Remote::over(&self.forward.host, &self.forward.control_path)
     }
 
     pub fn host(&self) -> &str {

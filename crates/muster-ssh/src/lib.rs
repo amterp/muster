@@ -15,7 +15,15 @@
 //! The data plane cannot use the same trick. A pane's frames come from `herdr terminal
 //! session control`, which is a CLI over stdio rather than a socket method, so the bridge
 //! runs that command through this master instead - which is why the control path is public.
+//!
+//! [`Remote`] is the same connection put to a third use: running a command on the far machine
+//! and copying a file to it, so that Muster can put its own daemon over there rather than
+//! attaching whatever somebody installed. What it copies and what it runs are the caller's
+//! business - this crate stays a child process, a path, and the promise that the path keeps
+//! working.
 
+mod remote;
 mod tunnel;
 
+pub use remote::{Platform, Remote};
 pub use tunnel::{Forward, Tunnel, master_arguments, remote_environment};
