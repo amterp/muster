@@ -6,23 +6,25 @@
 //! running this" is what a script and an agent send - and it exists nowhere a corpus case can
 //! see it.
 //!
-//! **What is asserted here is the outcome, not the wait.** A pty buffers, so a plain shell handed
-//! input before its prompt appears runs it anyway - these tests pass with the wait taken out, and
-//! that was checked rather than assumed. The wait is for a program that resets the terminal as it
-//! starts and discards what is pending, which `sh` will not do on demand. Its mechanism is pinned
-//! in `client_connection.rs`; that it is *needed* is a precaution nothing here demonstrates.
+//! **The wait before the text is asserted separately, and against a different program.** A pty
+//! buffers, so a plain shell handed input before its prompt appears runs it anyway - the three
+//! tests below pass with the wait taken out, which is why nothing showed it mattered for a
+//! release. What it is for is a program that resets the terminal as it starts and discards what
+//! is pending, and `sh` will not do that on demand. The last test runs its panes on a program
+//! that does, and it is the one that fails when the wait comes out.
 //!
-//! What does need a real daemon is everything else: a second and third request going out at all,
-//! the rename coming back on the outcome, and a plain split still costing one round trip.
+//! What the rest need a real daemon for is everything else: a second and third request going out
+//! at all, the rename coming back on the outcome, and a plain split still costing one round trip.
 
-use std::path::PathBuf;
+use std::os::unix::fs::PermissionsExt;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use herdr_harness::{Daemon, until_some};
+use herdr_harness::{Daemon, until, until_file, until_some};
 use muster_core::intent::{BackendChannel, BackendIntent, Side};
 use muster_core::mirror::backend::PaneId;
 use muster_core::names::{Mint, Names};
-use muster_herdr::{HerdrBackend, PaneEnvironment};
+use muster_herdr::{HerdrBackend, HerdrClient, PaneEnvironment};
 use serde_json::json;
 
 #[test]
@@ -186,6 +188,200 @@ fn text_runs_when_it_asked_for_a_return_and_waits_when_it_did_not() {
     for path in [&held, &sent] {
         let _ = std::fs::remove_file(path);
     }
+}
+
+/// What the fixture prints once it is reading, and the only reliable sign that it is.
+const PROMPT: &str = "fixture-is-ready>";
+
+/// The pane a program was asked for gets the program, even when the program throws away
+/// whatever was typed before it was ready.
+///
+/// The hazard the readiness wait exists for, and the reason it could not be demonstrated
+/// before: `sh` will not discard pending input on demand, so every other test here passes with
+/// the wait taken out. A program that takes the terminal into raw mode does discard it, because
+/// `tcsetattr` with `TCSAFLUSH` throws away input that arrived and has not been read - and
+/// taking the terminal in hand at startup is the first thing a full-screen agent harness
+/// does. So this runs the panes on one.
+///
+/// Two panes and one program, because either half alone proves nothing. The pane Muster
+/// equipped gets its command; the pane handed the same text before the program was ready
+/// does not, and then gets it once the program is ready - which is what says the pane was
+/// working and the text was thrown away, rather than the pane being broken.
+///
+/// Delete the wait in `HerdrBackend::start` and the first assertion fails.
+#[test]
+fn a_program_that_discards_what_it_was_typed_early_still_gets_what_muster_asked_for() {
+    let handed = scratch("equipping-readiness");
+    let daemon = Daemon::start_running(&fixture(&handed).to_string_lossy());
+    let names = Names::alone("local", Mint::Drawn);
+    let backend = HerdrBackend::new(daemon.client(), PaneEnvironment::none(), names.clone());
+
+    let first = backend
+        .submit(&BackendIntent::CreateWorkspace { cwd: Some("/tmp".to_string()) })
+        .expect("a daemon that answered ping can make a workspace")
+        .created
+        .expect("workspace.create answers with the pane it started");
+
+    // Muster's own path: the split, the wait, the text, the Return.
+    backend
+        .submit(&BackendIntent::SplitPane {
+            pane: first.clone(),
+            side: Side::Down,
+            ratio: None,
+            cwd: Some("/tmp".to_string()),
+            run: Some("typed-after-the-wait".to_string()),
+            name: None,
+        })
+        .expect("a real daemon refused a split it can do");
+
+    // The same program, handed text with no wait in front of it. A plain split asks for no
+    // program, so nothing waits, and this is sent by hand the instant the split answers -
+    // which is the arrangement `pane new --run` would have if the wait came out.
+    let raced = backend
+        .submit(&BackendIntent::SplitPane {
+            pane: first,
+            side: Side::Right,
+            ratio: None,
+            cwd: Some("/tmp".to_string()),
+            run: None,
+            name: None,
+        })
+        .expect("a real daemon refused a split it can do")
+        .created
+        .expect("pane.split answers with the pane it made");
+    let raced = names.backend_pane(&raced).expect("a name Muster minted resolves");
+    type_into(&daemon, raced.as_str(), "typed-before-it-was-ready");
+
+    until(
+        "the command Muster was asked to run to reach the pane it made",
+        || handed.join("typed-after-the-wait").exists(),
+        || {
+            "the pane Muster equipped never received its command, against a program that \
+             resets its terminal as it starts.\n  Impact: `pane new --run` makes the pane and \
+             leaves it running nothing, which looks exactly like a program that started and \
+             printed nothing - and an agent nobody can tell is not listening.\n  This is what \
+             the readiness wait in HerdrBackend::start is for: it is the one assertion in the \
+             suite that fails when the wait comes out."
+                .to_string()
+        },
+    );
+
+    // And the same pane again, this time behind a wait. Its arrival is what makes the absence
+    // below meaningful: without it, a missing file would read as a pane that never started
+    // rather than as text that was thrown away. It is also the whole claim in one pair - same
+    // pane, same program, same text, and a wait is the only difference between them.
+    wait_until_ready(&daemon, raced.as_str());
+    type_into(&daemon, raced.as_str(), "typed-once-it-was-ready");
+    until_file(
+        &handed.join("typed-once-it-was-ready"),
+        "the same pane to take text once its program was reading",
+    );
+    assert!(
+        !handed.join("typed-before-it-was-ready").exists(),
+        "the program was handed text before it was ready and got it anyway, so this program \
+         does not reproduce the loss the wait is for and this test is now the thing that is \
+         wrong. Either the fixture stopped discarding pending input, or herdr stopped \
+         delivering it to the pty before the program read it."
+    );
+    let _ = std::fs::remove_dir_all(&handed);
+}
+
+/// A directory this test owns, beside the daemon roots rather than inside one.
+///
+/// The fixture's path has to be known before the daemon exists - it is written into the
+/// daemon's own config - so it cannot live under `Daemon::root`.
+fn scratch(name: &str) -> PathBuf {
+    let path = PathBuf::from(format!("/tmp/muster-test/{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&path);
+    std::fs::create_dir_all(&path).expect("the harness root should be writable");
+    path
+}
+
+/// A program that resets its terminal as it starts, and files away every line it is handed.
+///
+/// Three things it has to be. It must not exit, because herdr closes a pane whose process
+/// ends and then the workspace and then the daemon. It must print something once it is
+/// ready, because that is what the wait waits for. And it must be unready for long enough
+/// that "before it is ready" is a window a test can aim at rather than a race it might lose.
+///
+/// A line arrives as a file named after itself, so two panes running one program cannot be
+/// confused for each other - the daemon has a single `default_shell` and both panes run it.
+fn fixture(handed: &Path) -> PathBuf {
+    let script = handed.join("resets-its-terminal.py");
+    std::fs::write(
+        &script,
+        format!(
+            r#"#!/usr/bin/env python3
+import os, sys, termios, time
+
+HANDED = {handed:?}
+
+# Not ready. Anything typed into this pane now is sitting in the pty, unread.
+time.sleep(1.0)
+
+# The terminal taken in hand, the way a full-screen program takes it. TCSAFLUSH is the
+# part that matters: it discards input that arrived and has not been read yet.
+attributes = termios.tcgetattr(0)
+attributes[3] &= ~termios.ECHO
+termios.tcsetattr(0, termios.TCSAFLUSH, attributes)
+
+# Now the screen has something on it, which is what the readiness wait is waiting for.
+sys.stdout.write({prompt:?} + " ")
+sys.stdout.flush()
+
+while True:
+    line = sys.stdin.readline()
+    if not line:
+        time.sleep(3600)
+        continue
+    name = line.strip() or "empty"
+    with open(os.path.join(HANDED, name), "w") as handed:
+        handed.write("handed")
+"#,
+            handed = handed.to_string_lossy(),
+            prompt = PROMPT
+        ),
+    )
+    .expect("the scratch directory should be writable");
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755))
+        .expect("the fixture should be executable");
+    script
+}
+
+/// Waits for the fixture's own prompt, which is what says its program is reading.
+///
+/// The fixture's prompt rather than Muster's "anything on the visible screen", and the
+/// difference is not pedantry: a terminal echoes what is typed into it, so text sent early
+/// puts non-space on the screen and satisfies that test before the program has run a line.
+/// Muster's own wait is not wrong for what it does - a pane it has just made has had nothing
+/// typed into it - but this pane has, deliberately.
+///
+/// Through a client of its own because the harness's `call` is sized for a keystroke, and
+/// `pane.wait_for_output` is the one call herdr answers slowly on purpose
+/// (`observations/herdr-0.8.0.md` section 18).
+fn wait_until_ready(daemon: &Daemon, pane: &str) {
+    let client = HerdrClient::new(daemon.socket_path().to_string_lossy().into_owned());
+    client
+        .request_within(
+            "pane.wait_for_output",
+            &json!({
+                "pane_id": pane,
+                "match": { "type": "substring", "value": PROMPT },
+                "source": "visible",
+                "timeout_ms": 5_000,
+            }),
+            Duration::from_secs(10),
+        )
+        .expect("the fixture draws a prompt once it is ready for input");
+}
+
+/// Text and a Return, sent straight to the daemon.
+///
+/// Around Muster rather than through it, because what it is for is the arrangement Muster
+/// does not have: a pane handed input with nothing waiting first.
+fn type_into(daemon: &Daemon, pane: &str, text: &str) {
+    daemon.call("pane.send_text", &json!({ "pane_id": pane, "text": text }));
+    daemon.call("pane.send_input", &json!({ "pane_id": pane, "keys": ["enter"] }));
 }
 
 /// What the daemon itself calls a pane, asked of the daemon rather than of Muster's mirror.

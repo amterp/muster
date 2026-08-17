@@ -988,7 +988,22 @@ real configuration and the reason the timeout has to be survivable.
 `tab.create` or `workspace.create`. A pane runs the daemon's `default_shell` and nothing
 else, so "make a pane running this" is necessarily a split, a wait for the prompt, and
 then the text - three calls, and the wait is the only thing standing between the text and
-a shell that has not finished starting.
+a program that has not finished starting.
+
+**What the wait is worth, measured rather than assumed.** A pty buffers, so a plain `sh`
+handed input before its prompt appears runs it anyway - which is why removing the wait broke
+nothing for a release. What loses the text is a program that takes the terminal in hand as it
+starts: `tcsetattr` with `TCSAFLUSH` discards input that arrived and has not been read, and
+that is the first thing a full-screen agent harness does. Two panes running such a program,
+one equipped by Muster and one handed the same text with nothing waiting first, split cleanly:
+the first gets its command and the second loses it, and the second gets it on a second attempt
+once the program is reading. `crates/muster-herdr/tests/pane_equipping.rs`.
+
+**The readiness signal is satisfied by the terminal's own echo.** Muster waits for `\S` on the
+visible screen, and a terminal echoes what is typed into it - so text sent into a pane puts
+non-space there before the program has run a line. Harmless where Muster uses it, since a pane
+it has just made has had nothing typed into it, and worth knowing for anything else that waits
+this way on a pane already in use.
 
 Pinned by `crates/muster-herdr/tests/client_connection.rs`, which asserts both directions:
 the ordinary calls answer with the write side half-closed, and `pane.wait_for_output` does

@@ -39,20 +39,28 @@ use serde_json::{Value, json};
 const ROOT: &str = "/tmp/muster-test";
 const SUN_PATH_MAX: usize = 100;
 
-/// Deterministic and offline. The shell is pinned to a non-login `/bin/sh` so a
-/// developer's dotfiles play no part in what a test sees - a login zsh under a scratch
-/// HOME exits nonzero, which closes the pane, then the workspace, then the whole headless
-/// server.
-const CONFIG_TOML: &str = "\
+/// What a pane runs unless a test asks for something else.
+///
+/// A non-login `/bin/sh`, so a developer's dotfiles play no part in what a test sees - a
+/// login zsh under a scratch HOME exits nonzero, which closes the pane, then the workspace,
+/// then the whole headless server.
+const SHELL: &str = "/bin/sh";
+
+/// Deterministic and offline.
+fn config_toml(shell: &str) -> String {
+    format!(
+        "\
 [terminal]
-default_shell = \"/bin/sh\"
+default_shell = \"{shell}\"
 shell_mode = \"non_login\"
 new_cwd = \"current\"
 
 [update]
 version_check = false
 manifest_check = false
-";
+"
+    )
+}
 
 static NEXT: AtomicU32 = AtomicU32::new(0);
 
@@ -82,6 +90,21 @@ impl Daemon {
     /// than a behavior under test. The message says which, because the two look identical
     /// from a failing assertion.
     pub fn start() -> Daemon {
+        Daemon::start_running(SHELL)
+    }
+
+    /// A daemon whose panes run `program` instead of a shell.
+    ///
+    /// herdr has no way to spawn a pane with a command (`observations/herdr-0.8.0.md`
+    /// section 18): a pane runs the daemon's `default_shell` and nothing else. So a test
+    /// about a program that behaves unlike a shell - one that resets its terminal as it
+    /// starts, say - has to say so before the daemon exists, which is why this is a
+    /// constructor rather than something a pane can be handed later.
+    ///
+    /// The program must not exit. herdr closes a pane whose process ends, then the workspace
+    /// with its last tab, then the headless server with its last workspace - so a fixture
+    /// that returns takes the daemon down and every later call fails as a connection error.
+    pub fn start_running(program: &str) -> Daemon {
         let root = PathBuf::from(ROOT).join(format!(
             "{}-{}",
             std::process::id(),
@@ -105,7 +128,7 @@ impl Daemon {
                 panic!("could not create the harness root at {}: {error}", root.display())
             });
         }
-        std::fs::write(config_dir.join("config.toml"), CONFIG_TOML)
+        std::fs::write(config_dir.join("config.toml"), config_toml(program))
             .expect("could not write the harness config");
 
         let mut daemon = Daemon {

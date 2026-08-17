@@ -312,14 +312,16 @@ impl HerdrBackend {
     /// The wait is why this belongs in Muster rather than in every caller: whatever it is worth,
     /// it is worth doing once and in one place.
     ///
-    /// **What it protects against, honestly.** A pty buffers, so a plain shell handed input
-    /// before it has drawn a prompt still runs it - that case needs no wait and does not get one,
-    /// because the screen already has content and the wait returns at once. The case it is for is
-    /// a program that resets the terminal as it starts, which is what a full-screen agent harness
-    /// does: pending input is discarded by the reset, and what is left is a pane sitting in a
-    /// harness that was never told anything. That is not reproducible with `sh`, so no test here
-    /// asserts the wait changes an outcome - `client_connection.rs` asserts the mechanism works,
-    /// and this is a precaution rather than a demonstrated fix.
+    /// **What it protects against.** A pty buffers, so a plain shell handed input before it has
+    /// drawn a prompt still runs it - that case needs no wait and does not get one, because the
+    /// screen already has content and the wait returns at once. The case it is for is a program
+    /// that resets the terminal as it starts, which is what a full-screen agent harness does:
+    /// `tcsetattr` with `TCSAFLUSH` throws away input that arrived and has not been read, and
+    /// what is left is a pane sitting in a harness that was never told anything.
+    ///
+    /// Demonstrated rather than argued: `pane_equipping.rs` runs its panes on a program that
+    /// does exactly that, and the command arrives only because of this wait. Every other test in
+    /// that file passes with the wait removed, which is what made this a claim for a release.
     fn start(&self, pane: &PaneId, command: &str) {
         let Ok(backend) = self.names.backend_pane(pane) else { return };
         self.ready(&backend);
