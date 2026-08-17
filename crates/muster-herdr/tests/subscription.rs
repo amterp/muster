@@ -11,7 +11,7 @@
 //! ask a real daemon to withhold an acknowledgement, which makes it the transport fault
 //! `docs/testing.md` allows rather than the hand-written daemon it forbids.
 
-use std::io::Read;
+use std::io::{Read, Write};
 use std::os::unix::net::UnixListener;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -520,6 +520,128 @@ fn a_daemon_that_never_acknowledges_can_still_be_let_go_of() {
     // the 256 a GUI-launched process gets, and a daemon flapping between accepting and
     // healthy leaks one set per reconnect.
     until("the daemon to see the connection close", || daemon.hung_up());
+}
+
+/// A listener that acknowledges the subscription and then will not describe its session.
+///
+/// The second fake in this file, and it costs one line more than the first. `StalledDaemon`
+/// above answers nothing, and answering nothing is not part of any protocol; this one has to
+/// write a single `{}` to get past the acknowledgement, because a subscription that is never
+/// acknowledged never reaches the bootstrap and the bootstrap is the whole point here. Every
+/// connection after that is accepted and closed, which emulates nothing again - a connection
+/// that goes away is a transport fault.
+///
+/// What that one line relies on is Muster's own rule rather than herdr's schema: `connect` in
+/// `subscription.rs` reads one line and refuses it only if it carries an `error`. The cost is
+/// worth naming - if herdr ever required more of an acknowledgement than that, this fake would
+/// keep passing while the real client broke. It is one line and one assumption, both stated
+/// here, against a bug that no real daemon can be asked to stage: `session.snapshot` failing
+/// while the event stream stays healthy.
+struct SnapshotlessDaemon {
+    path: PathBuf,
+    connections: Arc<AtomicU32>,
+}
+
+impl SnapshotlessDaemon {
+    fn start() -> SnapshotlessDaemon {
+        static NEXT: AtomicU32 = AtomicU32::new(0);
+        let root = Path::new("/tmp/muster-test");
+        std::fs::create_dir_all(root).expect("could not make the scratch root");
+        let path = root.join(format!(
+            "nosnap-{}-{}.sock",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        let _ = std::fs::remove_file(&path);
+
+        let listener = UnixListener::bind(&path).expect("could not bind the snapshotless daemon");
+        let connections = Arc::new(AtomicU32::new(0));
+
+        let counted = Arc::clone(&connections);
+        std::thread::spawn(move || {
+            let mut acknowledged = false;
+            while let Ok((mut stream, _)) = listener.accept() {
+                counted.fetch_add(1, Ordering::Relaxed);
+                if acknowledged {
+                    // Dropped, which closes it. That is what makes the snapshot fail at once
+                    // rather than after a timeout, so this test costs milliseconds.
+                    continue;
+                }
+                acknowledged = true;
+                let _ = stream.write_all(b"{}\n");
+                // Held open on a thread of its own, so the subscription stays connected -
+                // which is the situation being staged - while later connections can still be
+                // accepted.
+                std::thread::spawn(move || {
+                    let mut buffer = [0u8; 256];
+                    while let Ok(read) = stream.read(&mut buffer) {
+                        if read == 0 {
+                            break;
+                        }
+                    }
+                });
+            }
+        });
+
+        SnapshotlessDaemon { path, connections }
+    }
+
+    fn socket_path(&self) -> String {
+        self.path.to_string_lossy().into_owned()
+    }
+
+    fn connections(&self) -> u32 {
+        self.connections.load(Ordering::Relaxed)
+    }
+}
+
+impl Drop for SnapshotlessDaemon {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+#[test]
+fn a_daemon_that_will_not_describe_its_session_is_reported_and_tried_again() {
+    let daemon = SnapshotlessDaemon::start();
+    let log = Arc::new(Log::default());
+    let mirror = Arc::new(Mutex::new(Mirror::new()));
+
+    let _subscription = Subscription::start(
+        daemon.socket_path(),
+        Arc::clone(&mirror),
+        log.record(),
+        Names::alone("local", Mint::Backend),
+    );
+
+    // The window has to be told. A subscription that is connected and has no session is worse
+    // than one that is disconnected: the events arriving describe changes to a world the
+    // mirror does not have, and saying nothing leaves a window that came up empty looking like
+    // a machine with nothing running on it.
+    // Matched on the phrase rather than on the variant, because a failed dial is `Stale` too
+    // and this test is about the other one - a daemon that answered, and then would not say
+    // what it was holding.
+    until("the subscription to say the session could not be described", || {
+        log.notices().iter().any(|notice| {
+            matches!(notice, Notice::Stale { detail } if detail.contains("describe its session"))
+        })
+    });
+
+    // And it has to try again. This is the half that made a gate run hang: with the snapshot
+    // thrown away, the connection is healthy, so nothing reconnects, so nothing ever
+    // bootstraps - and the mirror stays empty for the life of the process. Three connections
+    // means the subscription came back after the snapshot failed rather than settling down to
+    // stream events into a mirror with no world in it.
+    until("the subscription to dial again after the snapshot failed", || {
+        daemon.connections() >= 3
+    });
+
+    assert_ne!(
+        mirror.lock().unwrap().health(),
+        Health::Connected,
+        "a mirror that never got a snapshot reported itself connected, so the window would \
+         render an empty session as a real one"
+    );
 }
 
 #[test]
