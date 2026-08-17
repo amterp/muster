@@ -430,11 +430,9 @@ impl AgentWatchers {
                     return;
                 }
                 let events = decoder.consume(&buffer[..read]);
-                let changes: Vec<Change> = match mirror.lock() {
-                    Ok(mut mirror) => {
-                        events.into_iter().flat_map(|event| mirror.apply(event)).collect()
-                    }
-                    Err(_) => return,
+                let changes: Vec<Change> = {
+                    let mut mirror = poison::lock(&mirror, "mirror");
+                    events.into_iter().flat_map(|event| mirror.apply(event)).collect()
                 };
                 for change in changes {
                     report(Notice::Changed(change));
