@@ -8,14 +8,21 @@ milliseconds since scenario start, so two runs diff cleanly.
 from __future__ import annotations
 
 import json
-import platform
 import time
 from pathlib import Path
 from typing import Any
 
 
 class Recorder:
-    def __init__(self, corpus_dir: Path, scenario: str, herdr_version: str, protocol: int):
+    def __init__(self, corpus_dir: Path, scenario: str, herdr_version: str, protocol: int,
+                 platform: str):
+        """`platform` is the machine the daemon runs on, which is not always this one.
+
+        Asked for rather than read off this process, because a remote run records a Linux
+        daemon from a Mac - and a recording that stamped the wrong platform made the whole
+        Linux corpus claim to be Darwin/arm64. Nothing noticed, because nothing read it;
+        diff-corpus now does, to decide which facts are comparable across the two.
+        """
         self.dir = Path(corpus_dir) / scenario
         self.dir.mkdir(parents=True, exist_ok=True)
         self.scenario = scenario
@@ -29,7 +36,7 @@ class Recorder:
                 "scenario": scenario,
                 "herdr_version": herdr_version,
                 "herdr_protocol": protocol,
-                "platform": f"{platform.system()}/{platform.machine()}",
+                "platform": platform,
                 "recorded_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             },
         )

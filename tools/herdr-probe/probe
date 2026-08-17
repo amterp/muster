@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import platform
 import shutil
 import subprocess
 import sys
@@ -76,6 +77,15 @@ def remote_identity(key: Path, port: int) -> tuple[str, int]:
     return version, protocol
 
 
+def remote_platform(key: Path, port: int) -> str:
+    """Which machine the recording is of, asked of that machine.
+
+    Spelled the way `platform.system()/machine()` spells it here, so the two corpora carry
+    comparable strings: Linux/aarch64 either way, Darwin/arm64 either way.
+    """
+    return RemoteDaemon(key, port=port).ssh("uname -s; uname -m").stdout.strip().replace("\n", "/")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("scenarios", nargs="*", help="scenarios to run (default: all)")
@@ -113,11 +123,13 @@ def main() -> int:
             return 4
         probe_daemon = lambda: RemoteDaemon(key, port=args.remote_port)
         version, protocol = remote_identity(key, args.remote_port)
+        recorded_platform = remote_platform(key, args.remote_port)
         suffix = "-linux"
     else:
         herdr_bin = args.herdr or pinned_herdr()
         probe_daemon = lambda: IsolatedDaemon(args.root, herdr_bin=herdr_bin)
         version, protocol = herdr_identity(herdr_bin)
+        recorded_platform = f"{platform.system()}/{platform.machine()}"
         suffix = ""
 
     corpus = args.corpus or (DEFAULT_CORPUS / f"herdr-{version}{suffix}")
@@ -130,7 +142,7 @@ def main() -> int:
             shutil.rmtree(args.root, ignore_errors=True)
         daemon = probe_daemon()
         daemon.prepare()
-        rec = Recorder(corpus, name, version, protocol)
+        rec = Recorder(corpus, name, version, protocol, recorded_platform)
         # A traceback from a run that has since been fixed sits beside a good recording
         # and reads as if the recording were the broken one. Cleared before the attempt
         # rather than after, so a crash mid-write cannot leave one behind either.

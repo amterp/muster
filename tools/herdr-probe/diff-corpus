@@ -23,9 +23,9 @@ import json
 import sys
 from pathlib import Path
 
-# Facts that legitimately differ between machines and runs. Timings are timings, and
-# a pane's PTY with no viewer is herdr's TUI layout, which depends on the terminal
-# size the daemon assumes.
+# Facts that legitimately differ between runs of the same thing on the same machine.
+# Timings are timings, and a pane's PTY with no viewer is herdr's TUI layout, which depends
+# on the terminal size the daemon assumes.
 #
 # The terminal ids and the working directories are here for a different reason: they are
 # values rather than claims. A terminal id is stamped per run, and a home directory is a
@@ -44,7 +44,60 @@ VOLATILE = {
     "cwds_after_apply",
     "cwds_before_restart",
     "cwds_after_restart",
+    # How long the daemon took to answer and how far apart its events landed. Wall clock on
+    # a machine doing other things, so these move run to run on one platform as readily as
+    # they do between two.
+    "arrival_gaps_ms",
+    "event_arrival_ms",
+    "pair_answered_in_ms",
+    "split_then_swap_answered_ms",
 }
+
+# Facts that are stable on one machine and cannot be compared across two.
+#
+# A second list rather than more entries in the first, because the two mean different
+# things and conflating them would quietly weaken same-platform diffs - the ones that
+# answer "what changed in herdr". `/private/tmp` does not vary between runs on a Mac; it
+# just is not the same string a Linux box would write.
+#
+# Only applied when the two recordings say they came from different platforms, which is why
+# META.json has to be right about that.
+#
+# **Each of these hides real signal, and that is the cost being paid.** The three arranging
+# payloads carry the whole layout tree, which is portable and worth comparing; they are
+# skipped because that tree is recorded with a `cwd` and a `terminal_id` inside it, and
+# there is no way to compare part of a fact. The proper fix is for those scenarios to
+# record the claim apart from the machine's own values, at which point these come off this
+# list. Until then, a cross-platform run compares the rest of `arranging` and not these.
+NOT_PORTABLE = {
+    # Payload blobs holding a pane's cwd and its terminal id. A cwd is a fact about the
+    # machine - /tmp is a symlink to /private/tmp on macOS and is itself on Linux - and a
+    # terminal id is stamped per run, which VOLATILE already says elsewhere.
+    "layout_after_move",
+    "move_answer",
+    "pane_moved_payload",
+    # Where a line too long for the pane wraps, measured from where the shell's echo of the
+    # command began - so this is the width of a prompt as much as it is the daemon's
+    # wrapping. The unwrapped variant beside it carries the same claim without the prompt in
+    # it, and is compared.
+    "long_line_row_widths_in_recent",
+}
+
+
+def recorded_platform(root: Path) -> str | None:
+    """What machine a corpus was recorded against, if it says.
+
+    A corpus recorded before this was written says the platform of whatever ran the probe,
+    which for a remote run was the wrong one. Reading it as unknown rather than trusting it
+    means an old corpus is compared strictly, which is the safe way to be wrong.
+    """
+    for directory in sorted(root.iterdir()):
+        meta = directory / "META.json"
+        if meta.exists():
+            said = json.loads(meta.read_text()).get("platform")
+            if isinstance(said, str) and said:
+                return said
+    return None
 
 
 def facts(root: Path) -> dict[str, dict]:
@@ -62,8 +115,12 @@ def main() -> int:
     left_root, right_root = Path(sys.argv[1]), Path(sys.argv[2])
     left, right = facts(left_root), facts(right_root)
 
-    print(f"--- {left_root}")
-    print(f"+++ {right_root}\n")
+    left_platform, right_platform = recorded_platform(left_root), recorded_platform(right_root)
+    across_platforms = bool(left_platform and right_platform and left_platform != right_platform)
+    skip = VOLATILE | NOT_PORTABLE if across_platforms else VOLATILE
+
+    print(f"--- {left_root} ({left_platform or 'platform not recorded'})")
+    print(f"+++ {right_root} ({right_platform or 'platform not recorded'})\n")
 
     differences = 0
     only_left = sorted(set(left) - set(right))
@@ -77,7 +134,7 @@ def main() -> int:
         lf, rf = left[name], right[name]
         rows = []
         for key in sorted(set(lf) | set(rf)):
-            if key in VOLATILE:
+            if key in skip:
                 continue
             lv, rv = lf.get(key, "<absent>"), rf.get(key, "<absent>")
             if lv != rv:
@@ -90,9 +147,18 @@ def main() -> int:
                 print(f"    + {json.dumps(rv)}")
             differences += len(rows)
 
-    skipped = sum(1 for f in left.values() for k in f if k in VOLATILE)
+    volatile = sum(1 for f in left.values() for k in f if k in VOLATILE)
+    unportable = sum(1 for f in left.values() for k in f if k in NOT_PORTABLE)
+    said = f"{volatile} volatile fact(s) not compared"
+    if across_platforms:
+        said += f"; {unportable} not comparable across platforms"
+    elif unportable:
+        # Said rather than left silent: on a same-platform diff these ARE compared, and
+        # somebody reading a clean run should know that is a stronger claim than a
+        # cross-platform one.
+        said += f"; {unportable} platform-bound fact(s) compared, since both sides agree"
     print(f"\n{differences} difference(s) across {len(set(left) & set(right))} shared scenario(s); "
-          f"{skipped} volatile fact(s) not compared")
+          f"{said}")
     return 1 if differences else 0
 
 
