@@ -347,6 +347,31 @@ Muster's answer rather than yours - and your own `~/.config/herdr/config.toml` i
 still read by your own herdr, and handed back to every pane Muster opens so that `herdr` typed
 inside one reads what it always did.
 
+## Driving Muster
+
+Everything a chord does, `muster` does. `muster window` says what a window is showing and what
+every agent in it is doing, `muster pane new` makes a pane, and `muster pane send` types into one
+by name - all of it the same requests the keyboard sends, because there is one path through the
+core and this is the other door into it.
+
+    muster window
+    muster pane new --down --run claude --name "🤖 A"
+    muster pane send --pane p1w3r07bsd "read AGENTS.md and wait" --enter
+    muster window --json
+
+`muster docs` is the reference and it ships inside the binary, so it describes the version you are
+running. `muster --help` has the grammar, `muster completions zsh` writes a completion script.
+
+Every pane Muster makes can drive the window it is drawn in without being set up first: the
+command is on its `PATH` from `~/.muster/bin`, `$MUSTER_PANE` says which pane it is, and
+`$MUSTER_SOCKET` says which window to tell. So `muster pane new` inside a pane splits that pane,
+and an agent told "split two panes below you and start an agent in each" can do it. Add
+`~/.muster/bin` to your own `PATH` for terminals outside Muster; it holds a link to the command
+belonging to the running app, refreshed at every launch.
+
+Muster imposes no workflow. These are primitives, and `extras/skill/SKILL.md` is a Claude Code
+skill that points an agent at them and nothing more.
+
 ## Building
 
 `./dev` is the only supported way to build, test, and lint. With no flags it takes the full gate, and
@@ -412,7 +437,10 @@ regenerates on demand; a normal build does it only when the schema's hash change
 - `docs/`: `origin.md` is the founding story, frozen as history; `architecture.md`, `testing.md`, and `glossary.md`
   are living doctrine; `docs/mip/` holds MIPs, the rare large decisions; `docs/observations/` records what a
   dependency was measured doing, one file per version, each claim citing raw transcripts in `corpus/`. Routine
-  rationale lives in commit messages; open questions live in the kan board's `uncommitted` column.
+  rationale lives in commit messages; open questions live in the kan board's `uncommitted` column. `docs/cli/` is
+  the reference `muster docs` ships inside the CLI binary, so a file there is prose the gate checks is reachable.
+- `extras/` holds things that are Muster-adjacent rather than Muster: today one Claude Code skill pointing an agent
+  at `muster docs`.
 - `corpus/`: what the code is judged against, in no language. `conformance/` holds the cases that define the core's
   behavior, `snapshots/` the rendered oracles too broad to be cases, and the rest raw transcripts recorded from a
   real dependency. The gate fails if a file here is checked in and never run.

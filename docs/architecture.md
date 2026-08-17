@@ -486,6 +486,24 @@ invocation surfaces carry no logic of their own (desiderata: parity by construct
 running app over a local IPC endpoint, and it covers everything Muster does - panes and tabs as well as focus and
 arrangement.
 
+**The endpoint is the same schema on a different transport, not a second path.** A window binds
+`~/.muster/state/command-<pid>.sock` and answers a length-prefixed `Request` through the same `dispatch` the C ABI
+calls, one request per connection, a thread each so a `pane new --run` waiting on a shell prompt does not hold up a
+caller asking what the window looks like. Nothing there decides anything; a second entry point that made its own
+decisions would be a second Muster.
+
+**A pid in the socket name, because two Musters are two windows.** A caller has to be able to reach the one it means,
+and a single fixed path would mean the second window to open silently took the first one's callers. Which window a
+pane belongs to is settled when the pane is made: Muster puts `MUSTER_SOCKET` in the environment of that request,
+beside the `MUSTER_PANE` that says which pane it is, and between them a program inside a pane can drive the window it
+is drawn in without being configured. Only for a daemon on this machine - a unix socket path means nothing across an
+ssh tunnel, so a devenv pane is told nothing and correctly concludes it is not in a window it can drive.
+
+**The command has to be findable, or the surface is taught rather than discovered.** Muster keeps `~/.muster/bin`,
+points a link in it at the CLI the running app shipped, and gives the directory to every daemon it starts as the
+front of that daemon's `PATH`. A pane is a child of its daemon, so that is every pane. The link is refreshed at each
+launch rather than installed once, because the app it points at moves.
+
 **It is not a view-layer CLI beside the backend's own.** That was the earlier plan, on the reasoning that herdr has a
 good CLI already and Muster should not reimplement it, and three things sank it. A window can be attached to more
 than one daemon, and a backend CLI inside a pane reaches that pane's daemon and no other - so it cannot put a pane on
@@ -506,7 +524,10 @@ prompt races the program's own first output. Anybody scripting "make a pane and 
 that wait and gets it wrong under load. One call owns it once.
 
 Reads are half of it. A person driving the GUI can see which panes are on screen and where the keyboard is; an agent
-has to ask, and a CLI that only writes leaves one arranging a window it cannot look at.
+has to ask, and a CLI that only writes leaves one arranging a window it cannot look at. `ReadWindow` answers the
+view, the roster, every pane's agent state and each daemon's health as one message, built by the same builders that
+produce the events a shell is sent - so a read cannot contradict what is on screen. Health is in the answer because
+the rest of it is a mirror, and a mirror nobody has heard from in an hour looks exactly like a current one.
 
 On macOS a keybinding *is* a menu item, because that is where the platform dispatches a key equivalent. Matching
 chords before the pane sees them would take shortcuts the user rebound in System Settings and make them mean

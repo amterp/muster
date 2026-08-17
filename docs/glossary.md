@@ -18,6 +18,9 @@ One name per concept; docs and code use these terms. Alphabetical.
 - **data plane** - output only: pane channels, adapter to surface, bypassing the core.
 - **devenv container** - the repo's Linux container (sshd, Linux herdr, scripted fake agents); dev sandbox and
   remote-path test fixture in one.
+- **command endpoint** - the unix socket a window answers requests on, at
+  `~/.muster/state/command-<pid>.sock`. The same schema the shell/core seam carries, arriving from another process -
+  which is what the CLI is. A pane reads the path of its own window's from `MUSTER_SOCKET`.
 - **frame** - one screen-diff message on a pane channel.
 - **intent** - a requested mutation sent to a daemon (split, focus, resize, input, scroll, spawn). Muster never
   mutates; it requests.

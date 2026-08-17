@@ -15,6 +15,7 @@ use std::io::Write;
 
 pub mod args;
 pub mod dial;
+pub mod docs;
 pub mod environment;
 pub mod render;
 
@@ -79,7 +80,7 @@ pub fn run(
 
     let request = match invocation.asking {
         args::Asking::Print(text) => {
-            let _ = write!(out, "{text}");
+            let _ = writeln!(out, "{}", text.trim_end());
             return 0;
         }
         args::Asking::Send(request) => request,

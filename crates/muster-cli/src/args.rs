@@ -22,7 +22,7 @@ use muster_proto::{
     ClosePane, FocusPane, ReadWindow, RenamePane, Request, SendToPane, SplitPane, ZoomPane, request,
 };
 
-use crate::environment;
+use crate::{docs, environment};
 
 /// What one command line asked for.
 #[derive(Debug)]
@@ -138,6 +138,12 @@ enum What {
         pane: Option<String>,
     },
 
+    /// Read Muster's own documentation, which ships inside this binary
+    Docs {
+        /// A topic, or `all` for every one of them. Omit for the list.
+        topic: Option<String>,
+    },
+
     /// Print a completion script for a shell
     Completions {
         /// The shell to write for
@@ -249,6 +255,7 @@ pub fn parse(
             pane_id: pane_ref(pane.as_ref(), environment),
             ..ZoomPane::default()
         })),
+        What::Docs { topic } => Asking::Print(documentation(topic.as_deref())?),
         What::Completions { shell } => Asking::Print(completions(*shell)),
     };
 
@@ -318,6 +325,20 @@ fn running_in(environment: &BTreeMap<String, String>) -> Option<String> {
 
 fn send(payload: request::Payload) -> Asking {
     Asking::Send(Box::new(Request { payload: Some(payload) }))
+}
+
+/// One document, all of them, or the list of what there is.
+///
+/// A topic nobody has is refused here rather than left to clap, because the topics are data in
+/// `docs.rs` and a clap value list would be a second copy of them to keep in agreement.
+fn documentation(topic: Option<&str>) -> Result<String, Failure> {
+    match topic {
+        None => Ok(docs::listing()),
+        Some("all") => Ok(docs::everything()),
+        Some(named) => docs::topic(named)
+            .map(|topic| topic.text.trim_end().to_string())
+            .ok_or_else(|| Failure::Refused(docs::no_such_topic(named))),
+    }
 }
 
 /// A completion script, generated from the same command definition `--help` is rendered from.
