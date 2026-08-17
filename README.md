@@ -294,6 +294,16 @@ designed. `divider` sits with the pane colours even though Muster rather than th
 paints it, because you pick colours all at once and which piece of code holds the brush is
 not something you should have to know.
 
+**A `family` this machine does not have is reported rather than ignored.** Leaving `family` out
+asks for the renderer's own font and is the design; naming one that is not installed is a
+different thing, and it used to look identical - a family name is a string, so `Fira Cod` and
+`Fira Code` both paint on a machine with neither. It now appears at the foot of the agent list,
+naming the font and saying that panes are using the renderer's default instead. A family that
+*is* installed but is not monospaced is reported the same way and for the same reason: the
+columns stop lining up, which reads as a Muster bug rather than a font one. Both are warnings
+rather than refusals - a font is wrong only on the machine that lacks it, so refusing the file
+would mean one config could not be shared between a laptop and a devenv.
+
 Muster reads no file belonging to another application. It used to: fonts and colours came
 from a Ghostty config if you had one, which is why the whole of `[colors]` is new rather than
 a rename. If you configured Muster's appearance through Ghostty, that stops working and this

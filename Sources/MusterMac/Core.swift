@@ -362,6 +362,23 @@ public enum Core {
     return wire
   }
 
+  /// Tells the core what this machine makes of the font family the config named.
+  ///
+  /// A report rather than a question: the shell can see whether the font is here and the core
+  /// decides whether that is worth telling anybody. Sent at launch and again on every reload, so
+  /// a corrected family clears the problem the way a corrected config does - which is the only
+  /// acknowledgement a fix ever gets.
+  public static func reportFontFamily(_ family: String?) {
+    var report = Muster_ReportFontFamily()
+    report.family = family ?? ""
+    let found = InstalledFont.look(up: report.family)
+    report.found = found.found
+    report.monospaced = found.monospaced
+    var request = Muster_Request()
+    request.reportFontFamily = report
+    send(request)
+  }
+
   /// Makes the text in every pane bigger or smaller, or puts it back.
   ///
   /// A direction rather than a size, matching `toggleSidebar`: what a chord means is "one more
@@ -704,6 +721,7 @@ public enum Core {
     case .readWindow: return "read_window"
     case .readWindowFrame: return "read_window_frame"
     case .setWindowFrame: return "set_window_frame"
+    case .reportFontFamily: return "report_font_family"
     // The kind, never the text, for the reason a find needle is never logged: what somebody
     // types into their own terminal is theirs.
     case .sendToPane: return "send_to_pane"
@@ -767,6 +785,9 @@ public enum Core {
       let appearance = read(changed.appearance)
       info("appearance.received", ["divider": appearance.dividerColor ?? "(platform)"])
       window?.apply(appearance: appearance)
+      // The family may have changed with everything else, and the answer to whether this
+      // machine has it can only be looked up here.
+      reportFontFamily(appearance.pane.fontFamily)
     case .bindingsChanged(let changed):
       let bindings = read(changed.bindings)
       info("bindings.received", ["actions": String(bindings.count)])

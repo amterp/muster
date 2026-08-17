@@ -1,0 +1,53 @@
+{
+  "concept": "muster.font.family",
+  "source": "authored",
+  "citation": "kan a_28wLM0hbC raised it, and two facts about the renderer decided the wording. docs/observations/libghostty-9f9b8d1d.md: `font-family` is one of the six keys that are write-only through the C API, so Muster cannot ask which font was actually used. ghostty's src/font/SharedGridSet.zig logs `font-family not found` and falls through to its own built-in font rather than to a system one, which is why the words here are 'the renderer's own default' rather than the name of a font. README.md's appearance section is where absent-means-the-renderer's-default comes from.",
+  "why": "This is the one appearance value that fails silently on the machine it is wrong on. A colour that will not parse is refused by the core and the window says so; a family name is a string the renderer accepts whatever it says, so a typo, a font installed for another user, and a correct name on a machine that has the font all paint the same. What these cases pin is when Muster speaks, how loudly, and in what words - because both mistakes are expensive. Staying quiet leaves somebody wondering why their config did nothing. Speaking when the font is fine puts a box over a window that is painting exactly what was asked for, which teaches people to ignore the box and costs every later warning its meaning.\n\nThe whole message is pinned rather than a fragment of it, on the same terms as a refused config in config.json: what a window owes somebody who has just broken their own file is the deliverable here, not an implementation detail behind it.",
+  "cases": [
+    {
+      "name": "the family is there and it is monospaced",
+      "why": "The ordinary case and the one that has to stay silent. Nothing is wrong, so nothing is said.",
+      "given": { "family": "Fira Code", "found": true, "monospaced": true },
+      "expect": { "problem": null }
+    },
+    {
+      "name": "nothing was named at all",
+      "why": "Absent is the design rather than an omission: Muster has no opinion about which monospace font a machine has, so leaving `family` out asks for the renderer's own default. Reporting that as a problem would make the documented way of saying 'you choose' look like a mistake.",
+      "given": { "family": "", "found": false, "monospaced": false },
+      "expect": { "problem": null }
+    },
+    {
+      "name": "a family this machine does not have",
+      "why": "The case the card was raised from. `Fira Cod` and `Fira Code` are one keystroke apart and paint identically on a machine with neither, so the name has to come back in the message - one that only announced a problem would leave somebody comparing their config against a memory of how they spelled it. The second cause is the one nobody thinks of: a font installed for another user on the same machine is not there for this one.",
+      "given": { "family": "Fira Cod", "found": false, "monospaced": false },
+      "expect": {
+        "problem": "warning font.family",
+        "detail": "`Fira Cod` in the config file's [font] family is not a font family this machine has, so panes are painted with the renderer's own default instead. Check the spelling, and whether the font is installed for this user rather than for another one."
+      }
+    },
+    {
+      "name": "a real font that is not monospaced",
+      "why": "This one renders, so nothing is missing and nothing is misspelled - the grid simply stops lining up, which reads as a Muster bug rather than a config one. The words have to hand that back: it is the font, and a terminal needs every cell the same width.",
+      "given": { "family": "Helvetica", "found": true, "monospaced": false },
+      "expect": {
+        "problem": "warning font.family",
+        "detail": "`Helvetica` in the config file's [font] family is installed but is not monospaced, so columns will not line up and the grid will look wrong. That is the font rather than Muster - a terminal needs every cell the same width. Name a monospace family, or leave `family` out for the renderer's own."
+      }
+    },
+    {
+      "name": "a family nobody has is not also called proportional",
+      "why": "A shell has no font to read a trait from when nothing matched, so it reports the trait as false - which is the absence of a font and not a proportional one. Answering that with the wrong complaint would send somebody looking at the metrics of a font they do not have.",
+      "given": { "family": "Zapfino Mono", "found": false, "monospaced": false },
+      "expect": {
+        "problem": "warning font.family",
+        "detail": "`Zapfino Mono` in the config file's [font] family is not a font family this machine has, so panes are painted with the renderer's own default instead. Check the spelling, and whether the font is installed for this user rather than for another one."
+      }
+    },
+    {
+      "name": "the platform resolved a name written in another case",
+      "why": "CoreText matches a family name case-insensitively and so does the renderer, so `menlo` paints Menlo. Muster must not warn about a font that is about to paint perfectly well - which is the false alarm a string comparison against a list of family names would produce, and the reason the shell is asked to resolve a name rather than to enumerate what exists.",
+      "given": { "family": "menlo", "found": true, "monospaced": true },
+      "expect": { "problem": null }
+    }
+  ]
+}

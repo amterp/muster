@@ -12,6 +12,7 @@ use muster_core::fields;
 use muster_core::composition::{DaemonId, FontSizeChange, Frame, RegionId, Step};
 use muster_core::config::{self, CursorStyle};
 use muster_core::find::Needle;
+use muster_core::font::{self, FontReport};
 use muster_core::input::{CompositionOutcome, Modifiers, ScrollDirection, composition_outcome};
 use muster_core::intent::{BackendIntent, Branch, Side};
 use muster_core::mirror::backend::{PaneId, TabId};
@@ -81,6 +82,7 @@ fn handle(request: Request) -> Response {
         request::Payload::SendToPane(send) => send_to_pane(&send),
         request::Payload::ReadAppearance(_) => read_appearance(),
         request::Payload::ReadWindowFrame(read) => read_window_frame(&read.screens),
+        request::Payload::ReportFontFamily(report) => report_font_family(&report),
         request::Payload::SetWindowFrame(set) => {
             let frame = set.frame.unwrap_or_default();
             session::set_window_frame(frame.rect.map(read_rect), frame.full_screen);
@@ -533,6 +535,50 @@ fn read_rect(rect: proto::WindowRect) -> Frame {
 
 fn write_rect(frame: Frame) -> proto::WindowRect {
     proto::WindowRect { x: frame.x, y: frame.y, width: frame.width, height: frame.height }
+}
+
+/// What the machine had to say about the font family the config named.
+///
+/// The shell looks it up because only a shell can, and the words are decided here because a
+/// rule nobody can reach from a test is a rule that drifts (`muster_core::font`).
+fn report_font_family(report: &proto::ReportFontFamily) -> Response {
+    // A lookup takes long enough for a second save to land while it is out, and the answer to
+    // the older question would raise a problem about a family nobody has configured any more.
+    // The reload that changed it reports again, so nothing is lost by ignoring this one.
+    let configured = session::appearance().font.family.unwrap_or_default();
+    if configured != report.family {
+        log::info(
+            "font.report.stale",
+            fields! {
+                "reported" => report.family.clone(),
+                "configured" => configured,
+                "impact" => "nothing - the config changed while this lookup was out, and the \
+                             read that changed it reports its own answer",
+            },
+        );
+        return Response::ok();
+    }
+
+    let report = FontReport {
+        family: report.family.clone(),
+        found: report.found,
+        monospaced: report.monospaced,
+    };
+    match font::problem(&report) {
+        Some(problem) => {
+            log::warn(
+                "font.family.unusable",
+                fields! {
+                    "family" => report.family.clone(),
+                    "found" => report.found,
+                    "detail" => problem.detail.clone(),
+                },
+            );
+            session::raise_problem(&problem.key, problem.severity, &problem.detail);
+        }
+        None => session::clear_problem(font::KEY),
+    }
+    Response::ok()
 }
 
 /// What Muster should look like, as the config file left it.

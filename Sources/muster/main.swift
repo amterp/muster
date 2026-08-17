@@ -109,6 +109,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       NSApp.mainMenu = AppMenu.build(target: muster, bindings: Core.bindings())
       muster.show()
 
+      // After the window is up, because nothing about it is needed to draw one and asking
+      // CoreText for a font it has never been asked about costs a few milliseconds. The core
+      // decides what a missing family means; only this side can find out whether it is here.
+      Core.reportFontFamily(appearance.pane.fontFamily)
+
       // Everything about what this window shows is behind these calls: the core reaches the
       // daemons, starting its own if none answers, opens a socket per pane, and publishes the
       // whole view back - which is what builds the surfaces.

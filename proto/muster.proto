@@ -55,7 +55,37 @@ message Request {
     SendToPane send_to_pane = 36;
     ReadWindowFrame read_window_frame = 37;
     SetWindowFrame set_window_frame = 38;
+    ReportFontFamily report_font_family = 39;
   }
+}
+
+// What this machine had to say about the font family the config named.
+//
+// The one appearance value that cannot fail loudly on its own. A renderer takes a family name
+// as a string rather than as a choice from a list, so it accepts anything, falls back and
+// paints - which makes a typo, a font installed for another user, and a correct name on a
+// machine that has the font look identical. So the shell looks it up and reports, and the core
+// decides whether that is worth telling anybody and in what words.
+//
+// About the one family rather than a list of everything installed, because enumerating them
+// costs a tenth of a second on a launch and nothing in the core needs to know what else is
+// there.
+//
+// Sent at launch and again whenever the config file is read, so a corrected family clears the
+// problem the way a corrected config does.
+message ReportFontFamily {
+  // What `[font] family` asked for, empty when it named none. Echoed back so the core can drop
+  // an answer about a family it no longer asks for: two saves in quick succession can leave a
+  // lookup in flight against the older one.
+  string family = 1;
+
+  // Whether the platform has a family by that name. Resolved rather than compared, so a name
+  // written in another case is found the way the renderer would find it.
+  bool found = 2;
+
+  // Whether that family is monospaced. Meaningless when `found` is false - there is no font to
+  // have the trait - and the core is careful not to read it as a proportional font.
+  bool monospaced = 3;
 }
 
 // A rectangle, in whatever coordinates the platform draws windows in.
