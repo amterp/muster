@@ -700,7 +700,30 @@ flag is not optional.
 **Closing collapses the parent.** A `pane_closed` is followed by `layout_updated`, and the
 split that held the closed pane is gone from the tree rather than left with one side.
 
-Evidence: `corpus/herdr-0.8.0/layout/`, recorded with `tools/herdr-probe/probe layout`.
+**A tree is not evidence about now, and the reason is the replay.** Everything above reads a
+tab that has settled. A subscription is handed a sequence, and opening one against a tab that
+settled minutes ago replays how it got there: a three-pane tab arrived as one pane, then two,
+then three, each as an ordinary `layout_updated` with nothing marking it historical. So a
+client applying them in order walks the tab backwards through arrangements it has outgrown,
+and one that reads a tree as evidence that a pane is gone moves the keyboard off that pane and
+keeps it there - the arrangement arriving next makes the wrong answer valid. The pane list is
+the thing that stayed true throughout, which is why Muster's composition takes it as the
+authority and the tree as an ordering only (`corpus/conformance/composition.json`, "a tree
+that has not caught up does not move the keyboard").
+
+**A split seen by a subscription that is already open publishes one arrangement, not two.**
+Splitting a settled two-pane tab broadcast the three-pane tree and nothing before it. Worth
+recording because the opposite was assumed from a test log: the shorter-timescale transient
+that reading suggested is not a separate behaviour, it is the replay above seen through a
+subscription that had just bootstrapped. The rule the core applies is unchanged and still
+needed - it is the replay that needs it - but a client does not have to recognise an
+intermediate arrangement during a split. The pair in section 14 is the exception and a
+different mechanism: two requests, two real arrangements, both true when they were sent.
+
+Evidence: `corpus/herdr-0.8.0/layout/`, recorded with `tools/herdr-probe/probe layout`. The
+last two are `corpus/herdr-0.8.0/layout-replay/`, recorded with
+`tools/herdr-probe/probe layout-replay` - a scenario of its own because it builds a tab rather
+than reading the fixed one above. `bootstrap.events.ndjson` is the replay verbatim.
 
 ## 14. There is no splitting leftward, and the pair that builds one is announced twice
 

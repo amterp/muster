@@ -1,0 +1,31 @@
+{
+  "a_fresh_subscription_replays_arrangements_the_tab_has_outgrown": true,
+  "a_split_publishes_a_tree_naming_fewer_panes_than_the_tab_settles_at": false,
+  "arrangements_a_fresh_subscription_replays_for_a_settled_tab": [
+    [
+      "w1:p1"
+    ],
+    [
+      "w1:p1",
+      "w1:p2"
+    ],
+    [
+      "w1:p1",
+      "w1:p2",
+      "w1:p3"
+    ]
+  ],
+  "arrangements_a_split_publishes_to_an_open_subscription": [
+    [
+      "w1:p1",
+      "w1:p2",
+      "w1:p3"
+    ]
+  ],
+  "panes_the_tab_held_the_whole_time": [
+    "w1:p1",
+    "w1:p3",
+    "w1:p2"
+  ],
+  "panes_the_tab_settles_at": 3
+}

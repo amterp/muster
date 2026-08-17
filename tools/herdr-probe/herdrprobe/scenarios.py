@@ -1047,6 +1047,21 @@ def _tab_layout(snapshot, tab_id="w1:t1"):
     return next((l for l in snapshot.get("layouts", []) if l.get("tab_id") == tab_id), {})
 
 
+def _arrangement(layout):
+    """The pane ids a layout names, in screen order.
+
+    herdr publishes panes and their rects rather than a tree, so an arrangement is the ids
+    read top to bottom, left to right. That is enough for both questions asked of these:
+    which side a new pane landed on, and whether the tree names every pane the tab holds.
+
+    Takes the layout rather than the event carrying it, because the two places it arrives
+    are a `layout_updated` and a `pane.swap` answer, and they are the same shape.
+    """
+    return [p.get("pane_id") for p in sorted(
+        layout.get("panes", []),
+        key=lambda p: (p.get("rect", {}).get("y", 0), p.get("rect", {}).get("x", 0)))]
+
+
 def _id_path(split_id):
     """The path a border id spells, if it spells one.
 
@@ -1412,14 +1427,9 @@ def split_sides(daemon, rec: Recorder) -> None:
         rec.fact("swap_focused_pane", result.get("focused_pane_id"))
 
         # The question the whole scenario exists for: what arrangement is a client
-        # shown, and how many times. A `layout_updated` carries panes and their rects
-        # rather than a tree, so the arrangement is the pane ids in screen order.
-        orders = [
-            [p.get("pane_id") for p in sorted(
-                e.get("data", {}).get("layout", {}).get("panes", []),
-                key=lambda p: (p.get("rect", {}).get("y", 0), p.get("rect", {}).get("x", 0)))]
-            for e in events if e.get("event") == "layout_updated"
-        ]
+        # shown, and how many times.
+        orders = [_arrangement(e["data"]["layout"])
+                  for e in events if e.get("event") == "layout_updated"]
         rec.fact("arrangements_published_across_the_pair", orders)
         gaps = [round(b[0] - a[0], 1) for a, b in zip(arrivals, arrivals[1:])]
         rec.fact("arrival_gaps_ms", gaps)
@@ -1434,10 +1444,7 @@ def split_sides(daemon, rec: Recorder) -> None:
         # receipt, and a client that reads its own is not waiting on anything.
         settled_layout = result.get("layout", {})
         rec.fact("swap_answers_with_a_layout", bool(settled_layout.get("panes")))
-        rec.fact("swap_answer_arrangement", [
-            p.get("pane_id") for p in sorted(
-                settled_layout.get("panes", []),
-                key=lambda p: (p.get("rect", {}).get("y", 0), p.get("rect", {}).get("x", 0)))])
+        rec.fact("swap_answer_arrangement", _arrangement(settled_layout))
         rec.note(f"pair answered in {round(sum(answered), 1)} ms: {answered}")
 
         # What a swap that cannot be done looks like, since one would arrive after a
@@ -2106,6 +2113,81 @@ def arranging(daemon, rec: Recorder) -> None:
     rec.fact("workspace_of_moved_tabs", workspace)
 
 
+# --------------------------------------------------------------------------- 18
+
+
+def layout_replay(daemon, rec: Recorder) -> None:
+    """When a tab's tree is true, as opposed to what it says.
+
+    The `layout` scenario reads trees once they have settled. What a client is handed is a
+    sequence, and the question nothing has recorded is whether every arrangement in that
+    sequence describes the tab as it is now. It matters because the tree and the pane list
+    are published separately: a client reading a tree as evidence that a pane is gone moves
+    the keyboard off it and keeps it there, since the arrangement arriving next makes the
+    wrong answer valid. Muster's composition treats the pane list as the authority and the
+    tree as an ordering for exactly this reason, and that rule rested on a comment.
+
+    Its own scenario rather than a step inside `layout`, because `layout` records one tab
+    built up to a fixed shape and several checked-in cases are that shape - adding splits to
+    it would move an oracle for the sake of an unrelated question.
+
+    Two ways an arrangement can be behind, recorded separately because they are answered
+    differently. A split lands while a subscription is already open: whether anything
+    intermediate is broadcast decides whether a client has to recognise one. And a
+    subscription opens against a tab that settled long ago: what it replays before it is
+    current is not a race a client can wait out, because it arrives as ordinary events.
+    """
+    client = RecordingClient(daemon.client(), rec)
+    _new_workspace(client)
+    time.sleep(0.6)
+
+    with daemon.client().subscribe(STRUCTURE_SUBSCRIPTIONS) as stream:
+        time.sleep(0.8)
+
+        # Two panes, settled, before anything is measured: a tree that has not caught up is
+        # only distinguishable in a tab that already holds more than one.
+        client.request("pane.split",
+                       {"direction": "right", "target_pane_id": "w1:p1", "cwd": "/tmp"})
+        time.sleep(1.2)
+
+        before_split = len(stream.snapshot())
+        client.request("pane.split",
+                       {"direction": "down", "target_pane_id": "w1:p1", "cwd": "/tmp"})
+        time.sleep(1.5)
+        during = [e for e in stream.snapshot()[before_split:]
+                  if e.get("event") == "layout_updated"]
+        rec.write_text("split.events.ndjson",
+                       "".join(json.dumps(e, sort_keys=True) + "\n" for e in during))
+        published = [_arrangement(e["data"]["layout"]) for e in during]
+        settled = len(published[-1]) if published else 0
+        rec.fact("arrangements_a_split_publishes_to_an_open_subscription", published)
+        rec.fact("panes_the_tab_settles_at", settled)
+        rec.fact("a_split_publishes_a_tree_naming_fewer_panes_than_the_tab_settles_at",
+                 any(len(a) < settled for a in published))
+        rec.note(f"splitting a two-pane tab published {published}")
+
+        # And the same shape over a much longer interval: a subscription replays the session
+        # it bootstrapped against, so a tab can arrive one arrangement at a time - each
+        # announced exactly as a live change is, minutes after it stopped being true.
+        with daemon.client().subscribe(STRUCTURE_SUBSCRIPTIONS) as fresh:
+            time.sleep(2.5)
+            replay = [e for e in fresh.snapshot() if e.get("event") == "layout_updated"]
+        rec.write_text("bootstrap.events.ndjson",
+                       "".join(json.dumps(e, sort_keys=True) + "\n" for e in replay))
+        replayed = [_arrangement(e["data"]["layout"]) for e in replay]
+        rec.fact("arrangements_a_fresh_subscription_replays_for_a_settled_tab", replayed)
+        rec.fact("a_fresh_subscription_replays_arrangements_the_tab_has_outgrown",
+                 any(len(a) < settled for a in replayed))
+        rec.note(f"a fresh subscription against a settled {settled}-pane tab replayed "
+                 f"{replayed}")
+
+        # What the tab actually held throughout, from the pane list rather than from any
+        # tree. It is the oracle for every arrangement above: a published tree naming fewer
+        # panes than this is a tree describing a tab that no longer exists.
+        panes = [p["pane_id"] for p in _panes(client)]
+        rec.fact("panes_the_tab_held_the_whole_time", panes)
+        rec.note(f"the pane list said {panes} throughout")
+
 
 def _payload_keys(answer):
     """The keys of a herdr result's payload, which sits one level down beside `type`."""
@@ -2157,6 +2239,7 @@ ALL = {
     "frame-fidelity": frame_fidelity,
     "lifecycle": lifecycle,
     "layout": layout,
+    "layout-replay": layout_replay,
     "split-sides": split_sides,
     "durability": durability,
     "naming": naming,
