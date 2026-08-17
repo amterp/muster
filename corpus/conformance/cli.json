@@ -1,0 +1,210 @@
+{
+  "concept": "cli.parse",
+  "source": "authored",
+  "citation": "docs/architecture.md, one action path: every surface sends the same Request, so a CLI is a way of spelling one rather than a second set of behaviours. The words a command line uses are Muster's own policy and there is no oracle above them; what each field means is documented on the messages themselves in proto/muster.proto. kan a_26BJb2n6o and a_294MvlG1E.",
+  "why": "What `muster pane new --down --run claude` becomes is the whole contract between an agent and the window it is sitting in, and it is the part that outlives this implementation - a `muster` rewritten in anything else has to turn the same words into the same requests. Three shapes of outcome are pinned: the request a line becomes, the refusal a line earns from us, and the *kind* of complaint clap makes about a line it cannot read. The kind rather than the wording, because the wording is clap's and would change under a version bump, while `an unknown flag is refused rather than swallowed` is the promise. Fields left at their protobuf default are absent here, so a case reads as what somebody actually said: `side` and a rename's `name` are the exceptions, the first because every split has a side and the default is the point, and the second because an empty name is what takes a name away.",
+  "cases": [
+    {
+      "name": "the whole window is one read",
+      "why": "An agent has no eyes, so this is half the value of the surface. One request rather than a question per pane, because a caller that has to ask again for each cannot see them at one moment.",
+      "given": { "argv": ["window"] },
+      "expect": { "request": { "read_window": {} } }
+    },
+    {
+      "name": "a split with no side lands to the right",
+      "why": "Right is where cmd+d puts one, and the CLI and the keyboard have to agree about what `a split` means - a default that matched no chord would make the same word mean two things depending on which surface you used.",
+      "given": { "argv": ["pane", "new"] },
+      "expect": { "request": { "split_pane": { "side": "right" } } }
+    },
+    {
+      "name": "a pane made from inside a pane splits the one it is running in",
+      "why": "The mechanism the whole scenario rests on: an agent told to split two panes below itself names no pane, and MUSTER_PANE is the only thing that can say which one it is. Muster puts it in the environment of the very request that creates the pane.",
+      "given": {
+        "argv": ["pane", "new", "--down"],
+        "env": { "MUSTER_PANE": "p1w3r07bsd" }
+      },
+      "expect": {
+        "request": { "split_pane": { "pane_id": "p1w3r07bsd", "side": "down" } }
+      }
+    },
+    {
+      "name": "a named pane beats the one this is running in",
+      "why": "An agent arranging panes for others addresses them by name while sitting in its own, so the flag has to win. If the environment won, an integrator could only ever act on itself.",
+      "given": {
+        "argv": ["pane", "new", "--pane", "p1w3r0ab2n"],
+        "env": { "MUSTER_PANE": "p1w3r07bsd" }
+      },
+      "expect": {
+        "request": { "split_pane": { "pane_id": "p1w3r0ab2n", "side": "right" } }
+      }
+    },
+    {
+      "name": "an exported but empty MUSTER_PANE is not an answer",
+      "why": "An exported-but-empty variable is a normal state of a shell profile, and of a herdr pane restored after a daemon restart - those get no launch environment at all. Read as a real answer it would send a request naming the pane called `\"\"`, which no window holds, instead of falling through to the pane the keyboard is on.",
+      "given": { "argv": ["pane", "new"], "env": { "MUSTER_PANE": "" } },
+      "expect": { "request": { "split_pane": { "side": "right" } } }
+    },
+    {
+      "name": "a pane made for an agent carries its program and its name",
+      "why": "The gesture the cards are about, in one line. Both travel with the split rather than as requests afterwards: the program because a caller sending it itself would race the new shell's first prompt, and the name because a rename arriving later leaves the pane briefly nameless in every window showing it.",
+      "given": {
+        "argv": ["pane", "new", "--down", "--run", "claude", "--name", "🤖 A"]
+      },
+      "expect": {
+        "request": {
+          "split_pane": { "side": "down", "run": "claude", "name": "🤖 A" }
+        }
+      }
+    },
+    {
+      "name": "the keyboard moves only when asked",
+      "why": "take_focus is absent from every other case here, and that is the point: an agent opening three panes would otherwise drag somebody's cursor through all three. Pressing a key means `I made this and I am looking at it`; a script means `make it and leave my cursor alone`.",
+      "given": { "argv": ["pane", "new", "--focus"] },
+      "expect": {
+        "request": { "split_pane": { "side": "right", "take_focus": true } }
+      }
+    },
+    {
+      "name": "an empty --run is nothing to run",
+      "why": "A script interpolating a variable that turned out empty would otherwise ask the window to wait for a prompt and then type nothing, which costs the readiness wait and leaves a pane looking like it failed at something.",
+      "given": { "argv": ["pane", "new", "--run", ""] },
+      "expect": { "request": { "split_pane": { "side": "right" } } }
+    },
+    {
+      "name": "text that asks for a return is submitted",
+      "why": "The other half of an agent instructing another. Return is a flag rather than a newline in the text because the two differ once a program is reading: Return is encoded against the pane's live modes, and a bare newline inside a bracketed paste is text rather than a submission.",
+      "given": {
+        "argv": [
+          "pane",
+          "send",
+          "--pane",
+          "p1w3r07bsd",
+          "read AGENTS.md",
+          "--enter"
+        ]
+      },
+      "expect": {
+        "request": {
+          "send_to_pane": {
+            "pane_id": "p1w3r07bsd",
+            "text": "read AGENTS.md",
+            "enter": true
+          }
+        }
+      }
+    },
+    {
+      "name": "text with no return waits on the prompt",
+      "why": "The difference between telling an agent something and leaving a line sitting there for a person to look at. Both are wanted, so the flag has to be the only thing that decides.",
+      "given": { "argv": ["pane", "send", "--pane", "p1w3r07bsd", "hello"] },
+      "expect": {
+        "request": { "send_to_pane": { "pane_id": "p1w3r07bsd", "text": "hello" } }
+      }
+    },
+    {
+      "name": "unquoted text arrives in pieces and is sent as one line",
+      "why": "Somebody typing an instruction will forget the quotes, and joining is what they meant - the alternative is a refusal for a command line with exactly one possible reading. Single spaces, because the shell already ate whatever else was between the words.",
+      "given": { "argv": ["pane", "send", "read", "AGENTS.md", "and", "wait"] },
+      "expect": {
+        "request": { "send_to_pane": { "text": "read AGENTS.md and wait" } }
+      }
+    },
+    {
+      "name": "a double dash makes text of something that looks like a flag",
+      "why": "Instructions to an agent contain flags. Without this there would be no way to send the characters `--enter` to a pane, and the failure would be silent: the flag would be honoured and the text would go out one word shorter than it was written.",
+      "given": { "argv": ["pane", "send", "--", "--enter"] },
+      "expect": { "request": { "send_to_pane": { "text": "--enter" } } }
+    },
+    {
+      "name": "renaming a pane says what to call it",
+      "why": "A person running fifteen agents wants to say which is which in their own words, and this is the surface a script sets those names from.",
+      "given": { "argv": ["pane", "rename", "--pane", "p1w3r07bsd", "🤖 A"] },
+      "expect": {
+        "request": { "rename_pane": { "pane_id": "p1w3r07bsd", "name": "🤖 A" } }
+      }
+    },
+    {
+      "name": "an empty name takes the name away",
+      "why": "One spelling for `no name` rather than two, and the only way to undo a rename. Absence and the empty string have to stay distinguishable here, which is why this field is written out even when it is empty.",
+      "given": { "argv": ["pane", "rename", ""] },
+      "expect": { "request": { "rename_pane": { "name": "" } } }
+    },
+    {
+      "name": "closing with nothing named closes the pane this is running in",
+      "why": "Consistent with every other command, and worth pinning precisely because it is the surprising one: an agent that runs this ends the shell its own process is in. The help says so; this makes sure the behaviour matches what the help says.",
+      "given": { "argv": ["pane", "close"], "env": { "MUSTER_PANE": "p1w3r07bsd" } },
+      "expect": { "request": { "close_pane": { "pane_id": "p1w3r07bsd" } } }
+    },
+    {
+      "name": "focus with nothing named goes to the pane this is running in",
+      "why": "An agent asking to be looked at, which is the one thing in this vocabulary that reaches for a person's attention rather than for a pane.",
+      "given": { "argv": ["focus"], "env": { "MUSTER_PANE": "p1w3r07bsd" } },
+      "expect": { "request": { "focus_pane": { "pane_id": "p1w3r07bsd" } } }
+    },
+    {
+      "name": "focus with nothing to focus is refused rather than sent",
+      "why": "The one command where an empty pane is not an answer: everywhere else the window reads it as `the pane the keyboard is on`, and asking to focus the focused pane is not something to ask for. Refused here rather than at the window, because only out here is it known that the reason is a missing MUSTER_PANE - the window would only be able to say that no pane was named.",
+      "given": { "argv": ["focus"] },
+      "expect": {
+        "refused": "`muster focus` needs a pane, and $MUSTER_PANE is not set - so this is not running inside a pane Muster made. Name one: `muster focus p1w3r07bsd`. `muster window` lists them."
+      }
+    },
+    {
+      "name": "zoom with nothing named means the pane the keyboard is on",
+      "why": "Run from a terminal outside Muster there is no MUSTER_PANE, and the useful answer is still `the pane somebody is looking at`. The empty pane id is how every request in the schema spells that, so this sends one rather than refusing.",
+      "given": { "argv": ["zoom"] },
+      "expect": { "request": { "zoom_pane": {} } }
+    },
+    {
+      "name": "an answer can be asked for as JSON",
+      "why": "The flag every command takes, and the one an agent always passes. It changes the rendering and never the request, which is what lets the two renderings come from one answer.",
+      "given": { "argv": ["window", "--json"] },
+      "expect": { "request": { "read_window": {} }, "json": true }
+    },
+    {
+      "name": "a window can be named instead of looked for",
+      "why": "The escape hatch for a caller that is not in a pane and has more than one Muster open, which would otherwise be refused with nothing to do about it.",
+      "given": { "argv": ["window", "--socket", "/tmp/muster.sock"] },
+      "expect": {
+        "request": { "read_window": {} },
+        "socket": "/tmp/muster.sock"
+      }
+    },
+    {
+      "name": "a flag nobody has is refused rather than ignored",
+      "why": "The commonest mistake an agent makes, and the one that must not pass quietly: a swallowed `--focused` would be a pane that appeared somewhere nobody expected with no sign that anything was wrong.",
+      "given": { "argv": ["pane", "new", "--focused"] },
+      "expect": { "usage": "UnknownArgument" }
+    },
+    {
+      "name": "two sides at once is refused",
+      "why": "A pane lands on one side of another, so there is no honest thing to do with both - and picking one silently would be picking for somebody who has said they are unsure.",
+      "given": { "argv": ["pane", "new", "--left", "--down"] },
+      "expect": { "usage": "ArgumentConflict" }
+    },
+    {
+      "name": "a verb that does not exist is refused",
+      "why": "Every word in this vocabulary is one somebody typed from memory. A misspelling has to come back as a refusal naming the verbs there are, rather than as nothing happening.",
+      "given": { "argv": ["pane", "nwe"] },
+      "expect": { "usage": "InvalidSubcommand" }
+    },
+    {
+      "name": "a rename with no name is refused",
+      "why": "Distinct from the empty name above, which is a deliberate ask. Nothing at all is somebody who has not finished typing, and taking the name away would be the wrong guess at what they meant.",
+      "given": { "argv": ["pane", "rename"] },
+      "expect": { "usage": "MissingRequiredArgument" }
+    },
+    {
+      "name": "a command that takes no arguments is not given one",
+      "why": "`muster window p1w3r07bsd` reads like a request to describe one pane, and there is no such request. Answering the whole window instead would look like it had been narrowed and had not.",
+      "given": { "argv": ["window", "p1w3r07bsd"] },
+      "expect": { "usage": "UnknownArgument" }
+    },
+    {
+      "name": "nothing at all shows what there is",
+      "why": "A bare `muster` is somebody finding out what this is, so it prints the help rather than complaining about an absence. It still exits non-zero, because nothing was asked and nothing happened.",
+      "given": { "argv": [] },
+      "expect": { "usage": "DisplayHelpOnMissingArgumentOrSubcommand" }
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+[package]
+name = "muster-cli"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+# The command people type, and the one an agent in a pane finds on its PATH. The app's own
+# executable is also `muster`, and they do not collide: one is inside a bundle and the other is
+# what `./dev` stages beside it.
+[[bin]]
+name = "muster"
+path = "src/main.rs"
+
+[dependencies]
+anstream = "0.6"
+anstyle = "1"
+clap = { version = "4", features = ["derive", "wrap_help", "unicode"] }
+clap_complete = "4"
+muster-proto.workspace = true
+prost.workspace = true
+serde_json.workspace = true
+unicode-width = "0.2"
+
+[dev-dependencies]
+conformance.workspace = true
+herdr-harness.workspace = true
+# Both only for tests, and deliberately so: the shipped binary is a pure client, and linking
+# either of these into it would put libghostty-vt behind a command somebody runs on a server.
+# The seam is here so one test can drive the real binary against a real window, and the adapter
+# so another can check that the variable names this crate spells out still match the ones the
+# app sets.
+muster-herdr.workspace = true
+muster-seam.workspace = true
+
+[lints]
+workspace = true
