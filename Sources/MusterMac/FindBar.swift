@@ -14,9 +14,14 @@ import SwiftUI
 // instead, and this draws what it answered - so `FindState` is filled from the seam rather
 // than from libghostty, and no view here calls into the renderer at all.
 //
-// **SwiftUI stops at this file.** Nothing else in `Sources/` imports it and nothing else
-// should: the shell is meant to be thin and per-OS, and one hosted overlay is contained where
-// a second rendering system spreading through the window would not be.
+// **This is the only file in `Sources/` that imports SwiftUI, and here is what that cost** -
+// worth reading before deciding a second one should. The hosting view's layer background has
+// to be forced clear, because a GPU surface sits underneath it. The text field is a backport
+// rather than the stock one, because the stock API crashes on macOS 15 when text is deleted.
+// And the bar reaches its own field through a `NotificationCenter` hop, because `@FocusState`
+// cannot be read from outside a view body. None of that is an argument against SwiftUI - it
+// is as native as AppKit and sometimes the better answer (`docs/architecture.md`) - but it is
+// the bill, and it comes due per hosted view rather than once.
 
 /// What the find bar is showing.
 ///

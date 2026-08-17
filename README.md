@@ -44,7 +44,9 @@ shape.
   never in it unless you ask for it.
 - **Cross-platform stays open.** macOS ships first. The shell layer is thin and per-OS; nothing outside it may assume
   an OS, and the core is portable by construction rather than by intention - it is a different language from the
-  shell, so an OS type cannot leak into it by accident. Both chosen organs already run on Linux and Windows.
+  shell, so an OS type cannot leak into it by accident. Inside that layer the most native answer wins: portability
+  constrains the core, and is never a reason to make Muster feel less like the machine it is running on. Both chosen
+  organs already run on Linux and Windows.
 - **AI-native surface.** Configuration is files. Every action runs through one shared path exposed to GUI, CLI, and
   API alike - parity by construction, not by discipline - so an agent can drive Muster as readily as a person can,
   through Muster's own surface and in Muster's own vocabulary.
