@@ -92,9 +92,10 @@ fn a_drawn_name_is_short_typeable_and_unmistakable() {
         let drawn = names.name(&DaemonId::new("local"), &BackendPaneId::new(format!("w1:p{pane}")));
         let spelling = drawn.to_string();
 
-        // Ten until 2059, when the tick count crosses 32^6 and gains a character. Pinned
-        // rather than derived, because "a name is ten characters" is the promise being made
-        // to whoever reads one, and a derived length would hold no matter what it drifted to.
+        // Ten until 2036, when the tick count crosses 32^5 and gains a character - the test
+        // below pins that date. Pinned rather than derived, because "a name is ten characters"
+        // is the promise made to whoever reads one, and a derived length would hold no matter
+        // what it drifted to.
         assert_eq!(spelling.len(), 10, "a name is `p` and nine characters, and {spelling} is not");
         assert!(spelling.starts_with('p'), "a name says it is a pane, and {spelling} does not");
         assert!(
@@ -105,28 +106,40 @@ fn a_drawn_name_is_short_typeable_and_unmistakable() {
     }
 }
 
-/// Names sort into the order their panes were made.
+/// Names sort into the order their panes were made, and stop doing so in August 2036.
 ///
-/// Not decoration: it is what makes `muster window` list panes in an order somebody can
-/// follow, and what lets a name in an old log be placed in time without a lookup. It holds
-/// because the front of a name is a tick count and the alphabet ascends.
+/// The ordering is not decoration: it is what lets a window list panes in an order somebody
+/// can follow, and a name in an old log be placed in time without a lookup. It holds because
+/// the front of a name is a tick count and the alphabet ascends.
+///
+/// It stops holding when the count gains a character, because flexid does not pad it and
+/// `"zzzzz" > "100000"` as strings. That is what the epoch and the tick size were chosen to
+/// push out to 2036, and the second half of this test is where the date is written down: a
+/// failure here in 2036 is this limit arriving, not a regression.
 #[test]
 fn a_pane_made_later_is_named_after_one_made_earlier() {
-    let at = |seconds| UNIX_EPOCH + Duration::from_secs(seconds);
-    let mint = |seconds| {
-        PaneNames::new(Mint::Replayed { at: at(seconds), seed: 7 })
-            .name(&DaemonId::new("local"), &BackendPaneId::new("w1:p1"))
-            .to_string()
+    let mint = |unix_seconds| {
+        PaneNames::new(Mint::Replayed {
+            at: UNIX_EPOCH + Duration::from_secs(unix_seconds),
+            seed: 7,
+        })
+        .name(&DaemonId::new("local"), &BackendPaneId::new("w1:p1"))
+        .to_string()
     };
 
-    // A second apart, then a decade apart: one tick is the smallest step a name can tell
-    // apart, and ten years is where a shorter tick count would have broken the ordering.
-    let (earlier, later) = (mint(1_800_000_000), mint(1_800_000_001));
+    // One tick apart, then five years apart: a tick is the smallest step a name can tell
+    // apart, and a working life is the span the ordering has to survive to be worth having.
+    let (earlier, later) = (mint(1_786_924_800), mint(1_786_924_810));
     assert!(earlier < later, "{earlier} should sort before {later}");
 
-    let much_later = mint(1_800_000_000 + 10 * 365 * 86_400);
-    assert!(later < much_later, "{later} should sort before {much_later}");
-    assert_eq!(later.len(), much_later.len(), "a decade should not change how long a name is");
+    let years_later = mint(1_786_924_800 + 5 * 365 * 86_400);
+    assert!(later < years_later, "{later} should sort before {years_later}");
+    assert_eq!(later.len(), years_later.len(), "five years should not change a name's length");
+
+    // 2036-08-19, a tick either side. The names still differ - only the ordering gives out.
+    let (before, after) = (mint(2_102_769_910), mint(2_102_769_920));
+    assert_eq!(before.len() + 1, after.len(), "the count should gain a character here");
+    assert!(after < before, "and that is the boundary the ordering does not cross");
 }
 
 /// A name that has been handed out is not handed out again while its pane is being made.

@@ -13,10 +13,10 @@
 //! Muster names the things it has to be able to talk about, rather than being limited to what
 //! a dependency happens to hand out.
 //!
-//! A name is `p` and nine characters - `p1gvjc07bs` - of which the first six say what second
-//! the pane was made in and the last three keep panes made in the same second apart. So names
-//! sort into the order their panes were made, and two Musters that never speak to each other
-//! cannot mint one name unless they mint in the same second.
+//! A name is `p` and nine characters - `p1w3r07bsd` - of which the first five say when the pane
+//! was made, to the nearest ten seconds, and the last four keep panes made within one of those
+//! apart. So names sort into the order their panes were made, and two Musters that never speak
+//! to each other cannot mint one name unless they mint within ten seconds of each other.
 //!
 //! **Names are globally unique, which is a property and not an accident.** Two daemons both
 //! hand out `w1:p1`, so a bare backend id stops being an answer the moment a window shows two
@@ -132,24 +132,30 @@ const ALPHABET: &str = "0123456789abcdefghjkmnpqrstvwxyz";
 /// The same generator for a running Muster and for a replayed case, so that a name pinned in
 /// the corpus is a name Muster actually mints.
 ///
-/// **A 2025 epoch and one-second ticks** put the tick count at six characters from January
-/// 2026 - before Muster existed - until 2059, so every name Muster ever mints is the same
-/// length and they all sort. **Three random characters** is 32,768 names per second, and it
-/// only has to cover two Musters minting in the same second without talking to each other:
-/// within one, the registry below re-draws on a collision.
-// Seconds rather than the hours clippy prefers: 1735689600 is a Unix timestamp, which is
-// something a reader can recognize and look up. 482136 hours is a number nobody can place.
+/// **A 2026 epoch and ten-second ticks** are chosen together, and the pairing is the whole
+/// trick. flexid does not pad the tick count, so a name grows a character each time the count
+/// crosses a power of 32 - and across that boundary the shorter old names sort *after* the
+/// longer new ones. Ten-second ticks from 2026 hold the count at five characters from May 2026
+/// until **August 2036**, which is long enough to say plainly what a name is. One-second ticks
+/// would have crossed in January 2027.
+///
+/// **Four random characters** is 1,048,576 names per tick, and they only have to cover two
+/// Musters minting in the same ten seconds without talking to each other: within one, the
+/// registry below re-draws on a collision.
+// Seconds rather than the days clippy prefers: 1767225600 is a Unix timestamp, which a reader
+// can recognize and look up. 20454 days is a number nobody can place.
 #[allow(clippy::duration_suboptimal_units)]
 fn spelling() -> &'static Generator {
     static SPELLING: LazyLock<Generator> = LazyLock::new(|| {
         Generator::builder()
-            // 2025-01-01, which is time no name has to spend characters encoding.
-            .epoch(UNIX_EPOCH + Duration::from_secs(1_735_689_600))
-            .tick_size(Duration::from_secs(1))
+            // 2026-01-01, a few months before Muster's first pane. Everything before it is
+            // time no name has to spend characters encoding.
+            .epoch(UNIX_EPOCH + Duration::from_secs(1_767_225_600))
+            .tick_size(Duration::from_secs(10))
             .alphabet(Alphabet::new(ALPHABET).expect("base32 is 32 distinct ASCII characters"))
-            .random_chars(3)
+            .random_chars(4)
             .build()
-            .expect("a one-second tick is not zero")
+            .expect("a ten-second tick is not zero")
     });
     &SPELLING
 }
@@ -160,7 +166,7 @@ fn spelling() -> &'static Generator {
 /// sidebar shows beside it.
 ///
 /// The instant is clamped to the epoch rather than passed through, because a machine whose
-/// clock is set before 2025 would otherwise be refused a name outright - and a pane with no
+/// clock is set before 2026 would otherwise be refused a name outright - and a pane with no
 /// name is a split missing from the window for no stated reason. Those names all sit in tick
 /// zero: still distinct, they just stop saying when.
 fn spell(at: SystemTime, entropy: &mut impl RandomSource) -> String {
