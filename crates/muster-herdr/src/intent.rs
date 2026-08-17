@@ -10,6 +10,8 @@
 //! becomes an array of booleans, herdr's own spelling for the turns. And two of Muster's four
 //! sides have no request behind them at all, so this is also where one intent becomes two.
 
+use std::time::Duration;
+
 use muster_core::diagnostics::log;
 use muster_core::fields;
 use muster_core::find::{Found, Needle, found_in};
@@ -114,11 +116,31 @@ impl BackendChannel for HerdrBackend {
                 settled(&result, None, &self.names)
             }
         };
+        // Naming it and starting something in it, once it exists and is where it was asked to
+        // be. After the rearrange, because a leftward split moves the pane and there is no
+        // point typing into something that is about to be swapped out from under the user's
+        // eyes; before the answer goes back, because a caller told the pane's name will use it.
+        let equipped = match &created {
+            Some(created) => self.equip(intent, created),
+            None => None,
+        };
+
+        // Return, for text that asked for one. Its own request because herdr encodes a named key
+        // against the pane's live modes, and a newline in the text above is only a newline - which
+        // a program reading a bracketed paste buffers as more text instead of acting on.
+        if let BackendIntent::SendText { pane, enter: true, .. } = intent {
+            self.press_enter(pane);
+        }
+
         Ok(Outcome {
             created,
             created_tab: created_tab(&result),
             settled,
-            renamed: renamed(intent, &result),
+            // Either the rename this intent *was*, or the one a split asked for on the way. Both
+            // are the only route there is - herdr announces a rename to nobody
+            // (`observations/herdr-0.8.0.md` section 16) - so a name dropped here is a name the
+            // window never shows.
+            renamed: renamed(intent, &result).or(equipped),
         })
     }
 
@@ -176,6 +198,14 @@ impl BackendChannel for HerdrBackend {
 /// about what reading more rows per keystroke costs, to be made when there is more to read.
 const ROWS_READ: u32 = 1000;
 
+/// How long a new pane's shell gets to print something before Muster types into it anyway.
+///
+/// Long enough to cover a shell that sources a slow profile, which is where this actually bites -
+/// a login shell reading a config that runs `nvm` or a version manager takes well over a second
+/// on a cold cache. Short enough that a pane whose prompt draws nothing visible does not leave a
+/// caller waiting: that case cannot be waited for at all and always spends the whole allowance.
+const READY_WITHIN: Duration = Duration::from_secs(5);
+
 /// The read a find runs on, as the method and parameters herdr wants for it.
 ///
 /// Public for the reason `request` is: herdr ignores a key it does not recognise, so a
@@ -219,6 +249,154 @@ impl HerdrBackend {
                 None
             }
             (None, None) => None,
+        }
+    }
+
+    /// Gives a pane the name and the program the request asked it to be made with.
+    ///
+    /// Both are extra requests because herdr's `pane.split` takes neither a label nor a command
+    /// (`observations/herdr-0.8.0.md` section 18). A backend that could do either with the split
+    /// would leave this empty, which is why the compound lives here and not above: what a caller
+    /// asked for is "a pane called this, running that", and how many requests that costs is one
+    /// daemon's business.
+    ///
+    /// Returns the rename to report, because herdr announces one to nobody.
+    ///
+    /// **Nothing here can fail the split.** The pane exists - the daemon said so - and a pane
+    /// that came up nameless, or with its command untyped, is worth strictly more than no pane
+    /// at all. Each part says so in the log instead, because each is silent in the window: an
+    /// unnamed pane looks like one nobody named, and an untyped command looks like a shell
+    /// sitting at a prompt.
+    fn equip(&self, intent: &BackendIntent, pane: &PaneId) -> Option<(PaneId, Option<String>)> {
+        let BackendIntent::SplitPane { run, name, .. } = intent else { return None };
+
+        let renamed = name.as_ref().and_then(|label| self.label(pane, label));
+        if let Some(command) = run {
+            self.start(pane, command);
+        }
+        renamed
+    }
+
+    /// Calls a pane what the request asked it to be called.
+    fn label(&self, pane: &PaneId, label: &str) -> Option<(PaneId, Option<String>)> {
+        let backend = self.names.backend(pane).ok()?;
+        let params = json!({ "pane_id": backend.as_str(), "label": label });
+        match self.client.request("pane.rename", &params) {
+            Ok(_) => Some((pane.clone(), Some(label.to_string()))),
+            Err(failure) => {
+                log::warn(
+                    "herdr.split.unnamed_pane",
+                    fields! {
+                        "pane" => pane.to_string(),
+                        "detail" => failure.to_string(),
+                        "impact" => "the pane was made and is running, and is listed under no \
+                                     name - so it looks like a pane nobody bothered to name \
+                                     rather than one whose name did not take",
+                        "check" => "whether the daemon still holds this pane; a rename is the \
+                                    one change herdr announces to nobody, so the reply above \
+                                    is all there was",
+                    },
+                );
+                None
+            }
+        }
+    }
+
+    /// Types a command into a pane, once its shell has printed something.
+    ///
+    /// The wait is why this belongs in Muster rather than in every caller: whatever it is worth,
+    /// it is worth doing once and in one place.
+    ///
+    /// **What it protects against, honestly.** A pty buffers, so a plain shell handed input
+    /// before it has drawn a prompt still runs it - that case needs no wait and does not get one,
+    /// because the screen already has content and the wait returns at once. The case it is for is
+    /// a program that resets the terminal as it starts, which is what a full-screen agent harness
+    /// does: pending input is discarded by the reset, and what is left is a pane sitting in a
+    /// harness that was never told anything. That is not reproducible with `sh`, so no test here
+    /// asserts the wait changes an outcome - `client_connection.rs` asserts the mechanism works,
+    /// and this is a precaution rather than a demonstrated fix.
+    fn start(&self, pane: &PaneId, command: &str) {
+        let Ok(backend) = self.names.backend(pane) else { return };
+        self.ready(&backend);
+
+        let text = json!({ "pane_id": backend.as_str(), "text": command });
+        if let Err(failure) = self.client.request("pane.send_text", &text) {
+            log::warn(
+                "herdr.split.command_unsent",
+                fields! {
+                    "pane" => pane.to_string(),
+                    "detail" => failure.to_string(),
+                    "impact" => "the pane was made and is sitting at its own prompt, which looks \
+                                 exactly like a command that ran and printed nothing",
+                    "check" => "whether the daemon still holds this pane",
+                },
+            );
+            return;
+        }
+        self.press_enter(pane);
+    }
+
+    /// Presses Return in a pane, which is what submits whatever was just typed into it.
+    ///
+    /// A named key rather than a newline in the text before it, so herdr encodes it against the
+    /// pane's live modes - which is what a program reading a bracketed paste needs in order to
+    /// treat this as a submission rather than as more text to buffer.
+    fn press_enter(&self, pane: &PaneId) {
+        let Ok(backend) = self.names.backend(pane) else { return };
+        let enter = json!({ "pane_id": backend.as_str(), "keys": ["enter"] });
+        if let Err(failure) = self.client.request("pane.send_input", &enter) {
+            log::warn(
+                "herdr.pane.unsubmitted",
+                fields! {
+                    "pane" => pane.to_string(),
+                    "detail" => failure.to_string(),
+                    "impact" => "the text reached the pane and was never submitted, so it sits at \
+                                 the prompt unexecuted - which reads as a program that ignored it",
+                    "check" => "whether the daemon still holds this pane",
+                },
+            );
+        }
+    }
+
+    /// Waits until a pane's shell has printed something, or until it is not worth waiting more.
+    ///
+    /// "Anything at all on the visible screen" rather than a prompt Muster would have to
+    /// recognize: every shell's prompt is different and configurable, and a pattern per shell
+    /// would be a list to keep in step with other people's dotfiles.
+    ///
+    /// **Timing out is not a refusal.** A prompt that draws nothing visible is a real
+    /// configuration, and refusing to type into that pane would be worse than typing early -
+    /// the command would never run at all, rather than possibly running. So this says so in the
+    /// log and returns, and the caller sends anyway.
+    fn ready(&self, pane: &BackendPaneId) {
+        let waiting = json!({
+            "pane_id": pane.as_str(),
+            // Any non-space. herdr's match is a substring or a regex and has no "anything at
+            // all", so this is how that is spelled.
+            "match": { "type": "regex", "value": r"\S" },
+            "source": "visible",
+            "timeout_ms": u64::try_from(READY_WITHIN.as_millis()).unwrap_or(u64::MAX),
+        });
+        // Given longer than herdr is, so that the daemon's own deadline is the one that decides.
+        // The other way round, the socket would give up first and a wait that was about to
+        // succeed would read as a daemon that had gone.
+        let allowance = READY_WITHIN + HerdrClient::DEFAULT_TIMEOUT;
+        if let Err(failure) =
+            self.client.request_within("pane.wait_for_output", &waiting, allowance)
+        {
+            log::warn(
+                "herdr.pane.never_ready",
+                fields! {
+                    "pane" => pane.to_string(),
+                    "detail" => failure.to_string(),
+                    "impact" => "the command was sent anyway, which is the better of two bad \
+                                 answers - a shell that had not finished starting may have \
+                                 swallowed it, so the pane may sit at a prompt having run \
+                                 nothing",
+                    "check" => "whether this pane's shell draws a visible prompt. One that \
+                                prints nothing cannot be waited for and always lands here",
+                },
+            );
         }
     }
 
@@ -339,13 +517,20 @@ pub fn refusal(failure: &Failure) -> Refusal {
 /// id this daemon knows it by. This is the wire, and above it nothing spells a pane herdr's
 /// way. A name that resolves to nothing is a refusal rather than a request built out of it,
 /// because herdr ignores an id it does not recognize and acts on whatever it has focused.
+// One arm per intent, which is what makes this readable: herdr's whole write vocabulary in one
+// place, in the order Muster's own is declared. Split into helpers it would be the same length
+// with the correspondence broken up.
+#[allow(clippy::too_many_lines)]
 pub fn request(
     intent: &BackendIntent,
     panes: &PaneEnvironment,
     names: &Names,
 ) -> Result<(&'static str, Value), Refusal> {
     Ok(match intent {
-        BackendIntent::SplitPane { pane, side, ratio, cwd } => {
+        // `run` and `name` are deliberately absent from these params: herdr's `pane.split`
+        // takes neither, so both are requests of their own once the pane exists
+        // (`observations/herdr-0.8.0.md` section 18). [`HerdrBackend::equip`] sends them.
+        BackendIntent::SplitPane { pane, side, ratio, cwd, run: _, name: _ } => {
             let mut params = json!({
                 // `target_pane_id`, not `pane_id`, and the difference is silent: herdr
                 // ignores a key it does not know and splits whichever pane it has focused,
@@ -425,6 +610,12 @@ pub fn request(
         }
         BackendIntent::FocusPane { pane } => {
             ("pane.focus", json!({ "pane_id": names.backend(pane)?.as_str() }))
+        }
+        // The text only. Return is `pane.send_input` afterwards, because herdr encodes a named
+        // key against the pane's live modes and a newline in the text is just a newline - which
+        // a harness reading a bracketed paste treats as more text rather than as a submission.
+        BackendIntent::SendText { pane, text, enter: _ } => {
+            ("pane.send_text", json!({ "pane_id": names.backend(pane)?.as_str(), "text": text }))
         }
         // `source_pane_id` and `target_pane_id`, the same pair the leftward-split rearrange
         // sends. Note that herdr moves its own cursor to the *source* pane whatever was

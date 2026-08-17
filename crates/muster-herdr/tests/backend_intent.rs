@@ -206,6 +206,8 @@ fn every_intent() -> Vec<BackendIntent> {
             side: Side::Right,
             ratio: Some(0.25),
             cwd: Some("/src/muster".into()),
+            run: None,
+            name: None,
         },
         // Both kinds of split, because the second is two requests rather than one and only
         // the first of them is what `request` builds. What the pair adds up to is checked
@@ -215,6 +217,24 @@ fn every_intent() -> Vec<BackendIntent> {
             side: Side::Left,
             ratio: Some(0.25),
             cwd: Some("/src/muster".into()),
+            run: None,
+            name: None,
+        },
+        // A split that also asks for a program and a name. Neither is a `pane.split` parameter -
+        // herdr takes no command and no label there - so this is here to pin that they stay out
+        // of the request rather than being sent hopefully into keys herdr would ignore.
+        BackendIntent::SplitPane {
+            pane: PaneId::new("p1"),
+            side: Side::Down,
+            ratio: None,
+            cwd: None,
+            run: Some("claude".into()),
+            name: Some("🤖 A".into()),
+        },
+        BackendIntent::SendText {
+            pane: PaneId::new("p1"),
+            text: "read AGENTS.md".into(),
+            enter: true,
         },
         BackendIntent::ClosePane { pane: PaneId::new("p1") },
         BackendIntent::ResizePane {
@@ -263,6 +283,7 @@ fn every_intent() -> Vec<BackendIntent> {
             | BackendIntent::RenamePane { .. }
             | BackendIntent::RenameTab { .. }
             | BackendIntent::SwapPanes { .. }
+            | BackendIntent::SendText { .. }
             | BackendIntent::MovePane { .. } => {}
         }
     }
@@ -327,6 +348,13 @@ fn intent(given: &Value) -> Result<BackendIntent, CaseError> {
                 .ok_or_else(|| CaseError::new("that is not a side"))?,
             ratio: ratio(given),
             cwd,
+            run: given.get("run").and_then(Value::as_str).map(str::to_string),
+            name: given.get("name").and_then(Value::as_str).map(str::to_string),
+        }),
+        "send_text" => Ok(BackendIntent::SendText {
+            pane: PaneId::new(&text(given, "pane")?),
+            text: text(given, "text")?,
+            enter: given.get("enter").and_then(Value::as_bool).unwrap_or_default(),
         }),
         "close" => Ok(BackendIntent::ClosePane { pane: PaneId::new(&text(given, "pane")?) }),
         "resize" => Ok(BackendIntent::ResizePane {

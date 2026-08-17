@@ -106,6 +106,8 @@ fn splitting_leftward_never_shows_the_pane_on_the_right() {
             side: Side::Left,
             ratio: None,
             cwd: Some("/tmp".into()),
+            run: None,
+            name: None,
         })
         .expect("a real daemon refused a split it can do");
     let created = outcome.created.clone().expect("pane.split did not name the pane it made");
@@ -150,6 +152,8 @@ fn splitting_rightward_still_costs_one_request_and_no_suppression() {
             side: Side::Right,
             ratio: None,
             cwd: Some("/tmp".into()),
+            run: None,
+            name: None,
         })
         .expect("a real daemon refused a split it can do");
     let created = outcome.created.clone().expect("pane.split did not name the pane it made");
@@ -181,6 +185,8 @@ fn resizes_faster_than_the_daemon_announces_them_do_not_walk_backwards() {
             side: Side::Right,
             ratio: None,
             cwd: Some("/tmp".into()),
+            run: None,
+            name: None,
         })
         .expect("a real daemon refused a split it can do");
     until("the tree to reach the mirror", || {
@@ -231,6 +237,8 @@ fn closing_a_pane_a_leftward_split_made_collapses_the_tab() {
             side: Side::Up,
             ratio: None,
             cwd: Some("/tmp".into()),
+            run: None,
+            name: None,
         })
         .expect("a real daemon refused a split it can do");
     let created = outcome.created.clone().expect("pane.split did not name the pane it made");
@@ -268,6 +276,8 @@ fn a_dragged_divider_lands_on_the_answer_rather_than_the_broadcast() {
             side: Side::Right,
             ratio: None,
             cwd: Some("/tmp".into()),
+            run: None,
+            name: None,
         })
         .expect("a real daemon refused a split it can do");
     until("the tree to reach the mirror", || {

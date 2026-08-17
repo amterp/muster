@@ -17,7 +17,8 @@ use std::os::unix::net::UnixStream;
 use herdr_harness::Daemon;
 use muster::command::{LARGEST_MESSAGE, read_frame, write_frame};
 use muster::proto::{
-    OpenWindow, ReadWindow, Request, Response, Startup, Window, request, response,
+    OpenWindow, ReadWindow, Request, Response, SendToPane, SplitPane, Startup, Window, request,
+    response,
 };
 use prost::Message;
 use serde_json::json;
@@ -74,10 +75,93 @@ fn a_caller_outside_this_process_can_ask_what_the_window_is_showing() {
          pane cannot see them at one moment: {window:?}"
     );
 
-    // Two callers at once, because a thread per connection is the reason a `pane new` waiting
-    // on a shell prompt does not hold up somebody asking what the window looks like. Dialed
-    // before either is answered, so this fails on an accept loop that serves one at a time.
-    let (mut first, mut second) = (dial(&socket), dial(&socket));
+    two_callers_are_both_answered(&socket);
+    an_over_long_claim_is_hung_up_on(&socket);
+    // The window is still answering, which is the half of that which matters: a refusal that took
+    // the accept loop with it would leave every later caller talking to nothing.
+    assert_eq!(
+        named_panes(&read_window(&socket)),
+        panes,
+        "the endpoint stopped answering after refusing one caller, so one bad client is enough \
+         to make this window undriveable for the rest of the run"
+    );
+
+    // The gesture itself: make a pane below this one, running something, called something, and
+    // without moving the keyboard. This is the whole shape a script and an agent send.
+    let ran = daemon.root().join("integrator-ran.txt");
+    let made = match dialed(
+        &socket,
+        request::Payload::SplitPane(SplitPane {
+            pane_id: panes[0].clone(),
+            side: "down".to_string(),
+            run: format!("printf 'ran' > {}", ran.display()),
+            name: "🤖 A".to_string(),
+            // Left false, which is what makes this a script rather than a keystroke.
+            ..SplitPane::default()
+        }),
+    )
+    .payload
+    {
+        Some(response::Payload::Made(made)) => made.pane_id,
+        other => panic!(
+            "a split has to answer with the pane it made - a caller that cannot learn the name \
+             cannot address it, and the name was minted inside that call. Got {other:?}"
+        ),
+    };
+    assert!(
+        !made.is_empty() && made != panes[0],
+        "the split answered with {made:?}, which is not a new pane"
+    );
+
+    // The keyboard stayed put. What pressing a key means is "I made this and I am looking at
+    // it"; what a script means is "make it and leave my cursor alone", and an agent opening
+    // three panes would otherwise drag somebody's cursor through all three.
+    let window = read_window(&socket);
+    assert_eq!(
+        window.view.as_ref().and_then(|view| view.regions.first()).map(|r| r.pane_id.clone()),
+        Some(panes[0].clone()),
+        "a split that did not ask for focus took it anyway: {window:?}"
+    );
+
+    // Named, and named in the window rather than only on the daemon - herdr announces a rename
+    // to nobody, so this is the assertion that the reply was read.
+    until(
+        "the window to list the pane under the name the split asked for",
+        &socket,
+        |window| given_names(window).contains(&"🤖 A".to_string()),
+        "the pane was made and the window shows it unnamed, so somebody running several agents \
+         cannot tell it from the others",
+    );
+
+    // And what was asked to run, ran. Read off the filesystem rather than the pane's screen: a
+    // grid wraps at its width and carries the shell's own echo of the command, so reading one
+    // cannot tell "it ran" from "it is sitting at the prompt".
+    until_file(&ran, "the command the split asked for to have run");
+
+    // Text to a pane by name, which is the other half of an agent instructing another. Sent
+    // through the endpoint to the pane the split made, and read back off that pane's own screen -
+    // where it has to appear, because appearing is the whole point.
+    let echoed = daemon.root().join("integrator-echoed.txt");
+    assert_ok(&dialed(
+        &socket,
+        request::Payload::SendToPane(SendToPane {
+            pane_id: made.clone(),
+            text: format!("printf 'told' > {}", echoed.display()),
+            enter: true,
+            ..SendToPane::default()
+        }),
+    ));
+    until_file(&echoed, "text sent to the pane by name to have been run there");
+}
+
+/// Two callers dialing before either is answered both get an answer.
+///
+/// A thread per connection is why a `pane new` waiting on a shell prompt does not hold up somebody
+/// asking what the window looks like. Both connections are opened and both requests written before
+/// either reply is read, so an accept loop that served one at a time would deadlock here rather
+/// than merely being slow.
+fn two_callers_are_both_answered(socket: &std::path::Path) {
+    let (mut first, mut second) = (dial(socket), dial(socket));
     let asking =
         Request { payload: Some(request::Payload::ReadWindow(ReadWindow {})) }.encode_to_vec();
     write_frame(&mut first, &asking).expect("the endpoint takes a request");
@@ -93,10 +177,15 @@ fn a_caller_outside_this_process_can_ask_what_the_window_is_showing() {
             "the {which} caller of two dialing at once got no window"
         );
     }
+}
 
-    // A caller claiming a message too big to be one is refused without the bytes being read, so
-    // that anything able to dial a unix socket cannot make the app reserve a gigabyte.
-    let mut absurd = dial(&socket);
+/// A caller claiming a message too big to be one gets nothing, and its bytes are never read.
+///
+/// Anything that can dial a unix socket can send a length. Without a ceiling, a port scanner or a
+/// client built against another schema could make the window reserve a gigabyte by saying it was
+/// about to send one.
+fn an_over_long_claim_is_hung_up_on(socket: &std::path::Path) {
+    let mut absurd = dial(socket);
     absurd.write_all(&(LARGEST_MESSAGE + 1).to_be_bytes()).expect("the endpoint takes a length");
     let mut answered = Vec::new();
     absurd.read_to_end(&mut answered).expect("a refused caller is hung up on, not left waiting");
@@ -104,14 +193,37 @@ fn a_caller_outside_this_process_can_ask_what_the_window_is_showing() {
         answered.is_empty(),
         "an over-long request should be hung up on rather than answered: {answered:?}"
     );
+}
 
-    // And the window is still answering, which is the half that matters: a refusal that took
-    // the accept loop with it would leave every later caller talking to nothing.
-    assert_eq!(
-        named_panes(&read_window(&socket)),
-        panes,
-        "the endpoint stopped answering after refusing one caller, so one bad client is enough \
-         to make this window undriveable for the rest of the run"
+/// Every name a person gave a pane, as the window lists them.
+fn given_names(window: &Window) -> Vec<String> {
+    window
+        .roster
+        .iter()
+        .flat_map(|roster| roster.daemons.iter())
+        .flat_map(|daemon| daemon.tabs.iter())
+        .flat_map(|tab| tab.panes.iter())
+        .map(|pane| pane.given_name.clone())
+        .collect()
+}
+
+/// Waits for a file a shell in a pane was asked to write.
+///
+/// The oracle for "did this actually run": the split's answer comes back before the shell has
+/// finished being typed into, so how long this takes is the machine's business.
+fn until_file(path: &std::path::Path, what: &str) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while std::time::Instant::now() < deadline {
+        if std::fs::read_to_string(path).is_ok_and(|text| !text.is_empty()) {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    panic!(
+        "waited 20s for {what}, and {} was never written.\n  Impact: the pane exists and is \
+         sitting at its own prompt, which looks exactly like a command that ran and printed \
+         nothing.",
+        path.display()
     );
 }
 

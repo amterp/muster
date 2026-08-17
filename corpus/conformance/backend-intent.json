@@ -533,6 +533,63 @@
       "expect": {
         "refused": "no pane called p1w3r07bsd on local"
       }
+    },
+    {
+      "name": "a split asking for a program sends no program",
+      "why": "herdr's pane.split takes no command and no label (`observations/herdr-0.8.0.md` section 18), so both have to happen once the pane exists. This is here because the failure of getting it wrong is silent in herdr's own particular way: a `command` or `label` key sent hopefully would be ignored without complaint, and the pane would come up nameless and running a bare shell - which looks exactly like a pane whose program exited immediately. What the pair actually adds up to is checked against a real daemon in `pane_equipping.rs`.",
+      "given": {
+        "intent": "split",
+        "pane": "p1",
+        "side": "down",
+        "run": "claude",
+        "name": "🤖 A",
+        "env": { "HOME": "/home/a" }
+      },
+      "expect": {
+        "method": "pane.split",
+        "params": {
+          "target_pane_id": "p1",
+          "direction": "down",
+          "focus": true,
+          "env": {
+            "HERDR_CONFIG_PATH": "/home/a/.config/herdr/config.toml"
+          }
+        }
+      }
+    },
+    {
+      "name": "text sent to a pane names the pane and carries no newline",
+      "why": "`pane_id` here rather than the `target_pane_id` a split takes, which is the same silent trap from the other side. And the text goes out exactly as given: Return is a second request, because herdr encodes a named key against the pane's live modes while a newline in this string is only a newline - and a program reading a bracketed paste treats those as different things, taking one as a submission and the other as more text to buffer.",
+      "given": {
+        "intent": "send_text",
+        "pane": "p1",
+        "text": "read AGENTS.md and wait",
+        "enter": true
+      },
+      "expect": {
+        "method": "pane.send_text",
+        "params": {
+          "pane_id": "p1",
+          "text": "read AGENTS.md and wait"
+        }
+      }
+    },
+    {
+      "name": "text sent without a Return is the same request",
+      "why": "Whether to press Return changes what happens after this request and nothing about this one, so the two spellings have to be identical here. A case that differed would mean the flag had leaked into the text - the failure being that a caller who asked for no Return got one, submitting a half-typed line to whatever is reading.",
+      "given": {
+        "intent": "send_text",
+        "pane": "p1",
+        "text": "read AGENTS.md and wait",
+        "enter": false
+      },
+      "expect": {
+        "method": "pane.send_text",
+        "params": {
+          "pane_id": "p1",
+          "text": "read AGENTS.md and wait"
+        }
+      }
     }
   ]
 }

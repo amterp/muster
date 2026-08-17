@@ -52,6 +52,7 @@ message Request {
     FindStep find_step = 33;
     EndFind end_find = 34;
     ReadWindow read_window = 35;
+    SendToPane send_to_pane = 36;
   }
 }
 
@@ -383,6 +384,56 @@ message SplitPane {
   // split came from - what somebody splitting a pane mid-task means, and why a keybinding
   // sends nothing here. A CLI or an agent placing a pane somewhere particular says.
   string cwd = 5;
+
+  // What to run in it, or empty for whatever a new pane runs anyway.
+  //
+  // Part of making the pane rather than something to send afterwards, and that is the whole
+  // reason it is here. A backend need not be able to spawn a program with a pane - herdr
+  // cannot, so this becomes a wait for the pane's shell to draw its prompt and then the text -
+  // and a caller that did it itself would be racing that prompt with no way to see it. One
+  // call owns the wait, in one place, for every caller.
+  //
+  // Sent as typed input, so it is what somebody would have typed: a shell line, not an argv.
+  string run = 6;
+
+  // What to call it, or empty for nothing.
+  //
+  // Here rather than left to a second request because the two are one intention - an agent
+  // making three panes needs to be able to say which is which - and because a rename that
+  // arrived separately would leave the pane briefly nameless in every window showing it.
+  string name = 7;
+
+  // Whether this window's keyboard follows the new pane.
+  //
+  // True is what pressing a key means: you made it, you are looking at it. False is what a
+  // script means, and it is the default because the alternative is worse - an agent making
+  // three panes would drag the user's cursor through all three, and making a pane is not the
+  // same act as looking at one.
+  bool take_focus = 8;
+}
+
+// Sends text to a pane, whether or not anything is showing it.
+//
+// Not the keyboard. SendText above is a keystroke's worth of input on its way to the pane this
+// window's keyboard feeds, encoded against that pane's live modes; this addresses a pane by
+// name and goes out through its daemon. So it reaches a pane in a tab nobody is looking at,
+// which is exactly what an agent instructing another agent needs and what no keystroke can do.
+message SendToPane {
+  string daemon_id = 1;
+
+  // Empty means the pane this window's keyboard is on, as everywhere else - though a caller
+  // that means the keyboard usually wants SendText instead.
+  string pane_id = 2;
+
+  string text = 3;
+
+  // Whether to press Return afterwards.
+  //
+  // A separate flag rather than a newline in the text, because the two are different things
+  // once a program is reading: Return is encoded against the pane's live modes, and a bare
+  // newline inside a bracketed paste is text rather than a submission. A harness that reads
+  // one and not the other is the common case, not the exotic one.
+  bool enter = 4;
 }
 
 // Makes a tab beside a pane, with one pane in it, and shows it.
@@ -540,7 +591,19 @@ message Response {
     Appearance appearance = 5;
     Findings findings = 6;
     Window window = 7;
+    Made made = 8;
   }
+}
+
+// The pane a request made.
+//
+// A split answers with this rather than a bare Ok, because a caller that cannot learn what it
+// made cannot do anything with it: a script's next line names this pane, and an agent's whole
+// use of a split is to send something into what it produced. Nothing else changes - the window
+// still learns the arrangement from the daemon's own events - so this is the one fact a caller
+// could not have got any other way.
+message Made {
+  string pane_id = 1;
 }
 
 // Everything about a window at one moment: what it draws, what it holds, and how the agents in

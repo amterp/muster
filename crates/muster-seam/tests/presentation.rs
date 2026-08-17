@@ -104,9 +104,14 @@ fn answer(payload: request::Payload) -> Response {
     Response::decode(reply.as_slice()).expect("the core answers with a response this build knows")
 }
 
+/// That the core accepted a request, whichever shape its acceptance took.
+///
+/// `Made` is an acceptance too: a request that creates a pane answers with the pane rather than
+/// with a bare Ok, because the name was minted inside the call and a caller cannot learn it any
+/// other way. Only `Failure` is a refusal.
 fn assert_ok(response: &Response) {
     match &response.payload {
-        Some(response::Payload::Ok(_)) => {}
+        Some(response::Payload::Ok(_) | response::Payload::Made(_)) => {}
         other => panic!("expected the core to accept this, and it answered {other:?}"),
     }
 }

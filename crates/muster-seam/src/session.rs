@@ -1182,7 +1182,24 @@ pub(crate) fn attached_pane(daemon: &DaemonId, pane: &PaneId) -> Option<Arc<Atta
 /// The channel is taken out from under the lock before the request goes, because a request
 /// is a round trip and holding the session across one would stall every event arriving from
 /// every other daemon behind a wedged one.
-pub(crate) fn submit(daemon: &DaemonId, intent: &BackendIntent) -> Result<(), String> {
+/// Whether this window's keyboard follows a pane the request makes.
+///
+/// Only ever consulted for a request that makes one, and it is the one thing about a mutation
+/// that is Muster's own answer rather than the daemon's. Two callers want opposite things:
+/// pressing a key means "I made this and I am looking at it", and a script means "make it and
+/// leave my cursor alone" - an agent opening three panes must not drag somebody's keyboard
+/// through all three.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Keyboard {
+    Follows,
+    StaysPut,
+}
+
+pub(crate) fn submit(
+    daemon: &DaemonId,
+    intent: &BackendIntent,
+    keyboard: Keyboard,
+) -> Result<Option<PaneId>, String> {
     let (region, channel) = {
         let session = poison::lock(&SESSION, "session");
         // Which region this is about, for the keyboard afterwards. None is an answer rather
@@ -1197,11 +1214,15 @@ pub(crate) fn submit(daemon: &DaemonId, intent: &BackendIntent) -> Result<(), St
             // Arranging the list is about things rather than about what is on screen, for the
             // same reason a rename is: the rows worth dragging are very often the ones no
             // region is showing, and requiring one would refuse the case the gesture is for.
+            // Typing into a pane is about the pane, not about what is on screen, and this is the
+            // sharpest case of that: what it is *for* is reaching a pane no region shows. An
+            // agent told to instruct two others has to be able to reach them wherever they are.
             BackendIntent::CreateWorkspace { .. }
             | BackendIntent::CreateTab { .. }
             | BackendIntent::RenamePane { .. }
             | BackendIntent::RenameTab { .. }
             | BackendIntent::SwapPanes { .. }
+            | BackendIntent::SendText { .. }
             | BackendIntent::MovePane { .. } => None,
             BackendIntent::SplitPane { pane, .. }
             | BackendIntent::ClosePane { pane }
@@ -1293,17 +1314,20 @@ pub(crate) fn submit(daemon: &DaemonId, intent: &BackendIntent) -> Result<(), St
     // its event is still in flight - and every publish resolves a region against the mirror's
     // pane list, so pointing at it now is undone before anything renders. `publish` puts the
     // keyboard there on the first pass after the daemon has described it.
-    if let (Some(region), Some(created)) =
-        (region, outcome.as_ref().ok().and_then(|outcome| outcome.created.clone()))
-    {
+    let created = outcome.as_ref().ok().and_then(|outcome| outcome.created.clone());
+    if let (Some(region), Some(created), Keyboard::Follows) = (region, &created, keyboard) {
         let mut session = poison::lock(&SESSION, "session");
-        session.wanted_panes.insert(daemon.clone(), (region, created));
+        session.wanted_panes.insert(daemon.clone(), (region, created.clone()));
         moved = true;
     }
     if moved {
         publish();
     }
-    outcome.map(|_| ()).map_err(|refusal| refusal.to_string())
+    // The pane, so a caller can name it in its next breath. The only thing here a caller could
+    // not have learned some other way: the arrangement reaches it as a view, and this reaches it
+    // nowhere else - herdr's own id for the pane is not Muster's name for it, and the name was
+    // minted inside this call.
+    outcome.map(|_| created).map_err(|refusal| refusal.to_string())
 }
 
 /// Takes the shell's word that nothing is painting a pane, and checks what that means.
@@ -1414,7 +1438,7 @@ pub(crate) fn focus(daemon: &DaemonId, pane: &PaneId) -> Result<(), String> {
         session.composition.focus_pane(region, pane.clone());
     }
     publish();
-    submit(daemon, &BackendIntent::FocusPane { pane: pane.clone() })
+    submit(daemon, &BackendIntent::FocusPane { pane: pane.clone() }, Keyboard::Follows).map(drop)
 }
 
 /// Moves the line between two regions, and republishes what that made.
@@ -1516,7 +1540,7 @@ pub(crate) fn arrange_pane(daemon: &DaemonId, pane: &PaneId, onto: &PaneId) -> R
             BackendIntent::MovePane { pane: pane.clone(), tab: to, after: onto.clone() }
         }
     };
-    submit(daemon, &intent)
+    submit(daemon, &intent, Keyboard::Follows).map(drop)
 }
 
 /// Brings a named tab on screen, landing the keyboard on its first pane.
@@ -1854,7 +1878,9 @@ fn open_a_workspace_if_the_window_is_empty() {
     };
 
     log::info("workspace.creating", fields! { "daemon" => daemon.to_string() });
-    if let Err(refusal) = submit(&daemon, &BackendIntent::CreateWorkspace { cwd: None }) {
+    if let Err(refusal) =
+        submit(&daemon, &BackendIntent::CreateWorkspace { cwd: None }, Keyboard::Follows)
+    {
         log::error(
             "workspace.refused",
             fields! {

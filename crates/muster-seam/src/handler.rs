@@ -19,7 +19,7 @@ use muster_core::problems::Severity;
 use muster_core::roster::TabStep;
 
 use crate::proto::{self, Request, Response, event, request, response};
-use crate::session::{self, AttachError, AttachedPane};
+use crate::session::{self, AttachError, AttachedPane, Keyboard};
 use crate::{command, convert};
 use prost::Message;
 
@@ -72,10 +72,13 @@ fn handle(request: Request) -> Response {
         }),
         request::Payload::SplitPane(split) => split_pane(&split),
         request::Payload::ClosePane(close) => {
-            act(&close.daemon_id, &close.pane_id, |pane| BackendIntent::ClosePane { pane })
+            act(&close.daemon_id, &close.pane_id, Keyboard::Follows, |pane| {
+                BackendIntent::ClosePane { pane }
+            })
         }
         request::Payload::ReadBindings(_) => read_bindings(),
         request::Payload::ReadWindow(_) => read_window(),
+        request::Payload::SendToPane(send) => send_to_pane(&send),
         request::Payload::ReadAppearance(_) => read_appearance(),
         request::Payload::ResizePane(resize) => resize_pane(&resize),
         request::Payload::ToggleSidebar(_) => {
@@ -85,7 +88,9 @@ fn handle(request: Request) -> Response {
         request::Payload::AdjustFontSize(adjust) => adjust_font_size(&adjust.change),
         request::Payload::ReloadConfig(_) => reload_config(),
         request::Payload::ZoomPane(zoom) => {
-            act(&zoom.daemon_id, &zoom.pane_id, |pane| BackendIntent::ZoomPane { pane })
+            act(&zoom.daemon_id, &zoom.pane_id, Keyboard::Follows, |pane| BackendIntent::ZoomPane {
+                pane,
+            })
         }
         request::Payload::FocusPane(focus) if focus.pane_id.is_empty() => Response::failure(
             "a focus request named no pane, so the keyboard stayed where it was. Unlike every \
@@ -182,7 +187,10 @@ fn found(answer: Result<session::Findings, String>) -> Response {
 /// rather than two that render alike.
 fn rename_pane(rename: &proto::RenamePane) -> Response {
     let name = wanted_name(&rename.name);
-    act(&rename.daemon_id, &rename.pane_id, |pane| BackendIntent::RenamePane { pane, name })
+    act(&rename.daemon_id, &rename.pane_id, Keyboard::Follows, |pane| BackendIntent::RenamePane {
+        pane,
+        name,
+    })
 }
 
 /// Calls a tab what somebody wants to call it.
@@ -201,6 +209,7 @@ fn rename_tab(rename: &proto::RenameTab) -> Response {
         return submit(
             &daemon,
             &BackendIntent::RenameTab { tab: TabId::new(&rename.tab_id), name },
+            Keyboard::Follows,
         );
     }
     let Some(pane) = session::focused_pane() else {
@@ -216,7 +225,7 @@ fn rename_tab(rename: &proto::RenameTab) -> Response {
              nothing was changed. Most likely it closed while this was in flight."
         ));
     };
-    submit(&daemon, &BackendIntent::RenameTab { tab, name })
+    submit(&daemon, &BackendIntent::RenameTab { tab, name }, Keyboard::Follows)
 }
 
 /// What a rename was asking for: a name, or none at all.
@@ -270,6 +279,7 @@ fn set_split_ratio(set: proto::SetSplitRatio) -> Response {
                     .collect(),
                 ratio: set.ratio,
             },
+            Keyboard::Follows,
         ),
         Err(refusal) => refusal,
     }
@@ -376,7 +386,12 @@ fn with_pane(what: &str, act: impl FnOnce(&AttachedPane) -> Response) -> Respons
 /// the daemon that pane is on, because that is what a keybinding means and a keybinding is
 /// the common caller. A click sends both, having read them off the view it was rendered
 /// from; a CLI that names a pane gets the pane it named.
-fn act(daemon_id: &str, pane_id: &str, build: impl FnOnce(PaneId) -> BackendIntent) -> Response {
+fn act(
+    daemon_id: &str,
+    pane_id: &str,
+    keyboard: Keyboard,
+    build: impl FnOnce(PaneId) -> BackendIntent,
+) -> Response {
     let pane = if pane_id.is_empty() {
         match session::focused_pane() {
             Some(pane) => pane,
@@ -402,7 +417,7 @@ fn act(daemon_id: &str, pane_id: &str, build: impl FnOnce(PaneId) -> BackendInte
             Err(refusal) => return refusal,
         },
     };
-    submit(&daemon, &build(pane))
+    submit(&daemon, &build(pane), keyboard)
 }
 
 /// Makes a tab beside a pane, in the directory that pane is in.
@@ -431,7 +446,11 @@ fn create_tab(create: &proto::CreateTab) -> Response {
              a tab in and nothing was made. Most likely it closed while this was in flight."
         ));
     };
-    submit(&daemon, &BackendIntent::CreateTab { workspace, cwd: cwd.or(inherited) })
+    submit(
+        &daemon,
+        &BackendIntent::CreateTab { workspace, cwd: cwd.or(inherited) },
+        Keyboard::Follows,
+    )
 }
 
 /// Makes a workspace, when there is no pane to put a tab beside.
@@ -455,7 +474,7 @@ fn open_a_workspace(cwd: Option<String>) -> Response {
              daemon was meant to be there.",
         );
     };
-    submit(&daemon, &BackendIntent::CreateWorkspace { cwd })
+    submit(&daemon, &BackendIntent::CreateWorkspace { cwd }, Keyboard::Follows)
 }
 
 /// The daemon a request means, given what it named.
@@ -631,19 +650,34 @@ fn region_id(named: &str) -> Option<RegionId> {
     named.strip_prefix('r')?.parse().ok().map(RegionId::new)
 }
 
-fn submit(daemon: &DaemonId, intent: &BackendIntent) -> Response {
-    answer(session::submit(daemon, intent))
+/// Asks a daemon for a change, and says what came of it.
+///
+/// A request that made a pane answers with which, because that is the one fact about what just
+/// happened that a caller cannot get any other way: a script's next line names that pane, and
+/// its name was minted inside this call. Everything else about the change arrives as a view.
+fn submit(daemon: &DaemonId, intent: &BackendIntent, keyboard: Keyboard) -> Response {
+    match session::submit(daemon, intent, keyboard) {
+        Ok(Some(pane)) => Response {
+            payload: Some(response::Payload::Made(proto::Made { pane_id: pane.to_string() })),
+        },
+        Ok(None) => Response::ok(),
+        Err(refusal) => refused(&refusal),
+    }
 }
 
 fn answer(outcome: Result<(), String>) -> Response {
     match outcome {
         Ok(()) => Response::ok(),
-        Err(refusal) => Response::failure(format!(
-            "the daemon did not make that change: {refusal} Nothing about the session moved, \
-             and the window still shows what it showed before - which is the honest answer \
-             rather than a view that pretends."
-        )),
+        Err(refusal) => refused(&refusal),
     }
+}
+
+fn refused(detail: &str) -> Response {
+    Response::failure(format!(
+        "the daemon did not make that change: {detail} Nothing about the session moved, and the \
+         window still shows what it showed before - which is the honest answer rather than a \
+         view that pretends."
+    ))
 }
 
 /// Opens the window onto whatever the daemons hold, which is what a bare `muster` asks for.
@@ -755,7 +789,8 @@ fn split_pane(split: &proto::SplitPane) -> Response {
             split.side
         ));
     };
-    act(&split.daemon_id, &split.pane_id, |pane| BackendIntent::SplitPane {
+    let keyboard = if split.take_focus { Keyboard::Follows } else { Keyboard::StaysPut };
+    act(&split.daemon_id, &split.pane_id, keyboard, |pane| BackendIntent::SplitPane {
         pane,
         side,
         // Zero is proto3's unset, and a divider at the very edge is not a thing anyone asks
@@ -764,6 +799,20 @@ fn split_pane(split: &proto::SplitPane) -> Response {
         // Empty is the daemon's own rule rather than this process's directory, and for a
         // split that rule is "wherever the pane you split was".
         cwd: (!split.cwd.is_empty()).then(|| split.cwd.clone()),
+        run: (!split.run.is_empty()).then(|| split.run.clone()),
+        name: (!split.name.is_empty()).then(|| split.name.clone()),
+    })
+}
+
+/// Types text into a pane, named rather than focused.
+fn send_to_pane(send: &proto::SendToPane) -> Response {
+    // The keyboard never moves for this. Being sent something is not the same as being looked
+    // at, and an agent telling two others what to do would otherwise pull the user's cursor
+    // onto whichever it addressed last.
+    act(&send.daemon_id, &send.pane_id, Keyboard::StaysPut, |pane| BackendIntent::SendText {
+        pane,
+        text: send.text.clone(),
+        enter: send.enter,
     })
 }
 
@@ -807,7 +856,7 @@ fn resize_pane(resize: &proto::ResizePane) -> Response {
         );
     }
     let amount = (resize.amount > 0.0).then_some(resize.amount).or(configured);
-    act(&resize.daemon_id, &resize.pane_id, |pane| BackendIntent::ResizePane {
+    act(&resize.daemon_id, &resize.pane_id, Keyboard::Follows, |pane| BackendIntent::ResizePane {
         pane,
         direction,
         amount,

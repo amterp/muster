@@ -159,6 +159,10 @@ public enum Core {
     split.paneID = paneID
     split.side = side
     split.ratio = ratio
+    // Said outright, because the field defaults to false and false is what a script means. This
+    // is a chord or a menu item: somebody made a pane and is looking at it, so the keyboard goes
+    // there. Left unset, every split in the window would leave the cursor behind.
+    split.takeFocus = true
     var request = Muster_Request()
     request.splitPane = split
     send(request)
@@ -632,6 +636,9 @@ public enum Core {
     case .readBindings: return "read_bindings"
     case .readAppearance: return "read_appearance"
     case .readWindow: return "read_window"
+    // The kind, never the text, for the reason a find needle is never logged: what somebody
+    // types into their own terminal is theirs.
+    case .sendToPane: return "send_to_pane"
     case .adjustFontSize: return "adjust_font_size"
     case .reloadConfig: return "reload_config"
     case .bridgeExited: return "bridge_exited"

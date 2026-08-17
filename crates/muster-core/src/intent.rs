@@ -84,6 +84,22 @@ pub enum BackendIntent {
         /// means the directory the split came from - what somebody splitting a pane mid-task
         /// means, and the reason this is not resolved here.
         cwd: Option<String>,
+        /// What to run in it, as somebody would have typed it. `None` runs whatever a new pane
+        /// runs anyway.
+        ///
+        /// Part of making the pane, not a thing to do afterwards, and that is a decision about
+        /// where a cost belongs rather than a convenience. A backend that can spawn a program
+        /// with a pane does this in one request; herdr cannot, so its adapter waits for the
+        /// pane's shell to draw a prompt and then types. Either way one caller asked for a pane
+        /// running something and got one, instead of every caller racing a prompt it cannot
+        /// see.
+        run: Option<String>,
+        /// What to call it. `None` leaves it unnamed.
+        ///
+        /// Along with the split because they are one intention: an agent making three panes has
+        /// to be able to say which is which, and a rename arriving separately would leave the
+        /// pane briefly nameless in every window showing it.
+        name: Option<String>,
     },
     ClosePane {
         pane: PaneId,
@@ -95,6 +111,24 @@ pub enum BackendIntent {
     /// cursors are written, not read).
     FocusPane {
         pane: PaneId,
+    },
+    /// Types into a pane, whether or not anything is showing it.
+    ///
+    /// Not the keyboard. [`PaneInput`](crate::input::PaneInput) encodes a keystroke against the
+    /// live modes of the pane this window's keyboard feeds and writes it down that pane's own
+    /// channel; this goes out through the daemon and names the pane, so it reaches one in a tab
+    /// nobody is looking at. An agent instructing another agent needs exactly that, and no
+    /// keystroke can do it.
+    SendText {
+        pane: PaneId,
+        text: String,
+        /// Whether to press Return afterwards.
+        ///
+        /// Its own flag rather than a newline in the text. Once a program is reading, the two
+        /// are different things: Return is encoded against the pane's modes, and a bare newline
+        /// inside a bracketed paste is text rather than a submission. A harness that reads one
+        /// and not the other is the common case.
+        enter: bool,
     },
     /// Makes a tab in a workspace, with one pane in it.
     ///
@@ -243,8 +277,33 @@ impl BackendIntent {
             BackendIntent::RenameTab { tab, name } => {
                 format!("RenameTab {{ tab: {tab}, name: {} }}", named(name.as_deref()))
             }
+            // What somebody types into their own terminal, on the same terms as a find needle
+            // and a pane's name: the length says whether it arrived and how much of it, which
+            // is what a log is read for, and the words are theirs.
+            BackendIntent::SendText { pane, text, enter } => {
+                format!(
+                    "SendText {{ pane: {pane}, text: {}, enter: {enter} }}",
+                    counted(Some(text))
+                )
+            }
+            // A command line, for the reason above and one more: an environment set on the way
+            // to a program is a normal thing to type, and a token is a normal thing to set.
+            BackendIntent::SplitPane { pane, side, ratio, cwd, run, name } => format!(
+                "SplitPane {{ pane: {pane}, side: {side:?}, ratio: {ratio:?}, cwd: {cwd:?}, \
+                 run: {}, name: {} }}",
+                counted(run.as_ref()),
+                named(name.as_deref())
+            ),
             other => format!("{other:?}"),
         }
+    }
+}
+
+/// How much text there was, without saying what it said.
+fn counted(text: Option<&String>) -> String {
+    match text {
+        Some(text) => format!("<{} character(s)>", text.chars().count()),
+        None => "<none>".to_string(),
     }
 }
 

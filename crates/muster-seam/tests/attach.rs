@@ -444,6 +444,9 @@ fn the_window_follows_and_drives_the_tree(daemon: &Daemon, backend: &str, second
     // here; the fourth leaf arrives because the daemon said so.
     assert_ok(&answer(request::Payload::SplitPane(SplitPane {
         side: "down".to_string(),
+        // What a chord sends. The field defaults to false because a script means false, so a
+        // test about where the keyboard lands has to say which caller it is standing in for.
+        take_focus: true,
         ..SplitPane::default()
     })));
     // Where it landed, not just that something did. Every other split in this tab is a
@@ -472,6 +475,9 @@ fn the_window_follows_and_drives_the_tree(daemon: &Daemon, backend: &str, second
         settled(4).expect("just waited for it").into_iter().map(|(id, _)| id).collect();
     assert_ok(&answer(request::Payload::SplitPane(SplitPane {
         side: "left".to_string(),
+        // What a chord sends. The field defaults to false because a script means false, so a
+        // test about where the keyboard lands has to say which caller it is standing in for.
+        take_focus: true,
         ..SplitPane::default()
     })));
     until(
