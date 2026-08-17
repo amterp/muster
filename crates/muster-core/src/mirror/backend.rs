@@ -11,8 +11,8 @@ use crate::AgentState;
 /// `w1:t1`, and passing one where another belongs is a lookup that quietly finds
 /// nothing. A pane that never appears is much harder to debug than a type error.
 macro_rules! id_type {
-    ($name:ident, $what:literal) => {
-        #[doc = concat!("Identifies one ", $what, ", as the backend spells it. Opaque: Muster never parses it.")]
+    ($name:ident, $what:literal, $whose:literal) => {
+        #[doc = concat!("Identifies one ", $what, ", ", $whose, " Opaque: Muster never parses it.")]
         #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
         pub struct $name(String);
 
@@ -40,9 +40,15 @@ macro_rules! id_type {
     };
 }
 
-id_type!(WorkspaceId, "workspace");
-id_type!(TabId, "tab");
-id_type!(PaneId, "pane");
+id_type!(WorkspaceId, "workspace", "as the backend spells it.");
+id_type!(TabId, "tab", "as the backend spells it.");
+id_type!(
+    PaneId,
+    "pane",
+    "as *Muster* spells it - a name Muster minted and the adapter translates at the wire \
+     (see [`crate::names`]). The one id here that is not the backend's, because Muster has to \
+     be able to tell a pane which pane it is and a backend's id arrives too late for that."
+);
 
 /// One daemon-owned terminal, and what its agent is doing.
 #[derive(Debug, Clone, PartialEq, Eq)]

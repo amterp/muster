@@ -1,0 +1,94 @@
+{
+  "concept": "names.pane",
+  "source": "authored",
+  "citation": "docs/architecture.md, one action path; kan a_26BJb2n6o",
+  "why": "Muster names its own panes because it has to be able to tell a pane which pane it is, and a backend's id arrives too late for that - herdr assigns one in its answer to a split, and the environment a new pane is born with has to be sent with the request. These cases define what a name is, when one is minted, and when one is forgotten. Every other corpus here drives the registry in its `backend` mint, where a pane's name is whatever the backend called it, so that a case about the mirror is not also a case about the mint.",
+  "cases": [
+    {
+      "name": "a pane seen twice keeps the name it was given",
+      "why": "Names are how everything above the adapter refers to a pane, so a second sighting that minted a second name would split one pane into two throughout the mirror, the view and the roster - and the pane's own environment would name whichever came first.",
+      "given": { "seed": 1, "do": [{ "see": "local/w1:p1" }, { "see": "local/w1:p1" }] },
+      "expect": {
+        "trace": ["p8zjcwj", "p8zjcwj"],
+        "located": { "p8zjcwj": "local/w1:p1" }
+      }
+    },
+    {
+      "name": "two daemons handing out one id get two names",
+      "why": "herdr numbers panes per session, so a laptop and a devenv both hold a w1:p1. That is the whole reason a bare backend id stopped being an answer, and the reason a minted name is one: it is unique across every attached machine, so a CLI can name a pane on the devenv without knowing which daemon holds it.",
+      "given": { "seed": 1, "do": [{ "see": "local/w1:p1" }, { "see": "devenv/w1:p1" }] },
+      "expect": {
+        "trace": ["p8zjcwj", "pnf7tda"],
+        "located": { "p8zjcwj": "local/w1:p1", "pnf7tda": "devenv/w1:p1" }
+      }
+    },
+    {
+      "name": "a name reserved before a pane exists is bound to the pane the backend made",
+      "why": "The case the whole registry exists for. Muster mints the name, puts it in the env of the request that creates the pane, and only then learns what the backend calls it - so a name has to be able to exist for a moment with nothing behind it, and then be settled without changing.",
+      "given": {
+        "seed": 1,
+        "do": [{ "reserve": "A" }, { "settle": { "as": "A", "at": "local/w1:p7" } }]
+      },
+      "expect": { "trace": ["p8zjcwj"], "located": { "p8zjcwj": "local/w1:p7" } }
+    },
+    {
+      "name": "a name reserved for a pane the backend refused is not left behind",
+      "why": "A split that fails leaves a name spoken and nothing answering to it. Released rather than kept, so the registry never grows entries for panes that were never made - and so a later draw may use it, since nobody ever ran anything under it.",
+      "given": { "seed": 1, "do": [{ "reserve": "A" }, { "release": "A" }] },
+      "expect": { "trace": ["p8zjcwj"], "located": {} }
+    },
+    {
+      "name": "a reserved name is not handed to the pane seen next",
+      "why": "Between reserving a name and the backend answering, a daemon event can arrive about some other pane. Drawing the reserved name for it would hand two panes one identity, and the one that had it in its environment would spend the rest of its life acting on the other.",
+      "given": { "seed": 1, "do": [{ "reserve": "A" }, { "see": "local/w1:p1" }] },
+      "expect": {
+        "trace": ["p8zjcwj", "pnf7tda"],
+        "located": { "pnf7tda": "local/w1:p1" }
+      }
+    },
+    {
+      "name": "a daemon that no longer holds a pane forgets its name",
+      "why": "Names are written down and read back, so without this the file grows a line per pane ever opened and a name outlives the work it referred to. Forgetting is driven by what the daemon says it holds rather than by a name going unused, because a name nobody has typed lately is not a name nobody is about to type.",
+      "given": {
+        "seed": 1,
+        "do": [
+          { "see": "local/w1:p1" },
+          { "see": "local/w1:p2" },
+          { "prune": { "daemon": "local", "holds": ["w1:p2"] } }
+        ]
+      },
+      "expect": { "trace": ["p8zjcwj", "pnf7tda"], "located": { "pnf7tda": "local/w1:p2" } }
+    },
+    {
+      "name": "forgetting one daemon's panes leaves another daemon's alone",
+      "why": "A pane on a daemon nothing is attached to is not gone, it is unwitnessed. Dropping its name because some other daemon's snapshot did not mention it would strand an agent that is still working, and there would be nothing left to say what it used to be called.",
+      "given": {
+        "seed": 1,
+        "do": [
+          { "see": "local/w1:p1" },
+          { "see": "devenv/w1:p1" },
+          { "prune": { "daemon": "local", "holds": [] } }
+        ]
+      },
+      "expect": { "trace": ["p8zjcwj", "pnf7tda"], "located": { "pnf7tda": "devenv/w1:p1" } }
+    },
+    {
+      "name": "a different seed draws different names",
+      "why": "Names are drawn from a seed the shell supplies rather than from a counter, so that two Musters writing one file cannot hand out the same name without talking to each other. Seeded rather than random per draw so a run is reproducible from its log.",
+      "given": { "seed": 20260817, "do": [{ "see": "local/w1:p1" }] },
+      "expect": { "trace": ["psbdmy2"], "located": { "psbdmy2": "local/w1:p1" } }
+    },
+    {
+      "name": "the backend mint calls a pane what the backend calls it",
+      "why": "Every other corpus in this directory runs the registry this way, so a case pinning what the mirror does with w1:p1 is testing the mirror rather than the mint. Defined here so that mode is a stated behaviour rather than a convenience nobody wrote down. It gives up the one property a drawn name has and a backend id does not - uniqueness across daemons - which is why it is a mint for cases about something else and never one Muster runs in.",
+      "given": {
+        "mint": "backend",
+        "do": [{ "see": "local/w1:p1" }, { "see": "local/w1:p2" }, { "see": "local/w1:p1" }]
+      },
+      "expect": {
+        "trace": ["w1:p1", "w1:p2", "w1:p1"],
+        "located": { "w1:p1": "local/w1:p1", "w1:p2": "local/w1:p2" }
+      }
+    }
+  ]
+}
