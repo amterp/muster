@@ -17,7 +17,7 @@
 
 use std::sync::Mutex;
 
-use herdr_harness::Daemon;
+use herdr_harness::{Daemon, until};
 use muster::proto::{
     ArrangePane, Event, OpenWindow, Request, Response, RosterChanged, Startup, event, request,
     response,
@@ -142,15 +142,4 @@ fn assert_ok(response: &Response) {
         Some(response::Payload::Ok(_)) => {}
         other => panic!("expected the core to accept this, and it answered {other:?}"),
     }
-}
-
-fn until(what: &str, mut ready: impl FnMut() -> bool, on_failure: impl FnOnce() -> String) {
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-    while std::time::Instant::now() < deadline {
-        if ready() {
-            return;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    }
-    panic!("timed out waiting for {what}. {}", on_failure());
 }

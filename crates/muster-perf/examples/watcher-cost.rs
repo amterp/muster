@@ -22,9 +22,9 @@
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-use herdr_harness::Daemon;
+use herdr_harness::{Daemon, until};
 use muster_core::mirror::Mirror;
 use muster_herdr::subscription::{Notice, Subscription};
 use serde_json::json;
@@ -70,8 +70,8 @@ fn main() {
         daemon.names(),
     );
 
-    until("the first bootstrap", || bootstraps.load(Ordering::Relaxed) > 0);
-    until("the first pane's watcher to settle", || panes(&mirror) == 1);
+    until("the first bootstrap", || bootstraps.load(Ordering::Relaxed) > 0, ());
+    until("the first pane's watcher to settle", || panes(&mirror) == 1, ());
     // The watcher is started from `follow()` after bootstrap and connects on its own
     // thread, so the mirror holding the pane is not yet the watcher holding a socket.
     settle();
@@ -100,7 +100,7 @@ fn grow_to(daemon: &Daemon, mirror: &Arc<Mutex<Mirror>>, target: usize) -> usize
             break;
         }
         // One at a time, so the count below is the count the watchers were built for.
-        until("the new pane to reach the mirror", || panes(mirror) > before);
+        until("the new pane to reach the mirror", || panes(mirror) > before, ());
     }
     panes(mirror)
 }
@@ -116,17 +116,6 @@ fn panes(mirror: &Arc<Mutex<Mirror>>) -> usize {
 /// would be measuring an API that exists for the benchmark.
 fn settle() {
     std::thread::sleep(Duration::from_millis(500));
-}
-
-fn until(what: &str, mut ready: impl FnMut() -> bool) {
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while Instant::now() < deadline {
-        if ready() {
-            return;
-        }
-        std::thread::sleep(Duration::from_millis(10));
-    }
-    panic!("timed out after 10s waiting for {what}");
 }
 
 /// User plus system CPU this process burns while nothing at all is happening.

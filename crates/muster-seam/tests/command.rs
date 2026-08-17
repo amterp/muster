@@ -14,7 +14,7 @@
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 
-use herdr_harness::Daemon;
+use herdr_harness::{Daemon, until, until_file};
 use muster::proto::frame::{LARGEST_MESSAGE, read_frame, write_frame};
 use muster::proto::{
     OpenWindow, ReadWindow, Request, Response, SendToPane, SplitPane, Startup, Window, request,
@@ -44,7 +44,7 @@ fn a_caller_outside_this_process_can_ask_what_the_window_is_showing() {
 
     // What a caller has to be able to learn, in the order it stops being useful without it:
     // which panes exist, whether the picture can be trusted, and what is drawn where.
-    until(
+    until_window(
         "the window to describe the pane the daemon holds",
         &socket,
         |window| named_panes(window).len() == 1,
@@ -103,7 +103,7 @@ fn a_caller_outside_this_process_can_ask_what_the_window_is_showing() {
 
     // Named, and named in the window rather than only on the daemon - herdr announces a rename
     // to nobody, so this is the assertion that the reply was read.
-    until(
+    until_window(
         "the window to list the pane under the name the split asked for",
         &socket,
         |window| given_names(window).contains(&"🤖 A".to_string()),
@@ -237,26 +237,6 @@ fn given_names(window: &Window) -> Vec<String> {
         .collect()
 }
 
-/// Waits for a file a shell in a pane was asked to write.
-///
-/// The oracle for "did this actually run": the split's answer comes back before the shell has
-/// finished being typed into, so how long this takes is the machine's business.
-fn until_file(path: &std::path::Path, what: &str) {
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
-    while std::time::Instant::now() < deadline {
-        if std::fs::read_to_string(path).is_ok_and(|text| !text.is_empty()) {
-            return;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    }
-    panic!(
-        "waited 20s for {what}, and {} was never written.\n  Impact: the pane exists and is \
-         sitting at its own prompt, which looks exactly like a command that ran and printed \
-         nothing.",
-        path.display()
-    );
-}
-
 /// Every pane in the answer, by the name Muster calls it.
 fn named_panes(window: &Window) -> Vec<String> {
     window
@@ -308,22 +288,26 @@ fn assert_ok(response: &Response) {
     }
 }
 
-/// Polls the endpoint rather than sleeping on it, and says what it was waiting for.
-fn until(
+/// Waits for the window's own answer to say something, keeping the last one it gave.
+///
+/// A wrapper over the shared wait rather than another copy of it, because what is particular
+/// here is not the polling - it is that the thing being polled is a socket, and that a timeout
+/// is only readable if it carries the answer that was still wrong when it gave up.
+fn until_window(
     what: &str,
     socket: &std::path::Path,
     mut ready: impl FnMut(&Window) -> bool,
     impact: &str,
 ) {
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
-    let mut last = None;
-    while std::time::Instant::now() < deadline {
-        let window = read_window(socket);
-        if ready(&window) {
-            return;
-        }
-        last = Some(window);
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    }
-    panic!("timed out after 15s waiting for {what}.\n  Impact: {impact}\n  Last answer: {last:?}");
+    let last = std::cell::RefCell::new(None);
+    until(
+        what,
+        || {
+            let window = read_window(socket);
+            let settled = ready(&window);
+            *last.borrow_mut() = Some(window);
+            settled
+        },
+        || format!("Impact: {impact}\n  Last answer: {:?}", last.borrow()),
+    );
 }

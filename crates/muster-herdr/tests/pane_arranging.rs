@@ -12,10 +12,8 @@
 //! does with a request rather than about what Muster sends.
 
 use std::sync::{Arc, Mutex};
-use std::thread;
-use std::time::{Duration, Instant};
 
-use herdr_harness::Daemon;
+use herdr_harness::{Daemon, until};
 use muster_core::intent::{BackendChannel, BackendIntent};
 use muster_core::mirror::Mirror;
 use muster_core::mirror::backend::{PaneId, TabId};
@@ -206,17 +204,6 @@ fn resnapshot(daemon: &Daemon, mirror: &Arc<Mutex<Mirror>>) {
 }
 
 #[allow(dead_code)]
-fn until(what: &str, mut ready: impl FnMut() -> bool) {
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while Instant::now() < deadline {
-        if ready() {
-            return;
-        }
-        thread::sleep(Duration::from_millis(5));
-    }
-    panic!("timed out after 10s waiting for {what}");
-}
-
 #[test]
 fn a_move_reaches_a_window_that_is_only_listening() {
     // Every other test in this file re-snapshots, which asks the daemon what it holds and so
@@ -255,10 +242,14 @@ fn a_move_reaches_a_window_that_is_only_listening() {
     );
     // The whole arrangement, not a part of it: a bootstrap arrives over several events, and
     // waiting for one tab would start the move against a mirror still filling the other in.
-    until("the subscription to describe the whole session", || {
-        recorded_in(&live, &home) == sorted([&first, &second])
-            && recorded_in(&live, &far) == sorted([&elsewhere])
-    });
+    until(
+        "the subscription to describe the whole session",
+        || {
+            recorded_in(&live, &home) == sorted([&first, &second])
+                && recorded_in(&live, &far) == sorted([&elsewhere])
+        },
+        (),
+    );
 
     daemon
         .backend()
@@ -269,13 +260,19 @@ fn a_move_reaches_a_window_that_is_only_listening() {
         })
         .expect("herdr accepts a move into another tab");
 
-    until("the tab it landed in to hold it", || {
-        recorded_in(&live, &far) == sorted([&elsewhere, &first])
-    });
+    until(
+        "the tab it landed in to hold it",
+        || recorded_in(&live, &far) == sorted([&elsewhere, &first]),
+        (),
+    );
     // The tab it left, which is the half easy to forget: a mirror that learned the destination
     // and not the origin still holds a tab whose panes disagree with its tree, and that tab is
     // one that stops redrawing.
-    until("the tab it left to stop naming it", || recorded_in(&live, &home) == sorted([&second]));
+    until(
+        "the tab it left to stop naming it",
+        || recorded_in(&live, &home) == sorted([&second]),
+        (),
+    );
     assert_eq!(tab_of(&live, &first), far, "the pane's own record still names the old tab");
 }
 

@@ -14,9 +14,8 @@
 
 use std::path::Path;
 use std::process::Command;
-use std::time::{Duration, Instant};
 
-use herdr_harness::Daemon;
+use herdr_harness::{Daemon, until_file, until_some};
 use muster::proto::{OpenWindow, Request, Response, Startup, request, response};
 use prost::Message;
 use serde_json::{Value, json};
@@ -42,7 +41,7 @@ fn a_pane_can_drive_the_window_it_is_drawn_in() {
     let inside =
         |pane: &str| vec![("MUSTER_SOCKET", socket.clone()), ("MUSTER_PANE", pane.to_string())];
 
-    let first = until("the window to describe the pane the daemon holds", || {
+    let first = until_some("the window to describe the pane the daemon holds", || {
         let window = json_from(&run(&["window", "--json"], &inside("")));
         let pane = window["panes"].get(0)?.clone();
         Some(pane["pane"].as_str()?.to_string())
@@ -65,14 +64,14 @@ fn a_pane_can_drive_the_window_it_is_drawn_in() {
          inside that call."
     );
 
-    let window = until("the window to list the pane under the name the split asked for", || {
-        let window = json_from(&run(&["window", "--json"], &inside(&first)));
-        let named = window["panes"]
-            .as_array()?
-            .iter()
-            .any(|pane| pane["pane"] == json!(made_pane) && pane["given_name"] == json!("🤖 A"));
-        named.then_some(window)
-    });
+    let window =
+        until_some("the window to list the pane under the name the split asked for", || {
+            let window = json_from(&run(&["window", "--json"], &inside(&first)));
+            let named = window["panes"].as_array()?.iter().any(|pane| {
+                pane["pane"] == json!(made_pane) && pane["given_name"] == json!("🤖 A")
+            });
+            named.then_some(window)
+        });
 
     // The keyboard stayed where it was, asked of the CLI's own answer rather than of the core:
     // what a script means by making a pane is `leave my cursor alone`, and the flag that says
@@ -249,21 +248,4 @@ fn accepted(response: &Response) {
     if let Some(response::Payload::Failure(failure)) = &response.payload {
         panic!("the core refused: {}", failure.reason);
     }
-}
-
-/// Polls rather than sleeping, and says what it was waiting for.
-fn until<T>(what: &str, mut ready: impl FnMut() -> Option<T>) -> T {
-    let deadline = Instant::now() + Duration::from_secs(20);
-    while Instant::now() < deadline {
-        if let Some(value) = ready() {
-            return value;
-        }
-        std::thread::sleep(Duration::from_millis(50));
-    }
-    panic!("waited 20s for {what}, and it never happened");
-}
-
-/// Waits for a file a shell in a pane was asked to write.
-fn until_file(path: &Path, what: &str) {
-    until(what, || std::fs::read_to_string(path).ok().filter(|text| !text.is_empty()));
 }

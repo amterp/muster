@@ -15,9 +15,9 @@
 
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-use herdr_harness::Daemon;
+use herdr_harness::{Daemon, until};
 use muster_core::intent::{BackendChannel, BackendIntent};
 use muster_core::mirror::Mirror;
 use muster_core::mirror::backend::PaneId;
@@ -36,7 +36,7 @@ fn session() -> (Daemon, Arc<Mutex<Mirror>>, Subscription, PaneId) {
         Arc::new(|_| {}),
         daemon.names(),
     );
-    until("the first pane to reach the mirror", || mirror.lock().unwrap().panes().count() == 1);
+    until("the first pane to reach the mirror", || mirror.lock().unwrap().panes().count() == 1, ());
 
     let pane =
         mirror.lock().unwrap().panes().next().expect("a workspace comes with a pane").id.clone();
@@ -71,32 +71,25 @@ fn resnapshot(daemon: &Daemon, mirror: &Arc<Mutex<Mirror>>) {
     mirror.lock().unwrap().bootstrap(snapshot);
 }
 
-fn until(what: &str, mut ready: impl FnMut() -> bool) {
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while Instant::now() < deadline {
-        if ready() {
-            return;
-        }
-        thread::sleep(Duration::from_millis(5));
-    }
-    panic!("timed out after 10s waiting for {what}");
-}
-
 #[test]
 fn a_title_the_program_sets_reaches_the_mirror_without_being_asked_for() {
     let (daemon, mirror, _subscription, pane) = session();
 
     set_title(&daemon, &pane, "first working build");
-    until("the title to arrive on the subscription", || {
-        held(&mirror, &pane).1.as_deref() == Some("first working build")
-    });
+    until(
+        "the title to arrive on the subscription",
+        || held(&mirror, &pane).1.as_deref() == Some("first working build"),
+        (),
+    );
 
     // A second one, because the first could have ridden the bootstrap snapshot rather than
     // an event - and it is the event path that keeps a sidebar current on a live session.
     set_title(&daemon, &pane, "second working build");
-    until("a later title to replace it", || {
-        held(&mirror, &pane).1.as_deref() == Some("second working build")
-    });
+    until(
+        "a later title to replace it",
+        || held(&mirror, &pane).1.as_deref() == Some("second working build"),
+        (),
+    );
 }
 
 #[test]
@@ -104,9 +97,11 @@ fn a_spinning_glyph_in_front_of_an_unchanged_title_is_not_a_change() {
     let (daemon, mirror, _subscription, pane) = session();
 
     set_title(&daemon, &pane, "first working build");
-    until("the title to arrive", || {
-        held(&mirror, &pane).1.as_deref() == Some("first working build")
-    });
+    until(
+        "the title to arrive",
+        || held(&mirror, &pane).1.as_deref() == Some("first working build"),
+        (),
+    );
 
     // The budget case: a harness rotates this several times a second, and the roster is
     // republished per relabel. herdr compares the stripped title before announcing, so what
@@ -130,7 +125,7 @@ fn a_name_and_a_title_sit_beside_each_other_and_neither_overwrites_the_other() {
     let (daemon, mirror, _subscription, pane) = session();
 
     set_title(&daemon, &pane, "first working build");
-    until("the title to arrive", || held(&mirror, &pane).1.is_some());
+    until("the title to arrive", || held(&mirror, &pane).1.is_some(), ());
 
     daemon.call("pane.rename", &json!({ "pane_id": pane.as_str(), "label": "🔥 payments spike" }));
     resnapshot(&daemon, &mirror);
@@ -139,9 +134,11 @@ fn a_name_and_a_title_sit_beside_each_other_and_neither_overwrites_the_other() {
     // and setting one never touches the other, so a title arriving after a rename leaves the
     // name where it is - and it arrives on the stream, without another snapshot.
     set_title(&daemon, &pane, "second working build");
-    until("a later title to arrive", || {
-        held(&mirror, &pane).1.as_deref() == Some("second working build")
-    });
+    until(
+        "a later title to arrive",
+        || held(&mirror, &pane).1.as_deref() == Some("second working build"),
+        (),
+    );
 
     assert_eq!(
         held(&mirror, &pane),
@@ -209,7 +206,7 @@ fn a_reconnect_does_not_put_back_a_name_the_session_has_moved_past() {
         Arc::new(|_| {}),
         daemon.names(),
     );
-    until("the fresh mirror to see the pane", || fresh.lock().unwrap().panes().count() == 1);
+    until("the fresh mirror to see the pane", || fresh.lock().unwrap().panes().count() == 1, ());
     thread::sleep(Duration::from_millis(800));
 
     assert_eq!(
@@ -233,9 +230,11 @@ fn a_name_cleared_by_somebody_else_arrives_only_on_a_fresh_snapshot() {
     // and the only one that clears.
     daemon.call("pane.rename", &json!({ "pane_id": pane.as_str(), "label": null }));
     set_title(&daemon, &pane, "second working build");
-    until("a later title to arrive", || {
-        held(&mirror, &pane).1.as_deref() == Some("second working build")
-    });
+    until(
+        "a later title to arrive",
+        || held(&mirror, &pane).1.as_deref() == Some("second working build"),
+        (),
+    );
 
     // Still named, and deliberately. Nothing on the stream is evidence about a name: herdr
     // announces a rename to nobody and stamps no counter for one, so a `label` riding a

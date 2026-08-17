@@ -12,10 +12,9 @@
 
 use std::io::Write;
 use std::process::{Child, Command, Stdio};
-use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-use herdr_harness::Daemon;
+use herdr_harness::{Daemon, until, until_within};
 use muster_core::find::Needle;
 use muster_core::input::ScrollDirection;
 use muster_core::intent::BackendChannel;
@@ -49,7 +48,17 @@ impl Ruler {
             .daemon
             .call("pane.send_text", &json!({ "pane_id": ruler.pane.as_str(), "text": script }));
         let last = format!("ruler-{ROWS:05}");
-        until("the ruler to finish printing", || ruler.visible().contains(&last));
+        // Longer than the suite's usual patience, and this is the one wait that earns it:
+        // everything else here waits on a daemon that is already answering, where this waits
+        // on three hundred rows travelling through a PTY and being read back a screen at a
+        // time. Thirty seconds is what this test was written with; it is kept rather than
+        // trimmed because a shorter one here can only add a flake.
+        until_within(
+            "the ruler to finish printing",
+            Duration::from_secs(30),
+            || ruler.visible().contains(&last),
+            (),
+        );
         ruler
     }
 
@@ -98,17 +107,6 @@ fn attach(daemon: &Daemon, pane: &PaneId) -> Child {
         .stderr(Stdio::null())
         .spawn()
         .expect("the pinned herdr can open a control session")
-}
-
-fn until(what: &str, mut ready: impl FnMut() -> bool) {
-    let deadline = Instant::now() + Duration::from_secs(30);
-    while Instant::now() < deadline {
-        if ready() {
-            return;
-        }
-        thread::sleep(Duration::from_millis(20));
-    }
-    panic!("timed out waiting for {what}");
 }
 
 #[test]
@@ -163,9 +161,11 @@ fn a_hit_scrolled_to_is_a_hit_on_screen() {
     let rows_up = found.hits.first().expect("the ruler printed that row").rows_from_bottom;
 
     ruler.scroll_up(u16::try_from(rows_up).expect("a 300-row pane is well inside one scroll"));
-    until("the daemon to report the offset it was asked for", || {
-        ruler.offset() == u64::from(rows_up)
-    });
+    until(
+        "the daemon to report the offset it was asked for",
+        || ruler.offset() == u64::from(rows_up),
+        (),
+    );
 
     assert!(
         ruler.visible().contains(wanted),

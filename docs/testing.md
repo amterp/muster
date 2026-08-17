@@ -84,6 +84,16 @@ Muster's principles, adapted to that evidence:
   mirror which merely got there first and then walked backwards fails rather than passing on timing. There is no
   event for "nothing further arrives". Both are legitimate; both need a measured number and a comment saying which
   measurement, because a wait sized by guesswork is the flake this rule exists to prevent.
+
+  **There is one `until`, in `herdr-harness`, and it has one deadline.** There were twenty-four, one per test file,
+  because the way a test gets written is by copying the nearest one - and they had drifted to deadlines of two, ten,
+  fifteen, twenty and thirty seconds, with not one of the outliers saying why. A single number is the honest answer
+  because a deadline here bounds a failure rather than tuning anything: a genuine wedge shows up as runs that either
+  finish well inside a second or sit at exactly the deadline, so no value would have made the difference and only
+  the shape of that distribution says what is wrong. A wait that truly needs longer takes `until_within` and states
+  its reason at the call site, which is the one place a reader can check it. Every wait also carries a slot for what
+  was true instead, because a timeout saying only that a condition never came true sends whoever hit it back to add
+  exactly that and run again.
 - **Tiered by what a tier can reach, not by what it fakes.** Most of the core is pure - a keymap, a fold over
   events, a byte-stream parser - and needs no daemon in any tier, so those stay microseconds. Tests that need a
   daemon spawn one and stay in the default gate, because 25 ms is not a tier boundary. What remains genuinely out

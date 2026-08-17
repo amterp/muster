@@ -4,11 +4,11 @@
 //! which happens whenever a window has to rebuild a pane, and used to end with that pane
 //! rendering, painting, and swallowing every keystroke.
 
+use herdr_harness::until;
 use std::io::Read;
 use std::os::unix::net::UnixStream;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::{Duration, Instant};
 
 use muster_herdr::PaneControlChannel;
 use muster_herdr::control_stream::ControlStreamMessage;
@@ -27,11 +27,11 @@ fn a_replacement_bridge_can_still_connect() {
     .expect("the socket binds");
 
     let first = UnixStream::connect(&path).expect("the first bridge connects");
-    until("the first bridge is noticed", || connections.load(Ordering::Acquire) == 1);
+    until("the first bridge is noticed", || connections.load(Ordering::Acquire) == 1, ());
     drop(first);
 
     let mut second = UnixStream::connect(&path).expect("a replacement bridge connects");
-    until("the replacement is noticed", || connections.load(Ordering::Acquire) == 2);
+    until("the replacement is noticed", || connections.load(Ordering::Acquire) == 2, ());
 
     // And it is the one that gets the input, not the one it replaced.
     assert!(channel.send(&ControlStreamMessage::Input(b"hello".to_vec())));
@@ -52,7 +52,7 @@ fn closing_a_pane_does_not_leave_a_thread_behind() {
 
     drop(channel);
 
-    until("the accepting thread stops", || stopped.load(Ordering::Acquire));
+    until("the accepting thread stops", || stopped.load(Ordering::Acquire), ());
 }
 
 fn socket_path(name: &str) -> String {
@@ -60,16 +60,4 @@ fn socket_path(name: &str) -> String {
         .join(format!("muster-test-{}-{name}.sock", std::process::id()))
         .to_string_lossy()
         .into_owned()
-}
-
-/// Waits for something another thread does, or fails saying what never happened.
-fn until(what: &str, ready: impl Fn() -> bool) {
-    let deadline = Instant::now() + Duration::from_secs(2);
-    while Instant::now() < deadline {
-        if ready() {
-            return;
-        }
-        std::thread::sleep(Duration::from_millis(5));
-    }
-    panic!("{what} did not happen within two seconds");
 }

@@ -17,7 +17,7 @@
 use std::collections::BTreeSet;
 use std::sync::Mutex;
 
-use herdr_harness::Daemon;
+use herdr_harness::{Daemon, until};
 use muster::proto::{
     AttachPane, ClosePane, CreateTab, Event, FocusPane, Paste, Request, Response, RosterChanged,
     SplitPane, Startup, ViewChanged, ViewNode, WindowFocus, event, request, response, view_node,
@@ -772,20 +772,4 @@ fn screen(daemon: &Daemon, pane: &str) -> String {
         .and_then(Value::as_str)
         .unwrap_or_else(|| panic!("a pane read carries its text under `read`: {read}"))
         .to_string()
-}
-
-/// Polls a condition rather than sleeping on it, and says what it saw when it gives up.
-///
-/// herdr answers in under a millisecond, so a sleep long enough to be safe makes the suite
-/// unpleasant and one short enough to be pleasant is flaky on a loaded machine. The third
-/// argument is what turns a timeout from "something did not happen" into something readable.
-fn until(what: &str, mut ready: impl FnMut() -> bool, on_failure: impl FnOnce() -> String) {
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
-    while std::time::Instant::now() < deadline {
-        if ready() {
-            return;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    }
-    panic!("timed out after 15s waiting for {what}.\n{}", on_failure());
 }

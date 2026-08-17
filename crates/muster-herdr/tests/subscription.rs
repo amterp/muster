@@ -16,9 +16,9 @@ use std::os::unix::net::UnixListener;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-use herdr_harness::Daemon;
+use herdr_harness::{Daemon, until};
 use muster_core::AgentState;
 use muster_core::mirror::backend::{Health, LayoutNode, PaneId, SplitAxis, TabId};
 use muster_core::mirror::{Change, Mirror};
@@ -47,22 +47,6 @@ impl Log {
     }
 }
 
-/// Waits for a condition, or fails saying what it was still waiting for.
-///
-/// Polling rather than sleeping a fixed time: herdr answers in under a millisecond, so a
-/// sleep long enough to be safe is long enough to make the suite unpleasant, and one short
-/// enough to be pleasant is flaky on a loaded machine.
-fn until(what: &str, mut ready: impl FnMut() -> bool) {
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while Instant::now() < deadline {
-        if ready() {
-            return;
-        }
-        std::thread::sleep(Duration::from_millis(10));
-    }
-    panic!("timed out after 10s waiting for {what}");
-}
-
 fn mirror_and_log(daemon: &Daemon) -> (Arc<Mutex<Mirror>>, Arc<Log>, Subscription) {
     let mirror = Arc::new(Mutex::new(Mirror::new()));
     let log = Arc::new(Log::default());
@@ -85,7 +69,7 @@ fn a_subscription_mirrors_a_session_it_arrived_after() {
     daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "before", "focus": true }));
 
     let (mirror, log, _subscription) = mirror_and_log(&daemon);
-    until("the first bootstrap", || log.bootstraps() > 0);
+    until("the first bootstrap", || log.bootstraps() > 0, ());
 
     let mirror = mirror.lock().unwrap();
     assert_eq!(mirror.health(), Health::Connected);
@@ -102,7 +86,7 @@ fn the_replayed_session_does_not_double_the_one_just_snapshotted() {
     daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "one", "focus": true }));
 
     let (mirror, log, _subscription) = mirror_and_log(&daemon);
-    until("the first bootstrap", || log.bootstraps() > 0);
+    until("the first bootstrap", || log.bootstraps() > 0, ());
     // The replay lands after the snapshot and describes the same session. Nothing marks
     // where it ends, so this waits out the window in which it would have arrived.
     std::thread::sleep(Duration::from_millis(300));
@@ -122,10 +106,10 @@ fn a_pane_created_after_the_subscription_arrives_on_it() {
     daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "one", "focus": true }));
 
     let (mirror, log, _subscription) = mirror_and_log(&daemon);
-    until("the first bootstrap", || log.bootstraps() > 0);
+    until("the first bootstrap", || log.bootstraps() > 0, ());
 
     daemon.call("pane.split", &json!({ "direction": "right" }));
-    until("the new pane to reach the mirror", || pane_count(&mirror) == 2);
+    until("the new pane to reach the mirror", || pane_count(&mirror) == 2, ());
 }
 
 #[test]
@@ -141,11 +125,11 @@ fn a_closed_pane_leaves_the_mirror() {
         .to_string();
 
     let (mirror, log, _subscription) = mirror_and_log(&daemon);
-    until("the first bootstrap", || log.bootstraps() > 0);
+    until("the first bootstrap", || log.bootstraps() > 0, ());
     assert_eq!(pane_count(&mirror), 2);
 
     daemon.call("pane.close", &json!({ "pane_id": new_pane }));
-    until("the closed pane to leave the mirror", || pane_count(&mirror) == 1);
+    until("the closed pane to leave the mirror", || pane_count(&mirror) == 1, ());
 }
 
 #[test]
@@ -154,10 +138,10 @@ fn a_dead_daemon_makes_the_mirror_stale_without_emptying_it() {
     daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "one", "focus": true }));
 
     let (mirror, log, _subscription) = mirror_and_log(&daemon);
-    until("the first bootstrap", || log.bootstraps() > 0);
+    until("the first bootstrap", || log.bootstraps() > 0, ());
 
     daemon.kill();
-    until("the mirror to go stale", || mirror.lock().unwrap().health() == Health::Stale);
+    until("the mirror to go stale", || mirror.lock().unwrap().health() == Health::Stale, ());
 
     // The point of stale rather than empty: the last thing the daemon said is still the
     // best answer available, and a window that blanks on a dropped connection has thrown
@@ -176,7 +160,7 @@ fn an_absent_daemon_is_disconnected_rather_than_stale() {
         Names::alone("local", Mint::Backend),
     );
 
-    until("the failed dial to be reported", || !log.notices().is_empty());
+    until("the failed dial to be reported", || !log.notices().is_empty(), ());
     // Never connected, so there is no last good answer to describe as aging. The
     // distinction is what the window's chrome says to a user who has not started a daemon
     // versus one whose daemon just died.
@@ -197,7 +181,7 @@ fn dropping_the_handle_stops_the_thread() {
             log.record(),
             daemon.names(),
         );
-        until("the first bootstrap", || log.bootstraps() > 0);
+        until("the first bootstrap", || log.bootstraps() > 0, ());
         subscription.stopped()
     };
 
@@ -205,7 +189,7 @@ fn dropping_the_handle_stops_the_thread() {
     // outlives its handle holds a connection open and keeps writing into a mirror the window
     // has forgotten, and nothing about this test process would notice: the thread is detached,
     // so it would run on under every test after this one and fail none of them.
-    until("the subscription thread to finish", || stopped.load(Ordering::Acquire));
+    until("the subscription thread to finish", || stopped.load(Ordering::Acquire), ());
 }
 
 #[test]
@@ -224,7 +208,7 @@ fn an_agent_state_survives_a_replayed_pane() {
     );
 
     let (mirror, log, _subscription) = mirror_and_log(&daemon);
-    until("the first bootstrap", || log.bootstraps() > 0);
+    until("the first bootstrap", || log.bootstraps() > 0, ());
     // Long enough for the replay to land, since it is the replay that would roll this
     // back: herdr's pane payloads carry agent_status as of when the subscription opened.
     std::thread::sleep(Duration::from_millis(300));
@@ -246,7 +230,7 @@ fn every_pane_reports_its_agent_state_without_being_attached_to() {
     daemon.call("pane.split", &json!({ "direction": "right" }));
 
     let (mirror, log, _subscription) = mirror_and_log(&daemon);
-    until("both panes to reach the mirror", || pane_count(&mirror) == 2);
+    until("both panes to reach the mirror", || pane_count(&mirror) == 2, ());
 
     let panes: Vec<String> =
         mirror.lock().unwrap().panes().map(|pane| pane.id.to_string()).collect();
@@ -261,10 +245,14 @@ fn every_pane_reports_its_agent_state_without_being_attached_to() {
         &json!({ "pane_id": elsewhere, "agent": "probe", "source": "probe", "state": "blocked" }),
     );
 
-    until("the unattached pane's state to arrive", || {
-        mirror.lock().unwrap().agent_state(&PaneId::new(elsewhere.clone()))
-            == Some(AgentState::Blocked)
-    });
+    until(
+        "the unattached pane's state to arrive",
+        || {
+            mirror.lock().unwrap().agent_state(&PaneId::new(elsewhere.clone()))
+                == Some(AgentState::Blocked)
+        },
+        (),
+    );
     assert!(log.notices().iter().any(|notice| matches!(
         notice,
         Notice::Changed(Change::AgentStateChanged { to, .. })
@@ -278,22 +266,26 @@ fn a_pane_created_later_is_watched_too() {
     daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "one", "focus": true }));
 
     let (mirror, log, _subscription) = mirror_and_log(&daemon);
-    until("the first bootstrap", || log.bootstraps() > 0);
+    until("the first bootstrap", || log.bootstraps() > 0, ());
 
     // Split after the subscription is up, so the watcher for this pane can only exist if
     // the set follows the mirror rather than being decided once at connect.
     let split = daemon.call("pane.split", &json!({ "direction": "down" }));
     let new_pane = split["pane"]["pane_id"].as_str().expect("no pane id").to_string();
-    until("the new pane to reach the mirror", || pane_count(&mirror) == 2);
+    until("the new pane to reach the mirror", || pane_count(&mirror) == 2, ());
 
     daemon.call(
         "pane.report_agent",
         &json!({ "pane_id": new_pane, "agent": "probe", "source": "probe", "state": "working" }),
     );
-    until("the new pane's agent state to arrive", || {
-        mirror.lock().unwrap().agent_state(&PaneId::new(new_pane.clone()))
-            == Some(AgentState::Working)
-    });
+    until(
+        "the new pane's agent state to arrive",
+        || {
+            mirror.lock().unwrap().agent_state(&PaneId::new(new_pane.clone()))
+                == Some(AgentState::Working)
+        },
+        (),
+    );
 }
 
 #[test]
@@ -307,7 +299,7 @@ fn a_tab_arranged_by_a_real_daemon_arrives_as_a_tree() {
     daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "one", "focus": true }));
 
     let (mirror, log, _subscription) = mirror_and_log(&daemon);
-    until("the first bootstrap", || log.bootstraps() > 0);
+    until("the first bootstrap", || log.bootstraps() > 0, ());
 
     let tab = TabId::new(
         daemon.call("session.snapshot", &json!({}))["snapshot"]["focused_tab_id"]
@@ -321,13 +313,17 @@ fn a_tab_arranged_by_a_real_daemon_arrives_as_a_tree() {
     // Split after the subscription is up, so what arrives can only have come from the
     // event rather than from the snapshot that bootstrapped it.
     daemon.call("pane.split", &json!({ "direction": "right" }));
-    until("the split to reach the mirror as a tree", || {
-        mirror
-            .lock()
-            .unwrap()
-            .layout(&tab)
-            .is_some_and(|layout| matches!(layout.root, LayoutNode::Split { .. }))
-    });
+    until(
+        "the split to reach the mirror as a tree",
+        || {
+            mirror
+                .lock()
+                .unwrap()
+                .layout(&tab)
+                .is_some_and(|layout| matches!(layout.root, LayoutNode::Split { .. }))
+        },
+        (),
+    );
 
     let mirror = mirror.lock().unwrap();
     let layout = mirror.layout(&tab).expect("the tab still has a tree");
@@ -378,7 +374,7 @@ fn an_agent_state_that_lands_before_its_watcher_is_recovered() {
     daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "one", "focus": true }));
 
     let (mirror, log, _subscription) = mirror_and_log(&daemon);
-    until("the first bootstrap", || log.bootstraps() > 0);
+    until("the first bootstrap", || log.bootstraps() > 0, ());
 
     let root = {
         let mirror = mirror.lock().unwrap();
@@ -407,17 +403,25 @@ fn an_agent_state_that_lands_before_its_watcher_is_recovered() {
         made.push(PaneId::new(pane));
     }
 
-    until("every new pane to reach the mirror", || {
-        let mirror = mirror.lock().unwrap();
-        made.iter().all(|pane| mirror.agent_state(pane).is_some())
-    });
+    until(
+        "every new pane to reach the mirror",
+        || {
+            let mirror = mirror.lock().unwrap();
+            made.iter().all(|pane| mirror.agent_state(pane).is_some())
+        },
+        (),
+    );
 
     // No further events are coming: every report has been sent and answered. So whatever the
     // mirror holds now is what a window would be showing, indefinitely.
-    until("every new pane's agent state to settle", || {
-        let mirror = mirror.lock().unwrap();
-        made.iter().all(|pane| mirror.agent_state(pane) == Some(AgentState::Working))
-    });
+    until(
+        "every new pane's agent state to settle",
+        || {
+            let mirror = mirror.lock().unwrap();
+            made.iter().all(|pane| mirror.agent_state(pane) == Some(AgentState::Working))
+        },
+        (),
+    );
 
     let mirror = mirror.lock().unwrap();
     let calm: Vec<&PaneId> =
@@ -517,7 +521,7 @@ fn a_daemon_that_never_acknowledges_can_still_be_let_go_of() {
             Arc::new(|_| {}),
             Names::alone("local", Mint::Backend),
         );
-        until("the subscription to reach the daemon", || daemon.accepted());
+        until("the subscription to reach the daemon", || daemon.accepted(), ());
     }
 
     // Dropping the handle has to reach the socket, and until the stream is somewhere `Drop`
@@ -525,7 +529,7 @@ fn a_daemon_that_never_acknowledges_can_still_be_let_go_of() {
     // the only reference. What leaks is a thread and two descriptors per attempt, against
     // the 256 a GUI-launched process gets, and a daemon flapping between accepting and
     // healthy leaks one set per reconnect.
-    until("the daemon to see the connection close", || daemon.hung_up());
+    until("the daemon to see the connection close", || daemon.hung_up(), ());
 }
 
 /// A listener that acknowledges the subscription and then will not describe its session.
@@ -627,18 +631,26 @@ fn a_daemon_that_will_not_describe_its_session_is_reported_and_tried_again() {
     // Matched on the phrase rather than on the variant, because a failed dial is `Stale` too
     // and this test is about the other one - a daemon that answered, and then would not say
     // what it was holding.
-    until("the subscription to say the session could not be described", || {
-        log.notices().iter().any(|notice| {
+    until(
+        "the subscription to say the session could not be described",
+        || {
+            log.notices().iter().any(|notice| {
             matches!(notice, Notice::Stale { detail } if detail.contains("describe its session"))
         })
-    });
+        },
+        (),
+    );
 
     // And it has to try again. This is the half that made a gate run hang: with the snapshot
     // thrown away, the connection is healthy, so nothing reconnects, so nothing ever
     // bootstraps - and the mirror stays empty for the life of the process. Three connections
     // means the subscription came back after the snapshot failed rather than settling down to
     // stream events into a mirror with no world in it.
-    until("the subscription to dial again after the snapshot failed", || daemon.connections() >= 3);
+    until(
+        "the subscription to dial again after the snapshot failed",
+        || daemon.connections() >= 3,
+        (),
+    );
 
     assert_ne!(
         mirror.lock().unwrap().health(),
@@ -669,10 +681,12 @@ fn a_mirror_survives_the_daemon_going_away_and_coming_back() {
     daemon.call("pane.rename", &json!({ "pane_id": pane, "label": "🔥 payments spike" }));
 
     let (mirror, log, _subscription) = mirror_and_log(&daemon);
-    until("the first bootstrap", || log.bootstraps() > 0);
-    until("the name to reach the mirror", || {
-        named(&mirror, &pane).as_deref() == Some("🔥 payments spike")
-    });
+    until("the first bootstrap", || log.bootstraps() > 0, ());
+    until(
+        "the name to reach the mirror",
+        || named(&mirror, &pane).as_deref() == Some("🔥 payments spike"),
+        (),
+    );
     let before = pane_count(&mirror);
 
     daemon.restart();
@@ -680,12 +694,16 @@ fn a_mirror_survives_the_daemon_going_away_and_coming_back() {
     // Reconnected rather than merely alive again: the mirror going stale and coming back is
     // the whole path, and asserting on the name alone would pass against a subscription that
     // never noticed anything happened.
-    until("the subscription to report it reconnected", || {
-        log.notices().iter().any(|notice| matches!(notice, Notice::Reconnected))
-    });
-    until("the mirror to be connected again", || {
-        mirror.lock().unwrap().health() == Health::Connected
-    });
+    until(
+        "the subscription to report it reconnected",
+        || log.notices().iter().any(|notice| matches!(notice, Notice::Reconnected)),
+        (),
+    );
+    until(
+        "the mirror to be connected again",
+        || mirror.lock().unwrap().health() == Health::Connected,
+        (),
+    );
 
     // Long enough to be past the replay, which arrives after the snapshot rather than with
     // it. Without this the assertions below would run before the events that would break

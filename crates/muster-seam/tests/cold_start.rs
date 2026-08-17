@@ -15,7 +15,7 @@
 
 use std::sync::Mutex;
 
-use herdr_harness::Daemon;
+use herdr_harness::{Daemon, until};
 use muster::proto::{
     Event, OpenWindow, Request, Response, Startup, ViewChanged, ViewNode, event, request, response,
     view_node,
@@ -117,16 +117,4 @@ fn assert_ok(response: &Response) {
         Some(response::Payload::Ok(_) | response::Payload::Made(_)) => {}
         other => panic!("expected the core to accept this, and it answered {other:?}"),
     }
-}
-
-/// Waits for something a daemon has to say, rather than sleeping and hoping.
-fn until(what: &str, mut ready: impl FnMut() -> bool, on_failure: impl FnOnce() -> String) {
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-    while std::time::Instant::now() < deadline {
-        if ready() {
-            return;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    }
-    panic!("timed out waiting for {what}. {}", on_failure());
 }

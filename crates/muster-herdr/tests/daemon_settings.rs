@@ -12,9 +12,8 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
 
-use herdr_harness::binary;
+use herdr_harness::{binary, until_some};
 use muster_core::config;
 use muster_core::intent::{BackendChannel, BackendIntent};
 use muster_core::names::{Mint, Names};
@@ -93,7 +92,7 @@ fn a_pane_runs_the_shell_musters_own_config_names() {
         .expect("a daemon that answered ping can make a workspace");
 
     let client = HerdrClient::new(&socket);
-    let pane = until("the daemon to describe the pane it just made", || {
+    let pane = until_some("the daemon to describe the pane it just made", || {
         let answer = client.request("pane.list", &json!({})).ok()?;
         let panes = answer.get("payload").unwrap_or(&answer).get("panes")?.as_array()?;
         Some(panes.first()?.get("pane_id")?.as_str()?.to_string())
@@ -109,7 +108,7 @@ fn a_pane_runs_the_shell_musters_own_config_names() {
             &json!({ "pane_id": pane, "text": format!("env > {}\n", dump.display()) }),
         )
         .expect("a pane accepts text");
-    let written = until("the shell in the pane to write its environment out", || {
+    let written = until_some("the shell in the pane to write its environment out", || {
         let text = std::fs::read_to_string(&dump).ok()?;
         text.contains("PATH=").then_some(text)
     });
@@ -168,15 +167,4 @@ impl Drop for Stop {
     fn drop(&mut self) {
         let _ = HerdrClient::new(&self.0).request("server.stop", &json!({}));
     }
-}
-
-fn until<T>(what: &str, mut ready: impl FnMut() -> Option<T>) -> T {
-    let deadline = Instant::now() + Duration::from_secs(20);
-    while Instant::now() < deadline {
-        if let Some(found) = ready() {
-            return found;
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
-    panic!("timed out waiting for {what}");
 }

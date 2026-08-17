@@ -15,9 +15,8 @@
 
 use std::os::fd::FromRawFd;
 use std::process::{Child, Command, Stdio};
-use std::time::{Duration, Instant};
 
-use herdr_harness::Daemon;
+use herdr_harness::{Daemon, until};
 use serde_json::json;
 
 const FIRST: (u16, u16) = (100, 30);
@@ -160,16 +159,4 @@ impl Drop for Pty {
             libc::close(self.replica);
         }
     }
-}
-
-/// Waits for something a daemon has to say, rather than sleeping and hoping.
-fn until(what: &str, mut ready: impl FnMut() -> bool, on_failure: impl FnOnce() -> String) {
-    let deadline = Instant::now() + Duration::from_secs(15);
-    while Instant::now() < deadline {
-        if ready() {
-            return;
-        }
-        std::thread::sleep(Duration::from_millis(50));
-    }
-    panic!("timed out waiting for {what}.\n{}", on_failure());
 }

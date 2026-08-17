@@ -314,26 +314,9 @@ pub(crate) fn only_pane(daemon: &Daemon) -> String {
     panes[0].get("pane_id").and_then(Value::as_str).expect("a pane carries an id").to_string()
 }
 
-/// Polls a condition, and says what it was waiting for and what the pane looked like.
-///
-/// Polling rather than sleeping: herdr answers in under a millisecond, so a sleep long
-/// enough to be safe makes the suite unpleasant and one short enough to be pleasant is
-/// flaky on a loaded machine. The third argument is what turns a timeout from "something
-/// did not happen" into a screen someone can read.
-pub(crate) fn until(
-    what: &str,
-    mut ready: impl FnMut() -> bool,
-    on_failure: impl FnOnce() -> String,
-) {
-    let deadline = Instant::now() + Duration::from_secs(15);
-    while Instant::now() < deadline {
-        if ready() {
-            return;
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
-    panic!("timed out after 15s waiting for {what}.\n{}", on_failure());
-}
+/// Re-exported so the tests beside this one keep saying `support::until`, which is where they
+/// reach for everything else they share.
+pub(crate) use herdr_harness::until;
 
 /// A real bridge process, and everything it said.
 ///

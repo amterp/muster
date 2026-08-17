@@ -14,6 +14,14 @@
 //! recording the corpus. Two of them because they are used from two languages at two
 //! moments - the probe records what herdr does, this drives what Muster does about it -
 //! and the facts they encode about isolation are kept the same on purpose.
+//!
+//! [`until`] is here for a related reason rather than the same one. It is not about daemons at
+//! all, but everything that waits on one already depends on this crate, so this is where one
+//! copy of it costs nothing - and one copy is the point (`until::PATIENCE`).
+
+mod until;
+
+pub use until::{Detail, PATIENCE, until, until_file, until_some, until_within};
 
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};

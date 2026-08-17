@@ -12,9 +12,9 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-use herdr_harness::Daemon;
+use herdr_harness::{Daemon, until};
 use muster_core::intent::{BackendChannel, BackendIntent, Side};
 use muster_core::mirror::Mirror;
 use muster_core::mirror::backend::{PaneId, TabId};
@@ -73,7 +73,7 @@ fn session() -> (Daemon, Arc<Mutex<Mirror>>, Subscription, TabId, PaneId) {
         Arc::new(|_| {}),
         daemon.names(),
     );
-    until("the first pane to reach the mirror", || mirror.lock().unwrap().panes().count() == 1);
+    until("the first pane to reach the mirror", || mirror.lock().unwrap().panes().count() == 1, ());
 
     let (tab, pane) = {
         let held = mirror.lock().unwrap();
@@ -81,17 +81,6 @@ fn session() -> (Daemon, Arc<Mutex<Mirror>>, Subscription, TabId, PaneId) {
         (pane.tab.clone(), pane.id.clone())
     };
     (daemon, mirror, subscription, tab, pane)
-}
-
-fn until(what: &str, mut ready: impl FnMut() -> bool) {
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while Instant::now() < deadline {
-        if ready() {
-            return;
-        }
-        thread::sleep(Duration::from_millis(5));
-    }
-    panic!("timed out after 10s waiting for {what}");
 }
 
 #[test]
@@ -116,7 +105,7 @@ fn splitting_leftward_never_shows_the_pane_on_the_right() {
 
     // Past herdr's own second publish, so that a mirror which merely got there first and then
     // walked backwards fails here rather than passing on timing.
-    until("the new pane to reach the mirror", || mirror.lock().unwrap().panes().count() == 2);
+    until("the new pane to reach the mirror", || mirror.lock().unwrap().panes().count() == 2, ());
     thread::sleep(PAST_THE_SECOND_PUBLISH);
 
     let leftward = format!("columns({created}, {pane}@0.5)");
@@ -162,9 +151,11 @@ fn splitting_rightward_still_costs_one_request_and_no_suppression() {
         "a rightward split answered with an arrangement, so it asked herdr twice"
     );
 
-    until("the tree to reach the mirror", || {
-        mirror.lock().unwrap().layout(&tab).is_some_and(|layout| layout.root.panes().len() == 2)
-    });
+    until(
+        "the tree to reach the mirror",
+        || mirror.lock().unwrap().layout(&tab).is_some_and(|layout| layout.root.panes().len() == 2),
+        (),
+    );
     assert_eq!(
         mirror.lock().unwrap().layout(&tab).map(|layout| layout.root.to_string()),
         Some(format!("columns({pane}, {created}@0.5)"))
@@ -189,9 +180,11 @@ fn resizes_faster_than_the_daemon_announces_them_do_not_walk_backwards() {
             name: None,
         })
         .expect("a real daemon refused a split it can do");
-    until("the tree to reach the mirror", || {
-        mirror.lock().unwrap().layout(&tab).is_some_and(|layout| layout.root.panes().len() == 2)
-    });
+    until(
+        "the tree to reach the mirror",
+        || mirror.lock().unwrap().layout(&tab).is_some_and(|layout| layout.root.panes().len() == 2),
+        (),
+    );
 
     let watcher = Watcher::on(&mirror, tab.clone());
     for _ in 0..5 {
@@ -247,15 +240,17 @@ fn closing_a_pane_a_leftward_split_made_collapses_the_tab() {
         .expect("a real daemon refused a split it can do");
     let created = outcome.created.clone().expect("pane.split did not name the pane it made");
     mirror.lock().unwrap().settle(outcome.settled.clone().expect("no layout from the swap"));
-    until("the new pane to reach the mirror", || mirror.lock().unwrap().panes().count() == 2);
+    until("the new pane to reach the mirror", || mirror.lock().unwrap().panes().count() == 2, ());
 
     client
         .submit(&BackendIntent::ClosePane { pane: created.clone() })
         .expect("a real daemon refused a close it can do");
 
-    until("the tab to collapse back to one pane", || {
-        mirror.lock().unwrap().layout(&tab).is_some_and(|layout| layout.root.panes().len() == 1)
-    });
+    until(
+        "the tab to collapse back to one pane",
+        || mirror.lock().unwrap().layout(&tab).is_some_and(|layout| layout.root.panes().len() == 1),
+        (),
+    );
     assert_eq!(
         mirror.lock().unwrap().layout(&tab).map(|layout| layout.root.to_string()),
         Some(pane.to_string()),
@@ -284,9 +279,11 @@ fn a_dragged_divider_lands_on_the_answer_rather_than_the_broadcast() {
             name: None,
         })
         .expect("a real daemon refused a split it can do");
-    until("the tree to reach the mirror", || {
-        mirror.lock().unwrap().layout(&tab).is_some_and(|layout| layout.root.panes().len() == 2)
-    });
+    until(
+        "the tree to reach the mirror",
+        || mirror.lock().unwrap().layout(&tab).is_some_and(|layout| layout.root.panes().len() == 2),
+        (),
+    );
 
     let watcher = Watcher::on(&mirror, tab.clone());
     // A pointer crossing the pane, at the granularity a drag actually produces - and entirely

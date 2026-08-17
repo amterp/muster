@@ -15,7 +15,7 @@
 
 use std::sync::Mutex;
 
-use herdr_harness::Daemon;
+use herdr_harness::{Daemon, until};
 use muster::proto::{
     Event, OpenWindow, Request, Response, RosterChanged, Startup, event, request, response,
 };
@@ -117,16 +117,4 @@ fn assert_ok(response: &Response) {
     if let Some(response::Payload::Failure(failure)) = &response.payload {
         panic!("the core refused: {}", failure.reason);
     }
-}
-
-/// Polls rather than sleeping, and says what it was waiting for and what it saw.
-fn until(what: &str, mut ready: impl FnMut() -> bool, on_failure: impl FnOnce() -> String) {
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
-    while std::time::Instant::now() < deadline {
-        if ready() {
-            return;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    }
-    panic!("timed out after 15s waiting for {what}.\n{}", on_failure());
 }

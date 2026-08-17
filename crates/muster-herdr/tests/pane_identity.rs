@@ -13,9 +13,8 @@
 //! holding none: a command from that pane would act on somebody else's work.
 
 use std::path::PathBuf;
-use std::time::{Duration, Instant};
 
-use herdr_harness::Daemon;
+use herdr_harness::{Daemon, until_some};
 use muster_core::intent::{BackendChannel, BackendIntent};
 use muster_core::names::{Mint, Names};
 use muster_herdr::{HerdrBackend, PaneEnvironment};
@@ -60,7 +59,7 @@ fn a_pane_muster_made_is_told_which_pane_it_is() {
         }),
     );
 
-    let written = until("the shell in the pane to write out what it calls itself", || {
+    let written = until_some("the shell in the pane to write out what it calls itself", || {
         std::fs::read_to_string(&dump).ok().filter(|text| !text.is_empty())
     });
     let _ = std::fs::remove_file(&dump);
@@ -74,20 +73,4 @@ fn a_pane_muster_made_is_told_which_pane_it_is() {
          request in HerdrBackend::submit, that env::with_pane_name puts it in the `env` map, \
          and that herdr still passes `env` through to a pane's process."
     );
-}
-
-/// Waits for something a daemon does on its own schedule, or says what it was waiting for.
-///
-/// A deadline-bounded poll rather than a sleep: a shell drawing a prompt and writing a file
-/// takes as long as the machine takes, and a fixed wait is either slower than it needs to be or
-/// flaky on a loaded one.
-fn until<T>(what: &str, mut ready: impl FnMut() -> Option<T>) -> T {
-    let deadline = Instant::now() + Duration::from_secs(20);
-    while Instant::now() < deadline {
-        if let Some(value) = ready() {
-            return value;
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
-    panic!("waited 20s for {what} and it did not happen");
 }

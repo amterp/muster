@@ -18,7 +18,7 @@
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use herdr_harness::Daemon;
+use herdr_harness::{Daemon, until_some};
 use muster_core::intent::{BackendChannel, BackendIntent, Side};
 use muster_core::mirror::backend::PaneId;
 use muster_core::names::{Mint, Names};
@@ -72,7 +72,7 @@ fn a_pane_asked_for_with_a_name_and_a_program_gets_both() {
 
     // Polled rather than assumed-immediate: the split's answer comes back before the shell has
     // finished running what it was typed, and how long that takes is the machine's business.
-    let written = until("the command to have run in the pane the split made", || {
+    let written = until_some("the command to have run in the pane the split made", || {
         std::fs::read_to_string(&ran).ok().filter(|text| !text.is_empty())
     });
     let _ = std::fs::remove_file(&ran);
@@ -171,7 +171,7 @@ fn text_runs_when_it_asked_for_a_return_and_waits_when_it_did_not() {
         })
         .expect("a real daemon takes text for a pane it holds");
 
-    until("the submitted text to have run", || {
+    until_some("the submitted text to have run", || {
         std::fs::read_to_string(&sent).ok().filter(|text| !text.is_empty())
     });
     // Both lines ran, on one Return - which is the point. The first was still sitting on the
@@ -197,16 +197,4 @@ fn label(daemon: &Daemon, names: &Names, pane: &PaneId) -> Option<String> {
     let backend = names.backend(pane).expect("a name Muster minted resolves");
     let got = daemon.call("pane.get", &json!({ "pane_id": backend.as_str() }));
     got["pane"]["label"].as_str().filter(|label| !label.is_empty()).map(str::to_string)
-}
-
-/// Waits for something a daemon does on its own schedule, or says what it was waiting for.
-fn until<T>(what: &str, mut ready: impl FnMut() -> Option<T>) -> T {
-    let deadline = Instant::now() + Duration::from_secs(20);
-    while Instant::now() < deadline {
-        if let Some(value) = ready() {
-            return value;
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
-    panic!("waited 20s for {what} and it did not happen");
 }
