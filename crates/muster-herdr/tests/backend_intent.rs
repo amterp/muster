@@ -21,9 +21,6 @@ use serde_json::{Value, json};
 
 #[test]
 fn backend_intent_conformance() {
-    // Ratios in the corpus are halves and quarters because a ratio is an f32 on the wire and a
-    // double in JSON: 0.6 comes back out as 0.6000000238418579 and reads as a bug in the
-    // adapter rather than as the round trip it is.
     let corpus = Conformance::load("backend-intent.json");
 
     let ran = corpus.run(|given| {

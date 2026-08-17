@@ -38,6 +38,51 @@ impl Source {
     }
 }
 
+/// The width a file's numbers are compared at.
+///
+/// JSON has one number type and an implementation has several, so a case written `0.05`
+/// against a quantity the wire carries as an `f32` never matches: the driver's answer comes
+/// back widened as `0.05000000074505806`, and the only decimals that survive are the ones
+/// binary can spell exactly. Writing the long form into the file would fix the comparison
+/// and cost the corpus the thing it is for, which is being text a reviewer can read.
+///
+/// So a file whose subject is narrower than JSON says so, and both sides are narrowed before
+/// they are compared. It is stated per file rather than assumed everywhere because narrowing
+/// is a loss: under `f32`, two `f64`s that differ only past the seventh digit compare equal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Numbers {
+    /// JSON's own width, and what a file that says nothing gets.
+    F64,
+    /// The width herdr's ratios and amounts reach the wire at.
+    F32,
+}
+
+impl Numbers {
+    fn parse(name: &str) -> Option<Numbers> {
+        match name {
+            "f64" => Some(Numbers::F64),
+            "f32" => Some(Numbers::F32),
+            _ => None,
+        }
+    }
+
+    /// Whether two numbers are one number at this width.
+    ///
+    /// Exact equality at the declared width rather than a tolerance: two spellings of one
+    /// number, not two numbers that are close. A tolerance would make the corpus accept a
+    /// wrong answer.
+    #[allow(clippy::float_cmp)]
+    fn same(self, left: f64, right: f64) -> bool {
+        match self {
+            Numbers::F64 => left == right,
+            // The narrowing the wire already did to one side, applied to both so the
+            // comparison happens where the value actually lives.
+            #[allow(clippy::cast_possible_truncation)]
+            Numbers::F32 => left as f32 == right as f32,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Case {
     pub name: String,
@@ -51,6 +96,7 @@ pub struct Conformance {
     pub file: String,
     pub concept: String,
     pub source: Source,
+    pub numbers: Numbers,
     pub cases: Vec<Case>,
 }
 
@@ -120,6 +166,20 @@ impl Conformance {
         if non_empty(&document, "why").is_none() {
             malformed(file, "no file-level `why`");
         }
+        let numbers = match document.get("numbers") {
+            None => Numbers::F64,
+            Some(declared) => {
+                let name = declared.as_str().unwrap_or("");
+                Numbers::parse(name).unwrap_or_else(|| {
+                    malformed(
+                        file,
+                        "`numbers` must be f64 or f32 - it is the width this file's \
+                         expectations are compared at, and a file that names another one is \
+                         asking for a comparison no driver can make",
+                    )
+                })
+            }
+        };
 
         let raw_cases = document.get("cases").and_then(Value::as_array).filter(|c| !c.is_empty());
         let raw_cases = raw_cases.unwrap_or_else(|| {
@@ -168,7 +228,7 @@ impl Conformance {
             cases.push(Case { name: name.to_string(), why: why.to_string(), given, expect });
         }
 
-        Conformance { file: file.to_string(), concept, source, cases }
+        Conformance { file: file.to_string(), concept, source, numbers, cases }
     }
 
     /// Runs every case through `subject` and compares what comes back to `expect`.
@@ -184,7 +244,7 @@ impl Conformance {
             match subject(&case.given) {
                 Err(error) => failures.push(self.report(case, None, Some(&error))),
                 Ok(actual) => {
-                    if !equivalent(&actual, &case.expect) {
+                    if !equivalent(&actual, &case.expect, self.numbers) {
                         failures.push(self.report(case, Some(&actual), None));
                     }
                 }
@@ -273,21 +333,18 @@ pub fn strings(value: &Value, key: &str) -> Vec<String> {
 /// difference belongs to the two JSON libraries rather than to Muster, and letting it
 /// through would fail half the corpus on number shape rather than on behavior - which
 /// reads as a port that broke something when nothing broke.
-fn equivalent(left: &Value, right: &Value) -> bool {
+fn equivalent(left: &Value, right: &Value, numbers: Numbers) -> bool {
     match (left, right) {
-        // Exact equality is what is wanted: two spellings of one number, not two numbers
-        // that are close. A tolerance here would make the corpus accept a wrong answer.
-        #[allow(clippy::float_cmp)]
         (Value::Number(a), Value::Number(b)) => match (a.as_f64(), b.as_f64()) {
-            (Some(a), Some(b)) => a == b,
+            (Some(a), Some(b)) => numbers.same(a, b),
             _ => a == b,
         },
         (Value::Array(a), Value::Array(b)) => {
-            a.len() == b.len() && a.iter().zip(b).all(|(a, b)| equivalent(a, b))
+            a.len() == b.len() && a.iter().zip(b).all(|(a, b)| equivalent(a, b, numbers))
         }
         (Value::Object(a), Value::Object(b)) => {
             a.len() == b.len()
-                && a.iter().all(|(key, a)| b.get(key).is_some_and(|b| equivalent(a, b)))
+                && a.iter().all(|(key, a)| b.get(key).is_some_and(|b| equivalent(a, b, numbers)))
         }
         _ => left == right,
     }
@@ -452,5 +509,37 @@ mod tests {
         let mut document = good();
         document["cases"][0]["expect"] = json!({ "out": 3 });
         parse(&document).run(|_| Ok(json!({ "out": 3.0 })));
+    }
+
+    /// The number an `f32` file exists to let a case write.
+    ///
+    /// 0.05 is herdr's own default resize step, and it is not spellable in binary, so a
+    /// driver whose quantity is an f32 answers with the long form. Both spellings name one
+    /// number at the width that quantity lives at, and a corpus that could not say so was
+    /// restricted to powers of two for a reason no reader of the case could see.
+    #[test]
+    fn a_declared_f32_file_compares_at_the_width_the_wire_carries() {
+        let mut document = good();
+        document["numbers"] = json!("f32");
+        document["cases"][0]["expect"] = json!({ "out": 0.05 });
+        parse(&document).run(|_| Ok(json!({ "out": 0.050_000_000_745_058_06 })));
+    }
+
+    #[test]
+    #[should_panic(expected = "actual:")]
+    fn the_same_pair_is_two_numbers_at_json_s_own_width() {
+        // The other half, and the reason narrowing is declared rather than assumed: it is a
+        // loss. A file that has not asked for it keeps every digit it wrote.
+        let mut document = good();
+        document["cases"][0]["expect"] = json!({ "out": 0.05 });
+        parse(&document).run(|_| Ok(json!({ "out": 0.050_000_000_745_058_06 })));
+    }
+
+    #[test]
+    #[should_panic(expected = "`numbers` must be f64 or f32")]
+    fn a_width_no_driver_can_compare_at_is_refused() {
+        let mut document = good();
+        document["numbers"] = json!("f16");
+        parse(&document);
     }
 }

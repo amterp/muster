@@ -132,6 +132,13 @@ And the rule that makes the corpus a spec rather than a record of one implementa
 implementations disagree on a case, the corpus is never edited to match whichever is louder.** The answer comes
 from a recording or from a dependency's source, and the commit says which.
 
+**A file whose subject is narrower than JSON says so.** JSON has one number type, and a case written `0.05`
+against a quantity the wire carries as an `f32` never matches - the driver answers `0.05000000074505806`, and the
+only decimals left writable are the ones binary spells exactly. Putting the long form in the file would fix the
+comparison and cost the corpus the thing it is for. So a file may declare `numbers` as `f32`, and both sides are
+narrowed before they are compared. Declared per file rather than assumed everywhere, because narrowing is a loss:
+under `f32`, two numbers differing past the seventh digit become one.
+
 **A red suite becomes a scavenger hunt.** A failing row is worse to debug than a failing named test unless the
 driver is built for it. Failure output names the file, the case, the `why` - included precisely because that is
 the moment it is needed - then input, expected, actual, and the first difference. Bytes render readably: `ESC [ A`,

@@ -28,6 +28,10 @@ REPO = Path(__file__).resolve().parent.parent
 CORPUS = REPO / "corpus/conformance"
 DRIVER_ROOTS = (REPO / "Tests", REPO / "crates")
 SOURCES = {"recorded", "ported", "authored"}
+# The width a file's expectations are compared at, when it is narrower than JSON's own.
+# Declared per file rather than assumed everywhere, because narrowing is a loss - see
+# `Numbers` in crates/conformance.
+WIDTHS = {"f64", "f32"}
 # How every driver, in any language, is expected to name the file it runs. Swift spells the
 # call `Conformance.load`, Rust `Conformance::load`, and a regex that knew only one of them
 # would report a whole language's drivers as absent - which reads as a corpus nobody runs,
@@ -77,6 +81,14 @@ def problems_in(path: Path) -> list[str]:
         found.append(
             f"{name}: declares `authored` but cites nothing. Authored cases have no oracle "
             "beyond their citation, so without one nothing distinguishes policy from guess."
+        )
+
+    numbers = document.get("numbers")
+    if numbers is not None and numbers not in WIDTHS:
+        found.append(
+            f"{name}: `numbers` is {numbers!r}, must be one of {', '.join(sorted(WIDTHS))}. "
+            "It is the width this file's expectations are compared at, and a file naming "
+            "another one is asking for a comparison no driver can make."
         )
 
     cases = document.get("cases")

@@ -1,8 +1,9 @@
 {
   "concept": "muster.backendIntent.herdrEnvelope",
   "source": "authored",
+  "numbers": "f32",
   "citation": "corpus/herdr-0.8.0/api-schema.json, which herdr generates from its own request types and ./dev checks the running daemon against. Method names and every parameter here are declared there: PaneSplitParams (cwd, direction, env, focus, ratio, target_pane_id, workspace_id), TabCreateParams (cwd, env, focus, label, workspace_id), WorkspaceCreateParams (cwd, env, focus, label), LayoutSetSplitRatioParams (pane_id, path, ratio, tab_id), PaneResizeParams (amount, direction, pane_id), PaneZoomParams (mode, pane_id) whose mode defaults to toggle. The direction pair, and the fact that herdr has only two of the four sides, are recorded in docs/observations/herdr-0.8.0.md section 14.",
-  "why": "herdr ignores a parameter it does not recognise rather than refusing the request (`observations/herdr-0.8.0.md` section 6), so a misspelled key does not fail - it acts on whatever the daemon happened to have focused. `pane.split` is the sharp one: it takes `target_pane_id` where every other pane verb takes `pane_id`, and sending the wrong one splits an arbitrary pane. Against a real daemon holding one workspace and one pane, that is indistinguishable from correct, which is why these are pinned by name here rather than left to the daemon-backed tests. The second half is the direction pair: Muster names a split for the arrangement it produces and herdr for where the new pane goes, and `layout.rs` reads that same pair back in reverse - so getting it wrong here makes a column that reads back as a row.\n\nThe third subject here is the environment a pane-creating call carries, and it is the one whose failure is silent in a new way. Muster points its daemon at a config file of its own with HERDR_CONFIG_PATH, and a pane's process inherits the daemon's environment - so without a restore, `herdr` run inside a Muster pane reads Muster's derived file rather than the person's own. Every case that makes a pane shows the restore, and every case that does not shows its absence, because a reviewer reading one case should not have to hold the other eight in their head. What the cases cannot say is that the set is complete; `every_pane_a_daemon_makes_is_handed_the_users_own_config` says that, by reading which methods herdr declares an `env` on.",
+  "why": "herdr ignores a parameter it does not recognise rather than refusing the request (`observations/herdr-0.8.0.md` section 6), so a misspelled key does not fail - it acts on whatever the daemon happened to have focused. `pane.split` is the sharp one: it takes `target_pane_id` where every other pane verb takes `pane_id`, and sending the wrong one splits an arbitrary pane. Against a real daemon holding one workspace and one pane, that is indistinguishable from correct, which is why these are pinned by name here rather than left to the daemon-backed tests. The second half is the direction pair: Muster names a split for the arrangement it produces and herdr for where the new pane goes, and `layout.rs` reads that same pair back in reverse - so getting it wrong here makes a column that reads back as a row.\n\nThe third subject here is the environment a pane-creating call carries, and it is the one whose failure is silent in a new way. Muster points its daemon at a config file of its own with HERDR_CONFIG_PATH, and a pane's process inherits the daemon's environment - so without a restore, `herdr` run inside a Muster pane reads Muster's derived file rather than the person's own. Every case that makes a pane shows the restore, and every case that does not shows its absence, because a reviewer reading one case should not have to hold the other eight in their head. What the cases cannot say is that the set is complete; `every_pane_a_daemon_makes_is_handed_the_users_own_config` says that, by reading which methods herdr declares an `env` on.\n\nThe ratios and amounts here are `f32` on the wire, which is why this file declares `numbers`. Without it the only fractions a case could write were the ones binary spells exactly - halves, quarters, eighths - and herdr's own default resize step of 0.05 was unsayable, because the driver's answer comes back widened to 0.05000000074505806. The declaration makes both sides narrow before they are compared, so a case states the number a person would write and still fails on a wrong one.",
   "cases": [
     {
       "name": "a split names the pane to split, in the key only pane.split uses",
@@ -318,19 +319,19 @@
     },
     {
       "name": "a resize amount is a share of the region, never a count of cells",
-      "why": "herdr adds `amount` straight to a split's ratio and clamps it to 0.5 (observations, section 19), so any number at or above one is the same maximal jump. Muster sent cells here for a release: every `resize_step` a person could write - `1c`, `1px`, `10c` - arrived at or above one and moved half the pane, which made the key look like it had a single behaviour rather than a broken unit. This case is the unit itself, so a step that ever arrives whole again fails here rather than in somebody's hands. The number is a power of two because the wire carries an f32 and the driver compares the JSON exactly, so a value like 0.05 reads back as 0.05000000074505806 (a_29cH6AVkt).",
+      "why": "herdr adds `amount` straight to a split's ratio and clamps it to 0.5 (observations, section 19), so any number at or above one is the same maximal jump. Muster sent cells here for a release: every `resize_step` a person could write - `1c`, `1px`, `10c` - arrived at or above one and moved half the pane, which made the key look like it had a single behaviour rather than a broken unit. This case is the unit itself, so a step that ever arrives whole again fails here rather than in somebody's hands.\n\nThe number is herdr's own default step, which is the one a person is most likely to write and the one this file could not state until it declared its width.",
       "given": {
         "intent": "resize",
         "pane": "p1",
         "direction": "right",
-        "fraction": 0.125
+        "fraction": 0.05
       },
       "expect": {
         "method": "pane.resize",
         "params": {
           "pane_id": "p1",
           "direction": "right",
-          "amount": 0.125
+          "amount": 0.05
         }
       }
     },
