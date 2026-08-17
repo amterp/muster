@@ -14,6 +14,7 @@ use herdr_harness::Daemon;
 use muster_core::AgentState;
 use muster_core::mirror::backend::{Health, LayoutNode, PaneId, SplitAxis, TabId};
 use muster_core::mirror::{Change, Mirror};
+use muster_core::names::{Mint, Names};
 use muster_herdr::subscription::{Notice, Subscription};
 use serde_json::{Value, json};
 
@@ -61,6 +62,7 @@ fn mirror_and_log(daemon: &Daemon) -> (Arc<Mutex<Mirror>>, Arc<Log>, Subscriptio
         daemon.socket_path().to_string_lossy().into_owned(),
         Arc::clone(&mirror),
         log.record(),
+        daemon.names(),
     );
     (mirror, log, subscription)
 }
@@ -163,6 +165,7 @@ fn an_absent_daemon_is_disconnected_rather_than_stale() {
         "/tmp/muster-test/nothing-here.sock",
         Arc::clone(&mirror),
         log.record(),
+        Names::alone("local", Mint::Backend),
     );
 
     until("the failed dial to be reported", || !log.notices().is_empty());
@@ -185,6 +188,7 @@ fn dropping_the_handle_stops_the_thread() {
             daemon.socket_path().to_string_lossy().into_owned(),
             Arc::clone(&mirror),
             log.record(),
+            daemon.names(),
         );
         until("the first bootstrap", || log.bootstraps() > 0);
         alive.store(false, Ordering::Relaxed);

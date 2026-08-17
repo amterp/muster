@@ -197,8 +197,10 @@ fn shape(arrangement: &str) -> String {
 
 fn resnapshot(daemon: &Daemon, mirror: &Arc<Mutex<Mirror>>) {
     let fetched = daemon.call("session.snapshot", &json!({}));
-    let (snapshot, _dropped) =
-        read_snapshot(fetched.get("snapshot").expect("a snapshot with no snapshot in it"));
+    let (snapshot, _dropped) = read_snapshot(
+        fetched.get("snapshot").expect("a snapshot with no snapshot in it"),
+        &daemon.names(),
+    );
     mirror.lock().unwrap().bootstrap(snapshot);
 }
 

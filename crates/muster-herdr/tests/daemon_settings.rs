@@ -17,6 +17,7 @@ use std::time::{Duration, Instant};
 use herdr_harness::binary;
 use muster_core::config;
 use muster_core::intent::{BackendChannel, BackendIntent};
+use muster_core::names::{Mint, Names};
 use muster_herdr::{HerdrBackend, HerdrClient, PaneEnvironment, daemon, own_socket_path};
 use serde_json::json;
 
@@ -80,8 +81,11 @@ fn a_pane_runs_the_shell_musters_own_config_names() {
     // Through the real request path rather than a hand-built call, because the environment a
     // pane is handed is built there - a test that called `workspace.create` itself would prove
     // the daemon's half and quietly skip Muster's.
-    let backend =
-        HerdrBackend::new(HerdrClient::new(&socket), PaneEnvironment::restoring(&environment));
+    let backend = HerdrBackend::new(
+        HerdrClient::new(&socket),
+        PaneEnvironment::restoring(&environment),
+        Names::alone("local", Mint::Backend),
+    );
     backend
         .submit(&BackendIntent::CreateWorkspace { cwd: Some(root.display().to_string()) })
         .expect("a daemon that answered ping can make a workspace");

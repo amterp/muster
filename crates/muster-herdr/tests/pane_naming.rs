@@ -34,6 +34,7 @@ fn session() -> (Daemon, Arc<Mutex<Mirror>>, Subscription, PaneId) {
         daemon.socket_path().to_string_lossy().into_owned(),
         Arc::clone(&mirror),
         Arc::new(|_| {}),
+        daemon.names(),
     );
     until("the first pane to reach the mirror", || mirror.lock().unwrap().panes().count() == 1);
 
@@ -63,8 +64,10 @@ fn held(mirror: &Arc<Mutex<Mirror>>, pane: &PaneId) -> (Option<String>, Option<S
 /// stream is evidence about a name. What a reconnect does, done deliberately.
 fn resnapshot(daemon: &Daemon, mirror: &Arc<Mutex<Mirror>>) {
     let fetched = daemon.call("session.snapshot", &json!({}));
-    let (snapshot, _dropped) =
-        read_snapshot(fetched.get("snapshot").expect("a snapshot with no snapshot in it"));
+    let (snapshot, _dropped) = read_snapshot(
+        fetched.get("snapshot").expect("a snapshot with no snapshot in it"),
+        &daemon.names(),
+    );
     mirror.lock().unwrap().bootstrap(snapshot);
 }
 
@@ -204,6 +207,7 @@ fn a_reconnect_does_not_put_back_a_name_the_session_has_moved_past() {
         daemon.socket_path().to_string_lossy().into_owned(),
         Arc::clone(&fresh),
         Arc::new(|_| {}),
+        daemon.names(),
     );
     until("the fresh mirror to see the pane", || fresh.lock().unwrap().panes().count() == 1);
     thread::sleep(Duration::from_millis(800));

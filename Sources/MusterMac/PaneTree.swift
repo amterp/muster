@@ -172,9 +172,17 @@ public indirect enum PaneTree: Equatable {
     /// must not start a bridge pointed at one.
     public let controlSocketPath: String?
 
-    public init(paneID: String, controlSocketPath: String?) {
+    /// What the pane's own daemon calls it, for the bridge's command line.
+    ///
+    /// The bridge streams frames from the daemon directly, so it is the one thing up here that
+    /// speaks the backend's vocabulary. Never used to address a pane: `paneID` is what every
+    /// request takes, and the two differ.
+    public let backendPaneID: String
+
+    public init(paneID: String, controlSocketPath: String?, backendPaneID: String = "") {
       self.paneID = paneID
       self.controlSocketPath = controlSocketPath
+      self.backendPaneID = backendPaneID
     }
   }
 
@@ -348,7 +356,8 @@ extension PaneTree {
       self = .pane(
         Leaf(
           paneID: pane.paneID,
-          controlSocketPath: pane.controlSocketPath.isEmpty ? nil : pane.controlSocketPath))
+          controlSocketPath: pane.controlSocketPath.isEmpty ? nil : pane.controlSocketPath,
+          backendPaneID: pane.backendPaneID))
     case .split(let split):
       self = .split(
         axis: SplitAxis(rawValue: split.axis) ?? .columns,

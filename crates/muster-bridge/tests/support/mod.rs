@@ -13,10 +13,11 @@
 //! how Rust builds integration tests, not a sign that something here has no readers.
 #![allow(dead_code)]
 
+use std::collections::BTreeMap;
 use std::io::Read;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
 use herdr_harness::Daemon;
@@ -41,9 +42,75 @@ extern "C" fn note_typeable(bytes: *const u8, len: usize) {
     // SAFETY: the core guarantees `len` readable bytes for the duration of this call, which
     // is the contract in include/muster.h.
     let bytes = unsafe { std::slice::from_raw_parts(bytes, len) };
-    if let Ok(Event { payload: Some(event::Payload::PaneTypeable(_)) }) = Event::decode(bytes) {
-        TYPEABLE.store(true, Ordering::Relaxed);
+    match Event::decode(bytes).ok().and_then(|event| event.payload) {
+        Some(event::Payload::PaneTypeable(_)) => TYPEABLE.store(true, Ordering::Relaxed),
+        // Kept because it is where a shell learns what Muster calls a pane. Nothing here can
+        // work it out: the daemon's id is in `pane.list` and the name Muster minted for it is
+        // only ever spoken by the core, which is the whole point of a minted name.
+        Some(event::Payload::ViewChanged(changed)) => record_names(&changed),
+        _ => {}
     }
+}
+
+/// What Muster calls each pane on screen, keyed by what its daemon calls it.
+///
+/// Both spellings, because a test needs both: Muster's name for anything it asks the core, and
+/// the daemon's id for the raw herdr calls that set a test up and for the bridge's command
+/// line. Replaced whole on every view rather than merged, so a pane that has gone stops being
+/// answerable here at the same moment it leaves the window.
+static NAMED: Mutex<BTreeMap<String, String>> = Mutex::new(BTreeMap::new());
+
+fn record_names(view: &muster::proto::ViewChanged) {
+    fn walk(node: &muster::proto::ViewNode, into: &mut BTreeMap<String, String>) {
+        match node.node.as_ref() {
+            Some(muster::proto::view_node::Node::Pane(pane)) => {
+                into.insert(pane.backend_pane_id.clone(), pane.pane_id.clone());
+            }
+            Some(muster::proto::view_node::Node::Split(split)) => {
+                for child in [split.first.as_deref(), split.second.as_deref()].into_iter().flatten()
+                {
+                    walk(child, into);
+                }
+            }
+            None => {}
+        }
+    }
+
+    let mut named = BTreeMap::new();
+    for root in view.regions.iter().filter_map(|region| region.root.as_ref()) {
+        walk(root, &mut named);
+    }
+    // An empty view is a window between arrangements, and forgetting every name because of one
+    // would make a lookup fail for a pane that is still there.
+    if !named.is_empty() {
+        *poison_free(&NAMED) = named;
+    }
+}
+
+fn poison_free<T>(lock: &Mutex<T>) -> MutexGuard<'_, T> {
+    lock.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// What Muster calls the pane this daemon calls `backend`, once the core has said so.
+///
+/// Waits, because a view is published after the request that changed it is answered: a split is
+/// answered before the event describing it arrives, so asking straight afterwards is a race
+/// against the arrangement rather than anything a test here is about.
+pub(crate) fn named_pane(backend: &str) -> String {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while Instant::now() < deadline {
+        if let Some(name) = poison_free(&NAMED).get(backend) {
+            return name.clone();
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    panic!(
+        "the core published no view naming {backend} within 10s, so nothing here knows what it \
+         calls that pane.\n  Impact: this test cannot address it.\n  Check that Startup and the \
+         first snapshot both succeeded, and that the pane is in a tab some region is showing - \
+         the run log carries the view on one line per region. Known: {:?}",
+        poison_free(&NAMED).clone()
+    )
 }
 
 /// Everything between a fresh daemon and a pane that can be typed into.
@@ -75,9 +142,14 @@ impl Typing {
         // Registered before the attach that binds the socket, because the bridge can dial
         // back before the next line runs.
         muster::ffi::muster_set_event_callback(Some(note_typeable));
-        let attached = attach_or_explain(&pane, &path);
+        // Attached by the name Muster minted for it, which is what every request in this
+        // schema means by a pane. `pane` is the daemon's own id, read from `pane.list` above,
+        // and it is what the raw calls below and the bridge's command line want - the two
+        // spellings are only equal when nothing is minting.
+        let attached = attach_or_explain(&named_pane(&pane), &path);
 
-        let bridge = Bridge::spawn(&pane, &attached.control_socket_path, &daemon);
+        let bridge =
+            Bridge::spawn(&attached.backend_pane_id, &attached.control_socket_path, &daemon);
         until(
             "the bridge to dial the core back",
             || TYPEABLE.load(Ordering::Relaxed),

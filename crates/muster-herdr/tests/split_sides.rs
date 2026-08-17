@@ -71,6 +71,7 @@ fn session() -> (Daemon, Arc<Mutex<Mirror>>, Subscription, TabId, PaneId) {
         daemon.socket_path().to_string_lossy().into_owned(),
         Arc::clone(&mirror),
         Arc::new(|_| {}),
+        daemon.names(),
     );
     until("the first pane to reach the mirror", || mirror.lock().unwrap().panes().count() == 1);
 

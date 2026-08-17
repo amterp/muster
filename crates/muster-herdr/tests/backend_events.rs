@@ -5,6 +5,7 @@ use std::fmt::Write as _;
 
 use conformance::{Conformance, fields};
 use muster_core::mirror::BackendEvent;
+use muster_core::names::{Mint, Names};
 use muster_herdr::EventDecoder;
 use serde_json::{Value, json};
 
@@ -13,7 +14,7 @@ fn backend_events_conformance() {
     let corpus = Conformance::load("backend-events.json");
 
     let ran = corpus.run(|given| {
-        let mut decoder = EventDecoder::new();
+        let mut decoder = EventDecoder::new(names());
         let mut events = Vec::new();
         let mut unknown = Vec::new();
 
@@ -100,4 +101,12 @@ fn describe(event: &BackendEvent) -> String {
             out
         }
     }
+}
+
+/// A registry whose name for a pane is the daemon's own id for it.
+///
+/// So a case here says `w1:p1` and is about the reading rather than about the mint, which has
+/// cases of its own in `corpus/conformance/pane-names.json`.
+fn names() -> Names {
+    Names::alone("local", Mint::Backend)
 }

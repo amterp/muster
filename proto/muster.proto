@@ -692,6 +692,10 @@ message Attached {
   // listener; the shell only relays it onto the bridge's command line.
   string control_socket_path = 1;
 
+  // What the backend calls the pane that was attached, for the reason
+  // `ViewPane.backend_pane_id` carries one: the bridge talks to the daemon directly. Answered
+  // here so whatever asked for the attachment has both spellings without a second lookup.
+  string backend_pane_id = 2;
 }
 
 // A keystroke, with the fidelity a terminal encoder needs and nothing else.
@@ -1084,12 +1088,26 @@ message ViewSplit {
 // ViewPane only ever arrives inside the ViewRegion that carries it, so a shell walking the
 // tree already has the answer and repeating it would be a second copy to disagree with.
 message ViewPane {
+  // What Muster calls this pane - `p1w3r07bsd` - and what everything else in this schema means
+  // by a pane id. Minted by Muster rather than borrowed from the backend, so that a pane can be
+  // told which pane it is before the backend has named it (crates/muster-core/src/names.rs).
+  // Unique across every attached machine, so it is an answer on its own.
   string pane_id = 1;
 
   // Where this pane's bridge should dial the core. Empty means no channel is open for this
   // pane yet, and a surface built from it would render and never be typeable - so a shell
   // must not spawn a bridge pointed at it.
   string control_socket_path = 2;
+
+  // What the *backend* calls this pane, for the one thing the shell does that reaches a backend
+  // rather than the core: spawning the bridge, which streams frames straight from the daemon and
+  // is given this on its command line.
+  //
+  // Here on exactly the terms `ViewRegion.backend_socket` is - a handle the shell relays and
+  // never interprets. Addressing a pane by it would be a second vocabulary, and the two disagree
+  // the moment two daemons are attached: herdr numbers panes per session, so a laptop and a
+  // devenv both hold a `w1:p1`.
+  string backend_pane_id = 3;
 }
 
 // What the agent in a pane is doing now.

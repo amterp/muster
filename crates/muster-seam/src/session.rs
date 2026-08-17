@@ -27,6 +27,7 @@ use muster_core::input::{Bindings, PaneInput, PaneInputSettings, ScrollDirection
 use muster_core::intent::{BackendChannel, BackendIntent, Refusal};
 use muster_core::mirror::backend::{PaneId, Snapshot, TabId, WorkspaceId};
 use muster_core::mirror::{Change, Mirror};
+use muster_core::names::{Names, PaneNames};
 use muster_core::problems::{Problem, Problems, Severity};
 use muster_core::roster::{Roster, RosterTab, TabStep};
 use muster_herdr::subscription::{Notice, Subscription};
@@ -554,6 +555,14 @@ fn tunnel_path(daemon: &DaemonId, extension: &str) -> String {
 pub(crate) struct AttachedPane {
     pub(crate) input: PaneInput,
     pub(crate) control_socket_path: String,
+    /// What this pane's own daemon calls it, for the bridge that streams its frames.
+    ///
+    /// The one place above the adapter that speaks the backend's vocabulary, and it does so
+    /// because the bridge runs the daemon's own CLI rather than going through Muster. Carried
+    /// rather than looked up when the answer is built, so that a pane whose daemon drops it
+    /// between attaching and answering cannot be handed an id from a registry that has already
+    /// forgotten it.
+    pub(crate) backend_pane_id: String,
     /// Held because dropping it unlinks the socket and stops the listener.
     _control: Arc<PaneControlChannel>,
 }
@@ -584,6 +593,13 @@ struct Backend {
     /// and asking one of those to re-read its own config would be reaching into a session
     /// Muster does not own, possibly while its owner is editing that file.
     owns_config: bool,
+    /// This daemon's half of the pane-name registry.
+    ///
+    /// A view onto the one registry the session holds, scoped to this daemon, and the same one
+    /// the subscription and the channel above were handed. Kept here so that everything with a
+    /// backend in front of it can translate a name without reaching for the session's field
+    /// and the daemon id separately.
+    names: Names,
     /// Held because dropping it ends the subscription and every thread under it - the
     /// structure stream and one agent watcher per pane.
     _subscription: Subscription,
@@ -644,6 +660,16 @@ pub(crate) struct Session {
     /// shell because which hit is selected decides which scroll goes out, and deciding is
     /// this side's job.
     search: Option<Search>,
+
+    /// What Muster calls each pane, across every daemon at once.
+    ///
+    /// One registry rather than one per daemon, because a name has to be unique over all of
+    /// them: that is what lets a caller name a pane on the devenv without saying which machine
+    /// holds it. Each `Backend` above holds a view onto this scoped to its own daemon.
+    ///
+    /// Shared behind a lock because two threads mint into it - a daemon's subscription thread
+    /// when a pane appears, and whichever thread dispatched a split.
+    names: Arc<Mutex<PaneNames>>,
 }
 
 /// One pane's live search.
@@ -692,11 +718,13 @@ impl Session {
         let seeded = mirror.bootstrap(seed);
         let mirror = Arc::new(Mutex::new(mirror));
 
+        let names = Names::new(id.clone(), Arc::clone(&self.names));
         let reporting = id.clone();
         let subscription = Subscription::start(
             &reached.socket_path,
             Arc::clone(&mirror),
             Arc::new(move |notice| announce(&reporting, notice)),
+            names.clone(),
         );
         self.backends.insert(
             id,
@@ -706,9 +734,11 @@ impl Session {
                 channel: Arc::new(HerdrBackend::new(
                     HerdrClient::new(reached.socket_path.clone()),
                     reached.panes,
+                    names.clone(),
                 )),
                 owns_config: reached.owns_config,
                 socket_path: reached.socket_path,
+                names,
                 _subscription: subscription,
             },
         );
@@ -794,17 +824,24 @@ impl Session {
         if self.panes.get(daemon).is_some_and(|held| held.contains_key(pane)) {
             return Ok(());
         }
-        let socket_path =
-            self.backends.get(daemon).map(|backend| backend.socket_path.clone()).ok_or_else(
-                || {
-                    format!(
-                        "the daemon {daemon} is not being followed, so there is nowhere to send \
-                     this pane's input. This is a bug in the core rather than a state to \
-                     recover from: a channel is only ever opened for a daemon already \
-                     attached."
-                    )
-                },
-            )?;
+        let backend = self.backends.get(daemon).ok_or_else(|| {
+            format!(
+                "the daemon {daemon} is not being followed, so there is nowhere to send \
+                 this pane's input. This is a bug in the core rather than a state to \
+                 recover from: a channel is only ever opened for a daemon already \
+                 attached."
+            )
+        })?;
+        let socket_path = backend.socket_path.clone();
+        // Resolved once, here, because both things this opens speak to the daemon directly:
+        // the second input channel below, and the bridge the shell starts from the answer.
+        let backend_pane = backend.names.backend(pane).map_err(|_| {
+            format!(
+                "{daemon} does not hold a pane called {pane}, so there is nothing to open a \
+                 channel to. A name the window is still showing and the registry has already \
+                 forgotten means a pane closed between the two - the next publish drops it."
+            )
+        })?;
         let path = self.next_socket_path();
         let (announced_daemon, announced_pane) = (daemon.clone(), pane.clone());
         let control = PaneControlChannel::bind(path.clone(), move || {
@@ -823,7 +860,7 @@ impl Session {
         // rather than at whatever the environment names: a remote pane asked of the local
         // daemon is a pane whose arrows quietly go to the wrong machine, and the failure
         // reads as a guessed encoding rather than as an error.
-        let server = HerdrPaneChannel::new(HerdrClient::new(socket_path), pane.as_str());
+        let server = HerdrPaneChannel::new(HerdrClient::new(socket_path), backend_pane.as_str());
 
         // The pane's modes are not readable, so this is the documented guess, with the one
         // field in it that is a preference taken from the config file. One day the rest is
@@ -846,6 +883,7 @@ impl Session {
                     &settings,
                 ),
                 control_socket_path: path,
+                backend_pane_id: backend_pane.as_str().to_string(),
                 _control: control,
             }),
         );
@@ -967,6 +1005,10 @@ impl Session {
                 // near end of a tunnel, and the bridge that would use it runs its CLI on the
                 // far end, where that path names nothing at all.
                 backend.tunnel.is_none().then(|| backend.socket_path.clone())
+            },
+            |daemon, pane| {
+                let backend = self.backends.get(daemon)?;
+                Some(backend.names.backend(pane).ok()?.as_str().to_string())
             },
         )
     }
@@ -1221,17 +1263,16 @@ pub(crate) fn bridge_exited(daemon: &str, pane: &str, process_alive: bool) {
 /// replacing it with nothing on the strength of a failed request would be worse, and the
 /// subscription's own health reporting is what speaks for a daemon that has stopped answering.
 fn resnapshot(daemon: &DaemonId, why: &str) {
-    let Some((socket_path, mirror)) = ({
+    let Some((socket_path, mirror, names)) = ({
         let session = poison::lock(&SESSION, "session");
-        session
-            .backends
-            .get(daemon)
-            .map(|backend| (backend.socket_path.clone(), Arc::clone(&backend.mirror)))
+        session.backends.get(daemon).map(|backend| {
+            (backend.socket_path.clone(), Arc::clone(&backend.mirror), backend.names.clone())
+        })
     }) else {
         return;
     };
 
-    let (snapshot, dropped) = match fetch_snapshot(&socket_path) {
+    let (snapshot, dropped) = match fetch_snapshot(&socket_path, &names) {
         Ok(answer) => answer,
         Err(failure) => {
             log::warn(
@@ -1481,6 +1522,15 @@ pub(crate) fn focused_pane() -> Option<PaneId> {
 /// What a request naming no daemon means, for the same reason an empty pane id means the
 /// focused pane: a menu item is about what is in front of the user and has nothing else to
 /// say.
+/// Which daemon holds the pane Muster calls this, if any followed one does.
+///
+/// What lets a caller name a pane and nothing else. A name is unique across every attached
+/// machine, so saying which machine holds it would be asking for something the caller has no
+/// way to know and no reason to.
+pub(crate) fn daemon_holding(pane: &PaneId) -> Option<DaemonId> {
+    locate(pane).map(|(daemon, ..)| daemon)
+}
+
 pub(crate) fn focused_daemon() -> Option<DaemonId> {
     let session = poison::lock(&SESSION, "session");
     session.composition.focused_region().map(|region| region.daemon.clone())
@@ -1514,7 +1564,10 @@ pub(crate) fn follow_configured(config: &Config) {
 /// Reaches one daemon, takes its first snapshot, and starts following it.
 fn attach_daemon(daemon: &Daemon) -> Result<(), String> {
     let reached = reach(&daemon.id, &daemon.endpoint)?;
-    let (snapshot, dropped) = fetch_snapshot(&reached.socket_path).map_err(|failure| {
+    // Named through the session's registry rather than one of its own, because a name minted
+    // reading this snapshot is the name the mirror will hold from here on.
+    let names = Names::new(daemon.id.clone(), Arc::clone(&poison::lock(&SESSION, "session").names));
+    let (snapshot, dropped) = fetch_snapshot(&reached.socket_path, &names).map_err(|failure| {
         format!("the daemon {} did not answer at {} ({failure}).", daemon.id, reached.socket_path)
     })?;
     log::info(
@@ -1832,10 +1885,10 @@ pub(crate) fn tab_of(daemon: &DaemonId, pane: &PaneId) -> Option<TabId> {
 
 /// Which followed daemon holds this pane, and where in it.
 ///
-/// The first that has it, and an ambiguity nobody can resolve when two do: `w1:p1` on a
-/// laptop and `w1:p1` on a devenv are different panes with one name, and a command line
-/// carrying only the name has not said which. Named as a hazard here rather than silently
-/// resolved, because the day it bites, the window will have attached the wrong machine.
+/// A name is Muster's own and unique across every attached machine, so exactly one daemon can
+/// hold it. Two would mean the registry handed one name to two panes, which is a bug in the
+/// mint rather than something a caller could have said more precisely - hence the warning
+/// rather than a refusal, and the first answer rather than none.
 fn locate(pane: &PaneId) -> Option<(DaemonId, WorkspaceId, TabId)> {
     let session = poison::lock(&SESSION, "session");
     let mut found: Option<(DaemonId, WorkspaceId, TabId)> = None;
@@ -1848,10 +1901,11 @@ fn locate(pane: &PaneId) -> Option<(DaemonId, WorkspaceId, TabId)> {
                 fields! {
                     "pane" => pane.to_string(),
                     "daemons" => format!("{first}, {id}"),
-                    "impact" => "the keyboard started on the first of them, which may be the \
-                                 wrong machine",
-                    "check" => "name the pane on the daemon you meant once the CLI can say \
-                                which - a pane id alone does not",
+                    "impact" => "the first of them was used, so a command about this name may \
+                                 reach the wrong machine",
+                    "check" => "this should be impossible: names are minted unique across \
+                                daemons. Look for a saved pane-name file read back under a \
+                                different mint, or two Musters writing one",
                 },
             );
             break;

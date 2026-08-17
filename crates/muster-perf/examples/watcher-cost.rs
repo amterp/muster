@@ -67,6 +67,7 @@ fn main() {
                 counter.fetch_add(1, Ordering::Relaxed);
             }
         }),
+        daemon.names(),
     );
 
     until("the first bootstrap", || bootstraps.load(Ordering::Relaxed) > 0);

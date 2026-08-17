@@ -25,7 +25,7 @@ public final class RegionView: NSView {
   public typealias StartPane =
     @MainActor (
       _ daemonID: String, _ transport: WindowContents.Region.Transport?,
-      _ backendSocket: String?, _ chrome: PaneChrome, _ controlSocketPath: String?
+      _ backendSocket: String?, _ chrome: PaneChrome, _ pane: PaneTree.Leaf
     ) -> Void
 
   private struct Held {
@@ -107,7 +107,7 @@ public final class RegionView: NSView {
     layoutSubtreeIfNeeded()
     for leaf in fresh {
       guard let chrome = held[leaf.paneID]?.chrome else { continue }
-      startPane(daemonID, transport, backendSocket, chrome, leaf.controlSocketPath)
+      startPane(daemonID, transport, backendSocket, chrome, leaf)
     }
     apply(keyboardPane: focused ? region.keyboardPane : nil)
   }

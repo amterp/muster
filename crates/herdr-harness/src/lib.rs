@@ -20,6 +20,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Duration, Instant};
 
+use muster_core::names::{Mint, Names};
 use muster_herdr::{HerdrBackend, HerdrClient, PaneEnvironment};
 use serde_json::{Value, json};
 
@@ -47,6 +48,12 @@ manifest_check = false
 
 static NEXT: AtomicU32 = AtomicU32::new(0);
 
+/// What this daemon is called in the registry it hands out.
+///
+/// The same name the seam gives a daemon it started itself, so a test reading a log line or a
+/// refusal sees the word it would see in a real run.
+const DAEMON: &str = "local";
+
 /// One daemon, one test.
 ///
 /// Killed on drop, including when the test panics, because a leaked `herdr server` holds
@@ -56,6 +63,7 @@ pub struct Daemon {
     root: PathBuf,
     socket_path: PathBuf,
     process: Option<Child>,
+    names: Names,
 }
 
 impl Daemon {
@@ -117,7 +125,19 @@ impl Daemon {
                 )
             });
 
-        let mut daemon = Daemon { root: root.clone(), socket_path, process: Some(process) };
+        let mut daemon = Daemon {
+            root: root.clone(),
+            socket_path,
+            process: Some(process),
+            // `Mint::Backend`, so a pane's Muster name is this daemon's own id for it. Every
+            // test here mixes raw `daemon.call` with Muster's own vocabulary - it splits a pane
+            // over the wire and then asserts on what the mirror holds - and under a minting
+            // registry those would be two names for one pane with nothing in the test able to
+            // relate them. What the mint does has cases of its own
+            // (`corpus/conformance/pane-names.json`); what these tests are about is everything
+            // else. A test that needs real names builds its own registry and hands it in.
+            names: Names::alone(DAEMON, Mint::Backend),
+        };
         daemon.wait_until_answering();
         daemon
     }
@@ -208,7 +228,16 @@ impl Daemon {
     /// harness writes this daemon's herdr config itself rather than deriving one, so a pane
     /// on it has nothing to be pointed back at.
     pub fn backend(&self) -> HerdrBackend {
-        HerdrBackend::new(self.client(), PaneEnvironment::none())
+        HerdrBackend::new(self.client(), PaneEnvironment::none(), self.names.clone())
+    }
+
+    /// This daemon's half of the pane-name registry, shared with everything it hands out.
+    ///
+    /// Shared rather than one per call, because a name minted while decoding an event has to
+    /// be the same name a request built a moment later resolves - which is exactly what a
+    /// per-call registry would get wrong, and silently.
+    pub fn names(&self) -> Names {
+        self.names.clone()
     }
 
     /// Sends a request and unwraps it, naming the method when it fails.

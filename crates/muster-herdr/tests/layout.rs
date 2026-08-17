@@ -2,6 +2,7 @@
 //! corpus/conformance/layout-reconstruction.json.
 
 use conformance::{Conformance, fields};
+use muster_core::names::{Mint, Names};
 use muster_herdr::read_layout;
 use serde_json::{Value, json};
 
@@ -13,7 +14,7 @@ fn layout_reconstruction_conformance() {
         // A tab whose arrangement will not read is the case several of these are about, so
         // it is an answer rather than an error: the driver reports that it did not read,
         // and the corpus states which inputs should end that way.
-        let Some(layout) = read_layout(given) else {
+        let Some(layout) = read_layout(given, &names()) else {
             return Ok(fields([("read", Some(json!(false)))]));
         };
         Ok(fields([
@@ -63,4 +64,12 @@ fn corpus_path(relative: &str) -> std::path::PathBuf {
         }
         directory = directory.parent().expect("a corpus directory above this crate");
     }
+}
+
+/// A registry whose name for a pane is the daemon's own id for it.
+///
+/// So a case here says `w1:p1` and is about the reading rather than about the mint, which has
+/// cases of its own in `corpus/conformance/pane-names.json`.
+fn names() -> Names {
+    Names::alone("local", Mint::Backend)
 }

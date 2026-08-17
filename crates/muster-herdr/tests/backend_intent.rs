@@ -14,6 +14,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use conformance::{CaseError, Conformance, fields, repo_root};
 use muster_core::intent::{BackendIntent, Branch, Side};
 use muster_core::mirror::backend::{PaneId, TabId, WorkspaceId};
+use muster_core::names::{BackendPaneId, Mint, Names};
 use muster_herdr::{PaneEnvironment, read_request, request};
 use serde_json::{Value, json};
 
@@ -29,11 +30,21 @@ fn backend_intent_conformance() {
         // rather than something `BackendIntent` could hold - and it is pinned here anyway,
         // because the hazard is the same one: `recent` and `recent_unwrapped` are both
         // valid values that herdr accepts, and only one of them can be scrolled to.
-        let (method, params) = match text(given, "intent")?.as_str() {
-            "find-read" => read_request(&PaneId::new(&text(given, "pane")?)),
-            _ => request(&intent(given)?, &pane_environment(given)),
+        let names = names(given);
+        let built = match text(given, "intent")?.as_str() {
+            "find-read" => {
+                names.backend(&PaneId::new(&text(given, "pane")?)).map(|pane| read_request(&pane))
+            }
+            _ => request(&intent(given)?, &pane_environment(given), &names),
         };
-        Ok(fields([("method", Some(json!(method))), ("params", Some(params))]))
+        match built {
+            Ok((method, params)) => {
+                Ok(fields([("method", Some(json!(method))), ("params", Some(params))]))
+            }
+            // A pane Muster has no id for is a request never sent. Rendered rather than
+            // propagated, because what a case about it is pinning is that nothing went out.
+            Err(refusal) => Ok(fields([("refused", Some(json!(refusal.detail())))])),
+        }
     });
 
     assert_eq!(ran, corpus.cases.len());
@@ -58,7 +69,8 @@ fn every_pane_a_daemon_makes_is_handed_the_users_own_config() {
 
     let mut covered = BTreeSet::new();
     for intent in every_intent() {
-        let (method, params) = request(&intent, &restoring);
+        let (method, params) =
+            request(&intent, &restoring, &backend_names()).expect("every id is its own name");
         let sent = params.get("env");
         if declared_parameters(&schema, method).is_some_and(|declared| declared.contains("env")) {
             assert_eq!(
@@ -157,9 +169,11 @@ fn every_request() -> Vec<(&'static str, Value)> {
     // sees. Built empty, the pane-creating requests would carry no `env` key and the one
     // check that would notice herdr declaring one Muster never fills in would pass blind.
     let panes = PaneEnvironment::restoring(&environment([("HOME", "/home/a")]));
-    let mut all: Vec<(&'static str, Value)> =
-        every_intent().iter().map(|intent| request(intent, &panes)).collect();
-    all.push(read_request(&PaneId::new("p1")));
+    let mut all: Vec<(&'static str, Value)> = every_intent()
+        .iter()
+        .map(|intent| request(intent, &panes, &backend_names()).expect("every id is its own name"))
+        .collect();
+    all.push(read_request(&BackendPaneId::new("p1")));
     all
 }
 
@@ -364,4 +378,28 @@ fn text(given: &Value, key: &str) -> Result<String, CaseError> {
         .and_then(Value::as_str)
         .map(str::to_string)
         .ok_or_else(|| CaseError::new(format!("`{key}` is missing")))
+}
+
+/// The registry a case is driven through.
+///
+/// `Mint::Backend` by default, so a case saying `p1` sends `p1` and is about the envelope
+/// rather than about the mint. A case that gives `names` is the other kind: it pins that a
+/// name Muster minted leaves as the id the daemon knows, which is the whole point of the
+/// registry and the one thing no other case here can see.
+fn names(given: &Value) -> Names {
+    let Some(bindings) = given.get("names").and_then(Value::as_object) else {
+        return backend_names();
+    };
+    let names = Names::alone("local", Mint::Drawn);
+    for (name, backend) in bindings {
+        // Bound directly rather than reserved first: what a case here is about is the
+        // translation, and how a name came to exist is `pane-names.json`'s subject.
+        names.settle(&PaneId::new(name.as_str()), backend.as_str().unwrap_or_default());
+    }
+    names
+}
+
+/// A registry whose name for a pane is the daemon's own id for it.
+fn backend_names() -> Names {
+    Names::alone("local", Mint::Backend)
 }

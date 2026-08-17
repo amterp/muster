@@ -22,6 +22,7 @@
 //! fixed whether a client is attached or not - so what leaves this module is proportions.
 
 use muster_core::mirror::backend::{Layout, LayoutNode, PaneId, SplitAxis, TabId};
+use muster_core::names::Names;
 use serde_json::Value;
 
 /// A rectangle in herdr's own coordinate space.
@@ -69,12 +70,12 @@ struct Border {
 /// The two carry the same object, which is why there is one reader. `None` means the tab's
 /// arrangement did not read - a missing id, or rectangles that do not describe a tree - and
 /// the caller keeps whatever it had rather than rendering a tab as empty.
-pub fn read_layout(value: &Value) -> Option<Layout> {
+pub fn read_layout(value: &Value, names: &Names) -> Option<Layout> {
     let tab = TabId::new(non_empty(value, "tab_id")?);
 
     let mut panes = Vec::new();
     for pane in value.get("panes").and_then(Value::as_array).into_iter().flatten() {
-        let id = PaneId::new(non_empty(pane, "pane_id")?);
+        let id = names.name(&non_empty(pane, "pane_id")?);
         panes.push((id, rect(pane.get("rect")?)?));
     }
     // A tab always has at least one pane, so an empty list is a payload that will not
@@ -91,7 +92,7 @@ pub fn read_layout(value: &Value) -> Option<Layout> {
         });
     }
 
-    Some(assemble(value, tab, build(root_rect, &panes, &borders)?))
+    Some(assemble(value, tab, build(root_rect, &panes, &borders)?, names))
 }
 
 /// Reads one tab's arrangement from herdr's exported tree.
@@ -106,9 +107,9 @@ pub fn read_layout(value: &Value) -> Option<Layout> {
 /// live fields, so everything that arrives unasked-for is still the flat shape. The two are
 /// told apart by which key they have - `panes` against `root` - rather than by asking the
 /// caller, so a verb that starts answering with either needs no change here.
-pub fn read_exported_layout(value: &Value) -> Option<Layout> {
+pub fn read_exported_layout(value: &Value, names: &Names) -> Option<Layout> {
     let tab = TabId::new(non_empty(value, "tab_id")?);
-    Some(assemble(value, tab, read_node(value.get("root")?)?))
+    Some(assemble(value, tab, read_node(value.get("root")?, names)?, names))
 }
 
 /// One node of an exported tree, and everything under it.
@@ -116,14 +117,14 @@ pub fn read_exported_layout(value: &Value) -> Option<Layout> {
 /// A node states its own kind, so an unknown one is `None` rather than a guess: a shape this
 /// does not recognise is a herdr that publishes something new, and rendering half of it would
 /// put panes in places no daemon agreed to.
-fn read_node(value: &Value) -> Option<LayoutNode> {
+fn read_node(value: &Value, names: &Names) -> Option<LayoutNode> {
     match value.get("type").and_then(Value::as_str)? {
-        "pane" => Some(LayoutNode::Pane(PaneId::new(non_empty(value, "pane_id")?))),
+        "pane" => Some(LayoutNode::Pane(names.name(&non_empty(value, "pane_id")?))),
         "split" => Some(LayoutNode::Split {
             axis: axis(value.get("direction").and_then(Value::as_str)?)?,
             ratio: ratio(value)?,
-            first: Box::new(read_node(value.get("first")?)?),
-            second: Box::new(read_node(value.get("second")?)?),
+            first: Box::new(read_node(value.get("first")?, names)?),
+            second: Box::new(read_node(value.get("second")?, names)?),
         }),
         _ => None,
     }
@@ -134,8 +135,8 @@ fn read_node(value: &Value) -> Option<LayoutNode> {
 /// Total, because everything that can fail has already failed by here: a tab and a tree are
 /// what a reader has to produce, and the rest is a cursor and a flag that mean the same thing
 /// absent as they do false.
-fn assemble(value: &Value, tab: TabId, root: LayoutNode) -> Layout {
-    let focused = value.get("focused_pane_id").and_then(Value::as_str).map(PaneId::new);
+fn assemble(value: &Value, tab: TabId, root: LayoutNode, names: &Names) -> Layout {
+    let focused = value.get("focused_pane_id").and_then(Value::as_str).map(|pane| names.name(pane));
     Layout {
         tab,
         root,

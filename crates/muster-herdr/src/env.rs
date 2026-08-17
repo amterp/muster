@@ -1,10 +1,16 @@
 //! What every pane Muster makes is handed, beyond what the daemon already gives it.
 //!
-//! There is one entry today and it exists to undo something. Muster's daemon is pointed at a
-//! config file of Muster's own with `HERDR_CONFIG_PATH`, and a pane's process inherits the
-//! daemon's environment - so without this, `herdr` run inside a Muster pane would read
-//! Muster's derived file instead of the user's own. Putting the user's path back on every
-//! pane-creating call is the whole of the fix.
+//! Two kinds of entry. One is the same for every pane a daemon makes and exists to undo
+//! something: Muster's daemon is pointed at a config file of Muster's own with
+//! `HERDR_CONFIG_PATH`, and a pane's process inherits the daemon's environment - so without
+//! this, `herdr` run inside a Muster pane would read Muster's derived file instead of the
+//! user's own. Putting the user's path back on every pane-creating call is the whole of the fix.
+//!
+//! The other differs per pane: `MUSTER_PANE` is what the pane is called, and it is the only
+//! thing that ever tells a program inside a pane which pane it is in. That is why this is
+//! built per request rather than once at attach - the name is minted for the very request that
+//! creates the pane, because the daemon's own id for it does not exist until the answer comes
+//! back (see [`muster_core::names`]).
 //!
 //! **Why this is a parameter rather than a scrub.** The alternative was to unset the variable
 //! before spawning, which is a discipline nobody can verify from outside: the symptom of
@@ -20,9 +26,16 @@
 
 use std::collections::BTreeMap;
 
+use muster_core::mirror::backend::PaneId;
 use serde_json::{Value, json};
 
 use crate::discovery::config_file;
+
+/// What a pane reads to find out which pane it is.
+///
+/// Renaming it breaks every pane already running, which is why it is a constant rather than a
+/// literal at the one call site.
+pub const PANE_NAME: &str = "MUSTER_PANE";
 
 /// The environment entries a pane-creating request carries.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -52,6 +65,18 @@ impl PaneEnvironment {
         if let Some(path) = config_file(environment) {
             entries.insert("HERDR_CONFIG_PATH".to_string(), path);
         }
+        PaneEnvironment { entries }
+    }
+
+    /// The same entries, plus the name the pane this request makes should call itself.
+    ///
+    /// A pane learns its own name exactly once, here. Nothing else can tell it: at the pinned
+    /// herdr `pane.process_info` reports no tty, so a program inside a pane cannot work out
+    /// which pane it is from the outside in.
+    #[must_use]
+    pub fn with_pane_name(&self, name: &PaneId) -> PaneEnvironment {
+        let mut entries = self.entries.clone();
+        entries.insert(PANE_NAME.to_string(), name.as_str().to_string());
         PaneEnvironment { entries }
     }
 

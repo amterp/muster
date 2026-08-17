@@ -29,7 +29,7 @@ use serde_json::{Value, json};
 #[test]
 fn a_numbered_chord_lands_on_the_row_carrying_that_number() {
     let daemon = Daemon::start();
-    let (visible, hidden) = a_session_of_two_tabs(&daemon);
+    a_session_of_two_tabs(&daemon);
 
     // Registered before startup, because startup begins following the configured daemons and a
     // callback added afterwards misses the first bootstrap entirely.
@@ -52,9 +52,10 @@ fn a_numbered_chord_lands_on_the_row_carrying_that_number() {
     let numbered = places(&roster().expect("just waited for it"));
     assert_eq!(
         numbered,
-        vec![(1, visible.clone()), (2, hidden.clone())],
+        vec![(1, VISIBLE.to_string()), (2, HIDDEN.to_string())],
         "the count should run across tabs, so the second tab's first pane is 2"
     );
+    let hidden = named(HIDDEN);
 
     // The tab holding pane 2 is not on screen: one region, showing the first tab. That is the
     // case the numbers exist for, and the one a tab-numbering scheme handled by numbering tabs.
@@ -91,7 +92,7 @@ fn a_numbered_chord_lands_on_the_row_carrying_that_number() {
 /// Two tabs on one daemon, one pane each, so that the second pane is in a tab nothing shows.
 ///
 /// Returns the pane in the tab a region will land on, then the pane behind it.
-fn a_session_of_two_tabs(daemon: &Daemon) -> (String, String) {
+fn a_session_of_two_tabs(daemon: &Daemon) {
     daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "numbering", "focus": true }));
     let first = only_pane(daemon);
     daemon.call("tab.create", &json!({ "focus": false }));
@@ -99,7 +100,25 @@ fn a_session_of_two_tabs(daemon: &Daemon) -> (String, String) {
         .into_iter()
         .find(|pane| pane != &first)
         .expect("the new tab brings a pane of its own");
-    (first, second)
+
+    // Named, because this test is about which row carries which number rather than about the
+    // names Muster mints. Before startup, since herdr announces a rename to nobody.
+    for (pane, given) in [(&first, VISIBLE), (&second, HIDDEN)] {
+        daemon.call("pane.rename", &json!({ "pane_id": pane, "label": given }));
+    }
+}
+
+/// What the two panes are called, so the assertions below read as the arrangement they are about.
+const VISIBLE: &str = "visible";
+const HIDDEN: &str = "hidden";
+
+/// What Muster calls the pane somebody named `given`.
+fn named(given: &str) -> String {
+    roster()
+        .into_iter()
+        .flat_map(|roster| rows(&roster))
+        .find_map(|(_, name, pane)| (name == given).then_some(pane))
+        .unwrap_or_else(|| panic!("the roster lists no pane called {given}"))
 }
 
 fn only_pane(daemon: &Daemon) -> String {
@@ -121,14 +140,19 @@ fn panes(daemon: &Daemon) -> Vec<String> {
         .collect()
 }
 
-/// Every pane's place and id, in the order the roster lists them.
+/// Every pane's place and given name, in the order the roster lists them.
 fn places(roster: &RosterChanged) -> Vec<(u32, String)> {
+    rows(roster).into_iter().map(|(place, given, _)| (place, given)).collect()
+}
+
+/// Every listed pane, as its place, the name somebody gave it, and the name Muster minted.
+fn rows(roster: &RosterChanged) -> Vec<(u32, String, String)> {
     roster
         .daemons
         .iter()
         .flat_map(|daemon| daemon.tabs.iter())
         .flat_map(|tab| tab.panes.iter())
-        .map(|pane| (pane.place, pane.pane_id.clone()))
+        .map(|pane| (pane.place, pane.given_name.clone(), pane.pane_id.clone()))
         .collect()
 }
 

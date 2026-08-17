@@ -18,58 +18,70 @@ use serde_json::{Map, Value, json};
 fn pane_names_conformance() {
     let corpus = Conformance::load("pane-names.json");
 
-    let ran =
-        corpus.run(|given| {
-            let mut names = PaneNames::new(mint(given)?);
-            let mut trace: Vec<String> = Vec::new();
-            let mut labelled: Map<String, Value> = Map::new();
+    let ran = corpus.run(|given| {
+        let mut names = PaneNames::new(mint(given)?);
+        let mut trace: Vec<String> = Vec::new();
+        let mut labelled: Map<String, Value> = Map::new();
 
-            for step in given.get("do").and_then(Value::as_array).into_iter().flatten() {
-                if let Some(at) = step.get("see").and_then(Value::as_str) {
-                    let (daemon, backend) = split(at)?;
-                    trace.push(names.name(&daemon, &backend).to_string());
-                } else if let Some(label) = step.get("reserve").and_then(Value::as_str) {
-                    let reserved = names.reserve();
-                    labelled.insert(label.to_string(), json!(reserved.to_string()));
-                    trace.push(reserved.to_string());
-                } else if let Some(settle) = step.get("settle") {
-                    let label = settle["as"].as_str().unwrap_or_default();
-                    let name =
-                        PaneId::new(labelled.get(label).and_then(Value::as_str).ok_or_else(
-                            || CaseError::new(format!("nothing reserved as {label:?}")),
-                        )?);
-                    let (daemon, backend) = split(settle["at"].as_str().unwrap_or_default())?;
-                    names.settle(&name, &daemon, &backend);
-                } else if let Some(label) = step.get("release").and_then(Value::as_str) {
-                    let name =
-                        PaneId::new(labelled.get(label).and_then(Value::as_str).ok_or_else(
-                            || CaseError::new(format!("nothing reserved as {label:?}")),
-                        )?);
-                    names.release(&name);
-                } else if let Some(prune) = step.get("prune") {
-                    let daemon = DaemonId::new(prune["daemon"].as_str().unwrap_or_default());
-                    let holds: BTreeSet<BackendPaneId> = prune["holds"]
-                        .as_array()
-                        .into_iter()
-                        .flatten()
-                        .filter_map(Value::as_str)
-                        .map(BackendPaneId::new)
-                        .collect();
-                    names.prune(&daemon, &holds);
-                } else {
-                    return Err(CaseError::new(format!("no step this driver knows in {step}")));
-                }
+        for step in given.get("do").and_then(Value::as_array).into_iter().flatten() {
+            if let Some(at) = step.get("see").and_then(Value::as_str) {
+                let (daemon, backend) = split(at)?;
+                trace.push(names.name(&daemon, &backend).to_string());
+            } else if let Some(label) = step.get("reserve").and_then(Value::as_str) {
+                let reserved = names.reserve();
+                labelled.insert(label.to_string(), json!(reserved.to_string()));
+                trace.push(reserved.to_string());
+            } else if let Some(settle) = step.get("settle") {
+                let label = settle["as"].as_str().unwrap_or_default();
+                let name = PaneId::new(
+                    labelled
+                        .get(label)
+                        .and_then(Value::as_str)
+                        .ok_or_else(|| CaseError::new(format!("nothing reserved as {label:?}")))?,
+                );
+                let (daemon, backend) = split(settle["at"].as_str().unwrap_or_default())?;
+                names.settle(&name, &daemon, &backend);
+            } else if let Some(label) = step.get("release").and_then(Value::as_str) {
+                let name = PaneId::new(
+                    labelled
+                        .get(label)
+                        .and_then(Value::as_str)
+                        .ok_or_else(|| CaseError::new(format!("nothing reserved as {label:?}")))?,
+                );
+                names.release(&name);
+            } else if let Some(at) = step.get("resolve").and_then(Value::as_str) {
+                // `local/p1w3r07bsd` - a daemon, and a name Muster minted. The outward
+                // direction, which is what every request and every CLI argument needs and
+                // which the trace of minted names cannot say anything about.
+                let (daemon, name) = at
+                    .split_once('/')
+                    .ok_or_else(|| CaseError::new(format!("{at:?} names no daemon")))?;
+                let resolved = names.backend(&DaemonId::new(daemon), &PaneId::new(name));
+                trace.push(
+                    resolved.map_or_else(|| "(nothing)".to_string(), |backend| backend.to_string()),
+                );
+            } else if let Some(prune) = step.get("prune") {
+                let daemon = DaemonId::new(prune["daemon"].as_str().unwrap_or_default());
+                let holds: BTreeSet<BackendPaneId> = prune["holds"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Value::as_str)
+                    .map(BackendPaneId::new)
+                    .collect();
+                names.prune(&daemon, &holds);
+            } else {
+                return Err(CaseError::new(format!("no step this driver knows in {step}")));
             }
+        }
 
-            let located: Map<String, Value> = names
-                .entries()
-                .map(|(name, at)| {
-                    (name.to_string(), json!(format!("{}/{}", at.daemon, at.backend)))
-                })
-                .collect();
+        let located: Map<String, Value> = names
+            .entries()
+            .map(|(name, at)| (name.to_string(), json!(format!("{}/{}", at.daemon, at.backend))))
+            .collect();
 
-            Ok(fields([("trace", Some(json!(trace))), ("located", Some(Value::Object(located)))]))
-        });
+        Ok(fields([("trace", Some(json!(trace))), ("located", Some(Value::Object(located)))]))
+    });
 
     assert_eq!(ran, corpus.cases.len());
     assert!(ran > 0);

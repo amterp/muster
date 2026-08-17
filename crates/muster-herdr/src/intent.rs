@@ -17,6 +17,7 @@ use muster_core::intent::{
     BackendChannel, BackendIntent, Branch, Outcome, Refusal, SettledLayout, Side,
 };
 use muster_core::mirror::backend::{PaneId, TabId, Viewport};
+use muster_core::names::{BackendPaneId, Names};
 use serde_json::{Value, json};
 
 use crate::client::{Failure, HerdrClient};
@@ -25,27 +26,50 @@ use crate::layout::{read_exported_layout, read_layout};
 
 /// One daemon, as the thing Muster sends changes to.
 ///
-/// A client and the environment every pane it makes is handed. They are together because a
-/// pane-creating request needs both and nothing else does: the snapshot, the subscription and
-/// the pane channels all hold a bare [`HerdrClient`], for which a pane environment would be a
-/// field that never means anything.
+/// A client, the environment every pane it makes is handed, and this daemon's half of the name
+/// registry. They are together because a pane-creating request needs all three and nothing else
+/// does: the snapshot, the subscription and the pane channels all hold a bare [`HerdrClient`],
+/// for which a pane environment would be a field that never means anything.
 #[derive(Debug)]
 pub struct HerdrBackend {
     client: HerdrClient,
     panes: PaneEnvironment,
+    names: Names,
 }
 
 impl HerdrBackend {
-    pub fn new(client: HerdrClient, panes: PaneEnvironment) -> HerdrBackend {
-        HerdrBackend { client, panes }
+    pub fn new(client: HerdrClient, panes: PaneEnvironment, names: Names) -> HerdrBackend {
+        HerdrBackend { client, panes, names }
     }
 }
 
 impl BackendChannel for HerdrBackend {
     fn submit(&self, intent: &BackendIntent) -> Result<Outcome, Refusal> {
-        let (method, params) = request(intent, &self.panes);
-        let result = self.client.request(method, &params).map_err(|failure| refusal(&failure))?;
-        let created = created(&result);
+        // Minted before the request rather than read off the answer, because it has to travel
+        // *in* the request: the pane's own environment is sent with the split and herdr names
+        // the pane in its reply, so this is the only order in which a pane can be told what it
+        // is called (see `muster_core::names`).
+        let minted = makes_a_pane(intent).then(|| self.names.reserve());
+        let panes = match &minted {
+            Some(name) => self.panes.with_pane_name(name),
+            None => self.panes.clone(),
+        };
+
+        let (method, params) = request(intent, &panes, &self.names)?;
+        let result = match self.client.request(method, &params) {
+            Ok(result) => result,
+            Err(failure) => {
+                // Nothing was made, so nothing answers to the name. Released rather than left
+                // reserved, so a daemon that refuses splits all afternoon does not fill the
+                // registry with names for panes that never existed.
+                if let Some(name) = &minted {
+                    self.names.release(name);
+                }
+                return Err(refusal(&failure));
+            }
+        };
+
+        let created = self.settle(created(&result).as_deref(), minted.as_ref());
         let settled = match (rearranges(intent), &created) {
             (Some(pane), Some(created)) => self.rearrange(pane, created),
             // A split herdr made and would not name. Worth saying, because the consequence is
@@ -87,7 +111,7 @@ impl BackendChannel for HerdrBackend {
                 // Applied even when declined, because the layout an answer carries is the
                 // daemon's current arrangement either way, and a mirror already holding it
                 // settles to a no-op.
-                settled(&result, None)
+                settled(&result, None, &self.names)
             }
         };
         Ok(Outcome {
@@ -110,7 +134,7 @@ impl BackendChannel for HerdrBackend {
     /// gone away is `NotThere`, which is how the window learns it is showing something the
     /// daemon no longer holds.
     fn find(&self, pane: &PaneId, needle: &Needle) -> Result<Found, Refusal> {
-        let (method, params) = read_request(pane);
+        let (method, params) = read_request(&self.names.backend(pane)?);
         let result = self.client.request(method, &params).map_err(|failure| refusal(&failure))?;
         let text = nested(&result, "text").and_then(Value::as_str).unwrap_or_default();
         // Absent means "there is no more", which is the safe way round: claiming a search
@@ -121,7 +145,7 @@ impl BackendChannel for HerdrBackend {
     }
 
     fn viewport(&self, pane: &PaneId) -> Result<Viewport, Refusal> {
-        let params = json!({ "pane_id": pane.as_str() });
+        let params = json!({ "pane_id": self.names.backend(pane)?.as_str() });
         let result =
             self.client.request("pane.get", &params).map_err(|failure| refusal(&failure))?;
         let scroll = nested(&result, "scroll");
@@ -163,7 +187,7 @@ const ROWS_READ: u32 = 1000;
 /// `recent_unwrapped` returns whole logical lines, which would match a needle spanning a
 /// wrap and leave nothing able to say where it is. A hit nobody can scroll to is worse than
 /// a hit nobody found.
-pub fn read_request(pane: &PaneId) -> (&'static str, Value) {
+pub fn read_request(pane: &BackendPaneId) -> (&'static str, Value) {
     (
         "pane.read",
         json!({
@@ -178,6 +202,26 @@ pub fn read_request(pane: &PaneId) -> (&'static str, Value) {
 }
 
 impl HerdrBackend {
+    /// Binds the name Muster minted to the pane herdr says it made.
+    ///
+    /// A pane made under no reserved name is named on sight rather than dropped, because a pane
+    /// the mirror cannot name is a split missing from the window. It also means [`makes_a_pane`]
+    /// and [`request`] disagree about which intents make one, which is a bug here.
+    fn settle(&self, backend: Option<&str>, minted: Option<&PaneId>) -> Option<PaneId> {
+        match (backend, minted) {
+            (Some(backend), Some(name)) => {
+                self.names.settle(name, backend);
+                Some(name.clone())
+            }
+            (Some(backend), None) => Some(self.names.name(backend)),
+            (None, Some(name)) => {
+                self.names.release(name);
+                None
+            }
+            (None, None) => None,
+        }
+    }
+
     /// Puts a pane herdr has just made on the other side of the one it was split from.
     ///
     /// herdr's `SplitDirection` is `right` and `down`, and a split always puts the new pane on
@@ -191,7 +235,10 @@ impl HerdrBackend {
     /// it and say where it ended up, never to close a pane the user may already be typing in.
     /// Undoing is the one thing worse than a pane on the wrong side.
     fn rearrange(&self, pane: &PaneId, created: &PaneId) -> Option<SettledLayout> {
-        let params = json!({ "source_pane_id": pane.as_str(), "target_pane_id": created.as_str() });
+        let params = json!({
+            "source_pane_id": self.names.backend(pane).ok()?.as_str(),
+            "target_pane_id": self.names.backend(created).ok()?.as_str(),
+        });
         let answer = match self.client.request("pane.swap", &params) {
             Ok(answer) => answer,
             Err(failure) => {
@@ -233,7 +280,7 @@ impl HerdrBackend {
             );
             return None;
         }
-        settled(swap, Some((pane, created)))
+        settled(swap, Some((pane, created)), &self.names)
     }
 }
 
@@ -284,17 +331,27 @@ pub fn refusal(failure: &Failure) -> Refusal {
 ///
 /// The pane environment is a parameter rather than something read here, and it is why this
 /// takes an argument at all: three of these arms make a pane, and a pane Muster makes has to
-/// be handed the user's own herdr config path back (see [`crate::env`]). Passing it in is
-/// what lets the corpus see it - the same reason this function is public.
-pub fn request(intent: &BackendIntent, panes: &PaneEnvironment) -> (&'static str, Value) {
-    match intent {
+/// be handed the user's own herdr config path back and the name it should call itself (see
+/// [`crate::env`]). Passing it in is what lets the corpus see it - the same reason this
+/// function is public.
+///
+/// **Every pane named in a parameter is translated here**, from the name Muster minted to the
+/// id this daemon knows it by. This is the wire, and above it nothing spells a pane herdr's
+/// way. A name that resolves to nothing is a refusal rather than a request built out of it,
+/// because herdr ignores an id it does not recognize and acts on whatever it has focused.
+pub fn request(
+    intent: &BackendIntent,
+    panes: &PaneEnvironment,
+    names: &Names,
+) -> Result<(&'static str, Value), Refusal> {
+    Ok(match intent {
         BackendIntent::SplitPane { pane, side, ratio, cwd } => {
             let mut params = json!({
                 // `target_pane_id`, not `pane_id`, and the difference is silent: herdr
                 // ignores a key it does not know and splits whichever pane it has focused,
                 // so the wrong name reads as a split landing in an arbitrary place rather
                 // than as a refusal. Every other pane verb takes `pane_id`.
-                "target_pane_id": pane.as_str(),
+                "target_pane_id": names.backend(pane)?.as_str(),
                 "direction": direction(*side),
                 // The daemon's cursor follows the new pane, because a person who split
                 // something is looking at what they made. Muster's own keyboard is moved
@@ -348,7 +405,10 @@ pub fn request(intent: &BackendIntent, panes: &PaneEnvironment) -> (&'static str
             ("workspace.create", params)
         }
         BackendIntent::ResizePane { pane, direction, amount } => {
-            let mut params = json!({ "pane_id": pane.as_str(), "direction": direction.as_str() });
+            let mut params = json!({
+                "pane_id": names.backend(pane)?.as_str(),
+                "direction": direction.as_str(),
+            });
             if let Some(amount) = amount {
                 params["amount"] = json!(amount);
             }
@@ -357,16 +417,25 @@ pub fn request(intent: &BackendIntent, panes: &PaneEnvironment) -> (&'static str
         // `mode` is left to its default, which herdr documents as toggle. Sending it would be
         // Muster restating a default it agrees with, and the day herdr changes that default
         // is the day this should notice rather than silently keep the old one.
-        BackendIntent::ZoomPane { pane } => ("pane.zoom", json!({ "pane_id": pane.as_str() })),
-        BackendIntent::ClosePane { pane } => ("pane.close", json!({ "pane_id": pane.as_str() })),
-        BackendIntent::FocusPane { pane } => ("pane.focus", json!({ "pane_id": pane.as_str() })),
+        BackendIntent::ZoomPane { pane } => {
+            ("pane.zoom", json!({ "pane_id": names.backend(pane)?.as_str() }))
+        }
+        BackendIntent::ClosePane { pane } => {
+            ("pane.close", json!({ "pane_id": names.backend(pane)?.as_str() }))
+        }
+        BackendIntent::FocusPane { pane } => {
+            ("pane.focus", json!({ "pane_id": names.backend(pane)?.as_str() }))
+        }
         // `source_pane_id` and `target_pane_id`, the same pair the leftward-split rearrange
         // sends. Note that herdr moves its own cursor to the *source* pane whatever was
         // focused before (`observations/herdr-0.8.0.md` section 14); Muster's keyboard is its
         // own and is not moved by this.
         BackendIntent::SwapPanes { pane, with } => (
             "pane.swap",
-            json!({ "source_pane_id": pane.as_str(), "target_pane_id": with.as_str() }),
+            json!({
+                "source_pane_id": names.backend(pane)?.as_str(),
+                "target_pane_id": names.backend(with)?.as_str(),
+            }),
         ),
         // `destination` is a tagged object rather than a bare id: herdr's `pane.move` can also
         // make a tab or a workspace to move into, and the tag is how it tells those apart.
@@ -383,11 +452,11 @@ pub fn request(intent: &BackendIntent, panes: &PaneEnvironment) -> (&'static str
         BackendIntent::MovePane { pane, tab, after } => (
             "pane.move",
             json!({
-                "pane_id": pane.as_str(),
+                "pane_id": names.backend(pane)?.as_str(),
                 "destination": {
                     "type": "tab",
                     "tab_id": tab.as_str(),
-                    "target_pane_id": after.as_str(),
+                    "target_pane_id": names.backend(after)?.as_str(),
                     "split": "right",
                 },
                 "focus": false,
@@ -407,7 +476,7 @@ pub fn request(intent: &BackendIntent, panes: &PaneEnvironment) -> (&'static str
         BackendIntent::RenamePane { pane, name } => (
             "pane.rename",
             json!({
-                "pane_id": pane.as_str(),
+                "pane_id": names.backend(pane)?.as_str(),
                 "label": name.as_ref().map_or(Value::Null, |name| json!(name)),
             }),
         ),
@@ -420,7 +489,22 @@ pub fn request(intent: &BackendIntent, panes: &PaneEnvironment) -> (&'static str
             "tab.rename",
             json!({ "tab_id": tab.as_str(), "label": name.clone().unwrap_or_default() }),
         ),
-    }
+    })
+}
+
+/// Whether this intent leaves a pane behind that Muster has to have a name for.
+///
+/// Has to agree with [`request`], which decides whether the environment is sent at all - an
+/// intent that makes a pane and is missed here makes one that cannot say which pane it is. The
+/// case in `corpus/conformance/backend-intent.json` walking every intent is what holds the pair
+/// together.
+fn makes_a_pane(intent: &BackendIntent) -> bool {
+    matches!(
+        intent,
+        BackendIntent::SplitPane { .. }
+            | BackendIntent::CreateTab { .. }
+            | BackendIntent::CreateWorkspace { .. }
+    )
 }
 
 /// What a pane is called now, for the request that renamed one.
@@ -458,9 +542,12 @@ fn renamed(intent: &BackendIntent, result: &Value) -> Option<(PaneId, Option<Str
 /// A shape that does not match is `None` rather than a refusal. The split happened - the
 /// daemon said so - and the only cost of not finding the id is a keyboard that stays where it
 /// was, which is worth less than turning a successful split into an error.
-fn created(result: &Value) -> Option<PaneId> {
+///
+/// The daemon's own id, untranslated: this is the wire, and binding it to the name Muster
+/// minted is [`HerdrBackend::settle`]'s job one line later.
+fn created(result: &Value) -> Option<String> {
     let pane = result.get("pane").or_else(|| result.get("root_pane"))?;
-    Some(PaneId::new(pane.get("pane_id")?.as_str()?))
+    Some(pane.get("pane_id")?.as_str()?.to_string())
 }
 
 /// The tab a request made, if it made one.
@@ -510,9 +597,13 @@ fn swaps(side: Side) -> bool {
 /// herdr published between the two halves be reconstructed: its swap exchanges the ids sitting
 /// in two places and leaves the places alone, so the tree it was is the tree it became with
 /// those two ids put back.
-fn settled(result: &Value, swapped: Option<(&PaneId, &PaneId)>) -> Option<SettledLayout> {
+fn settled(
+    result: &Value,
+    swapped: Option<(&PaneId, &PaneId)>,
+    names: &Names,
+) -> Option<SettledLayout> {
     let stated = nested(result, "layout")?;
-    let layout = read_layout(stated).or_else(|| read_exported_layout(stated))?;
+    let layout = read_layout(stated, names).or_else(|| read_exported_layout(stated, names))?;
     let stale = swapped.map(|(one, other)| layout.with_panes_exchanged(one, other));
     Some(SettledLayout { layout, stale })
 }

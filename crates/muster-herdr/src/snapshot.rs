@@ -7,9 +7,8 @@
 //! (`observations/herdr-0.8.0.md` section 10).
 
 use muster_core::AgentState;
-use muster_core::mirror::backend::{
-    Focus, Pane, PaneId, Snapshot, Tab, TabId, Workspace, WorkspaceId,
-};
+use muster_core::mirror::backend::{Focus, Pane, Snapshot, Tab, TabId, Workspace, WorkspaceId};
+use muster_core::names::Names;
 use serde_json::{Value, json};
 
 use crate::client::{Failure, HerdrClient};
@@ -25,10 +24,10 @@ use crate::layout::read_layout;
 ///
 /// Asking twice costs nothing. Bootstrap replaces rather than merges, and replacing a
 /// picture with the same picture reports no changes at all.
-pub fn fetch_snapshot(socket_path: &str) -> Result<(Snapshot, usize), Failure> {
+pub fn fetch_snapshot(socket_path: &str, names: &Names) -> Result<(Snapshot, usize), Failure> {
     let client = HerdrClient::new(socket_path.to_string());
     let result = client.request("session.snapshot", &json!({}))?;
-    Ok(read_snapshot(result.get("snapshot").unwrap_or(&Value::Null)))
+    Ok(read_snapshot(result.get("snapshot").unwrap_or(&Value::Null), names))
 }
 
 /// Reads the `snapshot` object out of a `session.snapshot` result.
@@ -41,7 +40,7 @@ pub fn fetch_snapshot(socket_path: &str) -> Result<(Snapshot, usize), Failure> {
 /// same reason a bad line does not kill a stream: one unreadable pane should cost that
 /// pane, not the session. `dropped` says how many, so a caller can say so out loud rather
 /// than rendering a quietly smaller world.
-pub fn read_snapshot(snapshot: &Value) -> (Snapshot, usize) {
+pub fn read_snapshot(snapshot: &Value, names: &Names) -> (Snapshot, usize) {
     let mut dropped = 0;
 
     let workspaces = collect(snapshot, "workspaces", &mut dropped, |value| {
@@ -62,7 +61,7 @@ pub fn read_snapshot(snapshot: &Value) -> (Snapshot, usize) {
     // subset would lose every pane that has no agent, which is most of them.
     let panes = collect(snapshot, "panes", &mut dropped, |value| {
         Some(Pane {
-            id: PaneId::new(id(value, "pane_id")?),
+            id: names.name(&id(value, "pane_id")?),
             tab: TabId::new(id(value, "tab_id")?),
             workspace: WorkspaceId::new(id(value, "workspace_id")?),
             agent_state: AgentState::from_backend(text(value, "agent_status")),
@@ -78,7 +77,7 @@ pub fn read_snapshot(snapshot: &Value) -> (Snapshot, usize) {
     // tab whose arrangement will not read is counted as dropped and left absent: the
     // mirror renders a tab it has no tree for as the tree it had, which is a better wrong
     // answer than an empty tab.
-    let layouts = collect(snapshot, "layouts", &mut dropped, read_layout);
+    let layouts = collect(snapshot, "layouts", &mut dropped, |layout| read_layout(layout, names));
 
     // The highest stamp, not the count of agents: it is one session-wide counter, so the
     // highest value is what the session has run in total, and a pane that has never had an
@@ -99,7 +98,7 @@ pub fn read_snapshot(snapshot: &Value) -> (Snapshot, usize) {
         focus: Focus {
             workspace: id(snapshot, "focused_workspace_id").map(WorkspaceId::new),
             tab: id(snapshot, "focused_tab_id").map(TabId::new),
-            pane: id(snapshot, "focused_pane_id").map(PaneId::new),
+            pane: id(snapshot, "focused_pane_id").map(|pane| names.name(&pane)),
         },
         agent_state_seq,
     };

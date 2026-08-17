@@ -24,6 +24,9 @@ One name per concept; docs and code use these terms. Alphabetical.
 - **mirror** - the core's disposable cache of daemon structure, bootstrapped from snapshot plus events; never
   authoritative.
 - **pane** - one terminal inside a tab's tree; owned by a daemon.
+- **pane name** - what Muster calls a pane: `p1w3r07bsd`, minted by Muster rather than borrowed from the backend,
+  unique across every attached machine, and never reused. What every message and every CLI argument means by a pane.
+  A pane reads its own from `MUSTER_PANE`.
 - **pane channel** - the output stream feeding one surface. With herdr: server-rendered frame diffs, not raw program
   output.
 - **pane tree** - the split layout inside one tab; daemon truth.

@@ -21,11 +21,7 @@ publish = false
 [workspace.dependencies]
 base64 = "0.22"
 conformance = { path = "crates/conformance" }
-# Pane names. A git rev rather than a version because flexid is not on crates.io yet - swap
-# this for `flexid = "0.1"` when it is. Pinned to a rev rather than a branch on the same
-# grounds as deps/ghostty.pin: what a name is spelled as is recorded in the corpus, so the
-# code that spells it cannot be allowed to move underneath a checkout.
-flexid = { git = "https://github.com/amterp/flexid-rs", rev = "aa08ad00a03d59eb5ae1815d81d18fd2a868bb9c" }
+flexid = "0.1"
 herdr-harness = { path = "crates/herdr-harness" }
 libc = "0.2"
 muster-core = { path = "crates/muster-core" }

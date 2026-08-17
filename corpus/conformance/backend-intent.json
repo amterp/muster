@@ -502,6 +502,37 @@
           "strip_ansi": true
         }
       }
+    },
+    {
+      "name": "a pane Muster named goes out as the id the daemon knows",
+      "why": "The translation itself, and the only case here that can see it. Every other case names a pane `p1` and gets `p1` on the wire, which is what makes them cases about the envelope - but above this file nothing spells a pane herdr's way, so what a request actually carries is the daemon's id for the name it was given. A registry that stopped translating would pass a Muster name through, herdr would not recognize it, and `pane.split` would split whatever it had focused and answer success.",
+      "given": {
+        "intent": "split",
+        "pane": "p1w3r07bsd",
+        "side": "right",
+        "names": { "p1w3r07bsd": "w1:p3" }
+      },
+      "expect": {
+        "method": "pane.split",
+        "params": {
+          "target_pane_id": "w1:p3",
+          "direction": "right",
+          "focus": true
+        }
+      }
+    },
+    {
+      "name": "a pane name that resolves to nothing sends no request at all",
+      "why": "The reason resolution is a refusal rather than a pass-through. herdr ignores a `target_pane_id` it does not recognize and splits the pane it has focused instead, so a name for a pane that has closed - pasted out of an old log, or held by an agent that has been running since before it went - would silently split somebody else's work and report success. Refusing names the pane, which is what a person or an agent can act on.",
+      "given": {
+        "intent": "split",
+        "pane": "p1w3r07bsd",
+        "side": "right",
+        "names": { "pgone00000": "w1:p9" }
+      },
+      "expect": {
+        "refused": "no pane called p1w3r07bsd on local"
+      }
     }
   ]
 }

@@ -254,6 +254,10 @@ fn view_of(
             Some(Endpoint::Ssh { .. }) => None,
             _ => Some(format!("/tmp/{daemon}.sock")),
         },
+        // A case's panes are named the way the backend names them, so the two spellings agree
+        // and neither the cases nor this driver has to know the registry exists. What the
+        // translation does is `pane-names.json`'s subject.
+        |_, pane| Some(pane.to_string()),
     )
 }
 

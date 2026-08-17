@@ -2,6 +2,7 @@
 //! corpus/conformance/layout-export.json.
 
 use conformance::{Conformance, fields};
+use muster_core::names::{Mint, Names};
 use muster_herdr::{read_exported_layout, read_layout};
 use serde_json::{Value, json};
 
@@ -13,7 +14,7 @@ fn layout_export_conformance() {
         // Refusing is what most of these are about, so it is an answer rather than an error:
         // the driver reports that the tree did not read, and the corpus states which payloads
         // should end that way.
-        let Some(layout) = read_exported_layout(given) else {
+        let Some(layout) = read_exported_layout(given, &names()) else {
             return Ok(fields([("read", Some(json!(false)))]));
         };
         Ok(fields([
@@ -50,7 +51,7 @@ fn the_two_readers_describe_the_same_tab_the_same_way() {
         .iter()
         .find(|case| case.name == "five panes at three levels")
         .expect("the rectangles corpus carries the deep case");
-    let rebuilt = read_layout(&flat.given).expect("the rectangles case reads");
+    let rebuilt = read_layout(&flat.given, &names()).expect("the rectangles case reads");
 
     let tree = Conformance::load("layout-export.json");
     let tree = tree
@@ -58,7 +59,7 @@ fn the_two_readers_describe_the_same_tab_the_same_way() {
         .iter()
         .find(|case| case.name == "a divider drag answers with the arrangement it settled on")
         .expect("the export corpus carries the drag");
-    let read = read_exported_layout(&tree.given).expect("the exported case reads");
+    let read = read_exported_layout(&tree.given, &names()).expect("the exported case reads");
 
     assert_eq!(read.tab, rebuilt.tab, "the two recordings are of different tabs");
     assert_eq!(read.focused, rebuilt.focused);
@@ -126,4 +127,12 @@ fn corpus_path(relative: &str) -> std::path::PathBuf {
         }
         directory = directory.parent().expect("the corpus sits above this crate");
     }
+}
+
+/// A registry whose name for a pane is the daemon's own id for it.
+///
+/// So a case here says `w1:p1` and is about the reading rather than about the mint, which has
+/// cases of its own in `corpus/conformance/pane-names.json`.
+fn names() -> Names {
+    Names::alone("local", Mint::Backend)
 }

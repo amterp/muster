@@ -22,6 +22,7 @@ use muster_core::AgentState;
 use muster_core::diagnostics::poison;
 use muster_core::mirror::backend::PaneId;
 use muster_core::mirror::{Change, Mirror};
+use muster_core::names::Names;
 use serde_json::{Value, json};
 
 use crate::client::HerdrClient;
@@ -116,6 +117,7 @@ impl Subscription {
         socket_path: impl Into<String>,
         mirror: Arc<Mutex<Mirror>>,
         report: Report,
+        names: Names,
     ) -> Subscription {
         let socket_path = socket_path.into();
         let running = Arc::new(AtomicBool::new(true));
@@ -124,7 +126,7 @@ impl Subscription {
         let handle = Subscription { running: running.clone(), stream: stream.clone() };
         std::thread::Builder::new()
             .name("muster-subscription".to_string())
-            .spawn(move || run(&socket_path, &mirror, &report, &running, &stream))
+            .spawn(move || run(&socket_path, &mirror, &report, &running, &stream, &names))
             .expect("could not start the subscription thread");
         handle
     }
@@ -161,12 +163,13 @@ fn run(
     report: &Report,
     running: &Arc<AtomicBool>,
     shared_stream: &Arc<Mutex<Option<UnixStream>>>,
+    names: &Names,
 ) {
     let mut attempt = 0usize;
     let mut connected_before = false;
 
     let structure: Vec<Value> = STRUCTURE.iter().map(|kind| json!({ "type": kind })).collect();
-    let mut agents = AgentWatchers::new(socket_path, mirror, report);
+    let mut agents = AgentWatchers::new(socket_path, mirror, report, names);
 
     while running.load(Ordering::Relaxed) {
         match connect(socket_path, &structure) {
@@ -184,9 +187,9 @@ fn run(
                 // nobody, and it is invisible: the mirror would be wrong in a way no
                 // counter reports. Subscribing first makes the overlap a duplicate
                 // instead, which upsert already absorbs.
-                bootstrap(socket_path, mirror, report);
+                bootstrap(socket_path, mirror, report, names);
                 agents.follow();
-                let detail = stream_events(stream, mirror, report, running, &mut agents);
+                let detail = stream_events(stream, mirror, report, running, &mut agents, names);
 
                 *poison::lock(shared_stream, "subscription-stream") = None;
                 if !running.load(Ordering::Relaxed) {
@@ -269,8 +272,8 @@ fn read_line(stream: &mut UnixStream) -> Option<Vec<u8>> {
     Some(line)
 }
 
-fn bootstrap(socket_path: &str, mirror: &Arc<Mutex<Mirror>>, report: &Report) {
-    let Ok((snapshot, dropped)) = fetch_snapshot(socket_path) else { return };
+fn bootstrap(socket_path: &str, mirror: &Arc<Mutex<Mirror>>, report: &Report, names: &Names) {
+    let Ok((snapshot, dropped)) = fetch_snapshot(socket_path, names) else { return };
     let changes = poison::lock(mirror, "mirror").bootstrap(snapshot);
     report(Notice::Bootstrapped { changes, dropped });
 }
@@ -282,8 +285,9 @@ fn stream_events(
     report: &Report,
     running: &Arc<AtomicBool>,
     agents: &mut AgentWatchers,
+    names: &Names,
 ) -> String {
-    let mut decoder = EventDecoder::new();
+    let mut decoder = EventDecoder::new(names.clone());
     let mut buffer = [0u8; 8192];
 
     loop {
@@ -337,6 +341,7 @@ struct AgentWatchers {
     socket_path: String,
     mirror: Arc<Mutex<Mirror>>,
     report: Report,
+    names: Names,
     watching: BTreeMap<PaneId, Watcher>,
 }
 
@@ -369,11 +374,17 @@ impl std::fmt::Debug for AgentWatchers {
 }
 
 impl AgentWatchers {
-    fn new(socket_path: &str, mirror: &Arc<Mutex<Mirror>>, report: &Report) -> AgentWatchers {
+    fn new(
+        socket_path: &str,
+        mirror: &Arc<Mutex<Mirror>>,
+        report: &Report,
+        names: &Names,
+    ) -> AgentWatchers {
         AgentWatchers {
             socket_path: socket_path.to_string(),
             mirror: Arc::clone(mirror),
             report: Arc::clone(report),
+            names: names.clone(),
             watching: BTreeMap::new(),
         }
     }
@@ -398,9 +409,15 @@ impl AgentWatchers {
         let socket_path = self.socket_path.clone();
         let mirror = Arc::clone(&self.mirror);
         let report = Arc::clone(&self.report);
+        let names = self.names.clone();
         let held = Arc::clone(&slot);
+        // The daemon's own id, because this is a request. A name that resolves to nothing is a
+        // pane the mirror holds and the registry does not, which cannot happen - the mirror is
+        // filled through the registry - so there is nothing here to report and no watcher to
+        // start.
+        let Ok(backend) = names.backend(pane) else { return Watcher { stream: slot } };
         let subscription =
-            vec![json!({ "type": "pane.agent_status_changed", "pane_id": pane.as_str() })];
+            vec![json!({ "type": "pane.agent_status_changed", "pane_id": backend.as_str() })];
         let pane = pane.clone();
 
         let _ = std::thread::Builder::new().name(format!("muster-agent-{pane}")).spawn(move || {
@@ -419,11 +436,11 @@ impl AgentWatchers {
             // transition landing in between reaches nobody and herdr has no replay for it -
             // the pane would keep its old state and look calm. One request per pane, once, at
             // creation (`Mirror::seed_agent_state`).
-            for change in seed(&socket_path, &pane, &mirror) {
+            for change in seed(&socket_path, &pane, &mirror, &names) {
                 report(Notice::Changed(change));
             }
 
-            let mut decoder = EventDecoder::new();
+            let mut decoder = EventDecoder::new(names.clone());
             let mut buffer = [0u8; 1024];
             while let Ok(read) = stream.read(&mut buffer) {
                 if read == 0 {
@@ -453,20 +470,26 @@ impl AgentWatchers {
 /// Every refusal is silence. A pane that closed while this was in flight, a daemon that went
 /// away, an answer with no status in it - none of them are worth a log line per pane per
 /// connection, and the state that results is the one the watcher would have had anyway.
-fn seed(socket_path: &str, pane: &PaneId, mirror: &Arc<Mutex<Mirror>>) -> Vec<Change> {
-    read_agent_state(socket_path, pane, mirror).unwrap_or_default()
+fn seed(
+    socket_path: &str,
+    pane: &PaneId,
+    mirror: &Arc<Mutex<Mirror>>,
+    names: &Names,
+) -> Vec<Change> {
+    read_agent_state(socket_path, pane, mirror, names).unwrap_or_default()
 }
 
 fn read_agent_state(
     socket_path: &str,
     pane: &PaneId,
     mirror: &Arc<Mutex<Mirror>>,
+    names: &Names,
 ) -> Option<Vec<Change>> {
     // Read before asking, so the answer can be refused if the subscription overtook it.
     let expected = poison::lock(mirror, "mirror").agent_state(pane)?;
 
     let answer = HerdrClient::new(socket_path)
-        .request("pane.get", &json!({ "pane_id": pane.as_str() }))
+        .request("pane.get", &json!({ "pane_id": names.backend(pane).ok()?.as_str() }))
         .ok()?;
     // `{"type":"pane_info","pane":{..,"agent_status":".."}}`, with the outer `result`
     // already unwrapped by the client.

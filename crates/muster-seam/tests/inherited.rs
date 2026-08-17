@@ -58,6 +58,14 @@ fn a_window_opened_on_somebody_elses_session_can_reach_all_of_it() {
         "the arrangement did not take, so what follows would be a test about one pane: {held:?}"
     );
 
+    // Given a name each, because Muster mints its own name for every pane and nothing here can
+    // predict it - a given name is the one handle both sides hold. Before startup, since herdr
+    // announces a rename to nobody and the bootstrap snapshot is the only thing carrying one.
+    let given: Vec<String> = (1..=held.len()).map(|nth| format!("theirs-{nth}")).collect();
+    for (pane, name) in held.iter().zip(&given) {
+        daemon.call("pane.rename", &json!({ "pane_id": pane, "label": name }));
+    }
+
     muster::ffi::muster_set_event_callback(Some(note));
     assert_ok(&answer(request::Payload::Startup(Startup {
         config_path: daemon.muster_config().to_string_lossy().into_owned(),
@@ -91,11 +99,12 @@ fn a_window_opened_on_somebody_elses_session_can_reach_all_of_it() {
     // is showing, and here two of the four are in a tab nothing opened onto.
     let roster = latest_roster().expect("a window that published a view published a roster");
     let listed: Vec<String> = roster_panes(&roster).map(|pane| pane.pane_id.clone()).collect();
-    for pane in &held {
+    let by_given: Vec<String> = roster_panes(&roster).map(|pane| pane.given_name.clone()).collect();
+    for name in &given {
         assert!(
-            listed.contains(pane),
-            "the daemon holds {pane} and the roster does not list it, so nothing in this \
-             window can reach it: {listed:?}"
+            by_given.contains(name),
+            "the daemon holds a pane called {name} and the roster does not list it, so nothing \
+             in this window can reach it: {by_given:?}"
         );
     }
     let mut sorted = listed.clone();

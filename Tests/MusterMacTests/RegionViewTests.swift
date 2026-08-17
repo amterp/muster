@@ -17,6 +17,8 @@ private final class Started {
   var panes: [String] = []
   /// Which daemon each pane's frames were to come from, in the order they were started.
   var daemonSockets: [String?] = []
+  /// What each pane's daemon calls it, which is what its bridge is given.
+  var backendPanes: [String] = []
 }
 
 /// A region whose surfaces are recorded rather than allocated.
@@ -24,16 +26,20 @@ private final class Started {
 private func region(width: CGFloat = 800, height: CGFloat = 600) -> (RegionView, Started) {
   let started = Started()
   let view = RegionView(frame: NSRect(x: 0, y: 0, width: width, height: height)) {
-    daemon, transport, backendSocket, chrome, socket in
+    daemon, transport, backendSocket, chrome, pane in
     let machine = transport.map { "@\($0.sshHost)" } ?? ""
-    started.panes.append("\(daemon)\(machine):\(chrome.paneID ?? "")@\(socket ?? "-")")
+    started.panes.append(
+      "\(daemon)\(machine):\(chrome.paneID ?? "")@\(pane.controlSocketPath ?? "-")")
     started.daemonSockets.append(backendSocket)
+    started.backendPanes.append(pane.backendPaneID)
   }
   return (view, started)
 }
 
-private func leaf(_ id: String, socket: String? = "/tmp/\(0).sock") -> PaneTree {
-  .pane(.init(paneID: id, controlSocketPath: socket))
+private func leaf(
+  _ id: String, socket: String? = "/tmp/\(0).sock", backend: String = ""
+) -> PaneTree {
+  .pane(.init(paneID: id, controlSocketPath: socket, backendPaneID: backend))
 }
 
 private func contents(

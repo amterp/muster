@@ -20,7 +20,7 @@ use std::cell::Cell;
 use herdr_harness::Daemon;
 use muster::proto::{AttachPane, Attached, Response, Scroll, request, response};
 use serde_json::{Value, json};
-use support::{Bridge, Typing, answer, assert_ok, attach, until};
+use support::{Bridge, Typing, answer, assert_ok, attach, named_pane, until};
 
 /// Enough lines to push a 24-row pane well clear of its own scrollback floor.
 const FILL: &str = "seq 1 200\n";
@@ -39,8 +39,9 @@ fn a_wheel_moves_the_pane_it_names_rather_than_the_one_with_the_keyboard() {
 
     // Attached in this order so the keyboard ends up on `typed_into`: attaching points it at
     // the pane attached, which is what makes the pair distinguishable at all.
-    let attached = attach_once_the_core_knows_it(&typed_into);
-    let _second = Bridge::spawn(&typed_into, &attached.control_socket_path, &typing.daemon);
+    let attached = attach_once_the_core_knows_it(&named_pane(&typed_into));
+    let _second =
+        Bridge::spawn(&attached.backend_pane_id, &attached.control_socket_path, &typing.daemon);
 
     // Both panes get scrollback, so "the other one did not move" is a real assertion rather
     // than a pane that had nowhere to go.
@@ -58,9 +59,11 @@ fn a_wheel_moves_the_pane_it_names_rather_than_the_one_with_the_keyboard() {
 
     // The keyboard is on `typed_into`, and the wheel names `watched`. An empty daemon means
     // the one this window's keyboard is on, which is what every other message here means.
+    // Named the way every message in this schema names a pane, while the oracle below reads
+    // the daemon's own id: the routing this is about happens between the two.
     assert_ok(&answer(request::Payload::Scroll(Scroll {
         daemon_id: String::new(),
-        pane_id: watched.clone(),
+        pane_id: named_pane(&watched),
         direction: "up".to_string(),
         delta: 3.0,
     })));

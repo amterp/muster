@@ -116,6 +116,18 @@ pub struct ViewPane {
     /// from it would render and never be typeable in. Absent rather than empty so that a
     /// shell cannot spawn a bridge pointed at nothing and then wait for it.
     pub control_socket_path: Option<String>,
+
+    /// What the pane's own daemon calls it, for the shell to hand its bridge.
+    ///
+    /// The bridge streams frames from the daemon directly, so it is the one thing above the
+    /// adapter that has to speak the backend's vocabulary - and the only reason this leaves
+    /// the core. A handle to relay, on the same terms as `ViewRegion::backend_socket`, and
+    /// never something to address a pane by: `id` above is what Muster means by a pane
+    /// everywhere else, and the two disagree the moment two daemons are attached.
+    ///
+    /// `None` for a pane whose daemon no longer holds it, which is a pane no bridge should be
+    /// started for.
+    pub backend_pane_id: Option<String>,
 }
 
 impl View {
@@ -131,6 +143,7 @@ impl View {
         socket: impl Fn(&DaemonId, &PaneId) -> Option<String>,
         transport: impl Fn(&DaemonId) -> Option<Transport>,
         backend_socket: impl Fn(&DaemonId) -> Option<String>,
+        backend_pane: impl Fn(&DaemonId, &PaneId) -> Option<String>,
     ) -> View {
         let regions = composition
             .regions()
@@ -150,7 +163,12 @@ impl View {
                         // renderer handed the whole tree paints all of them while the daemon
                         // is showing one (`observations/herdr-0.8.0.md` section 13).
                         let zoomed = layout.zoomed.clone().map(LayoutNode::Pane);
-                        build(zoomed.as_ref().unwrap_or(&layout.root), &region.daemon, &socket)
+                        build(
+                            zoomed.as_ref().unwrap_or(&layout.root),
+                            &region.daemon,
+                            &socket,
+                            &backend_pane,
+                        )
                     }),
                     zoomed: layout.is_some_and(|layout| layout.zoomed.is_some()),
                     transport: transport(&region.daemon),
@@ -502,16 +520,19 @@ fn build(
     node: &LayoutNode,
     daemon: &DaemonId,
     socket: &impl Fn(&DaemonId, &PaneId) -> Option<String>,
+    backend_pane: &impl Fn(&DaemonId, &PaneId) -> Option<String>,
 ) -> ViewNode {
     match node {
-        LayoutNode::Pane(id) => {
-            ViewNode::Pane(ViewPane { id: id.clone(), control_socket_path: socket(daemon, id) })
-        }
+        LayoutNode::Pane(id) => ViewNode::Pane(ViewPane {
+            id: id.clone(),
+            control_socket_path: socket(daemon, id),
+            backend_pane_id: backend_pane(daemon, id),
+        }),
         LayoutNode::Split { axis, ratio, first, second } => ViewNode::Split {
             axis: *axis,
             ratio: *ratio,
-            first: Box::new(build(first, daemon, socket)),
-            second: Box::new(build(second, daemon, socket)),
+            first: Box::new(build(first, daemon, socket, backend_pane)),
+            second: Box::new(build(second, daemon, socket, backend_pane)),
         },
     }
 }

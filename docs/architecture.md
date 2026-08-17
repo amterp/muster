@@ -276,12 +276,21 @@ codegen - a surface that cannot express an action is a missing message, visible 
   such way ends in a window that ignores the keyboard and cannot say why, so composition is brought back into line
   with a daemon's mirror whenever that daemon's structure moves. A region whose tab is gone closes; view-local
   focus falls to a pane that exists.
-- **A pane is named by its daemon and its id.** Two daemons hand out the same ids - `w1:p1` means something on each -
-  so a bare pane id stops being an answer the moment a window shows more than one. Every message that names a pane
-  says both, and anything keyed by pane alone that spans regions is a bug waiting for a second daemon. The empty
-  string means "the one this window's keyboard is on", which is what a keybinding means and what every menu item
-  sends. One place is left genuinely ambiguous and says so: a command line carrying only a pane id, at the moment
-  before any daemon is being followed.
+- **Muster names its own panes.** A name is `p` and nine characters - `p1w3r07bsd` - minted by Muster rather than
+  borrowed from the backend, and it is what every message in the schema means by a pane id. The reason is not
+  tidiness: Muster has to be able to tell a pane which pane it is, and a backend's id arrives too late for that.
+  herdr assigns `w1:p3` in its *answer* to `pane.split`, while the environment a new pane is born with has to be
+  sent *with* the request, so there is no moment where Muster holds both. A name Muster mints goes into the request
+  that creates the pane, reaches it as `MUSTER_PANE`, and is bound to whatever comes back. The registry that does
+  the binding is `crates/muster-core/src/names.rs`, and the adapter translates at the wire - nothing above it
+  spells a pane the backend's way.
+  A name is unique across every attached machine, which is what makes it an answer on its own: two daemons both
+  hand out `w1:p1`, and a caller naming a pane on the devenv has no way to know and no reason to say which machine
+  holds it. So a request that names a pane and no daemon finds the daemon from the pane. The empty pane means "the
+  one this window's keyboard is on", which is what a keybinding means and what every menu item sends.
+  Two handles do still travel in the backend's vocabulary, both marked as such in the schema: `ViewPane`'s
+  `backend_pane_id` and `ViewRegion`'s `backend_socket`, for the bridge, which streams frames from the daemon
+  directly. Tabs and workspaces keep the backend's ids, because nothing has to tell a tab which tab it is.
 - **Health is per connection, and so is what a window says about it.** A laptop and a devenv have two answers and one
   title bar. The unhappiest is what shows, named - reporting one state for the window would let a dropped VPN read as
   though every session had gone.

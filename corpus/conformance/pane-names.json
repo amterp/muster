@@ -88,6 +88,36 @@
       "expect": { "trace": ["p1w3r0a134"], "located": { "p1w3r0a134": "local/w1:p1" } }
     },
     {
+      "name": "a name resolves back to the id its daemon knows",
+      "why": "The direction every request and every CLI argument needs, and the one the traces above cannot show: a name is what a caller says and an id is what goes on the wire. Round-tripped in one case rather than asserted from outside, because the two directions have to agree - a registry that minted a name it could not resolve would refuse every command about a pane the window is happily drawing.",
+      "given": { "seed": 1, "do": [{ "see": "local/w1:p1" }, { "resolve": "local/p1w3r07bsd" }] },
+      "expect": {
+        "trace": ["p1w3r07bsd", "w1:p1"],
+        "located": { "p1w3r07bsd": "local/w1:p1" }
+      }
+    },
+    {
+      "name": "a name resolves to nothing on a daemon that does not hold its pane",
+      "why": "Scoping the lookup to one daemon is what stops a request reaching the wrong machine about an id that machine also uses - herdr numbers panes per session, so the devenv has a w1:p1 of its own and would act on it without complaint. Nothing here becomes a refusal naming the pane, which is the honest answer to a name this daemon has never had.",
+      "given": { "seed": 1, "do": [{ "see": "local/w1:p1" }, { "resolve": "devenv/p1w3r07bsd" }] },
+      "expect": {
+        "trace": ["p1w3r07bsd", "(nothing)"],
+        "located": { "p1w3r07bsd": "local/w1:p1" }
+      }
+    },
+    {
+      "name": "a name that was never minted resolves to nothing",
+      "why": "The ordinary case for a pane that has closed, and the one a CLI meets whenever somebody pastes a name out of an old log. Refused rather than passed through to the daemon, because herdr ignores a pane id it does not recognize and acts on whatever it has focused - so a name sent hopefully would split some innocent pane and report success.",
+      "given": { "seed": 1, "do": [{ "resolve": "local/p1w3r07bsd" }] },
+      "expect": { "trace": ["(nothing)"], "located": {} }
+    },
+    {
+      "name": "the backend mint resolves a name it has never seen to itself",
+      "why": "Under this mint a name *is* an id, so the mapping is the identity in both directions and a pane nothing has witnessed still resolves. That is what lets every case in backend-intent.json pin the request Muster builds for w1:p1 without first walking an event that mentions it - and it is the half of the mint that would otherwise be defined only by which tests happened to pass.",
+      "given": { "mint": "backend", "do": [{ "resolve": "local/w1:p1" }] },
+      "expect": { "trace": ["w1:p1"], "located": {} }
+    },
+    {
       "name": "the backend mint calls a pane what the backend calls it",
       "why": "Every other corpus in this directory runs the registry this way, so a case pinning what the mirror does with w1:p1 is testing the mirror rather than the mint. Defined here so that mode is a stated behaviour rather than a convenience nobody wrote down. It gives up the one property a minted name has and a backend id does not - uniqueness across daemons - which is why it is a mint for cases about something else and never one Muster runs in.",
       "given": {

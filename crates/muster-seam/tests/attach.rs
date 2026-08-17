@@ -66,7 +66,7 @@ fn attaching_places_a_pane_where_the_keyboard_can_find_it() {
         "a refusal a user reads should not hand them the backend's CLI: {reason}"
     );
 
-    let one = attach(&first);
+    let one = attach(&named("first"));
     assert!(
         std::path::Path::new(&one.control_socket_path).exists(),
         "the bridge's socket is bound before attach returns, and {} is not there",
@@ -75,7 +75,7 @@ fn attaching_places_a_pane_where_the_keyboard_can_find_it() {
     // A second pane in the same tab. Two things are being asserted at once because they are
     // the same mistake: a socket per process rather than per pane would hand back the path
     // it already gave out, and one bridge would be talking for both panes.
-    let two = attach(&second);
+    let two = attach(&named("second"));
     assert_ne!(
         one.control_socket_path, two.control_socket_path,
         "each pane dials the core on its own socket, and both panes were given one path"
@@ -87,8 +87,8 @@ fn attaching_places_a_pane_where_the_keyboard_can_find_it() {
     // window opened onto running work is exactly when the states have to be right.
     until(
         "the working agent that predates this window to reach the shell",
-        || latest_state(&first).as_deref() == Some("working"),
-        || format!("the core last said {:?} about {first}", latest_state(&first)),
+        || latest_state(&named("first")).as_deref() == Some("working"),
+        || format!("the core last said {:?} about {first}", latest_state(&named("first"))),
     );
 
     // And the one that finished before this window existed is still asking for somebody.
@@ -97,8 +97,8 @@ fn attaching_places_a_pane_where_the_keyboard_can_find_it() {
     // failure this whole thing exists to prevent, arrived at from the other side.
     until(
         "the agent that finished before this window to still be waiting",
-        || latest_state(&finished).as_deref() == Some("done"),
-        || format!("the core last said {:?} about {finished}", latest_state(&finished)),
+        || latest_state(&named("finished")).as_deref() == Some("done"),
+        || format!("the core last said {:?} about {finished}", latest_state(&named("finished"))),
     );
 
     // The keyboard follows the pane just attached, which is the whole of composition doing
@@ -149,9 +149,11 @@ fn attaching_places_a_pane_where_the_keyboard_can_find_it() {
          as well as, or instead of, {second}"
     );
 
-    an_agent_finishing_unseen_waits_to_be_noticed(&daemon, &second);
+    // Both spellings, because these reach both sides: what Muster calls a pane for the
+    // requests, and what the daemon calls it for the oracles.
+    an_agent_finishing_unseen_waits_to_be_noticed(&daemon, &second, &named("second"));
     a_pane_no_region_shows_can_still_be_reached(&daemon);
-    the_window_follows_and_drives_the_tree(&daemon, &second);
+    the_window_follows_and_drives_the_tree(&daemon, &second, &named("second"));
     a_new_tab_is_made_and_then_shown(&daemon);
     // Last, because it empties the session this whole test was built on.
     an_emptied_window_can_be_refilled(&daemon);
@@ -255,7 +257,9 @@ fn tab_count(daemon: &Daemon) -> usize {
 /// open onto panes whose agents have been running for a while. Everything here happens before
 /// the core starts watching, so nothing below is explained by a transition it saw.
 ///
-/// Returns two panes in one tab and one that finished in another.
+/// Returns two panes in one tab and one that finished in another, by the ids *this daemon*
+/// knows them by - which is what the raw calls below and every oracle in this file want. What
+/// Muster calls the same panes is minted when it first sees them and read back with [`named`].
 fn a_session_with_work_already_in_it(daemon: &Daemon) -> (String, String, String) {
     daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "attach", "focus": true }));
     let first = only_pane(daemon);
@@ -290,6 +294,14 @@ fn a_session_with_work_already_in_it(daemon: &Daemon) -> (String, String, String
         || format!("herdr says {:?} about {finished}", agent_status(daemon, &finished)),
     );
 
+    // Named so this test can find them again: Muster mints its own name for every pane and
+    // nothing here can predict it. Before startup, because herdr announces a rename to nobody
+    // and the bootstrap snapshot is the only thing carrying one
+    // (`observations/herdr-0.8.0.md` section 16).
+    for (pane, given) in [(&first, "first"), (&second, "second"), (&finished, "finished")] {
+        daemon.call("pane.rename", &json!({ "pane_id": pane, "label": given }));
+    }
+
     (first, second, finished)
 }
 
@@ -301,30 +313,18 @@ fn a_session_with_work_already_in_it(daemon: &Daemon) -> (String, String, String
 /// such a pane was refused by name - which is a list of things you cannot reach.
 fn a_pane_no_region_shows_can_still_be_reached(daemon: &Daemon) {
     let before = latest_view().expect("the window is showing something by now");
-    let shown: Vec<String> = before.regions.iter().map(|region| region.tab_id.clone()).collect();
-
-    let created = daemon.call("tab.create", &json!({ "cwd": "/tmp" }));
-    let elsewhere = daemon
-        .call("pane.list", &json!({}))
-        .get("panes")
-        .and_then(Value::as_array)
-        .expect("herdr lists its panes")
-        .iter()
-        .find(|pane| {
-            pane["tab_id"].as_str().is_some_and(|tab| !shown.iter().any(|shown| shown == tab))
-        })
-        .and_then(|pane| pane["pane_id"].as_str())
-        .unwrap_or_else(|| panic!("the new tab holds no pane of its own: {created:?}"))
-        .to_string();
+    daemon.call("tab.create", &json!({ "cwd": "/tmp" }));
 
     // Listed, and listed as hidden - which is the row the sidebar would draw and the state
     // this whole check is about. Waited for on the list rather than on the view, because the
-    // view is the one place this pane will never appear until something surfaces it.
+    // view is the one place this pane will never appear until something surfaces it. It is
+    // also where its Muster name is: nothing below wants the daemon's id for it.
     until(
         "the new tab's pane to be listed as something nothing is showing",
-        || listed(&elsewhere) == Some(false),
-        || format!("the list says {:?} about {elsewhere}", listed(&elsewhere)),
+        || hidden_pane().is_some(),
+        || format!("the list holds {:?}", roster_rows()),
     );
+    let elsewhere = hidden_pane().expect("the wait above returned because there was one");
 
     assert_ok(&answer(request::Payload::FocusPane(FocusPane {
         daemon_id: String::new(),
@@ -375,11 +375,11 @@ fn a_pane_no_region_shows_can_still_be_reached(daemon: &Daemon) {
 /// The settling assertion is the one that cannot pass by accident. herdr never revises its
 /// answer when a Muster window gains focus, because it cannot see that happen at all, so a
 /// core relaying the daemon would leave this `done` forever.
-fn an_agent_finishing_unseen_waits_to_be_noticed(daemon: &Daemon, pane: &str) {
+fn an_agent_finishing_unseen_waits_to_be_noticed(daemon: &Daemon, backend: &str, pane: &str) {
     let report = |state: &str| {
         daemon.call(
             "pane.report_agent",
-            &json!({ "pane_id": pane, "agent": "probe", "source": "probe", "state": state }),
+            &json!({ "pane_id": backend, "agent": "probe", "source": "probe", "state": state }),
         );
     };
 
@@ -411,7 +411,7 @@ fn an_agent_finishing_unseen_waits_to_be_noticed(daemon: &Daemon, pane: &str) {
 ///
 /// Its own function because the test above had grown into three things; still one test,
 /// because the seam holds the session in a process global and a second one would race it.
-fn the_window_follows_and_drives_the_tree(daemon: &Daemon, second: &str) {
+fn the_window_follows_and_drives_the_tree(daemon: &Daemon, backend: &str, second: &str) {
     // Both panes in one region, because a region shows a tab and both panes are in it. A
     // second region here would mean attaching a pane opened a second copy of its tab.
     //
@@ -432,7 +432,7 @@ fn the_window_follows_and_drives_the_tree(daemon: &Daemon, second: &str) {
     // point twice over: the view follows the daemon rather than Muster's own record of what
     // it did, and the pane it grew gets a channel although nobody attached to it. Without
     // that, a shell rendering a surface per leaf would build one it can never type into.
-    daemon.call("pane.split", &json!({ "target_pane_id": second, "direction": "right" }));
+    daemon.call("pane.split", &json!({ "target_pane_id": backend, "direction": "right" }));
     until(
         "a third leaf, with a socket of its own, to reach the window",
         || settled(3).is_some(),
@@ -582,6 +582,60 @@ fn listed(pane: &str) -> Option<bool> {
         .flat_map(|tab| tab.panes.iter())
         .find(|row| row.pane_id == pane)
         .map(|row| row.on_screen)
+}
+
+/// What Muster calls the pane somebody named `given`, once the core has said.
+///
+/// The roster rather than the view, because it lists every pane on every daemon - including one
+/// in a tab no region is showing, which is exactly the pane this test has to be able to reach.
+/// Correlated on the given name because that is the only thing about a pane that both this test
+/// and the core know: the ids they each use are the two spellings this whole mechanism keeps
+/// apart.
+fn named(given: &str) -> String {
+    until(
+        &format!("the core to list a pane called {given}"),
+        || roster_rows().iter().any(|(name, _)| name == given),
+        || format!("the core listed {:?}", roster_rows()),
+    );
+    roster_rows()
+        .into_iter()
+        .find_map(|(name, pane)| (name == given).then_some(pane))
+        .expect("the wait above returned because a row named it")
+}
+
+/// The one listed pane no region is showing, or nothing while every pane is on screen.
+fn hidden_pane() -> Option<String> {
+    let hidden: Vec<String> = listed_panes()
+        .into_iter()
+        .filter_map(|(pane, on_screen)| (!on_screen).then_some(pane))
+        .collect();
+    match hidden.as_slice() {
+        [only] => Some(only.clone()),
+        _ => None,
+    }
+}
+
+/// Every listed pane, as the name somebody gave it and the name Muster minted for it.
+fn roster_rows() -> Vec<(String, String)> {
+    rows(|row| (row.given_name.clone(), row.pane_id.clone()))
+}
+
+/// Every listed pane, as Muster's name for it and whether a region is showing it.
+fn listed_panes() -> Vec<(String, bool)> {
+    rows(|row| (row.pane_id.clone(), row.on_screen))
+}
+
+fn rows<T>(read: impl Fn(&muster::proto::RosterPane) -> T) -> Vec<T> {
+    ROSTER
+        .lock()
+        .expect("a panicking reader poisoned the roster")
+        .as_ref()
+        .into_iter()
+        .flat_map(|roster| roster.daemons.iter())
+        .flat_map(|daemon| daemon.tabs.iter())
+        .flat_map(|tab| tab.panes.iter())
+        .map(read)
+        .collect()
 }
 
 /// The last thing the core said about this pane's agent, if it has said anything.

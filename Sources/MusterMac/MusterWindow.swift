@@ -290,10 +290,10 @@ public final class MusterWindow: NSObject {
 
   private func make(regionID: String) -> RegionView {
     let region = RegionView(frame: strip.bounds) {
-      [weak self] daemonID, transport, backendSocket, chrome, socketPath in
+      [weak self] daemonID, transport, backendSocket, chrome, pane in
       self?.start(
         chrome, daemonID: daemonID, transport: transport, backendSocket: backendSocket,
-        socketPath: socketPath)
+        pane: pane)
     }
     strip.addSubview(region)
     regions[regionID] = region
@@ -303,13 +303,13 @@ public final class MusterWindow: NSObject {
   /// Gives a pane's chrome a surface, and starts the bridge that paints it.
   private func start(
     _ chrome: PaneChrome, daemonID: String,
-    transport: WindowContents.Region.Transport?, backendSocket: String?, socketPath: String?
+    transport: WindowContents.Region.Transport?, backendSocket: String?, pane: PaneTree.Leaf
   ) {
     guard let paneID = chrome.paneID else { return }
     if let state = states[PaneKey(daemon: daemonID, pane: paneID)] {
       chrome.apply(paneID: paneID, state: state)
     }
-    guard let socketPath else {
+    guard let socketPath = pane.controlSocketPath else {
       // No channel is open for this pane yet, and a bridge started against nothing would
       // paint and then swallow every keystroke. The core opens one and republishes, and the
       // surface is built on that pass instead.
@@ -333,7 +333,7 @@ public final class MusterWindow: NSObject {
     start(
       chrome,
       command: PaneCommand.bridge(
-        executable: executable, paneID: paneID, controlSocketPath: socketPath,
+        executable: executable, paneID: pane.backendPaneID, controlSocketPath: socketPath,
         herdrSocketPath: backendSocket,
         sshHost: transport?.sshHost, sshControlPath: transport?.sshControlPath),
       typeable: true)

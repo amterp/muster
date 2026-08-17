@@ -27,13 +27,14 @@
 //! somebody else's work.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use flexid::{Alphabet, Generator, OsRandom, RandomError, RandomSource};
 
 use crate::composition::DaemonId;
-use crate::diagnostics::monotonic_now;
+use crate::diagnostics::{monotonic_now, poison};
+use crate::intent::Refusal;
 use crate::mirror::backend::PaneId;
 
 /// What a backend calls a pane.
@@ -239,6 +240,14 @@ pub struct PaneNames {
     reserved: BTreeSet<PaneId>,
 }
 
+impl Default for PaneNames {
+    /// A registry that mints, which is the only mint a running Muster has any business in.
+    /// The other two are chosen explicitly, by a test or by a conformance driver.
+    fn default() -> PaneNames {
+        PaneNames::new(Mint::Drawn)
+    }
+}
+
 impl PaneNames {
     pub fn new(mint: Mint) -> PaneNames {
         PaneNames {
@@ -301,11 +310,19 @@ impl PaneNames {
     }
 
     /// What this daemon calls the pane Muster calls `name`.
-    pub fn backend(&self, daemon: &DaemonId, name: &PaneId) -> Option<&BackendPaneId> {
-        self.located
-            .get(name)
-            .filter(|located| &located.daemon == daemon)
-            .map(|located| &located.backend)
+    ///
+    /// Scoped to one daemon on purpose: a name belonging to the devenv resolves to nothing
+    /// when the laptop is asked, which is what stops a request going out to the wrong machine
+    /// about an id that machine happens to also use.
+    pub fn backend(&self, daemon: &DaemonId, name: &PaneId) -> Option<BackendPaneId> {
+        if let Some(located) = self.located.get(name).filter(|located| &located.daemon == daemon) {
+            return Some(located.backend.clone());
+        }
+        // Under the backend mint a name *is* an id, so the mapping is the identity in both
+        // directions and a pane nothing has seen yet still resolves. That is what lets a
+        // conformance case pin the request Muster builds for `w1:p1` without first walking an
+        // event that mentions it.
+        matches!(self.mint, Mint::Backend).then(|| BackendPaneId::new(name.as_str()))
     }
 
     /// Forgets the panes a daemon no longer holds.
@@ -351,6 +368,76 @@ impl PaneNames {
         // Sixty-four collisions in a row is not a state to recover from, and inventing a name
         // that is already in use would hand one pane's keystrokes to another.
         panic!("could not draw a pane name nothing else answers to after 64 tries");
+    }
+}
+
+/// The registry as one daemon's adapter sees it: shared, and scoped to that daemon.
+///
+/// One registry serves every attached machine, because a name has to be unique across all of
+/// them - but each adapter only translates its own daemon's ids, so the daemon is carried here
+/// rather than repeated at twenty call sites. Cloning shares the registry.
+///
+/// Locked because two threads mint: a daemon's events are decoded on the subscription thread
+/// and its requests are built on whichever thread dispatched them.
+#[derive(Debug, Clone)]
+pub struct Names {
+    daemon: DaemonId,
+    panes: Arc<Mutex<PaneNames>>,
+}
+
+impl Names {
+    pub fn new(daemon: DaemonId, panes: Arc<Mutex<PaneNames>>) -> Names {
+        Names { daemon, panes }
+    }
+
+    /// A registry of its own, for a caller that has no session to share one with.
+    ///
+    /// What the conformance drivers translate through, under [`Mint::Backend`], so that a case
+    /// pinning what the mirror does with `w1:p1` says `w1:p1` and is testing the mirror.
+    pub fn alone(daemon: &str, mint: Mint) -> Names {
+        Names::new(DaemonId::new(daemon), Arc::new(Mutex::new(PaneNames::new(mint))))
+    }
+
+    /// What Muster calls this pane of this daemon's, naming it now if nobody has.
+    pub fn name(&self, backend: &str) -> PaneId {
+        self.locked().name(&self.daemon, &BackendPaneId::new(backend))
+    }
+
+    /// What this daemon calls the pane Muster calls `name`, or why it cannot say.
+    ///
+    /// A refusal rather than the name passed through, because herdr ignores a `target_pane_id`
+    /// it does not recognize and splits whatever it has focused instead - so a name sent
+    /// hopefully would land a pane in an arbitrary place and report success. `NotThere` is the
+    /// same answer the daemon gives for a pane it has dropped, and means the same thing here:
+    /// whoever said this name is talking about something that is not there.
+    pub fn backend(&self, name: &PaneId) -> Result<BackendPaneId, Refusal> {
+        self.locked()
+            .backend(&self.daemon, name)
+            .ok_or_else(|| Refusal::NotThere(format!("no pane called {name} on {}", self.daemon)))
+    }
+
+    /// A name for a pane this daemon is about to be asked to make.
+    pub fn reserve(&self) -> PaneId {
+        self.locked().reserve()
+    }
+
+    /// Says which of this daemon's panes a reserved name turned out to be.
+    pub fn settle(&self, name: &PaneId, backend: &str) {
+        self.locked().settle(name, &self.daemon, &BackendPaneId::new(backend));
+    }
+
+    /// Gives back a name whose pane the daemon never made.
+    pub fn release(&self, name: &PaneId) {
+        self.locked().release(name);
+    }
+
+    /// Forgets the names of panes this daemon no longer holds.
+    pub fn prune(&self, held: impl IntoIterator<Item = BackendPaneId>) {
+        self.locked().prune(&self.daemon, &held.into_iter().collect());
+    }
+
+    fn locked(&self) -> MutexGuard<'_, PaneNames> {
+        poison::lock(&self.panes, "pane-names")
     }
 }
 

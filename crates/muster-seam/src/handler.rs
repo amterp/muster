@@ -376,10 +376,6 @@ fn with_pane(what: &str, act: impl FnOnce(&AttachedPane) -> Response) -> Respons
 /// the common caller. A click sends both, having read them off the view it was rendered
 /// from; a CLI that names a pane gets the pane it named.
 fn act(daemon_id: &str, pane_id: &str, build: impl FnOnce(PaneId) -> BackendIntent) -> Response {
-    let daemon = match resolve_daemon(daemon_id) {
-        Ok(daemon) => daemon,
-        Err(refusal) => return refusal,
-    };
     let pane = if pane_id.is_empty() {
         match session::focused_pane() {
             Some(pane) => pane,
@@ -393,6 +389,17 @@ fn act(daemon_id: &str, pane_id: &str, build: impl FnOnce(PaneId) -> BackendInte
         }
     } else {
         PaneId::new(pane_id)
+    };
+    // The daemon comes from the pane when a request named one and no daemon. A pane name is
+    // Muster's own and unique across every attached machine, so it already says which - and
+    // asking a caller to name the machine too would mean a CLI could not reach a devenv pane
+    // without first working out where it lives.
+    let daemon = match session::daemon_holding(&pane) {
+        Some(daemon) if daemon_id.is_empty() => daemon,
+        _ => match resolve_daemon(daemon_id) {
+            Ok(daemon) => daemon,
+            Err(refusal) => return refusal,
+        },
     };
     submit(&daemon, &build(pane))
 }
@@ -792,6 +799,7 @@ fn attach_pane(pane_id: &str) -> Response {
         Ok(pane) => Response {
             payload: Some(response::Payload::Attached(proto::Attached {
                 control_socket_path: pane.control_socket_path.clone(),
+                backend_pane_id: pane.backend_pane_id.clone(),
             })),
         },
         Err(AttachError::Unreachable(detail)) => Response::failure(format!(

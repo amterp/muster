@@ -2,6 +2,7 @@
 //! live in corpus/conformance/backend-snapshot.json.
 
 use conformance::{Conformance, fields};
+use muster_core::names::{Mint, Names};
 use muster_herdr::snapshot::read_snapshot;
 use serde_json::{Map, Value, json};
 
@@ -10,7 +11,8 @@ fn backend_snapshot_conformance() {
     let corpus = Conformance::load("backend-snapshot.json");
 
     let ran = corpus.run(|given| {
-        let (snapshot, dropped) = read_snapshot(given.get("snapshot").unwrap_or(&Value::Null));
+        let (snapshot, dropped) =
+            read_snapshot(given.get("snapshot").unwrap_or(&Value::Null), &names());
 
         let mut agent_states = Map::new();
         let mut agents = Map::new();
@@ -70,4 +72,12 @@ fn backend_snapshot_conformance() {
 
     assert_eq!(ran, corpus.cases.len());
     assert!(ran > 0);
+}
+
+/// A registry whose name for a pane is the daemon's own id for it.
+///
+/// So a case here says `w1:p1` and is about the reading rather than about the mint, which has
+/// cases of its own in `corpus/conformance/pane-names.json`.
+fn names() -> Names {
+    Names::alone("local", Mint::Backend)
 }

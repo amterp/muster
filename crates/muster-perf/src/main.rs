@@ -22,6 +22,7 @@ use muster_core::mirror::backend::{
     WorkspaceId,
 };
 use muster_core::mirror::{BackendEvent, Mirror};
+use muster_core::names::{Mint, Names};
 use muster_core::roster::Roster;
 use muster_herdr::{EventDecoder, FrameDecoder, PaneControlChannel, PaneFrame, PaneStreamEvent};
 use muster_perf::{Baseline, Cost, compare, measure, pending, table, verdict};
@@ -162,14 +163,16 @@ fn view_cost() -> Cost {
     let daemon = DaemonId::new("local");
     measure("view.build", "ns/pane", BUDGETED_PANES * 200, 20, 5, || {
         for _ in 0..200 {
-            // The last closure is the daemon's transport, and it is local here: what this
-            // measures is building a view, not reaching a machine.
+            // The transport closure answers local here: what this measures is building a
+            // view, not reaching a machine. The two pane closures answer without a lookup for
+            // the same reason - a registry behind a lock would put its cost in this number.
             let view = View::of(
                 &composition,
                 |named| (named == &daemon).then_some(&mirror),
                 |_, pane| Some(pane.to_string()),
                 |_| None,
                 |_| Some("/tmp/herdr.sock".to_string()),
+                |_, pane| Some(pane.to_string()),
             );
             black_box(view.regions.len());
         }
@@ -418,7 +421,9 @@ fn bind_pane_socket(index: usize) -> Option<(Arc<PaneControlChannel>, PaneInput)
 /// decoder that feeds it is a separate cost that would otherwise be folded in silently.
 fn recorded_backend_events(path: &Path) -> Vec<BackendEvent> {
     let Ok(bytes) = std::fs::read(path) else { return Vec::new() };
-    EventDecoder::new().consume(&bytes)
+    // `Mint::Backend`, so decoding costs no draws: what this measures is the mirror's fold,
+    // and a minted name per pane would put a clock read and an entropy read inside it.
+    EventDecoder::new(Names::alone("local", Mint::Backend)).consume(&bytes)
 }
 
 /// One press, encoded the way the shell encodes one.

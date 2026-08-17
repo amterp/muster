@@ -12,17 +12,21 @@ use std::collections::BTreeSet;
 
 use muster_core::AgentState;
 use muster_core::mirror::BackendEvent;
-use muster_core::mirror::backend::{Pane, PaneId, Tab, TabId, Workspace, WorkspaceId};
+use muster_core::mirror::backend::{Pane, Tab, TabId, Workspace, WorkspaceId};
+use muster_core::names::Names;
 use serde_json::Value;
 
 use crate::layout::read_layout;
 
-/// Pure, and deliberately so.
+/// Pure, and deliberately so - apart from the one thing it cannot be.
 ///
-/// Holds two things across calls: the tail of a line that has not finished arriving, and
-/// the set of event names it has already reported as unrecognized.
-#[derive(Debug, Default)]
+/// Holds three things across calls: the tail of a line that has not finished arriving, the set
+/// of event names it has already reported as unrecognized, and this daemon's half of the name
+/// registry. The registry is here because a pane arriving on the stream for the first time is
+/// where a name gets minted, and the mirror above must never see herdr's own id.
+#[derive(Debug)]
 pub struct EventDecoder {
+    names: Names,
     pending: Vec<u8>,
     /// Every unknown name ever seen, so each is reported once. herdr defines 29 event
     /// kinds and Muster reads 13; the rest arrive on a subscription whether or not anyone
@@ -32,8 +36,13 @@ pub struct EventDecoder {
 }
 
 impl EventDecoder {
-    pub fn new() -> EventDecoder {
-        EventDecoder::default()
+    pub fn new(names: Names) -> EventDecoder {
+        EventDecoder {
+            names,
+            pending: Vec::new(),
+            unknown_seen: BTreeSet::new(),
+            unknown_pending: Vec::new(),
+        }
     }
 
     /// Feeds a chunk of stream and returns the events that completed inside it.
@@ -50,11 +59,11 @@ impl EventDecoder {
         //
         // Destructured so the borrow checker can see that reading the buffer and recording an
         // unknown name touch different fields.
-        let Self { pending, unknown_seen, unknown_pending } = self;
+        let Self { names, pending, unknown_seen, unknown_pending } = self;
         let mut read = 0;
         while let Some(offset) = pending[read..].iter().position(|byte| *byte == b'\n') {
             let line = read..read + offset;
-            match decode(&pending[line]) {
+            match decode(&pending[line], names) {
                 Decoded::Event(event) => events.push(event),
                 Decoded::Unknown(kind) => {
                     if unknown_seen.insert(kind.clone()) {
@@ -98,7 +107,7 @@ enum Decoded {
 /// the parameterized subscriptions answer with a different schema than the session-wide
 /// ones (`corpus/herdr-0.8.0/api-schema.json`, `subscription_event` versus `event`).
 /// `event` is required by both.
-fn decode(line: &[u8]) -> Decoded {
+fn decode(line: &[u8], names: &Names) -> Decoded {
     let Ok(envelope) = serde_json::from_slice::<Value>(line) else { return Decoded::Unreadable };
     let Some(kind) = envelope.get("event").and_then(Value::as_str) else {
         return Decoded::Unreadable;
@@ -128,13 +137,13 @@ fn decode(line: &[u8]) -> Decoded {
         }),
         "tab_closed" => id(data, "tab_id").map(|id| BackendEvent::TabRemoved(TabId::new(id))),
         "pane_created" | "pane_updated" => {
-            data.get("pane").and_then(read_pane).map(BackendEvent::PaneUpserted)
+            data.get("pane").and_then(|pane| read_pane(pane, names)).map(BackendEvent::PaneUpserted)
         }
         // Two names for one outcome. A pane whose program ended emits `pane_exited` and
         // never a `pane_closed` afterwards, so a mirror keyed on the latter alone renders
         // dead panes forever (`observations/herdr-0.8.0.md` section 10).
         "pane_closed" | "pane_exited" => {
-            id(data, "pane_id").map(|id| BackendEvent::PaneRemoved(PaneId::new(id)))
+            id(data, "pane_id").map(|id| BackendEvent::PaneRemoved(names.name(&id)))
         }
         // Both spellings, because they are the same fact from two schemas: the dotted one
         // is what a per-pane subscription answers with, the snake one is in the
@@ -144,13 +153,13 @@ fn decode(line: &[u8]) -> Decoded {
         // moves.
         "pane.agent_status_changed" | "pane_agent_status_changed" => {
             id(data, "pane_id").map(|pane| BackendEvent::AgentStateChanged {
-                pane: PaneId::new(pane),
+                pane: names.name(&pane),
                 state: AgentState::from_backend(text(data, "agent_status")),
             })
         }
         "pane_agent_detected" => id(data, "pane_id").and_then(|pane| {
             data.get("agent").and_then(Value::as_str).map(|agent| BackendEvent::AgentDetected {
-                pane: PaneId::new(pane),
+                pane: names.name(&pane),
                 agent: agent.to_string(),
             })
         }),
@@ -170,15 +179,16 @@ fn decode(line: &[u8]) -> Decoded {
         "pane_focused" => Some(BackendEvent::FocusMoved {
             workspace: id(data, "workspace_id").map(WorkspaceId::new),
             tab: None,
-            pane: id(data, "pane_id").map(PaneId::new),
+            pane: id(data, "pane_id").map(|pane| names.name(&pane)),
         }),
         // The whole tab, in absolute values, so applying it twice is applying it once. It
         // follows every pane change and no tab or workspace change, which is why the mirror
         // cascades a tab's tree itself rather than waiting to be told
         // (`observations/herdr-0.8.0.md` sections 10 and 13).
-        "layout_updated" => {
-            data.get("layout").and_then(read_layout).map(BackendEvent::LayoutUpserted)
-        }
+        "layout_updated" => data
+            .get("layout")
+            .and_then(|layout| read_layout(layout, names))
+            .map(BackendEvent::LayoutUpserted),
         // Recognized, and deliberately not read. Kept apart from the unknown set so that
         // set keeps meaning "herdr is sending something we have never seen", which is the
         // drift signal. These describe things the mirror does not model.
@@ -218,9 +228,9 @@ fn read_tab(value: &Value) -> Option<Tab> {
     })
 }
 
-fn read_pane(value: &Value) -> Option<Pane> {
+fn read_pane(value: &Value, names: &Names) -> Option<Pane> {
     Some(Pane {
-        id: PaneId::new(id(value, "pane_id")?),
+        id: names.name(&id(value, "pane_id")?),
         tab: TabId::new(id(value, "tab_id")?),
         workspace: WorkspaceId::new(id(value, "workspace_id")?),
         agent_state: AgentState::from_backend(text(value, "agent_status")),
