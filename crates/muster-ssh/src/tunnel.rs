@@ -132,6 +132,16 @@ impl Tunnel {
         &self.forward.local_socket
     }
 
+    /// The daemon's own socket, over there.
+    ///
+    /// Public for the one caller that runs on the far machine rather than on this one: a pane's
+    /// bridge starts a herdr CLI over the master, and that process needs the path as the far
+    /// side spells it. Everything else takes [`Tunnel::local_socket_path`] and never learns ssh
+    /// was involved.
+    pub fn remote_socket_path(&self) -> &str {
+        &self.forward.remote_socket
+    }
+
     /// The master's control socket, for a command that wants to ride this connection.
     pub fn control_path(&self) -> &str {
         &self.forward.control_path

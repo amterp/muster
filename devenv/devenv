@@ -2,11 +2,17 @@
 # Drive the devenv container: the Linux machine Muster's remote path talks to, and the
 # fixture the remote tests run against.
 #
-#   ./devenv/devenv up       build if needed, then start it
-#   ./devenv/devenv down     stop and remove it
-#   ./devenv/devenv ssh      shell in as dev
-#   ./devenv/devenv status   is it up, and does its daemon answer
-#   ./devenv/devenv rebuild  rebuild the image from scratch, then up
+#   ./devenv/devenv up              build and start it
+#   ./devenv/devenv down            stop and remove it
+#   ./devenv/devenv ssh             shell in as dev
+#   ./devenv/devenv status          is it up, and is there a daemon in it
+#   ./devenv/devenv install-daemon  put a herdr binary in it, for the corpus probe
+#   ./devenv/devenv rebuild         rebuild the image from scratch, then up
+#
+# Nothing here installs a daemon on its own. The image ships without one, because that
+# absence is what makes the remote tests test Muster's install path rather than its adopt
+# path. `install-daemon` exists for the corpus probe, which starts a herdr of its own
+# rather than going through Muster.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -53,7 +59,12 @@ build() {
 case "${1:-up}" in
     up)
         need_docker
-        docker image inspect "$IMAGE" >/dev/null 2>&1 || build
+        # Built every time rather than only when the image is missing. Docker's layer cache
+        # makes an unchanged build about a second, and the alternative was worse than slow:
+        # an edited Dockerfile did nothing at all until somebody thought to say `rebuild`,
+        # and a keypair generated in a second worktree produced a container that refused
+        # every login with no hint that a stale image was why.
+        build >/dev/null
         if [[ -n "$(docker ps -q -f "name=^${CONTAINER}$")" ]]; then
             echo "devenv already running on port $PORT"
             exit 0
@@ -85,10 +96,27 @@ case "${1:-up}" in
             exit 1
         fi
         echo "devenv: running on port $PORT"
-        ssh "${SSH_OPTS[@]}" dev@localhost 'herdr status server' || die \
-            "devenv is up but its herdr daemon does not answer." \
-            "  Impact: sessions cannot be created, so the remote path is untestable." \
-            "  Check 'docker exec $CONTAINER cat /home/dev/herdr-server.out'."
+        # What is reported is what is there, rather than what ought to be. An empty
+        # container is the correct state before Muster attaches, so a missing daemon is
+        # news rather than a failure.
+        if ssh "${SSH_OPTS[@]}" dev@localhost 'command -v herdr' >/dev/null 2>&1; then
+            ssh "${SSH_OPTS[@]}" dev@localhost 'herdr --version' | sed 's/^/devenv: /'
+        else
+            echo "devenv: no herdr on PATH - Muster installs its own under ~/.muster on attach"
+        fi
+        ssh "${SSH_OPTS[@]}" dev@localhost 'ls -d ~/.muster/herdr/*/herdr 2>/dev/null' \
+            | sed 's/^/devenv: installed by muster: /' || true
+        ;;
+    install-daemon)
+        need_docker
+        binary="${2:-}"
+        [[ -n "$binary" && -f "$binary" ]] || die \
+            "install-daemon needs the path to a Linux herdr binary." \
+            "  Impact: nothing was installed, so the corpus probe has no daemon to record against." \
+            "  ./dev --ssh fetches the pinned one from deps/herdr.pin and passes it here."
+        docker cp "$binary" "$CONTAINER:/usr/local/bin/herdr"
+        docker exec "$CONTAINER" chmod 0755 /usr/local/bin/herdr
+        echo "devenv: installed $(basename "$binary") at /usr/local/bin/herdr"
         ;;
     rebuild)
         need_docker
@@ -97,6 +125,6 @@ case "${1:-up}" in
         exec "$0" up
         ;;
     *)
-        die "unknown command: $1" "  Try: up | down | ssh | status | rebuild"
+        die "unknown command: $1" "  Try: up | down | ssh | status | install-daemon | rebuild"
         ;;
 esac

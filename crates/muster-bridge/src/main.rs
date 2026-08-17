@@ -20,6 +20,7 @@ use muster_core::diagnostics::log::{self, LogLevel};
 use muster_core::diagnostics::poison;
 use muster_core::fields;
 use muster_herdr::{ControlStreamMessage, FrameDecoder, PaneStreamEvent};
+use muster_ssh::quoted;
 
 const USAGE: &str = "\
 usage: muster-bridge <pane-id> [--control-socket <path>] [--herdr-socket <path>]
@@ -34,9 +35,12 @@ typed into.
 
 With --herdr-socket, asks that daemon for the frames rather than whichever one this
 process would find for itself. The app always says, because it runs a herdr of its own.
+With --via-ssh the path is the far machine's, since that is where the CLI runs.
 
 With --via-ssh, runs that command on another machine instead, over the ssh master the app
-already opened for the daemon's control plane. Frames are byte-identical either way.";
+already opened for the daemon's control plane. Frames are byte-identical either way. It
+prefers the herdr Muster installed there, at ~/.muster/bin/herdr, and falls back to
+whatever is on PATH.";
 
 /// herdr's stdin, which two threads write to: the resize watcher and the app's relay.
 type HerdrInput = Arc<Mutex<ChildStdin>>;
@@ -76,8 +80,9 @@ fn main() {
             );
             eprint!(
                 "muster-bridge: could not start herdr: {error}\n\
-                 This pane will render nothing. Check that herdr is on PATH - on {} - and \
-                 that the daemon there owns pane {}.\n\n",
+                 This pane will render nothing. Check that a herdr can be run on {} - \
+                 Muster installs its own under ~/.muster - and that the daemon there owns \
+                 pane {}.\n\n",
                 arguments.ssh.as_ref().map_or("this machine", |ssh| ssh.host.as_str()),
                 arguments.pane
             );
@@ -115,11 +120,14 @@ fn main() {
 struct Arguments {
     pane: String,
     control_socket: Option<String>,
-    /// Which daemon to ask for this pane's frames, when it is on this machine.
+    /// Which daemon to ask for this pane's frames.
     ///
     /// Handed over rather than discovered, because Muster runs its own herdr on a session of
     /// its own: a bridge that found a daemon for itself would find whichever one the user
     /// last started, not hold this pane, and end its stream before a single frame.
+    ///
+    /// Spelled the way the machine that will open it spells it, which is the far machine's
+    /// path when this bridge is running its CLI over ssh.
     herdr_socket: Option<String>,
     ssh: Option<Ssh>,
 }
@@ -172,8 +180,9 @@ impl Arguments {
 /// than reconnected, and batch mode is set for the same reason the app sets it - a pane that
 /// stopped to ask for a password would hang with nothing to type into.
 ///
-/// ssh joins everything after the destination and hands it to the far shell, so an argument
-/// with a space in it would come apart. Nothing here has one: a pane id and two numbers.
+/// ssh joins everything after the destination and hands it to the far shell, so the remote form
+/// is one shell script quoted whole rather than an argument vector - and the values inside it
+/// are quoted again, because that script is parsed a second time when it runs.
 fn spawn_herdr(arguments: &Arguments, columns: u16, rows: u16) -> Result<Child, String> {
     let mut command = match &arguments.ssh {
         None => {
@@ -185,22 +194,63 @@ fn spawn_herdr(arguments: &Arguments, columns: u16, rows: u16) -> Result<Child, 
             if let Some(socket) = &arguments.herdr_socket {
                 command.env("HERDR_SOCKET_PATH", socket);
             }
+            command.args(["terminal", "session", "control", &arguments.pane]).args([
+                "--cols",
+                &columns.to_string(),
+                "--rows",
+                &rows.to_string(),
+            ]);
             command
         }
         Some(ssh) => {
             let mut command = Command::new("ssh");
-            command.args(["-S", &ssh.control_path, "-o", "BatchMode=yes", &ssh.host, "herdr"]);
+            command.args([
+                "-S",
+                &ssh.control_path,
+                "-o",
+                "BatchMode=yes",
+                &ssh.host,
+                "sh",
+                "-c",
+                &quoted(&far_side_command(arguments, columns, rows)),
+            ]);
             command
         }
     };
     command
-        .args(["terminal", "session", "control", &arguments.pane])
-        .args(["--cols", &columns.to_string(), "--rows", &rows.to_string()])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
         .spawn()
         .map_err(|error| error.to_string())
+}
+
+/// The script that produces a remote pane's frames, run by the far machine's shell.
+///
+/// Two things it has to get right, and both are the same problem the local arm solves by being
+/// handed values it could not work out.
+///
+/// **Which herdr.** Muster puts its own on a machine it attaches to, at a path under that
+/// machine's home, and it is deliberately not on anybody's PATH - so a bare `herdr` finds
+/// whatever is installed there, and on a devenv set up the way Muster intends, finds nothing at
+/// all. This prefers Muster's own and falls back to the name, which is what a machine holding
+/// somebody else's daemon has. Preferring the pinned one is the same argument the local bridge
+/// makes for running the herdr beside itself: the frames on a pane's screen should be rendered
+/// by a daemon somebody pinned.
+///
+/// **Which daemon.** Muster's remote daemon listens on a herdr session of its own, exactly as
+/// the local one does, so the CLI has to be told rather than left to look - and told the path as
+/// the *far* side spells it, which is why the app now sends that rather than the near end of the
+/// tunnel.
+fn far_side_command(arguments: &Arguments, columns: u16, rows: u16) -> String {
+    let daemon = arguments.herdr_socket.as_ref().map_or_else(String::new, |socket| {
+        format!("export HERDR_SOCKET_PATH={}; ", quoted(socket))
+    });
+    format!(
+        "H=\"$HOME/.muster/bin/herdr\"; [ -x \"$H\" ] || H=herdr; {daemon}exec \"$H\" \
+         terminal session control {} --cols {columns} --rows {rows}",
+        quoted(&arguments.pane),
+    )
 }
 
 /// The herdr this Muster ships, which sits beside this binary.
@@ -403,5 +453,71 @@ impl Pump {
         // Nothing ever painted, so the attach itself failed. Non-zero because this is not a
         // session ending - it is a session that never started.
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn remotely(pane: &str, socket: Option<&str>) -> String {
+        let arguments = Arguments {
+            pane: pane.to_string(),
+            control_socket: None,
+            herdr_socket: socket.map(ToString::to_string),
+            ssh: Some(Ssh { host: "devenv".to_string(), control_path: "/tmp/c".to_string() }),
+        };
+        far_side_command(&arguments, 80, 24)
+    }
+
+    #[test]
+    fn a_remote_pane_prefers_the_herdr_muster_put_there() {
+        let script = remotely("p1w3r07bsd", Some("/home/dev/.config/herdr/s/herdr.sock"));
+        assert!(
+            script.starts_with(r#"H="$HOME/.muster/bin/herdr"; [ -x "$H" ] || H=herdr; "#),
+            "the script should try Muster's own first and fall back to the name: {script}"
+        );
+    }
+
+    #[test]
+    fn a_remote_pane_is_told_which_daemon_rather_than_looking() {
+        // The one that stops a remote pane rendering nothing: Muster's daemon listens on a
+        // session of its own over there too, so a CLI left to find one reaches nothing.
+        let script = remotely("p1w3r07bsd", Some("/home/dev/.config/herdr/s/herdr.sock"));
+        assert!(
+            script.contains("export HERDR_SOCKET_PATH='/home/dev/.config/herdr/s/herdr.sock'; "),
+            "the far side should be told the path as it spells it: {script}"
+        );
+        assert!(
+            script.ends_with(
+                r#"exec "$H" terminal session control 'p1w3r07bsd' --cols 80 --rows 24"#
+            ),
+            "and then run the pane's stream: {script}"
+        );
+    }
+
+    #[test]
+    fn a_daemon_nobody_named_a_socket_for_leaves_the_cli_to_find_it() {
+        let script = remotely("p1w3r07bsd", None);
+        assert!(!script.contains("HERDR_SOCKET_PATH"), "nothing to say: {script}");
+    }
+
+    #[test]
+    fn a_real_shell_reads_the_quoted_script_back_as_one_word() {
+        // The claim the remote arm rests on, checked against a shell rather than against a
+        // belief about escaping: ssh hands the far machine a command line, so the script has
+        // to survive one parse whole - including a home directory with a quote in it, which
+        // is the case hand-reasoning gets wrong.
+        let script = remotely("p1w3r07bsd", Some("/home/dev/it's/herdr.sock"));
+        let read = Command::new("/bin/sh")
+            .arg("-c")
+            .arg(format!("printf %s {}", quoted(&script)))
+            .output()
+            .expect("/bin/sh should run");
+        assert_eq!(
+            String::from_utf8_lossy(&read.stdout),
+            script,
+            "a shell should read back exactly what was quoted"
+        );
     }
 }

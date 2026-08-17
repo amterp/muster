@@ -556,6 +556,7 @@ dependencies = [
  "muster-core",
  "muster-herdr",
  "muster-seam",
+ "muster-ssh",
  "muster-vt",
  "prost",
  "serde_json",

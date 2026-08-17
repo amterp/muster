@@ -1,20 +1,20 @@
-//! A real ssh master to a real machine, forwarding a real daemon's socket.
+//! A real ssh master to a real machine, doing the three things this crate offers.
 //!
 //! Out of the default gate, and marked `#[ignore]` to keep it there: this needs the devenv
 //! container, which a contributor's machine cannot be assumed to have running
-//! (`docs/testing.md`, tiered by what a tier can reach). `./dev --ssh` brings the container
-//! up and runs it, and fails if it discovers none - an ignored test that nobody notices is
-//! the silently-skipped suite in a different costume.
+//! (`docs/testing.md`, tiered by what a tier can reach). `./dev --ssh` brings the container up
+//! and runs it, and fails if it discovers none - an ignored test that nobody notices is the
+//! silently-skipped suite in a different costume.
 //!
-//! What it proves is the one claim the whole remote arc rests on: a forwarded socket is a
-//! socket. Nothing here is herdr-shaped, and nothing herdr-shaped needs to change for a
-//! daemon to be on another machine.
+//! Nothing here is herdr-shaped and nothing here needs a daemon, which is the point: this crate
+//! is a child process, a path, and the promise that the path keeps working. What a daemon does
+//! once it is over there belongs to `muster-herdr`'s own devenv test.
+//!
+//! These write only under `/tmp` on the far machine, so they can run beside that one.
 
-use std::io::{Read, Write};
-use std::os::unix::net::UnixStream;
 use std::time::Duration;
 
-use muster_ssh::{Forward, Tunnel, remote_environment};
+use muster_ssh::{Forward, Tunnel};
 
 /// Where the container is, and how to reach it.
 ///
@@ -34,88 +34,91 @@ fn devenv() -> (String, Vec<String>) {
     (host, options)
 }
 
-#[test]
-#[ignore = "needs the devenv container; run through ./dev --ssh"]
-fn a_remote_daemon_answers_through_a_forwarded_socket() {
-    let (host, options) = devenv();
-
-    // Where the daemon is over there, worked out the way Muster works it out: ask the far end
-    // what its environment looks like and apply herdr's own rules to it. A hardcoded path
-    // here would pass while the code that matters was wrong.
-    let environment = remote_environment(&host, &options).expect("the devenv should answer ssh");
-    let remote = muster_herdr::discover_socket_path(&environment)
-        .expect("the container's environment should say where herdr keeps its socket");
-
-    let temporary = std::env::temp_dir();
-    let tunnel = Tunnel::open(Forward {
-        host: host.clone(),
-        options,
-        control_path: temporary.join("muster-devenv-test.ctl").to_string_lossy().into_owned(),
-        local_socket: temporary.join("muster-devenv-test.sock").to_string_lossy().into_owned(),
-        remote_socket: remote,
-    })
-    .expect("the tunnel should open");
-
-    // The whole claim, in one request: a plain unix socket client, speaking herdr's ordinary
-    // JSON, against a daemon on another machine. If this needs anything the local path does
-    // not, "local and remote in one window" costs more than the transport.
-    let answer =
-        ask(tunnel.local_socket_path(), r#"{"id":"t1","method":"session.snapshot","params":{}}"#);
-    assert!(
-        answer.contains("\"result\""),
-        "the forwarded socket should answer a snapshot, and said: {answer}"
-    );
-}
-
-#[test]
-#[ignore = "needs the devenv container; run through ./dev --ssh"]
-fn a_pane_s_frames_come_through_the_master() {
-    let (host, options) = devenv();
-    let environment = remote_environment(&host, &options).expect("the devenv should answer ssh");
-    let remote = muster_herdr::discover_socket_path(&environment)
-        .expect("the container's environment should say where herdr keeps its socket");
-
-    let temporary = std::env::temp_dir();
-    let tunnel = Tunnel::open(Forward {
-        host: host.clone(),
-        options: options.clone(),
-        control_path: temporary.join("muster-devenv-frames.ctl").to_string_lossy().into_owned(),
-        local_socket: temporary.join("muster-devenv-frames.sock").to_string_lossy().into_owned(),
-        remote_socket: remote,
-    })
-    .expect("the tunnel should open");
-
-    // The data plane cannot ride the forwarded socket - herdr publishes frames through its
-    // CLI rather than through a socket method - so a pane runs a command over the master
-    // instead. What this asserts is that the master accepts one, which is what makes a remote
-    // pane cost no handshake of its own.
-    let ran = std::process::Command::new("ssh")
-        .args(["-S", tunnel.control_path(), "-o", "BatchMode=yes", &host, "herdr", "--version"])
-        .output()
-        .expect("ssh should run");
-    assert!(
-        ran.status.success(),
-        "a command over the master should run, and said: {}",
-        String::from_utf8_lossy(&ran.stderr)
-    );
-    assert!(
-        String::from_utf8_lossy(&ran.stdout).contains("herdr"),
-        "the far end should have a herdr to run, and said: {}",
-        String::from_utf8_lossy(&ran.stdout)
-    );
-}
-
-/// One request, one answer, over a plain unix socket.
+/// A master with a forward that nothing is listening on at the far end.
 ///
-/// Hand-rolled rather than borrowed from the adapter, so that what is being judged is the
-/// socket rather than Muster's client: a test that used `HerdrClient` would pass if the
-/// client had learned to work around a forward that did not.
-fn ask(socket_path: &str, request: &str) -> String {
-    let mut stream = UnixStream::connect(socket_path).expect("the forwarded socket should accept");
-    stream.set_read_timeout(Some(Duration::from_secs(5))).expect("a timeout should be settable");
-    stream.write_all(format!("{request}\n").as_bytes()).expect("the request should go");
-    stream.shutdown(std::net::Shutdown::Write).expect("herdr waits for end-of-write");
-    let mut answer = String::new();
-    let _ = stream.read_to_string(&mut answer);
-    answer
+/// Which is the interesting case rather than a degenerate one: Muster opens the master before
+/// the daemon exists, so that everything afterwards can ask "does it answer" through the
+/// forwarded path instead of inventing a second way to probe.
+fn master(name: &str) -> Tunnel {
+    let (host, options) = devenv();
+    let temporary = std::env::temp_dir();
+    Tunnel::open(Forward {
+        host,
+        options,
+        control_path: temporary.join(format!("muster-devenv-{name}.ctl")).to_string_lossy().into(),
+        local_socket: temporary.join(format!("muster-devenv-{name}.sock")).to_string_lossy().into(),
+        remote_socket: format!("/tmp/muster-devenv-{name}-nothing.sock"),
+    })
+    .expect("the tunnel should open")
+}
+
+#[test]
+#[ignore = "needs the devenv container; run through ./dev --ssh"]
+fn a_master_forwards_a_socket_before_anything_is_listening_on_it() {
+    let tunnel = master("bind");
+    // The claim the attach order rests on. ssh binds the local end when it connects and reaches
+    // the far one per connection, so a daemon that does not exist yet costs nothing - and if
+    // that ever stopped being true, Muster would have to install its daemon over a second
+    // connection and this is where it would be noticed.
+    assert!(
+        std::path::Path::new(tunnel.local_socket_path()).exists(),
+        "the near end should be bound even though the far end names nothing"
+    );
+    // And it stays up rather than exiting, which `ExitOnForwardFailure` would have made it do
+    // if a missing far-end socket counted as a failed forward.
+    std::thread::sleep(Duration::from_millis(200));
+    assert!(tunnel.remote().run(&["true"]).is_ok(), "the master should still be carrying commands");
+}
+
+#[test]
+#[ignore = "needs the devenv container; run through ./dev --ssh"]
+fn a_command_rides_the_master_and_says_what_the_machine_is() {
+    let tunnel = master("platform");
+    let far = tunnel.remote();
+
+    let said = far.platform().expect("the far end should answer uname");
+    assert_eq!(said.system, "Linux", "the devenv is a Linux container");
+    assert!(
+        said.machine == "aarch64" || said.machine == "x86_64",
+        "and runs on one of the two architectures the pin carries, not {}",
+        said.machine
+    );
+
+    // A failing command comes back as a refusal carrying the far end's own words, rather than
+    // as an empty success. Muster decides whether a daemon is installed from an answer like
+    // this one, so a failure read as "no" would reinstall on every launch.
+    let refusal = far.run(&["false"]).expect_err("a command that fails should fail");
+    assert!(refusal.contains("false"), "the refusal should name what was run: {refusal}");
+}
+
+#[test]
+#[ignore = "needs the devenv container; run through ./dev --ssh"]
+fn a_file_arrives_whole_and_executable() {
+    let tunnel = master("place");
+    let far = tunnel.remote();
+    let path = "/tmp/muster-devenv place/hello";
+
+    // A path with a space in it, because that is the case the two layers of quoting exist for
+    // and the one that would otherwise fail on somebody's machine rather than here.
+    far.place(path, b"#!/bin/sh\necho placed\n", "0755").expect("the file should arrive");
+
+    let said = far
+        .shell(&format!("exec {}", muster_ssh::quoted(path)))
+        .expect("the placed file should be executable over there");
+    assert_eq!(said.trim(), "placed", "and should be the bytes that were sent");
+
+    // Nothing is left at the staging name, which is what makes an interrupted copy leave no
+    // path that looks like a finished install.
+    assert_eq!(
+        far.shell(&format!(
+            "ls {}.placing >/dev/null 2>&1 && echo yes || echo no",
+            muster_ssh::quoted(path)
+        ))
+        .expect("the far end should answer")
+        .trim(),
+        "no",
+        "the staged name should have been renamed away"
+    );
+
+    let _ = far.shell("rm -rf '/tmp/muster-devenv place'");
 }

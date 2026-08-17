@@ -20,6 +20,7 @@ args:
     bundle bool    # Assemble muster.app around the built binary. Not in the gate.
     contract bool  # Run the app against a real herdr. Needs a GUI session; not in the gate.
     ssh bool       # Run the remote tier against the devenv container. Needs docker; not in the gate.
+    corpus_linux bool  # Diff the recorded corpus against the container's Linux daemon. Docker and python3 only.
     perf bool      # Measure the per-unit budgets against perf/baseline.json. Not in the gate.
     record bool    # With --perf, record this run as the new baseline instead of judging it.
     latency bool   # Time input-to-glyph against a real herdr. Needs a daemon; not in the gate.
@@ -92,13 +93,22 @@ fn fail_perf(stdout, stderr, code):
     print_err("  ./dev --perf --record")
     exit(1)
 
-// The remote tier: a real ssh master to a real machine running a real daemon.
+// The remote tier: a real ssh master to a real machine that starts out with nothing on it.
 //
 // Out of the gate because it needs docker and a container, which is the same line the
 // contract tier sits on - not because it is slow or flaky (docs/testing.md, tiered by what
 // a tier can reach). The container is the devenv, so what gets tested and what gets
 // developed against are one artifact.
+//
+// The order matters and is the point. Muster installs its own daemon on a machine it
+// attaches to, so the Rust tests run first, against a container carrying no herdr at all -
+// which is what a person setting one up actually has. Only afterwards is a daemon dropped in
+// for the corpus probe, which starts one of its own rather than going through Muster.
 fn run_ssh_tier():
+    // Recreated rather than reused, and that is the point rather than tidiness: the fixture
+    // these tests need is a machine with no daemon on it, and a container left from an earlier
+    // run has one - put there by the corpus half of this very tier.
+    $`./devenv/devenv down`
     $`./devenv/devenv up` catch:
         print_err(red("The devenv container would not start, so the remote tier ran nothing."))
         print_err("Impact: 'local and remote in one window' is unverified by this run.")
@@ -114,30 +124,74 @@ fn run_ssh_tier():
     // time it is rebuilt, so pinning its host key would mean editing a file per rebuild.
     options = "-p 2222 -i {key} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 
-    stdout = $`MUSTER_DEVENV_HOST=dev@localhost MUSTER_DEVENV_SSH_OPTIONS={options} cargo test --workspace -- --ignored --list`
+    version = pinned_version()
+    cache_root = container_cache(root, version)[1]
+
+    // Handed to the tests as a cache Muster would have filled itself, so that the tier proves
+    // the install over ssh and still reaches nothing. `./dev` is the one thing in this repo
+    // that downloads anything, and this keeps it that way.
+    passed = "MUSTER_DEVENV_HOST=dev@localhost MUSTER_DEVENV_SSH_OPTIONS={options} MUSTER_DEVENV_CACHE={cache_root}"
+
+    stdout = $`{passed} cargo test --workspace -- --ignored --list`
     names = stdout.split("\n").filter(fn(line) line.ends_with(": test"))
     if len(names) == 0:
         print_err(red("The remote tier discovered no tests."))
         print_err("An empty tier passes, so this is a failure rather than a green run.")
-        print_err("Check that the #[ignore] tests in crates/muster-ssh/tests/ still exist.")
+        print_err("Check that the #[ignore] tests in crates/muster-ssh/tests/ and")
+        print_err("crates/muster-herdr/tests/devenv.rs still exist.")
         exit(1)
     print(dim("{len(names)} remote test(s) discovered"))
 
-    $`MUSTER_DEVENV_HOST=dev@localhost MUSTER_DEVENV_SSH_OPTIONS={options} cargo test --workspace -- --ignored`
+    $`{passed} cargo test --workspace -- --ignored`
 
-    // The other half of the tier, and the one that catches an upgrade rather than a bug:
-    // run the recorded scenarios against the container's Linux daemon and diff what it did
-    // against what the macOS one did. Recorded into a scratch directory rather than over
-    // corpus/herdr-<version>-linux, because a check that rewrites its own oracle can only
-    // ever pass. Re-recording the checked-in one is a deliberate step, taken when herdr is
-    // re-pinned (tools/herdr-probe/probe --remote).
-    pin = read_file(HERDR_PIN) catch:
-        print_err(red("{HERDR_PIN} is missing, so there is no corpus to compare against."))
+    run_linux_corpus_diff(root, version)
+
+// The pinned daemon built for the container rather than for this machine, on this machine.
+//
+// Not deps/herdr/<version>/herdr - that one is this laptop's, and the container is Linux.
+// Two things want this, and both want it here: the tests want a cache Muster can install
+// from without reaching the network, and the corpus probe wants a binary to put in the
+// container, because it starts a daemon of its own rather than going through Muster.
+//
+// Which asset is asked of the container rather than assumed. Docker runs the image for the
+// host's architecture, and a tier that guessed would fail as a binary that will not exec.
+fn container_cache(root, version):
+    stdout = $`./devenv/devenv ssh uname -m`
+    machine = stdout.trim()
+    arch = machine == "arm64" or machine == "aarch64" ? "aarch64" : "x86_64"
+    asset = "herdr-linux-{arch}"
+
+    // The layout Muster's own cache uses, because that is what the tests hand to it. Under
+    // deps/ so it survives between runs and is gitignored with everything else there.
+    cache_root = "{root}/deps/herdr-cache"
+    cached = "{cache_root}/herdr/{version}/{asset}/herdr"
+    want = pinned_checksum(asset)
+    if not get_path(cached).exists:
+        fetch_herdr(version, asset, cached)
+    verify_herdr_checksum(want, cached)
+    return [cached, cache_root]
+
+// Replay the recorded scenarios against the container's Linux daemon and diff what it did
+// against what the macOS one did.
+//
+// The half of the remote work that catches an upgrade rather than a bug, and the only half
+// that needs no Rust, Swift or Zig - which is why it is a function rather than inline, and
+// why `--corpus-linux` can run it alone on a Linux runner.
+//
+// The daemon goes in here rather than in the image, and last rather than first: the image
+// ships without one so that Muster's own install path is what the tests meet, and the probe
+// starts a herdr of its own rather than going through Muster.
+//
+// Recorded into a scratch directory rather than over corpus/herdr-<version>-linux, because a
+// check that rewrites its own oracle can only ever pass. Re-recording the checked-in one is a
+// deliberate step, taken when herdr is re-pinned (tools/herdr-probe/probe --remote).
+fn run_linux_corpus_diff(root, version):
+    cached = container_cache(root, version)[0]
+    $`./devenv/devenv install-daemon {cached}` catch:
+        print_err(red("The pinned Linux herdr could not be put in the devenv container."))
+        print_err("Impact: the corpus diff has no daemon to record against, so a herdr")
+        print_err("re-pin that changes Linux behaviour would go unnoticed.")
         exit(1)
-    pinned = parse_json(pin.content) catch:
-        print_err(red("{HERDR_PIN} is not valid JSON, so there is no corpus to compare against."))
-        exit(1)
-    version = pinned.version
 
     scratch = "/tmp/muster-linux-corpus"
     $`rm -rf {scratch}`
@@ -155,6 +209,21 @@ fn run_ssh_tier():
         print_err("The diff above says what; docs/observations/herdr-{version}.md")
         print_err("section 8 is where the answer belongs once it is understood.")
         exit(1)
+
+// Just the corpus diff, against a container's daemon, with nothing else built.
+//
+// The cheapest second job there could be: docker and python3, no Rust, Swift or Zig - which
+// is what lets it run on a Linux runner and catch a herdr re-pin that changes behaviour on
+// one platform and not the other. `--ssh` runs this too, after its own tests.
+fn run_corpus_linux_tier():
+    $`./devenv/devenv up` catch:
+        print_err(red("The devenv container would not start, so the corpus diff ran nothing."))
+        print_err("Impact: a herdr re-pin that moved Linux behaviour would go unnoticed.")
+        print_err("Check that docker is running, then: ./devenv/devenv up")
+        exit(1)
+    stdout = $`pwd`
+    root = stdout.trim()
+    run_linux_corpus_diff(root, pinned_version())
 
 // The app finds its helpers beside its own executable - right for a shipped bundle, and
 // wrong for two build systems with two output directories and a downloaded daemon. Rather
@@ -379,6 +448,33 @@ fn generate_proto():
     $`{bin}/protoc --plugin=protoc-gen-swift={bin}/protoc-gen-swift --swift_out={PROTO_OUT} --proto_path=proto {PROTO}`
     write_file(PROTO_STAMP, proto_hash())
 
+// The herdr pin, read once per call. Two things want pieces of it and a third wants a whole
+// platform's asset, so reading it lives here rather than being inlined at each.
+fn read_herdr_pin():
+    pin = read_file(HERDR_PIN) catch:
+        print_err(red("{HERDR_PIN} is missing or unreadable."))
+        print_err("It names the herdr release the suite is judged against, so without it no")
+        print_err("daemon-backed test can run. Restore it from git.")
+        exit(1)
+    parsed = parse_json(pin.content) catch:
+        print_err(red("{HERDR_PIN} is not valid JSON, so the pinned herdr cannot be resolved."))
+        print_err("Restore it from git; it carries a version and a checksum per platform.")
+        exit(1)
+    return parsed
+
+fn pinned_version():
+    return read_herdr_pin().version
+
+fn pinned_checksum(asset):
+    checksums = read_herdr_pin().checksums
+    want = checksums[asset] catch:
+        print_err(red("{HERDR_PIN} has no checksum for {asset}."))
+        print_err("Impact: that platform has no pinned herdr, so no daemon-backed test can")
+        print_err("run against it and the suite cannot verify the backend adapter or mirror.")
+        print_err("Fix: download the asset, add its sha256 to the pin, and re-run.")
+        exit(1)
+    return want
+
 // herdr is consumed as a binary rather than as source - it publishes no library target -
 // so the suite reproduces one from a pin instead of asking what happens to be installed.
 //
@@ -389,17 +485,7 @@ fn generate_proto():
 //
 // Returns the path every daemon-backed test should run against.
 fn herdr_binary():
-    pin = read_file(HERDR_PIN) catch:
-        print_err(red("{HERDR_PIN} is missing or unreadable."))
-        print_err("It names the herdr release the suite is judged against, so without it no")
-        print_err("daemon-backed test can run. Restore it from git.")
-        exit(1)
-    pinned = parse_json(pin.content) catch:
-        print_err(red("{HERDR_PIN} is not valid JSON, so the pinned herdr cannot be resolved."))
-        print_err("Restore it from git; it carries a version and a checksum per platform.")
-        exit(1)
-
-    version = pinned.version
+    version = pinned_version()
     asset = herdr_asset_name()
     cached = "{HERDR_DIR}/{version}/herdr"
 
@@ -413,12 +499,7 @@ fn herdr_binary():
         print(dim("using MUSTER_HERDR={override} instead of the pinned build"))
         return get_path(override).full_path
 
-    want = pinned.checksums[asset] catch:
-        print_err(red("{HERDR_PIN} has no checksum for {asset}."))
-        print_err("Impact: this platform has no pinned herdr, so no daemon-backed test can")
-        print_err("run and the suite cannot verify the backend adapter or the mirror.")
-        print_err("Fix: download the asset, add its sha256 to the pin, and re-run.")
-        exit(1)
+    want = pinned_checksum(asset)
 
     if not get_path(cached).exists:
         fetch_herdr(version, asset, cached)
@@ -448,8 +529,12 @@ fn herdr_asset_name():
 
 fn fetch_herdr(version, asset, cached):
     url = "{HERDR_RELEASES}/v{version}/{asset}"
-    print(dim("fetching herdr {version} for this platform - about 18 MB, once"))
-    $`mkdir -p {HERDR_DIR}/{version}`
+    print(dim("fetching {asset} at {version} - about 18 MB, once"))
+    // The target's own directory rather than a fixed one: this fetches the daemon for the
+    // devenv container as well as the one for this machine, and those are kept apart.
+    parts = cached.split("/")
+    directory = join(parts[:-1], "/")
+    $`mkdir -p {directory}`
     // -f so an HTML error page never lands on disk looking like a binary.
     stdout, stderr, code = $`curl -fsSL -o {cached}.part {url}` catch:
         print_err(red("could not download herdr {version} from {url}"))
@@ -656,7 +741,7 @@ if proto:
 if bundle:
     build = true
 
-if not (deps or build or test or lint or format or clean or bundle or contract or ssh or perf or latency):
+if not (deps or build or test or lint or format or clean or bundle or contract or ssh or corpus_linux or perf or latency):
     deps = true
     build = true
     test = true
@@ -810,6 +895,10 @@ if contract:
 if ssh:
     announce("ssh")
     run_ssh_tier()
+
+if corpus_linux:
+    announce("corpus-linux")
+    run_corpus_linux_tier()
 
 if perf:
     announce("perf")

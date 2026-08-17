@@ -12,6 +12,7 @@ path = "src/main.rs"
 libc.workspace = true
 muster-core.workspace = true
 muster-herdr.workspace = true
+muster-ssh.workspace = true
 
 # The end-to-end input test lives here rather than beside the seam it drives, because
 # cargo only hands `CARGO_BIN_EXE_<name>` to tests in the package that owns the binary -

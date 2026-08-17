@@ -1,33 +1,13 @@
 #!/bin/sh
-# Bring up the daemon, then sshd in the foreground as PID 1.
+# sshd in the foreground as PID 1, and nothing else.
 #
-# herdr starts here rather than on first SSH login so that a client connecting over
-# SSH finds a daemon already holding sessions - which is the situation Muster's remote
-# path actually meets, and the one worth testing against.
+# No daemon is started here, because none is installed - Muster puts its own herdr on a
+# machine it attaches to, and a devenv that came with one running would test the adopt
+# path and never the install path. Whoever wants a daemon in here starts one: Muster
+# does it on attach, and the corpus probe does it over SSH.
 set -eu
 
 ssh-keygen -A
 
-# dev-owned so that a scenario restarting the daemon over SSH can append to the
-# same log the entrypoint wrote. A root-owned log makes that restart fail silently.
-LOG=/home/dev/herdr-server.out
-touch "$LOG" && chown dev:dev "$LOG"
-su dev -c "herdr server >>$LOG 2>&1" &
-
-# Wait for the socket rather than sleeping: a fixture that races its own daemon
-# produces flaky tests that look like Muster's fault.
-socket=/home/dev/.config/herdr/herdr.sock
-i=0
-while [ ! -S "$socket" ]; do
-    i=$((i + 1))
-    if [ "$i" -gt 100 ]; then
-        echo "herdr server did not create $socket within 10s." >&2
-        echo "  Impact: the container is up but the remote path has no daemon to talk to." >&2
-        echo "  Check $LOG for startup errors." >&2
-        exit 1
-    fi
-    sleep 0.1
-done
-
-echo "devenv ready: herdr $(su dev -c 'herdr --version') on $(uname -m)"
+echo "devenv ready on $(uname -m): sshd only, no daemon"
 exec /usr/sbin/sshd -D -e

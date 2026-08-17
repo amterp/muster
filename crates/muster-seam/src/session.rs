@@ -1257,10 +1257,16 @@ impl Session {
             },
             |daemon| {
                 let backend = self.backends.get(daemon)?;
-                // Only for a daemon on this machine. A remote one's socket path here is the
-                // near end of a tunnel, and the bridge that would use it runs its CLI on the
-                // far end, where that path names nothing at all.
-                backend.tunnel.is_none().then(|| backend.socket_path.clone())
+                // Whichever path the bridge's own CLI will be able to open, which is not the
+                // same path in both cases: a bridge for a local pane runs here and takes the
+                // socket as it is, and one for a remote pane runs its CLI on the far end,
+                // where the near end of a tunnel names nothing at all. Handed over rather
+                // than found either way, because Muster's daemon listens on a session of its
+                // own and a CLI left to look for itself reaches a different one.
+                match &backend.tunnel {
+                    Some(tunnel) => Some(tunnel.remote_socket_path().to_string()),
+                    None => Some(backend.socket_path.clone()),
+                }
             },
             |daemon, pane| {
                 let backend = self.backends.get(daemon)?;

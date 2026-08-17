@@ -4,13 +4,16 @@
 #
 # Build context is the repo root, because the fake agents come from
 # tools/herdr-probe/fake-agent - the same scripts the local probe drives.
+#
+# **No daemon is installed here, and that absence is the fixture.** Muster puts its own
+# herdr on a machine it attaches to, so a devenv that arrived with one would test the
+# adopt path and never the install path - and a person setting up a real devenv installs
+# nothing either. `./dev --ssh` runs the remote tests against exactly what is built here,
+# and only afterwards drops a pinned daemon in for the corpus probe, which starts a herdr
+# of its own rather than going through Muster.
 
 FROM debian:bookworm-slim
 
-ARG TARGETARCH
-ARG HERDR_VERSION=0.8.0
-ARG HERDR_SHA256_arm64=f647ac66468d9efbc642fe534fb284468f0aea60641606fc008dfc0d82a3ca87
-ARG HERDR_SHA256_amd64=b872ea7e40fa2cb17e857ac9b62b1bf26db7b403c622f5d2f3f5b35f6e9acd28
 ARG DEV_PUBKEY
 
 # ForceIPv4 because deb.debian.org resolves to an IPv6 address that Docker's default
@@ -20,19 +23,6 @@ RUN apt-get -o Acquire::ForceIPv4=true update \
     && apt-get -o Acquire::ForceIPv4=true install -y --no-install-recommends \
         openssh-server ca-certificates curl procps git less sudo \
     && rm -rf /var/lib/apt/lists/*
-
-# Pinned by digest, not by tag: a fixture that silently upgrades its daemon is a
-# fixture that silently changes what the tests mean.
-RUN set -eux; \
-    case "${TARGETARCH}" in \
-        arm64) asset=herdr-linux-aarch64; sha="${HERDR_SHA256_arm64}" ;; \
-        amd64) asset=herdr-linux-x86_64;  sha="${HERDR_SHA256_amd64}" ;; \
-        *) echo "unsupported TARGETARCH=${TARGETARCH}" >&2; exit 1 ;; \
-    esac; \
-    curl -fsSL -o /usr/local/bin/herdr \
-        "https://github.com/herdrdev/herdr/releases/download/v${HERDR_VERSION}/${asset}"; \
-    echo "${sha}  /usr/local/bin/herdr" | sha256sum -c -; \
-    chmod 0755 /usr/local/bin/herdr
 
 RUN useradd --create-home --shell /bin/bash dev \
     && mkdir -p /var/run/sshd /home/dev/.ssh \

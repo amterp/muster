@@ -91,9 +91,32 @@ pub fn ensure_running(
         );
         remote.place(&installed, &bytes, "0755")?;
     }
+    link(remote, &home, &installed)?;
 
     start(remote, &home, &installed, socket_path)?;
     Ok(Reached::Started)
+}
+
+/// Points a name that never moves at the daemon of the moment.
+///
+/// A pane's frames come from a herdr CLI the bridge runs on the far machine, and the bridge is
+/// told which daemon to ask but not which binary to ask with - so it needs a path it can name
+/// without being told, and a version-scoped one is exactly what it cannot name. This is that
+/// path, and it is the far machine's version of the `~/.muster/bin` the shell keeps here.
+///
+/// Refreshed on every attach rather than written once, for the same reason the local `muster`
+/// link is: the thing it points at moves when the pin does, and a link left over from an older
+/// version is a pane rendered by a daemon nobody pinned.
+fn link(remote: &Remote, home: &str, installed: &str) -> Result<(), String> {
+    let path = format!("{home}/bin/herdr");
+    remote
+        .shell(&format!(
+            "mkdir -p {} && ln -sf {} {}",
+            quoted(&format!("{home}/bin")),
+            quoted(installed),
+            quoted(&path),
+        ))
+        .map(|_| ())
 }
 
 /// Starts the daemon over there and waits for the forwarded socket to answer.

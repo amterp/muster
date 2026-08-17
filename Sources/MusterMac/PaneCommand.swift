@@ -18,9 +18,11 @@ public enum PaneCommand {
   /// - Parameter sshHost: the machine this pane lives on, when it is not this one, and
   ///   `sshControlPath` the master the core already opened for that daemon. Both come from
   ///   the view rather than being worked out here: they name a connection the core owns.
-  /// - Parameter herdrSocketPath: the daemon to ask for this pane's frames. Absent means the
-  ///   bridge finds one for itself, which is right only for a remote pane - its command runs
-  ///   on the far machine, where a path from this one names nothing.
+  /// - Parameter herdrSocketPath: the daemon to ask for this pane's frames, spelled the way
+  ///   the machine that will open it spells it - so for a remote pane this is a path on the
+  ///   far machine rather than the near end of the tunnel. Absent means the bridge finds one
+  ///   for itself, which reaches the right daemon only by luck: Muster's listens on a herdr
+  ///   session of its own.
   public static func bridge(
     executable: String, paneID: String, controlSocketPath: String?,
     herdrSocketPath: String? = nil,
