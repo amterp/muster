@@ -3334,6 +3334,151 @@
           "tabRelabelled:w1:t1"
         ]
       }
+    },
+    {
+      "name": "a name given before the backend mentions the pane survives until it does",
+      "why": "The moment every pane Muster makes passes through. A split's answer names the pane and comes back before the pane's own event, so a rename sent straight after it arrives here while the mirror has never heard of the pane - and because a backend announces a rename to nobody, a name dropped in that moment is gone for good. What that looks like is an agent listed under its directory in every window, with the name sitting on the daemon where nothing will ever read it. Found by driving the real CLI: `muster pane new --name` produced a nameless pane whenever no program was also asked for, because asking for one happened to delay the answer past the event.",
+      "given": {
+        "snapshot": {
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "cwd": "/src/muster"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "renamed",
+            "pane": "w1:p2",
+            "name": "🤖 A"
+          },
+          {
+            "kind": "paneUpserted",
+            "id": "w1:p2",
+            "tab": "w1:t1",
+            "workspace": "w1",
+            "cwd": "/src/muster"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1",
+          "w1:p2"
+        ],
+        "tabs": [],
+        "workspaces": [],
+        "agentStates": {
+          "w1:p1": "unknown",
+          "w1:p2": "unknown"
+        },
+        "names": {
+          "w1:p2": {
+            "name": "🤖 A"
+          }
+        },
+        "layouts": {},
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "paneAdded:w1:p2"
+        ]
+      }
+    },
+    {
+      "name": "a name given to a pane already described is applied at once",
+      "why": "The ordinary half, and what says the case above is a fallback rather than the mechanism. A rename of a pane the mirror holds must change the row now, because nothing else will ever say so - and it reports the relabel, which is what redraws it.",
+      "given": {
+        "snapshot": {
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "cwd": "/src/muster"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "renamed",
+            "pane": "w1:p1",
+            "name": "🤖 A"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1"
+        ],
+        "tabs": [],
+        "workspaces": [],
+        "agentStates": {
+          "w1:p1": "unknown"
+        },
+        "names": {
+          "w1:p1": {
+            "name": "🤖 A"
+          }
+        },
+        "layouts": {},
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "paneRelabelled:w1:p1"
+        ]
+      }
+    },
+    {
+      "name": "taking a name away before the pane appears beats the label its event carries",
+      "why": "Absence and the empty answer have to stay distinguishable while a name is waiting for its pane: `no name yet` means take whatever the event says, and `no name, deliberately` means ignore it. Otherwise a `muster pane rename \"\"` on a pane just made would be undone by the pane's own arrival, which is the same defect as the case above wearing the opposite sign.",
+      "given": {
+        "snapshot": {
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "cwd": "/src/muster"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "renamed",
+            "pane": "w1:p2"
+          },
+          {
+            "kind": "paneUpserted",
+            "id": "w1:p2",
+            "tab": "w1:t1",
+            "workspace": "w1",
+            "cwd": "/src/muster",
+            "name": "🤖 A"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1",
+          "w1:p2"
+        ],
+        "tabs": [],
+        "workspaces": [],
+        "agentStates": {
+          "w1:p1": "unknown",
+          "w1:p2": "unknown"
+        },
+        "layouts": {},
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "paneAdded:w1:p2"
+        ]
+      }
     }
   ]
 }

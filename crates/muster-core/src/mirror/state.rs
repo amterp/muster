@@ -79,6 +79,20 @@ pub struct Mirror {
     /// returns to that shape by closing a pane has its broadcast dropped, leaving a pane on
     /// screen that the daemon no longer holds.
     awaiting_echo: BTreeMap<TabId, LayoutNode>,
+    /// Names given to panes the backend has not described yet.
+    ///
+    /// The other half of the rule below that a name is never taken from an event: the reply to
+    /// `pane.rename` is the only statement of a rename there will ever be, and a pane Muster has
+    /// just made spends a moment named on the backend and unknown here - the split's answer comes
+    /// back before the pane's own event. A name applied in that moment lands on nothing, and
+    /// because nothing announces one it is then gone for good: the pane appears under its
+    /// directory, and every window shows an agent nobody named.
+    ///
+    /// Drained when the pane appears, cleared by a snapshot that describes it - a snapshot is
+    /// taken after the answer and carries the backend's own label, so it is the better authority -
+    /// and dropped with the pane if it turns out never to have survived. Nothing forgets one on a
+    /// timer, because "the daemon is slow today" is exactly the case this exists for.
+    names_awaiting_pane: BTreeMap<PaneId, Option<String>>,
     focus: Focus,
     health: Health,
     /// Why the health is what it is, for anyone who has to say so out loud. Empty when
@@ -126,6 +140,10 @@ impl Mirror {
         // out of the stream that follows.
         self.superseded.clear();
         self.awaiting_echo.clear();
+        // Same reasoning, one step further: a snapshot describing the pane carries the backend's
+        // own label for it, which is what the rename produced. Holding the wish past that would
+        // let it put back a name a later client had already changed.
+        self.names_awaiting_pane.retain(|pane, _| !self.panes.contains_key(pane));
         self.health = Health::Connected;
         self.health_detail.clear();
         let previous_seq = std::mem::replace(&mut self.agent_state_seq, snapshot.agent_state_seq);
@@ -255,7 +273,13 @@ impl Mirror {
                 held.name = name;
                 vec![Change::PaneRelabelled(pane.clone())]
             }
-            _ => Vec::new(),
+            Some(_) => Vec::new(),
+            // Kept rather than dropped, and nothing has changed on screen yet, so no change is
+            // reported. See [`Mirror::names_awaiting_pane`] for why this moment exists at all.
+            None => {
+                self.names_awaiting_pane.insert(pane.clone(), name);
+                Vec::new()
+            }
         }
     }
 
@@ -378,6 +402,13 @@ impl Mirror {
             BackendEvent::PaneUpserted(mut pane) => {
                 let id = pane.id.clone();
                 let Some(before) = self.panes.get(&id) else {
+                    // A name this pane was already given, before the backend got round to
+                    // mentioning it. Taken now or lost: the event carries whatever label the
+                    // backend held when it built the payload, which for a pane being introduced
+                    // is usually none.
+                    if let Some(named) = self.names_awaiting_pane.remove(&id) {
+                        pane.name = named;
+                    }
                     self.panes.insert(id.clone(), pane);
                     return vec![Change::PaneAdded(id)];
                 };
@@ -553,6 +584,9 @@ impl Mirror {
     }
 
     fn remove_pane(&mut self, id: &PaneId, cascaded: bool) -> Vec<Change> {
+        // Before the early return, because the pane this is about may be one that was named and
+        // then died before the backend ever described it - and then this is the only word of it.
+        self.names_awaiting_pane.remove(id);
         let Some(gone) = self.panes.remove(id) else {
             // A removal for something already gone is a no-op rather than an error. The
             // subscription replays, reconnects re-snapshot, and both routinely say a

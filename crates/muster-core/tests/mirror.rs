@@ -36,6 +36,16 @@ fn mirror_conformance() {
                 }));
                 continue;
             }
+            // The other answer that lands in a stream rather than arriving on one, and the one
+            // with no event behind it at all: a backend announces a rename to nobody, so where
+            // this falls among the events is the whole question. An absent `name` is a name
+            // taken away, which is a real thing to ask for.
+            if text(step, "kind") == "renamed" {
+                changes.extend(
+                    mirror.rename(&PaneId::new(text(step, "pane")), optional(step, "name")),
+                );
+                continue;
+            }
             changes.extend(mirror.apply(read_event(step)));
         }
         // After the stream, because that is when it happens: a watcher subscribes, then asks
