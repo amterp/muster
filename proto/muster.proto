@@ -603,7 +603,7 @@ message Startup {
   // the daemon on this machine the way herdr's own client would find it.
   string config_path = 4;
 
-  // The herdr binary this Muster ships, or empty if the shell found none.
+  // The daemon binary this Muster ships, or empty if the shell found none.
   //
   // Muster runs its own daemon rather than asking anybody to install one, and it runs the
   // version it shipped rather than whatever is on PATH - a daemon the corpus was never
@@ -613,7 +613,7 @@ message Startup {
   //
   // Empty is not a default to paper over. It means this build staged no daemon, and a window
   // that then finds none running has nothing to show and says so.
-  string herdr_path = 5;
+  string daemon_path = 5;
 
   // Where this window's arrangement is remembered, or empty to remember nothing.
   //
@@ -1003,9 +1003,15 @@ message ViewRegion {
 
   // Which daemon this region's frame streams should come from, on this machine.
   //
-  // The bridge runs a herdr CLI to get a pane's frames, and that CLI finds a daemon the same
-  // way any other client does - which is not good enough now that Muster runs its own on a
-  // session of its own. A bridge left to find one for itself reaches whatever the user last
+  // Where the backend holding this region listens, for the bridge that will dial it.
+  //
+  // Named for the backend rather than for the one Muster ships, on the rule the renderer
+  // seam already follows: nothing herdr-shaped reaches the schema, because a replacement
+  // would otherwise inherit a field lying about which daemon it names. The bridge's own CLI
+  // flag still says herdr, and belongs to the adapter that spawns it.
+  //
+  // A bridge finds a daemon the same way any other client does - which is not good enough
+  // now that Muster runs its own on a session of its own. A bridge left to find one for itself reaches whatever the user last
   // started, does not find the pane there, and the stream ends before a single frame: a pane
   // that renders nothing, which is this project's most expensive failure shape.
   //
@@ -1013,7 +1019,7 @@ message ViewRegion {
   // machine, where this path names nothing. It finds the daemon over there the ordinary way,
   // which is the same asymmetry the control plane already has until Muster ships a daemon to
   // the far end too.
-  string herdr_socket = 10;
+  string backend_socket = 10;
 }
 
 message ViewNode {

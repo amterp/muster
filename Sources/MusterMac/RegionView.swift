@@ -25,7 +25,7 @@ public final class RegionView: NSView {
   public typealias StartPane =
     @MainActor (
       _ daemonID: String, _ transport: WindowContents.Region.Transport?,
-      _ herdrSocket: String?, _ chrome: PaneChrome, _ controlSocketPath: String?
+      _ backendSocket: String?, _ chrome: PaneChrome, _ controlSocketPath: String?
     ) -> Void
 
   private struct Held {
@@ -56,7 +56,7 @@ public final class RegionView: NSView {
   public private(set) var transport: WindowContents.Region.Transport?
 
   /// Which daemon this region's frames come from, when it is on this machine.
-  public private(set) var herdrSocket: String?
+  public private(set) var backendSocket: String?
   private var tab: String = ""
 
   /// Carries divider positions to the core without stalling the drag. One per region rather
@@ -96,7 +96,7 @@ public final class RegionView: NSView {
     regionID = region.id
     daemonID = region.daemon
     transport = region.transport
-    herdrSocket = region.herdrSocket
+    backendSocket = region.backendSocket
     tab = region.tab
     guard let tree = region.tree else { return }
     self.tree = tree
@@ -107,7 +107,7 @@ public final class RegionView: NSView {
     layoutSubtreeIfNeeded()
     for leaf in fresh {
       guard let chrome = held[leaf.paneID]?.chrome else { continue }
-      startPane(daemonID, transport, herdrSocket, chrome, leaf.controlSocketPath)
+      startPane(daemonID, transport, backendSocket, chrome, leaf.controlSocketPath)
     }
     apply(keyboardPane: focused ? region.keyboardPane : nil)
   }

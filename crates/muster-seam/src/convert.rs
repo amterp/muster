@@ -42,7 +42,7 @@ pub(crate) fn view(view: &View) -> proto::ViewChanged {
                     .as_ref()
                     .map(|transport| transport.control_path.clone())
                     .unwrap_or_default(),
-                herdr_socket: region.herdr_socket.clone().unwrap_or_default(),
+                backend_socket: region.backend_socket.clone().unwrap_or_default(),
             })
             .collect(),
         focused_region: view.focused.map(|id| id.to_string()).unwrap_or_default(),

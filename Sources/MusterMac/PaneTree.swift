@@ -46,7 +46,7 @@ public struct WindowContents: Equatable {
     /// itself would find whichever one is on the default socket - and Muster runs its own on
     /// a session of its own. Nil for a remote region: that bridge asks the far machine, where
     /// a path from this one names nothing.
-    public let herdrSocket: String?
+    public let backendSocket: String?
 
     public struct Transport: Equatable {
       public let sshHost: String
@@ -60,12 +60,12 @@ public struct WindowContents: Equatable {
 
     public init(
       id: String, daemon: String, tab: String, keyboardPane: String?, weight: CGFloat = 1,
-      tree: PaneTree?, zoomed: Bool, transport: Transport? = nil, herdrSocket: String? = nil
+      tree: PaneTree?, zoomed: Bool, transport: Transport? = nil, backendSocket: String? = nil
     ) {
       self.id = id
       self.daemon = daemon
       self.tab = tab
-      self.herdrSocket = herdrSocket
+      self.backendSocket = backendSocket
       self.keyboardPane = keyboardPane
       // Defaulted so that a test describing a window it is not about the widths of does not
       // have to say so. Equal shares are what every region starts at.
@@ -331,7 +331,7 @@ extension WindowContents {
           transport: region.sshHost.isEmpty || region.sshControlPath.isEmpty
             ? nil
             : Region.Transport(sshHost: region.sshHost, sshControlPath: region.sshControlPath),
-          herdrSocket: region.herdrSocket.isEmpty ? nil : region.herdrSocket)
+          backendSocket: region.backendSocket.isEmpty ? nil : region.backendSocket)
       },
       focusedRegion: changed.focusedRegion.isEmpty ? nil : changed.focusedRegion)
   }

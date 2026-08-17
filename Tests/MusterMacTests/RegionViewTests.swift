@@ -24,10 +24,10 @@ private final class Started {
 private func region(width: CGFloat = 800, height: CGFloat = 600) -> (RegionView, Started) {
   let started = Started()
   let view = RegionView(frame: NSRect(x: 0, y: 0, width: width, height: height)) {
-    daemon, transport, herdrSocket, chrome, socket in
+    daemon, transport, backendSocket, chrome, socket in
     let machine = transport.map { "@\($0.sshHost)" } ?? ""
     started.panes.append("\(daemon)\(machine):\(chrome.paneID ?? "")@\(socket ?? "-")")
-    started.daemonSockets.append(herdrSocket)
+    started.daemonSockets.append(backendSocket)
   }
   return (view, started)
 }
@@ -37,11 +37,11 @@ private func leaf(_ id: String, socket: String? = "/tmp/\(0).sock") -> PaneTree 
 }
 
 private func contents(
-  _ tree: PaneTree?, keyboard: String? = nil, herdrSocket: String? = nil
+  _ tree: PaneTree?, keyboard: String? = nil, backendSocket: String? = nil
 ) -> WindowContents.Region {
   WindowContents.Region(
     id: "r0", daemon: "local", tab: "w1:t1", keyboardPane: keyboard, tree: tree, zoomed: false,
-    herdrSocket: herdrSocket)
+    backendSocket: backendSocket)
 }
 
 @Suite("a region renders a tree")
@@ -203,7 +203,7 @@ struct RegionFrameSourceTests {
     // a pane renders nothing - which is exactly how it was found.
     let (view, started) = region()
 
-    view.apply(contents(leaf("w1:p1"), herdrSocket: "/tmp/muster/herdr.sock"), focused: true)
+    view.apply(contents(leaf("w1:p1"), backendSocket: "/tmp/muster/herdr.sock"), focused: true)
 
     #expect(started.daemonSockets == ["/tmp/muster/herdr.sock"])
   }

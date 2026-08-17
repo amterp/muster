@@ -41,7 +41,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let config = configPath()
     let daemon = herdrPath(executable: CommandLine.arguments[0])
     Core.start(
-      logPath: logPath, configPath: config, herdrPath: daemon, statePath: statePath(),
+      logPath: logPath, configPath: config, daemonPath: daemon, statePath: statePath(),
       daemonConfigPath: daemonConfigPath())
     Core.info(
       "app.launch",

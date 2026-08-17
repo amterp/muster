@@ -71,7 +71,12 @@ pub struct ViewRegion {
     /// `None` for a remote region, deliberately. That bridge runs its CLI on the far machine,
     /// where a path from this one names nothing, and it finds the daemon over there the
     /// ordinary way.
-    pub herdr_socket: Option<String>,
+    /// Named for the backend rather than for herdr, though herdr is what fills it today.
+    /// This type is the core's own vocabulary and a second backend would populate the same
+    /// field, so a name carrying one backend's spelling would be a field lying about which
+    /// daemon it points at (`architecture.md`, swappable organs). The bridge's `--herdr-socket`
+    /// flag keeps herdr's name, because that flag is herdr's CLI being invoked.
+    pub backend_socket: Option<String>,
 }
 
 /// What a pane's bridge needs in order to reach another machine.
@@ -125,7 +130,7 @@ impl View {
         mirror: impl Fn(&DaemonId) -> Option<&'a Mirror>,
         socket: impl Fn(&DaemonId, &PaneId) -> Option<String>,
         transport: impl Fn(&DaemonId) -> Option<Transport>,
-        herdr_socket: impl Fn(&DaemonId) -> Option<String>,
+        backend_socket: impl Fn(&DaemonId) -> Option<String>,
     ) -> View {
         let regions = composition
             .regions()
@@ -149,7 +154,7 @@ impl View {
                     }),
                     zoomed: layout.is_some_and(|layout| layout.zoomed.is_some()),
                     transport: transport(&region.daemon),
-                    herdr_socket: herdr_socket(&region.daemon),
+                    backend_socket: backend_socket(&region.daemon),
                 })
             })
             .collect();

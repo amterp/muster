@@ -822,7 +822,7 @@ fn attach_pane(pane_id: &str) -> Response {
 fn start(startup: &proto::Startup) -> Response {
     // Before the config, because applying one attaches the daemons it names and attaching a
     // local one may have to start it.
-    session::set_daemon_binary(&startup.herdr_path);
+    session::set_daemon_binary(&startup.daemon_path);
     // Before the config too, and for a sharper reason: applying a config attaches daemons,
     // attaching publishes, and a publish before this is one that would write the arrangement
     // out to nowhere - or worse, read it back after it had been replaced.
@@ -877,10 +877,10 @@ fn start(startup: &proto::Startup) -> Response {
             // The other half of the same question: which daemon this run would start. A
             // window with no session behind it is nearly always one of these two being
             // absent, and both belong in the first record rather than in the failure.
-            "daemon_binary" => if startup.herdr_path.is_empty() {
+            "daemon_binary" => if startup.daemon_path.is_empty() {
                 "(none staged)".to_string()
             } else {
-                startup.herdr_path.clone()
+                startup.daemon_path.clone()
             },
         },
     );
