@@ -11,9 +11,12 @@
   "description": "connect() in crates/muster-herdr/src/subscription.rs:232 writes a subscribe request and then blocks in read_line for the ack, with no read timeout set anywhere in the file. The stream is only published to the shutdown-able slot after connect returns Ok - line 174 for the structure subscription, 413 for each per-pane watcher - so a daemon that accepts the connection and then stalls leaves the thread parked on a socket nothing holds a handle to.\n\nDropping the Subscription or Watcher does not help: their Drop shuts down the socket in that slot, and there is nothing in it yet. The thread and its fd leak for the life of the process, and since every reconnect attempt re-enters connect, a daemon flapping between accepts-but-does-not-ack and healthy leaks one per attempt. Two descriptors per pane against the 256 a GUI-launched process inherits is already the tightest budget here.\n\nNot reproduced - it needs a daemon that accepts and then stalls, which no test stages today. The code path is unambiguous though: no set_read_timeout call exists in the file.\n\nTwo shapes of fix and they differ in more than taste. A read timeout on the socket before the ack read is the small one, and needs a number nobody has measured - too short and a slow devenv over ssh drops a healthy subscription. Publishing the stream to the slot before blocking on the ack is the one with no number in it: Drop then has something to shut down, which is the mechanism already used everywhere else here. Second one looks right; worth confirming the slot can hold a stream that is not yet known-good without confusing the reconnect loop.",
   "id": "a_29LOhmO2o",
   "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "tags": [
+    "terp-prio"
+  ],
   "title": "🧵 A subscription can park forever waiting for an ack nobody sends",
   "type": "bug",
-  "updated_at_millis": 1786929125475,
+  "updated_at_millis": 1786952344281,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786929125475}
   ]

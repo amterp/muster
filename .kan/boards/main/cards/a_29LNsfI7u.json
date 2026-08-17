@@ -11,9 +11,12 @@
   "description": "events.rs:176 leaves pane_moved in the unknown set on purpose, so its first arrival is reported as drift rather than being silently correct-looking, and the comment says no recording of one exists. That reasoning was right when nothing made one. Drag-to-swap now does: a row dropped on another tab sends ArrangePane, herdr moves the pane, and broadcasts an event Muster logs as something it has never seen.\n\nWhat the review suspects, unverified: with the pane's tab membership never updated from the event, each tab's pane list disagrees with the tree that follows it, and a tree that disagrees with its tab is withheld by design - so both tabs stop updating rather than showing the move. The answer path (outcome.settled) may already cover the tab the request named, which would make this a one-sided failure rather than a two-sided one. Nobody has watched it happen.\n\nSo this is a recording before it is a fix, which is what the events.rs comment already asks for: drive a real drag across tabs against a real daemon, capture what herdr broadcasts, and put it in corpus/herdr-0.8.0/. Then decide whether pane_moved needs decoding or whether the settled answer already covers it. Same question applies to tab_moved, which is also unread and is the reason tab order is arrival order rather than an order somebody arranged (see the ordering fix).",
   "id": "a_29LNsfI7u",
   "position": "UUUUUUUUUUUUUUUUUU",
+  "tags": [
+    "terp-prio"
+  ],
   "title": "🔌 pane_moved is unread, and Muster is what causes it",
   "type": "chore",
-  "updated_at_millis": 1786929093787,
+  "updated_at_millis": 1786952344383,
   "history": [
     {"field":"column","value":"next","at":1786929093787}
   ]

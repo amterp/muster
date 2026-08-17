@@ -5,16 +5,25 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-hi",
+  "column": "in-progress",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Built. The answer to the design question this card left open turned out not to be any of the four it listed.\n\nWhere it went: a problems area at the FOOT OF THE ROSTER, not a banner, a pane notice, the title bar, or the notification path. The roster is window-scoped, which is what a config refusal actually is; it has vertical room a title bar does not; and it is already the surface somebody looks at to see what needs them. The card's own objection to the title bar (it would carry two unrelated things) is answered by the area being zero-height whenever nothing is wrong.\n\nThe decisions worth knowing, all in problems.rs and Problems.swift:\n- A problem is a CONDITION, not a message. Keyed, so the same thing found twice is one problem; cleared when it stops being true. So there is no unread count, no acknowledging something still broken, and the list cannot disagree with reality.\n- Its disappearance is the confirmation a fix worked. The original bug had two halves and this is the second: nobody was told when a later save started parsing either.\n- Severity is decided by what somebody must DO, not how bad it feels. An error will not recover without a human edit and OPENS a roster that was closed; a warning waits to be found. A refused config is an error. That is severity's only job, which is what keeps it from being decoration.\n- Muster gives the roster back. If it opened one, clearing the last error closes it again - unless the person touched it themselves in between, which wins.\n- The narrow-window hole is closed: Sidebar.widths hides the roster on a window too small for it regardless of what anyone chose, so an outstanding problem with no roster on screen puts a count in the title.\n\nAlso unified apply_config and reload_config onto one read_config. They had two copies of the parse, four log event names and four hand-written impact lines, sharing only the error string - so the new behavior would have landed in one of them.\n\nVerified against a real daemon, not just the suite: launch with resize_step = 10 and a closed roster gives config.refused, problems.sidebar.opened, count=1 errors=1; an editor-style save of a good file gives problems.sidebar.closed and count=0. 21 tests (10 conformance, 11 Swift) plus 3 title cases.\n\nOne caveat found on the way, pre-existing and not from this change: the config watcher watches the containing DIRECTORY, so it catches editor saves (temp file plus rename) and does NOT notice an in-place truncating write like 'cat \u003e config.toml'. Worth its own card if that ever bites somebody.",
+      "created_at_millis": 1786954774418,
+      "id": "c_29W9x3X1m"
+    }
+  ],
   "created_at_millis": 1786925186441,
   "creator": "Alexander Terp",
   "description": "The reload path is exactly what the README promises - a file that will not parse changes nothing at all, and the log says so with an impact line and a check line (crates/muster-seam/src/handler.rs:985). What it does not do is reach the person who just saved the file.\n\nThey are in an editor, not in the run log. From the window's side a rejected save and a save that changed nothing look identical: nothing happens. The one moment somebody most needs telling is the moment they have just broken their config, and that is the moment Muster is quietest.\n\nLeft for a call rather than built, because every answer costs something the project has an opinion about. A banner over the window is chrome Muster otherwise does not have. A pane-sized notice is a pane nobody asked for. The title bar already carries daemon health and would then carry two unrelated things. Reusing the notification path is closest to what exists - attention routing is built, and this is arguably attention - but it stretches 'an agent needs you' to cover 'your file is broken'.\n\nWorth an answer before anybody but the author edits a config file.",
   "id": "a_29JkEUiBJ",
-  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "position": "U",
   "title": "🔇 A refused config reload is only ever a log line",
   "type": "chore",
-  "updated_at_millis": 1786925186441,
+  "updated_at_millis": 1786954774418,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1786925186441}
+    {"field":"column","value":"backlog-hi","at":1786925186441},
+    {"field":"column","value":"in-progress","at":1786954085838}
   ]
 }

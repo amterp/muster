@@ -4,7 +4,7 @@ kan_schema = "board/13"
 name = "main"
 
 [card_display]
-  badges = ["labels", "area"]
+  badges = ["labels", "area", "tags"]
   type_indicator = "type"
 
 [[columns]]
@@ -95,6 +95,9 @@ name = "main"
       color = "#dc2626"
       description = "A stage-gate check from docs/origin.md: failing it questions the whole approach"
       value = "kill-criterion"
+  [custom_fields.tags]
+    description = "Ad-hoc markers, not project doctrine - unlike labels, anything goes here"
+    type = "free-set"
   [custom_fields.type]
     description = "The kind of work this card represents"
     type = "enum"
