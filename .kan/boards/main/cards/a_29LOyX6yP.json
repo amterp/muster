@@ -5,19 +5,21 @@
   "area": [
     "testing"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "created_at_millis": 1786929135859,
   "creator": "Alexander Terp",
   "description": "tools/gen-keycodes regenerates three committed files - crates/muster-core/src/input/key.rs, crates/muster-vt/src/key_mapping.rs, Sources/MusterMac/KeyNames.generated.swift - from the pinned libghostty header, and nothing in ./dev or gate.yml checks they are still current. Its own README says to re-run it on every pin bump and to let it fail loudly rather than silently mis-map a key; nothing enforces the re-run.\n\nThe seam's protobuf types have exactly this guard already (PROTO_STAMP, a checked-in hash compared every build), so the pattern to copy is in the same script. muster-vt/build.rs bindgens the C enum fresh each build, so a key that gets *renamed* upstream fails to compile - it is an *added* key, a new macOS keycode or DOM code, that would compile and test green while quietly having no mapping. A key that does nothing is also the hardest kind of bug to notice, since nobody presses every key.\n\nCheap: stamp the header's hash beside the generated files and fail the build when it moves, gated the way deps_are_current() already gates the ghostty build.\n\nSeparately, that README borrows the phrase 'Muster's top false-green risk' from docs/testing.md, where it means specifically a drifted fake daemon - a risk testing.md says this project does not have, by construction. Reusing the phrase for keycode drift makes the two documents look like they disagree about what the top risk is. Worth rewording whichever is easier.",
   "id": "a_29LOyX6yP",
-  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "position": "!!!!!!!!!!!!!U",
   "tags": [
     "terp-prio"
   ],
   "title": "🔑 Nothing checks the generated keycode tables against the ghostty pin",
   "type": "chore",
-  "updated_at_millis": 1786952344314,
+  "updated_at_millis": 1786973839824,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1786929135859}
+    {"field":"column","value":"backlog-hi","at":1786929135859},
+    {"field":"column","value":"in-progress","at":1786973628249},
+    {"field":"column","value":"done","at":1786973839824}
   ]
 }

@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "a-tab-has-no-name",
+  "alias_explicit": false,
+  "column": "next",
+  "created_at_millis": 1786973827489,
+  "creator": "Alexander Terp",
+  "description": "Panes are named by Muster and addressable from anywhere; tabs still carry the backend's id, which means nothing on another machine. So `muster window` names a tab by its place and its label and gives no id, and there is no way to focus or rename a tab from a script except through a pane in it.\n\nThe same argument that produced pane names applies: mint a tab name, bind it to the backend's id, put it in the schema. Smaller stakes than a pane, because nothing has to tell a tab which tab it is - so this is about addressing rather than about identity.\n\nDocumented in `docs/cli/limits.md`.",
+  "id": "a_29e9boMfk",
+  "position": "UUUUUUUUUUUUUUUUUU",
+  "tags": [
+    "shell"
+  ],
+  "title": "🏷️ A tab has no name anybody outside Muster can say",
+  "type": "feature",
+  "updated_at_millis": 1786973907167,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1786973827489},
+    {"field":"column","value":"next","at":1786973907167}
+  ]
+}

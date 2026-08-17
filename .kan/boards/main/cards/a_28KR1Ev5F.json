@@ -5,16 +5,25 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-hi",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Closed by pane naming rather than by a CLI decision. Muster mints its own pane names now and they are unique across every attached machine, so `muster p1w3r07bsd` names one pane and needs nothing beside it - there is no `devenv:w1:p1` to invent. A name that resolved to two panes would be a bug in the registry rather than an honest ambiguity.\n\nSee docs/architecture.md, ownership of truth (Muster names its own panes), and a_26BJb2n6o.",
+      "created_at_millis": 1786973916635,
+      "id": "c_29eBvbawr"
+    }
+  ],
   "created_at_millis": 1786779067766,
   "creator": "Alexander Terp",
   "description": "`muster w1:p1` is ambiguous the moment a config names two daemons, because herdr hands out the same ids on each. The core searches its followed daemons, takes the first, and logs pane.ambiguous saying the keyboard may have started on the wrong machine - which is honest and not an answer.\n\nFixing it needs a way to say which: `muster devenv:w1:p1`, or a flag. That is a CLI decision rather than a seam one - AttachPane deliberately carries no daemon today because at attach nobody knows yet (proto/muster.proto) - so it belongs with the muster CLI card (a_26BJb2n6o) or just ahead of it.\n\nLow urgency while the common case is one daemon plus a devenv whose pane ids rarely collide in practice, and it will bite exactly once, confusingly.",
   "id": "a_28KR1Ev5F",
-  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "position": "!!!!!!!!!!!!!E",
   "title": "🏷️ Naming a pane on the command line when two daemons hold it",
   "type": "chore",
-  "updated_at_millis": 1786779067766,
+  "updated_at_millis": 1786973916635,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1786779067766}
+    {"field":"column","value":"backlog-hi","at":1786779067766},
+    {"field":"column","value":"done","at":1786973907094}
   ]
 }

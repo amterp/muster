@@ -6,19 +6,21 @@
     "backend",
     "shell"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "created_at_millis": 1786957984396,
   "creator": "Alexander Terp",
   "description": "Every value of resize_step that parses produces the same maximal jump, because Muster and herdr disagree about the unit.\n\nWHAT HERDR TAKES. pane.resize's `amount` is a fraction of the container, added straight to a split ratio - ~/src/herdr/src/layout.rs:235-237:\n\n    let current_ratio = get_ratio_at(\u0026self.root, \u0026path).unwrap_or(0.5);\n    let adj = if grows { delta } else { -delta };\n    self.set_ratio_at(\u0026path, current_ratio + adj);\n\nand ~/src/herdr/src/app/api/panes.rs:404-409 defaults and clamps it:\n\n    params.amount.filter(f32::is_finite).unwrap_or(0.05).abs().min(0.5)\n\nSo herdr's own step is 5% of the pane and its ceiling is 50%.\n\nWHAT MUSTER SENDS. Cells. ResizeStep::cells (config.rs:267) converts points to cells, handler.rs:752 passes that as `amount`, and intent.rs:352 puts it on the wire unchanged. The doc comment on BackendIntent::ResizePane says 'in cells', which is simply not what the other side reads.\n\nCONSEQUENCE. \"10c\" sends 10.0 and clamps to 0.5 - half the pane per press. And the SMALLEST expressible value does the same: \"1c\" sends 1.0, and \"1px\" is floored to one cell by ResizeStep::cells, so it also sends 1.0. The key therefore has exactly one behaviour for every input a person can write, and omitting it - which sends no amount and gets herdr's 5% - is the only way to a usable step. That is why this felt fine before the key existed.\n\nHOW IT GOT PAST EVERYTHING. corpus/conformance/backend-intent.json pins only that the number is passed through, and its own case names the field `ratio` while the intent doc says cells - the disagreement is visible in the corpus and nothing compares either against herdr. No recording in docs/observations/herdr-0.8.0.md says what `amount` means, so the unit was assumed rather than measured. Worth an observation entry either way.\n\nTHE FIX, AND THE DECISION IN IT. A distance in points or cells becomes a fraction only against the extent it is a fraction OF, and Muster does not know which extent herdr will use: herdr adjusts the NEAREST split's ratio, and that split's node area is the whole region only when there is one split on that axis. Two routes:\n\n1. Approximate. Have the shell report the region's extent along the axis (it already reports cell_width/cell_height on ResizePane), and send points/extent. Exact for a single split per axis, under-moves in nested layouts. Small change, strictly better than today.\n2. Exact. Derive the split path from layout.export and use layout.set_split_ratio, which observations section (border ids / resize API) says takes that same path. Precise at every depth, and a much bigger change that means Muster holding a tree.\n\nRoute 1 with the inaccuracy stated is probably right for now; the config vocabulary (\"20c\" / \"150px\") does not have to change either way, which is the point of it being a distance.\n\nMEANWHILE amterp's ~/.muster/config.toml has the key commented out with a pointer here.",
   "id": "a_29XVSQKAC",
-  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "position": "!!!!!!!!!!!!U",
   "tags": [
     "terp-prio"
   ],
   "title": "🎚️ resize_step is sent as cells, and herdr reads a fraction",
   "type": "bug",
-  "updated_at_millis": 1786958141045,
+  "updated_at_millis": 1786973311681,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1786957984396}
+    {"field":"column","value":"backlog-hi","at":1786957984396},
+    {"field":"column","value":"in-progress","at":1786968937551},
+    {"field":"column","value":"done","at":1786973311681}
   ]
 }

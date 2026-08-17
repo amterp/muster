@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "a-declined-intent-is",
+  "alias_explicit": false,
+  "column": "backlog-hi",
+  "created_at_millis": 1786973827587,
+  "creator": "Alexander Terp",
+  "description": "herdr answers a mutation it considered and did not perform with an ordinary success plus a `declined` reason, so Muster logs a warning and reports `Ok`. Found by running the app: `muster zoom` on a tab with one pane exits 0 having done nothing, and the log says `single_pane` where nobody will read it.\n\nWhether that is wrong depends on the verb. Zooming an only pane is arguably already zoomed; swapping a pane with no neighbour is not. The decision is which reasons a caller should be refused over, and it changes the keyboard path too - so it is one decision for both surfaces rather than a CLI-only fix.",
+  "id": "a_29e9bxN9r",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "tags": [
+    "shell",
+    "backend"
+  ],
+  "title": "🤐 A declined intent is a success to everybody who asked",
+  "type": "chore",
+  "updated_at_millis": 1786973850254,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1786973827587}
+  ]
+}
