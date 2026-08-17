@@ -44,18 +44,28 @@ impl EventDecoder {
         self.pending.extend_from_slice(chunk);
         let mut events = Vec::new();
 
-        while let Some(newline) = self.pending.iter().position(|byte| *byte == b'\n') {
-            let line: Vec<u8> = self.pending.drain(..=newline).take(newline).collect();
-            match decode(&line) {
+        // Read against the buffer and drain it once at the end, on the same terms as
+        // `FrameDecoder::consume`: draining a line at a time shifts the whole remainder
+        // forward per line, which is quadratic in how many arrived together.
+        //
+        // Destructured so the borrow checker can see that reading the buffer and recording an
+        // unknown name touch different fields.
+        let Self { pending, unknown_seen, unknown_pending } = self;
+        let mut read = 0;
+        while let Some(offset) = pending[read..].iter().position(|byte| *byte == b'\n') {
+            let line = read..read + offset;
+            match decode(&pending[line]) {
                 Decoded::Event(event) => events.push(event),
                 Decoded::Unknown(kind) => {
-                    if self.unknown_seen.insert(kind.clone()) {
-                        self.unknown_pending.push(kind);
+                    if unknown_seen.insert(kind.clone()) {
+                        unknown_pending.push(kind);
                     }
                 }
                 Decoded::Ignored | Decoded::Unreadable => {}
             }
+            read += offset + 1;
         }
+        pending.drain(..read);
 
         events
     }

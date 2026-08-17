@@ -51,14 +51,20 @@ impl FrameDecoder {
         self.pending.extend_from_slice(chunk);
         let mut events = Vec::new();
 
-        while let Some(newline) = self.pending.iter().position(|byte| *byte == b'\n') {
-            // `take` keeps the line and drops the newline, and the drain still removes the
-            // whole range either way - which is what advances the buffer past this line.
-            let line: Vec<u8> = self.pending.drain(..=newline).take(newline).collect();
-            if let Some(event) = decode(&line) {
+        // Read against the buffer and drain it once at the end, rather than draining a line
+        // at a time. A drain shifts everything after it to the front, so removing lines one
+        // by one costs the length of the remainder per line - quadratic in how many arrive
+        // together. One read usually holds one frame, which is why this never showed up, and
+        // a bridge that falls behind for a moment is exactly when it would.
+        let mut read = 0;
+        while let Some(offset) = self.pending[read..].iter().position(|byte| *byte == b'\n') {
+            let line = read..read + offset;
+            if let Some(event) = decode(&self.pending[line]) {
                 events.push(event);
             }
+            read += offset + 1;
         }
+        self.pending.drain(..read);
 
         events
     }
