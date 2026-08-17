@@ -133,6 +133,19 @@ impl Attention {
         if self.focused { self.mark_visible_seen() } else { Vec::new() }
     }
 
+    /// Lets go of a pane the backend no longer holds.
+    ///
+    /// Called when a pane closes or exits, and it matters for more than the bookkeeping. Ids
+    /// are the backend's and the backend reuses them - a restarted herdr hands out `w1:p1`
+    /// again - so an entry left behind is not merely dead weight: the next pane to be given
+    /// that id inherits it, and a brand-new agent renders as `done` before it has done
+    /// anything. Waiting to be looked at is the one piece of state here, and a pane that is
+    /// gone is not waiting for anybody.
+    pub fn forget(&mut self, pane: &PaneKey) {
+        self.unseen.remove(pane);
+        self.visible.remove(pane);
+    }
+
     /// Drops every pane now being looked at out of the waiting set, and says which they were.
     fn mark_visible_seen(&mut self) -> Vec<PaneKey> {
         let seen: Vec<PaneKey> = self.unseen.intersection(&self.visible).cloned().collect();

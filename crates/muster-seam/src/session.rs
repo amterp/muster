@@ -2040,6 +2040,12 @@ fn report(daemon: &DaemonId, change: &Change) {
                 session.attention.first_seen(&key, backend);
             }
         }
+        // Both spellings of removal, because both mean the pane is gone: one is a client
+        // closing it and the other is its program ending (`architecture.md`, event model).
+        Change::PaneRemoved { pane, .. } => {
+            let key = PaneKey::new(daemon, pane);
+            poison::lock(&SESSION, "session").attention.forget(&key);
+        }
         _ => {}
     }
 

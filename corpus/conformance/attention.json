@@ -9,56 +9,118 @@
       "why": "The case that keeps `done` meaningful. If finishing on a pane somebody is looking at still raised `done`, every completed agent would raise it and the state would carry no information at all.",
       "given": {
         "focused": true,
-        "visible": ["local/w1:p1"],
-        "events": [{ "pane": "local/w1:p1", "from": "working", "to": "idle" }]
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "pane": "local/w1:p1",
+            "from": "working",
+            "to": "idle"
+          }
+        ]
       },
-      "expect": { "states": { "local/w1:p1": "idle" } }
+      "expect": {
+        "states": {
+          "local/w1:p1": "idle"
+        }
+      }
     },
     {
       "name": "an agent that finishes while the window is unfocused is done",
       "why": "The reason this module exists, and the case herdr cannot answer: the pane is on screen and its tab is active, so every input herdr has says the user saw it. Only the window knows nobody was there.",
       "given": {
         "focused": false,
-        "visible": ["local/w1:p1"],
-        "events": [{ "pane": "local/w1:p1", "from": "working", "to": "idle" }]
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "pane": "local/w1:p1",
+            "from": "working",
+            "to": "idle"
+          }
+        ]
       },
-      "expect": { "states": { "local/w1:p1": "done" } }
+      "expect": {
+        "states": {
+          "local/w1:p1": "done"
+        }
+      }
     },
     {
       "name": "an agent that finishes on a pane no window shows is done",
       "why": "The other half of unseen, and the one that makes a roster worth having: a focused window says nothing about a pane it is not showing. Attention routing exists to surface these, so reading them as idle would hide exactly what it is for.",
       "given": {
         "focused": true,
-        "visible": ["local/w1:p2"],
-        "events": [{ "pane": "local/w1:p1", "from": "working", "to": "idle" }]
+        "visible": [
+          "local/w1:p2"
+        ],
+        "events": [
+          {
+            "pane": "local/w1:p1",
+            "from": "working",
+            "to": "idle"
+          }
+        ]
       },
-      "expect": { "states": { "local/w1:p1": "done" } }
+      "expect": {
+        "states": {
+          "local/w1:p1": "done"
+        }
+      }
     },
     {
       "name": "looking at a pane that finished unseen settles it",
       "why": "`done` is a request for attention, so attention has to be able to answer it. A `done` that survived being looked at would sit there forever and become something the user learns to scroll past.",
       "given": {
         "focused": false,
-        "visible": ["local/w1:p1"],
+        "visible": [
+          "local/w1:p1"
+        ],
         "events": [
-          { "pane": "local/w1:p1", "from": "working", "to": "idle" },
-          { "focused": true }
+          {
+            "pane": "local/w1:p1",
+            "from": "working",
+            "to": "idle"
+          },
+          {
+            "focused": true
+          }
         ]
       },
-      "expect": { "states": { "local/w1:p1": "idle" } }
+      "expect": {
+        "states": {
+          "local/w1:p1": "idle"
+        }
+      }
     },
     {
       "name": "bringing a pane on screen settles what finished while it was hidden",
       "why": "The same settling reached the other way. Focus and visibility are two inputs to one question, and a rule that only watched focus would leave a pane surfaced from the sidebar still claiming nobody had seen it.",
       "given": {
         "focused": true,
-        "visible": ["local/w1:p2"],
+        "visible": [
+          "local/w1:p2"
+        ],
         "events": [
-          { "pane": "local/w1:p1", "from": "working", "to": "idle" },
-          { "visible": ["local/w1:p1"] }
+          {
+            "pane": "local/w1:p1",
+            "from": "working",
+            "to": "idle"
+          },
+          {
+            "visible": [
+              "local/w1:p1"
+            ]
+          }
         ]
       },
-      "expect": { "states": { "local/w1:p1": "idle" } }
+      "expect": {
+        "states": {
+          "local/w1:p1": "idle"
+        }
+      }
     },
     {
       "name": "a pane coming on screen in an unfocused window is still unseen",
@@ -67,24 +129,48 @@
         "focused": false,
         "visible": [],
         "events": [
-          { "pane": "local/w1:p1", "from": "working", "to": "idle" },
-          { "visible": ["local/w1:p1"] }
+          {
+            "pane": "local/w1:p1",
+            "from": "working",
+            "to": "idle"
+          },
+          {
+            "visible": [
+              "local/w1:p1"
+            ]
+          }
         ]
       },
-      "expect": { "states": { "local/w1:p1": "done" } }
+      "expect": {
+        "states": {
+          "local/w1:p1": "done"
+        }
+      }
     },
     {
       "name": "looking away does not un-see what you already saw",
       "why": "Seen-ness is written when an agent finishes and never taken back. If losing focus could resurrect `done`, every pane in the window would raise one the moment the user switched to a browser, which is the notification behaviour people disable products over.",
       "given": {
         "focused": true,
-        "visible": ["local/w1:p1"],
+        "visible": [
+          "local/w1:p1"
+        ],
         "events": [
-          { "pane": "local/w1:p1", "from": "working", "to": "idle" },
-          { "focused": false }
+          {
+            "pane": "local/w1:p1",
+            "from": "working",
+            "to": "idle"
+          },
+          {
+            "focused": false
+          }
         ]
       },
-      "expect": { "states": { "local/w1:p1": "idle" } }
+      "expect": {
+        "states": {
+          "local/w1:p1": "idle"
+        }
+      }
     },
     {
       "name": "an agent that goes back to work is working, not done",
@@ -93,11 +179,23 @@
         "focused": false,
         "visible": [],
         "events": [
-          { "pane": "local/w1:p1", "from": "working", "to": "idle" },
-          { "pane": "local/w1:p1", "from": "idle", "to": "working" }
+          {
+            "pane": "local/w1:p1",
+            "from": "working",
+            "to": "idle"
+          },
+          {
+            "pane": "local/w1:p1",
+            "from": "idle",
+            "to": "working"
+          }
         ]
       },
-      "expect": { "states": { "local/w1:p1": "working" } }
+      "expect": {
+        "states": {
+          "local/w1:p1": "working"
+        }
+      }
     },
     {
       "name": "an agent that finishes unseen and then asks for a person is blocked",
@@ -106,11 +204,23 @@
         "focused": false,
         "visible": [],
         "events": [
-          { "pane": "local/w1:p1", "from": "working", "to": "idle" },
-          { "pane": "local/w1:p1", "from": "idle", "to": "blocked" }
+          {
+            "pane": "local/w1:p1",
+            "from": "working",
+            "to": "idle"
+          },
+          {
+            "pane": "local/w1:p1",
+            "from": "idle",
+            "to": "blocked"
+          }
         ]
       },
-      "expect": { "states": { "local/w1:p1": "blocked" } }
+      "expect": {
+        "states": {
+          "local/w1:p1": "blocked"
+        }
+      }
     },
     {
       "name": "an idle that finished nothing leaves seen-ness alone",
@@ -118,42 +228,91 @@
       "given": {
         "focused": false,
         "visible": [],
-        "events": [{ "pane": "local/w1:p1", "from": "unknown", "to": "idle" }]
+        "events": [
+          {
+            "pane": "local/w1:p1",
+            "from": "unknown",
+            "to": "idle"
+          }
+        ]
       },
-      "expect": { "states": { "local/w1:p1": "idle" } }
+      "expect": {
+        "states": {
+          "local/w1:p1": "idle"
+        }
+      }
     },
     {
       "name": "the daemon's own done is not taken at its word",
       "why": "herdr publishes a derived `done` from inputs it has about a client that never reported its focus. Taking it would mean two writers for one field with no way to tell whose answer is on screen. It is normalized back to idle on the way in, and this window's own answer decides - here, that somebody was looking.",
       "given": {
         "focused": true,
-        "visible": ["local/w1:p1"],
-        "events": [{ "pane": "local/w1:p1", "from": "working", "to": "done" }]
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "pane": "local/w1:p1",
+            "from": "working",
+            "to": "done"
+          }
+        ]
       },
-      "expect": { "states": { "local/w1:p1": "idle" } }
+      "expect": {
+        "states": {
+          "local/w1:p1": "idle"
+        }
+      }
     },
     {
       "name": "the daemon's done still counts as finishing when nobody was looking",
       "why": "The other side of normalizing it: refusing the daemon's derivation must not mean refusing the transition underneath it. herdr saying `done` is herdr saying the agent stopped, and the agent did stop.",
       "given": {
         "focused": false,
-        "visible": ["local/w1:p1"],
-        "events": [{ "pane": "local/w1:p1", "from": "working", "to": "done" }]
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "pane": "local/w1:p1",
+            "from": "working",
+            "to": "done"
+          }
+        ]
       },
-      "expect": { "states": { "local/w1:p1": "done" } }
+      "expect": {
+        "states": {
+          "local/w1:p1": "done"
+        }
+      }
     },
     {
       "name": "two daemons that hand out the same pane id are two panes",
       "why": "Every daemon names its first pane `w1:p1`. A set keyed by pane alone would let the devenv's agent finishing unseen mark the laptop's pane as waiting, and the user would be sent to the wrong machine - which is the failure attention routing is least able to afford.",
       "given": {
         "focused": true,
-        "visible": ["local/w1:p1"],
+        "visible": [
+          "local/w1:p1"
+        ],
         "events": [
-          { "pane": "devenv/w1:p1", "from": "working", "to": "idle" },
-          { "pane": "local/w1:p1", "from": "working", "to": "idle" }
+          {
+            "pane": "devenv/w1:p1",
+            "from": "working",
+            "to": "idle"
+          },
+          {
+            "pane": "local/w1:p1",
+            "from": "working",
+            "to": "idle"
+          }
         ]
       },
-      "expect": { "states": { "devenv/w1:p1": "done", "local/w1:p1": "idle" } }
+      "expect": {
+        "states": {
+          "devenv/w1:p1": "done",
+          "local/w1:p1": "idle"
+        }
+      }
     },
     {
       "name": "a pane that finished before this window existed is still waiting",
@@ -161,9 +320,18 @@
       "given": {
         "focused": false,
         "visible": [],
-        "events": [{ "appeared": "local/w1:p1", "state": "done" }]
+        "events": [
+          {
+            "appeared": "local/w1:p1",
+            "state": "done"
+          }
+        ]
       },
-      "expect": { "states": { "local/w1:p1": "done" } }
+      "expect": {
+        "states": {
+          "local/w1:p1": "done"
+        }
+      }
     },
     {
       "name": "a pane the daemon says nobody needs is not made into a request",
@@ -171,9 +339,18 @@
       "given": {
         "focused": false,
         "visible": [],
-        "events": [{ "appeared": "local/w1:p1", "state": "idle" }]
+        "events": [
+          {
+            "appeared": "local/w1:p1",
+            "state": "idle"
+          }
+        ]
       },
-      "expect": { "states": { "local/w1:p1": "idle" } }
+      "expect": {
+        "states": {
+          "local/w1:p1": "idle"
+        }
+      }
     },
     {
       "name": "looking at a pane that arrived finished settles it",
@@ -182,20 +359,70 @@
         "focused": true,
         "visible": [],
         "events": [
-          { "appeared": "local/w1:p1", "state": "done" },
-          { "visible": ["local/w1:p1"] }
+          {
+            "appeared": "local/w1:p1",
+            "state": "done"
+          },
+          {
+            "visible": [
+              "local/w1:p1"
+            ]
+          }
         ]
       },
-      "expect": { "states": { "local/w1:p1": "idle" } }
+      "expect": {
+        "states": {
+          "local/w1:p1": "idle"
+        }
+      }
     },
     {
       "name": "a window that has never been told about focus has seen nothing",
       "why": "The starting state, and it is deliberately the pessimistic one. A core that assumed it was focused until told otherwise would mark every agent seen during startup - the window is not on screen yet, and startup is exactly when a session full of running agents is being read for the first time.",
       "given": {
-        "visible": ["local/w1:p1"],
-        "events": [{ "pane": "local/w1:p1", "from": "working", "to": "idle" }]
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "pane": "local/w1:p1",
+            "from": "working",
+            "to": "idle"
+          }
+        ]
       },
-      "expect": { "states": { "local/w1:p1": "done" } }
+      "expect": {
+        "states": {
+          "local/w1:p1": "done"
+        }
+      }
+    },
+    {
+      "name": "a pane that closes takes its waiting with it, so the next pane to be called that is new",
+      "why": "Ids belong to the backend and the backend reuses them - a restarted herdr hands out `w1:p1` again - so waiting-to-be-looked-at cannot outlive the pane it was about. Left behind, the entry is inherited: the next pane given that id renders `done` before its agent has done anything, which is this product's headline state saying something false about a fresh session. The set also only ever grew, since it was emptied by looking rather than by closing, but the leak is the smaller half - a wrong `done` is visible and a few dead keys are not.",
+      "given": {
+        "focused": true,
+        "visible": [],
+        "events": [
+          {
+            "pane": "local/w1:p1",
+            "from": "working",
+            "to": "idle"
+          },
+          {
+            "closed": "local/w1:p1"
+          },
+          {
+            "appeared": "local/w1:p1",
+            "state": "idle"
+          }
+        ]
+      },
+      "expect": {
+        "states": {
+          "local/w1:p1": "idle"
+        }
+      }
     }
   ]
 }

@@ -38,6 +38,15 @@ fn attention_conformance() {
                 attention.showing(read_panes(event, "visible")?);
                 continue;
             }
+            // A pane the backend no longer holds. Its own step because what it proves is
+            // about the id rather than about a state: ids are reused, so what is remembered
+            // about a closed pane is inherited by the next one to be given its name.
+            if event.get("closed").is_some() {
+                let pane = read_pane(event, "closed")?;
+                attention.forget(&pane);
+                backend.remove(&pane);
+                continue;
+            }
             // A pane this window is meeting for the first time, as the daemon already had
             // it - which is what every pane looks like on the way up.
             if event.get("appeared").is_some() {
