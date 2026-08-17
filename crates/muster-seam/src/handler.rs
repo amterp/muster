@@ -924,12 +924,6 @@ fn start(startup: &proto::Startup) -> Response {
     // afterwards, every pane already open would be named a second time, and a program running
     // in one would hold a name for nothing.
     session::set_pane_names_path(&startup.pane_names_path);
-    // After every path above, because a request arriving here goes through this same dispatcher
-    // and can reach any of them. Before the config is deliberate too: applying one can wait on
-    // a daemon starting, and a caller that dials during that gets a window with no daemons
-    // attached, which is the truth at that moment and says so - the health in the answer is
-    // `disconnected` rather than the pane list merely being empty.
-    command::listen(&startup.command_socket_path);
     // Before the config too, because applying one can start a daemon and the locale is part of
     // the environment that daemon is born with. Set after, it would reach the second launch.
     session::set_platform_locale(&startup.locale);
@@ -941,18 +935,36 @@ fn start(startup: &proto::Startup) -> Response {
     // its PATH from the first one onwards.
     session::set_commands_path(&startup.commands_path);
 
+    if let Err(refusal) = start_logging(startup) {
+        return refusal;
+    }
+    // After logging, because the one line that says where this window is listening is the first
+    // thing anybody reads when the CLI cannot find a window - and bound before the config,
+    // because applying one can wait on a daemon starting. A caller that dials during that gets a
+    // window with no daemons attached, which is the truth at that moment and says so: the health
+    // in the answer is `disconnected` rather than the pane list merely being empty.
+    command::listen(&startup.command_socket_path);
+    apply_config(&startup.config_path);
+    Response::ok()
+}
+
+/// Opens this run's log, or says why it could not be opened.
+///
+/// Separate from [`start`] so that everything after it in a launch is inside the record. An empty
+/// path is success with nothing to do: it is what a release build asks for, and what every seam
+/// test that names no log gets.
+fn start_logging(startup: &proto::Startup) -> Result<(), Response> {
     if startup.log_path.is_empty() {
-        apply_config(&startup.config_path);
-        return Response::ok();
+        return Ok(());
     }
     let Some(sink) = JsonLinesSink::open(&startup.log_path) else {
-        return Response::failure(format!(
+        return Err(Response::failure(format!(
             "the core could not open {} for logging, so this run leaves no record. \
              Everything else works; a bug report from it will just be missing the timeline \
              that usually explains what happened. Check that the directory exists and is \
              writable.",
             startup.log_path
-        ));
+        )));
     };
     let level = if startup.log_level.is_empty() {
         LogLevel::Debug
@@ -960,12 +972,12 @@ fn start(startup: &proto::Startup) -> Response {
         match LogLevel::parse(&startup.log_level) {
             Some(level) => level,
             None => {
-                return Response::failure(format!(
+                return Err(Response::failure(format!(
                     "the core does not know a log level called {:?}, so logging stayed off \
                      and this run leaves no record. Valid levels are trace, debug, info, \
                      warn and error; check MUSTER_LOG_LEVEL.",
                     startup.log_level
-                ));
+                )));
             }
         }
     };
@@ -991,8 +1003,7 @@ fn start(startup: &proto::Startup) -> Response {
             },
         },
     );
-    apply_config(&startup.config_path);
-    Response::ok()
+    Ok(())
 }
 
 /// Reads the config file and starts following the daemons it names.

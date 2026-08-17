@@ -71,7 +71,7 @@ impl BackendChannel for HerdrBackend {
             }
         };
 
-        let created = self.settle(created(&result).as_deref(), minted.as_ref());
+        let created = self.settle(created(intent, &result).as_deref(), minted.as_ref());
         let settled = match (rearranges(intent), &created) {
             (Some(pane), Some(created)) => self.rearrange(pane, created),
             // A split herdr made and would not name. Worth saying, because the consequence is
@@ -737,7 +737,16 @@ fn renamed(intent: &BackendIntent, result: &Value) -> Option<(PaneId, Option<Str
 ///
 /// The daemon's own id, untranslated: this is the wire, and binding it to the name Muster
 /// minted is [`HerdrBackend::settle`]'s job one line later.
-fn created(result: &Value) -> Option<String> {
+///
+/// Keyed off the intent rather than off the shape of the answer, on the same terms as
+/// [`renamed`] and for a fault that was found in the running app: `pane.rename`, `pane.zoom` and
+/// `pane.focus` all answer with the same pane payload a split does, so reading any of them meant
+/// a rename reported having made the pane it renamed - and `muster pane rename` printed a pane
+/// name, which a script would read as something new to address.
+fn created(intent: &BackendIntent, result: &Value) -> Option<String> {
+    if !makes_a_pane(intent) {
+        return None;
+    }
     let pane = result.get("pane").or_else(|| result.get("root_pane"))?;
     Some(pane.get("pane_id")?.as_str()?.to_string())
 }

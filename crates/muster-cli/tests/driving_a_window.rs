@@ -130,8 +130,34 @@ fn a_pane_can_drive_the_window_it_is_drawn_in() {
     assert_eq!(sent.code, 0, "`muster pane send` failed: {}", sent.errors);
     until_file(&told, "text sent to a pane by name to have run there");
 
+    only_making_a_pane_prints_a_pane(&made_pane, &inside(&first));
     a_mistyped_flag_is_refused_and_says_what_was_meant(&inside(&first));
     with_no_window_to_ask_nothing_is_guessed(daemon.root());
+}
+
+/// A command that made nothing prints nothing.
+///
+/// `pane new` is the one command whose answer is a pane name, and that is what makes the next line
+/// of a script possible. Every other command has to stay silent, or a script reading one is handed
+/// a name for something it did not create - which it would then go and address. Found in the
+/// running app: a rename printed the pane it had renamed, because the daemon answers a rename with
+/// the same pane payload it answers a split with.
+fn only_making_a_pane_prints_a_pane(pane: &str, environment: &[(&str, String)]) {
+    for argv in [
+        vec!["pane", "rename", "--pane", pane, "🤖 renamed"],
+        vec!["zoom", pane],
+        vec!["focus", pane],
+    ] {
+        let quiet = run(&argv, environment);
+        assert_eq!(quiet.code, 0, "`muster {}` failed: {}", argv.join(" "), quiet.errors);
+        assert!(
+            quiet.out.is_empty(),
+            "`muster {}` printed {:?}. Only a command that made a pane may print one, or \
+             `pane=$(muster ...)` starts working by accident on commands that made nothing.",
+            argv.join(" "),
+            quiet.out
+        );
+    }
 }
 
 /// A refusal an agent can act on, and an exit code a script can branch on.

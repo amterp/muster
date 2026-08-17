@@ -31,12 +31,16 @@ fn a_caller_outside_this_process_can_ask_what_the_window_is_showing() {
     // Inside the daemon's own scratch directory, so the run leaves nothing behind and two runs
     // of this test in parallel cannot collide on one path.
     let socket = daemon.root().join("command.sock");
+    let log = daemon.root().join("run.jsonl");
     assert_ok(&answer(request::Payload::Startup(Startup {
         config_path: daemon.muster_config().to_string_lossy().into_owned(),
         command_socket_path: socket.to_string_lossy().into_owned(),
+        log_path: log.to_string_lossy().into_owned(),
         ..Startup::default()
     })));
     assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+
+    the_run_log_says_where_this_window_is_listening(&log, &socket);
 
     // What a caller has to be able to learn, in the order it stops being useful without it:
     // which panes exist, whether the picture can be trusted, and what is drawn where.
@@ -47,33 +51,7 @@ fn a_caller_outside_this_process_can_ask_what_the_window_is_showing() {
         "no pane reached the answer, so a script could see the window and nothing in it",
     );
 
-    let window = read_window(&socket);
-    let panes = named_panes(&window);
-    assert_eq!(
-        window.daemons.iter().map(|d| d.state.as_str()).collect::<Vec<_>>(),
-        vec!["connected"],
-        "the answer has to say how much of the daemon's truth Muster has. Without it a caller \
-         acts on an hour-old mirror exactly as it would on a live one, and nothing in the \
-         answer distinguishes them: {window:?}"
-    );
-    assert_eq!(
-        window.view.as_ref().and_then(|view| view.regions.first()).map(|r| r.pane_id.clone()),
-        Some(panes[0].clone()),
-        "the region the window draws should name the pane the keyboard is on, by the name \
-         Muster calls it - which is the name a caller would send back: {window:?}"
-    );
-    assert!(
-        panes[0].starts_with('p'),
-        "a caller is answered with Muster's own name for a pane, never the daemon's - a herdr \
-         id is not unique across machines and is not addressable. Got {:?}",
-        panes[0]
-    );
-    assert_eq!(
-        window.panes.iter().map(|pane| pane.pane_id.clone()).collect::<Vec<_>>(),
-        panes,
-        "every pane's agent state travels with the window. A caller that has to ask again per \
-         pane cannot see them at one moment: {window:?}"
-    );
+    let panes = the_answer_carries_what_a_caller_needs(&read_window(&socket));
 
     two_callers_are_both_answered(&socket);
     an_over_long_claim_is_hung_up_on(&socket);
@@ -152,6 +130,58 @@ fn a_caller_outside_this_process_can_ask_what_the_window_is_showing() {
         }),
     ));
     until_file(&echoed, "text sent to the pane by name to have been run there");
+}
+
+/// What a caller has to be able to learn, in the order it stops being useful without it: which
+/// panes exist, whether the picture can be trusted, and what is drawn where.
+///
+/// Returns the panes, by the name Muster calls them, which is what everything after this addresses.
+fn the_answer_carries_what_a_caller_needs(window: &Window) -> Vec<String> {
+    let panes = named_panes(window);
+    assert_eq!(
+        window.daemons.iter().map(|d| d.state.as_str()).collect::<Vec<_>>(),
+        vec!["connected"],
+        "the answer has to say how much of the daemon's truth Muster has. Without it a caller \
+         acts on an hour-old mirror exactly as it would on a live one, and nothing in the \
+         answer distinguishes them: {window:?}"
+    );
+    assert_eq!(
+        window.view.as_ref().and_then(|view| view.regions.first()).map(|r| r.pane_id.clone()),
+        Some(panes[0].clone()),
+        "the region the window draws should name the pane the keyboard is on, by the name \
+         Muster calls it - which is the name a caller would send back: {window:?}"
+    );
+    assert!(
+        panes[0].starts_with('p'),
+        "a caller is answered with Muster's own name for a pane, never the daemon's - a herdr \
+         id is not unique across machines and is not addressable. Got {:?}",
+        panes[0]
+    );
+    assert_eq!(
+        window.panes.iter().map(|pane| pane.pane_id.clone()).collect::<Vec<_>>(),
+        panes,
+        "every pane's agent state travels with the window. A caller that has to ask again per \
+         pane cannot see them at one moment: {window:?}"
+    );
+    panes
+}
+
+/// The one line anybody reads when the CLI cannot find a window.
+///
+/// It went missing for a while, because the endpoint was bound before logging was installed - so
+/// every launch answered "where is this window listening" to nowhere. Found by running the app,
+/// and nothing else would have noticed: the endpoint itself worked.
+fn the_run_log_says_where_this_window_is_listening(
+    log: &std::path::Path,
+    socket: &std::path::Path,
+) {
+    let recorded = std::fs::read_to_string(log).expect("the run log was opened");
+    assert!(
+        recorded.contains("command.listening")
+            && recorded.contains(&socket.to_string_lossy().into_owned()),
+        "the run log does not say where this window is listening, so a caller that cannot find \
+         one has nothing to read. Log:\n{recorded}"
+    );
 }
 
 /// Two callers dialing before either is answered both get an answer.
