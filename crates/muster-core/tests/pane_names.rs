@@ -6,6 +6,7 @@
 //! natively below.
 
 use std::collections::BTreeSet;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use conformance::{CaseError, Conformance, fields};
 use muster_core::composition::DaemonId;
@@ -74,23 +75,27 @@ fn pane_names_conformance() {
     assert!(ran > 0);
 }
 
-/// What a drawn name is allowed to be.
+/// What a name a running Muster mints is allowed to be.
 ///
-/// The corpus pins one sequence, which cannot say that *every* name has these properties -
-/// and every one of them is load-bearing somewhere else. The prefix is what stops a name
-/// reading as the sidebar's position number; the alphabet is what stops a name being
-/// transcribed wrong off a screen; the length is what an agent copies and a log line carries.
+/// The only test that goes through the real clock and the machine's own entropy, which is the
+/// path every pane a user opens is named by and the one no case can pin. Each property is
+/// load-bearing somewhere else: the prefix is what stops a name reading as the sidebar's
+/// position number, the alphabet is what stops a name being transcribed wrong off a screen,
+/// and the length is what an agent copies and a log line carries.
 #[test]
 fn a_drawn_name_is_short_typeable_and_unmistakable() {
     const ALPHABET: &str = "0123456789abcdefghjkmnpqrstvwxyz";
 
-    let mut names = PaneNames::new(Mint::Drawn { state: 20_260_817 });
+    let mut names = PaneNames::new(Mint::Drawn);
     let mut seen = BTreeSet::new();
-    for pane in 0..1000 {
+    for pane in 0..200 {
         let drawn = names.name(&DaemonId::new("local"), &BackendPaneId::new(format!("w1:p{pane}")));
         let spelling = drawn.to_string();
 
-        assert_eq!(spelling.len(), 7, "a name is `p` and six characters, and {spelling} is not");
+        // Ten until 2059, when the tick count crosses 32^6 and gains a character. Pinned
+        // rather than derived, because "a name is ten characters" is the promise being made
+        // to whoever reads one, and a derived length would hold no matter what it drifted to.
+        assert_eq!(spelling.len(), 10, "a name is `p` and nine characters, and {spelling} is not");
         assert!(spelling.starts_with('p'), "a name says it is a pane, and {spelling} does not");
         assert!(
             spelling[1..].chars().all(|c| ALPHABET.contains(c)),
@@ -100,6 +105,30 @@ fn a_drawn_name_is_short_typeable_and_unmistakable() {
     }
 }
 
+/// Names sort into the order their panes were made.
+///
+/// Not decoration: it is what makes `muster window` list panes in an order somebody can
+/// follow, and what lets a name in an old log be placed in time without a lookup. It holds
+/// because the front of a name is a tick count and the alphabet ascends.
+#[test]
+fn a_pane_made_later_is_named_after_one_made_earlier() {
+    let at = |seconds| UNIX_EPOCH + Duration::from_secs(seconds);
+    let mint = |seconds| {
+        PaneNames::new(Mint::Replayed { at: at(seconds), seed: 7 })
+            .name(&DaemonId::new("local"), &BackendPaneId::new("w1:p1"))
+            .to_string()
+    };
+
+    // A second apart, then a decade apart: one tick is the smallest step a name can tell
+    // apart, and ten years is where a shorter tick count would have broken the ordering.
+    let (earlier, later) = (mint(1_800_000_000), mint(1_800_000_001));
+    assert!(earlier < later, "{earlier} should sort before {later}");
+
+    let much_later = mint(1_800_000_000 + 10 * 365 * 86_400);
+    assert!(later < much_later, "{later} should sort before {much_later}");
+    assert_eq!(later.len(), much_later.len(), "a decade should not change how long a name is");
+}
+
 /// A name that has been handed out is not handed out again while its pane is being made.
 ///
 /// The window is one request wide and the odds are tiny, which is exactly what makes it the
@@ -107,7 +136,7 @@ fn a_drawn_name_is_short_typeable_and_unmistakable() {
 /// themselves, and every later command from one of them would act on the other.
 #[test]
 fn a_reserved_name_is_not_drawn_twice() {
-    let mut names = PaneNames::new(Mint::Drawn { state: 4 });
+    let mut names = PaneNames::new(replayed(4));
     let mut reserved = Vec::new();
     for _ in 0..100 {
         let name = names.reserve();
@@ -121,12 +150,11 @@ fn what_is_written_is_what_comes_back() {
     // The file is the only thing between one run and the next. A pane that loses its name on
     // restart is an agent that can no longer say which pane it is - and it has no way to
     // find out again, because nothing else in its environment says.
-    let mut names = PaneNames::new(Mint::Drawn { state: 99 });
+    let mut names = PaneNames::new(replayed(99));
     let first = names.name(&DaemonId::new("local"), &BackendPaneId::new("w1:p1"));
     let second = names.name(&DaemonId::new("devenv"), &BackendPaneId::new("w1:p1"));
 
-    let read = from_toml(&to_toml(&names), Mint::Drawn { state: 1 })
-        .expect("what this wrote, it can read");
+    let read = from_toml(&to_toml(&names), replayed(1)).expect("what this wrote, it can read");
 
     assert_eq!(
         read.locate(&first).map(|at| at.backend.to_string()),
@@ -145,13 +173,13 @@ fn what_is_written_is_what_comes_back() {
 /// run's draws.
 #[test]
 fn a_name_read_back_is_not_drawn_again() {
-    let mut before = PaneNames::new(Mint::Drawn { state: 11 });
+    let mut before = PaneNames::new(replayed(11));
     let taken = before.name(&DaemonId::new("local"), &BackendPaneId::new("w1:p1"));
 
-    // The same seed, so the next run draws the same first name - which is the collision this
-    // is about, and the one a random-per-draw mint would hide rather than fix.
-    let mut after =
-        from_toml(&to_toml(&before), Mint::Drawn { state: 11 }).expect("it can read its own file");
+    // The same instant and the same seed, so the next run draws the same first name - which is
+    // the collision this is about, and the one a mint nobody could replay would hide rather
+    // than fix.
+    let mut after = from_toml(&to_toml(&before), replayed(11)).expect("it can read its own file");
     let drawn = after.name(&DaemonId::new("local"), &BackendPaneId::new("w1:p2"));
 
     assert_ne!(drawn, taken, "a name was handed to a second pane after being read back");
@@ -169,11 +197,56 @@ fn a_file_from_a_format_nobody_knows_is_refused_by_name() {
 fn mint(given: &Value) -> Result<Mint, CaseError> {
     match given.get("mint").and_then(Value::as_str) {
         Some("backend") => Ok(Mint::Backend),
-        Some("drawn") | None => {
-            Ok(Mint::Drawn { state: given.get("seed").and_then(Value::as_u64).unwrap_or(1) })
-        }
+        Some("replayed") | None => Ok(Mint::Replayed {
+            at: instant(given.get("at").and_then(Value::as_str).unwrap_or(DEFAULT_INSTANT))?,
+            seed: given.get("seed").and_then(Value::as_u64).unwrap_or(1),
+        }),
         Some(other) => Err(CaseError::new(format!("no mint called {other:?}"))),
     }
+}
+
+/// What a case that says nothing about when is minting at.
+///
+/// A fixed instant rather than the real clock, because a case pins the name it expects and a
+/// name says what second it was minted in.
+const DEFAULT_INSTANT: &str = "2026-08-17T00:00:00Z";
+
+/// The mint the tests above use: reproducible, at the instant a case with nothing to say about
+/// time is driven at.
+fn replayed(seed: u64) -> Mint {
+    Mint::Replayed { at: instant(DEFAULT_INSTANT).expect("the default instant reads"), seed }
+}
+
+/// `2026-08-17T00:00:00Z`, in seconds since the Unix epoch.
+///
+/// Hand-rolled rather than taken from a date library so that a case can say when in a form
+/// somebody reads. Only the shape the corpus uses is accepted: a refusal here is a typo in a
+/// case, and guessing at it would pin a name for an instant nobody wrote down.
+fn instant(text: &str) -> Result<SystemTime, CaseError> {
+    let refuse = || CaseError::new(format!("{text:?} is not a YYYY-MM-DDTHH:MM:SSZ instant"));
+    let (date, time) = text.trim_end_matches('Z').split_once('T').ok_or_else(refuse)?;
+
+    let mut fields = date.split('-').chain(time.split(':')).map(str::parse::<i64>);
+    let mut next = || fields.next().ok_or_else(refuse)?.map_err(|_| refuse());
+    let (year, month, day) = (next()?, next()?, next()?);
+    let (hour, minute, second) = (next()?, next()?, next()?);
+
+    let seconds = days_from_civil(year, month, day) * 86_400 + hour * 3600 + minute * 60 + second;
+    let seconds = u64::try_from(seconds).map_err(|_| refuse())?;
+    Ok(UNIX_EPOCH + Duration::from_secs(seconds))
+}
+
+/// Hinnant's civil-to-days, the inverse of the one the diagnostics clock formats with.
+fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
+    // March-based, so a leap day lands at the end of a year and the month arithmetic has no
+    // special case in it.
+    let year = year - i64::from(month <= 2);
+    let era = if year >= 0 { year } else { year - 399 } / 400;
+    let year_of_era = year - era * 400;
+    let shifted_month = (month + 9) % 12;
+    let day_of_year = (153 * shifted_month + 2) / 5 + day - 1;
+    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    era * 146_097 + day_of_era - 719_468
 }
 
 /// `local/w1:p1`, which is how a case spells a pane in one string.

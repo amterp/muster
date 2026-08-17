@@ -2,15 +2,15 @@
   "concept": "names.pane",
   "source": "authored",
   "citation": "docs/architecture.md, one action path; kan a_26BJb2n6o",
-  "why": "Muster names its own panes because it has to be able to tell a pane which pane it is, and a backend's id arrives too late for that - herdr assigns one in its answer to a split, and the environment a new pane is born with has to be sent with the request. These cases define what a name is, when one is minted, and when one is forgotten. Every other corpus here drives the registry in its `backend` mint, where a pane's name is whatever the backend called it, so that a case about the mirror is not also a case about the mint.",
+  "why": "Muster names its own panes because it has to be able to tell a pane which pane it is, and a backend's id arrives too late for that - herdr assigns one in its answer to a split, and the environment a new pane is born with has to be sent with the request. A name is `p` and nine characters: six saying what second the pane was made in, three keeping panes made in the same second apart. These cases define what a name is, when one is minted, and when one is forgotten. Every other corpus here drives the registry in its `backend` mint, where a pane's name is whatever the backend called it, so that a case about the mirror is not also a case about the mint.",
   "cases": [
     {
       "name": "a pane seen twice keeps the name it was given",
       "why": "Names are how everything above the adapter refers to a pane, so a second sighting that minted a second name would split one pane into two throughout the mirror, the view and the roster - and the pane's own environment would name whichever came first.",
       "given": { "seed": 1, "do": [{ "see": "local/w1:p1" }, { "see": "local/w1:p1" }] },
       "expect": {
-        "trace": ["p8zjcwj", "p8zjcwj"],
-        "located": { "p8zjcwj": "local/w1:p1" }
+        "trace": ["p1gvjc07bs", "p1gvjc07bs"],
+        "located": { "p1gvjc07bs": "local/w1:p1" }
       }
     },
     {
@@ -18,8 +18,8 @@
       "why": "herdr numbers panes per session, so a laptop and a devenv both hold a w1:p1. That is the whole reason a bare backend id stopped being an answer, and the reason a minted name is one: it is unique across every attached machine, so a CLI can name a pane on the devenv without knowing which daemon holds it.",
       "given": { "seed": 1, "do": [{ "see": "local/w1:p1" }, { "see": "devenv/w1:p1" }] },
       "expect": {
-        "trace": ["p8zjcwj", "pnf7tda"],
-        "located": { "p8zjcwj": "local/w1:p1", "pnf7tda": "devenv/w1:p1" }
+        "trace": ["p1gvjc07bs", "p1gvjc0a4a"],
+        "located": { "p1gvjc07bs": "local/w1:p1", "p1gvjc0a4a": "devenv/w1:p1" }
       }
     },
     {
@@ -29,21 +29,21 @@
         "seed": 1,
         "do": [{ "reserve": "A" }, { "settle": { "as": "A", "at": "local/w1:p7" } }]
       },
-      "expect": { "trace": ["p8zjcwj"], "located": { "p8zjcwj": "local/w1:p7" } }
+      "expect": { "trace": ["p1gvjc07bs"], "located": { "p1gvjc07bs": "local/w1:p7" } }
     },
     {
       "name": "a name reserved for a pane the backend refused is not left behind",
       "why": "A split that fails leaves a name spoken and nothing answering to it. Released rather than kept, so the registry never grows entries for panes that were never made - and so a later draw may use it, since nobody ever ran anything under it.",
       "given": { "seed": 1, "do": [{ "reserve": "A" }, { "release": "A" }] },
-      "expect": { "trace": ["p8zjcwj"], "located": {} }
+      "expect": { "trace": ["p1gvjc07bs"], "located": {} }
     },
     {
       "name": "a reserved name is not handed to the pane seen next",
       "why": "Between reserving a name and the backend answering, a daemon event can arrive about some other pane. Drawing the reserved name for it would hand two panes one identity, and the one that had it in its environment would spend the rest of its life acting on the other.",
       "given": { "seed": 1, "do": [{ "reserve": "A" }, { "see": "local/w1:p1" }] },
       "expect": {
-        "trace": ["p8zjcwj", "pnf7tda"],
-        "located": { "pnf7tda": "local/w1:p1" }
+        "trace": ["p1gvjc07bs", "p1gvjc0a4a"],
+        "located": { "p1gvjc0a4a": "local/w1:p1" }
       }
     },
     {
@@ -57,7 +57,7 @@
           { "prune": { "daemon": "local", "holds": ["w1:p2"] } }
         ]
       },
-      "expect": { "trace": ["p8zjcwj", "pnf7tda"], "located": { "pnf7tda": "local/w1:p2" } }
+      "expect": { "trace": ["p1gvjc07bs", "p1gvjc0a4a"], "located": { "p1gvjc0a4a": "local/w1:p2" } }
     },
     {
       "name": "forgetting one daemon's panes leaves another daemon's alone",
@@ -70,17 +70,26 @@
           { "prune": { "daemon": "local", "holds": [] } }
         ]
       },
-      "expect": { "trace": ["p8zjcwj", "pnf7tda"], "located": { "pnf7tda": "devenv/w1:p1" } }
+      "expect": {
+        "trace": ["p1gvjc07bs", "p1gvjc0a4a"],
+        "located": { "p1gvjc0a4a": "devenv/w1:p1" }
+      }
     },
     {
-      "name": "a different seed draws different names",
-      "why": "Names are drawn from a seed the shell supplies rather than from a counter, so that two Musters writing one file cannot hand out the same name without talking to each other. Seeded rather than random per draw so a run is reproducible from its log.",
-      "given": { "seed": 20260817, "do": [{ "see": "local/w1:p1" }] },
-      "expect": { "trace": ["psbdmy2"], "located": { "psbdmy2": "local/w1:p1" } }
+      "name": "a name says what second its pane was made in",
+      "why": "The front of a name is a count of seconds since 2025, which is what stops two Musters that never speak to each other minting one name unless they mint in the same second - and what makes names sort into the order their panes were made. The same entropy as the first case, one second later: only the front moves.",
+      "given": { "at": "2026-08-17T00:00:01Z", "seed": 1, "do": [{ "see": "local/w1:p1" }] },
+      "expect": { "trace": ["p1gvjc17bs"], "located": { "p1gvjc17bs": "local/w1:p1" } }
+    },
+    {
+      "name": "panes made in the same second are told apart by the end of their names",
+      "why": "The last three characters are the only thing keeping two panes apart when the second they were made in cannot, which is the case every split a script makes falls into. A running Muster draws them from the machine's entropy; a case draws them from a seed, so the name it expects can be written down here.",
+      "given": { "at": "2026-08-17T00:00:00Z", "seed": 20260817, "do": [{ "see": "local/w1:p1" }] },
+      "expect": { "trace": ["p1gvjc0a13"], "located": { "p1gvjc0a13": "local/w1:p1" } }
     },
     {
       "name": "the backend mint calls a pane what the backend calls it",
-      "why": "Every other corpus in this directory runs the registry this way, so a case pinning what the mirror does with w1:p1 is testing the mirror rather than the mint. Defined here so that mode is a stated behaviour rather than a convenience nobody wrote down. It gives up the one property a drawn name has and a backend id does not - uniqueness across daemons - which is why it is a mint for cases about something else and never one Muster runs in.",
+      "why": "Every other corpus in this directory runs the registry this way, so a case pinning what the mirror does with w1:p1 is testing the mirror rather than the mint. Defined here so that mode is a stated behaviour rather than a convenience nobody wrote down. It gives up the one property a minted name has and a backend id does not - uniqueness across daemons - which is why it is a mint for cases about something else and never one Muster runs in.",
       "given": {
         "mint": "backend",
         "do": [{ "see": "local/w1:p1" }, { "see": "local/w1:p2" }, { "see": "local/w1:p1" }]

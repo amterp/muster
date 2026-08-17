@@ -13,6 +13,11 @@
 //! Muster names the things it has to be able to talk about, rather than being limited to what
 //! a dependency happens to hand out.
 //!
+//! A name is `p` and nine characters - `p1gvjc07bs` - of which the first six say what second
+//! the pane was made in and the last three keep panes made in the same second apart. So names
+//! sort into the order their panes were made, and two Musters that never speak to each other
+//! cannot mint one name unless they mint in the same second.
+//!
 //! **Names are globally unique, which is a property and not an accident.** Two daemons both
 //! hand out `w1:p1`, so a bare backend id stops being an answer the moment a window shows two
 //! machines. A minted name is an answer on its own, which is what lets a CLI reach a pane on
@@ -22,8 +27,13 @@
 //! somebody else's work.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::LazyLock;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+use flexid::{Alphabet, Generator, OsRandom, RandomError, RandomSource};
 
 use crate::composition::DaemonId;
+use crate::diagnostics::monotonic_now;
 use crate::mirror::backend::PaneId;
 
 /// What a backend calls a pane.
@@ -65,16 +75,19 @@ pub struct Located {
 }
 
 /// Where the next name comes from.
-///
-/// An injected edge rather than something read here, on the same terms as the clock: drawing
-/// entropy is the shell's to do, and a core that did it for itself could not be replayed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mint {
-    /// Names drawn from a seed the caller supplies, which is what a running Muster uses.
+    /// The machine's clock and the machine's entropy, which is what a running Muster uses.
+    Drawn,
+
+    /// The same spelling at an instant the caller fixes, with entropy from a seed.
     ///
-    /// Seeded rather than random per draw so that a run is reproducible from its log: the
-    /// same seed always produces the same sequence of names.
-    Drawn { state: u64 },
+    /// flexid takes both impure inputs as arguments, so the same instant and the same seed
+    /// always produce the same name. That is what lets a conformance case pin the name a draw
+    /// produces rather than only the shape one has, which matters because a name that changed
+    /// shape between versions would strand every pane already carrying one in its
+    /// environment.
+    Replayed { at: SystemTime, seed: u64 },
 
     /// The backend's own id, verbatim.
     ///
@@ -83,7 +96,7 @@ pub enum Mint {
     /// its expectations would make it test the mint as well - so the drivers name a pane
     /// after the backend and the naming has cases of its own.
     ///
-    /// It gives up the one property a drawn name has and a backend id does not: two daemons
+    /// It gives up the one property a minted name has and a backend id does not: two daemons
     /// both hand out `w1:p1`, so under this mint they collide. That is why it is a mint for
     /// cases about something else, and never one Muster runs in.
     Backend,
@@ -94,45 +107,112 @@ impl Mint {
     fn draw(&mut self, backend: &BackendPaneId) -> String {
         match self {
             Mint::Backend => backend.to_string(),
-            Mint::Drawn { state } => {
-                // xorshift64*, which is six lines and good enough for thirty bits of name.
-                // What is wanted here is that two Musters writing one state file do not
-                // collide, not that a name is unguessable - the socket a name is spoken over
-                // is already the user's own.
-                *state ^= *state >> 12;
-                *state ^= *state << 25;
-                *state ^= *state >> 27;
-                spell(state.wrapping_mul(0x2545_f491_4f6c_dd1d))
+            Mint::Drawn => spell(SystemTime::now(), &mut OsRandom),
+            Mint::Replayed { at, seed } => {
+                // Zero is xorshift's fixed point, so a case that gave it would draw one name
+                // over and over and exhaust the collision retries instead of saying why.
+                if *seed == 0 {
+                    *seed = 1;
+                }
+                spell(*at, &mut Seeded(seed))
             }
         }
     }
 }
 
-/// How many characters a drawn name has after its `p`.
-///
-/// Six, at five bits each, is thirty bits. A window nobody can fill past about fifteen panes
-/// draws a handful of these a day, so the birthday odds are nowhere - and it is short enough
-/// to type, to fit in a log line, and to read back over somebody's shoulder.
-const DRAWN_LENGTH: usize = 6;
-
 /// Crockford's base32: no `i`, `l`, `o` or `u`, so nothing reads as something else.
-const ALPHABET: &[u8; 32] = b"0123456789abcdefghjkmnpqrstvwxyz";
-
-/// A drawn name, spelled.
 ///
-/// Pure, and separate from the draw, so that a case can pin what a number is spelled as
-/// without pinning how the number was arrived at.
-fn spell(value: u64) -> String {
-    let mut name = String::with_capacity(DRAWN_LENGTH + 1);
-    name.push('p');
-    for character in 0..DRAWN_LENGTH {
-        // Five bits at a time from the top, so the whole word contributes rather than the
-        // low bits alone - a generator with weak low bits would otherwise show through.
-        let shift = 64 - 5 * (character + 1);
-        let index = usize::try_from((value >> shift) & 0b1_1111).unwrap_or_default();
-        name.push(char::from(ALPHABET[index]));
+/// Lowercase, rather than flexid's uppercase [`Alphabet::CROCKFORD_BASE32`], because a name is
+/// something somebody types after `--pane`. Still in ascending byte order, which is what
+/// flexid needs for names to sort.
+const ALPHABET: &str = "0123456789abcdefghjkmnpqrstvwxyz";
+
+/// How a name is spelled, decided once.
+///
+/// The same generator for a running Muster and for a replayed case, so that a name pinned in
+/// the corpus is a name Muster actually mints.
+///
+/// **A 2025 epoch and one-second ticks** put the tick count at six characters from January
+/// 2026 - before Muster existed - until 2059, so every name Muster ever mints is the same
+/// length and they all sort. **Three random characters** is 32,768 names per second, and it
+/// only has to cover two Musters minting in the same second without talking to each other:
+/// within one, the registry below re-draws on a collision.
+// Seconds rather than the hours clippy prefers: 1735689600 is a Unix timestamp, which is
+// something a reader can recognize and look up. 482136 hours is a number nobody can place.
+#[allow(clippy::duration_suboptimal_units)]
+fn spelling() -> &'static Generator {
+    static SPELLING: LazyLock<Generator> = LazyLock::new(|| {
+        Generator::builder()
+            // 2025-01-01, which is time no name has to spend characters encoding.
+            .epoch(UNIX_EPOCH + Duration::from_secs(1_735_689_600))
+            .tick_size(Duration::from_secs(1))
+            .alphabet(Alphabet::new(ALPHABET).expect("base32 is 32 distinct ASCII characters"))
+            .random_chars(3)
+            .build()
+            .expect("a one-second tick is not zero")
+    });
+    &SPELLING
+}
+
+/// `p`, and then what flexid says for this instant.
+///
+/// The `p` says the name is a pane's, so that a name never reads as the position number the
+/// sidebar shows beside it.
+///
+/// The instant is clamped to the epoch rather than passed through, because a machine whose
+/// clock is set before 2025 would otherwise be refused a name outright - and a pane with no
+/// name is a split missing from the window for no stated reason. Those names all sit in tick
+/// zero: still distinct, they just stop saying when.
+fn spell(at: SystemTime, entropy: &mut impl RandomSource) -> String {
+    let generator = spelling();
+    let at = at.max(generator.epoch());
+    let drawn = generator
+        .generate_at(at, entropy)
+        .or_else(|_| generator.generate_at(at, &mut FromTheClock))
+        // Unreachable: the fallback reads no OS entropy, the clamp rules out an instant
+        // before the epoch, and one-second ticks cannot overflow a u64 this side of the heat
+        // death. An empty name would be caught by the collision check either way.
+        .unwrap_or_default();
+    format!("p{drawn}")
+}
+
+/// A last resort when the machine will not hand over entropy.
+///
+/// `getrandom` does not fail on any platform Muster runs on. It is caught anyway because
+/// naming is not something this can decline to do: every path that sees a pane arrives here,
+/// so a refusal would cost a split rather than a character. The monotonic clock reads in tens
+/// of nanoseconds, so two reads differ in their low byte, and the registry's collision check
+/// covers the rest.
+struct FromTheClock;
+
+impl RandomSource for FromTheClock {
+    fn fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), RandomError> {
+        for byte in dest.iter_mut() {
+            *byte = u8::try_from(monotonic_now() & 0xff).unwrap_or_default();
+        }
+        Ok(())
     }
-    name
+}
+
+/// Entropy a case can reproduce, standing in for the machine's.
+///
+/// xorshift64*, which is four lines and does not have to be strong: what a replayed draw needs
+/// is that one seed always gives one sequence, not that a name is unguessable. The socket a
+/// name is spoken over is already the user's own.
+struct Seeded<'a>(&'a mut u64);
+
+impl RandomSource for Seeded<'_> {
+    fn fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), RandomError> {
+        for byte in dest.iter_mut() {
+            *self.0 ^= *self.0 >> 12;
+            *self.0 ^= *self.0 << 25;
+            *self.0 ^= *self.0 >> 27;
+            // The top byte, because xorshift64*'s low bits are its weakest.
+            *byte =
+                u8::try_from(self.0.wrapping_mul(0x2545_f491_4f6c_dd1d) >> 56).unwrap_or_default();
+        }
+        Ok(())
+    }
 }
 
 /// Every pane Muster has a name for.
