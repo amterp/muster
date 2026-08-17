@@ -1053,6 +1053,11 @@ fn start(startup: &proto::Startup) -> Response {
     // is part of the environment that daemon is born with - so a pane it spawns has `muster` on
     // its PATH from the first one onwards.
     session::set_commands_path(&startup.commands_path);
+    // Before the config, because applying one can attach a daemon on another machine and that
+    // is the whole of what this is for: a herdr for that machine's platform, fetched here and
+    // pushed across. Set after, the first launch to meet a new devenv would download to a
+    // temporary and throw it away.
+    session::set_cache_path(&startup.cache_path);
 
     if let Err(refusal) = start_logging(startup) {
         return refusal;

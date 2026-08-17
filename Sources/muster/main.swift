@@ -56,7 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     Core.start(
       logPath: logPath, configPath: config, daemonPath: daemon, statePath: statePath(),
       daemonConfigPath: daemonConfigPath(), paneNamesPath: paneNamesPath(),
-      commandSocketPath: commandSocketPath(), commandsPath: commands)
+      commandSocketPath: commandSocketPath(), commandsPath: commands, cachePath: cachePath())
     Core.info(
       "app.launch",
       [

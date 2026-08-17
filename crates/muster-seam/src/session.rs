@@ -34,7 +34,7 @@ use muster_core::roster::{Roster, RosterTab, TabStep};
 use muster_herdr::subscription::{Notice, Subscription};
 use muster_herdr::{
     HerdrBackend, HerdrClient, HerdrPaneChannel, PaneControlChannel, PaneEnvironment, daemon,
-    discover_socket_path, fetch_snapshot, own_socket_path,
+    fetch_snapshot, own_socket_path, remote,
 };
 use muster_ssh::{Forward, Tunnel, remote_environment};
 use muster_vt::KeyEncoder;
@@ -103,6 +103,25 @@ pub(crate) fn set_commands_path(path: &str) {
 
 fn commands_path() -> Option<String> {
     poison::lock(&COMMANDS, "commands").clone()
+}
+
+/// Where Muster keeps what it downloaded, for the one thing that downloads anything.
+///
+/// Held on the same terms as the three above, and needed in the same place: attaching a daemon on
+/// another machine means having that machine's herdr to hand, and the pinned release asset is
+/// fetched here rather than over there.
+///
+/// None means the shell found nowhere, and then a fetch goes to a temporary that is thrown away -
+/// slow on every launch that has to install, rather than broken.
+static CACHE: Mutex<Option<String>> = Mutex::new(None);
+
+pub(crate) fn set_cache_path(path: &str) {
+    let mut held = poison::lock(&CACHE, "cache");
+    *held = if path.is_empty() { None } else { Some(path.to_string()) };
+}
+
+fn cache_path() -> Option<String> {
+    poison::lock(&CACHE, "cache").clone()
 }
 
 /// Where this window's arrangement is remembered, and what was last written there.
@@ -593,39 +612,52 @@ fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, String> {
             });
             Ok(Reached { socket_path: path, tunnel: None, panes, owns_config: config.is_some() })
         }
-        // A remote is the one place Muster does not yet own its daemon, and the reason is
-        // packaging rather than principle: the bundle carries a binary for this machine's
-        // platform and a devenv is usually another. So an ssh endpoint attaches to whatever
-        // herdr is installed over there, at whatever version. Closing that is a_28QlRpvKj.
-        Endpoint::Ssh { host, options, socket_path } => {
-            // Asked for rather than assumed, and asked for using the rules Muster already
-            // has: a shell one-liner spelling out where herdr keeps its socket would be a
-            // second copy of the thing most likely to drift.
-            let remote = if let Some(path) = socket_path {
-                path.clone()
-            } else {
-                let environment = remote_environment(host, options)?;
-                discover_socket_path(&environment).ok_or_else(|| {
-                    format!(
-                        "{host} answered, and nothing in its environment says where its herdr \
-                         socket would be - it has no HOME. Name the daemon's socket in the \
-                         config file's `socket` key."
-                    )
-                })?
-            };
-            let tunnel = Tunnel::open(Forward {
-                host: host.clone(),
-                options: options.clone(),
-                control_path: tunnel_path(daemon, "ctl"),
-                local_socket: tunnel_path(daemon, "sock"),
-                remote_socket: remote,
-            })?;
+        // A socket somebody named is somebody's own daemon on either machine, and gets the same
+        // answer on both: forwarded as asked for, and left alone. Nothing is read off the far
+        // end at all, because the one question that needed asking has been answered outright.
+        Endpoint::Ssh { host, options, socket_path: Some(path) } => {
+            let tunnel = open_tunnel(daemon, host, options, path.clone())?;
             Ok(Reached {
                 socket_path: tunnel.local_socket_path().to_string(),
                 tunnel: Some(tunnel),
-                // Muster neither started this daemon nor wrote its config, so a pane on it
-                // has nothing to restore. Giving it one over here would be Muster naming a
-                // path on the wrong machine.
+                panes: PaneEnvironment::none(),
+                owns_config: false,
+            })
+        }
+        // The arrangement the local arm has, one machine further away. What used to stop it was
+        // packaging rather than principle - four platforms are pinned and a build carries one -
+        // and that is answered by fetching the right asset here and pushing it over the master,
+        // rather than by attaching whatever herdr somebody happened to install over there.
+        Endpoint::Ssh { host, options, socket_path: None } => {
+            // Asked for rather than assumed, and asked for using the rules Muster already
+            // has: a shell one-liner spelling out where herdr keeps its socket would be a
+            // second copy of the thing most likely to drift.
+            let environment = remote_environment(host, options)?;
+            let remote_socket = own_socket_path(&environment).ok_or_else(|| {
+                format!(
+                    "{host} answered, and nothing in its environment says where a herdr socket \
+                     would go - it has no HOME. That machine's panes are absent from the window \
+                     and nothing else is affected. Name the daemon's socket in the config \
+                     file's `socket` key to say outright."
+                )
+            })?;
+            // Opened before the daemon exists, which is what lets everything after this ask
+            // "does it answer" through the forwarded path rather than inventing a second way to
+            // probe. Measured against the devenv: ssh binds the local end when it connects and
+            // reaches the far one per connection, so a remote socket that is not there yet
+            // costs nothing until something dials it.
+            let tunnel = open_tunnel(daemon, host, options, remote_socket)?;
+            remote::ensure_running(
+                &tunnel.remote(),
+                &environment,
+                tunnel.local_socket_path(),
+                cache_path().as_deref(),
+            )?;
+            Ok(Reached {
+                socket_path: tunnel.local_socket_path().to_string(),
+                tunnel: Some(tunnel),
+                // Muster started this daemon but has not written its config, so a pane on it
+                // has nothing to put back yet. That is a_29BYC0IGC rather than a settled answer.
                 panes: PaneEnvironment::none(),
                 owns_config: false,
             })
@@ -638,6 +670,22 @@ fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, String> {
 /// Named for the daemon rather than numbered, unlike a pane's socket, because there are a
 /// handful of these and the name is what makes one recognisable in `lsof` at the moment
 /// somebody is wondering which connection is wedged. The pid keeps two Musters apart.
+/// One master to a daemon on another machine, forwarding that daemon's socket onto a path here.
+fn open_tunnel(
+    daemon: &DaemonId,
+    host: &str,
+    options: &[String],
+    remote_socket: String,
+) -> Result<Tunnel, String> {
+    Tunnel::open(Forward {
+        host: host.to_string(),
+        options: options.to_vec(),
+        control_path: tunnel_path(daemon, "ctl"),
+        local_socket: tunnel_path(daemon, "sock"),
+        remote_socket,
+    })
+}
+
 fn tunnel_path(daemon: &DaemonId, extension: &str) -> String {
     let name = format!("muster-{}-{daemon}.{extension}", std::process::id());
     std::env::temp_dir().join(name).to_string_lossy().into_owned()

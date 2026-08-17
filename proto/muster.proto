@@ -940,6 +940,20 @@ message Startup {
   // the window works exactly as it did before this existed.
   string commands_path = 11;
 
+  // Where Muster keeps what it downloaded, or empty for nowhere.
+  //
+  // One thing needs this, and it is the daemon on a machine that is not this one. Muster runs
+  // the herdr it pinned rather than whatever is installed, and four platforms are pinned while
+  // a build carries one - so attaching an SSH endpoint means fetching that machine's asset and
+  // pushing it over the connection already open. Downloaded here rather than over there because
+  // whoever is running Muster demonstrably has web access and a devenv often has no route out.
+  //
+  // The shell decides where it goes for the same reason it decides where the arrangement does.
+  // Empty is a real state and not a failure: the fetch then goes to a temporary that is thrown
+  // away, so a machine with nowhere to cache pays for the download on every launch that has to
+  // install - slow rather than broken.
+  string cache_path = 12;
+
   // trace, debug, info, warn, error. Empty means debug.
   string log_level = 2;
 
