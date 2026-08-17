@@ -217,8 +217,9 @@ message ResizePane {
   // left, right, up or down.
   string direction = 3;
 
-  // How many cells. Zero means the daemon's own step, which is what a keybinding wants; a CLI
-  // or an agent placing a divider exactly says.
+  // What fraction of the region to move the divider by, between 0 and 1. Zero means the
+  // daemon's own step, which is what a keybinding wants; a CLI or an agent placing a divider
+  // exactly says.
   float amount = 4;
 
   // How big one cell is on the surface this resize came from, in points. Zero means the caller
@@ -231,6 +232,18 @@ message ResizePane {
   // own step, which is a smaller wrong answer than a distance guessed from a font nobody knows.
   float cell_width = 5;
   float cell_height = 6;
+
+  // How wide and tall the whole region is, in points. Zero means the caller could not measure
+  // it.
+  //
+  // The divider moves by a fraction of what it divides, so a distance has nothing to be a
+  // fraction of until something reports an extent. The region rather than the pane, because
+  // the daemon adjusts the nearest split's ratio and that split's area is the whole region
+  // whenever there is one split on the axis - measuring the pane instead would ask for about
+  // twice the distance the person wanted. Reported raw, in the same points as the cell, so
+  // that all of the arithmetic stays in the core.
+  float region_width = 7;
+  float region_height = 8;
 }
 
 // Makes the text in every pane bigger or smaller, or puts it back.

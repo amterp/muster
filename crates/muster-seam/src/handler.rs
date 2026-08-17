@@ -830,16 +830,17 @@ fn resize_pane(resize: &proto::ResizePane) -> Response {
     // file's `resize_step`, and what that means by absent is the daemon's own step - resolved
     // here rather than in the shell, so a CLI asking for the same thing gets the same answer.
     //
-    // A step written in points needs the cell the chord happened on, and which side of the
-    // cell depends on which way the divider moves: a horizontal chord divides by its width, a
-    // vertical one by its height. That asymmetry is the whole reason points are offered.
+    // Both measurements are taken along the axis the divider travels: a horizontal chord
+    // divides by the cell's width and the region's width, a vertical one by their heights. The
+    // cell asymmetry is the whole reason points are offered as a unit at all; the region
+    // asymmetry is just which way the window happens to be shaped.
     let step = session::feel().resize_step;
-    let cell = match direction {
-        Side::Left | Side::Right => resize.cell_width,
-        Side::Up | Side::Down => resize.cell_height,
+    let (cell, extent) = match direction {
+        Side::Left | Side::Right => (resize.cell_width, resize.region_width),
+        Side::Up | Side::Down => (resize.cell_height, resize.region_height),
     };
-    let measured = (cell > 0.0).then_some(cell);
-    let configured = step.and_then(|step| step.cells(measured));
+    let measured = |value: f32| (value > 0.0).then_some(value);
+    let configured = step.and_then(|step| step.fraction(measured(cell), measured(extent)));
     if let Some(step) = step.filter(|_| configured.is_none()) {
         log::warn(
             "config.resizeStep.unmeasured",
@@ -848,18 +849,19 @@ fn resize_pane(resize: &proto::ResizePane) -> Response {
                 "direction" => direction.as_str(),
                 "impact" => "this resize moved the daemon's own step instead of the distance the \
                               config file asked for",
-                "detail" => "a step in points has to be divided by the size of a cell, and this \
-                              caller reported none. A chord always reports one, so this is either \
-                              a surface nothing has measured yet or a caller with no surface at \
-                              all - spelling the step in cells makes it independent of either.",
+                "detail" => "a distance becomes a divider position only against the size of a \
+                              cell and the size of the region it is a share of, and this caller \
+                              reported one of them as zero. A chord always reports both, so this \
+                              is either a surface nothing has measured yet or a caller with no \
+                              window at all.",
             },
         );
     }
-    let amount = (resize.amount > 0.0).then_some(resize.amount).or(configured);
+    let fraction = (resize.amount > 0.0).then_some(resize.amount).or(configured);
     act(&resize.daemon_id, &resize.pane_id, Keyboard::Follows, |pane| BackendIntent::ResizePane {
         pane,
         direction,
-        amount,
+        fraction,
     })
 }
 

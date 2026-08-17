@@ -250,28 +250,37 @@ impl ResizeStep {
         Ok(step(distance))
     }
 
-    /// This step in cells, along an axis whose cell measures `cell_points` points.
+    /// This step as a fraction of `extent_points`, the region the divider moves inside, on an
+    /// axis whose cell measures `cell_points` points.
     ///
-    /// The conversion lives here rather than in the shell so that every caller gets the same
-    /// arithmetic - a chord today, and the CLI when it arrives. Cells are the identity case
-    /// of it, which is why supporting both units costs close to nothing once the shell
-    /// measures a cell at all.
+    /// A fraction because that is what a divider position is: the backend holds a ratio and a
+    /// distance means nothing to it until it is a fraction of something. Both units therefore
+    /// need both measurements - a step in cells knows how far it wants to go only once a cell
+    /// has a size, and neither knows what share of the region that is until the region has
+    /// one. The conversion lives here rather than in the shell so that every caller gets the
+    /// same arithmetic: a chord today, and the CLI when it arrives.
     ///
-    /// Rounded to a whole cell and floored at one, because the daemon resizes a grid: a step
-    /// too small to move a column is a chord that looks broken, and the person who asked for
-    /// `"4px"` on a wide font meant the smallest nudge available rather than none.
+    /// A step in points is rounded to a whole cell and floored at one first, because the
+    /// backend is resizing a grid: a step too small to move a column is a chord that looks
+    /// broken, and the person who asked for `"4px"` on a wide font meant the smallest nudge
+    /// available rather than none.
     ///
-    /// `None` when a step in points meets a caller that could not measure a cell. The caller
-    /// is expected to fall back to the daemon's own step and say so, because a distance
-    /// guessed here would be wrong by whatever the font happens to be.
-    pub fn cells(self, cell_points: Option<f32>) -> Option<f32> {
-        match self {
-            ResizeStep::Cells(cells) => Some(f32::from(cells)),
-            ResizeStep::Points(points) => {
-                let cell = cell_points.filter(|cell| cell.is_finite() && *cell > 0.0)?;
-                Some((f32::from(points) / cell).round().max(1.0))
-            }
-        }
+    /// The result is deliberately not capped. A step larger than the region is a number
+    /// somebody wrote, and how far a divider may travel is the backend's own rule to apply -
+    /// clamping here would be Muster inventing a second, invisible limit that disagrees.
+    ///
+    /// `None` when the caller could not measure. It is expected to fall back to the backend's
+    /// own step and say so, because a distance guessed here would be wrong by whatever the
+    /// font and the window happen to be.
+    pub fn fraction(self, cell_points: Option<f32>, extent_points: Option<f32>) -> Option<f32> {
+        let measured = |value: Option<f32>| value.filter(|v| v.is_finite() && *v > 0.0);
+        let cell = measured(cell_points)?;
+        let extent = measured(extent_points)?;
+        let points = match self {
+            ResizeStep::Cells(cells) => f32::from(cells) * cell,
+            ResizeStep::Points(points) => (f32::from(points) / cell).round().max(1.0) * cell,
+        };
+        Some(points / extent)
     }
 }
 

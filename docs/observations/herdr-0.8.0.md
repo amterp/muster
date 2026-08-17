@@ -970,3 +970,41 @@ a shell that has not finished starting.
 Pinned by `crates/muster-herdr/tests/client_connection.rs`, which asserts both directions:
 the ordinary calls answer with the write side half-closed, and `pane.wait_for_output` does
 not. Nothing else in the suite would notice a half-close coming back.
+
+## 19. A resize amount is a share of what the divider divides, and half is as far as one goes
+
+**`pane.resize`'s `amount` is a fraction, added to a split's ratio as it stands.** herdr
+documents this nowhere - `PaneResizeParams` (`~/src/herdr/src/api/schema/panes.rs:203-209`)
+carries no doc comment, and the only hint upstream is that its own CLI examples pass
+`--amount 0.1`. Measured against the pinned daemon, on a fresh two-pane tab sitting at 0.5:
+
+    amount   0.05    0.25    0.5     1.0     10.0
+    ratio    0.55    0.75    0.9     0.9     0.9
+
+So a request for 0.05 moves the divider by exactly five percent of the region, and the
+arithmetic is `current_ratio + amount` with no scaling in between
+(`~/src/herdr/src/layout.rs:235-237`).
+
+**Two ceilings, and they compound.** The amount is clamped to `.abs().min(0.5)` before it is
+applied (`~/src/herdr/src/app/api/panes.rs:404-409`), and the ratio it produces is then
+clamped to `0.1..0.9` (`layout.rs:209-211`). Half is therefore as far as any single request
+travels, and every amount at or above it is indistinguishable - which is why the row above
+flattens at 0.9 rather than continuing.
+
+**Which divider moves is the nearest split on the axis.** `resize_focused` picks it by edge
+distance from the focused pane's rect, preferring the requested side and falling back to the
+other (`layout.rs:213-238`, `nearest_resize_split` at 356-366). The ratio is that split
+node's, so it is a share of the whole region only when there is one split on that axis -
+which is what bounds how exact a distance in points can be made without Muster holding a
+tree of its own.
+
+**Why this was worth measuring rather than reading.** Muster sent this field a count of cells
+for a release. Every step a person could write - `"1c"`, `"1px"`, `"10c"` - arrived at or
+above 1.0 and landed on 0.9, so the config key had exactly one behaviour and omitting it, at
+herdr's own 0.05, was the only usable setting. Nothing compared the two sides: the intent's
+doc comment said cells, the conformance case for it named the field `ratio`, and neither was
+ever put next to a daemon.
+
+Evidence: `a_resize_amount_is_a_share_of_the_region_and_saturates_above_a_half` in
+`crates/muster-herdr/tests/split_sides.rs`, which is the table above, re-derived against
+`deps/herdr.pin` on every run of `./dev -t`.

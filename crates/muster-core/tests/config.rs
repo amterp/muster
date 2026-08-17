@@ -170,44 +170,68 @@ fn malformed_toml_is_refused_with_the_parser_s_account_of_it() {
     );
 }
 
-/// Turning a step in points into the cells the daemon resizes by.
+/// Turning a step into the share of a region the daemon moves a divider by.
 ///
 /// Native rather than a corpus case: the corpus judges what a config file *means*, and this is
-/// arithmetic done later, on a measurement no config file contains. Pinning it here keeps the
+/// arithmetic done later, on measurements no config file contains. Pinning it here keeps the
 /// numbers beside the rule they came from.
+///
+/// The numbers matter more than they look. Every one of these used to answer in cells, which
+/// the daemon read as a share and clamped, so a step of one and a step of ten both moved half
+/// the pane - the whole key had one behaviour. A test that asserts the share is small is what
+/// says the units agree.
 #[test]
-fn a_step_in_points_becomes_the_cells_that_fit_in_it() {
+fn a_step_in_points_is_the_share_of_the_region_it_covers() {
     let step = config::ResizeStep::Points(150);
 
     // A cell is roughly 8 points wide and 17 tall, which is the asymmetry two units exist for:
     // one number in points crosses about as much screen either way, where one number in cells
-    // does not.
-    assert_eq!(step.cells(Some(8.0)), Some(19.0), "150 points is about nineteen columns");
-    assert_eq!(step.cells(Some(17.0)), Some(9.0), "the same 150 points is about nine rows");
+    // does not. 150 points is about nineteen columns of 8, so 152 of an 800-point region.
+    assert_eq!(step.fraction(Some(8.0), Some(800.0)), Some(0.19));
+    // The same 150 points is about nine rows of 17, so 153 of a 510-point region.
+    assert_eq!(step.fraction(Some(17.0), Some(510.0)), Some(0.3));
 }
 
 #[test]
-fn a_step_in_cells_needs_no_measurement_and_ignores_the_one_it_is_given() {
+fn a_step_in_cells_is_the_share_those_cells_cover() {
     let step = config::ResizeStep::Cells(4);
 
-    assert_eq!(step.cells(None), Some(4.0));
-    assert_eq!(step.cells(Some(8.0)), Some(4.0), "cells are the identity case of the conversion");
+    // Four cells of 8 points is 32 points, which is a tenth of a 320-point region.
+    assert_eq!(step.fraction(Some(8.0), Some(320.0)), Some(0.1));
+    // The same four cells is a smaller share of a wider region, which is the point of a
+    // distance: it covers the same amount of screen whatever else is on it.
+    assert_eq!(step.fraction(Some(8.0), Some(640.0)), Some(0.05));
 }
 
 #[test]
 fn a_step_too_small_to_cross_a_cell_still_moves_one() {
     // Rounding alone would answer zero, which reaches the seam as proto3's unset and silently
     // becomes the daemon's own step - a chord that looks broken rather than small.
-    assert_eq!(config::ResizeStep::Points(3).cells(Some(17.0)), Some(1.0));
+    assert_eq!(config::ResizeStep::Points(3).fraction(Some(17.0), Some(170.0)), Some(0.1));
 }
 
 #[test]
-fn a_step_in_points_with_nothing_to_divide_by_has_no_answer() {
+fn a_step_larger_than_the_region_is_left_for_the_daemon_to_refuse() {
+    // Not capped here. How far a divider may travel is the backend's own rule, and a second
+    // limit invented on this side would disagree with it invisibly.
+    assert_eq!(config::ResizeStep::Cells(100).fraction(Some(8.0), Some(400.0)), Some(2.0));
+}
+
+#[test]
+fn a_step_with_nothing_to_divide_by_has_no_answer() {
     // The caller is expected to fall back to the daemon's own step and say so. Inventing a
-    // number here would be wrong by whatever the font happens to be.
-    assert_eq!(config::ResizeStep::Points(150).cells(None), None);
-    assert_eq!(config::ResizeStep::Points(150).cells(Some(0.0)), None, "a cell of no width");
-    assert_eq!(config::ResizeStep::Points(150).cells(Some(f32::NAN)), None);
+    // number here would be wrong by whatever the font and the window happen to be.
+    let step = config::ResizeStep::Points(150);
+    assert_eq!(step.fraction(None, Some(800.0)), None, "no cell measured");
+    assert_eq!(step.fraction(Some(8.0), None), None, "no region measured");
+    assert_eq!(step.fraction(Some(0.0), Some(800.0)), None, "a cell of no width");
+    assert_eq!(step.fraction(Some(8.0), Some(0.0)), None, "a region of no width");
+    assert_eq!(step.fraction(Some(f32::NAN), Some(800.0)), None);
+    assert_eq!(step.fraction(Some(8.0), Some(f32::NAN)), None);
+
+    // A step in cells needs both measurements too, which it did not when it answered in cells.
+    // Worth pinning: it is the one behaviour this change takes away.
+    assert_eq!(config::ResizeStep::Cells(4).fraction(None, Some(800.0)), None);
 }
 
 /// The bindings this file moved, spelled `action=chord` in bit order.

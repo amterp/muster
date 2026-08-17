@@ -196,10 +196,14 @@ fn resizes_faster_than_the_daemon_announces_them_do_not_walk_backwards() {
     let watcher = Watcher::on(&mirror, tab.clone());
     for _ in 0..5 {
         let outcome = client
+            // A step small enough that five of them are five distinct positions. This used to
+            // ask for 2.0, which herdr clamps to half the region, so the first repeat took the
+            // divider as far as it goes and the four after it observed nothing - the ordering
+            // this test is about was being judged on a single move.
             .submit(&BackendIntent::ResizePane {
                 pane: pane.clone(),
                 direction: Side::Right,
-                amount: Some(2.0),
+                fraction: Some(0.05),
             })
             .expect("a real daemon refused a resize it can do");
         if let Some(settled) = outcome.settled {
@@ -337,4 +341,67 @@ fn a_dragged_divider_lands_on_the_answer_rather_than_the_broadcast() {
         "the divider moved back toward where it came from mid-drag, which is a stale broadcast \
          overtaking the answer that superseded it: {ratios:?}"
     );
+}
+
+#[test]
+fn a_resize_amount_is_a_share_of_the_region_and_saturates_above_a_half() {
+    // The measurement `resize_step` is built on, taken rather than assumed. herdr documents
+    // nothing about what `amount` means - `PaneResizeParams` carries no doc comment - and
+    // Muster spent a release sending it a count of cells, which every value a person could
+    // write turned into the same maximal jump. Recorded here so that a herdr which changes
+    // its mind about the unit fails against this rather than against somebody's hands.
+    //
+    // One daemon, put back to the middle between amounts with the absolute verb rather than a
+    // fresh daemon each time. A resize is relative and so cannot undo itself, but
+    // `layout.set_split_ratio` names the position outright - which is the same reason Muster
+    // has both verbs.
+    let daemon = Daemon::start();
+    daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "one", "focus": true }));
+    daemon.call("pane.split", &json!({ "direction": "right" }));
+
+    let mut landed = Vec::new();
+    for amount in [0.05f64, 0.25, 0.5, 1.0, 10.0] {
+        daemon.call("layout.set_split_ratio", &json!({ "path": [], "ratio": 0.5 }));
+        assert_eq!(
+            first_ratio(&daemon.call("layout.export", &json!({}))),
+            Some(0.5),
+            "the divider did not go back to the middle, so the next reading is not comparable"
+        );
+        daemon.call("pane.resize", &json!({ "direction": "right", "amount": amount }));
+        landed.push((amount, first_ratio(&daemon.call("layout.export", &json!({})))));
+    }
+
+    assert_eq!(
+        landed,
+        vec![
+            // A fresh split sits at 0.5, and a small amount is added to it as it stands. That
+            // addition is the whole definition: `amount` is a share of what the divider
+            // divides, not a distance and not a count of anything.
+            (0.05, Some(0.55)),
+            (0.25, Some(0.75)),
+            // Two ceilings, and they compound. herdr clamps the amount itself to 0.5, and
+            // then clamps the ratio it produces to 0.9 - so half is already as far as one
+            // request travels, and everything past it is indistinguishable.
+            (0.5, Some(0.9)),
+            (1.0, Some(0.9)),
+            (10.0, Some(0.9)),
+        ],
+        "herdr no longer reads `amount` as a share of the container.\n  \
+         Impact: `resize_step` is converted into one of these on the assumption it is a \
+         share, so every resize chord in the product moves the wrong distance.\n  \
+         Check `pane.resize` in herdr's api/panes.rs against `ResizeStep::fraction`, and \
+         re-record section 19 of docs/observations/herdr-0.8.0.md."
+    );
+}
+
+/// The first ratio anywhere in an exported layout, which in a two-pane tab is the only one.
+fn first_ratio(exported: &serde_json::Value) -> Option<f64> {
+    if let Some(ratio) = exported.get("ratio").and_then(serde_json::Value::as_f64) {
+        return Some(ratio);
+    }
+    match exported {
+        serde_json::Value::Object(fields) => fields.values().find_map(first_ratio),
+        serde_json::Value::Array(items) => items.iter().find_map(first_ratio),
+        _ => None,
+    }
 }

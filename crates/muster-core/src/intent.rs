@@ -159,7 +159,7 @@ pub enum BackendIntent {
         /// which is meaningless to whoever is looking at the window.
         cwd: Option<String>,
     },
-    /// Grows or shrinks a pane against its neighbour, in cells.
+    /// Grows or shrinks a pane against its neighbour, by a share of the region.
     ///
     /// Unlike `SetSplitRatio`, which names a divider by the turns down to it and says exactly
     /// where it should sit, this names a pane and a direction. That is what a keystroke means:
@@ -172,9 +172,16 @@ pub enum BackendIntent {
     ResizePane {
         pane: PaneId,
         direction: Side,
-        /// How much, in cells. `None` takes the backend's own step, which is what a
-        /// keybinding wants.
-        amount: Option<f32>,
+        /// How far, as a share of the region between 0 and 1. `None` takes the backend's own
+        /// step, which is what a keybinding wants.
+        ///
+        /// A fraction rather than a distance, and named for it, because a distance is not
+        /// something the far side of this seam can act on: what moves is a divider's ratio,
+        /// and the backend has no idea how many points a cell is. This field said "cells" for
+        /// one release and the backend read it as a fraction the whole time, which made every
+        /// step a person could write land on the same maximal jump - a disagreement two doc
+        /// comments could hold at once precisely because `amount` named neither.
+        fraction: Option<f32>,
     },
 
     /// Makes one pane fill its tab, or puts it back.

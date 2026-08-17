@@ -589,13 +589,16 @@ pub fn request(
             }
             ("workspace.create", params)
         }
-        BackendIntent::ResizePane { pane, direction, amount } => {
+        // herdr's `amount` is a fraction of the container, added straight to a split's ratio,
+        // defaulted to 0.05 and clamped to 0.5 (observations, section 19). So the fraction
+        // goes over as it stands, and how far a divider may travel stays herdr's own rule.
+        BackendIntent::ResizePane { pane, direction, fraction } => {
             let mut params = json!({
                 "pane_id": names.backend(pane)?.as_str(),
                 "direction": direction.as_str(),
             });
-            if let Some(amount) = amount {
-                params["amount"] = json!(amount);
+            if let Some(fraction) = fraction {
+                params["amount"] = json!(fraction);
             }
             ("pane.resize", params)
         }

@@ -260,6 +260,14 @@ action is a menu item and a menu item has one key equivalent - so a chord cannot
 Ghostty's `150` is pixels; write `"150px"` for the same distance, and `"150c"` will move a
 hundred and fifty *cells*.
 
+**A distance is exact against one divider and short against a nested one.** What the daemon
+moves is a divider's share of what it divides, so Muster turns your distance into a share of
+the region the chord happened in - exact when that region holds one divider on the axis you
+are resizing along, and less than you asked for when the divider you are moving splits only
+part of it. The alternative is Muster keeping its own copy of the pane tree to work out which
+divider a direction refers to, which is a large thing to carry for a number that is already
+close, so this is a known limit rather than an oversight.
+
 `pane_padding` stays a bare number of points, which is a decision rather than an oversight: a
 unit is worth its cost only where two of them are genuinely plausible, and nobody wants
 padding measured in cells.

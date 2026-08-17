@@ -240,7 +240,7 @@ fn every_intent() -> Vec<BackendIntent> {
         BackendIntent::ResizePane {
             pane: PaneId::new("p1"),
             direction: Side::Left,
-            amount: Some(2.0),
+            fraction: Some(0.1),
         },
         BackendIntent::ZoomPane { pane: PaneId::new("p1") },
         BackendIntent::FocusPane { pane: PaneId::new("p1") },
@@ -346,7 +346,7 @@ fn intent(given: &Value) -> Result<BackendIntent, CaseError> {
             pane: PaneId::new(&text(given, "pane")?),
             side: Side::parse(&text(given, "side")?)
                 .ok_or_else(|| CaseError::new("that is not a side"))?,
-            ratio: ratio(given),
+            ratio: number(given, "ratio"),
             cwd,
             run: given.get("run").and_then(Value::as_str).map(str::to_string),
             name: given.get("name").and_then(Value::as_str).map(str::to_string),
@@ -361,7 +361,7 @@ fn intent(given: &Value) -> Result<BackendIntent, CaseError> {
             pane: PaneId::new(&text(given, "pane")?),
             direction: Side::parse(&text(given, "direction")?)
                 .ok_or_else(|| CaseError::new("that is not a direction"))?,
-            amount: ratio(given),
+            fraction: number(given, "fraction"),
         }),
         "zoom" => Ok(BackendIntent::ZoomPane { pane: PaneId::new(&text(given, "pane")?) }),
         "swap" => Ok(BackendIntent::SwapPanes {
@@ -395,7 +395,7 @@ fn intent(given: &Value) -> Result<BackendIntent, CaseError> {
             Ok(BackendIntent::SetSplitRatio {
                 tab: TabId::new(&text(given, "tab")?),
                 path,
-                ratio: ratio(given).unwrap_or_default(),
+                ratio: number(given, "ratio").unwrap_or_default(),
             })
         }
         // An absent `name` is asking for the name to be taken away, which is a different
@@ -412,10 +412,15 @@ fn intent(given: &Value) -> Result<BackendIntent, CaseError> {
     }
 }
 
-/// A case's ratio or amount, at the width the wire carries. Through serde rather than a cast, which is
-/// the same narrowing without a lint about it.
-fn ratio(given: &Value) -> Option<f32> {
-    serde_json::from_value(given.get("ratio")?.clone()).ok()
+/// One of a case's numbers, at the width the wire carries. Through serde rather than a cast,
+/// which is the same narrowing without a lint about it.
+///
+/// Keyed rather than fixed on `ratio`, because two different quantities used to share that one
+/// key: a divider's absolute position and a resize's relative step. Reading both through one
+/// helper is what let a case name a `ratio` while the intent it built called the same number
+/// cells, with nothing in between to notice.
+fn number(given: &Value, key: &str) -> Option<f32> {
+    serde_json::from_value(given.get(key)?.clone()).ok()
 }
 
 fn text(given: &Value, key: &str) -> Result<String, CaseError> {

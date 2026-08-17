@@ -305,14 +305,32 @@
         "intent": "resize",
         "pane": "p1",
         "direction": "up",
-        "ratio": 4.0
+        "fraction": 0.25
       },
       "expect": {
         "method": "pane.resize",
         "params": {
           "pane_id": "p1",
           "direction": "up",
-          "amount": 4.0
+          "amount": 0.25
+        }
+      }
+    },
+    {
+      "name": "a resize amount is a share of the region, never a count of cells",
+      "why": "herdr adds `amount` straight to a split's ratio and clamps it to 0.5 (observations, section 19), so any number at or above one is the same maximal jump. Muster sent cells here for a release: every `resize_step` a person could write - `1c`, `1px`, `10c` - arrived at or above one and moved half the pane, which made the key look like it had a single behaviour rather than a broken unit. This case is the unit itself, so a step that ever arrives whole again fails here rather than in somebody's hands. The number is a power of two because the wire carries an f32 and the driver compares the JSON exactly, so a value like 0.05 reads back as 0.05000000074505806 (a_29cH6AVkt).",
+      "given": {
+        "intent": "resize",
+        "pane": "p1",
+        "direction": "right",
+        "fraction": 0.125
+      },
+      "expect": {
+        "method": "pane.resize",
+        "params": {
+          "pane_id": "p1",
+          "direction": "right",
+          "amount": 0.125
         }
       }
     },

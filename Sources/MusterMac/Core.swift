@@ -215,11 +215,14 @@ public enum Core {
   ///
   /// A direction rather than a divider: which one moves is a question about a tree the person
   /// pressing the key is not looking at, and only the daemon holds the rectangles to answer it.
-  /// `cell` is how big one cell is on the surface the chord happened on, in points, and lets
-  /// the core read a `resize_step` written in points. Omitting it means "could not measure",
-  /// which the core answers with the daemon's own step rather than a guess.
+  /// `cell` is how big one cell is on the surface the chord happened on and `region` how big
+  /// the whole region is, both in points and both needed to read a `resize_step`: the daemon
+  /// moves a divider by a share of what it divides, so a distance has nothing to be a share of
+  /// until something measures the region. Omitting either means "could not measure", which the
+  /// core answers with the daemon's own step rather than a guess.
   public static func resize(
     direction: String, amount: Float = 0, cell: (width: Float, height: Float)? = nil,
+    region: (width: Float, height: Float)? = nil,
     daemonID: String = "", paneID: String = ""
   ) {
     var resize = Muster_ResizePane()
@@ -229,6 +232,8 @@ public enum Core {
     resize.amount = amount
     resize.cellWidth = cell?.width ?? 0
     resize.cellHeight = cell?.height ?? 0
+    resize.regionWidth = region?.width ?? 0
+    resize.regionHeight = region?.height ?? 0
     var request = Muster_Request()
     request.resizePane = resize
     send(request)
