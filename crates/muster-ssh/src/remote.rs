@@ -94,6 +94,20 @@ impl Remote {
         Ok(String::from_utf8_lossy(&output.stdout).into_owned())
     }
 
+    /// Runs a shell script over there.
+    ///
+    /// The script is quoted here, so a caller writes it as it would type it - but the paths
+    /// *inside* it still need [`quoted`] of their own, because the far shell parses them once
+    /// this outer layer is stripped.
+    pub fn shell(&self, script: &str) -> Result<String, String> {
+        self.shell_on(script, &[])
+    }
+
+    /// The same, with bytes on the script's standard input.
+    pub fn shell_on(&self, script: &str, input: &[u8]) -> Result<String, String> {
+        self.run_on(&["sh", "-c", &quoted(script)], input)
+    }
+
     /// Puts these bytes at this path over there, and makes them executable if asked.
     ///
     /// Through a staged sibling and a rename, for the same reason the daemon's config file is
@@ -115,7 +129,7 @@ impl Remote {
             quoted(&staged),
             quoted(path),
         );
-        self.run_on(&["sh", "-c", &quoted(&script)], bytes).map(|_| ())
+        self.shell_on(&script, bytes).map(|_| ())
     }
 
     /// What the far machine is, so a caller can work out what to send it.
@@ -142,7 +156,7 @@ impl Remote {
 /// Single quotes because they are the only quoting a POSIX shell does not look inside. A quote
 /// within the text ends the run, escapes itself outside it, and opens a new one, which is the
 /// `'\''` below.
-fn quoted(text: &str) -> String {
+pub fn quoted(text: &str) -> String {
     format!("'{}'", text.replace('\'', "'\\''"))
 }
 

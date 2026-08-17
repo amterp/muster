@@ -35,6 +35,10 @@ muster-ssh = { path = "crates/muster-ssh" }
 muster-vt = { path = "crates/muster-vt" }
 prost = "0.14"
 serde_json = "1"
+# Verifying the daemon this build pins, in the app rather than only in `./dev`. Pure Rust
+# rather than forking a digest tool, because that tool is `shasum` on macOS and `sha256sum`
+# everywhere else - a macOS-ism in the portable half is exactly what MIP-1 is for.
+sha2 = "0.10"
 # Configuration is files, and a file people hand-edit needs comments - which is the whole
 # argument against reusing serde_json for it. Every refusal is worded by us rather than by
 # the parser. `display` is here for the one thing Muster writes rather than reads: the window

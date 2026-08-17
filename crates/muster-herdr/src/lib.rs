@@ -17,6 +17,8 @@ pub mod frame;
 pub mod intent;
 pub mod layout;
 pub mod pane_channel;
+pub mod pin;
+pub mod remote;
 pub mod snapshot;
 pub mod subscription;
 
@@ -31,5 +33,6 @@ pub use frame::{FrameDecoder, PaneFrame, PaneStreamEvent};
 pub use intent::{HerdrBackend, considered, makes_a_pane, read_request, refusal, request};
 pub use layout::{PaneCells, read_exported_layout, read_layout, unattached_sizes};
 pub use pane_channel::HerdrPaneChannel;
+pub use pin::{Pin, pinned};
 pub use snapshot::{fetch_snapshot, fetch_unattached_sizes, pane_rows, read_snapshot};
 pub use subscription::{Notice, Subscription};

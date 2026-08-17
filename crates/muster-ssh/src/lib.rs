@@ -25,5 +25,5 @@
 mod remote;
 mod tunnel;
 
-pub use remote::{Platform, Remote};
+pub use remote::{Platform, Remote, quoted};
 pub use tunnel::{Forward, Tunnel, master_arguments, remote_environment};
