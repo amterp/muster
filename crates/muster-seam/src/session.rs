@@ -36,7 +36,7 @@ use muster_herdr::{
     HerdrBackend, HerdrClient, HerdrPaneChannel, PaneControlChannel, PaneEnvironment, daemon,
     fetch_snapshot, own_socket_path, remote,
 };
-use muster_ssh::{Forward, Tunnel, remote_environment};
+use muster_ssh::{Forward, Remote, Tunnel, remote_environment};
 use muster_vt::KeyEncoder;
 
 use crate::proto::{
@@ -490,6 +490,13 @@ struct Reached {
     /// a pane needs anything put back - and stays different once a pane carries more than the
     /// one restored variable.
     owns_config: bool,
+    /// Where that config went, when it went to another machine.
+    ///
+    /// None for a daemon on this one, whose file is the single path the shell named. A remote
+    /// daemon's is on the far side, so a setting changed while the window is open has to be
+    /// sent again before that daemon is asked to read it - and this is the only record of
+    /// where to send it.
+    remote_config: Option<String>,
 }
 
 /// Writes the config Muster's daemon reads, and says where it went and whether it moved.
@@ -502,6 +509,15 @@ struct Reached {
 /// between a daemon that has something to re-read and one that does not: herdr reads its
 /// config at startup and on request, so a file that says what it already said is a request
 /// nobody needs to make.
+/// The config Muster derives from its own, as the bytes a daemon reads.
+///
+/// One text, whichever machine the daemon is on: a person writes `scrollback_bytes` once and
+/// every daemon Muster starts runs it. What differs is where the file lands - a path the shell
+/// named, here, and a path under the far machine's own home, over there.
+fn daemon_configuration_text() -> String {
+    muster_herdr::configuration_text(&panes())
+}
+
 fn write_daemon_configuration() -> Option<(String, bool)> {
     let mut held = poison::lock(&DAEMON_CONFIG, "daemon-config");
     let (path, written) = held.as_mut()?;
@@ -574,6 +590,7 @@ fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, String> {
             // machine is still a pane that should be able to drive the window it is in.
             panes: reachable(PaneEnvironment::none()),
             owns_config: false,
+            remote_config: None,
         }),
         Endpoint::Local { socket_path: None } => {
             let environment = daemon::environment();
@@ -610,7 +627,13 @@ fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, String> {
                 // Nowhere to write one, so nothing was redirected and nothing needs restoring.
                 None => PaneEnvironment::none(),
             });
-            Ok(Reached { socket_path: path, tunnel: None, panes, owns_config: config.is_some() })
+            Ok(Reached {
+                socket_path: path,
+                tunnel: None,
+                panes,
+                owns_config: config.is_some(),
+                remote_config: None,
+            })
         }
         // A socket somebody named is somebody's own daemon on either machine, and gets the same
         // answer on both: forwarded as asked for, and left alone. Nothing is read off the far
@@ -622,6 +645,7 @@ fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, String> {
                 tunnel: Some(tunnel),
                 panes: PaneEnvironment::none(),
                 owns_config: false,
+                remote_config: None,
             })
         }
         // The arrangement the local arm has, one machine further away. What used to stop it was
@@ -647,19 +671,29 @@ fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, String> {
             // reaches the far one per connection, so a remote socket that is not there yet
             // costs nothing until something dials it.
             let tunnel = open_tunnel(daemon, host, options, remote_socket)?;
-            remote::ensure_running(
+            let adopted = remote::ensure_running(
                 &tunnel.remote(),
                 &environment,
                 tunnel.local_socket_path(),
                 cache_path().as_deref(),
+                &daemon_configuration_text(),
             )?;
+            // A daemon left running by an earlier Muster read its config when it started, and
+            // the settings may have moved since. The same reasoning the local arm gives, with
+            // one difference: there is no record here of what that daemon was started with, so
+            // it is asked once rather than only when the file is known to have moved.
+            if adopted == daemon::Reached::Adopted {
+                daemon::reload_configuration(tunnel.local_socket_path());
+            }
             Ok(Reached {
                 socket_path: tunnel.local_socket_path().to_string(),
                 tunnel: Some(tunnel),
-                // Muster started this daemon but has not written its config, so a pane on it
-                // has nothing to put back yet. That is a_29BYC0IGC rather than a settled answer.
-                panes: PaneEnvironment::none(),
-                owns_config: false,
+                // Muster redirected this daemon's config, so a pane on it is handed the far
+                // machine's own herdr config back - without which `herdr` typed in a devenv
+                // pane would read Muster's derived file instead of the user's.
+                panes: PaneEnvironment::restoring(&environment),
+                owns_config: true,
+                remote_config: remote::configuration_path(&environment),
             })
         }
     }
@@ -734,6 +768,12 @@ struct Backend {
     /// and asking one of those to re-read its own config would be reaching into a session
     /// Muster does not own, possibly while its owner is editing that file.
     owns_config: bool,
+    /// Where that config file is, when it is on another machine.
+    ///
+    /// None for a daemon on this one, whose file is written straight to disk. A remote
+    /// daemon's has to be sent again before it is asked to re-read, and this is the only
+    /// record of where it went.
+    remote_config: Option<String>,
     /// This daemon's half of the pane-name registry.
     ///
     /// A view onto the one registry the session holds, scoped to this daemon, and the same one
@@ -934,6 +974,7 @@ impl Session {
                     names.clone(),
                 )),
                 owns_config: reached.owns_config,
+                remote_config: reached.remote_config,
                 socket_path: reached.socket_path,
                 names,
                 _subscription: subscription,
@@ -3017,19 +3058,48 @@ pub(crate) fn rewrite_daemon_configuration() {
     if !changed {
         return;
     }
+    let text = daemon_configuration_text();
 
-    let sockets: Vec<String> = {
+    let told: Vec<(String, Option<(Remote, String)>)> = {
         let session = poison::lock(&SESSION, "session");
         session
             .backends
             .values()
             .filter(|backend| backend.owns_config)
-            .map(|backend| backend.socket_path.clone())
+            .map(|backend| {
+                let over_there = backend
+                    .tunnel
+                    .as_ref()
+                    .zip(backend.remote_config.as_ref())
+                    .map(|(tunnel, path)| (tunnel.remote(), path.clone()));
+                (backend.socket_path.clone(), over_there)
+            })
             .collect()
     };
-    // Outside the lock: this is a round trip to another process, and holding the session
-    // through one would stop every event this window is listening for.
-    for socket in &sockets {
+    // Outside the lock: these are round trips to other processes, and on other machines, and
+    // holding the session through one would stop every event this window is listening for.
+    for (socket, over_there) in &told {
+        // The far machine's copy first, for the reason the local one is written before the
+        // daemon starts: a daemon asked to re-read a file that still says the old thing reads
+        // the old thing, and reports success doing it.
+        if let Some((remote, path)) = over_there
+            && let Err(detail) = remote.place(path, text.as_bytes(), "0644")
+        {
+            log::warn(
+                "daemon.config.unsent",
+                fields! {
+                    "host" => remote.host(),
+                    "path" => path.clone(),
+                    "detail" => detail,
+                    "impact" => "that machine's panes keep the settings its daemon was started \
+                                 with, so a shell or a scrollback depth changed just now \
+                                 applies to the panes beside them and not to those",
+                    "check" => "whether the connection to that host is still up - the run log \
+                                says tunnel.down if it is not",
+                },
+            );
+            continue;
+        }
         daemon::reload_configuration(socket);
     }
 }

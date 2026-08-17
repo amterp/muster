@@ -25,7 +25,7 @@ use muster_core::config::{Panes, ShellMode};
 /// The text is returned so the caller can compare it against the last one and skip a daemon
 /// that has nothing to re-read.
 pub fn write_configuration(path: &str, panes: &Panes) -> Result<String, String> {
-    let text = herdr_configuration(panes).join("\n") + "\n";
+    let text = configuration_text(panes);
     let file = std::path::PathBuf::from(path);
     let staged = file.with_extension("writing");
     std::fs::create_dir_all(file.parent().unwrap_or(std::path::Path::new(".")))
@@ -33,6 +33,16 @@ pub fn write_configuration(path: &str, panes: &Panes) -> Result<String, String> 
         .and_then(|()| std::fs::rename(&staged, &file))
         .map_err(|error| error.to_string())?;
     Ok(text)
+}
+
+/// One derived herdr config, as the bytes a daemon will read.
+///
+/// The same text wherever it lands, which is the whole shape of this: a person writes one
+/// setting and every daemon Muster starts runs it, whichever machine that daemon is on. What
+/// differs per machine is the file it goes in, and that is the caller's problem - written here
+/// for a daemon on this one, and sent over an ssh master for a daemon on another.
+pub fn configuration_text(panes: &Panes) -> String {
+    herdr_configuration(panes).join("\n") + "\n"
 }
 
 /// One derived herdr config, as lines.

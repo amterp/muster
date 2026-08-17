@@ -45,16 +45,19 @@ const START_TIMEOUT: Duration = Duration::from_secs(30);
 /// `environment` is the far machine's, as `remote_environment` read it. `cache` is a directory
 /// on *this* machine, or nothing when the shell had nowhere to put one - in which case every
 /// launch that has to install pays for the download again, which is slow rather than broken.
+///
+/// `configuration` is the derived herdr config, the same text a daemon on this machine is given.
+/// It is placed before anything else happens, including before the daemon is found to be already
+/// running: `herdr server` reads its config once at startup, so a file written afterwards is a
+/// file that daemon never sees - and one that is already running has to be asked to read again,
+/// which needs the file to be there first.
 pub fn ensure_running(
     remote: &Remote,
     environment: &BTreeMap<String, String>,
     socket_path: &str,
     cache: Option<&str>,
+    configuration: &str,
 ) -> Result<Reached, String> {
-    if answers(socket_path) {
-        return Ok(Reached::Adopted);
-    }
-
     let pin = pinned()?;
     let home = muster_home(environment).ok_or_else(|| {
         format!(
@@ -67,6 +70,14 @@ pub fn ensure_running(
         )
     })?;
     let installed = installed_at(&home, &pin.version);
+    let config_path = format!("{home}/state/herdr.toml");
+
+    // Before the probe rather than after it, so that both answers below have a current file to
+    // work from. Costs one command over a master that is already open.
+    remote.place(&config_path, configuration.as_bytes(), "0644")?;
+    if answers(socket_path) {
+        return Ok(Reached::Adopted);
+    }
 
     if !is_installed(remote, &installed)? {
         let asset = asset_name(&remote.platform()?, remote.host())?;
@@ -93,7 +104,7 @@ pub fn ensure_running(
     }
     link(remote, &home, &installed)?;
 
-    start(remote, &home, &installed, socket_path)?;
+    start(remote, &home, &installed, &config_path, socket_path)?;
     Ok(Reached::Started)
 }
 
@@ -129,12 +140,20 @@ fn link(remote: &Remote, home: &str, installed: &str) -> Result<(), String> {
 /// The output file is the only place a daemon that never bound can say why. herdr opens a log
 /// of its own once it is running, so what lands here is what happens before that - a binary for
 /// the wrong architecture, a socket path over the `sockaddr_un` limit.
-fn start(remote: &Remote, home: &str, binary: &str, socket_path: &str) -> Result<(), String> {
+fn start(
+    remote: &Remote,
+    home: &str,
+    binary: &str,
+    config_path: &str,
+    socket_path: &str,
+) -> Result<(), String> {
     let output = format!("{home}/state/herdr.out");
     let script = format!(
-        "mkdir -p {} && HERDR_SESSION={} nohup {} server >> {} 2>&1 < /dev/null &",
+        "mkdir -p {} && HERDR_SESSION={} HERDR_CONFIG_PATH={} nohup {} server >> {} 2>&1 < \
+         /dev/null &",
         quoted(&format!("{home}/state")),
         quoted(OWN_SESSION),
+        quoted(config_path),
         quoted(binary),
         quoted(&output),
     );
@@ -144,6 +163,9 @@ fn start(remote: &Remote, home: &str, binary: &str, socket_path: &str) -> Result
             "host" => remote.host(),
             "binary" => binary,
             "session" => OWN_SESSION,
+            // Whose config decides what a pane runs over there, which is the first question
+            // when a devenv pane opens a different shell from the one beside it.
+            "config" => config_path,
             "output" => output.clone(),
         },
     );
@@ -322,6 +344,15 @@ fn asset_name(platform: &Platform, host: &str) -> Result<String, String> {
 /// different architectures needs both at once.
 fn cached_at(cache: &str, version: &str, asset: &str) -> String {
     format!("{cache}/herdr/{version}/{asset}/herdr")
+}
+
+/// Where the config Muster writes for the far machine's daemon lands.
+///
+/// The far machine's version of `~/.muster/state/herdr.toml`, and public because the seam has to
+/// remember it: a setting changed while the window is open is re-placed here and the daemon is
+/// asked to read again, exactly as it is for a daemon on this machine.
+pub fn configuration_path(environment: &BTreeMap<String, String>) -> Option<String> {
+    Some(format!("{}/state/herdr.toml", muster_home(environment)?))
 }
 
 /// Where the daemon goes on the far machine.

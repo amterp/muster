@@ -23,7 +23,7 @@ pub mod snapshot;
 pub mod subscription;
 
 pub use client::HerdrClient;
-pub use config::{herdr_configuration, write_configuration};
+pub use config::{configuration_text, herdr_configuration, write_configuration};
 pub use control_socket::PaneControlChannel;
 pub use control_stream::ControlStreamMessage;
 pub use discovery::{discover_socket_path, own_socket_path};

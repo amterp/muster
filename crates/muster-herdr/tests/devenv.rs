@@ -20,9 +20,16 @@ use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 use std::time::Duration;
 
+use herdr_harness::until_some;
+use muster_core::config;
+use muster_core::intent::{BackendChannel, BackendIntent};
+use muster_core::names::{Mint, Names};
 use muster_herdr::daemon::Reached;
-use muster_herdr::{own_socket_path, pinned, remote};
-use muster_ssh::{Forward, Tunnel, remote_environment};
+use muster_herdr::{
+    HerdrBackend, HerdrClient, PaneEnvironment, configuration_text, own_socket_path, pinned, remote,
+};
+use muster_ssh::{Forward, Remote, Tunnel, remote_environment};
+use serde_json::json;
 
 /// Where the container is, and how to reach it.
 ///
@@ -95,9 +102,32 @@ fn a_machine_with_nothing_on_it_ends_up_running_musters_own_daemon() {
          gained one back, this passes while proving nothing"
     );
 
-    let started =
-        remote::ensure_running(&far, &environment, tunnel.local_socket_path(), Some(&cache()))
-            .expect("Muster should put a daemon on a machine that has none");
+    // A shell that says it ran, named by Muster's own config and by nothing over there. What
+    // it proves is the whole of a_29BYC0IGC: a setting written once reaches the panes on the
+    // devenv as well as the ones beside them. It ends in /bin/sh because a pane whose program
+    // exits takes the pane, then the workspace, then the daemon with it.
+    let marker = "/tmp/muster-devenv-shell.ran";
+    far.shell(&format!("rm -f {}", muster_ssh::quoted(marker)))
+        .expect("the far end should let its own scratch be cleared");
+    far.place(
+        "/tmp/muster-devenv-shell",
+        format!("#!/bin/sh\ntouch {marker}\nexec /bin/sh \"$@\"\n").as_bytes(),
+        "0755",
+    )
+    .expect("the marker shell should arrive");
+    let asked = config::parse(
+        "scrollback_bytes = 4096\n\n[shell]\ncommand = \"/tmp/muster-devenv-shell\"\nmode = \"non_login\"\n",
+    )
+    .expect("this is a config file Muster accepts");
+
+    let started = remote::ensure_running(
+        &far,
+        &environment,
+        tunnel.local_socket_path(),
+        Some(&cache()),
+        &configuration_text(&asked.panes),
+    )
+    .expect("Muster should put a daemon on a machine that has none");
     assert_eq!(started, Reached::Started, "there was nothing to adopt");
 
     // The daemon is Muster's: its own binary, at its own version, on its own herdr session.
@@ -142,18 +172,86 @@ fn a_machine_with_nothing_on_it_ends_up_running_musters_own_daemon() {
          the daemon Muster started"
     );
 
+    a_pane_runs_what_musters_config_named(&far, tunnel.local_socket_path(), &environment, marker);
+
     // Asked a second time, a daemon that is already holding somebody's agents is reused. That
     // is "sessions outlive the app" at one machine's remove, and it is also what keeps a second
     // launch from paying for the install again.
-    let adopted =
-        remote::ensure_running(&far, &environment, tunnel.local_socket_path(), Some(&cache()))
-            .expect("the second attach should find the daemon it started");
+    let adopted = remote::ensure_running(
+        &far,
+        &environment,
+        tunnel.local_socket_path(),
+        Some(&cache()),
+        &configuration_text(&asked.panes),
+    )
+    .expect("the second attach should find the daemon it started");
     assert_eq!(adopted, Reached::Adopted, "the daemon was already answering");
 
     // Left as it was found, so the corpus probe that runs after this starts its own daemon
     // rather than meeting one nobody expected.
     far.shell("pkill -x herdr >/dev/null 2>&1; rm -rf \"$HOME/.muster\"; true")
         .expect("the far end should let its own home be cleared");
+}
+
+/// The two halves of "a devenv pane runs the settings a laptop pane does".
+///
+/// A pane made through the real request path rather than a hand-built `workspace.create`, for
+/// the reason `daemon_settings.rs` gives about the local case: the environment a pane is handed
+/// is built in that path, and a test that called the daemon directly would prove the daemon's
+/// half and quietly skip Muster's.
+fn a_pane_runs_what_musters_config_named(
+    far: &Remote,
+    socket_path: &str,
+    environment: &std::collections::BTreeMap<String, String>,
+    marker: &str,
+) {
+    let backend = HerdrBackend::new(
+        HerdrClient::new(socket_path),
+        PaneEnvironment::restoring(environment),
+        Names::alone("devenv", Mint::Backend),
+    );
+    backend
+        .submit(&BackendIntent::CreateWorkspace { cwd: Some("/tmp".to_string()) })
+        .expect("a daemon that answered a snapshot can make a workspace");
+
+    let client = HerdrClient::new(socket_path);
+    let pane = until_some("the daemon to describe the pane it just made", || {
+        let answer = client.request("pane.list", &json!({})).ok()?;
+        let panes = answer.get("payload").unwrap_or(&answer).get("panes")?.as_array()?;
+        Some(panes.first()?.get("pane_id")?.as_str()?.to_string())
+    });
+
+    // The shell Muster's config named ran, so the daemon over there read Muster's file rather
+    // than whatever herdr's own rules would have found.
+    let ran = until_some("the pane's shell to record that it ran", || {
+        far.shell(&format!("test -e {} && echo yes || echo no", muster_ssh::quoted(marker)))
+            .ok()
+            .filter(|said| said.trim() == "yes")
+    });
+    assert_eq!(ran.trim(), "yes");
+
+    // And the pane was handed the far machine's own herdr config back, so `herdr` typed in a
+    // devenv pane reads what it always did rather than the file Muster derived for its daemon.
+    let dump = "/tmp/muster-devenv-env.txt";
+    client
+        .request("pane.send_text", &json!({ "pane_id": pane, "text": format!("env > {dump}\n") }))
+        .expect("a pane accepts text");
+    let written = until_some("the shell in the pane to write its environment out", || {
+        far.shell(&format!("cat {} 2>/dev/null", muster_ssh::quoted(dump)))
+            .ok()
+            .filter(|text| text.contains("PATH="))
+    });
+    // Asked of the same function that built what the pane was handed, so this pins that the
+    // pane got the far machine's own file rather than pinning a second copy of the rule.
+    let theirs = muster_herdr::discovery::config_file(environment)
+        .expect("the container's environment says where its herdr config would be");
+    assert!(
+        written.lines().any(|line| line == format!("HERDR_CONFIG_PATH={theirs}")),
+        "a devenv pane was not handed that machine's own herdr config back, and holds: {:?}",
+        written.lines().filter(|line| line.starts_with("HERDR_")).collect::<Vec<&str>>()
+    );
+
+    let _ = far.shell(&format!("rm -f {}", muster_ssh::quoted(dump)));
 }
 
 /// One request, one answer, over a plain unix socket.
