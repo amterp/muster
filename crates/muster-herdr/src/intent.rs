@@ -495,10 +495,11 @@ pub fn request(
 /// Whether this intent leaves a pane behind that Muster has to have a name for.
 ///
 /// Has to agree with [`request`], which decides whether the environment is sent at all - an
-/// intent that makes a pane and is missed here makes one that cannot say which pane it is. The
-/// case in `corpus/conformance/backend-intent.json` walking every intent is what holds the pair
-/// together.
-fn makes_a_pane(intent: &BackendIntent) -> bool {
+/// intent that makes a pane and is missed here makes one that cannot say which pane it is, and
+/// the symptom is a `muster` command inside that pane refusing for a pane the window is drawing.
+/// Public so a test can hold the pair together against herdr's own schema, which declares `env`
+/// on exactly the calls that make a pane.
+pub fn makes_a_pane(intent: &BackendIntent) -> bool {
     matches!(
         intent,
         BackendIntent::SplitPane { .. }

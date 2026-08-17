@@ -72,7 +72,19 @@ fn every_pane_a_daemon_makes_is_handed_the_users_own_config() {
         let (method, params) =
             request(&intent, &restoring, &backend_names()).expect("every id is its own name");
         let sent = params.get("env");
+        let makes_a_pane = muster_herdr::makes_a_pane(&intent);
         if declared_parameters(&schema, method).is_some_and(|declared| declared.contains("env")) {
+            // The same question asked of Muster's own answer, so the two cannot drift. A pane
+            // Muster does not know it is making is one it never mints a name for, and that pane
+            // comes up with no MUSTER_PANE - so a `muster` command run inside it is refused for
+            // a pane the window is drawing.
+            assert!(
+                makes_a_pane,
+                "herdr says `{method}` makes a pane and `makes_a_pane` does not.\n  Impact: that \
+                 pane is never given a name, so nothing running in it can say which pane it is \
+                 and every command from inside it is refused.\n  Fix: add that intent to \
+                 `makes_a_pane` in crates/muster-herdr/src/intent.rs."
+            );
             assert_eq!(
                 sent,
                 Some(&expected),
@@ -89,6 +101,12 @@ fn every_pane_a_daemon_makes_is_handed_the_users_own_config() {
                 "`{method}` makes no pane and was sent an environment anyway.\n  Impact: herdr \
                  ignores a parameter it does not declare, so this is dead weight on the wire \
                  today and a silent behaviour change the day it declares one."
+            );
+            assert!(
+                !makes_a_pane,
+                "`{method}` makes no pane by herdr's own schema and `makes_a_pane` says it \
+                 does.\n  Impact: a name is minted and put in an environment nothing sends, so \
+                 the registry fills with names for panes that were never made."
             );
         }
     }
