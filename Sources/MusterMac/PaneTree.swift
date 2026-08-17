@@ -179,10 +179,24 @@ public indirect enum PaneTree: Equatable {
     /// request takes, and the two differ.
     public let backendPaneID: String
 
-    public init(paneID: String, controlSocketPath: String?, backendPaneID: String = "") {
+    /// How big this pane's text is, in points away from what the config file asked for. Zero
+    /// is a pane nobody has sized, which is most of them.
+    ///
+    /// On the leaf because that is what a surface is built from. A second message carrying
+    /// sizes would be one this window had to join against the tree, and a pane would be drawn
+    /// at the wrong size for as long as the two disagreed.
+    public let fontSizeOffset: Int32
+
+    public init(
+      paneID: String, controlSocketPath: String?, backendPaneID: String = "",
+      fontSizeOffset: Int32 = 0
+    ) {
       self.paneID = paneID
       self.controlSocketPath = controlSocketPath
       self.backendPaneID = backendPaneID
+      // Defaulted so that a test describing a window it is not about the text size of does not
+      // have to say so, on the same terms as a region's weight.
+      self.fontSizeOffset = fontSizeOffset
     }
   }
 
@@ -357,7 +371,8 @@ extension PaneTree {
         Leaf(
           paneID: pane.paneID,
           controlSocketPath: pane.controlSocketPath.isEmpty ? nil : pane.controlSocketPath,
-          backendPaneID: pane.backendPaneID))
+          backendPaneID: pane.backendPaneID,
+          fontSizeOffset: pane.fontSizeOffset))
     case .split(let split):
       self = .split(
         axis: SplitAxis(rawValue: split.axis) ?? .columns,

@@ -238,6 +238,14 @@ public final class Surface {
   /// anybody can type into any more.
   public var onProcessExited: (@MainActor (Bool) -> Void)?
 
+  /// The offset this surface is already drawn at.
+  ///
+  /// Not a second home for the answer - the core owns it - but a memo of what was last pushed
+  /// through, so that being told the same number again costs nothing. It has to be here rather
+  /// than beside the pane: a surface is thrown away and built again when a bridge dies, and a
+  /// fresh one starts at the size the configuration named, which is exactly zero.
+  private var fontSizeOffset: Int32 = 0
+
   init(_ surface: ghostty_surface_t, token: UInt) {
     self.surface = surface
     self.token = token
@@ -291,10 +299,14 @@ public final class Surface {
   /// offers for this and costs no file. The string never escapes this module.
   ///
   /// Reset first, always. libghostty's own actions are relative - `increase_font_size:2` adds
-  /// two points to whatever is there - so setting an offset twice would double it. The core
-  /// republishes the whole presentation on every change and a new pane is handed the offset in
-  /// force, so this is called more than once with the same number as a matter of course, and
-  /// has to mean the same thing every time.
+  /// two points to whatever is there - so setting an offset twice would double it.
+  ///
+  /// A number that has not moved does nothing at all, which is not an optimisation. The core
+  /// publishes the whole view on every change and a view follows every agent transition, so
+  /// this is called with the number already in force many times a second - and the reset above
+  /// resizes the grid, so carrying it out each time would reflow every pane in the window
+  /// whenever any agent blinked.
+  ///
   /// Returns the actions the renderer would not carry out, which is empty in every ordinary
   /// case. These are named by string and nothing in the suite can check the names: validating
   /// one needs a live surface, which needs a GPU and a window. So the refusal is reported
@@ -302,6 +314,8 @@ public final class Surface {
   /// instead of as a chord that quietly does nothing.
   @discardableResult
   public func setFontSizeOffset(_ points: Int32) -> [String] {
+    guard points != fontSizeOffset else { return [] }
+    fontSizeOffset = points
     var refused = act("reset_font_size", [])
     if points > 0 { refused = act("increase_font_size:\(points)", refused) }
     if points < 0 { refused = act("decrease_font_size:\(-points)", refused) }

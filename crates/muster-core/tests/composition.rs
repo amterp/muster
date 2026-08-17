@@ -11,7 +11,8 @@ use std::fmt::Write as _;
 
 use conformance::{CaseError, Conformance, fields};
 use muster_core::composition::{
-    Composition, Daemon, DaemonId, Endpoint, Region, RegionId, Step, Transport, View,
+    Composition, Daemon, DaemonId, Endpoint, FontSizeChange, FontSizes, PaneKey, Region, RegionId,
+    Step, Transport, View,
 };
 use muster_core::mirror::Mirror;
 use muster_core::mirror::backend::{PaneId, TabId, WorkspaceId};
@@ -29,9 +30,13 @@ fn composition_conformance() {
         // against whatever each daemon last published, and a daemon that has said nothing
         // yet is a real state - one attached whose subscription has not bootstrapped.
         let mut current: BTreeMap<DaemonId, String> = BTreeMap::new();
+        // How big each pane's text is. The seam holds this beside the composition rather than
+        // in it, and so does this driver: a case that never sizes a pane leaves it empty and
+        // every pane in its view reports the configured size.
+        let mut sizes = FontSizes::default();
 
         for step in given.get("steps").and_then(Value::as_array).into_iter().flatten() {
-            act(&mut composition, step, given, &worlds, &mut current)?;
+            act(&mut composition, step, given, &worlds, &mut current, &mut sizes)?;
         }
 
         // Every field, every case. What a region shows and which pane the keyboard feeds
@@ -46,7 +51,7 @@ fn composition_conformance() {
                 composition.focused_region().map(|region| json!(region.id.to_string())),
             ),
             ("focusedPane", composition.focused_pane().map(|pane| json!(pane.as_str()))),
-            ("view", Some(json!(describe_view(&composition, given, &worlds, &current)))),
+            ("view", Some(json!(describe_view(&composition, given, &worlds, &current, &sizes)))),
         ]))
     });
 
@@ -89,6 +94,7 @@ fn act(
     given: &Value,
     worlds: &BTreeMap<String, Mirror>,
     current: &mut BTreeMap<DaemonId, String>,
+    sizes: &mut FontSizes,
 ) -> Result<(), CaseError> {
     match text(step, "do").as_str() {
         "attachDaemon" => {
@@ -128,10 +134,33 @@ fn act(
                 ))
             })?;
             if let Some((region, pane)) =
-                view_of(composition, given, worlds, current).step(direction)
+                view_of(composition, given, worlds, current, sizes).step(direction)
             {
                 composition.focus_pane(region, pane);
             }
+        }
+        // One press of a font-size chord, on the pane the keyboard is on - which is what the
+        // seam does with it. Named rather than given a number, because what a chord means is
+        // "one more than whatever I have" and that is the half worth pinning.
+        "adjustFontSize" => {
+            let named = text(step, "change");
+            let change = FontSizeChange::parse(&named).ok_or_else(|| {
+                CaseError::new(format!(
+                    "a font size change is larger, smaller or reset, and this case says \
+                     {named:?}"
+                ))
+            })?;
+            let pane = composition
+                .focused_region()
+                .and_then(|region| Some(PaneKey::new(&region.daemon, region.pane.as_ref()?)))
+                .ok_or_else(|| {
+                    CaseError::new(
+                        "the case sizes text with no pane holding the keyboard, which the seam \
+                         refuses rather than acts on"
+                            .to_string(),
+                    )
+                })?;
+            sizes.adjust(&pane, change);
         }
         "reconcile" => {
             let name = text(step, "world");
@@ -223,6 +252,7 @@ fn view_of(
     given: &Value,
     worlds: &BTreeMap<String, Mirror>,
     current: &BTreeMap<DaemonId, String>,
+    sizes: &FontSizes,
 ) -> View {
     let attached: Vec<String> = given
         .get("attached")
@@ -258,6 +288,7 @@ fn view_of(
         // and neither the cases nor this driver has to know the registry exists. What the
         // translation does is `pane-names.json`'s subject.
         |_, pane| Some(pane.to_string()),
+        |daemon, pane| sizes.offset(&PaneKey::new(daemon, pane)),
     )
 }
 
@@ -266,8 +297,9 @@ fn describe_view(
     given: &Value,
     worlds: &BTreeMap<String, Mirror>,
     current: &BTreeMap<DaemonId, String>,
+    sizes: &FontSizes,
 ) -> Vec<String> {
-    view_of(composition, given, worlds, current)
+    view_of(composition, given, worlds, current, sizes)
         .regions
         .iter()
         .map(|region| {

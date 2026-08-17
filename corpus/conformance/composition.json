@@ -1685,6 +1685,206 @@
       }
     },
     {
+      "name": "a font-size chord sizes the pane the keyboard is on and no other",
+      "why": "Muster sized every pane in the window at once until it did not, on the argument that a grid you read at a glance is harder to read with ragged cell sizes. The grid is fifteen agents doing different jobs, and the one being read closely is worth more room than the one being watched for a colour - so raggedness is the price of being able to say which. This is the case that would still pass under the old behaviour if the view carried one number for the window, and fails the moment a chord reaches a neighbour. The size rides on the pane rather than on a message of its own, because a shell builds a surface from a leaf and joining two messages would draw a pane at the wrong size for as long as they disagreed.",
+      "given": {
+        "attached": [
+          "w1:p1",
+          "w1:p2"
+        ],
+        "worlds": {
+          "two panes": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "w1"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ],
+            "layouts": [
+              {
+                "tab": "w1:t1",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p1",
+                  "second": "w1:p2"
+                }
+              }
+            ]
+          }
+        },
+        "steps": [
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/herdr-local.sock"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "two panes"
+          },
+          {
+            "do": "focusPane",
+            "region": "r0",
+            "pane": "w1:p2"
+          },
+          {
+            "do": "adjustFontSize",
+            "change": "larger"
+          },
+          {
+            "do": "adjustFontSize",
+            "change": "larger"
+          }
+        ]
+      },
+      "expect": {
+        "daemons": [
+          "local local=/tmp/herdr-local.sock"
+        ],
+        "regions": [
+          "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p2"
+        ],
+        "focusedRegion": "r0",
+        "focusedPane": "w1:p2",
+        "view": [
+          "r0 tab=w1:t1 columns(w1:p1*, w1:p2*+2@0.5)"
+        ]
+      }
+    },
+    {
+      "name": "putting a pane's text back leaves its neighbour where somebody left it",
+      "why": "Reset is the only way out of a size somebody has pressed themselves into, and per-pane sizing gives it a second way to be wrong: a reset that reached the window would undo work on panes the person never touched this time. So it is the same one-pane rule as the two directions, and the neighbour keeps what it was given.",
+      "given": {
+        "attached": [
+          "w1:p1",
+          "w1:p2"
+        ],
+        "worlds": {
+          "two panes": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "w1"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ],
+            "layouts": [
+              {
+                "tab": "w1:t1",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p1",
+                  "second": "w1:p2"
+                }
+              }
+            ]
+          }
+        },
+        "steps": [
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/herdr-local.sock"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "two panes"
+          },
+          {
+            "do": "adjustFontSize",
+            "change": "smaller"
+          },
+          {
+            "do": "focusPane",
+            "region": "r0",
+            "pane": "w1:p2"
+          },
+          {
+            "do": "adjustFontSize",
+            "change": "larger"
+          },
+          {
+            "do": "adjustFontSize",
+            "change": "reset"
+          }
+        ]
+      },
+      "expect": {
+        "daemons": [
+          "local local=/tmp/herdr-local.sock"
+        ],
+        "regions": [
+          "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p2"
+        ],
+        "focusedRegion": "r0",
+        "focusedPane": "w1:p2",
+        "view": [
+          "r0 tab=w1:t1 columns(w1:p1*-1, w1:p2*@0.5)"
+        ]
+      }
+    },
+    {
       "name": "moving the keyboard inside a zoomed tab moves what is on screen",
       "why": "⌘2 in a zoomed tab used to leave the previous pane filling the region, so the keyboard fed a pane nobody could see. herdr publishes `layout_updated` when a pane appears or goes and never for a focus change (observations/herdr-0.8.0.md section 10), so the cursor its zoom flag sits beside is stale from the moment focus moves - which is why the zoomed pane has to be read off this window's own keyboard rather than off the daemon's. The tab stays zoomed: what moved is which pane fills it, not whether one does.",
       "given": {

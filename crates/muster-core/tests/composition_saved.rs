@@ -7,8 +7,8 @@
 use std::collections::BTreeSet;
 
 use conformance::{CaseError, Conformance, fields};
-use muster_core::composition::presentation::{Frame, Presentation};
-use muster_core::composition::record::{Composition, Daemon, DaemonId, Endpoint};
+use muster_core::composition::presentation::{FontSizes, Frame, Presentation};
+use muster_core::composition::record::{Composition, Daemon, DaemonId, Endpoint, PaneKey};
 use muster_core::composition::saved::{Saved, SavedRegion, from_toml, to_toml};
 use muster_core::mirror::backend::{PaneId, TabId, WorkspaceId};
 use serde_json::{Value, json};
@@ -75,12 +75,21 @@ fn what_is_written_is_what_comes_back() {
     // Nothing at its default, so a round trip that quietly dropped any of it would still fail.
     // The frame carries fractions, because a window dragged half a point is what a trackpad
     // produces and a rectangle rounded on the way through comes back a pixel out every launch.
+    // Two panes on two daemons, because a text size is keyed by both and a file that wrote
+    // only the pane would hand one machine's size to the other's pane of the same name.
+    let sizes: FontSizes = [
+        (PaneKey::new(&DaemonId::new("local"), &PaneId::new("w1:p1")), 3),
+        (PaneKey::new(&DaemonId::new("devenv"), &PaneId::new("w1:p1")), -2),
+    ]
+    .into_iter()
+    .collect();
+
     let written = Saved::of(
         &composition,
         Presentation::default()
             .with_sidebar(false)
-            .with_font_size_offset(3)
             .with_frame(Some(Frame { x: -120.5, y: 240.0, width: 1400.0, height: 902.5 }), true),
+        &sizes,
     );
     let read = from_toml(&to_toml(&written)).expect("what this wrote, it can read");
 
@@ -139,16 +148,50 @@ fn a_partly_written_rectangle_is_ignored_rather_than_half_applied() {
 /// does when a key is held down. Refusing would cost the whole arrangement over a font size.
 #[test]
 fn a_hand_edited_font_size_is_brought_back_inside_the_range() {
+    let pane = PaneKey::new(&DaemonId::new("local"), &PaneId::new("w1:p1"));
     let file = to_toml(&Saved {
-        daemons: Vec::new(),
-        regions: Vec::new(),
-        focused: None,
-        presentation: Presentation::default(),
+        font_sizes: [(pane.clone(), 3)].into_iter().collect(),
+        ..Saved::default()
     })
-    .replace("font_size_offset = 0", "font_size_offset = 100000");
+    .replace("font_size_offset = 3", "font_size_offset = 100000");
 
     let read = from_toml(&file).expect("an out-of-range offset is not an unreadable file");
-    assert_eq!(read.presentation.font_size_offset, Presentation::FONT_SIZE_LIMIT);
+    assert_eq!(read.font_sizes.offset(&pane), FontSizes::LIMIT);
+}
+
+/// A window nobody has sized writes no pane rows at all.
+///
+/// The `[window]` keys are written even at their default, so a person opening the file learns
+/// they exist. This is a list of exceptions rather than a fixed set, and a row per pane saying
+/// "the configured size" would be a table that grows with the window and says nothing.
+#[test]
+fn a_window_nobody_has_sized_writes_no_pane_rows() {
+    let file = to_toml(&Saved::default());
+    assert!(!file.contains("[[pane]]"), "an unsized window wrote pane rows anyway:\n{file}");
+    assert!(
+        !file.contains("font_size_offset"),
+        "an unsized window wrote a text size anyway:\n{file}"
+    );
+}
+
+/// A file from when text was sized for the whole window loses that size and keeps everything
+/// else.
+///
+/// There is nowhere to put it: the key named no pane, and the panes it applied to are not
+/// recoverable from a file that never listed them. Losing it costs one relaunch at the
+/// configured size; refusing the file would cost the arrangement, which is much worse and
+/// which the version is reserved for.
+#[test]
+fn a_window_wide_text_size_is_dropped_and_the_rest_survives() {
+    let file = to_toml(&Saved {
+        presentation: Presentation::default().with_sidebar(false),
+        ..Saved::default()
+    })
+    .replace("[window]", "[window]\nfont_size_offset = 4");
+
+    let read = from_toml(&file).expect("an old key is not an unreadable file");
+    assert!(!read.presentation.sidebar, "the rest of the window was lost with the old key");
+    assert_eq!(read.font_sizes, FontSizes::default(), "the window-wide size came back as a pane");
 }
 
 #[test]
@@ -191,6 +234,7 @@ fn saved(given: &Value) -> Result<Saved, CaseError> {
         // Not what these cases are about: they judge which regions survive a check against
         // the daemons, and nothing here is checked against anything.
         presentation: Presentation::default(),
+        font_sizes: FontSizes::default(),
     })
 }
 

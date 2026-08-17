@@ -343,11 +343,16 @@ message ResizePane {
   float region_height = 8;
 }
 
-// Makes the text in every pane bigger or smaller, or puts it back.
+// Makes the text in one pane bigger or smaller, or puts it back.
 //
-// Every pane, because Muster's claim is a grid you read at a glance and one with ragged cell
-// sizes is harder to read. That is where it differs from a terminal on purpose: Ghostty sizes
-// each surface separately, and Muster's surfaces are one workspace rather than several windows.
+// The pane the keyboard is on, and no other. Muster sized every pane at once until it did not,
+// on the argument that a grid you read at a glance is harder to read with ragged cell sizes -
+// but the grid is fifteen agents doing different jobs, and the one being read closely is worth
+// more room than the one being watched for a colour.
+//
+// No pane id, unlike ZoomPane. This is a chord and a menu item and nothing else drives it, and
+// both of those mean the pane in front of you; a field carrying an answer nothing sends would
+// be a second way to ask, published before anybody had a question.
 //
 // The core holds the size and the shell asks for a direction, which is the same shape as
 // ToggleSidebar and for the same reason: what a chord means is "one more than whatever I have",
@@ -1142,12 +1147,10 @@ message PresentationChanged {
   // Whether the roster is on screen.
   bool sidebar = 1;
 
-  // Points to add to the font size the config file named, or the renderer chose.
-  //
-  // An offset rather than a size, because the core does not know the size it is offsetting
-  // from - `[font] size` is optional, and when it is absent the number belongs to the renderer
-  // and never crosses back. Zero is what a window that nobody has resized reports.
-  int32 font_size_offset = 2;
+  // 2 was a font size for the whole window, from when `cmd+=` sized every pane at once. Text
+  // is sized per pane now and travels on `ViewPane.font_size_offset`, where the shell is
+  // already reading to build the surface it would apply it to.
+  reserved 2;
 }
 
 // Every pane every attached daemon holds, whether or not this window is showing it.
@@ -1378,6 +1381,23 @@ message ViewPane {
   // the moment two daemons are attached: herdr numbers panes per session, so a laptop and a
   // devenv both hold a `w1:p1`.
   string backend_pane_id = 3;
+
+  // Points to add to the font size this pane's text is drawn at.
+  //
+  // An offset rather than a size, because the core does not know the size it is offsetting
+  // from - `[font] size` is optional, and when it is absent the number belongs to the renderer
+  // and never crosses back. Zero is a pane nobody has sized, and is what most panes report.
+  //
+  // On the pane rather than on a message of its own, although it is chrome rather than daemon
+  // truth. A shell builds a surface from a leaf, so a second message would be one the shell
+  // had to join against this one - and a pane would be drawn at the wrong size for as long as
+  // the two disagreed, which is the rule `RosterPane.on_screen` already states.
+  //
+  // Per pane rather than per window, which is where this differs from what Muster used to do.
+  // The old answer sized every pane at once, on the argument that a grid you read at a glance
+  // is harder to read with ragged cell sizes; the grid is fifteen agents doing different jobs,
+  // and being able to say which one you are reading closely is worth the raggedness.
+  int32 font_size_offset = 4;
 }
 
 // What the agent in a pane is doing now.

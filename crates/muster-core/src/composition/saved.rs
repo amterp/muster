@@ -18,8 +18,10 @@
 
 use std::collections::BTreeMap;
 
-use crate::composition::presentation::{Frame, Presentation};
-use crate::composition::record::{Composition, Daemon, DaemonId, Endpoint};
+use crate::composition::presentation::{FontSizes, Frame, Presentation};
+use crate::composition::record::{Composition, Daemon, DaemonId, Endpoint, PaneKey};
+use crate::diagnostics::log;
+use crate::fields;
 use crate::mirror::backend::{PaneId, TabId, WorkspaceId};
 
 /// One region, as much of it as outlives the process.
@@ -56,6 +58,15 @@ pub struct Saved {
     /// list was open. The frame is checked all the same, but against the screens the machine
     /// has rather than against a session (`Frame::fitted`).
     pub presentation: Presentation,
+
+    /// How big each pane's text was, for the panes somebody had sized.
+    ///
+    /// Beside the chrome rather than inside it, because it is not one answer about the window.
+    /// Restored without checking, unlike a region: an entry for a pane that is gone costs a
+    /// forgotten row and nothing on screen, where a region for a tab that is gone is a region
+    /// rendering nothing. The pruning happens while the window runs, where a daemon that is
+    /// actually answering can say which panes it still holds.
+    pub font_sizes: FontSizes,
 }
 
 /// What survives a check against what the daemons actually hold.
@@ -67,12 +78,17 @@ pub struct Restorable {
 
 impl Saved {
     /// Takes down what a composition is showing, and what the window is showing of itself.
-    pub fn of(composition: &Composition, presentation: Presentation) -> Saved {
+    pub fn of(
+        composition: &Composition,
+        presentation: Presentation,
+        font_sizes: &FontSizes,
+    ) -> Saved {
         let focused = composition
             .focused_region()
             .and_then(|focused| composition.regions().position(|region| region.id == focused.id));
         Saved {
             presentation,
+            font_sizes: font_sizes.clone(),
             daemons: composition.daemons().cloned().collect(),
             regions: composition
                 .regions()
@@ -148,6 +164,15 @@ pub fn to_toml(saved: &Saved) -> String {
     if !regions.is_empty() {
         root.insert("region".to_string(), toml::Value::Array(regions));
     }
+
+    // Only the panes somebody has sized, unlike the `[window]` keys below. Those are a fixed
+    // set worth stating at their default so a reader learns they exist; this is a list of
+    // exceptions, and a row per pane saying "the configured size" would be a table that grows
+    // with the window and says nothing.
+    let panes: Vec<toml::Value> = saved.font_sizes.entries().map(pane_table).collect();
+    if !panes.is_empty() {
+        root.insert("pane".to_string(), toml::Value::Array(panes));
+    }
     if let Some(focused) = saved.focused.and_then(|place| i64::try_from(place).ok()) {
         root.insert("focused".to_string(), toml::Value::Integer(focused));
     }
@@ -158,10 +183,6 @@ pub fn to_toml(saved: &Saved) -> String {
     // they have to already know about to look for.
     let mut window = toml::Table::new();
     window.insert("sidebar".to_string(), toml::Value::Boolean(saved.presentation.sidebar));
-    window.insert(
-        "font_size_offset".to_string(),
-        toml::Value::Integer(i64::from(saved.presentation.font_size_offset)),
-    );
     window.insert("full_screen".to_string(), toml::Value::Boolean(saved.presentation.full_screen));
     // The four numbers go flat beside the two above rather than into a table of their own. They
     // are the same kind of value - what the window looked like, not what session it was
@@ -207,6 +228,19 @@ fn daemon_table(daemon: &Daemon) -> toml::Value {
             }
         }
     }
+    toml::Value::Table(table)
+}
+
+/// One pane somebody sized, named the way a region names its own.
+///
+/// Both halves of the key, although a pane's Muster name is already unique across every
+/// attached machine. It reads beside `[[region]]`, which spells its pane the same way, and a
+/// row that says which machine it belongs to is one somebody can act on when they find it.
+fn pane_table((pane, offset): (&PaneKey, i32)) -> toml::Value {
+    let mut table = toml::Table::new();
+    table.insert("daemon".to_string(), toml::Value::String(pane.daemon.to_string()));
+    table.insert("pane".to_string(), toml::Value::String(pane.pane.to_string()));
+    table.insert("font_size_offset".to_string(), toml::Value::Integer(i64::from(offset)));
     toml::Value::Table(table)
 }
 
@@ -269,15 +303,6 @@ pub fn from_toml(text: &str) -> Result<Saved, String> {
                 .and_then(toml::Value::as_bool)
                 .unwrap_or(Presentation::default().sidebar),
         )
-        // Through the setter, so a file somebody hand-edited to a thousand comes back as the
-        // furthest a chord could have taken it rather than as a thousand.
-        .with_font_size_offset(
-            window
-                .and_then(|window| window.get("font_size_offset"))
-                .and_then(toml::Value::as_integer)
-                .and_then(|offset| i32::try_from(offset).ok())
-                .unwrap_or(Presentation::default().font_size_offset),
-        )
         .with_frame(
             window.and_then(read_frame),
             window
@@ -286,7 +311,55 @@ pub fn from_toml(text: &str) -> Result<Saved, String> {
                 .unwrap_or(Presentation::default().full_screen),
         );
 
-    Ok(Saved { daemons, regions, focused, presentation })
+    report_window_wide_text_size(window);
+    let font_sizes = root
+        .get("pane")
+        .and_then(toml::Value::as_array)
+        .map(|entries| entries.iter().filter_map(read_pane_font_size).collect())
+        .unwrap_or_default();
+
+    Ok(Saved { daemons, regions, focused, presentation, font_sizes })
+}
+
+/// Says so when a file remembers a text size for the whole window.
+///
+/// Left over from when `cmd+=` sized every pane at once. There is nowhere to put it now - the
+/// file names the panes it remembers and this named none of them - so it is dropped, and the
+/// one thing worth doing about it is saying so where somebody wondering why their text is
+/// small again will find it.
+///
+/// Not a problem raised into the roster: nothing is broken and nothing needs a human edit.
+/// One record, once, on the launch that reads the old file - the next save writes the new
+/// shape and this never fires again.
+fn report_window_wide_text_size(window: Option<&toml::Table>) {
+    let offset = window
+        .and_then(|window| window.get("font_size_offset"))
+        .and_then(toml::Value::as_integer)
+        .unwrap_or_default();
+    if offset == 0 {
+        return;
+    }
+    log::info(
+        "state.font_size.window_wide",
+        fields! {
+            "offset" => offset.to_string(),
+            "impact" => "text is sized per pane now, so this window-wide size was dropped and \
+                         every pane opens at the size the config file names",
+            "check" => "size the panes you want bigger again and it is remembered per pane; \
+                        `[font] size` in the config file is what moves all of them at once",
+        },
+    );
+}
+
+/// An entry that will not read is skipped rather than failing the file, on the same terms as a
+/// region: one unreadable row costs one pane's text size, and refusing the whole file over it
+/// costs the arrangement.
+fn read_pane_font_size(value: &toml::Value) -> Option<(PaneKey, i32)> {
+    let table = value.as_table()?;
+    let key =
+        PaneKey::new(&DaemonId::new(text(table, "daemon")?), &PaneId::new(text(table, "pane")?));
+    let offset = table.get("font_size_offset")?.as_integer().and_then(|o| i32::try_from(o).ok())?;
+    Some((key, offset))
 }
 
 /// An entry that will not read is skipped rather than failing the file, on the same terms as

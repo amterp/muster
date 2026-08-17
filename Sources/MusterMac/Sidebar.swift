@@ -103,15 +103,8 @@ public struct Presentation: Equatable {
   /// Whether the roster is on screen.
   public let sidebar: Bool
 
-  /// Points to add to the font size the config file named, or the renderer chose.
-  ///
-  /// An offset rather than a size: the size it is offsetting from may be the renderer's own,
-  /// and nothing on this side of the seam knows what that is.
-  public let fontSizeOffset: Int32
-
-  public init(sidebar: Bool, fontSizeOffset: Int32 = 0) {
+  public init(sidebar: Bool) {
     self.sidebar = sidebar
-    self.fontSizeOffset = fontSizeOffset
   }
 }
 

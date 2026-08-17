@@ -245,16 +245,13 @@ fn wanted_name(asked: &str) -> Option<String> {
     (!asked.is_empty()).then(|| asked.to_string())
 }
 
-/// One press of a font-size chord.
+/// One press of a font-size chord, on the pane the keyboard is on.
 ///
 /// A direction rather than a size, matching ToggleSidebar: what the chord means is "one more
 /// than whatever I have", and the shell does not hold what it has.
 fn adjust_font_size(change: &str) -> Response {
     match FontSizeChange::parse(change) {
-        Some(change) => {
-            session::adjust_font_size(change);
-            Response::ok()
-        }
+        Some(change) => answer(session::adjust_font_size(change)),
         None => Response::failure(format!(
             "the core does not know a font size change called {change:?}, so the text stayed \
              the size it was. Only {} exist; the shell builds this from a fixed set, so this \

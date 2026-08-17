@@ -166,6 +166,8 @@ fn view_cost() -> Cost {
             // The transport closure answers local here: what this measures is building a
             // view, not reaching a machine. The two pane closures answer without a lookup for
             // the same reason - a registry behind a lock would put its cost in this number.
+            // Text size answers the configured one, which is what every pane in a window
+            // nobody has sized reports.
             let view = View::of(
                 &composition,
                 |named| (named == &daemon).then_some(&mirror),
@@ -173,6 +175,7 @@ fn view_cost() -> Cost {
                 |_| None,
                 |_| Some("/tmp/herdr.sock".to_string()),
                 |_, pane| Some(pane.to_string()),
+                |_, _| 0,
             );
             black_box(view.regions.len());
         }

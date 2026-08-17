@@ -360,10 +360,10 @@ turns up late, and it goes with the pane if you close it.
 
 `~/.muster/state/` is Muster's to write, and holds three files nobody should edit. `window.toml`
 is rewritten whenever the window settles: which tabs it was showing, in what order, at what
-widths, and under `[window]` whether the agent list was open, how far the text was sized from
-what the config file asked for, and how big the window itself was. Delete it and the next launch
-opens fresh. Nothing about a session is in it - what a tab holds is the daemon's answer, asked
-again on every launch.
+widths, under `[window]` whether the agent list was open and how big the window itself was, and
+one `[[pane]]` row for each pane whose text somebody sized. Delete it and the next launch opens
+fresh. Nothing about a session is in it - what a tab holds is the daemon's answer, asked again on
+every launch.
 
 **A window opens at the size and position it was left, and full-screen if that is how you left
 it.** The rectangle is written down as the window settles rather than at quit, because quitting
@@ -380,9 +380,17 @@ brought onto the screen it has most in common with, clamped to fit and centred. 
 screen gets you out of a window you cannot grab, which is why that case is worth the move.
 
 Text size is the one appearance setting that is also an action. `cmd+=`, `cmd+-` and `cmd+0`
-size every pane in the window at once - not one pane, because a grid you read at a glance is
-harder to read with ragged cell sizes - and the size you land on is remembered under `[window]`
-and comes back on the next launch. `cmd+0` is the way back to whatever `[font] size` says.
+size the pane you are in and leave the rest alone, and the size you land on is remembered for
+that pane under `[[pane]]` and comes back on the next launch. `cmd+0` is the way back to
+whatever `[font] size` says, for that pane; `[font] size` itself is what moves all of them.
+
+**One pane, because the panes are not doing the same job.** The claim is a grid you read at a
+glance, and a grid with ragged cell sizes is harder to read - so this sized the whole window
+for a while, on the argument that the raggedness was the cost. It is the other way round: the
+grid is fifteen agents, one of which you are reading closely while the rest you are watching
+for a colour, and being able to say which is worth more than the tidiness. A pane a split makes
+opens at the size of the pane it was split from, so growing one and splitting it gives you two
+you can read.
 
 `libghostty.conf` is `[font]`, `[colors]` and `[cursor]` restated in the renderer's own
 format, because libghostty has no way to be handed a value except as a file. Rewritten every

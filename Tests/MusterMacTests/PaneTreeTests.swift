@@ -196,6 +196,31 @@ struct WindowContentsTests {
     #expect(leaf.controlSocketPath == nil)
   }
 
+  @Test("each pane carries its own text size, and most carry none")
+  func eachPaneCarriesItsOwnTextSize() {
+    // Per pane rather than per window, which is what this reversed. A window that read one
+    // number would size the pair together and pass every other assertion here.
+    var sized = Muster_ViewPane()
+    sized.paneID = "w1:p1"
+    sized.fontSizeOffset = 3
+    var untouched = Muster_ViewPane()
+    untouched.paneID = "w1:p2"
+    var split = Muster_ViewSplit()
+    split.axis = "columns"
+    split.ratio = 0.5
+    split.first = .with { $0.pane = sized }
+    split.second = .with { $0.pane = untouched }
+    var region = Muster_ViewRegion()
+    region.regionID = "r0"
+    region.root = .with { $0.split = split }
+    var changed = Muster_ViewChanged()
+    changed.regions = [region]
+
+    let leaves = WindowContents(changed).regions[0].tree?.leaves ?? []
+
+    #expect(leaves.map(\.fontSizeOffset) == [3, 0])
+  }
+
   @Test("a whole view arrives as regions, trees and a keyboard")
   func aViewCrossesIntact() {
     var first = Muster_ViewPane()

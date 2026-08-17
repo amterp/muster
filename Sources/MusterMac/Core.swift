@@ -816,14 +816,8 @@ public enum Core {
         ])
       window?.apply(problems: problems)
     case .presentationChanged(let changed):
-      let presentation = Presentation(
-        sidebar: changed.sidebar, fontSizeOffset: changed.fontSizeOffset)
-      info(
-        "presentation.received",
-        [
-          "sidebar": String(presentation.sidebar),
-          "font_size_offset": String(presentation.fontSizeOffset),
-        ])
+      let presentation = Presentation(sidebar: changed.sidebar)
+      info("presentation.received", ["sidebar": String(presentation.sidebar)])
       window?.apply(presentation: presentation)
     case nil:
       break

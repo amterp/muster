@@ -128,6 +128,17 @@ pub struct ViewPane {
     /// `None` for a pane whose daemon no longer holds it, which is a pane no bridge should be
     /// started for.
     pub backend_pane_id: Option<String>,
+
+    /// How big this pane's text is, in points away from what the config file asked for.
+    ///
+    /// Here rather than on a message of its own, although it is chrome and not daemon truth,
+    /// for the reason `RosterPane::on_screen` is resolved rather than left to the shell: a
+    /// shell that had to join two messages would render a pane at the wrong size for as long
+    /// as they disagreed. A surface is built from a leaf, so the size belongs on the leaf.
+    ///
+    /// Zero is the ordinary answer and means the size the config file named, or the one the
+    /// renderer chose when it named none.
+    pub font_size_offset: i32,
 }
 
 impl View {
@@ -144,6 +155,7 @@ impl View {
         transport: impl Fn(&DaemonId) -> Option<Transport>,
         backend_socket: impl Fn(&DaemonId) -> Option<String>,
         backend_pane: impl Fn(&DaemonId, &PaneId) -> Option<String>,
+        font_size: impl Fn(&DaemonId, &PaneId) -> i32,
     ) -> View {
         let regions = composition
             .regions()
@@ -187,6 +199,7 @@ impl View {
                             &region.daemon,
                             &socket,
                             &backend_pane,
+                            &font_size,
                         )
                     }),
                     zoomed: layout.is_some_and(|layout| layout.zoomed.is_some()),
@@ -540,18 +553,20 @@ fn build(
     daemon: &DaemonId,
     socket: &impl Fn(&DaemonId, &PaneId) -> Option<String>,
     backend_pane: &impl Fn(&DaemonId, &PaneId) -> Option<String>,
+    font_size: &impl Fn(&DaemonId, &PaneId) -> i32,
 ) -> ViewNode {
     match node {
         LayoutNode::Pane(id) => ViewNode::Pane(ViewPane {
             id: id.clone(),
             control_socket_path: socket(daemon, id),
             backend_pane_id: backend_pane(daemon, id),
+            font_size_offset: font_size(daemon, id),
         }),
         LayoutNode::Split { axis, ratio, first, second } => ViewNode::Split {
             axis: *axis,
             ratio: *ratio,
-            first: Box::new(build(first, daemon, socket, backend_pane)),
-            second: Box::new(build(second, daemon, socket, backend_pane)),
+            first: Box::new(build(first, daemon, socket, backend_pane, font_size)),
+            second: Box::new(build(second, daemon, socket, backend_pane, font_size)),
         },
     }
 }
@@ -570,6 +585,12 @@ impl std::fmt::Display for ViewNode {
                 // directory, so a case asserting one would assert this machine.
                 if pane.control_socket_path.is_some() {
                     f.write_str("*")?;
+                }
+                // Only when somebody has sized it, so that every case not about text size
+                // reads the way it did - and so that a case that is about it says so in the
+                // one place a reviewer is already looking.
+                if pane.font_size_offset != 0 {
+                    write!(f, "{:+}", pane.font_size_offset)?;
                 }
                 Ok(())
             }

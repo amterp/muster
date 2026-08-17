@@ -29,10 +29,6 @@ public final class MusterWindow: NSObject {
   /// `--renderer-check` proves the renderer paints and nothing here can make it a pane.
   private var rendererCheck = false
 
-  /// The font size in force, so a pane made later gets it too. The core owns the number; this
-  /// is the last one it published.
-  private var fontSizeOffset: Int32 = 0
-
   /// Everything the attached daemons hold, whether or not this window is showing it.
   ///
   /// Held here rather than only in the sidebar because it is half of what the sidebar draws
@@ -225,6 +221,14 @@ public final class MusterWindow: NSObject {
       let region = regions[described.id] ?? make(regionID: described.id)
       order.append((id: described.id, weight: described.weight, view: region))
       region.apply(described, focused: described.id == contents.focusedRegion)
+      // After the surfaces exist, because a surface is what carries a size. Every pane every
+      // time: the core sends the whole view, so this is idempotent by the same argument the
+      // rest of this function is - and the surface itself skips a number it already has, which
+      // is what stops a publish per agent transition from reflowing the window.
+      for leaf in described.tree?.leaves ?? [] {
+        report(
+          region.chrome(for: leaf.paneID)?.surface.setFontSizeOffset(leaf.fontSizeOffset) ?? [])
+      }
     }
 
     let named = Set(contents.regions.map(\.id))
@@ -270,15 +274,6 @@ public final class MusterWindow: NSObject {
   /// once at startup, so this window never has a default of its own to disagree with.
   public func apply(presentation: Presentation) {
     split.sidebarShown = presentation.sidebar
-    // Held as well as applied, because a pane made after this arrives has to be sized too - a
-    // split that opened at the configured size beside four panes somebody had made bigger is
-    // the ragged grid this action exists to avoid.
-    fontSizeOffset = presentation.fontSizeOffset
-    for region in regions.values {
-      for paneID in region.paneIDs {
-        report(region.chrome(for: paneID)?.surface.setFontSizeOffset(fontSizeOffset) ?? [])
-      }
-    }
   }
 
   /// Says so when the renderer would not size a pane's text.
@@ -416,7 +411,6 @@ public final class MusterWindow: NSObject {
     do {
       chrome.surface.attach(
         try renderer.makeSurface(in: chrome.surface, command: command), typeable: typeable)
-      report(chrome.surface.setFontSizeOffset(fontSizeOffset))
     } catch {
       // One pane, not the window: the rest keep rendering, and a bug report needs to say
       // which one went missing rather than that something failed.

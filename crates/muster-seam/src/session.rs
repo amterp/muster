@@ -17,8 +17,8 @@ use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 use muster_core::AgentState;
 use muster_core::attention::Attention;
 use muster_core::composition::{
-    Composition, Daemon, DaemonId, Endpoint, FontSizeChange, Frame, PaneKey, Presentation,
-    RegionId, Saved, Step, TabKey, Transport, View, saved,
+    Composition, Daemon, DaemonId, Endpoint, FontSizeChange, FontSizes, Frame, PaneKey,
+    Presentation, RegionId, Saved, Step, TabKey, Transport, View, saved,
 };
 use muster_core::config::{Appearance, Config, Feel, Panes};
 use muster_core::diagnostics::{log, poison};
@@ -745,6 +745,13 @@ pub(crate) struct Session {
     /// The window's own chrome, which spans the daemons for the same reason attention does.
     presentation: Presentation,
 
+    /// How big each pane's text is, for the panes somebody has sized.
+    ///
+    /// Beside the chrome rather than inside it, because it is not one answer about the window.
+    /// It spans the daemons all the same: a window shows a laptop's panes and a devenv's, and
+    /// the chord that sizes one has no reason to care which machine it is on.
+    font_sizes: FontSizes,
+
     /// The search somebody has open, if anybody has.
     ///
     /// One at a time, because the find bar is one bar over the pane with the keyboard. Held
@@ -842,14 +849,17 @@ impl Session {
         seeded
     }
 
-    /// Drops the names of panes and tabs their daemons no longer hold.
+    /// Drops what a daemon no longer holds: the names of panes and tabs, and the text sizes
+    /// somebody set on panes.
     ///
     /// Only where the daemon is answering. A mirror that has gone stale is not evidence a pane
     /// is gone - it is a connection nobody is hearing from - and forgetting a name on a dropped
     /// VPN would strand an agent that is still working on the far side with a name nothing can
     /// resolve. A forgotten tab name is milder and wrong in the same direction: the saved
-    /// arrangement would stop finding the tab a region was showing.
-    fn forget_what_closed(&self) {
+    /// arrangement would stop finding the tab a region was showing. A forgotten text size is
+    /// milder still and wrong the same way: a pane comes back at the configured size after a
+    /// blip, having been made bigger on purpose.
+    fn forget_what_closed(&mut self) {
         for backend in self.backends.values() {
             let mirror = poison::lock(&backend.mirror, "mirror");
             if mirror.health() != Health::Connected {
@@ -865,6 +875,25 @@ impl Session {
             let held = tabs.iter().filter_map(|tab| backend.names.backend_tab(tab).ok());
             backend.names.prune_tabs(held);
         }
+
+        // Text sizes follow the names, rather than answering the question a second time. The
+        // registry already knows the difference between a pane that has gone and one the daemon
+        // has not described yet - a split's pane is named before the daemon announces it, and
+        // this runs on the publish in between - and getting that difference wrong here means a
+        // pane opening at the size of the pane it was split from and losing it a frame later.
+        let gone: Vec<PaneKey> = self
+            .font_sizes
+            .entries()
+            .filter(|(pane, _)| {
+                // A daemon nothing is following is not evidence either. An entry for one this
+                // window is about to attach again is what makes a size survive a relaunch.
+                self.backends
+                    .get(&pane.daemon)
+                    .is_some_and(|backend| backend.names.backend_pane(&pane.pane).is_err())
+            })
+            .map(|(pane, _)| pane.clone())
+            .collect();
+        self.font_sizes.retain(|pane| !gone.contains(pane));
     }
 
     /// Brings composition, and what this process holds open, in line with one daemon.
@@ -1144,6 +1173,7 @@ impl Session {
                 let backend = self.backends.get(daemon)?;
                 Some(backend.names.backend_pane(pane).ok()?.as_str().to_string())
             },
+            |daemon, pane| self.font_sizes.offset(&PaneKey::new(daemon, pane)),
         )
     }
 
@@ -1260,8 +1290,20 @@ pub(crate) fn submit(
     intent: &BackendIntent,
     keyboard: Keyboard,
 ) -> Result<Option<PaneId>, String> {
-    let (region, channel) = {
+    let (region, source, channel) = {
         let session = poison::lock(&SESSION, "session");
+        // Which pane this request came from, for a pane it may be about to make. A split names
+        // the pane it splits; ⌘T and a new workspace name nothing, so the answer is the pane in
+        // front of whoever asked. Read here rather than after the round trip, because by then
+        // the keyboard may have moved.
+        let source = match intent {
+            BackendIntent::SplitPane { pane, .. } => Some(PaneKey::new(daemon, pane)),
+            BackendIntent::CreateTab { .. } | BackendIntent::CreateWorkspace { .. } => session
+                .composition
+                .focused_region()
+                .and_then(|region| Some(PaneKey::new(&region.daemon, region.pane.as_ref()?))),
+            _ => None,
+        };
         // Which region this is about, for the keyboard afterwards. None is an answer rather
         // than a failure for an intent that names nothing existing - there is no region to
         // find for a workspace that does not exist yet, and the one it produces is opened by
@@ -1304,7 +1346,7 @@ pub(crate) fn submit(
                      followed, which is a bug in the core rather than a state to recover from"
             )
         })?;
-        (region, channel)
+        (region, source, channel)
     };
 
     let outcome = channel.submit(intent);
@@ -1375,6 +1417,21 @@ pub(crate) fn submit(
     // pane list, so pointing at it now is undone before anything renders. `publish` puts the
     // keyboard there on the first pass after the daemon has described it.
     let created = outcome.as_ref().ok().and_then(|outcome| outcome.created.clone());
+
+    // A pane opens at the size of the pane it came from, which is what Ghostty does
+    // (`window-inherit-font-size`, on by default) and what somebody who has finally made a
+    // pane readable means by splitting it. Whatever the keyboard does: an agent's `muster pane
+    // new` leaves the cursor alone and still makes a pane beside one that was sized.
+    //
+    // A pane another client made inherits nothing. There is no request to have come from, and
+    // taking whatever this window happened to be focused on would be an answer nobody asked
+    // for.
+    if let (Some(source), Some(created)) = (&source, &created) {
+        let mut session = poison::lock(&SESSION, "session");
+        let made = PaneKey::new(daemon, created);
+        session.font_sizes.inherit(&made, source);
+    }
+
     if let (Some(region), Some(created), Keyboard::Follows) = (region, &created, keyboard) {
         let mut session = poison::lock(&SESSION, "session");
         session.wanted_panes.insert(daemon.clone(), (region, created.clone()));
@@ -1817,6 +1874,7 @@ pub(crate) enum AttachError {
 pub(crate) fn open() -> Result<(), String> {
     follow_implicitly_if_nothing_else()?;
     restore_presentation();
+    restore_font_sizes();
     reopen_what_was_left();
     open_remaining_regions();
     open_a_workspace_if_the_window_is_empty();
@@ -1863,6 +1921,30 @@ fn restore_presentation() {
     if !reconcile_sidebar_with_problems() {
         announce_presentation(presentation);
     }
+}
+
+/// Puts back how big each pane's text was.
+///
+/// Beside the chrome rather than folded into it, because the two are different answers: the
+/// chrome is one statement about the window and this is a row per pane somebody sized.
+///
+/// Restored whole and unchecked, unlike a region. An entry naming a pane that is gone costs a
+/// row nobody reads until the next publish drops it; a region naming a tab that is gone is a
+/// square on screen that never fills in. The pruning belongs where a daemon that is actually
+/// answering can say what it still holds, which is `forget_what_closed`.
+///
+/// Nothing is announced. Every size here reaches the shell on the pane it belongs to, and the
+/// publish that ends `open()` is what carries them.
+fn restore_font_sizes() {
+    let Some(saved) = saved_arrangement() else { return };
+    if saved.font_sizes.entries().next().is_none() {
+        return;
+    }
+    log::info(
+        "state.font_size.restored",
+        fields! { "panes" => saved.font_sizes.entries().count().to_string() },
+    );
+    poison::lock(&SESSION, "session").font_sizes = saved.font_sizes;
 }
 
 /// Puts back the regions this window was showing when it last closed.
@@ -2195,14 +2277,14 @@ fn open_remaining_regions() {
 /// Replaced rather than appended to, through a temporary beside it: a window that quit while
 /// this was half-written would otherwise come back to a file that parses as far as the third
 /// region and stops.
-fn save(composition: &Composition, presentation: Presentation) {
+fn save(composition: &Composition, presentation: Presentation, font_sizes: &FontSizes) {
     if !OPENED.load(Ordering::Relaxed) {
         return;
     }
     let mut held = poison::lock(&STATE, "saved-arrangement");
     let Some((path, written)) = held.as_mut() else { return };
 
-    let text = saved::to_toml(&Saved::of(composition, presentation));
+    let text = saved::to_toml(&Saved::of(composition, presentation, font_sizes));
     if &text == written {
         return;
     }
@@ -2332,7 +2414,7 @@ pub(crate) fn saved_presentation() -> Presentation {
 pub(crate) fn set_window_frame(frame: Option<Frame>, full_screen: bool) {
     let mut session = poison::lock(&SESSION, "session");
     session.presentation = session.presentation.with_frame(frame, full_screen);
-    save(&session.composition, session.presentation);
+    save(&session.composition, session.presentation, &session.font_sizes);
 }
 
 /// Tells the shell what this window is showing.
@@ -2371,7 +2453,7 @@ fn publish() {
         let settled = session.attention.showing(view.showing());
         // Here because this is the moment composition is settled, and because everything that
         // changes it ends up here - so nothing has to remember to save.
-        save(&session.composition, session.presentation);
+        save(&session.composition, session.presentation, &session.font_sizes);
         session.forget_what_closed();
         save_names(&session.names, &session.tab_names);
         (view, roster, settled)
@@ -2904,24 +2986,39 @@ pub(crate) fn reset_pane_input(settings: &PaneInputSettings) {
     log::info("config.reload.typing", fields! { "panes" => resettled.to_string() });
 }
 
-/// One press of a font-size chord, on the same terms as the sidebar toggle.
+/// One press of a font-size chord, on the pane the keyboard is on.
 ///
-/// The offset is saturated by the setter rather than refused here. Somebody holding the key
-/// down is asking to keep going, and the honest answer at the end of the range is a window that
+/// The offset is saturated by the setter rather than refused there. Somebody holding the key
+/// down is asking to keep going, and the honest answer at the end of the range is text that
 /// stops growing - not a refusal for a keystroke they cannot see the result of anyway.
-pub(crate) fn adjust_font_size(change: FontSizeChange) {
-    let presentation = {
+///
+/// Nothing is announced on its own. The size rides on the pane in the view, so the publish
+/// below is what tells the shell - and it is the same publish that would have told it about
+/// the pane appearing in the first place.
+pub(crate) fn adjust_font_size(change: FontSizeChange) -> Result<(), String> {
+    let (pane, offset) = {
         let mut session = poison::lock(&SESSION, "session");
-        let offset = change.applied(session.presentation.font_size_offset);
-        session.presentation = session.presentation.with_font_size_offset(offset);
-        session.presentation
+        let Some(region) = session.composition.focused_region() else {
+            return Err(no_pane_to_size());
+        };
+        let Some(pane) = region.pane.clone() else { return Err(no_pane_to_size()) };
+        let pane = PaneKey::new(&region.daemon, &pane);
+        let offset = session.font_sizes.adjust(&pane, change);
+        (pane, offset)
     };
     log::info(
-        "presentation.font_size",
-        fields! { "offset" => presentation.font_size_offset.to_string() },
+        "pane.font_size",
+        fields! { "pane" => pane.to_string(), "offset" => offset.to_string() },
     );
-    announce_presentation(presentation);
     publish();
+    Ok(())
+}
+
+fn no_pane_to_size() -> String {
+    "no pane has this window's keyboard, so there was no text to size. Text size is per pane \
+     now, and this chord means the pane in front of you - the attach failed earlier, or the \
+     pane it succeeded on exited."
+        .to_string()
 }
 
 /// Tells the shell what the window should be showing of itself.
@@ -2933,7 +3030,6 @@ fn announce_presentation(presentation: Presentation) {
     ffi::emit(&Event {
         payload: Some(event::Payload::PresentationChanged(PresentationChanged {
             sidebar: presentation.sidebar,
-            font_size_offset: presentation.font_size_offset,
         })),
     });
 }
