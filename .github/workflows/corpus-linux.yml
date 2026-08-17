@@ -1,0 +1,97 @@
+# The Linux half of the gate, on every push.
+#
+# One job, running `./dev --corpus-linux`: start the devenv container, record the probe's
+# scenarios against the Linux daemon in it, and diff what that daemon did against what the
+# macOS one did. Same command a contributor types, for the same reason the gate itself is
+# one command - a green here and a green on somebody's laptop cannot mean different things.
+#
+# Separate from `gate` rather than a second job inside it because it shares nothing: no
+# Rust, no Swift, no Zig, no libghostty. Docker and python3 are the whole toolchain, which
+# is what makes catching a herdr re-pin that moves one platform and not the other cost
+# about a minute.
+#
+# What it cannot catch is a difference the two platforms cannot express - a working
+# directory, a terminal id, a prompt's width. `tools/herdr-probe/diff-corpus` names those
+# and says how many it skipped, and section 8 of docs/observations/herdr-0.8.0.md says
+# which they are and why.
+
+name: corpus-linux
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: corpus-linux-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  corpus-linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ./dev is written in Rad, so it cannot fetch its own interpreter - it is already
+      # running by the time it could look. The Linux asset here where the gate takes the
+      # Darwin one; deps/rad.pin carries both.
+      - name: Install the pinned Rad
+        run: |
+          set -euo pipefail
+          version=$(python3 -c 'import json; print(json.load(open("deps/rad.pin"))["version"])')
+          case "$(uname -m)" in
+            arm64|aarch64) arch=arm64 ;;
+            *) arch=amd64 ;;
+          esac
+          asset="rad_linux_${arch}.tar.gz"
+          want=$(python3 -c "import json; print(json.load(open('deps/rad.pin'))['checksums']['$asset'])")
+          # -f so an HTML error page never lands on disk looking like a tarball.
+          curl -fsSL -o "$RUNNER_TEMP/$asset" \
+            "https://github.com/amterp/rad/releases/download/v$version/$asset"
+          echo "$want  $RUNNER_TEMP/$asset" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$asset" -C "$RUNNER_TEMP" rad
+          mkdir -p "$HOME/.local/bin"
+          mv "$RUNNER_TEMP/rad" "$HOME/.local/bin/rad"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/rad" --version
+
+      # The daemon this job records against, and the same bytes the Mac gate runs - one pin,
+      # two platforms. Cached because it is 18 MB from a GitHub release; ./dev re-verifies
+      # the checksum on every run, so a cache that came back truncated is caught rather than
+      # trusted.
+      - name: Cache the pinned herdr
+        uses: actions/cache@v4
+        with:
+          path: deps/herdr-cache
+          key: herdr-cache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('deps/herdr.pin') }}
+
+      # A builder that can carry layers between runs. The image is debian plus a handful of
+      # apt packages and no daemon - `./dev --ssh` puts one in afterwards - so a warm cache
+      # takes this from about a minute to a few seconds.
+      - uses: docker/setup-buildx-action@v3
+
+      # Built here rather than left to `devenv up`, which knows nothing about a GitHub cache.
+      # --load because the buildx builder above keeps its images to itself otherwise, and the
+      # container is started by name.
+      - name: Build the devenv image
+        run: |
+          set -euo pipefail
+          ./devenv/devenv build \
+            --cache-from type=gha \
+            --cache-to type=gha,mode=max \
+            --load
+
+      - name: The Linux corpus diff
+        run: ./dev --corpus-linux
+
+      # The recording this run judged, kept when it disagreed. A diff naming a fact that
+      # moved is where an investigation starts; the transcripts under it are where it goes
+      # next, and re-staging a container to get them back is the step worth not paying.
+      - name: Keep the recording when it disagreed
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-corpus-recording
+          path: /tmp/muster-linux-corpus
+          if-no-files-found: ignore

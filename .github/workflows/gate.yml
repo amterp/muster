@@ -10,8 +10,9 @@
 # measurements that would be flaky as assertions. A functional green is never a
 # performance claim.
 #
-# The Linux half - replaying the recorded corpus against the devenv container's daemon -
-# is not here yet. It arrives with the SSH tier that teaches `./dev` about the container.
+# The Linux half - replaying the recorded corpus against the devenv container's daemon - is
+# its own workflow, `corpus-linux`. It shares no toolchain with this one and runs on a Linux
+# runner, so folding it in here would mean a job that waits for a build it does not use.
 
 name: gate
 

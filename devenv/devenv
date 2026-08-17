@@ -2,6 +2,7 @@
 # Drive the devenv container: the Linux machine Muster's remote path talks to, and the
 # fixture the remote tests run against.
 #
+#   ./devenv/devenv build           build the image, and nothing else
 #   ./devenv/devenv up              build and start it
 #   ./devenv/devenv down            stop and remove it
 #   ./devenv/devenv ssh             shell in as dev
@@ -81,6 +82,13 @@ case "${1:-up}" in
             "  Check 'docker logs $CONTAINER', and whether something else holds port $PORT."
         echo "devenv up: ssh -i devenv/.ssh/id_ed25519 -p $PORT dev@localhost"
         ;;
+    build)
+        # Its own command for one caller: CI, which wants to hand docker a cache the
+        # container knows nothing about. Everything after `build` goes to `docker build`.
+        need_docker
+        shift
+        build "$@"
+        ;;
     down)
         need_docker
         docker rm -f "$CONTAINER" >/dev/null 2>&1 && echo "devenv down" || echo "devenv was not running"
@@ -125,6 +133,6 @@ case "${1:-up}" in
         exec "$0" up
         ;;
     *)
-        die "unknown command: $1" "  Try: up | down | ssh | status | install-daemon | rebuild"
+        die "unknown command: $1" "  Try: build | up | down | ssh | status | install-daemon | rebuild"
         ;;
 esac
