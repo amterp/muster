@@ -3,9 +3,14 @@
 ## A pane on another machine cannot reach the window
 
 `$MUSTER_SOCKET` is a unix socket path on the machine the window is running on, so Muster sets
-it only in panes held by a daemon on that machine. A pane on an SSH devenv is told nothing, and
-a program in it correctly concludes it is not in a window it can drive. It can still be
-addressed by name from a local pane, and `muster window` still describes it.
+it only in panes held by a daemon on that machine. A program in an SSH devenv pane correctly
+concludes it is not in a window it can drive. That pane can still be addressed by name from a
+local pane, and `muster window` still describes it.
+
+`$MUSTER_PANE` *is* set over there, so such a pane knows which pane it is and has no way to say
+so. Closing this means forwarding the endpoint over the ssh master Muster already opens, and
+putting a `muster` on the far machine for it to reach - the command is built from this repo and
+nothing ships a Linux one.
 
 ## A pane Muster did not create cannot say which pane it is
 

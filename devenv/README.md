@@ -1,15 +1,21 @@
 # devenv
 
-The Linux machine Muster's remote half talks to: a container running sshd and a herdr
-daemon, reachable at `ssh -p 2222 dev@localhost`.
+The Linux machine Muster's remote half talks to: a container running sshd and nothing
+else, reachable at `ssh -p 2222 dev@localhost`.
 
 ```
-./devenv/devenv up       build if needed, then start it
-./devenv/devenv status   is it up, and does its daemon answer
-./devenv/devenv ssh      shell in as dev
-./devenv/devenv down     stop and remove it
-./devenv/devenv rebuild  rebuild from scratch
+./devenv/devenv build           build the image, and nothing else
+./devenv/devenv up              build and start it
+./devenv/devenv status          is it up, and is there a daemon in it
+./devenv/devenv ssh             shell in as dev
+./devenv/devenv install-daemon  put a herdr binary in it, for the corpus probe
+./devenv/devenv down            stop and remove it
+./devenv/devenv rebuild         rebuild from scratch
 ```
+
+`up` builds every time rather than only when the image is missing. Docker's layer cache
+makes that about a second, and the alternative was worse: an edited Dockerfile did nothing
+until somebody thought to say `rebuild`.
 
 The first `up` generates a keypair into `devenv/.ssh/`, which is gitignored. Nothing
 in the image is a secret and nothing outside localhost can reach it.
@@ -25,17 +31,21 @@ drift apart if there is only one of them.
 local daemon, recording into `corpus/herdr-<version>-linux/`. Diffing that against the
 macOS corpus is how "local and remote render identically" stops being an aspiration.
 
-## What is pinned, and why
+## No daemon is installed here
 
-The herdr binary is downloaded by version and verified against the sha256 published in
-`herdr.dev/latest.json`, rather than built from source - a 222k-line Rust build in the
-image would make a rebuild an event rather than a habit. Update checks and manifest
-fetches are off, so a container that has been up for a week behaves like one started
-this morning, and the suite runs offline.
+That absence is the fixture. Muster puts its own herdr on a machine it attaches to, so a
+container that arrived with one would exercise the adopt path and never the install path -
+and a person setting up a real devenv installs nothing either.
 
-A fixture whose daemon silently upgrades is a fixture whose test results silently
-change meaning. When Muster moves to a newer herdr, bump `HERDR_VERSION` and the two
-`HERDR_SHA256_*` args together, rebuild, and re-record the corpus.
+Two things put a daemon in, and neither is the image. Muster does it on attach, under
+`~/.muster/herdr/<version>/herdr`, having downloaded it on the machine running Muster and
+copied it over the ssh master. And `./dev --ssh` does it with `install-daemon` afterwards,
+for the corpus probe, which starts a herdr of its own rather than going through Muster.
+Both take the version and the checksum from `deps/herdr.pin`, so re-pinning is one file
+rather than three - the Dockerfile used to keep its own copy of the checksums by hand.
+
+Update checks are off in `devenv/config.toml` and in the file Muster writes, so a container
+that has been up for a week behaves like one started this morning.
 
 ## The fake agents
 

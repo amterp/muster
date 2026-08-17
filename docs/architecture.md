@@ -121,9 +121,25 @@ not, so a fourth way of making a pane fails the gate rather than leaking quietly
 Muster did not make: one herdr restores after a daemon restart is built with no launch environment at all. That is a
 stated limit, not a gap to chase.
 
-The guarantee stops at the machine's edge. An SSH endpoint runs a platform this bundle carries no binary for, so a
-remote daemon is still whatever is installed over there. Closing that means putting an agent on the far machine on
-first connection, the way mutagen does.
+**The guarantee reaches the far machine too, by putting the daemon there.** An SSH endpoint runs a platform this
+bundle carries no binary for, so for a while a remote daemon was whatever somebody had installed - and a window's two
+halves could be running different versions with nothing saying so. On attach Muster now asks that machine what it is,
+works out which release asset the pin names for it, and pushes that over the master it already holds open, to
+`~/.muster/herdr/<version>/herdr`. The same sequence as here follows: write the config, start the daemon on Muster's
+own herdr session, adopt one that is already answering rather than starting a second.
+
+**This machine fetches, and the far one never reaches the network.** Whoever is running Muster demonstrably has web
+access, while a devenv is often a container or a build box with no route out - so the asset is downloaded here,
+verified against `deps/herdr.pin` here, and kept in `~/.muster/cache` here. A checksum that does not match is a
+refusal rather than a warning, on the same terms as `./dev`'s: the point of a pin is that the daemon Muster runs is
+the daemon its corpus was recorded against, and a warning nobody reads turns that into a preference. Bundling all
+four pinned platforms was the alternative and was rejected at about 72 MB of app, most of it daemons for machines
+nobody using that copy will ever attach to.
+
+Two consequences worth stating. The pin is compiled into the app rather than read from the repo, because "the pin
+decides the version" has to be true of the thing people run. And a `socket` named in the config file still attaches
+whatever is listening there, on either machine - that is the deliberate way out of the whole arrangement, and it
+would be no escape hatch if a remote one behaved differently from a local one.
 
 **Reaching a remote daemon is a transport concern and stops there.** A remote herdr speaks the same socket a local
 one does, so an SSH master forwards that socket onto a path on this machine and the adapter is handed a path like
@@ -135,6 +151,17 @@ which is also what keeps a remote pane as cheap as a local one. Reimplementing t
 bincode over herdr's internal types with no published schema, which is the byte-level protocol emulation
 `testing.md` deletes. A tunnel that drops is reopened onto the same path, so recovery is the adapter's ordinary
 reconnect rather than a mechanism of its own.
+
+The master is opened before the daemon exists, which is what lets everything after it ask "does it answer" through
+the forwarded path rather than through a second mechanism. Measured against the devenv: ssh binds the near end when
+it connects and reaches the far one per connection, so a remote socket that is not there yet costs nothing until
+something dials it.
+
+That bridge command needs two things it cannot work out, and both are answered rather than guessed. It is handed the
+daemon's socket as the *far* side spells it, because the near end of a tunnel names nothing over there and Muster's
+daemon listens on a session of its own on both machines. And it looks for its herdr at `~/.muster/bin/herdr` before
+falling back to the name, because the one Muster installed is deliberately not on anybody's PATH - a version-scoped
+path is exactly what a command line assembled here cannot name, so the install leaves a name that does not move.
 
 ## The vocabulary
 

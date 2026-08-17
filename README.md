@@ -323,6 +323,22 @@ update checking: Muster ships one herdr, pinned by version and checksum, and tur
 checks off. A daemon that could be told to go and fetch a different version of itself would
 make "this was tested against the daemon it ships with" mean nothing.
 
+**Both reach a devenv pane too, and so does the pinned daemon itself.** A `[[daemon]]` with a
+`host` used to attach whatever herdr somebody had installed over there, at whatever version and
+with whatever settings, so a window's two halves could disagree about a setting you wrote once.
+On attach Muster now asks that machine what platform it is, downloads the release its own pin
+names for it, verifies the checksum, and copies it across the connection it already has open -
+to `~/.muster/herdr/<version>/herdr`, with your settings in `~/.muster/state/herdr.toml` beside
+it. You install nothing over there. A machine you have attached before is quicker rather than
+different: the download is kept in `~/.muster/cache`, and a daemon still running from last time
+is reused, agents and all.
+
+Downloaded here rather than over there, because the machine running Muster demonstrably has web
+access and a devenv often has none. A checksum that does not match is a refusal: the whole point
+of the pin is that the daemon is the one everything was tested against. And naming a `socket` in
+a `[[daemon]]` block still attaches whatever is listening at it, on either machine - that is how
+you ask for somebody else's daemon on purpose.
+
 **Saving the file is enough.** Muster watches it and reads it again, and `cmd+shift+,` or
 Reload Configuration asks for the same thing when you would rather say so yourself - the
 watcher dispatches that action rather than being a second way in. Colours, fonts, the cursor,
@@ -404,7 +420,13 @@ did Muster actually tell the daemon", which is the first question when a pane op
 shell. It is written even when you have configured nothing, because the update checks are
 Muster's answer rather than yours - and your own `~/.config/herdr/config.toml` is untouched,
 still read by your own herdr, and handed back to every pane Muster opens so that `herdr` typed
-inside one reads what it always did.
+inside one reads what it always did. A daemon on another machine gets the same file, written to
+`~/.muster/state/herdr.toml` over there, and that machine's panes are handed that machine's own
+herdr config back for the same reason.
+
+`~/.muster/cache/` is the other directory Muster writes, and holds what it downloaded - today,
+one herdr per platform you attach a remote daemon on. Delete it and the next such attach fetches
+again, which costs about 18 MB and nothing else.
 
 ## Driving Muster
 
@@ -442,7 +464,8 @@ skill that points an agent at them and nothing more.
 
 `./dev` is the only supported way to build, test, and lint. With no flags it takes the full gate, and
 `.github/workflows/gate.yml` runs that one command on every push and pull request - so a contributor's green and a
-merge gate's green cannot drift apart. Flags narrow it and cluster: `./dev -t` tests, `./dev -tl` tests and lints,
+merge gate's green cannot drift apart. A second workflow, `corpus-linux.yml`, runs `./dev --corpus-linux` beside it
+on a Linux runner. Flags narrow it and cluster: `./dev -t` tests, `./dev -tl` tests and lints,
 `./dev -h` lists them all.
 
 **A narrowed flag still takes what it cannot run without**, so `./dev -t` on a checkout nothing has been built in
@@ -459,9 +482,15 @@ gate needs one, and it is also the only way to meet the descriptor ceiling launc
 reads its run log to see what connected, so it needs a daemon on PATH and a logged-in GUI session - neither of which
 the default suite is allowed to require.
 
-`./dev --ssh` is the remote tier, and sits out of the gate for the same reason: it starts the devenv container and
-proves a forwarded socket is a socket - a real ssh master to a real machine running a real daemon - which needs
-docker rather than a GUI session.
+`./dev --ssh` is the remote tier, and sits out of the gate for the same reason: it needs docker rather than a GUI
+session. It recreates the devenv container, runs the remote tests against it while it holds no daemon at all - which
+is the claim, that Muster puts its own herdr on a machine with nothing on it and a pane there works - and then drops
+a pinned Linux daemon in for the corpus half below.
+
+`./dev --corpus-linux` is that corpus half on its own: record the probe's scenarios against the container's Linux
+daemon and diff them against the macOS recording, which is what catches a herdr re-pin that moves one platform and
+not the other. Docker and python3 are the whole toolchain, no Rust, Swift or Zig - so this one *is* in CI, as the
+`corpus-linux` workflow, where the rest of the remote tier is not.
 
 `./dev --perf` and `./dev --latency` are the other two out-of-gate tiers: the first measures the per-unit budgets
 against a checked-in baseline and fails on regression, the second times input-to-glyph against a real daemon, at one
@@ -492,6 +521,11 @@ bisecting herdr itself, and the run says so when it does. A daemon whose wire sc
 `corpus/herdr-<version>/api-schema.json` fails the run with the command that shows what moved, rather than
 surfacing later as a confusing test failure. The download is the one step that touches the network; everything
 after it is offline.
+
+The same pin is compiled into the app, which is how a machine you attach over SSH gets the daemon everything was
+tested against rather than whatever was installed there. `./dev --ssh` fetches that machine's asset against the same
+pin and hands it to the remote tests as a filled cache, so the tier proves the install over ssh and still reaches
+nothing itself.
 
 The seam's types are generated from `proto/muster.proto` on both sides and committed on neither, so a checkout
 cannot hold a shell and a core that disagree. Neither generator is a thing you install: Rust compiles the schema
