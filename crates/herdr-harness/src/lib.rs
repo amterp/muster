@@ -74,7 +74,6 @@ impl Daemon {
     /// than a behavior under test. The message says which, because the two look identical
     /// from a failing assertion.
     pub fn start() -> Daemon {
-        let binary = binary();
         let root = PathBuf::from(ROOT).join(format!(
             "{}-{}",
             std::process::id(),
@@ -101,7 +100,35 @@ impl Daemon {
         std::fs::write(config_dir.join("config.toml"), CONFIG_TOML)
             .expect("could not write the harness config");
 
-        let log = std::fs::File::create(root.join("server.log"))
+        let mut daemon = Daemon {
+            root: root.clone(),
+            socket_path,
+            process: None,
+            // `Mint::Backend`, so a pane's Muster name is this daemon's own id for it. Every
+            // test here mixes raw `daemon.call` with Muster's own vocabulary - it splits a pane
+            // over the wire and then asserts on what the mirror holds - and under a minting
+            // registry those would be two names for one pane with nothing in the test able to
+            // relate them. What the mint does has cases of its own
+            // (`corpus/conformance/pane-names.json`); what these tests are about is everything
+            // else. A test that needs real names builds its own registry and hands it in.
+            names: Names::alone(DAEMON, Mint::Backend),
+        };
+        daemon.spawn();
+        daemon
+    }
+
+    /// Starts the server process against this daemon's root, and waits for it to answer.
+    ///
+    /// Split out of `start` so that a restart runs the same spawn rather than a second copy
+    /// of it: a test about reconnection is worthless if the daemon it reconnects to was
+    /// started differently from the one it lost.
+    fn spawn(&mut self) {
+        let binary = binary();
+        let root = self.root.clone();
+        let log = std::fs::File::options()
+            .create(true)
+            .append(true)
+            .open(root.join("server.log"))
             .expect("could not open the harness server log");
         let process = Command::new(&binary)
             .arg("server")
@@ -125,21 +152,33 @@ impl Daemon {
                 )
             });
 
-        let mut daemon = Daemon {
-            root: root.clone(),
-            socket_path,
-            process: Some(process),
-            // `Mint::Backend`, so a pane's Muster name is this daemon's own id for it. Every
-            // test here mixes raw `daemon.call` with Muster's own vocabulary - it splits a pane
-            // over the wire and then asserts on what the mirror holds - and under a minting
-            // registry those would be two names for one pane with nothing in the test able to
-            // relate them. What the mint does has cases of its own
-            // (`corpus/conformance/pane-names.json`); what these tests are about is everything
-            // else. A test that needs real names builds its own registry and hands it in.
-            names: Names::alone(DAEMON, Mint::Backend),
-        };
-        daemon.wait_until_answering();
-        daemon
+        self.process = Some(process);
+        self.wait_until_answering();
+    }
+
+    /// Ends the daemon and starts another on the same root, which is what a restart is.
+    ///
+    /// The session outlives it: herdr writes its own state down, so the pane tree and each
+    /// pane's directory come back while the processes inside them do not. That is the
+    /// arrangement a client has to survive, and the only way to stage it is to do it.
+    pub fn restart(&mut self) {
+        // Asked to stop rather than killed. herdr writes its session down on the way out, and
+        // a process that was shot never gets there - so a SIGKILL restart comes back as an
+        // empty daemon, which is a different scenario from the one worth testing.
+        if let Some(mut process) = self.process.take() {
+            let pid = process.id().to_string();
+            let _ = Command::new("kill").arg("-TERM").arg(&pid).status();
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while Instant::now() < deadline {
+                match process.try_wait() {
+                    Ok(Some(_)) => break,
+                    _ => std::thread::sleep(Duration::from_millis(20)),
+                }
+            }
+            let _ = process.kill();
+            let _ = process.wait();
+        }
+        self.spawn();
     }
 
     fn wait_until_answering(&mut self) {

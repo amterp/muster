@@ -521,3 +521,81 @@ fn a_daemon_that_never_acknowledges_can_still_be_let_go_of() {
     // healthy leaks one set per reconnect.
     until("the daemon to see the connection close", || daemon.hung_up());
 }
+
+#[test]
+fn a_mirror_survives_the_daemon_going_away_and_coming_back() {
+    // The other half of the end-to-end gap, and the one that needs no new mechanism - only a
+    // test that does the thing. Two bugs shipped green through here: a stale name put back by
+    // a replayed event, and a tab caption blanked by a replayed creation. Both are what a
+    // reconnect does, and nothing exercised it.
+    //
+    // What makes it hazardous is that a subscription is answered with the whole session
+    // replayed, so everything the mirror already holds arrives again as though it were news
+    // (`observations/herdr-0.8.0.md` section 10). A mirror that applies a replay as change
+    // rather than as agreement walks backwards over anything learned since.
+    let mut daemon = Daemon::start();
+    daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "one", "focus": true }));
+    let pane = panes_of(&daemon).first().cloned().expect("a workspace comes with a pane");
+
+    // A name, because a name is the thing that was lost. It is written down by the daemon, so
+    // it is meant to survive exactly this - and the replay is what used to put the old one
+    // back over it.
+    daemon.call("pane.rename", &json!({ "pane_id": pane, "label": "🔥 payments spike" }));
+
+    let (mirror, log, _subscription) = mirror_and_log(&daemon);
+    until("the first bootstrap", || log.bootstraps() > 0);
+    until("the name to reach the mirror", || {
+        named(&mirror, &pane).as_deref() == Some("🔥 payments spike")
+    });
+    let before = pane_count(&mirror);
+
+    daemon.restart();
+
+    // Reconnected rather than merely alive again: the mirror going stale and coming back is
+    // the whole path, and asserting on the name alone would pass against a subscription that
+    // never noticed anything happened.
+    until("the subscription to report it reconnected", || {
+        log.notices().iter().any(|notice| matches!(notice, Notice::Reconnected))
+    });
+    until("the mirror to be connected again", || {
+        mirror.lock().unwrap().health() == Health::Connected
+    });
+
+    // Long enough to be past the replay, which arrives after the snapshot rather than with
+    // it. Without this the assertions below would run before the events that would break
+    // them - which is how a test like this passes while the bug is still there.
+    std::thread::sleep(Duration::from_millis(500));
+
+    assert_eq!(
+        pane_count(&mirror),
+        before,
+        "the session came back as more panes than it had, so the replay was applied as new \
+         panes rather than as the ones already held"
+    );
+    assert_eq!(
+        named(&mirror, &pane).as_deref(),
+        Some("🔥 payments spike"),
+        "the pane lost the name somebody gave it across a daemon restart. A name is written \
+         down by the daemon precisely so it survives one, and the replay putting an older \
+         answer back over a newer one is how it goes missing"
+    );
+}
+
+/// Every pane id a daemon holds, asked directly rather than through a mirror.
+fn panes_of(daemon: &Daemon) -> Vec<String> {
+    daemon.call("session.snapshot", &json!({}))["snapshot"]["panes"]
+        .as_array()
+        .map(|panes| {
+            panes.iter().filter_map(|pane| pane["pane_id"].as_str().map(str::to_string)).collect()
+        })
+        .unwrap_or_default()
+}
+
+fn named(mirror: &Arc<Mutex<Mirror>>, pane: &str) -> Option<String> {
+    mirror
+        .lock()
+        .unwrap()
+        .panes()
+        .find(|held| held.id.as_str() == pane)
+        .and_then(|held| held.name.clone())
+}

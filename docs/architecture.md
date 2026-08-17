@@ -699,6 +699,19 @@ clocks. Records are one JSON object per line - time, level, process, pid, a dott
 makes the log greppable by hand and an assertion surface for tests: a launch smoke test can assert that
 `channel.connected` appeared and that no `error` record did.
 
+**It is that surface on purpose, and `./dev --contract` is what reads it.** Worth stating outright because the
+alternative reading - that the log is a debugging convenience tests happen to use - would make a record's name and
+fields free to change, and they are not. What a check asserts on is the answer to a question (`did the roster open
+over a refused config`), and a record that stops answering it is a change to a contract rather than to a log line.
+The line this does *not* cross is the one below: the log is not how a **person** is told something is wrong. That
+mistake cost an evening - a config refused at 18:55 went to the log and nowhere else - and the roster is where a
+person finds out. The two are different audiences for the same fact.
+
+What makes it worth asserting on rather than a poor substitute for a real test is that it spans processes a test
+cannot otherwise see at once: the app, its bridges and its daemon write to one file, so a check can state that a
+gesture reached a pane without a window, a keyboard or a screenshot. Its limit is the same shape - it says what the
+app *did*, never what it *drew*, so pixels, layout and legibility stay outside it and stay manual.
+
 Events are named for the question they answer, not for the code that emitted them. The load-bearing ones are the
 boundaries where a process can silently stop mattering: the control socket binding, a bridge dialing back, the first
 frame painted, and the reason a pane's stream ended.

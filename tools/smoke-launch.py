@@ -684,6 +684,91 @@ def check_cold_start() -> None:
         )
 
 
+def check_a_broken_config_opens_the_roster() -> None:
+    """A window that comes back with the roster closed still shows what is wrong with it.
+
+    The launch-ordering bug of 2026-08-17, and the reason this check exists rather than a
+    unit one. Both layers were tested and correct alone: `Problems::has_error` had its cases
+    and `restore_presentation` had its own reasoning. Nothing owned the ORDER, so an error
+    raised during startup read `session.presentation` to decide whether to open the roster,
+    and `open()` replaced the whole of that a moment later with the saved `window.toml`. A
+    window that came back with the roster closed and a broken config therefore opened
+    nothing, silently - which is the exact failure the feature exists to prevent - and
+    twenty-one tests were green over it.
+
+    Both halves have to be staged for it to bite, which is why nothing smaller catches it: a
+    config that will not parse, AND a saved presentation with the roster closed. So this
+    writes its own home with both.
+    """
+    root = ROOT / "problems"
+    shutil.rmtree(root, ignore_errors=True)
+    for directory in ("home", "home/.muster", "home/.muster/state", "config/herdr", "state",
+                      "data", "cache"):
+        (root / directory).mkdir(parents=True, exist_ok=True)
+
+    # Unreadable in a way the parser names, rather than unreadable as a file: the point is a
+    # refusal that reaches the roster, and a missing file is not a refusal at all. The shell
+    # block goes in too, on the same terms as every other check here - a login shell under a
+    # scratch HOME takes the pane down with it.
+    # Before the [shell] table, not after it: a bare key following a table header belongs to
+    # that table, so appending this would refuse the file for an unknown key in [shell]
+    # rather than for the value it names - the check would still pass, about something else.
+    (root / "home/.muster/config.toml").write_text(
+        'resize_step = "20"\n\n' + _ISOLATED_MUSTER_CONFIG
+    )
+    # The other half: a window remembered with the roster put away. Without this the roster
+    # is open anyway and the bug cannot show.
+    #
+    # A version, because a saved arrangement without one is refused as unreadable and the
+    # window opens as a first launch - which comes up with the roster open and so quietly
+    # takes away the thing this check is staging.
+    (root / "home/.muster/state/window.toml").write_text(
+        "version = 1\nfocused = 0\n\n[window]\nsidebar = false\nfont_size_offset = 0\n"
+    )
+
+    env = {
+        **os.environ,
+        "HOME": str(root / "home"),
+        "XDG_CONFIG_HOME": str(root / "config"),
+        "XDG_STATE_HOME": str(root / "state"),
+        "XDG_DATA_HOME": str(root / "data"),
+        "XDG_CACHE_HOME": str(root / "cache"),
+        "TERM": "xterm-256color",
+    }
+    for stale in ("HERDR_SOCKET_PATH", "HERDR_CLIENT_SOCKET_PATH", "HERDR_SESSION", "MUSTER_CONFIG"):
+        env.pop(stale, None)
+
+    socket = root / "config/herdr/sessions/muster/herdr.sock"
+    try:
+        records = launch(env, [], "problems", settle=20.0)
+        # The refusal is the fixture here, so it is declared. Anything else wrong is a real
+        # finding and still fails.
+        expect_nothing_wrong(records, expected=("config.refused", "config.unreadable"))
+        opened = expect(
+            records,
+            "problems.sidebar.opened",
+            "a broken config raised no roster, so the one thing that tells somebody their "
+            "settings were refused never appeared - which is what shipped on 2026-08-17",
+        )
+        if "impact" not in opened:
+            raise Failure(f"the record does not say what it cost: {opened}")
+        # And the window is still a window. Opening the roster over a refused config must not
+        # come at the price of the panes, which is the other way this could be "fixed".
+        ready = expect(records, "app.ready", "the app never finished launching")
+        if ready.get("typeable") != "true":
+            raise Failure(
+                "a refused config left a window with nothing to type into - the settings "
+                "are meant to be ignored, not the session"
+            )
+    finally:
+        if socket.exists():
+            subprocess.run(
+                ["herdr", "--socket", str(socket), "server", "stop"],
+                capture_output=True,
+                check=False,
+            )
+
+
 def main() -> int:
     if not APP.exists():
         print(f"smoke: {APP} is missing. Run `./dev -b` first.", file=sys.stderr)
@@ -714,6 +799,10 @@ def main() -> int:
             (
                 "a pane can drive the window it is drawn in",
                 check_a_pane_can_drive_its_own_window,
+            ),
+            (
+                "a refused config opens the roster it would have had nowhere to appear in",
+                check_a_broken_config_opens_the_roster,
             ),
             # Last, because it splits the tab the checks above are written against.
             (
