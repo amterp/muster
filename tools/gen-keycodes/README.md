@@ -1,6 +1,6 @@
 # gen-keycodes
 
-Generates the two tables the input path needs to turn a macOS key press into a
+Generates the three tables the input path needs to turn a macOS key press into a
 libghostty-vt key event, from the pinned ghostty checkout in `deps/ghostty`.
 
 ```
@@ -18,16 +18,29 @@ Writes:
 
 | Output | What |
 |---|---|
-| `Sources/MusterCore/Input/Key.generated.swift` | `Key`, Muster's own physical-key enum, and `Key(macOSKeycode:)` |
-| `Sources/MusterVT/KeyMapping.generated.swift` | `Key.ghosttyKey`, the encoder-seam mapping onto `GhosttyKey` |
+| `crates/muster-core/src/input/key.rs` | `Key`, Muster's own physical-key enum, and the macOS keycode it comes from |
+| `crates/muster-vt/src/key_mapping.rs` | `Key` onto `GhosttyKey`, the encoder seam's mapping |
+| `Sources/MusterMac/KeyNames.generated.swift` | the W3C name a macOS virtual keycode carries, for the shell |
 
 ## Re-run it on every ghostty pin bump
 
 That is the point of keeping it. A pin bump can rename or renumber `GhosttyKey`
-members, and the two files above are the only place that mapping lives - hand-editing
-them after a bump is exactly the kind of drift `docs/testing.md` calls Muster's top
-false-green risk. Bump `deps/ghostty.pin`, rebuild the ghostty checkout, run
-`./gen-keycodes`, and let it fail loudly (see below) rather than silently mis-map a key.
+members, and the three files above are the only place that mapping lives. Bump
+`deps/ghostty.pin`, rebuild the ghostty checkout, run `./gen-keycodes`, and let it fail
+loudly (see below) rather than silently mis-map a key.
+
+**`./dev` refuses to build if you forget.** Each generated file records the pin it came
+from, and the build compares that against `deps/ghostty.pin` before compiling anything.
+What it is protecting against is the half that fails silently: a *renamed* key already
+takes the build down, because `muster-vt` generates its bindings to the C enum fresh
+every time, but an *added* key just has no row here - it reaches no pane, nothing
+errors, and the suite stays green while that one key does nothing.
+
+The check refuses rather than regenerating, which is the opposite of what the build does
+for the seam's protobuf types beside it. Regenerating rewrites three committed files, and
+a pin bump is the moment to read what moved: it can change the naming rule this derives
+names by, and the two JIS keys deliberately left out below want re-checking each time in
+case upstream has since named them.
 
 ## Why it doesn't just read ghostty's own `code_to_key` map
 

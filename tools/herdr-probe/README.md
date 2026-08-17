@@ -14,8 +14,9 @@ in `docs/observations/herdr-<version>.md`.
 
 ## Re-run it on every herdr upgrade
 
-That is the point of keeping it. herdr's API is explicitly unstable and ships weekly;
-a drifted understanding of it is Muster's top false-green risk (`docs/testing.md`).
+That is the point of keeping it. herdr's API is explicitly unstable and ships weekly, and
+what this records is the only written account of how it behaves - a claim in
+`docs/observations/` that has quietly stopped being true reads exactly like one that is.
 Bump the pinned version, run `./probe`, and diff the new corpus against the old: what
 changed in the diff is what changed in herdr. This is the seed of the contract tier,
 not a finished version of it.

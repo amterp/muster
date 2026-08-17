@@ -474,6 +474,54 @@ fn read_pin():
         exit(1)
     return result.content.trim()
 
+// The three files tools/gen-keycodes writes, each of which records the pin it was
+// generated from in its first two lines.
+KEYCODE_TABLES = [
+    "crates/muster-core/src/input/key.rs",
+    "crates/muster-vt/src/key_mapping.rs",
+    "Sources/MusterMac/KeyNames.generated.swift",
+]
+
+// A bumped pin with stale keycode tables compiles and tests green, which is why this is a
+// check rather than something a reviewer would notice.
+//
+// Renamed keys already fail: muster-vt bindgens the C enum fresh every build, so a member
+// that moved takes the build with it. What gets through is an ADDED key - a new macOS
+// keycode or DOM code that simply has no row here - and a key that does nothing is the
+// hardest kind to notice, because nobody presses every key.
+//
+// Refused rather than regenerated, unlike the proto stamp next to it. Regenerating rewrites
+// three committed files, and the generator's own README asks for a person to read what
+// moved: a pin bump can change the naming rule, and the two JIS keys it deliberately skips
+// need re-checking each time in case upstream has since named them.
+//
+// The pin is read out of the generated files themselves rather than from a stamp beside
+// them. There is nothing to keep in step that way, and the answer is legible to anyone who
+// opens one of the three.
+fn keycodes_are_current(pin):
+    for table in KEYCODE_TABLES:
+        generated = read_file(table) catch:
+            print_err(red("{table} is missing."))
+            print_err("It is generated from libghostty and committed. Restore it from git,")
+            print_err("or regenerate the three with tools/gen-keycodes/gen-keycodes.")
+            exit(1)
+        if pin not in generated.content:
+            return false
+    return true
+
+fn check_keycodes():
+    pin = read_pin()
+    if keycodes_are_current(pin):
+        return
+    print_err(red("the generated keycode tables are not from deps/ghostty.pin."))
+    print_err("They map macOS virtual keycodes and DOM codes onto libghostty's key")
+    print_err("identities, and this tree pins {pin[:12]}. A key added upstream since they")
+    print_err("were generated has no row in them, so it reaches no pane and nothing fails:")
+    print_err("the suite stays green and that one key silently does nothing.")
+    print_err("Regenerate them, and read what moved before committing:")
+    print_err("  tools/gen-keycodes/gen-keycodes")
+    exit(1)
+
 // Everything under deps/ is reproducible from the pin, so the check is only ever
 // "is what sits there the commit we asked for". libghostty takes minutes to build and
 // changes only when the pin does.
@@ -616,6 +664,8 @@ if deps:
 
 if build:
     announce("build")
+    // Before anything is compiled, because what this catches compiles perfectly well.
+    check_keycodes()
     if proto or not proto_is_current():
         generate_proto()
     // The core first: it is the layer the shell will call into, and its errors are the
