@@ -432,8 +432,13 @@ impl Names {
     }
 
     /// Forgets the names of panes this daemon no longer holds.
+    ///
+    /// Collected before the lock is taken, not after: a caller passing a lazy iterator that
+    /// asks this registry anything - and the obvious one does, since it starts from names and
+    /// wants ids - would otherwise deadlock against a lock that is not reentrant.
     pub fn prune(&self, held: impl IntoIterator<Item = BackendPaneId>) {
-        self.locked().prune(&self.daemon, &held.into_iter().collect());
+        let held: BTreeSet<BackendPaneId> = held.into_iter().collect();
+        self.locked().prune(&self.daemon, &held);
     }
 
     fn locked(&self) -> MutexGuard<'_, PaneNames> {

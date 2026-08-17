@@ -46,3 +46,22 @@ import Testing
   // filesystem root.
   #expect(statePath(environment: [:]) == nil)
 }
+
+// Where what Muster calls each pane is remembered. A separate file from the arrangement,
+// because the arrangement is this window's and the names belong to panes that outlive it.
+
+@Test func paneNamesSitBesideTheArrangement() {
+  #expect(paneNamesPath(environment: ["HOME": "/home/a"]) == "/home/a/.muster/state/panes.toml")
+}
+
+@Test func musterHomeMovesThePaneNames() {
+  #expect(
+    paneNamesPath(environment: ["MUSTER_HOME": "/scratch", "HOME": "/home/a"])
+      == "/scratch/state/panes.toml")
+}
+
+@Test func anEmptyExplicitPaneNamesPathMeansNameAfresh() {
+  // A test or a script saying "start with no names". Every pane is named again, which is only
+  // safe because nothing was running in one yet.
+  #expect(paneNamesPath(environment: ["MUSTER_PANE_NAMES": "", "HOME": "/home/a"]) == nil)
+}

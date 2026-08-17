@@ -26,8 +26,8 @@ use muster_core::find::{Found, Needle};
 use muster_core::input::{Bindings, PaneInput, PaneInputSettings, ScrollDirection};
 use muster_core::intent::{BackendChannel, BackendIntent, Refusal};
 use muster_core::mirror::backend::{PaneId, Snapshot, TabId, WorkspaceId};
-use muster_core::mirror::{Change, Mirror};
-use muster_core::names::{Names, PaneNames};
+use muster_core::mirror::{Change, Health, Mirror};
+use muster_core::names::{self, Mint, Names, PaneNames};
 use muster_core::problems::{Problem, Problems, Severity};
 use muster_core::roster::{Roster, RosterTab, TabStep};
 use muster_herdr::subscription::{Notice, Subscription};
@@ -95,6 +95,12 @@ fn platform_locale() -> Option<String> {
 /// None means remember nothing, which is what a shell that found nowhere to write says and
 /// what every test that never sets one gets.
 static STATE: Mutex<Option<(String, String)>> = Mutex::new(None);
+
+/// Where the pane-name registry is written, and the text last written there.
+///
+/// Beside [`STATE`] and for the same reasons, including the string compare: the names change
+/// only when a pane appears or goes, and a publish follows every agent transition.
+static NAMES_FILE: Mutex<Option<(String, String)>> = Mutex::new(None);
 
 /// Which chord asks for which action, as the config file left it.
 ///
@@ -373,6 +379,39 @@ fn announce_problems() {
 pub(crate) fn set_state_path(path: &str) {
     let mut held = poison::lock(&STATE, "saved-arrangement");
     *held = if path.is_empty() { None } else { Some((path.to_string(), String::new())) };
+}
+
+/// Says where names are remembered, and reads back the ones already there.
+///
+/// Read here rather than lazily, because it has to happen before any daemon is attached: the
+/// first snapshot mints a name for every pane it describes, and a name minted for a pane that
+/// already had one is a pane whose environment now names something else.
+pub(crate) fn set_pane_names_path(path: &str) {
+    *poison::lock(&NAMES_FILE, "saved-pane-names") =
+        if path.is_empty() { None } else { Some((path.to_string(), String::new())) };
+    if path.is_empty() {
+        return;
+    }
+
+    let Ok(text) = std::fs::read_to_string(path) else { return };
+    match names::from_toml(&text, Mint::Drawn) {
+        Ok(read) => {
+            let session = poison::lock(&SESSION, "session");
+            *poison::lock(&session.names, "pane-names") = read;
+        }
+        Err(detail) => log::warn(
+            "pane-names.restore.failed",
+            fields! {
+                "path" => path.to_string(),
+                "detail" => detail,
+                "impact" => "every pane already open is named again, so a program still \
+                             running in one holds a name that resolves to nothing and its \
+                             commands are refused. The window itself is unaffected",
+                "check" => "the file - it is TOML, and it is replaced by the next publish. A \
+                            pane made from now on is named and told its name as usual",
+            },
+        ),
+    }
 }
 
 /// A daemon's endpoint, turned into something that can be connected to.
@@ -743,6 +782,27 @@ impl Session {
             },
         );
         seeded
+    }
+
+    /// Drops the names of panes their daemons no longer hold.
+    ///
+    /// Only where the daemon is answering. A mirror that has gone stale is not evidence a pane
+    /// is gone - it is a connection nobody is hearing from - and forgetting a name on a dropped
+    /// VPN would strand an agent that is still working on the far side with a name nothing can
+    /// resolve.
+    fn forget_closed_panes(&self) {
+        for backend in self.backends.values() {
+            let mirror = poison::lock(&backend.mirror, "mirror");
+            if mirror.health() != Health::Connected {
+                continue;
+            }
+            let held: Vec<PaneId> = mirror.panes().map(|pane| pane.id.clone()).collect();
+            drop(mirror);
+            // The mirror holds Muster's names, so this asks the registry for each one's backend
+            // id rather than the other way round.
+            let held = held.iter().filter_map(|pane| backend.names.backend(pane).ok());
+            backend.names.prune(held);
+        }
     }
 
     /// Brings composition, and what this process holds open, in line with one daemon.
@@ -1985,6 +2045,45 @@ fn save(composition: &Composition, presentation: Presentation) {
     }
 }
 
+/// Writes down what Muster calls each pane, if it has changed since the last time.
+///
+/// The same shape as [`save`] beside it, including the staged rename: a window killed
+/// mid-write would otherwise come back to a file that parses as far as the third pane and
+/// stops, which would strand every pane after it.
+fn save_names(names: &Arc<Mutex<PaneNames>>) {
+    let mut held = poison::lock(&NAMES_FILE, "saved-pane-names");
+    let Some((path, written)) = held.as_mut() else { return };
+
+    let text = names::to_toml(&poison::lock(names, "pane-names"));
+    if &text == written {
+        return;
+    }
+
+    let file = std::path::PathBuf::from(&*path);
+    let staged = file.with_extension("writing");
+    let result = std::fs::create_dir_all(file.parent().unwrap_or(std::path::Path::new(".")))
+        .and_then(|()| std::fs::write(&staged, &text))
+        .and_then(|()| std::fs::rename(&staged, &file));
+
+    match result {
+        Ok(()) => *written = text,
+        Err(error) => {
+            log::warn(
+                "pane-names.save.failed",
+                fields! {
+                    "path" => path.clone(),
+                    "detail" => error.to_string(),
+                    "impact" => "these names last until this Muster quits. Every pane open at \
+                                 that moment keeps a name in its environment that the next \
+                                 launch will not know, so commands from inside them are refused",
+                    "check" => "whether that directory exists and is writable",
+                },
+            );
+            written.clear();
+        }
+    }
+}
+
 /// The arrangement this window was left in, or nothing.
 ///
 /// A file that will not read is a log line and nothing more. Every way this fails ends with a
@@ -2052,6 +2151,8 @@ fn publish() {
         // Here because this is the moment composition is settled, and because everything that
         // changes it ends up here - so nothing has to remember to save.
         save(&session.composition, session.presentation);
+        session.forget_closed_panes();
+        save_names(&session.names);
         (view, roster, settled)
     };
 

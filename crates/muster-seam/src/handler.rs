@@ -836,6 +836,11 @@ fn start(startup: &proto::Startup) -> Response {
     // attaching publishes, and a publish before this is one that would write the arrangement
     // out to nowhere - or worse, read it back after it had been replaced.
     session::set_state_path(&startup.state_path);
+    // Before the config, and for the sharpest version of the same reason: applying one attaches
+    // daemons, and the first snapshot from each mints a name for every pane it describes. Read
+    // afterwards, every pane already open would be named a second time, and a program running
+    // in one would hold a name for nothing.
+    session::set_pane_names_path(&startup.pane_names_path);
     // Before the config too, because applying one can start a daemon and the locale is part of
     // the environment that daemon is born with. Set after, it would reach the second launch.
     session::set_platform_locale(&startup.locale);

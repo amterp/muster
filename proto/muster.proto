@@ -654,6 +654,16 @@ message Startup {
   // did before this existed, and the run log names which file is in play.
   string daemon_config_path = 8;
 
+  // Where Muster remembers what it calls each pane, or empty for nowhere.
+  //
+  // Panes outlive the app, so an agent that has been running since before Muster was last
+  // quit still has a name in its environment - and if this file is not read back, that name
+  // resolves to nothing and every command from inside that pane is refused.
+  //
+  // The same division as state_path, and beside it in the same directory. Empty is a real
+  // state: names then last exactly one launch, which is what they did before this existed.
+  string pane_names_path = 9;
+
   // trace, debug, info, warn, error. Empty means debug.
   string log_level = 2;
 

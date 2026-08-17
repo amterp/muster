@@ -173,6 +173,13 @@ impl Daemon {
         &self.socket_path
     }
 
+    /// This daemon's scratch directory, for a test that needs a file of its own beside it.
+    ///
+    /// Removed with the daemon, so nothing a test writes here outlives the run.
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
     /// Writes a Muster config file naming this daemon, and returns its path.
     ///
     /// How a test points the core at a scratch daemon, and the only way there is. Muster runs

@@ -27,3 +27,21 @@ public func statePath(environment: [String: String] = ProcessInfo.processInfo.en
   guard let home = musterHome(environment: environment) else { return nil }
   return home.appendingPathComponent("state/window.toml").path
 }
+
+/// Where what Muster calls each pane is remembered.
+///
+/// Beside the arrangement, because both are Muster's own state and neither is anything a person
+/// should have to edit. Separate files because they answer to different things: the arrangement
+/// is this window's, and the names belong to the panes, which outlive both the window and the app.
+///
+/// Nowhere to write is a real answer - names then last one launch, and a pane open across a
+/// restart can no longer say which pane it is.
+public func paneNamesPath(environment: [String: String] = ProcessInfo.processInfo.environment)
+  -> String?
+{
+  if let explicit = environment["MUSTER_PANE_NAMES"] {
+    return explicit.isEmpty ? nil : explicit
+  }
+  guard let home = musterHome(environment: environment) else { return nil }
+  return home.appendingPathComponent("state/panes.toml").path
+}
