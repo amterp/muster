@@ -111,6 +111,8 @@ pub const STRUCTURE: [&str; 17] = [
 pub struct Subscription {
     running: Arc<AtomicBool>,
     stream: Arc<Mutex<Option<UnixStream>>>,
+    /// Set by the thread on its way out.
+    stopped: Arc<AtomicBool>,
 }
 
 impl Subscription {
@@ -128,13 +130,34 @@ impl Subscription {
         let socket_path = socket_path.into();
         let running = Arc::new(AtomicBool::new(true));
         let stream = Arc::new(Mutex::new(None));
+        let stopped = Arc::new(AtomicBool::new(false));
 
-        let handle = Subscription { running: running.clone(), stream: stream.clone() };
+        let handle = Subscription {
+            running: running.clone(),
+            stream: stream.clone(),
+            stopped: stopped.clone(),
+        };
         std::thread::Builder::new()
             .name("muster-subscription".to_string())
-            .spawn(move || run(&socket_path, &mirror, &report, &running, &stream, &names))
+            .spawn(move || {
+                run(&socket_path, &mirror, &report, &running, &stream, &names);
+                stopped.store(true, Ordering::Release);
+            })
             .expect("could not start the subscription thread");
         handle
+    }
+
+    /// Whether the thread has finished, for a test that needs to prove it does.
+    ///
+    /// The same arrangement as `PaneControlChannel::stopped`, for the same reason. A thread
+    /// still holding a connection to a daemon nobody is watching is invisible from outside the
+    /// process and unobservable through any other part of this API - and it is exactly what a
+    /// handle that failed to stop one would leave behind, one per daemon, for the life of the
+    /// window. Handed out as a flag rather than a join handle because joining inside `drop`
+    /// would turn a thread that did not notice into a hang on quit, which is worse than the
+    /// leak.
+    pub fn stopped(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.stopped)
     }
 }
 

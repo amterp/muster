@@ -187,26 +187,25 @@ fn an_absent_daemon_is_disconnected_rather_than_stale() {
 #[test]
 fn dropping_the_handle_stops_the_thread() {
     let daemon = Daemon::start();
-    let alive = Arc::new(AtomicBool::new(true));
     let mirror = Arc::new(Mutex::new(Mirror::new()));
 
-    {
+    let stopped = {
         let log = Arc::new(Log::default());
-        let _subscription = Subscription::start(
+        let subscription = Subscription::start(
             daemon.socket_path().to_string_lossy().into_owned(),
             Arc::clone(&mirror),
             log.record(),
             daemon.names(),
         );
         until("the first bootstrap", || log.bootstraps() > 0);
-        alive.store(false, Ordering::Relaxed);
-    }
+        subscription.stopped()
+    };
 
-    // Nothing to assert but the absence of a hang: a subscription that outlives its handle
-    // holds a connection open and keeps writing into a mirror the window has forgotten,
-    // and the symptom is a daemon that will not shut down.
-    std::thread::sleep(Duration::from_millis(200));
-    assert!(!alive.load(Ordering::Relaxed));
+    // Asked of the thread rather than inferred from the test finishing. A subscription that
+    // outlives its handle holds a connection open and keeps writing into a mirror the window
+    // has forgotten, and nothing about this test process would notice: the thread is detached,
+    // so it would run on under every test after this one and fail none of them.
+    until("the subscription thread to finish", || stopped.load(Ordering::Acquire));
 }
 
 #[test]
@@ -449,12 +448,19 @@ struct StalledDaemon {
 
 impl StalledDaemon {
     fn start() -> StalledDaemon {
-        // Short, for `sun_path`, and unique per test in the process - the same reasoning and
-        // the same root as `herdr_harness`.
+        // Short, for `sun_path`, and unique per test and per process - the same reasoning and
+        // the same root as `herdr_harness`, whose own name carries the pid for the same
+        // reason. Without it, two copies of this binary at once fight over one path: one
+        // binds and the others cannot, or one unlinks the other's socket and the survivor
+        // dials a listener nobody owns.
         static NEXT: AtomicU32 = AtomicU32::new(0);
         let root = Path::new("/tmp/muster-test");
         std::fs::create_dir_all(root).expect("could not make the scratch root");
-        let path = root.join(format!("stalled-{}.sock", NEXT.fetch_add(1, Ordering::Relaxed)));
+        let path = root.join(format!(
+            "stalled-{}-{}.sock",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
         let _ = std::fs::remove_file(&path);
 
         let listener = UnixListener::bind(&path).expect("could not bind the stalled daemon");
