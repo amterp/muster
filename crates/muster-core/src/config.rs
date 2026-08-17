@@ -23,7 +23,9 @@ use std::collections::BTreeMap;
 
 use toml::Value;
 
-use crate::input::{Action, Binding, Bindings, Chord, OptionAsAlt, PaneInputSettings};
+use crate::input::{
+    Action, Binding, Bindings, Chord, OptionAsAlt, PaneInputSettings, TEXT_EDITING,
+};
 
 use crate::composition::{Daemon, DaemonId, Endpoint};
 
@@ -482,13 +484,15 @@ pub fn parse(text: &str) -> Result<Config, String> {
         }
         daemons.push(daemon);
     }
+    // `[text]` is read first so that `[keymap]` can be refused for colliding with it. The two
+    // blocks are keyed opposite ways round - one by action, one by chord - so neither can see
+    // a collision from inside itself, and a chord claimed by both goes to the menu and never
+    // reaches the pane.
+    let text = read_text(root)?;
     Ok(Config {
         daemons,
-        bindings: read_keymap(root)?,
-        input: PaneInputSettings {
-            option_as_alt: read_option_as_alt(root)?,
-            text: read_text(root)?,
-        },
+        bindings: read_keymap(root, &text)?,
+        input: PaneInputSettings { option_as_alt: read_option_as_alt(root)?, text },
         feel: read_feel(root)?,
         appearance: read_appearance(root)?,
         panes: read_panes(root)?,
@@ -880,8 +884,11 @@ fn quoted(names: &[&str]) -> String {
 /// An empty chord unbinds outright, which is different from not mentioning it. Somebody who
 /// wants ⌘W back for closing the window has to be able to say so, and the alternative is
 /// binding it to a chord nobody presses and hoping.
-fn read_keymap(root: &toml::Table) -> Result<Bindings, String> {
+fn read_keymap(root: &toml::Table, text: &BTreeMap<Binding, Vec<u8>>) -> Result<Bindings, String> {
     let mut bindings = Bindings::default();
+    // What each chord this block binds was written as, so a refusal can quote the spelling
+    // somebody typed rather than a canonical one they would have to recognise.
+    let mut claimed: BTreeMap<Binding, (String, String)> = BTreeMap::new();
     let Some(value) = root.get("keymap") else {
         return Ok(bindings);
     };
@@ -919,6 +926,50 @@ fn read_keymap(root: &toml::Table) -> Result<Bindings, String> {
                  {refusal} None of the file was applied."
             )
         })?;
+
+        // Three ways one chord can end up meaning two things, refused here rather than left
+        // to whichever table happens to be consulted first. On macOS a `[keymap]` action is a
+        // menu item, and the menu is offered a key equivalent before the keystroke reaches
+        // the window at all - so every one of these resolves silently and in Muster's favour,
+        // which is the worst way for a file to be wrong.
+        let binding = Chord::parse(chord)
+            .map(|Chord { key, modifiers }| Binding::new(key, modifiers))
+            .map_err(|refusal| format!("{refusal} None of the file was applied."))?;
+
+        if let Some((held, spelling)) = claimed.get(&binding) {
+            return Err(format!(
+                "the config file's [keymap] binds both `{held}` and `{name}` to `{chord}`, and \
+                 only one menu item can hold a shortcut - which of them the key reaches is not \
+                 something Muster decides. None of the file was applied. Give one of them a \
+                 different chord.{}",
+                if spelling == chord {
+                    String::new()
+                } else {
+                    format!(" (`{spelling}` and `{chord}` are the same chord.)")
+                }
+            ));
+        }
+        if text.contains_key(&binding) {
+            return Err(format!(
+                "the config file binds `{name}` to `{chord}` in [keymap] and gives the same \
+                 chord bytes to send in [text], and the menu takes it first - so the [text] \
+                 line would never fire. None of the file was applied. Give one of them a \
+                 different chord."
+            ));
+        }
+        if let Some((.., cost)) = TEXT_EDITING
+            .iter()
+            .find(|(key, modifiers, ..)| Binding::new(*key, *modifiers) == binding)
+        {
+            return Err(format!(
+                "the config file binds `{name}` to `{chord}`, which is how every pane does \
+                 {cost}. A menu shortcut is offered the key first, so taking this one stops \
+                 that working in every shell in the window and nothing on screen would connect \
+                 the two. None of the file was applied. Give `{name}` a different chord, or \
+                 put `{chord}` in [text] to say what it should send instead."
+            ));
+        }
+        claimed.insert(binding, (name.clone(), chord.to_string()));
     }
     Ok(bindings)
 }

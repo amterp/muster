@@ -186,6 +186,18 @@ what it used to reach is the one outcome worse than the refusal. Tab captions lo
 numbers in the same change: two numberings in one list is worse than either, and a tab you
 have not named is now captioned `Tab 2` rather than carrying a chord's number.
 
+**Two things cannot hold one chord, and the file is refused rather than one of them losing.**
+Three ways that happens: two `[keymap]` actions on the same chord, a `[keymap]` action on a
+chord `[text]` also sends bytes for, and a `[keymap]` action on one of the five chords every
+pane uses for line editing - `cmd+left` and `cmd+right` for the ends of a line,
+`cmd+backspace` to delete to the start of it, and `opt+left` and `opt+right` for word motion.
+All three resolve the same way if allowed, and the refusal exists because of how: on macOS an
+action is a menu item, and the menu is offered a key equivalent before the keystroke reaches
+the window at all. So the shortcut wins every time and whatever it took stops working
+silently - `opt+left` rebound to `focus_left` ends word motion in every shell in the window,
+with nothing on screen connecting the two. None of the shipped defaults collide, so this only
+ever answers a chord you chose.
+
 **`find` searches a pane's history, and says how far back it got.** `cmd+f` opens a bar over
 the pane with the keyboard, `cmd+g` and `cmd+shift+g` walk the matches, and landing on one
 scrolls the pane to it and marks it. What it searches is not what is on screen: a pane's

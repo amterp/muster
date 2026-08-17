@@ -437,6 +437,63 @@
       }
     },
     {
+      "name": "two actions cannot hold one chord",
+      "why": "The map behind [keymap] is keyed by action, so two actions naming one chord both bind and nothing in it can see the collision. On macOS each becomes a menu item with the same key equivalent, and which one AppKit reaches first is not defined - so the file would work, differently, depending on the order the menus were built. The [text] block one table over already refuses its own version of this, and the wording follows it.",
+      "given": {
+        "file": [
+          "[keymap]",
+          "zoom = \"cmd+f\"",
+          "find = \"cmd+f\""
+        ]
+      },
+      "expect": {
+        "refused": "the config file's [keymap] binds both `find` and `zoom` to `cmd+f`, and only one menu item can hold a shortcut - which of them the key reaches is not something Muster decides. None of the file was applied. Give one of them a different chord."
+      }
+    },
+    {
+      "name": "two actions cannot hold one chord under two spellings either",
+      "why": "The same collision written so that TOML cannot see it: `cmd+f` and `f+cmd` are one chord and two keys. The refusal says so outright, because a person comparing the two lines by eye is looking for a repeat and there is not one. The names appear in the order TOML hands them over, which is sorted rather than written.",
+      "given": {
+        "file": [
+          "[keymap]",
+          "zoom = \"cmd+f\"",
+          "find = \"f+cmd\""
+        ]
+      },
+      "expect": {
+        "refused": "the config file's [keymap] binds both `find` and `zoom` to `cmd+f`, and only one menu item can hold a shortcut - which of them the key reaches is not something Muster decides. None of the file was applied. Give one of them a different chord. (`f+cmd` and `cmd+f` are the same chord.)"
+      }
+    },
+    {
+      "name": "an action cannot take a chord [text] is already sending bytes for",
+      "why": "Both blocks parse and neither reads the other, so this file looks correct in two places at once. It resolves in the menu's favour, and the [text] line simply never fires - the one outcome a person cannot debug from the file, since the line they wrote is right there.",
+      "given": {
+        "file": [
+          "[keymap]",
+          "zoom = \"shift+enter\"",
+          "",
+          "[text]",
+          "\"shift+enter\" = \"\\n\""
+        ]
+      },
+      "expect": {
+        "refused": "the config file binds `zoom` to `shift+enter` in [keymap] and gives the same chord bytes to send in [text], and the menu takes it first - so the [text] line would never fire. None of the file was applied. Give one of them a different chord."
+      }
+    },
+    {
+      "name": "an action cannot take a chord every pane uses for editing",
+      "why": "The one collision Muster owns both sides of. opt+left is word-left in every pane and `focus_left` is a reasonable thing to want there, since the default is cmd+opt+left. Take it and word motion stops working in every shell in the window, with nothing on screen connecting the two - and unlike the other two collisions there is no second line in the file to compare against, so the refusal has to say what the chord already does. The five are Ghostty's own natural-text-editing set, so this is a closed list rather than a general reservation.",
+      "given": {
+        "file": [
+          "[keymap]",
+          "focus_left = \"opt+left\""
+        ]
+      },
+      "expect": {
+        "refused": "the config file binds `focus_left` to `opt+left`, which is how every pane does moving one word left. A menu shortcut is offered the key first, so taking this one stops that working in every shell in the window and nothing on screen would connect the two. None of the file was applied. Give `focus_left` a different chord, or put `opt+left` in [text] to say what it should send instead."
+      }
+    },
+    {
       "name": "the two knobs, each read as itself",
       "why": "A resize step with its unit, and a scroll multiplier that scales whatever the input device reported. Grouped in one case because they share nothing but a shape - each is a single value with a defensible default - and separate cases would be two copies of the same assertion. The divider colour used to sit beside them and now sits with the other colours, because somebody picking colours picks all of them at once.",
       "given": {

@@ -119,17 +119,30 @@ impl Default for Keymap {
 ///
 /// They also sidestep the mode problem, since a control code means the same thing whatever
 /// the pane has negotiated.
+///
+/// Each carries what it does in plain words, because a `[keymap]` action rebound onto one of
+/// these is refused and the refusal has to name the behaviour it would have cost
+/// (`config.rs`). One table with three columns rather than a second list beside it: a chord
+/// that appeared in one and not the other would either refuse something that still works or
+/// allow something that quietly stops.
+pub const TEXT_EDITING: [(Key, Modifiers, &[u8], &str); 5] = [
+    // Start and end of line, which readline spells ctrl+A and ctrl+E.
+    (Key::ArrowLeft, Modifiers::SUPER, &[0x01], "moving to the start of the line"),
+    (Key::ArrowRight, Modifiers::SUPER, &[0x05], "moving to the end of the line"),
+    // Delete to start of line: readline's unix-line-discard.
+    (Key::Backspace, Modifiers::SUPER, &[0x15], "deleting to the start of the line"),
+    // Word motion, as an escape prefix rather than a control code.
+    (Key::ArrowLeft, Modifiers::ALT, &[0x1b, b'b'], "moving one word left"),
+    (Key::ArrowRight, Modifiers::ALT, &[0x1b, b'f'], "moving one word right"),
+];
+
 fn macos_text_editing() -> Vec<(Binding, Resolution)> {
-    vec![
-        // Start and end of line, which readline spells ctrl+A and ctrl+E.
-        (Binding::new(Key::ArrowLeft, Modifiers::SUPER), Resolution::Text(vec![0x01])),
-        (Binding::new(Key::ArrowRight, Modifiers::SUPER), Resolution::Text(vec![0x05])),
-        // Delete to start of line: readline's unix-line-discard.
-        (Binding::new(Key::Backspace, Modifiers::SUPER), Resolution::Text(vec![0x15])),
-        // Word motion, as an escape prefix rather than a control code.
-        (Binding::new(Key::ArrowLeft, Modifiers::ALT), Resolution::Text(vec![0x1b, b'b'])),
-        (Binding::new(Key::ArrowRight, Modifiers::ALT), Resolution::Text(vec![0x1b, b'f'])),
-    ]
+    TEXT_EDITING
+        .iter()
+        .map(|(key, modifiers, bytes, _)| {
+            (Binding::new(*key, *modifiers), Resolution::Text(bytes.to_vec()))
+        })
+        .collect()
 }
 
 /// The keys whose correct encoding depends on a mode Muster cannot see.

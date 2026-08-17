@@ -14,7 +14,7 @@ pub use bindings::{Action, Bindings, Chord};
 pub use composition::{Outcome as CompositionOutcome, outcome as composition_outcome};
 pub use key::Key;
 pub use key_event::{KeyAction, KeyEvent, Modifiers};
-pub use keymap::{Binding, Keymap, Resolution};
+pub use keymap::{Binding, Keymap, Resolution, TEXT_EDITING};
 pub use mode_profile::{OptionAsAlt, TerminalModeProfile, kitty_flags};
 pub use pane_channel::{EncodeError, KeyEncoding, PaneChannel, PaneIntent, ScrollDirection};
 pub use pane_input::PaneInput;
