@@ -2273,6 +2273,189 @@
           "local/w1:p2 place=2 tab=w1:t2 label=\"muster\" hidden"
         ]
       }
+    },
+    {
+      "name": "the tenth tab is the tenth, not the second",
+      "why": "The chords name places in this list, so the order it is built in is the order ⌘1 to ⌘9 reach. Ids are opaque strings the backend spells - `w1:t1`, `w1:t10` - and sorting them is numeric order right up until there are ten of something, at which point `w1:t10` lands between `w1:t1` and `w1:t2`. A window with eleven tabs drew them 1, 10, 11, 2, 3 and every numbered chord past the first named the wrong pane. Fifteen panes is this project's own reference workload, so the failure sat exactly where the design says to look. The order is the one the backend listed rather than one derived from the id, which is why this case states its tabs in order and expects them back in it.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              },
+              {
+                "id": "w1:t2",
+                "workspace": "w1",
+                "label": "t2"
+              },
+              {
+                "id": "w1:t3",
+                "workspace": "w1",
+                "label": "t3"
+              },
+              {
+                "id": "w1:t4",
+                "workspace": "w1",
+                "label": "t4"
+              },
+              {
+                "id": "w1:t5",
+                "workspace": "w1",
+                "label": "t5"
+              },
+              {
+                "id": "w1:t6",
+                "workspace": "w1",
+                "label": "t6"
+              },
+              {
+                "id": "w1:t7",
+                "workspace": "w1",
+                "label": "t7"
+              },
+              {
+                "id": "w1:t8",
+                "workspace": "w1",
+                "label": "t8"
+              },
+              {
+                "id": "w1:t9",
+                "workspace": "w1",
+                "label": "t9"
+              },
+              {
+                "id": "w1:t10",
+                "workspace": "w1",
+                "label": "t10"
+              },
+              {
+                "id": "w1:t11",
+                "workspace": "w1",
+                "label": "t11"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/p1"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/p2"
+              },
+              {
+                "id": "w1:p3",
+                "tab": "w1:t3",
+                "workspace": "w1",
+                "cwd": "/src/p3"
+              },
+              {
+                "id": "w1:p4",
+                "tab": "w1:t4",
+                "workspace": "w1",
+                "cwd": "/src/p4"
+              },
+              {
+                "id": "w1:p5",
+                "tab": "w1:t5",
+                "workspace": "w1",
+                "cwd": "/src/p5"
+              },
+              {
+                "id": "w1:p6",
+                "tab": "w1:t6",
+                "workspace": "w1",
+                "cwd": "/src/p6"
+              },
+              {
+                "id": "w1:p7",
+                "tab": "w1:t7",
+                "workspace": "w1",
+                "cwd": "/src/p7"
+              },
+              {
+                "id": "w1:p8",
+                "tab": "w1:t8",
+                "workspace": "w1",
+                "cwd": "/src/p8"
+              },
+              {
+                "id": "w1:p9",
+                "tab": "w1:t9",
+                "workspace": "w1",
+                "cwd": "/src/p9"
+              },
+              {
+                "id": "w1:p10",
+                "tab": "w1:t10",
+                "workspace": "w1",
+                "cwd": "/src/p10"
+              },
+              {
+                "id": "w1:p11",
+                "tab": "w1:t11",
+                "workspace": "w1",
+                "cwd": "/src/p11"
+              }
+            ],
+            "layouts": []
+          }
+        },
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          }
+        ],
+        "regions": [
+          {
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          }
+        ]
+      },
+      "expect": {
+        "tabs": [
+          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen",
+          "local/w1:t2 place=2 label=\"t2\" given-name=\"t2\" hidden",
+          "local/w1:t3 place=3 label=\"t3\" given-name=\"t3\" hidden",
+          "local/w1:t4 place=4 label=\"t4\" given-name=\"t4\" hidden",
+          "local/w1:t5 place=5 label=\"t5\" given-name=\"t5\" hidden",
+          "local/w1:t6 place=6 label=\"t6\" given-name=\"t6\" hidden",
+          "local/w1:t7 place=7 label=\"t7\" given-name=\"t7\" hidden",
+          "local/w1:t8 place=8 label=\"t8\" given-name=\"t8\" hidden",
+          "local/w1:t9 place=9 label=\"t9\" given-name=\"t9\" hidden",
+          "local/w1:t10 place=10 label=\"t10\" given-name=\"t10\" hidden",
+          "local/w1:t11 place=11 label=\"t11\" given-name=\"t11\" hidden"
+        ],
+        "panes": [
+          "local/w1:p1 place=1 tab=w1:t1 label=\"p1\" hidden",
+          "local/w1:p2 place=2 tab=w1:t2 label=\"p2\" hidden",
+          "local/w1:p3 place=3 tab=w1:t3 label=\"p3\" hidden",
+          "local/w1:p4 place=4 tab=w1:t4 label=\"p4\" hidden",
+          "local/w1:p5 place=5 tab=w1:t5 label=\"p5\" hidden",
+          "local/w1:p6 place=6 tab=w1:t6 label=\"p6\" hidden",
+          "local/w1:p7 place=7 tab=w1:t7 label=\"p7\" hidden",
+          "local/w1:p8 place=8 tab=w1:t8 label=\"p8\" hidden",
+          "local/w1:p9 place=9 tab=w1:t9 label=\"p9\" hidden",
+          "local/w1:p10 place=10 tab=w1:t10 label=\"p10\" hidden",
+          "local/w1:p11 place=11 tab=w1:t11 label=\"p11\" hidden"
+        ]
+      }
     }
   ]
 }

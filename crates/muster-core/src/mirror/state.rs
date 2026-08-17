@@ -10,6 +10,8 @@
 
 use std::collections::BTreeMap;
 
+use crate::mirror::ordered::Ordered;
+
 use crate::AgentState;
 use crate::intent::SettledLayout;
 use crate::mirror::backend::{
@@ -42,9 +44,9 @@ const SUPERSEDED_LIMIT: usize = 32;
 /// nobody can diff.
 #[derive(Debug, Default)]
 pub struct Mirror {
-    workspaces: BTreeMap<WorkspaceId, Workspace>,
-    tabs: BTreeMap<TabId, Tab>,
-    panes: BTreeMap<PaneId, Pane>,
+    workspaces: Ordered<WorkspaceId, Workspace>,
+    tabs: Ordered<TabId, Tab>,
+    panes: Ordered<PaneId, Pane>,
     /// One tree per tab that has a readable one. Absent rather than empty when a tab's
     /// layout will not read, because a tab with no tree renders as nothing and a tab
     /// keeping its last tree renders as slightly stale - and the second is the better
@@ -150,7 +152,7 @@ impl Mirror {
                 changes.push(Change::TabRemoved(id.clone()));
             }
         }
-        for (id, pane) in &self.panes {
+        for (id, pane) in self.panes.iter() {
             match previous_panes.get(id) {
                 None => changes.push(Change::PaneAdded(id.clone())),
                 Some(before) if before.agent_state != pane.agent_state => {

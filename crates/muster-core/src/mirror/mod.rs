@@ -10,6 +10,7 @@
 
 pub mod backend;
 pub mod event;
+pub mod ordered;
 pub mod state;
 
 pub use backend::{Focus, Health, Pane, PaneId, Snapshot, Tab, TabId, Workspace, WorkspaceId};
