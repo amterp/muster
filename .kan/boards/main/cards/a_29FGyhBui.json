@@ -5,16 +5,25 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-lo",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Done. The coalescing moved into Sources/MusterMac/LatestRequestSender.swift and both callers keep only what they genuinely do differently - the find bar drops an answer to a needle already typed past, the divider drops all of them. Reading a refusal out of a response moved with it, since both did that identically too.\n\nWorth recording why the old comment argued against this, since it was wrong in an instructive way: it said merging would hand the divider a callback it has no use for. That reads the split in the wrong place. What differs is the answer type and what is done with it, which a generic and a closure cover; what is the same is the interleaving of the pending request and the in-flight flag across a hop off the main thread and back - the subtle part, and the part a change would otherwise have to be made in twice.\n\nCovered by the two tests that already existed: 'a needle reaches the core, and only the last one typed does', and 'a drag sends the position the pointer reached, not every one it passed'.",
+      "created_at_millis": 1786925236708,
+      "id": "c_29JlXafDb"
+    }
+  ],
   "created_at_millis": 1786914528778,
   "creator": "Alexander Terp",
   "description": "`SplitRatioSender` (divider drags) and `FindSender` (find keystrokes) each implement the same shape independently: one request in flight, the latest input remembered, and the last one always sent. Both exist because the same problem showed up twice - a per-event round trip over a forwarded socket is tens of milliseconds a keystroke.\n\nThey were left apart deliberately rather than by oversight. The find work would have had to widen into a file another parallel slot was editing, and the two are not actually identical: `FindSender` carries an answer back to draw, `SplitRatioSender` has nothing to return. That difference is the design question a shared version has to answer.\n\nWorth lifting when a third one appears - three examples say what the shape really is, where two can only be guessed at.",
   "id": "a_29FGyhBui",
-  "position": "6",
+  "position": "!!!!!!!!!!!2",
   "title": "♻️ Two senders keep one request in flight, and share no code",
   "type": "chore",
-  "updated_at_millis": 1786914528778,
+  "updated_at_millis": 1786925236708,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1786914528778}
+    {"field":"column","value":"backlog-lo","at":1786914528778},
+    {"field":"column","value":"done","at":1786925229232}
   ]
 }
