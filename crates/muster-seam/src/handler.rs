@@ -755,8 +755,12 @@ fn resize_pane(resize: &proto::ResizePane) -> Response {
             fields! {
                 "step" => step,
                 "direction" => direction.as_str(),
-                "impact" => "this resize moved the daemon's own step instead of the distance                              the config file asked for",
-                "detail" => "a step in points has to be divided by the size of a cell, and                               this caller reported none. A chord always reports one, so                               this is either a surface nothing has measured yet or a                               caller with no surface at all - spelling the step in cells                               makes it independent of either.",
+                "impact" => "this resize moved the daemon's own step instead of the distance the \
+                              config file asked for",
+                "detail" => "a step in points has to be divided by the size of a cell, and this \
+                              caller reported none. A chord always reports one, so this is either \
+                              a surface nothing has measured yet or a caller with no surface at \
+                              all - spelling the step in cells makes it independent of either.",
             },
         );
     }
@@ -907,8 +911,10 @@ fn apply_config(path: &str) {
                 fields! {
                     "path" => path.to_string(),
                     "detail" => error.to_string(),
-                    "impact" => "no daemon named in that file is attached, so the window shows                                  only the daemon on this machine",
-                    "check" => "whether the path exists and is readable; the shell only sends                                 one it has already seen",
+                    "impact" => "no daemon named in that file is attached, so the window shows \
+                                  only the daemon on this machine",
+                    "check" => "whether the path exists and is readable; the shell only sends one \
+                                 it has already seen",
                 },
             );
             return;
@@ -941,7 +947,8 @@ fn apply_config(path: &str) {
             fields! {
                 "path" => path.to_string(),
                 "detail" => refusal,
-                "impact" => "no daemon named in that file is attached, so the window shows                              only the daemon on this machine",
+                "impact" => "no daemon named in that file is attached, so the window shows only \
+                              the daemon on this machine",
             },
         ),
     }

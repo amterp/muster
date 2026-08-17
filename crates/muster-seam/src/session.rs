@@ -2344,8 +2344,11 @@ pub(crate) fn reset_pane_input(settings: &PaneInputSettings) {
                     "daemon" => daemon.to_string(),
                     "pane" => pane.to_string(),
                     "detail" => error.to_string(),
-                    "impact" => "this pane keeps the typing settings it was attached with, so                                  it now disagrees with the rest of the window about what                                  option means",
-                    "check" => "libghostty-vt is behind this; a relaunch rebuilds every                                 encoder from scratch",
+                    "impact" => "this pane keeps the typing settings it was attached with, so it \
+                                  now disagrees with the rest of the window about what option \
+                                  means",
+                    "check" => "libghostty-vt is behind this; a relaunch rebuilds every encoder \
+                                 from scratch",
                 },
             ),
         }
