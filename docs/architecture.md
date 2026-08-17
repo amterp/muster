@@ -681,6 +681,23 @@ Every test for "connected" passes in both cases, and rendering an empty session 
 everything is the worst available answer. This is a distinct state with a distinct response - say what was there,
 offer to rebuild it - and it belongs to Muster because no daemon can know what a window was showing.
 
+**A success that means a refusal: the daemon considered a change, performed none of it, and named its reason beside
+an ordinary answer.** herdr does this for zoom, swap, move and resize, so a window reading only the envelope cannot
+tell it from a change that worked, and the one symptom is a window that does not move - which is what a bug in the
+request looks like too. **The rule is that a decline whose state already holds is a success, and a decline that did
+not happen is a refusal**: zooming a tab that holds one pane is looking at what it asked to see, moving a pane into
+a zoomed tab is not, and answering the second one with a success tells the caller something untrue. Which reason is
+which is a reading of one backend's own vocabulary, so it belongs in that adapter (`muster_herdr::considered`) and
+what crosses the seam is Muster's own `Refusal` - one decision serving the keyboard and the CLI, because both reach
+the adapter by the same route. A reason the adapter does not recognize is a refusal, on the same grounds as an
+unread event kind: calling a change that happened refused costs one message somebody can check, and the other way
+round is the silence this rule exists to end.
+
+A refusal that proves the window is stale is worth more than a message. Muster picks between swapping two panes and
+moving one by reading which tabs its mirror has them in, so a daemon refusing that choice has said the mirror is
+wrong - which is `Refusal::NotThere` and costs a fresh snapshot, the same answer as a pane the daemon does not hold
+at all.
+
 ## Durability
 
 What survives what. Written down because "sessions outlive everything" reads as one guarantee and is really four,

@@ -14,7 +14,7 @@
 use std::sync::{Arc, Mutex};
 
 use herdr_harness::{Daemon, until};
-use muster_core::intent::{BackendChannel, BackendIntent};
+use muster_core::intent::{BackendChannel, BackendIntent, Refusal};
 use muster_core::mirror::Mirror;
 use muster_core::mirror::backend::{PaneId, TabId};
 use muster_herdr::snapshot::read_snapshot;
@@ -119,13 +119,19 @@ fn a_move_takes_a_pane_into_another_tab_and_lands_it_behind_the_row_it_was_dropp
     );
 }
 
+/// A swap across tabs is refused rather than reported as done.
+///
+/// herdr answers a cross-tab swap with a success carrying `changed: false` and the arrangement
+/// it already had, which is the shape nothing above the adapter can tell from a swap that
+/// worked - and the reason the core picks the verb from where the two panes are rather than
+/// sending a swap and hoping.
+///
+/// Only a real daemon produces that answer, which is what makes two claims one test: that the
+/// adapter refuses it, and that it refuses it as a stale window. `cross_tab` says more than no.
+/// `session::arrange_pane` sends a swap only for two panes its mirror has in one tab, so herdr
+/// saying they are in two is the daemon stating the window is wrong about one of them.
 #[test]
-fn a_swap_across_tabs_does_nothing_and_says_so_only_in_the_log() {
-    // Why the gesture needs two verbs rather than one. herdr answers a cross-tab swap with a
-    // success carrying `changed: false`, and the layout it carries is the arrangement it
-    // already had - so nothing above the adapter can tell this from a swap that worked. That
-    // is the whole reason `declined` exists and the reason the core picks the verb from where
-    // the two panes are rather than sending a swap and hoping.
+fn a_swap_across_tabs_is_refused_rather_than_reported_as_done() {
     let (daemon, mirror, _tab, first, _second) = a_tab_of_two();
     let home = tab_of(&mirror, &first);
     daemon.call("tab.create", &json!({ "focus": false }));
@@ -135,10 +141,18 @@ fn a_swap_across_tabs_does_nothing_and_says_so_only_in_the_log() {
         .find(|pane| tab_of(&mirror, pane) != home)
         .expect("the new tab brings a pane of its own");
 
-    daemon
+    let refused = daemon
         .backend()
         .submit(&BackendIntent::SwapPanes { pane: first.clone(), with: elsewhere.clone() })
-        .expect("a declined swap is a success on the wire rather than a transport failure");
+        .expect_err(
+            "herdr answered a cross-tab swap as a success, so the adapter passed a change that \
+             did not happen off as one that did",
+        );
+    assert!(
+        matches!(refused, Refusal::NotThere(_)),
+        "a cross-tab swap is a stale window rather than a request refused on its merits, and \
+         only NotThere re-reads the session: {refused:?}"
+    );
 
     resnapshot(&daemon, &mirror);
 

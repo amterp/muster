@@ -39,6 +39,14 @@ the right one because `$MUSTER_SOCKET` says which. A caller outside every pane h
 on, so with two windows open `muster` refuses and names the sockets that answered. Pass
 `--socket` to pick one.
 
+## A zoom with nothing to zoom still succeeds
+
+`muster zoom` in a tab holding one pane exits 0 and changes nothing. A single pane already fills
+its region, so there was nothing to hide and nothing went wrong; the run log names the daemon's
+own reason at info level if you want to see it. A change a daemon would not make does exit
+non-zero with what it said on stderr, so this is the one answer that reads like a refusal in the
+log and is a success on purpose.
+
 ## The window's answer is a mirror
 
 Everything `muster window` reports is Muster's picture of each daemon rather than the daemon's

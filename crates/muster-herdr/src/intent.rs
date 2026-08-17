@@ -92,25 +92,30 @@ impl BackendChannel for HerdrBackend {
                 None
             }
             _ => {
-                // A mutation the daemon considered and did not perform. It is a success on the
-                // wire, so nothing above notices, and the only symptom is a window that does
-                // not change - which is exactly what a bug in the request looks like too.
+                // A change the daemon considered and did not perform, which is a success on the
+                // wire: without this the only symptom is a window that does not move, and that
+                // is also what a bug in the request looks like. `considered` decides which of
+                // those the caller hears about, for both surfaces at once - a chord and a CLI
+                // verb arrive here by the same route.
                 if let Some(reason) = declined(&result) {
-                    log::warn(
-                        "herdr.intent.declined",
+                    if let Some(refusal) = considered(reason) {
+                        return Err(refusal);
+                    }
+                    log::info(
+                        "herdr.intent.already-so",
                         fields! {
                             "method" => method,
                             "reason" => reason,
-                            "impact" => "the window is unchanged and correct - the daemon did \
-                                         not do this, and nothing is being rendered that did \
-                                         not happen. What was asked for did not take effect.",
-                            "next" => "the reason is herdr's own word for why. For a swap those \
-                                       are no_neighbor, same_pane, not_found and cross_tab; a \
-                                       cross_tab here means the caller should have sent a move.",
+                            "impact" => "none. The daemon did nothing because there was nothing \
+                                         to do, so the caller is looking at what it asked for \
+                                         and this is a success.",
+                            "next" => "the reason is herdr's own word for why it was already \
+                                       so, and `considered` in this file is where that reading \
+                                       is decided.",
                         },
                     );
                 }
-                // Applied even when declined, because the layout an answer carries is the
+                // Applied even for an already-so answer, because the layout it carries is the
                 // daemon's current arrangement either way, and a mirror already holding it
                 // settles to a no-op.
                 settled(&result, None, &self.names)
@@ -442,6 +447,11 @@ impl HerdrBackend {
         // `changed` is a success with a reason beside it rather than an error, and it nests
         // one level down like every other herdr result - read off the top level it is `null`,
         // which is indistinguishable from a swap that did nothing.
+        //
+        // Deliberately not put through `considered`, which would refuse the caller. This swap is
+        // Muster's own second request rather than anything anybody asked for, and the split it
+        // follows succeeded: refusing here would report a pane that exists as a pane that does
+        // not, and there is nothing to undo it with that is not worse.
         let swap = answer.get("swap")?;
         if swap.get("changed").and_then(Value::as_bool) != Some(true) {
             log::warn(
@@ -470,7 +480,78 @@ impl HerdrBackend {
 /// here and is left alone.
 fn declined(result: &Value) -> Option<&str> {
     let changed = nested(result, "changed")?.as_bool()?;
-    (!changed).then(|| nested(result, "reason").and_then(Value::as_str).unwrap_or("(none given)"))
+    (!changed).then(|| nested(result, "reason").and_then(Value::as_str).unwrap_or(NO_REASON))
+}
+
+/// What [`declined`] reports for an answer that gave no reason, which herdr's schema allows of
+/// every verb that gives one.
+///
+/// Named rather than written twice because [`considered`] has to tell it from a word it does
+/// not recognise: those are the same decision and different prose, and a reader hunting either
+/// one would otherwise be hunting a string literal.
+const NO_REASON: &str = "(none given)";
+
+/// What a change the daemon considered and did not perform means for whoever asked for it.
+///
+/// The rule is that the state asked for either already holds or does not. A zoom of a tab
+/// holding one pane has nothing to hide and is looking at what it asked to see; a move into a
+/// zoomed tab did not happen and the caller is entitled to hear so. `None` is the first of
+/// those - the caller got what it wanted and there is nothing to report - and a refusal is the
+/// second.
+///
+/// Here rather than in the core because this is the reason vocabulary of one daemon, and
+/// classifying it *is* the translation: what leaves this function is Muster's own refusal, so
+/// nothing herdr-shaped reaches the seam. A second backend classifies its own words by the
+/// same rule, which `architecture.md` states under degradation.
+///
+/// Three reasons say the daemon and this window disagree about where a pane is, which is why
+/// they are [`Refusal::NotThere`] and cost a re-read of the session rather than a message.
+/// `not_found` is a pane the daemon does not hold - herdr answers that as a decline here
+/// rather than as the `pane_not_found` error `refusal` reads. `cross_tab` and `same_tab` are
+/// sharper than they look: `session::arrange_pane` picks between a swap and a move from its own
+/// mirror, so herdr contradicting that choice is the daemon saying which tab a pane is really
+/// in.
+///
+/// An unrecognized reason is a refusal. It may be a change that did not happen, and calling a
+/// change that happened refused costs one message somebody can check; the other way round is
+/// the silence this whole rule exists to end.
+pub fn considered(reason: &str) -> Option<Refusal> {
+    let said = |detail: &str| format!("{reason}: {detail}");
+    match reason {
+        // Already so. Each for its own reason - a one-pane tab fills its region, a divider at
+        // its limit is where a drag would leave it, a pane swapped with itself is where it was
+        // asked to be - and refusing any of them would put an error behind a chord somebody
+        // holds down. The self-drop has a precedent: `handler::arrange_pane` answers a row
+        // dropped on itself `ok` before a daemon ever hears about it.
+        "single_pane" | "already_zoomed" | "already_unzoomed" | "unchanged" | "same_pane" => None,
+        NO_REASON => Some(Refusal::Declined(said(
+            "the daemon declined and gave no reason. Read it as a change that did not happen: \
+             an answer that says nothing is not an answer that the state already held.",
+        ))),
+        "no_neighbor" => {
+            Some(Refusal::Declined(said("there is no pane on that side to swap with.")))
+        }
+        "zoomed_tab" => Some(Refusal::Declined(said(
+            "a tab in this move is zoomed, and herdr will not move a pane into or out of a \
+             zoomed tab. Unzoom it and drag again.",
+        ))),
+        "not_found" => Some(Refusal::NotThere(said(
+            "the daemon holds no pane by one of the names in this request, so this window is \
+             showing a pane that is not there.",
+        ))),
+        "cross_tab" => Some(Refusal::NotThere(said(
+            "the daemon has those two panes in different tabs and this window has them in one, \
+             so this window's idea of which tab they are in is stale.",
+        ))),
+        "same_tab" => Some(Refusal::NotThere(said(
+            "the daemon already has that pane in the tab it was asked to move to, so this \
+             window's idea of which tab it is in is stale.",
+        ))),
+        _ => Some(Refusal::Declined(said(
+            "the daemon declined, in a word this version of Muster does not know. Read it as a \
+             change that did not happen until somebody decides otherwise.",
+        ))),
+    }
 }
 
 /// The pane a split has to be rearranged against, for an intent herdr cannot do in one request.

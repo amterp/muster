@@ -377,21 +377,33 @@ pub struct Outcome {
 
 /// Why a backend would not make a change.
 ///
-/// Mostly prose for a log, because there is usually no second thing to try: a refused split
-/// is a split that did not happen, and the honest response is to say so where somebody will
-/// read it. One kind is different, and is why this is not just a string.
+/// Mostly prose to hand back to whoever asked, because there is usually no second thing to
+/// try: a refused split is a split that did not happen, and the honest response is to say so
+/// rather than to answer as though it had. One kind is different, and is why this is not just
+/// a string.
+///
+/// A backend that answers a change it declined with an ordinary success has to produce one of
+/// these itself, which is a reading of its own vocabulary: a request whose state already holds
+/// is a success, and one that did not happen is a refusal. herdr needs it - see
+/// `muster_herdr::considered` - and `architecture.md` states the rule under degradation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Refusal {
-    /// The backend does not hold what the request named.
+    /// The window's picture of what the request named is stale.
     ///
     /// Not a failure of the request so much as a report about Muster: the window is showing
     /// something that is not there, and every later request about it will be refused the same
     /// way. A daemon can drop a pane without saying so - herdr does, when a pane's terminal
     /// goes - so this is sometimes the only account of it there is, and it is worth acting on
     /// rather than logging.
+    ///
+    /// Usually a thing the backend does not hold at all. It also covers a thing it holds
+    /// somewhere else, when the refusal proves that much: Muster picks between swapping two
+    /// panes and moving one by reading which tabs they are in, so a backend refusing that
+    /// choice has said the window has a pane in the wrong tab. Either way the answer is to ask
+    /// what it does hold, because it will not volunteer it.
     NotThere(String),
 
-    /// Anything else. Worth a log line and nothing more.
+    /// Anything else. The request did not happen, and saying so is all there is to do.
     Declined(String),
 }
 

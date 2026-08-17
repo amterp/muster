@@ -1,0 +1,101 @@
+{
+  "concept": "muster.declinedIntent.kind",
+  "source": "authored",
+  "citation": "herdr v0.8.0's four reason vocabularies, complete, from corpus/herdr-0.8.0/api-schema.json: PaneZoomReason [single_pane, already_zoomed, already_unzoomed], PaneSwapReason [no_neighbor, same_pane, not_found, cross_tab], PaneMoveReason [same_tab, zoomed_tab], PaneResizeReason [unchanged], and PaneFocusDirectionReason [no_neighbor]. Which condition produces which is read from herdr v0.8.0's own source at src/app/api/panes.rs:435, 483, 529, 668, 702 and 1128.",
+  "why": "herdr answers a change it considered and did not perform with an ordinary success carrying `changed: false` and a reason, so a caller reading only the envelope cannot tell it from a change that worked - the one symptom is a window that does not move, which is also what a bug in the request looks like. The rule is that a decline whose state already holds is a success and a decline that did not happen is a refusal, and it is applied per reason because whether the state holds is a fact about the reason rather than about the verb.\n\nAuthored rather than recorded because the cases are policy: what a recording could establish is that herdr answers with these words, which api-schema.json already states and the live tests in crates/muster-herdr/tests/pane_arranging.rs exercise. What is being pinned here is the reading, so that changing it is a visible edit rather than a quiet one.\n\nThis is the second half of daemon-refusal.json, kept apart because that file classifies a daemon's *errors* and this classifies its successes. Both end in the same two-variant Refusal and are decided by two different functions.",
+  "cases": [
+    {
+      "name": "a zoom of a tab holding one pane",
+      "why": "The one that was found by running the app: `muster zoom` in a one-pane tab exited 0 having done nothing. Kept at a success deliberately - a tab with one pane in it already fills its region, so the caller is looking at what it asked to see. The alternative was an error behind ⌘⇧↩ in the most common state a tab can be in.",
+      "given": { "reason": "single_pane" },
+      "expect": { "kind": "already_so" }
+    },
+    {
+      "name": "a zoom of a pane that is zoomed",
+      "why": "Literally the state that was asked for. Unreachable today, because Muster sends no `mode` and herdr's default is to toggle - so this is the answer prepared for the day something asks to zoom `on` rather than to flip it.",
+      "given": { "reason": "already_zoomed" },
+      "expect": { "kind": "already_so" }
+    },
+    {
+      "name": "an unzoom of a pane that is not zoomed",
+      "why": "The mirror of the case above, and reachable by the same future route.",
+      "given": { "reason": "already_unzoomed" },
+      "expect": { "kind": "already_so" }
+    },
+    {
+      "name": "a resize that would not move the divider",
+      "why": "A divider already at its limit is where the drag would leave it. This one matters most for the keyboard: resize is bound to a chord somebody holds down, so a refusal here would be an error per press for as long as they lean on it.",
+      "given": { "reason": "unchanged" },
+      "expect": { "kind": "already_so" }
+    },
+    {
+      "name": "a pane swapped with itself",
+      "why": "Dropping a row on the row it came from. The precedent is already in the codebase: `handler::arrange_pane` answers a self-drop `ok` before a daemon hears about it, on the grounds that it is a gesture somebody makes by accident and telling them off for it puts a message in the log for a mistake with no cost.",
+      "given": { "reason": "same_pane" },
+      "expect": { "kind": "already_so" }
+    },
+    {
+      "name": "a swap with nothing on that side",
+      "why": "The card's own counterexample to the zoom above: a pane with no neighbour is not a pane already swapped. Unreachable today, because Muster always names both panes rather than a direction, and classified anyway - the rule is about what herdr can answer, not about what Muster currently asks.",
+      "given": { "reason": "no_neighbor" },
+      "expect": {
+        "kind": "declined",
+        "detail": "no_neighbor: there is no pane on that side to swap with."
+      }
+    },
+    {
+      "name": "a move into a zoomed tab",
+      "why": "The clearest refusal of the set, and the one with something to do about it: the pane is where it was, herdr will not put it where it was asked, and unzooming makes the same drag work. Reachable by zooming a tab and dragging a row into it.",
+      "given": { "reason": "zoomed_tab" },
+      "expect": {
+        "kind": "declined",
+        "detail": "zoomed_tab: a tab in this move is zoomed, and herdr will not move a pane into or out of a zoomed tab. Unzoom it and drag again."
+      }
+    },
+    {
+      "name": "a swap naming a pane the daemon does not hold",
+      "why": "The same fact as daemon-refusal.json's first case, arriving by the opposite route: herdr reports a missing pane on a swap as a decline rather than as the `pane_not_found` error, so this is a stale-window report that was being read as a success. `not_there` rather than `declined` because the answer is to ask the daemon what it does hold - the pane on screen cannot be focused, closed or typed into either.",
+      "given": { "reason": "not_found" },
+      "expect": {
+        "kind": "not_there",
+        "detail": "not_found: the daemon holds no pane by one of the names in this request, so this window is showing a pane that is not there."
+      }
+    },
+    {
+      "name": "a swap of two panes the daemon has in different tabs",
+      "why": "Stale rather than merely refused, and provably so. `session::arrange_pane` sends a swap only for two panes its own mirror has in one tab, and a move only for two it has in different ones - so herdr contradicting that choice is the daemon stating which tab a pane is really in. Nothing else in Muster ever hears that, since a pane whose tab changed under a window that missed the event produces no other symptom.",
+      "given": { "reason": "cross_tab" },
+      "expect": {
+        "kind": "not_there",
+        "detail": "cross_tab: the daemon has those two panes in different tabs and this window has them in one, so this window's idea of which tab they are in is stale."
+      }
+    },
+    {
+      "name": "a move to the tab the daemon already has the pane in",
+      "why": "The other half of the case above, reached by the other verb. herdr refuses a within-tab move outright rather than reordering, so this cannot mean a reorder that failed - it can only mean the mirror had the pane somewhere else.",
+      "given": { "reason": "same_tab" },
+      "expect": {
+        "kind": "not_there",
+        "detail": "same_tab: the daemon already has that pane in the tab it was asked to move to, so this window's idea of which tab it is in is stale."
+      }
+    },
+    {
+      "name": "a reason no version of Muster has read before",
+      "why": "The default, and it is a refusal on purpose. A herdr that grows a fifth reason may be describing a change that did not happen, and the two ways to be wrong are not symmetric: reporting a success as refused costs one message somebody can check, while reporting a refusal as a success costs the silence this whole rule exists to end. Same reading as an unrecognized event kind, which is reported rather than ignored.",
+      "given": { "reason": "flux_capacitor_cold" },
+      "expect": {
+        "kind": "declined",
+        "detail": "flux_capacitor_cold: the daemon declined, in a word this version of Muster does not know. Read it as a change that did not happen until somebody decides otherwise."
+      }
+    },
+    {
+      "name": "a decline with no reason at all",
+      "why": "herdr's schema makes every `reason` nullable, and `tab.move` answers a no-op with none at all (observations/herdr-0.8.0.md section 21). A `changed: false` with nothing beside it is still a change that did not happen, so it refuses rather than being read as an already - the one reading it cannot support is the one that needs a reason to justify it. Its own case rather than the unknown-word default because a missing reason and a reason nobody has read are different things to tell somebody.",
+      "given": { "reason": "(none given)" },
+      "expect": {
+        "kind": "declined",
+        "detail": "(none given): the daemon declined and gave no reason. Read it as a change that did not happen: an answer that says nothing is not an answer that the state already held."
+      }
+    }
+  ]
+}
