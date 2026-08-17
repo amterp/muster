@@ -42,7 +42,7 @@ use crate::proto::{
     BackendHealth, Event, PaneStateChanged, PaneTypeable, PresentationChanged,
     Problem as ProblemMessage, ProblemsChanged, event,
 };
-use crate::{convert, ffi};
+use crate::{command, convert, ffi};
 
 /// What Muster calls the daemon it found for itself.
 ///
@@ -492,6 +492,18 @@ fn write_daemon_configuration() -> Option<(String, bool)> {
 /// when the config did not say. For a remote one it is an ssh master forwarding that
 /// daemon's socket onto a path here - so the answer has the same shape either way, and the
 /// mirror, the subscription and the encoder below never learn which they got.
+/// Tells the panes of a daemon on this machine where this window listens.
+///
+/// Separate from the two builders because it is orthogonal to both: whether a pane has a config
+/// file to restore is about the daemon Muster started, and whether it can reach this window is
+/// about which machine it is on.
+fn reachable(panes: PaneEnvironment) -> PaneEnvironment {
+    match command::listening_at() {
+        Some(socket) => panes.reachable_at(&socket),
+        None => panes,
+    }
+}
+
 fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, String> {
     match endpoint {
         // A socket somebody named is a daemon somebody chose, of a version nobody promised.
@@ -500,7 +512,9 @@ fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, String> {
         Endpoint::Local { socket_path: Some(path) } => Ok(Reached {
             socket_path: path.clone(),
             tunnel: None,
-            panes: PaneEnvironment::none(),
+            // Nothing to restore, because Muster redirected nothing here - but a pane on this
+            // machine is still a pane that should be able to drive the window it is in.
+            panes: reachable(PaneEnvironment::none()),
             owns_config: false,
         }),
         Endpoint::Local { socket_path: None } => {
@@ -532,11 +546,11 @@ fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, String> {
             {
                 daemon::reload_configuration(&path);
             }
-            let panes = match &config {
+            let panes = reachable(match &config {
                 Some(_) => PaneEnvironment::restoring(&environment),
                 // Nowhere to write one, so nothing was redirected and nothing needs restoring.
                 None => PaneEnvironment::none(),
-            };
+            });
             Ok(Reached { socket_path: path, tunnel: None, panes, owns_config: config.is_some() })
         }
         // A remote is the one place Muster does not yet own its daemon, and the reason is
@@ -1594,6 +1608,45 @@ pub(crate) fn daemon_holding(pane: &PaneId) -> Option<DaemonId> {
 pub(crate) fn focused_daemon() -> Option<DaemonId> {
     let session = poison::lock(&SESSION, "session");
     session.composition.focused_region().map(|region| region.daemon.clone())
+}
+
+/// Everything about this window at one moment, for a caller that gets no events.
+///
+/// The shell is told what changed as it changes and builds its own picture; a script runs for
+/// one command and has nothing to build on, so it has to be able to ask. Same builders as
+/// [`publish`], so the answer cannot contradict what the window is drawing.
+pub(crate) struct WindowNow {
+    pub view: View,
+    pub roster: Roster,
+    /// Every pane, with the state the window would paint for it - which is not always the one
+    /// the daemon reported: `done` is this window's answer rather than the daemon's, because a
+    /// daemon cannot see which window has been looked at.
+    pub agents: Vec<(PaneKey, AgentState)>,
+    /// Each followed daemon, and how much of its truth Muster has.
+    pub daemons: Vec<(DaemonId, Health, String)>,
+}
+
+pub(crate) fn window() -> WindowNow {
+    let session = poison::lock(&SESSION, "session");
+    // No reconcile, unlike `publish`. This is a read: a caller asking what the window shows
+    // must not be able to move the keyboard or open a region by asking, and anything that
+    // needed reconciling has already published.
+    let view = session.view();
+    let roster = session.roster(&view);
+
+    let mut agents = Vec::new();
+    let mut daemons = Vec::new();
+    for (id, backend) in &session.backends {
+        let mirror = poison::lock(&backend.mirror, "mirror");
+        daemons.push((id.clone(), mirror.health(), mirror.health_detail().to_string()));
+        for pane in mirror.panes() {
+            let key = PaneKey::new(id, &pane.id);
+            let presented = session.attention.presented(&key, pane.agent_state);
+            agents.push((key, presented));
+        }
+    }
+
+    WindowNow { view, roster, agents, daemons }
 }
 
 /// Starts following every daemon a config file named.

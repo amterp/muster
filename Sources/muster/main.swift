@@ -38,11 +38,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // The daemon's own config file is the same division a fourth time: what a pane runs and
     // how deep its scrollback is are the core's to decide, and where the file telling the
     // daemon so gets written is an OS question.
+    // The endpoint is the division once more with a resource rather than a file: what a request
+    // means is the core's, and where a caller on this machine should look for this process is
+    // an OS question - which is why the pid in the name is decided here.
     let config = configPath()
     let daemon = herdrPath(executable: CommandLine.arguments[0])
+    // Sockets from Musters that were killed refuse every connection, and finding the endpoint
+    // means trying the ones that are there - so left alone they make the CLI slower to answer
+    // and harder to trust with every crash.
+    sweepDeadCommandSockets()
     Core.start(
       logPath: logPath, configPath: config, daemonPath: daemon, statePath: statePath(),
-      daemonConfigPath: daemonConfigPath(), paneNamesPath: paneNamesPath())
+      daemonConfigPath: daemonConfigPath(), paneNamesPath: paneNamesPath(),
+      commandSocketPath: commandSocketPath())
     Core.info(
       "app.launch",
       [

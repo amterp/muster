@@ -195,7 +195,7 @@ fn run(
                 if !running.load(Ordering::Relaxed) {
                     return;
                 }
-                poison::lock(mirror, "mirror").mark_stale();
+                poison::lock(mirror, "mirror").mark_stale(&detail);
                 report(Notice::Stale { detail });
             }
             Err(detail) => {
@@ -203,7 +203,11 @@ fn run(
                     // Disconnected rather than stale on a failed dial: nothing has been
                     // reached, so there is no last good answer to label as aging.
                     let mut mirror = poison::lock(mirror, "mirror");
-                    if connected_before { mirror.mark_stale() } else { mirror.mark_disconnected() }
+                    if connected_before {
+                        mirror.mark_stale(&detail);
+                    } else {
+                        mirror.mark_disconnected(&detail);
+                    }
                 }
                 report(Notice::Stale { detail });
             }

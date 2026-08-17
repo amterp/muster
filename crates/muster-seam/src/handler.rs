@@ -18,9 +18,9 @@ use muster_core::mirror::backend::{PaneId, TabId};
 use muster_core::problems::Severity;
 use muster_core::roster::TabStep;
 
-use crate::convert;
 use crate::proto::{self, Request, Response, event, request, response};
 use crate::session::{self, AttachError, AttachedPane};
+use crate::{command, convert};
 use prost::Message;
 
 /// Answers one encoded request.
@@ -75,6 +75,7 @@ fn handle(request: Request) -> Response {
             act(&close.daemon_id, &close.pane_id, |pane| BackendIntent::ClosePane { pane })
         }
         request::Payload::ReadBindings(_) => read_bindings(),
+        request::Payload::ReadWindow(_) => read_window(),
         request::Payload::ReadAppearance(_) => read_appearance(),
         request::Payload::ResizePane(resize) => resize_pane(&resize),
         request::Payload::ToggleSidebar(_) => {
@@ -665,6 +666,39 @@ fn read_bindings() -> Response {
     Response { payload: Some(response::Payload::Bindings(bindings_message())) }
 }
 
+/// What this window is showing, what it holds that it is not showing, and how its agents are.
+///
+/// The read that makes the endpoint worth having. An agent driving a window has no eyes: it can
+/// split a pane and start something in it, and without this it can never learn whether either
+/// happened. The same four messages the shell is sent as events, from the same builders.
+fn read_window() -> Response {
+    let now = session::window();
+    Response {
+        payload: Some(response::Payload::Window(proto::Window {
+            view: Some(convert::view(&now.view)),
+            roster: Some(convert::roster(&now.roster)),
+            panes: now
+                .agents
+                .iter()
+                .map(|(pane, state)| proto::PaneStateChanged {
+                    daemon_id: pane.daemon.to_string(),
+                    pane_id: pane.pane.to_string(),
+                    state: state.as_str().to_string(),
+                })
+                .collect(),
+            daemons: now
+                .daemons
+                .iter()
+                .map(|(daemon, health, detail)| proto::BackendHealth {
+                    daemon_id: daemon.to_string(),
+                    state: health.as_str().to_string(),
+                    detail: detail.clone(),
+                })
+                .collect(),
+        })),
+    }
+}
+
 /// Which chord means what, as the config file left it.
 ///
 /// One builder for the read and the event, so the answer a launch gets and the answer a reload
@@ -841,6 +875,12 @@ fn start(startup: &proto::Startup) -> Response {
     // afterwards, every pane already open would be named a second time, and a program running
     // in one would hold a name for nothing.
     session::set_pane_names_path(&startup.pane_names_path);
+    // After every path above, because a request arriving here goes through this same dispatcher
+    // and can reach any of them. Before the config is deliberate too: applying one can wait on
+    // a daemon starting, and a caller that dials during that gets a window with no daemons
+    // attached, which is the truth at that moment and says so - the health in the answer is
+    // `disconnected` rather than the pane list merely being empty.
+    command::listen(&startup.command_socket_path);
     // Before the config too, because applying one can start a daemon and the locale is part of
     // the environment that daemon is born with. Set after, it would reach the second launch.
     session::set_platform_locale(&startup.locale);

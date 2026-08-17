@@ -8,9 +8,14 @@
 //!
 //! The exported functions are declared in `include/muster.h`, which is hand-written
 //! because it is the contract.
+//!
+//! One symbol in, and now also one socket: `command` answers the same `Request` from outside
+//! the process, through the same [`dispatch`]. The seam is where a transport is turned into a
+//! request, so both transports belong here and neither is a second path.
 
 // Public because the exported symbols are this crate's whole surface, even though no Rust
 // caller reaches them - `unreachable_pub` cannot see through `extern "C"`.
+pub mod command;
 mod convert;
 pub mod ffi;
 mod handler;

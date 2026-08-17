@@ -51,8 +51,21 @@ message Request {
     Find find = 32;
     FindStep find_step = 33;
     EndFind end_find = 34;
+    ReadWindow read_window = 35;
   }
 }
+
+// Asks what this window is showing, and what it holds that it is not showing.
+//
+// Every other read here answers a question about configuration. This one answers a question
+// about state, and it exists because a caller that is not the shell has no events: the shell
+// is told when the view changes and builds a picture from the stream, while a script runs for
+// one command and has to be able to ask. An agent has no eyes at all, so without this it can
+// act on the window and never learn what it did.
+//
+// Answered from the same builders the events come from, so there is one account of what a
+// window is rather than a read that can disagree with what is on screen.
+message ReadWindow {}
 
 // Looks for text in a pane, and puts the first match on screen.
 //
@@ -526,7 +539,35 @@ message Response {
     Bindings bindings = 4;
     Appearance appearance = 5;
     Findings findings = 6;
+    Window window = 7;
   }
+}
+
+// Everything about a window at one moment: what it draws, what it holds, and how the agents in
+// it are doing.
+//
+// The four messages a shell is sent as events, gathered into one answer. Reused rather than
+// restated: a second vocabulary for "this pane's agent is blocked" would be two places to keep
+// in agreement about what the words mean, and the point of answering from the same builders is
+// that a read cannot contradict the stream.
+message Window {
+  ViewChanged view = 1;
+  RosterChanged roster = 2;
+
+  // Every pane every followed daemon holds, on screen or not, and what this window would paint
+  // for it. A pane running an ordinary shell is `unknown`, the same word as an agent whose
+  // harness could not be read - the daemon draws no distinction and neither does this.
+  //
+  // What the window would paint, not what the daemon said: `done` is decided per window,
+  // because a daemon cannot see which window somebody has looked at.
+  repeated PaneStateChanged panes = 3;
+
+  // How much of each daemon's truth Muster currently has.
+  //
+  // Here because the rest of this answer is a mirror, and a mirror nobody has heard from in an
+  // hour looks exactly like a current one. A caller told a window's shape and not told that is
+  // a caller acting on a picture Muster itself does not vouch for.
+  repeated BackendHealth daemons = 4;
 }
 
 // What a search found, which is everything a find bar draws.
@@ -663,6 +704,18 @@ message Startup {
   // The same division as state_path, and beside it in the same directory. Empty is a real
   // state: names then last exactly one launch, which is what they did before this existed.
   string pane_names_path = 9;
+
+  // Where to listen for requests from outside this process, or empty for nowhere.
+  //
+  // The same Request the shell sends over the C ABI, arriving on a unix socket instead. That
+  // is what lets a script or an agent in a pane drive the window it is sitting in, which no
+  // amount of talking to a daemon can do: a daemon knows its own panes and nothing about
+  // regions, tabs, focus, or the other daemon this window also shows.
+  //
+  // The path carries this process's pid, because two Musters are two windows and a caller has
+  // to be able to reach the one it means. Empty is what every test gets and what a build with
+  // no endpoint wanted - the window then answers only its own shell.
+  string command_socket_path = 10;
 
   // trace, debug, info, warn, error. Empty means debug.
   string log_level = 2;

@@ -21,6 +21,7 @@ crate-type = ["cdylib", "rlib"]
 muster-core.workspace = true
 muster-herdr.workspace = true
 muster-ssh.workspace = true
+libc.workspace = true
 prost.workspace = true
 muster-vt.workspace = true
 

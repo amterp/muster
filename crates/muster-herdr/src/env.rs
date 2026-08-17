@@ -10,7 +10,8 @@
 //! thing that ever tells a program inside a pane which pane it is in. That is why this is
 //! built per request rather than once at attach - the name is minted for the very request that
 //! creates the pane, because the daemon's own id for it does not exist until the answer comes
-//! back (see [`muster_core::names`]).
+//! back (see [`muster_core::names`]). `MUSTER_SOCKET` travels with it and says which Muster to
+//! tell; between them they are the whole of how a program in a pane drives its own window.
 //!
 //! **Why this is a parameter rather than a scrub.** The alternative was to unset the variable
 //! before spawning, which is a discipline nobody can verify from outside: the symptom of
@@ -36,6 +37,14 @@ use crate::discovery::config_file;
 /// Renaming it breaks every pane already running, which is why it is a constant rather than a
 /// literal at the one call site.
 pub const PANE_NAME: &str = "MUSTER_PANE";
+
+/// What a pane reads to find the window it is in.
+///
+/// The pair with [`PANE_NAME`], and useless without it: knowing which Muster to ask is only half
+/// of being able to say "this pane". Set per window rather than looked up, because a machine can
+/// have several Musters open and a pane belongs to exactly one - a program that went looking
+/// would find several and have no way to tell which one is drawing it.
+pub const WINDOW_SOCKET: &str = "MUSTER_SOCKET";
 
 /// The environment entries a pane-creating request carries.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -77,6 +86,19 @@ impl PaneEnvironment {
     pub fn with_pane_name(&self, name: &PaneId) -> PaneEnvironment {
         let mut entries = self.entries.clone();
         entries.insert(PANE_NAME.to_string(), name.as_str().to_string());
+        PaneEnvironment { entries }
+    }
+
+    /// The same entries, plus the endpoint of the window these panes will be in.
+    ///
+    /// Only for a daemon on this machine. A unix socket path means nothing on the far side of an
+    /// ssh tunnel: a devenv pane handed one would either find no such file or, worse, find some
+    /// unrelated one - so a remote pane is told nothing and its programs correctly conclude they
+    /// are not in a Muster they can drive.
+    #[must_use]
+    pub fn reachable_at(&self, socket: &str) -> PaneEnvironment {
+        let mut entries = self.entries.clone();
+        entries.insert(WINDOW_SOCKET.to_string(), socket.to_string());
         PaneEnvironment { entries }
     }
 

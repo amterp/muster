@@ -81,6 +81,14 @@ pub struct Mirror {
     awaiting_echo: BTreeMap<TabId, LayoutNode>,
     focus: Focus,
     health: Health,
+    /// Why the health is what it is, for anyone who has to say so out loud. Empty when
+    /// connected, because a live connection needs no excuse.
+    ///
+    /// Kept beside the health rather than only logged, because it is asked for outside the
+    /// moment it happened: an event carries it to a shell that was listening, and a `Window`
+    /// read has to answer a caller that was not. "stale" alone tells somebody their picture
+    /// might be wrong and nothing about whether to wait or go looking.
+    health_detail: String,
     /// The agent-state stamp the last snapshot carried. herdr issues these from one
     /// session-wide counter, so comparing two snapshots says how many transitions ran in
     /// between - including on panes this mirror has never heard of
@@ -119,6 +127,7 @@ impl Mirror {
         self.superseded.clear();
         self.awaiting_echo.clear();
         self.health = Health::Connected;
+        self.health_detail.clear();
         let previous_seq = std::mem::replace(&mut self.agent_state_seq, snapshot.agent_state_seq);
         let applied = std::mem::take(&mut self.agent_transitions_applied);
 
@@ -588,16 +597,22 @@ impl Mirror {
         }
     }
 
-    pub fn mark_stale(&mut self) {
+    pub fn mark_stale(&mut self, detail: &str) {
         self.health = Health::Stale;
+        self.health_detail = detail.to_string();
     }
 
-    pub fn mark_disconnected(&mut self) {
+    pub fn mark_disconnected(&mut self, detail: &str) {
         self.health = Health::Disconnected;
+        self.health_detail = detail.to_string();
     }
 
     pub fn health(&self) -> Health {
         self.health
+    }
+
+    pub fn health_detail(&self) -> &str {
+        &self.health_detail
     }
 
     pub fn pane(&self, id: &PaneId) -> Option<&Pane> {
