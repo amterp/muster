@@ -58,9 +58,14 @@ public enum PaneAppearance {
   /// `daemon` names whose health this is, because a window can show more than one and only
   /// the unhealthiest reaches the title. Empty leaves it out, which is what a window with
   /// nothing attached has to say.
+  /// `unseenProblems` is how many problems have nowhere else to appear, which is the count
+  /// outstanding whenever the roster is off screen and zero whenever it is on. The roster says
+  /// this properly, with the sentence and what to do about it; the title only has room to say
+  /// that there is something, and a window too narrow for a roster would otherwise be a window
+  /// that says nothing at all.
   public static func title(
     paneID: String?, zoomed: Bool, health: String, detail: String, daemon: String = "",
-    problem: String? = nil, rendererCheck: Bool = false
+    problem: String? = nil, rendererCheck: Bool = false, unseenProblems: Int = 0
   ) -> String {
     guard let paneID, !paneID.isEmpty else {
       if rendererCheck { return "muster (renderer check - keyboard not connected)" }
@@ -68,12 +73,23 @@ public enum PaneAppearance {
       // The health too, because the commonest reason a window has no panes and did not ask
       // to is that the daemon holding them went away.
       return "muster - no panes" + reported(health: health, detail: detail, daemon: daemon)
+        + counted(problems: unseenProblems)
     }
     var title = "muster - \(paneID)"
     if zoomed {
       title += " · zoomed"
     }
     return title + reported(health: health, detail: detail, daemon: daemon)
+      + counted(problems: unseenProblems)
+  }
+
+  /// What a title says about problems it is the only place to mention.
+  private static func counted(problems: Int) -> String {
+    switch problems {
+    case ..<1: return ""
+    case 1: return " · 1 problem"
+    default: return " · \(problems) problems"
+    }
   }
 
   /// What a title says about a daemon, which is nothing at all while it is answering.

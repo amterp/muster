@@ -15,6 +15,7 @@ use muster_core::find::Needle;
 use muster_core::input::{CompositionOutcome, Modifiers, ScrollDirection, composition_outcome};
 use muster_core::intent::{BackendIntent, Branch, Side};
 use muster_core::mirror::backend::{PaneId, TabId};
+use muster_core::problems::Severity;
 use muster_core::roster::TabStep;
 
 use crate::convert;
@@ -903,54 +904,126 @@ fn apply_config(path: &str) {
         return;
     }
     session::set_config_path(path);
+    let Some(config) = read_config(path, Reading::Launch) else {
+        return;
+    };
+    log::info(
+        "config.read",
+        fields! {
+            "path" => path.to_string(),
+            "daemons" => config.daemons.len().to_string(),
+            "option_as_alt" => config.input.option_as_alt.as_str(),
+            "text_bindings" => config.input.text.len().to_string(),
+        },
+    );
+    session::set_bindings(config.bindings.clone());
+    session::set_pane_input(config.input.clone());
+    session::set_feel(config.feel);
+    session::set_appearance(config.appearance.clone());
+    // Before following, which is what writes the derived config and starts a daemon
+    // that reads it. Set after, a first launch would give its daemon last launch's
+    // answer about what a pane runs.
+    session::set_panes(config.panes.clone());
+    session::set_configured_daemons(&config.daemons);
+    session::follow_configured(&config);
+}
+
+/// The one problem key a config file can raise.
+///
+/// One rather than one per way of failing, because only one of them can be true at a time and
+/// every one of them is fixed by the same act - editing the file until Muster accepts it. Two
+/// keys would mean each read had to remember to clear the other's, which is a thing to forget.
+const CONFIG_PROBLEM: &str = "config";
+
+/// Which of the two moments is reading the file.
+///
+/// The moments differ in what a failure means for the window, and that difference is real
+/// enough to be worth saying in the log: at launch no configured daemon gets attached, on a
+/// save nothing changes at all. Everything else about failing is the same.
+#[derive(Clone, Copy)]
+enum Reading {
+    Launch,
+    Reload,
+}
+
+impl Reading {
+    fn event(self, kind: &str) -> String {
+        match self {
+            Reading::Launch => format!("config.{kind}"),
+            Reading::Reload => format!("config.reload.{kind}"),
+        }
+    }
+
+    /// What the window is left doing, which is the line an investigator reads first.
+    fn impact(self) -> &'static str {
+        match self {
+            Reading::Launch => {
+                "no daemon named in that file is attached, so the window shows only the daemon \
+                 on this machine"
+            }
+            Reading::Reload => {
+                "nothing changed; the window is still running the settings it started with, so \
+                 this is a file to fix rather than a window to restart"
+            }
+        }
+    }
+}
+
+/// Reads the config file, or says why not - and tells the person either way.
+///
+/// Shared by the launch and the reload because they have to fail identically. They used not
+/// to: there were two copies of this parse, four log event names between them and two
+/// hand-written impact lines, so anything either moment learned to do about a bad file had to
+/// be learned twice. Raising a problem is exactly such a thing, and it would have landed in
+/// one of them.
+///
+/// Every exit clears or raises `CONFIG_PROBLEM`, which is what makes the window's answer
+/// track the file rather than track whichever read happened last. A file fixed after a
+/// refusal clears it here, and that disappearance is the only confirmation anybody gets that
+/// a save was accepted.
+fn read_config(path: &str, reading: Reading) -> Option<config::Config> {
     let text = match std::fs::read_to_string(path) {
         Ok(text) => text,
         Err(error) => {
+            let detail = format!(
+                "Muster could not read its config file at {path}: {error}. It is running on \
+                 defaults until that file can be read. Check that the path exists and is \
+                 readable."
+            );
             log::warn(
-                "config.unreadable",
+                &reading.event("unreadable"),
                 fields! {
                     "path" => path.to_string(),
                     "detail" => error.to_string(),
-                    "impact" => "no daemon named in that file is attached, so the window shows \
-                                  only the daemon on this machine",
-                    "check" => "whether the path exists and is readable; the shell only sends one \
-                                 it has already seen",
+                    "impact" => reading.impact(),
+                    "check" => "whether the path exists and is readable; the shell only sends \
+                                one it has already seen",
                 },
             );
-            return;
+            session::raise_problem(CONFIG_PROBLEM, Severity::Error, &detail);
+            return None;
         }
     };
     match config::parse(&text) {
         Ok(config) => {
-            log::info(
-                "config.read",
+            session::clear_problem(CONFIG_PROBLEM);
+            Some(config)
+        }
+        Err(refusal) => {
+            log::warn(
+                &reading.event("refused"),
                 fields! {
                     "path" => path.to_string(),
-                    "daemons" => config.daemons.len().to_string(),
-                    "option_as_alt" => config.input.option_as_alt.as_str(),
-                    "text_bindings" => config.input.text.len().to_string(),
+                    "detail" => refusal.clone(),
+                    "impact" => reading.impact(),
                 },
             );
-            session::set_bindings(config.bindings.clone());
-            session::set_pane_input(config.input.clone());
-            session::set_feel(config.feel);
-            session::set_appearance(config.appearance.clone());
-            // Before following, which is what writes the derived config and starts a daemon
-            // that reads it. Set after, a first launch would give its daemon last launch's
-            // answer about what a pane runs.
-            session::set_panes(config.panes.clone());
-            session::set_configured_daemons(&config.daemons);
-            session::follow_configured(&config);
+            // The refusal, whole and unedited. `config.rs` writes these to be read by whoever
+            // caused them - they name the value, what stopped working and what to type instead
+            // - so anything composed here would be a worse sentence about the same fact.
+            session::raise_problem(CONFIG_PROBLEM, Severity::Error, &refusal);
+            None
         }
-        Err(refusal) => log::warn(
-            "config.refused",
-            fields! {
-                "path" => path.to_string(),
-                "detail" => refusal,
-                "impact" => "no daemon named in that file is attached, so the window shows only \
-                              the daemon on this machine",
-            },
-        ),
     }
 }
 
@@ -971,38 +1044,8 @@ fn reload_config() -> Response {
         return Response::ok();
     }
 
-    let text = match std::fs::read_to_string(&path) {
-        Ok(text) => text,
-        Err(error) => {
-            log::warn(
-                "config.reload.unreadable",
-                fields! {
-                    "path" => path.clone(),
-                    "detail" => error.to_string(),
-                    "impact" => "nothing changed; the window is still running the settings it \
-                                 started with",
-                    "check" => "whether the file still exists - it was readable at launch",
-                },
-            );
-            return Response::ok();
-        }
-    };
-
-    let config = match config::parse(&text) {
-        Ok(config) => config,
-        Err(refusal) => {
-            log::warn(
-                "config.reload.refused",
-                fields! {
-                    "path" => path.clone(),
-                    "detail" => refusal,
-                    "impact" => "nothing changed; the window is still running the settings it \
-                                 started with, so this is a file to fix rather than a window to \
-                                 restart",
-                },
-            );
-            return Response::ok();
-        }
+    let Some(config) = read_config(&path, Reading::Reload) else {
+        return Response::ok();
     };
 
     // Named before anything is applied, because it is the one thing a reload cannot do and the

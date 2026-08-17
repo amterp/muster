@@ -701,6 +701,20 @@ public enum Core {
           "on_screen": String(roster.panes.filter(\.onScreen).count),
         ])
       window?.apply(roster)
+    case .problemsChanged(let changed):
+      let problems = changed.problems.map {
+        Problem(key: $0.key, severity: Problem.Severity($0.severity), detail: $0.detail)
+      }
+      // Counted rather than quoted. The detail is already in the core's own warning beside
+      // this line, and a run log that repeated every refusal twice would be harder to read
+      // for no new fact.
+      info(
+        "problems.received",
+        [
+          "count": String(problems.count),
+          "errors": String(problems.filter { $0.severity == .error }.count),
+        ])
+      window?.apply(problems: problems)
     case .presentationChanged(let changed):
       let presentation = Presentation(
         sidebar: changed.sidebar, fontSizeOffset: changed.fontSizeOffset)

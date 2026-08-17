@@ -812,7 +812,44 @@ message Event {
     PresentationChanged presentation_changed = 6;
     AppearanceChanged appearance_changed = 7;
     BindingsChanged bindings_changed = 8;
+    ProblemsChanged problems_changed = 9;
   }
+}
+
+// What is wrong with this window, whole.
+//
+// Sent whole rather than as one problem arriving or leaving, on the same terms as
+// RosterChanged and ViewChanged and for the same reason: clearing is then an empty list, and
+// there is no add-and-remove protocol for a shell to fall out of step with. Sent once at
+// startup too, like PresentationChanged, so a shell never has to guess a default.
+//
+// Sending it whole is also what lets a launch report one. An event cannot reach a shell
+// during startup - that is the split AppearanceChanged describes, where a launch asks and a
+// reload is told - but a problem raised before the event loop existed is still outstanding
+// once it does, so the first publication carries it. One mechanism covers both moments,
+// which is what keeps a config refused at launch from being reported differently to one
+// refused on save.
+message ProblemsChanged {
+  repeated Problem problems = 1;
+}
+
+// One thing that is wrong, worst first in the list above.
+message Problem {
+  // Names the condition rather than the occasion, so the same thing found twice is one
+  // problem. A file saved ten times with one typo raises `config.refused` ten times and is
+  // one entry here, which is what stops a watcher from nagging.
+  string key = 1;
+
+  // `error` or `warning`. The split is what somebody has to do, not how bad it is: an error
+  // will not recover without a human edit and opens a sidebar that was closed, a warning is
+  // content to be found when somebody next looks. See `problems.rs` for why there is no
+  // third level.
+  string severity = 2;
+
+  // What to tell the person, in the words of whatever found it. Muster's own refusals
+  // already name the file, the value, what stopped working and what to type instead, so
+  // this is passed through untouched rather than summarized.
+  string detail = 3;
 }
 
 // What Muster should look like, after the config file was read again.

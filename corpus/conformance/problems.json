@@ -1,0 +1,174 @@
+{
+  "concept": "problems",
+  "source": "authored",
+  "citation": "README.md (a file that will not parse changes nothing at all and says so) and crates/muster-core/src/problems.rs. There is no oracle above these: what a window owes the person who just broke their config is Muster's call, and these cases are where it is written down.",
+  "why": "A problem is a condition rather than a message, and almost every rule worth having follows from that one decision. Raising the same condition twice is one problem, so a file saved ten times with one typo cannot stack ten boxes or reopen a roster ten times. Clearing is what a success path does whether or not anything was wrong, so the common call changes nothing. And nothing here is ever read or acknowledged, so the list cannot come to disagree with what is actually true.\n\nEvery case answers with `changed` per step as well as the state at the end, because whether a step was news is the half that stops Muster from nagging: it decides whether anything is published and whether a closed roster is opened. A rule that only checked the final list would pass while the window flashed on every keystroke of somebody editing their config.",
+  "cases": [
+    {
+      "name": "the first time something is wrong, that is news",
+      "why": "The base case, and the one that has to work for any of this to matter: before this existed the same fact went to a log file and the window said nothing.",
+      "given": {
+        "steps": [
+          {
+            "raise": "config",
+            "severity": "error",
+            "detail": "`resize_step` in the config file is 10, and it needs a unit now."
+          }
+        ]
+      },
+      "expect": {
+        "changed": [true],
+        "outstanding": [
+          "error config: `resize_step` in the config file is 10, and it needs a unit now."
+        ],
+        "has_error": true
+      }
+    },
+    {
+      "name": "the same problem raised again is one problem, and not news the second time",
+      "why": "The rule that keeps a watcher from fighting the person it serves. Saving a file that is still broken in the same way re-reads it and raises the same condition, and if that counted as news the roster would reopen every time somebody pressed save while editing - which is exactly when they are least able to spare the panes being reflowed.",
+      "given": {
+        "steps": [
+          { "raise": "config", "severity": "error", "detail": "the same complaint" },
+          { "raise": "config", "severity": "error", "detail": "the same complaint" }
+        ]
+      },
+      "expect": {
+        "changed": [true, false],
+        "outstanding": ["error config: the same complaint"],
+        "has_error": true
+      }
+    },
+    {
+      "name": "the same condition with something new to say is news",
+      "why": "The other half of the rule above, and the reason it compares the message rather than only the key. Somebody editing a broken config usually breaks it differently on the way to fixing it, and the box has to follow what the file now says rather than keep showing the first complaint.",
+      "given": {
+        "steps": [
+          { "raise": "config", "severity": "error", "detail": "resize_step needs a unit" },
+          { "raise": "config", "severity": "error", "detail": "divider is not a colour" }
+        ]
+      },
+      "expect": {
+        "changed": [true, true],
+        "outstanding": ["error config: divider is not a colour"],
+        "has_error": true
+      }
+    },
+    {
+      "name": "the same words at a new severity are news",
+      "why": "Severity decides whether a closed roster gets opened, so a condition that becomes more serious has to be able to say so. Comparing only the message would leave a warning quietly standing in for an error.",
+      "given": {
+        "steps": [
+          { "raise": "daemon", "severity": "warning", "detail": "devenv has gone stale" },
+          { "raise": "daemon", "severity": "error", "detail": "devenv has gone stale" }
+        ]
+      },
+      "expect": {
+        "changed": [true, true],
+        "outstanding": ["error daemon: devenv has gone stale"],
+        "has_error": true
+      }
+    },
+    {
+      "name": "fixing it is news, and staying fixed is not",
+      "why": "The disappearance is the only confirmation anybody gets that a save was accepted, so it has to be published. What must not be published is every subsequent successful read: every success path clears the problem its failure path raises, so a window with a good config clears this on every reload forever.",
+      "given": {
+        "steps": [
+          { "raise": "config", "severity": "error", "detail": "resize_step needs a unit" },
+          { "clear": "config" },
+          { "clear": "config" }
+        ]
+      },
+      "expect": {
+        "changed": [true, true, false],
+        "outstanding": [],
+        "has_error": false
+      }
+    },
+    {
+      "name": "clearing something that was never wrong changes nothing",
+      "why": "The commonest call of all. A window launched with a config that parses clears this before anything has ever been raised, and that must not count as a change - otherwise every launch publishes an empty list somebody has to ignore.",
+      "given": {
+        "steps": [{ "clear": "config" }]
+      },
+      "expect": {
+        "changed": [false],
+        "outstanding": [],
+        "has_error": false
+      }
+    },
+    {
+      "name": "errors come before warnings, and ties are broken by key",
+      "why": "Two surfaces draw this - the roster's box, which shows the worst, and a title that has room for a count - and they must not disagree about which problem is the important one. Sorting here rather than in either of them is what makes that impossible. The tie-break is the key so that two runs of the same code produce the same order; a list that shuffled between publishes would redraw for no reason.",
+      "given": {
+        "steps": [
+          { "raise": "renderer", "severity": "warning", "detail": "a font nobody installed" },
+          { "raise": "watcher", "severity": "error", "detail": "saves will not be noticed" },
+          { "raise": "config", "severity": "error", "detail": "resize_step needs a unit" },
+          { "raise": "daemon", "severity": "warning", "detail": "devenv has gone stale" }
+        ]
+      },
+      "expect": {
+        "changed": [true, true, true, true],
+        "outstanding": [
+          "error config: resize_step needs a unit",
+          "error watcher: saves will not be noticed",
+          "warning daemon: devenv has gone stale",
+          "warning renderer: a font nobody installed"
+        ],
+        "has_error": true
+      }
+    },
+    {
+      "name": "a window with only warnings has no error",
+      "why": "What decides whether Muster opens a roster somebody closed. A stale daemon is worth listing and is not worth reflowing every pane to announce, and this is the answer that draws that line.",
+      "given": {
+        "steps": [
+          { "raise": "daemon", "severity": "warning", "detail": "devenv has gone stale" },
+          { "raise": "renderer", "severity": "warning", "detail": "a font nobody installed" }
+        ]
+      },
+      "expect": {
+        "changed": [true, true],
+        "outstanding": [
+          "warning daemon: devenv has gone stale",
+          "warning renderer: a font nobody installed"
+        ],
+        "has_error": false
+      }
+    },
+    {
+      "name": "clearing one condition leaves the others alone",
+      "why": "Keys name conditions rather than occasions, and this is what that buys: the config being fixed says nothing about the daemon, and a list that cleared wholesale on any success would lose the problem nobody had addressed.",
+      "given": {
+        "steps": [
+          { "raise": "config", "severity": "error", "detail": "resize_step needs a unit" },
+          { "raise": "daemon", "severity": "warning", "detail": "devenv has gone stale" },
+          { "clear": "config" }
+        ]
+      },
+      "expect": {
+        "changed": [true, true, true],
+        "outstanding": ["warning daemon: devenv has gone stale"],
+        "has_error": false
+      }
+    },
+    {
+      "name": "an error clearing while a warning stands stops being an error",
+      "why": "The condition Muster reads to decide whether it may put a borrowed roster away. It has to be about what is outstanding now rather than about what has ever been raised, or a window that met one error would keep the roster open for the rest of its life.",
+      "given": {
+        "steps": [
+          { "raise": "config", "severity": "error", "detail": "resize_step needs a unit" },
+          { "raise": "daemon", "severity": "warning", "detail": "devenv has gone stale" },
+          { "clear": "config" },
+          { "clear": "daemon" }
+        ]
+      },
+      "expect": {
+        "changed": [true, true, true, true],
+        "outstanding": [],
+        "has_error": false
+      }
+    }
+  ]
+}

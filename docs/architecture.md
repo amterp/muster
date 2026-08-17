@@ -526,6 +526,20 @@ a CLI dispatch. That is what keeps "one action path" true of things nobody press
 implementation that drifts from the first, and a bug report where the answer depends on how the reload was asked
 for.
 
+**A failure the person caused is reported to the person, as a condition rather than a message.** The core holds a
+list of problems keyed by what is wrong (`problems.rs`), publishes it whole, and the roster draws it at its foot;
+raising the same condition twice is one problem, and it clears when the condition does. Keyed and whole because both
+alternatives break the same way: a stream of messages lets a window go on showing a config refusal after the file
+was fixed, and an add-and-remove protocol lets it disagree about how many there are. The disappearance is also the
+only acknowledgement a fix ever gets.
+
+The run log is not that surface, and mistaking it for one cost a whole evening: a `resize_step` written without its
+unit refused a config file at 18:55, every setting in it went inert, and the window said nothing until somebody
+opened a JSON file the next morning. So a run log entry answers "what happened here" for whoever is debugging, and a
+problem answers "what do I do now" for whoever is typing - the same fact, twice, because the two readers arrive by
+different doors. Severity exists to decide interruption and nothing else: an error opens a roster somebody closed, a
+warning waits to be found.
+
 Nothing renders an intent optimistically. A split, a close, a focus and a divider drag are all requests, and what
 came of them arrives as the next published view - so a window can never show an arrangement no daemon agreed to. The
 one thing an intent may settle locally is where Muster's own keyboard lands, because that is Muster's state and not

@@ -27,6 +27,7 @@ use muster_core::input::{Bindings, PaneInput, PaneInputSettings, ScrollDirection
 use muster_core::intent::{BackendChannel, BackendIntent, Refusal};
 use muster_core::mirror::backend::{PaneId, Snapshot, TabId, WorkspaceId};
 use muster_core::mirror::{Change, Mirror};
+use muster_core::problems::{Problem, Problems, Severity};
 use muster_core::roster::{Roster, RosterTab, TabStep};
 use muster_herdr::subscription::{Notice, Subscription};
 use muster_herdr::{
@@ -37,7 +38,8 @@ use muster_ssh::{Forward, Tunnel, remote_environment};
 use muster_vt::KeyEncoder;
 
 use crate::proto::{
-    BackendHealth, Event, PaneStateChanged, PaneTypeable, PresentationChanged, event,
+    BackendHealth, Event, PaneStateChanged, PaneTypeable, PresentationChanged,
+    Problem as ProblemMessage, ProblemsChanged, event,
 };
 use crate::{convert, ffi};
 
@@ -207,6 +209,164 @@ pub(crate) fn set_appearance(appearance: Appearance) {
 /// paints what it would have painted anyway.
 pub(crate) fn appearance() -> Appearance {
     poison::lock(&APPEARANCE, "settings").clone().unwrap_or_default()
+}
+
+/// What is wrong with this window, and whether Muster opened the roster to say so.
+///
+/// Beside the settings rather than in `SESSION` because a problem is not part of an
+/// arrangement: nothing here is written to `window.toml` and nothing survives a launch. A
+/// config still broken on the next launch is raised again by reading it again, which is the
+/// only answer that cannot go stale.
+static PROBLEMS: Mutex<Option<ProblemState>> = Mutex::new(None);
+
+#[derive(Default)]
+struct ProblemState {
+    problems: Problems,
+
+    /// True when Muster opened the roster itself to show an error, having found it closed.
+    /// Kept so that clearing the last error can put it back the way somebody left it -
+    /// borrowing the roster is defensible, keeping it is not.
+    opened_sidebar: bool,
+}
+
+/// Records that something is wrong, and makes sure somebody can see it.
+///
+/// Everything a caller has to remember is in here on purpose. Publishing only on a real
+/// change is what stops a file saved repeatedly with one typo from reopening a roster
+/// somebody keeps closing, and doing the roster and the event together is what stops one
+/// from being forgotten at a new call site.
+pub(crate) fn raise_problem(key: &str, severity: Severity, detail: &str) {
+    let changed = {
+        let mut held = poison::lock(&PROBLEMS, "problems");
+        held.get_or_insert_with(ProblemState::default).problems.raise(key, severity, detail)
+    };
+    if !changed {
+        return;
+    }
+    reconcile_sidebar_with_problems();
+    announce_problems();
+}
+
+/// Records that something is no longer wrong.
+///
+/// Called from every success path, including the ones where nothing was ever wrong, so the
+/// common case is a call that changes nothing and says nothing.
+pub(crate) fn clear_problem(key: &str) {
+    let changed = {
+        let mut held = poison::lock(&PROBLEMS, "problems");
+        held.get_or_insert_with(ProblemState::default).problems.clear(key)
+    };
+    if !changed {
+        return;
+    }
+    reconcile_sidebar_with_problems();
+    announce_problems();
+}
+
+/// Everything wrong with this window, worst first.
+pub(crate) fn problems() -> Vec<Problem> {
+    poison::lock(&PROBLEMS, "problems")
+        .as_ref()
+        .map(|held| held.problems.outstanding())
+        .unwrap_or_default()
+}
+
+/// Makes the roster's visibility agree with whether an error is outstanding.
+///
+/// Derived rather than decided at the moment a problem arrives, because the two inputs land in
+/// an order nothing guarantees. A config refused during `Startup` raises its problem before
+/// `open()` has restored whether the roster was open at all, so a version of this that checked
+/// once at raise time checked a default that was about to be replaced - and opened nothing, for
+/// a window that came back with the roster put away and a broken config. Reconciling from both
+/// sides makes the order stop mattering.
+///
+/// Only errors open a roster. A warning in a list somebody will look at eventually is fine, and
+/// reflowing every pane to mention a stale daemon would be worse than staying quiet. Reflowing
+/// is the real cost here and it is why the line is drawn: somebody typing when their config
+/// breaks gets their panes resized underneath them, which is accepted, because the alternative
+/// is the silence that cost an evening.
+/// Answers whether it moved the roster, so a caller mid-announcement does not say it twice.
+fn reconcile_sidebar_with_problems() -> bool {
+    let error =
+        poison::lock(&PROBLEMS, "problems").as_ref().is_some_and(|held| held.problems.has_error());
+    let shown = poison::lock(&SESSION, "session").presentation.sidebar;
+
+    if error {
+        if shown {
+            return false;
+        }
+        poison::lock(&PROBLEMS, "problems")
+            .get_or_insert_with(ProblemState::default)
+            .opened_sidebar = true;
+        log::info(
+            "problems.sidebar.opened",
+            fields! {
+                "impact" => "the roster was closed and an error would have had nowhere to \
+                             appear, so Muster opened it",
+                "check" => "it closes again on its own when the last error clears, unless you \
+                            open or close it yourself first",
+            },
+        );
+        set_sidebar(true);
+        return true;
+    }
+
+    // Borrowed, so give it back. Only when Muster was the one who opened it: a roster somebody
+    // opened themselves is theirs, and closing it because a problem happened to clear would be
+    // Muster tidying away a window it does not own.
+    let borrowed = {
+        let mut held = poison::lock(&PROBLEMS, "problems");
+        let held = held.get_or_insert_with(ProblemState::default);
+        let borrowed = held.opened_sidebar;
+        held.opened_sidebar = false;
+        borrowed
+    };
+    if borrowed && shown {
+        log::info(
+            "problems.sidebar.closed",
+            fields! {
+                "impact" => "the last error cleared, so the roster Muster opened to show it \
+                             has been put back the way it was found",
+            },
+        );
+        set_sidebar(false);
+        return true;
+    }
+    false
+}
+
+/// Shows or puts away the roster, without asking what it was.
+///
+/// The half of [`toggle_sidebar`] that is not the toggle. Split out so a problem can open the
+/// roster without a second copy of "write it, tell the shell, save it" - which is exactly the
+/// kind of second copy that ends up forgetting the save.
+fn set_sidebar(shown: bool) {
+    let presentation = {
+        let mut session = poison::lock(&SESSION, "session");
+        if session.presentation.sidebar == shown {
+            return;
+        }
+        session.presentation = session.presentation.with_sidebar(shown);
+        session.presentation
+    };
+    announce_presentation(presentation);
+    publish();
+}
+
+fn announce_problems() {
+    let problems = problems();
+    ffi::emit(&Event {
+        payload: Some(event::Payload::ProblemsChanged(ProblemsChanged {
+            problems: problems
+                .into_iter()
+                .map(|problem| ProblemMessage {
+                    key: problem.key,
+                    severity: problem.severity.as_str().to_string(),
+                    detail: problem.detail,
+                })
+                .collect(),
+        })),
+    });
 }
 
 pub(crate) fn set_state_path(path: &str) {
@@ -1419,7 +1579,13 @@ pub(crate) fn open() -> Result<(), String> {
 fn restore_presentation() {
     let presentation = saved_arrangement().map(|saved| saved.presentation).unwrap_or_default();
     poison::lock(&SESSION, "session").presentation = presentation;
-    announce_presentation(presentation);
+    // Then let anything already wrong have its say. A config refused during `Startup` raised
+    // its problem before this ran, so without this the saved answer would quietly win and a
+    // window would come back with the roster away and nowhere to report a broken file. It
+    // announces for itself when it moves anything, which is why this one is conditional.
+    if !reconcile_sidebar_with_problems() {
+        announce_presentation(presentation);
+    }
 }
 
 /// Puts back the regions this window was showing when it last closed.
@@ -2096,14 +2262,14 @@ fn presented(pane: &PaneKey) -> Option<AgentState> {
 /// arrangement is written down at the one moment composition is settled, and adding a second
 /// place that remembers to save would be a second place that can forget.
 pub(crate) fn toggle_sidebar() {
-    let presentation = {
-        let mut session = poison::lock(&SESSION, "session");
-        session.presentation = session.presentation.with_sidebar(!session.presentation.sidebar);
-        session.presentation
-    };
-    log::info("presentation.sidebar", fields! { "shown" => presentation.sidebar });
-    announce_presentation(presentation);
-    publish();
+    let shown = !poison::lock(&SESSION, "session").presentation.sidebar;
+    // Whatever Muster decided about the roster, the person just decided otherwise. Forgetting
+    // that we opened it is what stops the last error clearing later and closing a roster
+    // somebody deliberately reopened - or reopening one they deliberately put away.
+    poison::lock(&PROBLEMS, "problems").get_or_insert_with(ProblemState::default).opened_sidebar =
+        false;
+    log::info("presentation.sidebar", fields! { "shown" => shown });
+    set_sidebar(shown);
 }
 
 /// What a search is showing, which is everything the shell draws in the find bar.

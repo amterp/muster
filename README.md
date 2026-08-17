@@ -305,8 +305,21 @@ it builds a pane, so a pane you are already typing in keeps what it was made wit
 The exception is `[[daemon]]`. Which machines a window is attached to is a question about live
 sessions rather than about settings, and answering it on a save would move panes somebody is
 working in - so a change there is read, noticed, and reported as still wanting a relaunch. A
-file that will not parse changes nothing at all and says so, which means an editor that saves
-halfway through a thought cannot leave you running half a config.
+file that will not parse changes nothing at all, which means an editor that saves halfway
+through a thought cannot leave you running half a config.
+
+**A refused file says so at the foot of the agent list**, in the words the refusal itself used,
+naming the value and what to write instead. The list opens itself if you had it closed, and
+closes again when the last problem clears - a window too narrow for the list at all puts
+`· 1 problem` in its title instead. Waving the box away leaves a count rather than silence:
+what is outstanding is a fact about your file and not a message you have read, so it goes when
+the file parses and not when you dismiss it. That disappearance is how you know a save was
+accepted.
+
+Opening a list you closed is the one liberty Muster takes with your window, and this is what it
+buys. Before it, a refused config went to the run log and nowhere else: you could break your
+keymap at six in the evening, work all night on default bindings, and never be told - not when
+it broke, and not when a later save fixed it.
 
 `~/.muster/state/` is Muster's to write, and holds three files nobody should edit. `window.toml`
 is rewritten whenever the window settles: which tabs it was showing, in what order, at what

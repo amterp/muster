@@ -78,6 +78,10 @@ public final class MusterWindow: NSObject {
   private var zoomed = false
   private var problem: String?
 
+  /// Everything the core says is wrong with this window. Held so the title can count them when
+  /// the roster - which is where they are actually readable - is not on screen.
+  private var outstanding: [Problem] = []
+
   /// The surface the keyboard is on, or nil when nothing is rendering yet.
   ///
   /// Only a live surface can say how big a cell is, and only the pane a chord happened on has
@@ -102,6 +106,9 @@ public final class MusterWindow: NSObject {
       defer: false)
     super.init()
     split.attach(sidebar: sidebar, strip: strip)
+    // A window narrowed until the roster will not fit takes the problems area with it, so the
+    // title has to pick them up at exactly that moment.
+    split.onSidebarVisibilityChanged = { [weak self] in self?.applyTitle() }
     strip.attach(empty: empty)
     empty.apply(EmptyWindow.message(bindings: Core.bindings()))
     window.contentView = split
@@ -363,6 +370,17 @@ public final class MusterWindow: NSObject {
     applyTitle()
   }
 
+  /// Everything wrong with the window, for the roster to say properly and the title to count.
+  ///
+  /// Both, because the roster is the only one that can carry a sentence and it is not always on
+  /// screen. A window narrowed below the width a list needs would otherwise report a broken
+  /// config exactly the way Muster used to: not at all.
+  public func apply(problems: [Problem]) {
+    outstanding = problems
+    sidebar.apply(problems: problems)
+    applyTitle()
+  }
+
   /// The daemon whose health the title should report, which is the unhappiest one.
   ///
   /// A window showing two daemons has two answers and one title bar. Reporting the worst
@@ -386,7 +404,8 @@ public final class MusterWindow: NSObject {
     let (daemon, state, detail) = worstHealth
     window.title = PaneAppearance.title(
       paneID: keyboardPane, zoomed: zoomed, health: state, detail: detail, daemon: daemon,
-      problem: problem, rendererCheck: rendererCheck)
+      problem: problem, rendererCheck: rendererCheck,
+      unseenProblems: split.sidebarVisible ? 0 : outstanding.count)
   }
 }
 
@@ -650,6 +669,17 @@ final class WindowLayout: NSView {
     didSet { needsLayout = true }
   }
 
+  /// Whether the list is actually on screen, which is not the same question as `sidebarShown`.
+  ///
+  /// A window narrowed until the list will not fit hides it without anybody deciding to, and
+  /// something that can only be reported in the list needs to know the difference - otherwise a
+  /// small window is a window that says nothing, which is the bug the problems area exists to
+  /// fix.
+  private(set) var sidebarVisible = true
+
+  /// Called when the list appears or disappears, whoever caused it.
+  var onSidebarVisibilityChanged: (() -> Void)?
+
   override var isFlipped: Bool { true }
 
   func attach(sidebar: NSView, strip: NSView) {
@@ -667,6 +697,11 @@ final class WindowLayout: NSView {
     sidebar?.isHidden = listWidth == 0
     strip?.frame = CGRect(x: listWidth, y: 0, width: regionWidth, height: bounds.height)
     strip?.needsLayout = true
+    let visible = listWidth > 0
+    if visible != sidebarVisible {
+      sidebarVisible = visible
+      onSidebarVisibilityChanged?()
+    }
   }
 }
 

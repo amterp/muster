@@ -14,6 +14,7 @@ pub mod find;
 pub mod input;
 pub mod intent;
 pub mod mirror;
+pub mod problems;
 pub mod roster;
 
 pub use agent_state::AgentState;
@@ -24,4 +25,5 @@ pub use find::{Found, Hit, Needle, found_in};
 pub use input::{Key, KeyEvent, Keymap, Modifiers, PaneInput};
 pub use intent::{BackendChannel, BackendIntent};
 pub use mirror::{BackendEvent, Change, Mirror};
+pub use problems::{Problem, Problems, Severity};
 pub use roster::{Roster, RosterPane};

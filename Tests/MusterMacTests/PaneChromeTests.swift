@@ -63,6 +63,38 @@ struct PaneChromeTests {
     #expect(title == "muster - w1:p1")
   }
 
+  @Test("a title counts the problems that have nowhere else to appear")
+  func problemsWithNoRosterReachTheTitle() {
+    // The narrow-window hole. A roster is where a problem is actually readable, and a window
+    // too narrow for one used to report a broken config exactly the way Muster used to: not at
+    // all. The title has no room for the sentence, so it says there is one.
+    let one = PaneAppearance.title(
+      paneID: "w1:p1", zoomed: false, health: "connected", detail: "", unseenProblems: 1)
+    #expect(one == "muster - w1:p1 · 1 problem")
+
+    let several = PaneAppearance.title(
+      paneID: "w1:p1", zoomed: false, health: "connected", detail: "", unseenProblems: 3)
+    #expect(several == "muster - w1:p1 · 3 problems")
+  }
+
+  @Test("a title says nothing about problems the roster is already showing")
+  func problemsOnScreenStayOutOfTheTitle() {
+    // Zero rather than a count, because the window passes zero whenever the roster is on
+    // screen. Saying it twice would spend the title's one line on something already readable.
+    let title = PaneAppearance.title(
+      paneID: "w1:p1", zoomed: false, health: "connected", detail: "", unseenProblems: 0)
+    #expect(title == "muster - w1:p1")
+  }
+
+  @Test("a window with no panes still counts its problems")
+  func problemsReachAPanelessTitle() {
+    // The launch case. A config refused before any pane exists is the worst moment to be
+    // quiet, and that branch of the title is a different one.
+    let title = PaneAppearance.title(
+      paneID: nil, zoomed: false, health: "connected", detail: "", unseenProblems: 1)
+    #expect(title.contains("1 problem"))
+  }
+
   @Test("a zoomed tab says so, because it looks like a tab with one pane")
   func zoomIsAdmitted() {
     // The other panes are still there and still running. Without this the user has no way to

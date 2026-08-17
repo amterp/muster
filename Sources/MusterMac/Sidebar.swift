@@ -346,6 +346,18 @@ public final class SidebarView: NSView {
 
   private let table = NSTableView()
   private let scroll = NSScrollView()
+  private let problemsView = ProblemsView()
+
+  /// Everything wrong with the window, as the core last said it.
+  private var outstanding: [Problem] = []
+
+  /// Which problems somebody has waved away. Not persisted: a dismissal is about this sitting
+  /// rather than about the condition, and a problem still true on the next launch is one
+  /// nobody has seen yet in that window.
+  private var dismissed: Set<String> = []
+
+  /// What the area at the foot is showing, kept so a dismissal knows what it dismissed.
+  public private(set) var problems: ProblemsModel.Display = .nothing
 
   public override init(frame: NSRect) {
     super.init(frame: frame)
@@ -373,9 +385,50 @@ public final class SidebarView: NSView {
     scroll.documentView = table
     scroll.hasVerticalScroller = true
     scroll.drawsBackground = false
-    scroll.autoresizingMask = [.width, .height]
     scroll.frame = bounds
     addSubview(scroll)
+
+    problemsView.onDismiss = { [weak self] in
+      guard let self, case .raised(let showing) = self.problems else { return }
+      self.dismissed.formUnion(showing.map(\.key))
+      self.redrawProblems()
+    }
+    problemsView.onReveal = { [weak self] in
+      self?.dismissed.removeAll()
+      self?.redrawProblems()
+    }
+    addSubview(problemsView)
+  }
+
+  /// Tells the roster what is wrong with the window.
+  ///
+  /// The list and the problems arrive separately because they change on completely different
+  /// schedules - a roster moves whenever a pane does, and a problem is rare - so joining them
+  /// here is the same arrangement the states already use.
+  public func apply(problems: [Problem]) {
+    outstanding = problems
+    dismissed = ProblemsModel.retained(dismissed: dismissed, outstanding: problems)
+    redrawProblems()
+  }
+
+  private func redrawProblems() {
+    problems = ProblemsModel.display(problems: outstanding, dismissed: dismissed)
+    problemsView.show(problems)
+    needsLayout = true
+  }
+
+  /// Splits the sidebar between the list and whatever is wrong with the window.
+  ///
+  /// Hand-laid rather than autoresized because the problems area's height depends on how long
+  /// its message is at this width, and an autoresizing mask cannot ask that question. The list
+  /// gets everything left, which is all of it in the common case where nothing is wrong.
+  public override func layout() {
+    super.layout()
+    let wanted = problemsView.height(forWidth: bounds.width)
+    let height = min(wanted, bounds.height)
+    problemsView.frame = CGRect(x: 0, y: 0, width: bounds.width, height: height)
+    scroll.frame = CGRect(
+      x: 0, y: height, width: bounds.width, height: max(0, bounds.height - height))
   }
 
   required init?(coder: NSCoder) {
