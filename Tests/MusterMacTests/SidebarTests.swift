@@ -51,6 +51,39 @@ struct SidebarTests {
     #expect(rows.compactMap(\.pane?.daemon) == ["local", "devenv"])
   }
 
+  /// What the sidebar's partial redraw rests on.
+  ///
+  /// One agent transition is the most frequent thing that happens in a window full of them, and
+  /// the list redraws only the rows that came out different rather than reloading the table -
+  /// which is what keeps the shell from undoing the core's care to make an agent-state change
+  /// cost that change rather than a walk of every pane. That optimisation is only correct while
+  /// a row is a function of its own subject: the moment one carries something window-wide - a
+  /// total, a "how many are working" - every row differs on every blink and the diff quietly
+  /// stops saving anything while still looking right.
+  @Test("one agent changing state changes one row and leaves the rest identical")
+  func aStateChangeTouchesOneRow() {
+    let roster = Roster(daemons: [
+      Roster.Daemon(
+        id: "local",
+        tabs: [
+          tab(
+            "local",
+            panes: [
+              pane("local", "w1:p1", place: 1), pane("local", "w1:p2", place: 2),
+              pane("local", "w1:p3", place: 3),
+            ])
+        ])
+    ])
+    let before = SidebarModel.rows(roster: roster, states: [:])
+    let after = SidebarModel.rows(
+      roster: roster, states: [PaneKey(daemon: "local", pane: "w1:p2"): "working"])
+
+    #expect(before.count == after.count)
+    let moved = before.indices.filter { before[$0] != after[$0] }
+    #expect(moved.count == 1)
+    #expect(after[moved[0]].pane == PaneKey(daemon: "local", pane: "w1:p2"))
+  }
+
   @Test("two daemons handing out one pane id are two rows")
   func paneIdsAreScopedToTheirDaemon() {
     // The whole reason a row is keyed by the pair. Collapsing these would put one machine's

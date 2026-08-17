@@ -382,9 +382,31 @@ public final class SidebarView: NSView {
     fatalError("muster builds its views in code")
   }
 
+  /// Redraws the rows that would come out different, and only those.
+  ///
+  /// This is called on every agent transition, which is the most frequent thing that happens
+  /// in a window full of agents - and one pane blinking used to reload the whole table, so
+  /// AppKit threw away and rebuilt the view for every visible row to show a change on one of
+  /// them. The core is careful about exactly this: an agent-state change is deliberately
+  /// excluded from the republish path so that it costs that change and not a walk of every
+  /// pane (`architecture.md`, fast is a feature), and the sidebar was undoing that
+  /// downstream.
+  ///
+  /// A whole reload is still right when the shape of the list moves - a pane opened, a tab
+  /// closed, rows reordered by a drag - because then the rows are not the same rows and
+  /// comparing them position by position would be comparing different things. That case is
+  /// rare; a state blinking is not.
   public func apply(roster: Roster, states: [PaneKey: String], keyboard: PaneKey? = nil) {
-    rows = SidebarModel.rows(roster: roster, states: states, keyboard: keyboard)
-    table.reloadData()
+    let fresh = SidebarModel.rows(roster: roster, states: states, keyboard: keyboard)
+    let previous = rows
+    rows = fresh
+    guard previous.count == fresh.count else {
+      table.reloadData()
+      return
+    }
+    let moved = IndexSet(fresh.indices.filter { previous[$0] != fresh[$0] })
+    guard !moved.isEmpty else { return }
+    table.reloadData(forRowIndexes: moved, columnIndexes: IndexSet(integer: 0))
   }
 
   @objc private func rowClicked() {
