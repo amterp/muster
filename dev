@@ -127,12 +127,14 @@ fn run_ssh_tier():
     version = pinned_version()
     cache_root = container_cache(root, version)[1]
 
-    // Handed to the tests as a cache Muster would have filled itself, so that the tier proves
-    // the install over ssh and still reaches nothing. `./dev` is the one thing in this repo
-    // that downloads anything, and this keeps it that way.
-    passed = "MUSTER_DEVENV_HOST=dev@localhost MUSTER_DEVENV_SSH_OPTIONS={options} MUSTER_DEVENV_CACHE={cache_root}"
-
-    stdout = $`{passed} cargo test --workspace -- --ignored --list`
+    // The cache is handed over so that the tier proves the install over ssh and still reaches
+    // nothing itself. `./dev` is the one thing in this repo that downloads anything, and this
+    // keeps it that way.
+    //
+    // Spelled out at both call sites rather than built into a variable first: Rad quotes an
+    // interpolated value as one shell word, so a variable holding the whole prefix arrives as
+    // a command name nothing can run.
+    stdout = $`MUSTER_DEVENV_HOST=dev@localhost MUSTER_DEVENV_SSH_OPTIONS={options} MUSTER_DEVENV_CACHE={cache_root} cargo test --workspace -- --ignored --list`
     names = stdout.split("\n").filter(fn(line) line.ends_with(": test"))
     if len(names) == 0:
         print_err(red("The remote tier discovered no tests."))
@@ -142,7 +144,7 @@ fn run_ssh_tier():
         exit(1)
     print(dim("{len(names)} remote test(s) discovered"))
 
-    $`{passed} cargo test --workspace -- --ignored`
+    $`MUSTER_DEVENV_HOST=dev@localhost MUSTER_DEVENV_SSH_OPTIONS={options} MUSTER_DEVENV_CACHE={cache_root} cargo test --workspace -- --ignored`
 
     run_linux_corpus_diff(root, version)
 
