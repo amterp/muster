@@ -69,6 +69,7 @@ fn named(payload: &response::Payload) -> &'static str {
         response::Payload::Findings(_) => "search results",
         response::Payload::Window(_) => "a window",
         response::Payload::Made(_) => "a pane",
+        response::Payload::WindowFrame(_) => "a window frame",
     }
 }
 

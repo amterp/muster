@@ -7,7 +7,7 @@
 use std::collections::BTreeSet;
 
 use conformance::{CaseError, Conformance, fields};
-use muster_core::composition::presentation::Presentation;
+use muster_core::composition::presentation::{Frame, Presentation};
 use muster_core::composition::record::{Composition, Daemon, DaemonId, Endpoint};
 use muster_core::composition::saved::{Saved, SavedRegion, from_toml, to_toml};
 use muster_core::mirror::backend::{PaneId, TabId, WorkspaceId};
@@ -72,14 +72,64 @@ fn what_is_written_is_what_comes_back() {
         .open_region(&DaemonId::new("devenv"), WorkspaceId::new("w1"), TabId::new("w1:t2"))
         .expect("the daemon was just attached");
 
-    // Neither at its default, so a round trip that quietly dropped either would still fail.
+    // Nothing at its default, so a round trip that quietly dropped any of it would still fail.
+    // The frame carries fractions, because a window dragged half a point is what a trackpad
+    // produces and a rectangle rounded on the way through comes back a pixel out every launch.
     let written = Saved::of(
         &composition,
-        Presentation::default().with_sidebar(false).with_font_size_offset(3),
+        Presentation::default()
+            .with_sidebar(false)
+            .with_font_size_offset(3)
+            .with_frame(Some(Frame { x: -120.5, y: 240.0, width: 1400.0, height: 902.5 }), true),
     );
     let read = from_toml(&to_toml(&written)).expect("what this wrote, it can read");
 
     assert_eq!(read, written, "the file lost something between writing and reading it");
+}
+
+/// A window that has never settled anywhere writes no rectangle, and reads back as one.
+///
+/// The absence has to survive as an absence: a frame that came back as zeroes would be a window
+/// opening at the corner of a display on its second launch, which is a worse first impression
+/// than the centred default it is meant to replace.
+#[test]
+fn a_window_with_no_frame_says_so_rather_than_writing_a_corner() {
+    let file = to_toml(&Saved::default());
+    assert!(
+        !file.contains("width"),
+        "a window that has never settled wrote a rectangle anyway:\n{file}"
+    );
+
+    let read = from_toml(&file).expect("what this wrote, it can read");
+    assert_eq!(read.presentation.frame, None);
+    assert!(!read.presentation.full_screen);
+}
+
+/// Half a rectangle is no rectangle.
+///
+/// Only a hand-edit produces this, and the answer is the one every other refusal in this file
+/// reaches: open where a first launch would. Refusing the file outright would lose the
+/// arrangement - the tabs, their order, their widths - over four numbers the window can do
+/// without.
+#[test]
+fn a_partly_written_rectangle_is_ignored_rather_than_half_applied() {
+    let whole = to_toml(&Saved {
+        presentation: Presentation::default()
+            .with_frame(Some(Frame { x: 10.0, y: 20.0, width: 800.0, height: 600.0 }), false),
+        ..Saved::default()
+    });
+
+    for missing in ["x = 10.0\n", "height = 600.0\n"] {
+        let file = whole.replace(missing, "");
+        assert_ne!(file, whole, "the round trip stopped writing {missing:?}");
+        let read = from_toml(&file).expect("a partial rectangle is not an unreadable file");
+        assert_eq!(read.presentation.frame, None, "half a rectangle came back as a whole one");
+    }
+
+    // And a size nobody can see or grab, which is the other way a hand-edit goes wrong.
+    let file = whole.replace("width = 800.0", "width = 0.0");
+    let read = from_toml(&file).expect("a zero width is not an unreadable file");
+    assert_eq!(read.presentation.frame, None);
 }
 
 /// A font size nobody could have pressed their way to comes back as one they could.

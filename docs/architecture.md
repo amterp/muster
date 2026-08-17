@@ -687,11 +687,27 @@ not. A restore is a sequence of ordinary intents - create a workspace, apply a l
 the one action path, which makes it scriptable, agent-drivable, and testable with no new mechanism. `layout.apply`
 is the primitive, and it is additive rather than reconciling, so whatever calls it must apply into something fresh.
 
-**Muster's own durable state is composition, and only composition.** Which daemons are attached, and which (daemon,
-workspace, tab) shows in which window region. Everything else it holds is derived. That is a few hundred bytes, and
-its smallness is the point: the shell owns nothing, so there is nearly nothing to save.
+**Muster's own durable state is composition, plus what the window looks like.** Composition is which daemons are
+attached, and which (daemon, workspace, tab) shows in which window region. Beside it, in the same file and under a
+table of its own, is the window's own chrome: whether the roster is open, how far the text is sized from what the
+config asked for, how big the window is, and whether it is full-screen. Everything else Muster holds is derived.
+That is a few hundred bytes, and its smallness is the point: the shell owns nothing, so there is nearly nothing to
+save.
 
-But it is the one piece nobody else can save. A herdr daemon's export is scoped to itself and structurally cannot
+The two are kept apart because they answer different questions. A region is a wish about a session that may have
+moved on, checked against what the daemons turn out to hold; a chrome setting has nobody to check with, so it comes
+back as it went in. The window's frame is the one thing in either half that is checked against neither: the display
+it was measured on may be gone, so the shell reports the screens it has and the core answers where the window should
+open. That split is the same one `locale` draws - only a shell can ask the platform, only the core decides what to
+do about the answer - and it is what keeps a rule about displays somewhere a test can reach.
+
+Written as it settles rather than at quit, on both halves, because quitting is not how this is usually lost: the
+whole durability table above is about crashes, reboots and dropped connections. What follows from that is a rule
+easy to break in one line - **nothing writes the file before the window has opened**. A composition nobody has
+opened is empty, and a shell reports its frame the moment the window exists, which is before it asks the core to
+open anything.
+
+But composition is the piece nobody else can save. A herdr daemon's export is scoped to itself and structurally cannot
 describe a workspace spanning a laptop and a devenv, because neither daemon knows the other exists. Muster is the
 only layer that sees across them, which makes cross-daemon composition the part of durability that is genuinely
 ours - and it follows that restore is per-daemon and partial by nature, since after a reboot the local daemon comes

@@ -18,7 +18,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::composition::presentation::Presentation;
+use crate::composition::presentation::{Frame, Presentation};
 use crate::composition::record::{Composition, Daemon, DaemonId, Endpoint};
 use crate::mirror::backend::{PaneId, TabId, WorkspaceId};
 
@@ -52,9 +52,9 @@ pub struct Saved {
     pub focused: Option<usize>,
     /// The window's own chrome, which needs no checking against a daemon.
     ///
-    /// The one thing in this file that comes back exactly as it went in. Everything else is a
-    /// wish about a session that may have moved on; nobody else has an opinion about whether
-    /// a list was open.
+    /// The only part of this file no daemon has an opinion about: nobody else knows whether a
+    /// list was open. The frame is checked all the same, but against the screens the machine
+    /// has rather than against a session (`Frame::fitted`).
     pub presentation: Presentation,
 }
 
@@ -156,6 +156,21 @@ pub fn to_toml(saved: &Saved) -> String {
         "font_size_offset".to_string(),
         toml::Value::Integer(i64::from(saved.presentation.font_size_offset)),
     );
+    window.insert("full_screen".to_string(), toml::Value::Boolean(saved.presentation.full_screen));
+    // The four numbers go flat beside the two above rather than into a table of their own. They
+    // are the same kind of value - what the window looked like, not what session it was
+    // showing - and a level of nesting for four scalars makes this file slower to read for
+    // nothing.
+    //
+    // Absent rather than zeroed when there is no frame, unlike the keys above. A window that has
+    // never settled has no rectangle to state, and `x = 0` would be a claim about a corner of a
+    // display rather than the absence of one.
+    if let Some(frame) = saved.presentation.frame {
+        window.insert("x".to_string(), toml::Value::Float(frame.x));
+        window.insert("y".to_string(), toml::Value::Float(frame.y));
+        window.insert("width".to_string(), toml::Value::Float(frame.width));
+        window.insert("height".to_string(), toml::Value::Float(frame.height));
+    }
     root.insert("window".to_string(), toml::Value::Table(window));
 
     toml::to_string_pretty(&toml::Value::Table(root))
@@ -256,6 +271,13 @@ pub fn from_toml(text: &str) -> Result<Saved, String> {
                 .and_then(toml::Value::as_integer)
                 .and_then(|offset| i32::try_from(offset).ok())
                 .unwrap_or(Presentation::default().font_size_offset),
+        )
+        .with_frame(
+            window.and_then(read_frame),
+            window
+                .and_then(|window| window.get("full_screen"))
+                .and_then(toml::Value::as_bool)
+                .unwrap_or(Presentation::default().full_screen),
         );
 
     Ok(Saved { daemons, regions, focused, presentation })
@@ -306,6 +328,37 @@ fn read_region(value: &toml::Value) -> Option<SavedRegion> {
 
 fn text(table: &toml::Table, key: &str) -> Option<String> {
     table.get(key)?.as_str().map(str::to_string)
+}
+
+/// The rectangle a `[window]` table names, if it names a whole one.
+///
+/// All four or none, and a size has to be a size. A partial set is the same answer as no set at
+/// all - a window has no meaning at three quarters of a rectangle, and a height of zero is a
+/// window nobody can see or grab. Both are hand-edits rather than anything Muster writes, so the
+/// answer is to open where a first launch would rather than to refuse the file and lose the
+/// arrangement with it.
+fn read_frame(window: &toml::Table) -> Option<Frame> {
+    let number = |key: &str| {
+        window
+            .get(key)
+            .and_then(|value| match value {
+                toml::Value::Float(number) => Some(*number),
+                // Integers too, because a person typing a rectangle by hand writes `x = 120`.
+                // Through i32 rather than straight to f64: a coordinate past two billion points
+                // is not a screen anybody has, so losing precision on it would be dressing up a
+                // typo as a rectangle.
+                toml::Value::Integer(number) => i32::try_from(*number).ok().map(f64::from),
+                _ => None,
+            })
+            .filter(|number: &f64| number.is_finite())
+    };
+    let frame = Frame {
+        x: number("x")?,
+        y: number("y")?,
+        width: number("width")?,
+        height: number("height")?,
+    };
+    (frame.width > 0.0 && frame.height > 0.0).then_some(frame)
 }
 
 /// The daemons a saved arrangement names, by id.

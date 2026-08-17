@@ -302,6 +302,66 @@ public enum Core {
       dividerColor: named(answer.dividerColor))
   }
 
+  /// How big the window should be, and whether it should be full-screen.
+  ///
+  /// A value of the shell's own rather than the generated message, on the same terms as
+  /// `Appearance`. `rect` is nil for a window that has never settled anywhere, which is a
+  /// first launch and the caller's cue to open wherever it would have.
+  public struct WindowFrame: Sendable {
+    public let rect: NSRect?
+    public let fullScreen: Bool
+  }
+
+  /// Where this window should open, given the screens this machine has.
+  ///
+  /// Asked rather than waited for, because the answer is needed before the window is on screen
+  /// and an event arrives a run-loop turn later - the same split `appearance()` makes. The
+  /// screens go with the question because only the shell can ask the platform for them; where
+  /// the window lands is the core's answer, already fitted to them.
+  ///
+  /// Nothing at all when the core did not answer, which is a core that failed to start. The
+  /// window then opens where a first launch does rather than not at all.
+  public static func windowFrame(screens: [NSRect]) -> WindowFrame {
+    var read = Muster_ReadWindowFrame()
+    read.screens = screens.map(rect)
+    var request = Muster_Request()
+    request.readWindowFrame = read
+    guard case .windowFrame(let answer) = send(request) else {
+      return WindowFrame(rect: nil, fullScreen: false)
+    }
+    return WindowFrame(
+      rect: answer.hasRect
+        ? NSRect(
+          x: answer.rect.x, y: answer.rect.y, width: answer.rect.width, height: answer.rect.height)
+        : nil,
+      fullScreen: answer.fullScreen)
+  }
+
+  /// Says where the window has settled, so the next launch can put it back.
+  ///
+  /// Sent through `WindowFrameSender` rather than from here, because a drag produces one of
+  /// these per frame of animation and each one ends in a file write. This builds the request;
+  /// the sender decides when it goes.
+  static func setWindowFrame(rect: NSRect?, fullScreen: Bool) -> Muster_Request {
+    var frame = Muster_WindowFrame()
+    if let rect { frame.rect = self.rect(rect) }
+    frame.fullScreen = fullScreen
+    var set = Muster_SetWindowFrame()
+    set.frame = frame
+    var request = Muster_Request()
+    request.setWindowFrame = set
+    return request
+  }
+
+  private static func rect(_ rect: NSRect) -> Muster_WindowRect {
+    var wire = Muster_WindowRect()
+    wire.x = Double(rect.origin.x)
+    wire.y = Double(rect.origin.y)
+    wire.width = Double(rect.size.width)
+    wire.height = Double(rect.size.height)
+    return wire
+  }
+
   /// Makes the text in every pane bigger or smaller, or puts it back.
   ///
   /// A direction rather than a size, matching `toggleSidebar`: what a chord means is "one more
@@ -642,6 +702,8 @@ public enum Core {
     case .readBindings: return "read_bindings"
     case .readAppearance: return "read_appearance"
     case .readWindow: return "read_window"
+    case .readWindowFrame: return "read_window_frame"
+    case .setWindowFrame: return "set_window_frame"
     // The kind, never the text, for the reason a find needle is never logged: what somebody
     // types into their own terminal is theirs.
     case .sendToPane: return "send_to_pane"

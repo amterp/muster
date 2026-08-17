@@ -53,7 +53,69 @@ message Request {
     EndFind end_find = 34;
     ReadWindow read_window = 35;
     SendToPane send_to_pane = 36;
+    ReadWindowFrame read_window_frame = 37;
+    SetWindowFrame set_window_frame = 38;
   }
+}
+
+// A rectangle, in whatever coordinates the platform draws windows in.
+//
+// No units and no display. Muster does not convert these or compare them to anything it knows;
+// they go out the way they came in, so what a point is remains the shell's business.
+message WindowRect {
+  double x = 1;
+  double y = 2;
+  double width = 3;
+  double height = 4;
+}
+
+// How big a window is, and whether it is in the platform's own full-screen.
+//
+// Together because the shell only ever knows both at once: while a window is full-screen, the
+// rectangle it reports is the one it will come back out to. Sending either alone would invite a
+// half-written pair.
+message WindowFrame {
+  // Absent for a window that has never settled anywhere - a first launch, a state file written
+  // before this existed, or one hand-edited into a rectangle with no size. All three mean the
+  // same thing to a shell: open the window wherever you would have.
+  optional WindowRect rect = 1;
+
+  bool full_screen = 2;
+}
+
+// Asks where this window should open, given the screens this machine has.
+//
+// Asked at launch, before the window is on screen, for the reason ReadAppearance is: an event
+// reaches a shell a run-loop turn later, which is a window that visibly jumps from the middle of
+// the display to where it was left. So this is a question, and there is no matching event -
+// nothing in the core ever needs to move a window, because only a shell can.
+//
+// The screens are the argument because only a shell can ask the platform for them, and the
+// answer is the core's because a rule nobody can reach from a test is a rule that drifts. The
+// rectangle that comes back is already fitted to what was reported: a window saved on a desk
+// monitor and reopened on a laptop is brought back somewhere its title bar can be grabbed.
+//
+// An empty list is a shell that could not enumerate displays rather than a machine with none,
+// and the core answers by fitting nothing - moving somebody's window on the strength of a
+// reporting failure would turn a bug here into a lost arrangement.
+message ReadWindowFrame {
+  repeated WindowRect screens = 1;
+}
+
+// Says where the window has settled, so the next launch can put it back.
+//
+// One direction only, and this is it. Sent when a window is moved, resized, or enters or leaves
+// full-screen - and once at launch, so the core holds where the window actually opened rather
+// than where it wished to.
+//
+// The rectangle is always the one the window has when it is *not* full-screen. On macOS a
+// full-screen window reports the whole display as its frame, and writing that down would leave
+// somebody who leaves full-screen with a window the size of their monitor and no way back.
+//
+// A drag produces one of these per frame of animation, which is why the shell coalesces them:
+// see `LatestRequestSender`. Nothing here is answered with anything but Ok.
+message SetWindowFrame {
+  WindowFrame frame = 1;
 }
 
 // Asks what this window is showing, and what it holds that it is not showing.
@@ -605,6 +667,7 @@ message Response {
     Findings findings = 6;
     Window window = 7;
     Made made = 8;
+    WindowFrame window_frame = 9;
   }
 }
 

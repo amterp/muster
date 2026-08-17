@@ -109,6 +109,22 @@ public final class MusterWindow: NSObject {
   /// that closing it and opening it again returns to the needle it was last used with.
   private var findBar: FindBar?
 
+  /// Where the window is when it is not full-screen, which is the only rectangle worth writing
+  /// down. macOS reports a full-screen window's frame as the whole display, so a window that
+  /// went full-screen and quit would otherwise come back the size of somebody's monitor with no
+  /// way to get its old size back.
+  private var settledFrame: NSRect?
+
+  /// Whether the window is on its way into, or already in, the platform's full-screen.
+  ///
+  /// Set in `windowWillEnterFullScreen` rather than read from the style mask, because the
+  /// resize that grows the window to the whole display arrives before the mask says so - and
+  /// that resize is exactly the one whose rectangle must not be kept.
+  private var fullScreen = false
+
+  /// Reports where the window has settled, one request at a time.
+  private lazy var frames = WindowFrameSender()
+
   public init(renderer: Renderer, executable: String) {
     self.renderer = renderer
     self.executable = executable
@@ -126,6 +142,11 @@ public final class MusterWindow: NSObject {
     empty.apply(EmptyWindow.message(bindings: Core.bindings()))
     window.contentView = split
     window.delegate = self
+    // Named rather than left to the default, because `show` toggles into full-screen for a
+    // window that quit from it and a default is a thing that can move.
+    window.collectionBehavior.insert(.fullScreenPrimary)
+    // Where a window with nothing written down about it opens. `show` puts back a saved
+    // rectangle over the top of this.
     window.center()
     sidebar.onPanePicked = { pane in
       Core.focus(daemonID: pane.daemon, paneID: pane.pane)
@@ -154,8 +175,44 @@ public final class MusterWindow: NSObject {
     applyTitle()
   }
 
+  /// Opens the window where it was left.
+  ///
+  /// The frame is applied before the window is on screen rather than after, because the core's
+  /// events arrive a run-loop turn later and a window that jumps from the middle of the display
+  /// to its real size is a jump somebody sees on every launch. That is the same split
+  /// `Core.appearance()` makes against `AppearanceChanged`.
+  ///
+  /// The screens go with the question because only this layer can ask the platform for them.
+  /// Where the window lands is the core's answer: a rectangle saved on a display that is gone
+  /// comes back fitted to one that is here.
   public func show() {
+    let screens = NSScreen.screens.map(\.visibleFrame)
+    let restoring = Core.windowFrame(screens: screens)
+    if let rect = restoring.rect {
+      window.setFrame(rect, display: false)
+      settledFrame = rect
+    }
+    // A window opening somewhere unexpected is a thing people report and cannot otherwise
+    // evidence: what was saved, what the screens were, and what came back are three answers a
+    // screenshot cannot give. The full-screen half is here because nothing else records it -
+    // a space that fails to open leaves a window at its ordinary size and says nothing.
+    Core.info(
+      "window.frame.restored",
+      [
+        "frame": restoring.rect.map(described) ?? "(none)",
+        "full_screen": String(restoring.fullScreen),
+        "screens": screens.map(described).joined(separator: " "),
+      ])
     window.makeKeyAndOrderFront(nil)
+    // Where it actually opened, rather than where it wished to. A first launch has no saved
+    // rectangle at all and a restored one may have been fitted to a different display, so
+    // without this the core would hold neither until somebody moved the window.
+    reportFrame()
+    // After that report, so the rectangle the window comes back out to is on the record before
+    // the space takes it. The delegate reports the full-screen itself.
+    if restoring.fullScreen {
+      window.toggleFullScreen(nil)
+    }
   }
 
   /// Renders what the core says this window is showing.
@@ -440,6 +497,51 @@ extension MusterWindow: NSWindowDelegate {
   public func windowDidResignKey(_ notification: Notification) {
     Core.windowFocused(false)
   }
+
+  public func windowDidMove(_ notification: Notification) {
+    reportFrame()
+  }
+
+  public func windowDidResize(_ notification: Notification) {
+    reportFrame()
+  }
+
+  public func windowWillEnterFullScreen(_ notification: Notification) {
+    fullScreen = true
+    reportFrame()
+  }
+
+  public func windowDidExitFullScreen(_ notification: Notification) {
+    fullScreen = false
+    reportFrame()
+  }
+
+  /// A full-screen transition that was started and did not happen - a space macOS declined to
+  /// make, or one somebody escaped out of. Without this the window would be remembered as
+  /// full-screen and come back into a space it never entered.
+  public func windowDidFailToEnterFullScreen(_ window: NSWindow) {
+    fullScreen = false
+    reportFrame()
+  }
+}
+
+extension MusterWindow {
+  /// Tells the core where the window is, keeping the last size it had outside full-screen.
+  ///
+  /// Called from four delegate methods and from `show`, all of which are the same fact arriving
+  /// by different doors. The sender behind it coalesces, so a drag costs one round trip at a
+  /// time and always ends on the position the gesture finished at.
+  private func reportFrame() {
+    if !fullScreen {
+      settledFrame = window.frame
+    }
+    frames.send(rect: settledFrame, fullScreen: fullScreen)
+  }
+}
+
+/// A rectangle as one field of a log line.
+private func described(_ rect: NSRect) -> String {
+  "\(Int(rect.origin.x)),\(Int(rect.origin.y)) \(Int(rect.width))x\(Int(rect.height))"
 }
 
 // What the menu's items do. Every one of them is a request to the core and nothing else:

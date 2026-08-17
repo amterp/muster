@@ -11,13 +11,14 @@
 //! answer for another's.
 
 use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 
 use muster_core::AgentState;
 use muster_core::attention::Attention;
 use muster_core::composition::{
-    Composition, Daemon, DaemonId, Endpoint, FontSizeChange, PaneKey, Presentation, RegionId,
-    Saved, Step, TabKey, Transport, View, saved,
+    Composition, Daemon, DaemonId, Endpoint, FontSizeChange, Frame, PaneKey, Presentation,
+    RegionId, Saved, Step, TabKey, Transport, View, saved,
 };
 use muster_core::config::{Appearance, Config, Feel, Panes};
 use muster_core::diagnostics::{log, poison};
@@ -113,6 +114,23 @@ fn commands_path() -> Option<String> {
 /// None means remember nothing, which is what a shell that found nowhere to write says and
 /// what every test that never sets one gets.
 static STATE: Mutex<Option<(String, String)>> = Mutex::new(None);
+
+/// Whether this window has worked out what it is showing.
+///
+/// Nothing writes the arrangement before this is true. A composition nobody has opened yet is
+/// empty, and an empty one saved over the file is a window that comes back with no tabs at
+/// all - the exact loss the file exists to prevent. It is not hypothetical: the shell reports
+/// its frame as soon as the window has one, which is before it asks the core to open anything,
+/// so without this a launch would blank the arrangement it was about to restore.
+///
+/// It also keeps `--renderer-check` from overwriting somebody's arrangement with the empty
+/// window it deliberately opens.
+static OPENED: AtomicBool = AtomicBool::new(false);
+
+/// Says the window now knows what it is showing, so the arrangement may be written.
+fn mark_opened() {
+    OPENED.store(true, Ordering::Relaxed);
+}
 
 /// Where the pane-name registry is written, and the text last written there.
 ///
@@ -1788,6 +1806,9 @@ pub(crate) fn open() -> Result<(), String> {
     reopen_what_was_left();
     open_remaining_regions();
     open_a_workspace_if_the_window_is_empty();
+    // After the file has been read and before the first publish writes over it. Everything
+    // above reads the arrangement; everything from here on is entitled to replace it.
+    mark_opened();
     publish();
     Ok(())
 }
@@ -1803,8 +1824,24 @@ pub(crate) fn open() -> Result<(), String> {
 /// Announced unconditionally, including when there was nothing to read, so the shell is told
 /// the default rather than holding one.
 fn restore_presentation() {
-    let presentation = saved_arrangement().map(|saved| saved.presentation).unwrap_or_default();
-    poison::lock(&SESSION, "session").presentation = presentation;
+    let saved = saved_presentation();
+    let presentation = {
+        let mut session = poison::lock(&SESSION, "session");
+        // The frame is the one field the shell may already have answered. It asks where to open
+        // before showing the window and reports where it actually opened, and either of those
+        // can land before this runs - so a wholesale assignment here would throw away the
+        // rectangle the window is currently at and write the wish back over the answer. Keeping
+        // what is already set makes the two orders agree, which is what `open()` overwriting
+        // presentation wholesale has caught out before.
+        let presentation = match session.presentation.frame {
+            Some(_) => {
+                saved.with_frame(session.presentation.frame, session.presentation.full_screen)
+            }
+            None => saved,
+        };
+        session.presentation = presentation;
+        presentation
+    };
     // Then let anything already wrong have its say. A config refused during `Startup` raised
     // its problem before this ran, so without this the saved answer would quietly win and a
     // window would come back with the roster away and nowhere to report a broken file. It
@@ -2006,6 +2043,7 @@ pub(crate) fn attach(pane_id: &str) -> Result<Arc<AttachedPane>, AttachError> {
     // and the config decides what else is on screen.
     open_remaining_regions();
 
+    mark_opened();
     // Outside the lock, because emitting reaches the shell and a shell reacting to an event
     // by dispatching a request is ordinary.
     publish();
@@ -2126,6 +2164,9 @@ fn open_remaining_regions() {
 /// this was half-written would otherwise come back to a file that parses as far as the third
 /// region and stops.
 fn save(composition: &Composition, presentation: Presentation) {
+    if !OPENED.load(Ordering::Relaxed) {
+        return;
+    }
     let mut held = poison::lock(&STATE, "saved-arrangement");
     let Some((path, written)) = held.as_mut() else { return };
 
@@ -2227,6 +2268,35 @@ fn saved_arrangement() -> Option<Saved> {
             None
         }
     }
+}
+
+/// The window's own chrome as the file left it, or what a first launch gets.
+///
+/// Read from disk rather than from the session, because the one caller outside the restore asks
+/// during launch: a shell has to know where to put the window before it shows it, and `open()`
+/// has not run yet. One function so the two answers cannot differ.
+pub(crate) fn saved_presentation() -> Presentation {
+    saved_arrangement().map(|saved| saved.presentation).unwrap_or_default()
+}
+
+/// Says where the window has settled, so the next launch can put it back.
+///
+/// One way only. Nothing here announces a `PresentationChanged` in reply, because the shell is
+/// the only thing that can move a window and telling it a frame would mean answering a drag
+/// that is still happening with where it started.
+///
+/// Saved rather than published, which is where this differs from every other change here. A
+/// frame moves nothing the window is showing, and a drag produces a hundred of these a second -
+/// so republishing a view and a roster for each would be per-event work in the one path that
+/// cannot afford it. The file is the only thing that has to hear about it.
+///
+/// A report that arrives before the window has opened is remembered and not written, which is
+/// the ordinary case at launch: the shell has a frame the moment the window exists, and the
+/// arrangement it would be saved over has not been read yet. `open` writes it a moment later.
+pub(crate) fn set_window_frame(frame: Option<Frame>, full_screen: bool) {
+    let mut session = poison::lock(&SESSION, "session");
+    session.presentation = session.presentation.with_frame(frame, full_screen);
+    save(&session.composition, session.presentation);
 }
 
 /// Tells the shell what this window is showing.

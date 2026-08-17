@@ -350,10 +350,24 @@ turns up late, and it goes with the pane if you close it.
 
 `~/.muster/state/` is Muster's to write, and holds three files nobody should edit. `window.toml`
 is rewritten whenever the window settles: which tabs it was showing, in what order, at what
-widths, and under `[window]` whether the agent list was open and how far the text was sized
-from what the config file asked for. Delete it and the next launch
+widths, and under `[window]` whether the agent list was open, how far the text was sized from
+what the config file asked for, and how big the window itself was. Delete it and the next launch
 opens fresh. Nothing about a session is in it - what a tab holds is the daemon's answer, asked
 again on every launch.
+
+**A window opens at the size and position it was left, and full-screen if that is how you left
+it.** The rectangle is written down as the window settles rather than at quit, because quitting
+is not how this is usually lost: a crash, a reboot or a stray `kill` costs the same thing, and
+the tabs already survive all three. The four numbers are always the size the window goes back to
+on the way out of full-screen rather than the display it filled, so leaving full-screen returns
+you to the window you had.
+
+The display it was measured on may be smaller now, or unplugged, or arranged somewhere else, so
+the rectangle is checked the way a saved tab is. A window whose title bar still lands on some
+screen opens exactly where it was, including one deliberately dragged half off the side. One
+whose title bar does not - a window saved on a desk monitor and reopened on a laptop alone - is
+brought onto the screen it has most in common with, clamped to fit and centred. Nothing on
+screen gets you out of a window you cannot grab, which is why that case is worth the move.
 
 Text size is the one appearance setting that is also an action. `cmd+=`, `cmd+-` and `cmd+0`
 size every pane in the window at once - not one pane, because a grid you read at a glance is

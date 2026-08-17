@@ -1,0 +1,92 @@
+{
+  "concept": "muster.presentation.frame.fitted",
+  "source": "authored",
+  "citation": "docs/architecture.md, durability: what can be written down is written down. A window's frame is written down the way its composition is, and both come back as a wish rather than a fact - a saved region may name a tab nobody holds, and a saved rectangle may name a display nobody has. kan a_28aKNgpuy raised it and settled that the shell reports the screens because only it can ask the platform, and the core decides because that is where a decision can be tested.",
+  "why": "A rectangle saved on a desk monitor and reopened on a laptop alone is the case this exists for: the window lands mostly past the edge, or entirely off it, and a window whose title bar is off-screen cannot be dragged back by the person looking at it. The rule is a trade between two ways of being wrong. Refitting too eagerly moves a window somebody deliberately put half off a screen, every single launch. Refitting too rarely opens a window nobody can reach, which is worse and is silent - it looks exactly like a window that failed to open. So the test is whether the title bar can still be grabbed, and everything else follows from it.",
+  "cases": [
+    {
+      "name": "the display is still there and so is the window",
+      "why": "The ordinary relaunch, and the one that has to change nothing. A window that came back a few points from where it was left would be a fit rule running when it should not, which is the failure nobody reports and everybody notices.",
+      "given": {
+        "frame": { "x": 200, "y": 150, "width": 1400, "height": 900 },
+        "screens": [{ "x": 0, "y": 0, "width": 2560, "height": 1415 }]
+      },
+      "expect": { "frame": "200,150 1400x900" }
+    },
+    {
+      "name": "the desk monitor is gone and the laptop is smaller than the window",
+      "why": "The case the card was reported from. A window saved at 3400x1400 on a desk monitor reopens on a laptop alone: keeping the size would put most of it past the edge, and keeping the position would put all of it there. Clamped to the screen and centred, because a window that has to be resized has no position worth preserving - the arrangement it belonged to went with the display.",
+      "given": {
+        "frame": { "x": 100, "y": 100, "width": 3400, "height": 1400 },
+        "screens": [{ "x": 0, "y": 0, "width": 1440, "height": 875 }]
+      },
+      "expect": { "frame": "0,0 1440x875" }
+    },
+    {
+      "name": "the window was on a second display that is no longer attached",
+      "why": "A second monitor sits at a positive offset from the main one, so a window on it saves coordinates that are nowhere at all once it is unplugged. Nothing overlaps, so there is no best screen to choose by area - the first one reported wins, which is the main display and where the person is looking.",
+      "given": {
+        "frame": { "x": 3000, "y": 200, "width": 1200, "height": 800 },
+        "screens": [{ "x": 0, "y": 0, "width": 1440, "height": 875 }]
+      },
+      "expect": { "frame": "120,37.5 1200x800" }
+    },
+    {
+      "name": "the window fits and stays put on the display it has most in common with",
+      "why": "Two screens side by side, and the window is wholly on the second one. Nothing needs fitting, so the presence of a second display must not become a reason to move it - a rule that always picked the main screen would drag every external-monitor window home on every launch.",
+      "given": {
+        "frame": { "x": 1600, "y": 100, "width": 1000, "height": 700 },
+        "screens": [
+          { "x": 0, "y": 0, "width": 1440, "height": 875 },
+          { "x": 1440, "y": 0, "width": 2560, "height": 1415 }
+        ]
+      },
+      "expect": { "frame": "1600,100 1000x700" }
+    },
+    {
+      "name": "a sliver of title bar is still grabbable",
+      "why": "The edge of the rule, from the side that must not move. A window dragged mostly off the right of a screen is a thing people do on purpose, and 120 points of title bar is enough to drag it back - so this is left exactly where it was. Pinned because the tempting simplification is to refit anything not wholly on a screen, which would fight the person every launch.",
+      "given": {
+        "frame": { "x": 1320, "y": 100, "width": 900, "height": 700 },
+        "screens": [{ "x": 0, "y": 0, "width": 1440, "height": 875 }]
+      },
+      "expect": { "frame": "1320,100 900x700" }
+    },
+    {
+      "name": "not quite enough title bar to grab",
+      "why": "The same edge from the other side: 119 points is a strip too thin to trust to a pointer, so the window is brought back. The pair matters more than either case - what they fix is a boundary drifting silently, which would show up as a window that sometimes comes back and sometimes does not.",
+      "given": {
+        "frame": { "x": 1321, "y": 100, "width": 900, "height": 700 },
+        "screens": [{ "x": 0, "y": 0, "width": 1440, "height": 875 }]
+      },
+      "expect": { "frame": "270,87.5 900x700" }
+    },
+    {
+      "name": "the body is on screen but the title bar is above it",
+      "why": "The one that a naive overlap test gets wrong and a person cannot recover from. Most of the window is visible, so any rule measuring area says it is fine - but the bar you drag it by is past the top of the display, and there is no gesture that brings it back. The rule measures the title bar for exactly this.",
+      "given": {
+        "frame": { "x": 200, "y": 200, "width": 900, "height": 800 },
+        "screens": [{ "x": 0, "y": 0, "width": 1440, "height": 875 }]
+      },
+      "expect": { "frame": "270,37.5 900x800" }
+    },
+    {
+      "name": "a window narrower than the strip the rule asks for",
+      "why": "A window 80 points wide can never put 120 points of title bar on a screen, so a rule stated as a flat number would refit it forever even though it is sitting whole in the middle of the display. Measured against its own width instead, which is what 'grabbable' meant in the first place.",
+      "given": {
+        "frame": { "x": 400, "y": 300, "width": 80, "height": 200 },
+        "screens": [{ "x": 0, "y": 0, "width": 1440, "height": 875 }]
+      },
+      "expect": { "frame": "400,300 80x200" }
+    },
+    {
+      "name": "no screens were reported at all",
+      "why": "A shell that could not enumerate displays is a bug here, not a machine with no monitors. Moving somebody's window on the strength of it would turn a reporting failure into a lost arrangement, so nothing is fitted and the saved rectangle is handed back untouched.",
+      "given": {
+        "frame": { "x": 3000, "y": 200, "width": 1200, "height": 800 },
+        "screens": []
+      },
+      "expect": { "frame": "3000,200 1200x800" }
+    }
+  ]
+}

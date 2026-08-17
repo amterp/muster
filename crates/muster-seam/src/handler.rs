@@ -9,7 +9,7 @@ use muster_core::diagnostics::log::{self, LogLevel};
 use muster_core::diagnostics::sink::JsonLinesSink;
 use muster_core::fields;
 
-use muster_core::composition::{DaemonId, FontSizeChange, RegionId, Step};
+use muster_core::composition::{DaemonId, FontSizeChange, Frame, RegionId, Step};
 use muster_core::config::{self, CursorStyle};
 use muster_core::find::Needle;
 use muster_core::input::{CompositionOutcome, Modifiers, ScrollDirection, composition_outcome};
@@ -80,6 +80,12 @@ fn handle(request: Request) -> Response {
         request::Payload::ReadWindow(_) => read_window(),
         request::Payload::SendToPane(send) => send_to_pane(&send),
         request::Payload::ReadAppearance(_) => read_appearance(),
+        request::Payload::ReadWindowFrame(read) => read_window_frame(&read.screens),
+        request::Payload::SetWindowFrame(set) => {
+            let frame = set.frame.unwrap_or_default();
+            session::set_window_frame(frame.rect.map(read_rect), frame.full_screen);
+            Response::ok()
+        }
         request::Payload::ResizePane(resize) => resize_pane(&resize),
         request::Payload::ToggleSidebar(_) => {
             session::toggle_sidebar();
@@ -503,6 +509,30 @@ fn resolve_daemon(daemon_id: &str) -> Result<DaemonId, Response> {
 /// core would be a transcription of somebody else's rather than a decision.
 fn read_appearance() -> Response {
     Response { payload: Some(response::Payload::Appearance(Box::new(appearance_message()))) }
+}
+
+/// Where the window should open, given the screens the shell found.
+///
+/// Read from the file rather than from the session, because this is asked during launch and the
+/// session's own presentation is not restored until `OpenWindow`. One reader either way: the
+/// restore uses the same function a moment later.
+fn read_window_frame(screens: &[proto::WindowRect]) -> Response {
+    let presentation = session::saved_presentation();
+    let screens: Vec<Frame> = screens.iter().copied().map(read_rect).collect();
+    Response {
+        payload: Some(response::Payload::WindowFrame(proto::WindowFrame {
+            rect: presentation.frame.map(|frame| write_rect(frame.fitted(&screens))),
+            full_screen: presentation.full_screen,
+        })),
+    }
+}
+
+fn read_rect(rect: proto::WindowRect) -> Frame {
+    Frame { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
+}
+
+fn write_rect(frame: Frame) -> proto::WindowRect {
+    proto::WindowRect { x: frame.x, y: frame.y, width: frame.width, height: frame.height }
 }
 
 /// What Muster should look like, as the config file left it.
