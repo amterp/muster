@@ -5,8 +5,16 @@
 //! `backend_snapshot.rs`, from recorded bytes. What is left is behavior that only exists
 //! when there is a socket at the other end, and a fake socket would only be Muster's guess
 //! at herdr - so these run against the pinned binary (`docs/testing.md`).
+//!
+//! One exception, at the bottom: a listener that accepts and answers nothing. It guesses at
+//! no part of herdr's protocol - answering nothing is the whole of it - and no request can
+//! ask a real daemon to withhold an acknowledgement, which makes it the transport fault
+//! `docs/testing.md` allows rather than the hand-written daemon it forbids.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::io::Read;
+use std::os::unix::net::UnixListener;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -424,4 +432,92 @@ fn an_agent_state_that_lands_before_its_watcher_is_recovered() {
          `subscription.rs::seed`.",
         calm.len()
     );
+}
+
+/// A listener that accepts the connection and then says nothing at all.
+///
+/// The one thing in this file that is not a real herdr, and the reason is that no request
+/// makes a real one behave this way: `events.subscribe` is either answered or refused, and
+/// "accepted the connection, then went quiet" is a property of the transport rather than of
+/// the daemon. It emulates no part of the protocol - there is no part of the protocol in
+/// answering nothing - so there is nothing here to drift out of step with the pinned binary.
+struct StalledDaemon {
+    path: PathBuf,
+    accepted: Arc<AtomicBool>,
+    hung_up: Arc<AtomicBool>,
+}
+
+impl StalledDaemon {
+    fn start() -> StalledDaemon {
+        // Short, for `sun_path`, and unique per test in the process - the same reasoning and
+        // the same root as `herdr_harness`.
+        static NEXT: AtomicU32 = AtomicU32::new(0);
+        let root = Path::new("/tmp/muster-test");
+        std::fs::create_dir_all(root).expect("could not make the scratch root");
+        let path = root.join(format!("stalled-{}.sock", NEXT.fetch_add(1, Ordering::Relaxed)));
+        let _ = std::fs::remove_file(&path);
+
+        let listener = UnixListener::bind(&path).expect("could not bind the stalled daemon");
+        let accepted = Arc::new(AtomicBool::new(false));
+        let hung_up = Arc::new(AtomicBool::new(false));
+
+        let reached = Arc::clone(&accepted);
+        let closed = Arc::clone(&hung_up);
+        std::thread::spawn(move || {
+            let Ok((mut stream, _)) = listener.accept() else { return };
+            reached.store(true, Ordering::Relaxed);
+            // Read and discard until the far end goes away. Never write: withholding the
+            // acknowledgement is the whole point. `read` returning zero is the FIN that a
+            // shutdown on the other side produces, and is what says the handle let go.
+            let mut buffer = [0u8; 256];
+            while let Ok(read) = stream.read(&mut buffer) {
+                if read == 0 {
+                    break;
+                }
+            }
+            closed.store(true, Ordering::Relaxed);
+        });
+
+        StalledDaemon { path, accepted, hung_up }
+    }
+
+    fn socket_path(&self) -> String {
+        self.path.to_string_lossy().into_owned()
+    }
+
+    fn accepted(&self) -> bool {
+        self.accepted.load(Ordering::Relaxed)
+    }
+
+    fn hung_up(&self) -> bool {
+        self.hung_up.load(Ordering::Relaxed)
+    }
+}
+
+impl Drop for StalledDaemon {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+#[test]
+fn a_daemon_that_never_acknowledges_can_still_be_let_go_of() {
+    let daemon = StalledDaemon::start();
+
+    {
+        let _subscription = Subscription::start(
+            daemon.socket_path(),
+            Arc::new(Mutex::new(Mirror::new())),
+            Arc::new(|_| {}),
+            Names::alone("local", Mint::Backend),
+        );
+        until("the subscription to reach the daemon", || daemon.accepted());
+    }
+
+    // Dropping the handle has to reach the socket, and until the stream is somewhere `Drop`
+    // can find it, it does not: the thread is parked in the acknowledgement read, holding
+    // the only reference. What leaks is a thread and two descriptors per attempt, against
+    // the 256 a GUI-launched process gets, and a daemon flapping between accepting and
+    // healthy leaks one set per reconnect.
+    until("the daemon to see the connection close", || daemon.hung_up());
 }
