@@ -23,6 +23,14 @@ use prost::Message;
 
 #[test]
 fn putting_the_roster_away_is_remembered() {
+    // Nothing here starts a bridge, so the pane below is one that never becomes typeable -
+    // and that is an error, which opens a roster this test has just put away. Switched off
+    // rather than sized generously, because a deadline crossed on a loaded runner would fail
+    // this test with an assertion about the roster and no hint that a watchdog moved it.
+    // SAFETY: nothing else in this process reads the environment concurrently. This runs
+    // before the daemon is started and before any pane opens, which is when the core reads it.
+    unsafe { std::env::set_var("MUSTER_TYPEABLE_DEADLINE_MS", "0") };
+
     let daemon = Daemon::start();
     let state = daemon.muster_config().with_file_name("window.toml");
 

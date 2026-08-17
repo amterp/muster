@@ -42,7 +42,7 @@ use crate::proto::{
     BackendHealth, Event, PaneStateChanged, PaneTypeable, PresentationChanged,
     Problem as ProblemMessage, ProblemsChanged, event,
 };
-use crate::{command, convert, ffi};
+use crate::{command, convert, ffi, watchdog};
 
 /// What Muster calls the daemon it found for itself.
 ///
@@ -856,7 +856,16 @@ impl Session {
 
         self.composition.reconcile(daemon, &mirror);
         let attached = self.panes.entry(daemon.clone()).or_default();
-        attached.retain(|pane, _| mirror.pane(pane).is_some());
+        attached.retain(|pane, _| {
+            let held = mirror.pane(pane).is_some();
+            if !held {
+                // Before the channel is dropped, so that an error about a pane that never
+                // became typeable goes with the pane rather than outliving it in the roster,
+                // naming something nobody can look at any more.
+                watchdog::closed(&PaneKey::new(daemon, pane));
+            }
+            held
+        });
     }
 
     /// Opens a channel for every pane this daemon has on screen and does not already have one.
@@ -980,6 +989,9 @@ impl Session {
                 _control: control,
             }),
         );
+        // The socket is bound and the shell has not been told about it yet, so this is the
+        // earliest moment the wait for a bridge can be said to have started.
+        watchdog::opened(PaneKey::new(daemon, pane));
         Ok(())
     }
 
@@ -1365,6 +1377,11 @@ pub(crate) fn bridge_exited(daemon: &str, pane: &str, process_alive: bool) {
             "process_alive" => process_alive.to_string(),
         },
     );
+    // The wait starts again. A pane keeps its channel while its surface is thrown away and
+    // built again, so the replacement bridge has to dial too - and a replacement that never
+    // arrives is the same deaf pane, which is the case `control_socket.rs` names as the reason
+    // its accept loop runs more than once.
+    watchdog::opened(PaneKey::new(&daemon, &PaneId::new(pane)));
     resnapshot(&daemon, &format!("nothing is painting {pane} any more"));
 }
 
@@ -2843,6 +2860,7 @@ fn health(daemon: &DaemonId, state: &str, detail: &str) {
 
 /// The moment the pane becomes typeable, on the thread that accepted the connection.
 fn typeable(daemon: &DaemonId, pane: &PaneId) {
+    watchdog::typeable(&PaneKey::new(daemon, pane));
     ffi::emit(&Event {
         payload: Some(event::Payload::PaneTypeable(PaneTypeable {
             daemon_id: daemon.to_string(),

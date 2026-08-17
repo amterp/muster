@@ -341,6 +341,13 @@ buys. Before it, a refused config went to the run log and nowhere else: you coul
 keymap at six in the evening, work all night on default bindings, and never be told - not when
 it broke, and not when a later save fixed it.
 
+**A pane that never becomes typeable appears in the same place, and that one is not your
+fault.** Your keystrokes reach a pane through a bridge Muster starts and waits to hear from,
+and until it does the pane renders, paints, and throws away everything you type. Five seconds
+of that is a problem naming the pane and where to look, so you are told rather than left to
+discover it by typing into something that stopped listening. It clears itself if the bridge
+turns up late, and it goes with the pane if you close it.
+
 `~/.muster/state/` is Muster's to write, and holds three files nobody should edit. `window.toml`
 is rewritten whenever the window settles: which tabs it was showing, in what order, at what
 widths, and under `[window]` whether the agent list was open and how far the text was sized

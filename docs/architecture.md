@@ -570,6 +570,17 @@ problem answers "what do I do now" for whoever is typing - the same fact, twice,
 different doors. Severity exists to decide interruption and nothing else: an error opens a roster somebody closed, a
 warning waits to be found.
 
+**The list also carries failures nobody caused, and a pane that never becomes typeable is the first of them.** A
+pane's keystrokes travel through a bridge that dials a socket the core bound for it, and until that connection
+arrives the pane renders, paints, and discards everything typed into it. Three separate bugs ended in exactly that
+state - the bridge failed to dial, the socket path had moved, the channel could not be opened - and every one of them
+was found by somebody typing. Both ends of the wait were already known to the core, which binds the socket and runs
+the callback the accept fires, so what was missing was a deadline between them: five seconds, one problem per pane,
+cleared by a bridge that arrives late and by the pane closing. An error rather than a warning, even though nobody
+misconfigured anything, because severity is about interruption and a warning waiting to be found would be found the
+old way - by typing into a pane that had stopped listening. The decision is a fold in `typeable.rs` and the clock is
+a single parked thread in the seam, so an idle window costs no wakeups and the rules are answerable by a case.
+
 Nothing renders an intent optimistically. A split, a close, a focus and a divider drag are all requests, and what
 came of them arrives as the next published view - so a window can never show an arrangement no daemon agreed to. The
 one thing an intent may settle locally is where Muster's own keyboard lands, because that is Muster's state and not

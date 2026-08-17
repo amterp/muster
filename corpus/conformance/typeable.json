@@ -1,0 +1,211 @@
+{
+  "concept": "typeable",
+  "source": "authored",
+  "citation": "crates/muster-core/src/typeable.rs, crates/muster-herdr/src/control_socket.rs, and kan card a_27Y4QtzyK. There is no oracle above these: how long a pane may render before Muster accuses its bridge is Muster's call, and these cases are where it is written down. The five seconds the seam actually uses is argued from tools/smoke-launch.py, which waits 2.0s after `app.ready` for a healthy bridge to start, dial back and paint.",
+  "why": "A pane becomes typeable when its bridge dials the socket Muster bound for it, and until then it renders, paints and discards every keystroke. Three separate bugs in this repo all ended in exactly that state - the bridge failed to dial, the socket path had moved, the channel could not be opened - and none of them said anything until somebody typed. Both ends of the wait are already known to the core, so the only thing missing was a deadline between them, which is what these cases pin.\n\nEvery case answers with the diff rather than the current set, because raising and clearing are the two things the caller can do, and getting the second one wrong is how a stale error outlives the pane it was about. `next_wake` is answered by every case too, because a loop around this has exactly two ways to go wrong: spinning on a pane it has already reported, and sleeping through one that fell overdue while it was busy elsewhere.\n\nTimes are nanoseconds, matching the monotonic clock the seam counts in. `raised` and `cleared` accumulate over every `reconcile` a case performs, so a case with two readings shows whether the second one had anything new to say. `next_wake` is asked once, at the case's `now` or at its last reading.",
+  "cases": [
+    {
+      "name": "a pane whose bridge never dials is reported once the deadline passes",
+      "why": "The base case, and the whole point: before this the same fact reached the run log and the window said nothing, so the first person to know was whoever typed into a pane that looked fine. The sentence is pinned here rather than in every case because it is one sentence - the deadline in it rather than the elapsed time, so that a condition which stays true has nothing new to say on the next reading.",
+      "given": {
+        "deadline": 5000000000,
+        "detail": true,
+        "steps": [
+          { "opened": "local/w1:p1", "at": 0 },
+          { "reconcile": 5000000000 }
+        ]
+      },
+      "expect": {
+        "raised": ["pane:local/w1:p1"],
+        "cleared": [],
+        "next_wake": null,
+        "detail": "The pane local/w1:p1 has had a socket open for over 5s, and nothing has dialed it - the bridge carrying this pane's keystrokes either never started or cannot reach the socket. Everything typed into this pane is discarded and it goes on rendering, so it looks frozen rather than broken; every other pane in the window is unaffected. The run log has the cause: look for `channel.accept.failed`, `bridge.exited.reported` and `pane.channel.unavailable`. Closing this pane and opening it again starts a new bridge."
+      }
+    },
+    {
+      "name": "a pane still inside its deadline is not accused",
+      "why": "A bridge takes measurable time to start, dial and paint, and a window that reported every pane during its first moments would be a window nobody reads. The deadline separates slow from broken, so the boundary is exclusive on the near side - and one nanosecond short of it, the answer is to wait that nanosecond.",
+      "given": {
+        "deadline": 5000000000,
+        "steps": [
+          { "opened": "local/w1:p1", "at": 0 },
+          { "reconcile": 4999999999 }
+        ]
+      },
+      "expect": { "raised": [], "cleared": [], "next_wake": 1 }
+    },
+    {
+      "name": "the same overdue pane is not news on the second reading",
+      "why": "The watch runs on a clock, so it asks repeatedly about a condition that stays true. If every reading counted as news the roster would republish and reopen itself for as long as the pane stayed quiet - which is the nagging that keying a problem by its condition was meant to end.",
+      "given": {
+        "deadline": 5000000000,
+        "steps": [
+          { "opened": "local/w1:p1", "at": 0 },
+          { "reconcile": 5000000000 },
+          { "reconcile": 9000000000 }
+        ]
+      },
+      "expect": {
+        "raised": ["pane:local/w1:p1"],
+        "cleared": [],
+        "next_wake": null
+      }
+    },
+    {
+      "name": "a bridge that dials in late takes the problem back",
+      "why": "A pane reported after five seconds whose bridge turns up at six is a working pane, and the box disappearing is the only confirmation anybody gets that it started working. Leaving it raised would teach whoever saw it to stop believing the roster.",
+      "given": {
+        "deadline": 5000000000,
+        "steps": [
+          { "opened": "local/w1:p1", "at": 0 },
+          { "reconcile": 5000000000 },
+          { "typeable": "local/w1:p1" },
+          { "reconcile": 6000000000 }
+        ]
+      },
+      "expect": {
+        "raised": ["pane:local/w1:p1"],
+        "cleared": ["pane:local/w1:p1"],
+        "next_wake": null
+      }
+    },
+    {
+      "name": "a pane closed while overdue takes its problem with it",
+      "why": "The case that goes wrong when it is forgotten. A pane that was deaf and is now gone would otherwise leave an error in the roster naming something nobody can look at, and no later event would ever clear it - the pane it was about is the thing that no longer exists.",
+      "given": {
+        "deadline": 5000000000,
+        "steps": [
+          { "opened": "local/w1:p1", "at": 0 },
+          { "reconcile": 5000000000 },
+          { "closed": "local/w1:p1" },
+          { "reconcile": 5000000001 }
+        ]
+      },
+      "expect": {
+        "raised": ["pane:local/w1:p1"],
+        "cleared": ["pane:local/w1:p1"],
+        "next_wake": null
+      }
+    },
+    {
+      "name": "one deaf pane among working ones is reported precisely",
+      "why": "Fourteen panes working and one deaf is the case worth reporting exactly, and it is why the condition is keyed per pane rather than per window. A window-wide answer would either accuse the working panes or say nothing while one of them swallowed everything typed into it.",
+      "given": {
+        "deadline": 5000000000,
+        "steps": [
+          { "opened": "local/w1:p1", "at": 0 },
+          { "opened": "local/w1:p2", "at": 0 },
+          { "opened": "devenv/w1:p1", "at": 0 },
+          { "typeable": "local/w1:p1" },
+          { "typeable": "devenv/w1:p1" },
+          { "reconcile": 5000000000 }
+        ]
+      },
+      "expect": {
+        "raised": ["pane:local/w1:p2"],
+        "cleared": [],
+        "next_wake": null
+      }
+    },
+    {
+      "name": "two daemons handing out the same pane id are two panes",
+      "why": "Both daemons in a window call their first pane w1:p1, so anything keyed by pane alone lets one machine's pane answer for the other's. The key carries the daemon for the same reason every other cross-daemon key in the core does.",
+      "given": {
+        "deadline": 5000000000,
+        "steps": [
+          { "opened": "local/w1:p1", "at": 0 },
+          { "opened": "devenv/w1:p1", "at": 0 },
+          { "reconcile": 5000000000 }
+        ]
+      },
+      "expect": {
+        "raised": ["pane:devenv/w1:p1", "pane:local/w1:p1"],
+        "cleared": [],
+        "next_wake": null
+      }
+    },
+    {
+      "name": "a bridge that exited starts the wait again",
+      "why": "A pane keeps its channel while its surface is thrown away and built again, so the replacement bridge has to dial too. control_socket.rs names this as the reason its accept loop runs more than once, and a replacement that never arrives is the same deaf pane - so the clock restarts rather than the pane being considered settled for good.",
+      "given": {
+        "deadline": 5000000000,
+        "steps": [
+          { "opened": "local/w1:p1", "at": 0 },
+          { "typeable": "local/w1:p1" },
+          { "opened": "local/w1:p1", "at": 6000000000 },
+          { "reconcile": 9000000000 },
+          { "reconcile": 11000000000 }
+        ]
+      },
+      "expect": {
+        "raised": ["pane:local/w1:p1"],
+        "cleared": [],
+        "next_wake": null
+      }
+    },
+    {
+      "name": "a deadline of zero watches nothing",
+      "why": "The honest answer for a run with no bridges to wait for, and what the seam's own knob means when it is set to 0. Off has to mean off rather than nearly-immediately: a zero read as a deadline that has always passed would accuse every pane the moment its socket was bound.",
+      "given": {
+        "deadline": 0,
+        "steps": [
+          { "opened": "local/w1:p1", "at": 0 },
+          { "reconcile": 60000000000 }
+        ]
+      },
+      "expect": { "raised": [], "cleared": [], "next_wake": null }
+    },
+    {
+      "name": "nothing waiting means nothing to wake up for",
+      "why": "An idle window should cost no wakeups at all, which is what lets the watch be a parked thread rather than a tick. This is the answer that decides it.",
+      "given": {
+        "deadline": 5000000000,
+        "steps": [
+          { "opened": "local/w1:p1", "at": 0 },
+          { "typeable": "local/w1:p1" }
+        ]
+      },
+      "expect": { "raised": [], "cleared": [], "next_wake": null }
+    },
+    {
+      "name": "the wake is the earliest deadline among the panes waiting",
+      "why": "So that a caller holding a real clock sleeps exactly as long as it has to, rather than polling. The earliest, because a pane opened later must not push back the report of one opened earlier.",
+      "given": {
+        "deadline": 5000000000,
+        "steps": [
+          { "opened": "local/w1:p1", "at": 1000000000 },
+          { "opened": "local/w1:p2", "at": 3000000000 },
+          { "reconcile": 4000000000 }
+        ]
+      },
+      "expect": { "raised": [], "cleared": [], "next_wake": 2000000000 }
+    },
+    {
+      "name": "a pane already reported does not decide when to wake next",
+      "why": "The first of two ways a loop around this misbehaves. Nothing further happens to a reported pane on the clock alone - only a bridge dialing in or the pane closing changes its answer, and both of those tell the caller directly - so counting it would answer zero forever and spin. What decides here is the pane still waiting behind it.",
+      "given": {
+        "deadline": 5000000000,
+        "steps": [
+          { "opened": "local/w1:p1", "at": 0 },
+          { "opened": "local/w1:p2", "at": 3000000000 },
+          { "reconcile": 5000000000 }
+        ]
+      },
+      "expect": {
+        "raised": ["pane:local/w1:p1"],
+        "cleared": [],
+        "next_wake": 3000000000
+      }
+    },
+    {
+      "name": "an overdue pane nobody has reported yet wants waking immediately",
+      "why": "The other way it goes wrong. A pane that fell overdue while the caller was busy publishing something else must not be slept through, because on a quiet window nothing else would ever wake it - so the answer is zero rather than nothing, until it has actually been reported.",
+      "given": {
+        "deadline": 5000000000,
+        "now": 7000000000,
+        "steps": [{ "opened": "local/w1:p1", "at": 0 }]
+      },
+      "expect": { "raised": [], "cleared": [], "next_wake": 0 }
+    }
+  ]
+}

@@ -17,6 +17,7 @@ pub mod mirror;
 pub mod names;
 pub mod problems;
 pub mod roster;
+pub mod typeable;
 
 pub use agent_state::AgentState;
 pub use attention::Attention;
@@ -29,3 +30,4 @@ pub use mirror::{BackendEvent, Change, Mirror};
 pub use names::{BackendPaneId, Mint, Names, PaneNames};
 pub use problems::{Problem, Problems, Severity};
 pub use roster::{Roster, RosterPane};
+pub use typeable::Waiting;
