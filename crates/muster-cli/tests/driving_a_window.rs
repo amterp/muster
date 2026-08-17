@@ -15,7 +15,7 @@
 use std::path::Path;
 use std::process::Command;
 
-use herdr_harness::{Daemon, until_file, until_some};
+use herdr_harness::{Daemon, until, until_file, until_some};
 use muster::proto::{OpenWindow, Request, Response, Startup, request, response};
 use prost::Message;
 use serde_json::{Value, json};
@@ -186,14 +186,33 @@ fn a_tab_is_addressable_by_name(window: &Value, environment: &[(&str, String)]) 
 
     let renamed = run(&["tab", "rename", "--tab", &tab, "🗂 the build"], environment);
     assert_eq!(renamed.code, 0, "`muster tab rename` failed: {}", renamed.errors);
-    until("the window to list the tab under the name it was given", || {
-        let window = json_from(&run(&["window", "--json"], environment));
-        let named = window["tabs"]
-            .as_array()?
-            .iter()
-            .any(|held| held["tab"] == json!(tab) && held["given_name"] == json!("🗂 the build"));
-        named.then_some(())
-    });
+    until(
+        "the window to list the tab under the name it was given",
+        || {
+            let window = json_from(&run(&["window", "--json"], environment));
+            window["tabs"].as_array().is_some_and(|tabs| {
+                tabs.iter().any(|held| {
+                    held["tab"] == json!(tab) && held["given_name"] == json!("🗂 the build")
+                })
+            })
+        },
+        // Asks the window again rather than remembering the last answer, because what a reader
+        // needs is the row as it stands: a tab that kept its old name and a tab that has gone are
+        // different bugs, and only one of them is about the rename.
+        || {
+            let window = json_from(&run(&["window", "--json"], environment));
+            let row = window["tabs"]
+                .as_array()
+                .and_then(|tabs| tabs.iter().find(|held| held["tab"] == json!(tab)).cloned());
+            match row {
+                Some(row) => format!("the window still describes {tab} as {row}."),
+                None => format!(
+                    "the window describes no tab called {tab} at all, so the rename is not the \
+                     first thing that went wrong here: {window}"
+                ),
+            }
+        },
+    );
     tab
 }
 

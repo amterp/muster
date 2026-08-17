@@ -317,7 +317,18 @@ fn a_tab_reordered_by_somebody_else_reaches_a_window_that_is_only_listening() {
         Arc::new(|_| {}),
         daemon.names(),
     );
-    until("the subscription to describe every tab", || tab_order(&live) == before);
+    until(
+        "the subscription to describe every tab",
+        || tab_order(&live) == before,
+        || {
+            format!(
+                "this window holds [{}] where the daemon has [{}], so the reorder below would \
+                 have been measured against a session it had not finished reading.",
+                spelled(&tab_order(&live)),
+                spelled(&before)
+            )
+        },
+    );
 
     // The last tab to the front, which is the largest move three tabs allow. Asked of the
     // daemon in its own vocabulary because Muster has no intent for it.
@@ -327,9 +338,30 @@ fn a_tab_reordered_by_somebody_else_reaches_a_window_that_is_only_listening() {
     let expected: Vec<TabId> = std::iter::once(moving.clone())
         .chain(before.iter().filter(|tab| *tab != &moving).cloned())
         .collect();
-    until("the listening window to hold the order the daemon settled on", || {
-        tab_order(&live) == expected
-    });
+    until(
+        "the listening window to hold the order the daemon settled on",
+        || tab_order(&live) == expected,
+        || {
+            format!(
+                "this window holds [{}] and the daemon settled on [{}]. Still [{}] means the \
+                 move announced nothing this window asked for, or nothing applied what did \
+                 arrive - the two halves this test covers. Any third order means the stated \
+                 order was read and then misapplied.",
+                spelled(&tab_order(&live)),
+                spelled(&expected),
+                spelled(&before)
+            )
+        },
+    );
+}
+
+/// A tab order for a failure message, spelled the way `observations/herdr-0.8.0.md` spells one.
+///
+/// Not `{:?}` on the vector, which is the idiom elsewhere in this file: those messages report
+/// membership, where a reader only has to see whether a name is present. These report a
+/// sequence, and comparing two sequences by eye is the whole of reading one of them.
+fn spelled(tabs: &[TabId]) -> String {
+    tabs.iter().map(TabId::as_str).collect::<Vec<_>>().join(", ")
 }
 
 /// Every tab the mirror holds, in the order it holds them.
