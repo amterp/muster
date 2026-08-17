@@ -172,10 +172,8 @@ fn run(
     let mut agents = AgentWatchers::new(socket_path, mirror, report, names);
 
     while running.load(Ordering::Relaxed) {
-        match connect(socket_path, &structure) {
+        match connect(socket_path, &structure, shared_stream) {
             Ok(stream) => {
-                *poison::lock(shared_stream, "subscription-stream") =
-                    Some(stream.try_clone().expect("could not share the subscription"));
                 if connected_before {
                     report(Notice::Reconnected);
                 }
@@ -199,6 +197,9 @@ fn run(
                 report(Notice::Stale { detail });
             }
             Err(detail) => {
+                // Whatever the failed attempt left behind is closed, and holding it would
+                // have the next `Drop` shut down a socket that is already gone.
+                *poison::lock(shared_stream, "subscription-stream") = None;
                 {
                     // Disconnected rather than stale on a failed dial: nothing has been
                     // reached, so there is no last good answer to label as aging.
@@ -236,8 +237,25 @@ fn run(
 /// The acknowledgement is read rather than fed to the decoder. It is the only place a
 /// rejected subscription is visible: a name herdr does not know is refused here and
 /// otherwise costs nothing but silence on that event for as long as the app runs.
-fn connect(socket_path: &str, subscriptions: &[Value]) -> Result<UnixStream, String> {
+///
+/// `held` is filled the moment the socket exists, before a byte is written, because the
+/// read below has no timeout: a daemon that accepts and then stalls parks this thread
+/// forever, and the only thing that unparks it is a shutdown from the handle's `Drop`.
+/// Anything published later is published too late to be shut down.
+fn connect(
+    socket_path: &str,
+    subscriptions: &[Value],
+    held: &Arc<Mutex<Option<UnixStream>>>,
+) -> Result<UnixStream, String> {
     let mut stream = UnixStream::connect(socket_path).map_err(|error| error.to_string())?;
+    // A clone that cannot be made is a connection that cannot be abandoned, so it counts as
+    // a failed dial rather than a stream nobody can reach. The way this fails is running out
+    // of descriptors, which is the same exhaustion an unshutdownable subscription causes.
+    let shared = stream
+        .try_clone()
+        .map_err(|error| format!("the subscription could not be shared to be closed: {error}"))?;
+    *poison::lock(held, "subscription-stream") = Some(shared);
+
     let request = json!({
         "id": "muster:subscribe",
         "method": "events.subscribe",
@@ -430,10 +448,10 @@ impl AgentWatchers {
             // that and rebuilds every watcher through `follow` when it reconnects. Two
             // things retrying the same failure is how a dead daemon gets dialed sixteen
             // times a second.
-            let Ok(mut stream) = connect(&socket_path, &subscription) else { return };
-            if let Ok(shared) = stream.try_clone() {
-                *poison::lock(&held, "watcher-stream") = Some(shared);
-            }
+            let Ok(mut stream) = connect(&socket_path, &subscription, &held) else {
+                *poison::lock(&held, "watcher-stream") = None;
+                return;
+            };
 
             // Subscribed, and now ask what was missed on the way here. This thread is spawned
             // when the structure stream says the pane exists and dials afterwards, so a
