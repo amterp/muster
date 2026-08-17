@@ -19,6 +19,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -27,6 +28,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "tools/herdr-probe"))
 
+from herdrprobe.client import Client  # noqa: E402
 from herdrprobe.daemon import IsolatedDaemon  # noqa: E402
 
 APP = REPO / ".build/arm64-apple-macosx/debug/muster"
@@ -80,6 +82,29 @@ def pointed_at(daemon: IsolatedDaemon) -> dict:
     return {**daemon.env, "MUSTER_CONFIG": str(config)}
 
 
+def stop(app: subprocess.Popen) -> None:
+    """Stops the app and the bridges it spawned.
+
+    The whole group, because a bridge is a child of the app and holds herdr's attach on its pane -
+    and herdr refuses a second client on an attached terminal. Terminating only the app leaves the
+    bridge holding it, so the *next* check to open the same pane fails with `already has an
+    attached client`, which reads as a wiring bug in the launch it happens to land on.
+
+    Each app is started in a session of its own for this, so the group is exactly its own.
+    """
+    try:
+        os.killpg(os.getpgid(app.pid), signal.SIGTERM)
+    except (ProcessLookupError, PermissionError):
+        app.terminate()
+    try:
+        app.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(os.getpgid(app.pid), signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            app.kill()
+
+
 def launch(env: dict, args: list[str], name: str, settle: float = 6.0) -> list[dict]:
     """Runs the app until it reports readiness, then stops it and returns its log."""
     log_path = ROOT / f"{name}.jsonl"
@@ -87,7 +112,11 @@ def launch(env: dict, args: list[str], name: str, settle: float = 6.0) -> list[d
     env = {**env, "MUSTER_LOG_FILE": str(log_path)}
 
     app = subprocess.Popen(
-        [str(APP), *args], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        [str(APP), *args],
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
     )
     try:
         deadline = time.time() + settle
@@ -101,11 +130,7 @@ def launch(env: dict, args: list[str], name: str, settle: float = 6.0) -> list[d
             time.sleep(0.2)
         return read_log(log_path)
     finally:
-        app.terminate()
-        try:
-            app.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            app.kill()
+        stop(app)
 
 
 def expect(records: list[dict], event: str, why: str) -> dict:
@@ -138,6 +163,51 @@ def expect_nothing_wrong(records: list[dict], expected: tuple[str, ...] = ()) ->
         )
 
 
+# Muster names for panes an earlier launch already learned, so that four checks against one
+# daemon cost one extra launch rather than four.
+_LEARNED: dict[str, str] = {}
+
+
+def naming(records: list[dict]) -> dict[str, str]:
+    """Which Muster name belongs to which pane the daemon holds.
+
+    Muster mints its own pane names, so one log carries two vocabularies and neither is guessable
+    from the other: the core's records say `p1w3r07bsd` and a bridge's say the `w1:p3` it streams
+    from. That is deliberate - a bridge talks to the daemon - and `surface.create` is the one
+    record naming both, because it says which pane it built and which command it spawned to paint
+    it. So it is the join, and this script needs one to assert against the daemon.
+    """
+    found = {}
+    for record in records:
+        if record["event"] != "surface.create":
+            continue
+        backend = re.search(r"'(w\d+:p\d+)'", record.get("command", ""))
+        if backend and record.get("pane"):
+            found[backend.group(1)] = record["pane"]
+    return found
+
+
+def muster_name_of(daemon: IsolatedDaemon, backend_pane: str) -> str:
+    """What Muster calls a pane the daemon is already holding.
+
+    This script cannot predict one. A name is minted when Muster first hears about the pane, so
+    the only way to learn it is to let the app look - which is also how a person gets one, from
+    `muster window` or from a pane's own `$MUSTER_PANE`. A bare launch is enough, and the name
+    survives into the next launch because Muster writes them down.
+    """
+    if backend_pane in _LEARNED:
+        return _LEARNED[backend_pane]
+    records = launch(pointed_at(daemon), [], "naming")
+    found = naming(records)
+    if backend_pane not in found:
+        raise Failure(
+            f"a bare launch never built a surface for {backend_pane}, so nothing here can learn "
+            f"what Muster calls it. It named {sorted(found)}."
+        )
+    _LEARNED.update(found)
+    return found[backend_pane]
+
+
 def expect_every_pane_painted(records: list[dict]) -> None:
     """Every pane the window was told to show got a surface, and something on it.
 
@@ -150,10 +220,10 @@ def expect_every_pane_painted(records: list[dict]) -> None:
         raise Failure("the core never published a view, so the window was never told anything")
 
     # Read out of the published tree, which is the only place the shell's own list of panes
-    # appears in the log. Pane ids are `w<n>:p<n>` in every daemon Muster talks to.
+    # appears in the log. Muster's own names: `p` and nine characters.
     wanted = set()
     for region in view:
-        wanted |= set(re.findall(r"w\d+:p\d+", region.get("tree", "")))
+        wanted |= set(re.findall(r"\bp[0-9a-z]{9}\b", region.get("tree", "")))
     if not wanted:
         raise Failure(
             "the core published a view naming no panes at all, so the window is empty and "
@@ -167,11 +237,15 @@ def expect_every_pane_painted(records: list[dict]) -> None:
             f"{sorted(surfaced)}. {sorted(wanted - surfaced)} render as empty squares."
         )
 
-    # A bridge names itself in `process` rather than repeating the pane on every record.
+    # A bridge names itself in `process` rather than repeating the pane on every record, and it
+    # names itself the way the daemon does - so its records are joined back through the surface
+    # that spawned it.
+    found = naming(records)
     painted = {
-        r["process"].removeprefix("bridge:")
+        found[r["process"].removeprefix("bridge:")]
         for r in records
         if r["event"] == "bridge.frame.first"
+        and r["process"].removeprefix("bridge:") in found
     }
     if wanted - painted:
         raise Failure(
@@ -181,8 +255,14 @@ def expect_every_pane_painted(records: list[dict]) -> None:
 
 
 def check_healthy_launch(daemon: IsolatedDaemon, pane: str) -> None:
-    """The whole chain: app binds, bridge starts, dials back, and paints."""
-    records = launch(pointed_at(daemon), [pane], "healthy")
+    """The whole chain: app binds, bridge starts, dials back, and paints.
+
+    Opened on a pane by name, which is the argument a person has: Muster's own name for it, from
+    `muster window` or from the pane's own environment. Learning it takes a launch of its own, and
+    that launch is itself worth something - the name has to survive into this one, or a pane could
+    only ever be named while the app that minted it was still running.
+    """
+    records = launch(pointed_at(daemon), [muster_name_of(daemon, pane)], "healthy")
     expect_nothing_wrong(records)
     expect_every_pane_painted(records)
     expect(records, "app.ready", "the app never finished launching")
@@ -223,8 +303,14 @@ def check_agent_state_reaches_the_app(daemon: IsolatedDaemon, pane: str) -> None
     log_path.unlink(missing_ok=True)
     env = {**pointed_at(daemon), "MUSTER_LOG_FILE": str(log_path)}
 
+    # Named the way a person would name it; the reports below stay in the daemon's own
+    # vocabulary, because they are sent to the daemon.
     app = subprocess.Popen(
-        [str(APP), pane], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        [str(APP), muster_name_of(daemon, pane)],
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
     )
     try:
         deadline = time.time() + 10.0
@@ -245,11 +331,7 @@ def check_agent_state_reaches_the_app(daemon: IsolatedDaemon, pane: str) -> None
         time.sleep(1.0)
         records = read_log(log_path)
     finally:
-        app.terminate()
-        try:
-            app.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            app.kill()
+        stop(app)
 
     expect(
         records,
@@ -309,11 +391,14 @@ def check_a_split_tab_becomes_splits(daemon: IsolatedDaemon, pane: str) -> None:
             f"{[held['pane_id'] for held in everything]}"
         )
 
-    records = launch(pointed_at(daemon), [pane], "splits", settle=10.0)
+    records = launch(pointed_at(daemon), [muster_name_of(daemon, pane)], "splits", settle=10.0)
     expect_nothing_wrong(records)
     expect_every_pane_painted(records)
 
-    surfaced = {r.get("pane") for r in records if r["event"] == "surface.create"}
+    # Asserted against the daemon's own ids, because the daemon is the oracle for "the tab holds
+    # three panes" - so what the window built surfaces for is translated back rather than the
+    # other way round.
+    surfaced = set(naming(records))
     missing = set(panes) - surfaced
     if missing:
         raise Failure(
@@ -325,7 +410,9 @@ def check_a_split_tab_becomes_splits(daemon: IsolatedDaemon, pane: str) -> None:
     # A surface that renders and swallows the keyboard is the failure that has cost this
     # project the most time, and it is invisible without asking per pane. `pane.typeable` is
     # the moment a bridge dialed back, which is the one that decides it.
-    connected = {r.get("pane") for r in records if r["event"] == "pane.typeable"}
+    typeable = {r.get("pane") for r in records if r["event"] == "pane.typeable"}
+    named = naming(records)
+    connected = {backend for backend, muster in named.items() if muster in typeable}
     silent = set(panes) - connected
     if silent:
         raise Failure(
@@ -376,8 +463,12 @@ def check_a_split_tab_becomes_splits(daemon: IsolatedDaemon, pane: str) -> None:
 
 
 def check_bad_pane(daemon: IsolatedDaemon) -> None:
-    """A pane that does not exist must say so rather than showing a blank window."""
-    records = launch(pointed_at(daemon), ["w9:p99"], "badpane")
+    """A pane that does not exist must say so rather than showing a blank window.
+
+    A well-formed name for a pane nobody holds, because that is the mistake somebody makes: a name
+    copied from a window that has since closed the pane, or from another machine's notes.
+    """
+    records = launch(pointed_at(daemon), ["p1w3r07bsd"], "badpane")
     # The one refusal this is about, and nothing else. A second unrelated warning here would
     # be a real finding hiding inside a scenario whose whole subject is a refusal.
     expect_nothing_wrong(records, expected=("core.refused",))
@@ -389,7 +480,7 @@ def check_bad_pane(daemon: IsolatedDaemon) -> None:
     if refused.get("request") != "attach_pane":
         raise Failure(f"something other than the attach was refused: {refused}")
     # The id the user typed, so the log answers "which pane" without them re-running it.
-    if "w9:p99" not in refused.get("reason", ""):
+    if "p1w3r07bsd" not in refused.get("reason", ""):
         raise Failure(f"the refusal did not name the pane that was asked for: {refused}")
 
 
@@ -416,18 +507,13 @@ def check_bare_launch(daemon: IsolatedDaemon) -> None:
     )
 
 
-def check_cold_start() -> None:
-    """No daemon, no config, nothing: the app has to produce a window anyway.
+def scratch_home(name: str) -> tuple[Path, dict, Path]:
+    """A home of Muster's own, so the daemon it starts is nobody's but this check's.
 
-    The first launch on a machine, and the reason Muster carries a herdr at all. Nothing is
-    running, nothing names a socket, and the app has to start its own daemon, ask it for a
-    workspace, and end up with a pane somebody can type into. Every other check here is
-    handed a daemon that already exists.
-
-    Its own scratch home, so the daemon this starts is not the developer's - and stopped
-    afterwards, since the whole point of the thing is that it outlives the app.
+    Both checks that need Muster to run its own daemon need this, and they need it identical: what
+    a pane is handed comes from the daemon, and the daemon comes from the launch.
     """
-    root = ROOT / "cold"
+    root = ROOT / name
     shutil.rmtree(root, ignore_errors=True)
     for directory in ("home", "home/.muster", "config/herdr", "state", "data", "cache"):
         (root / directory).mkdir(parents=True, exist_ok=True)
@@ -446,8 +532,106 @@ def check_cold_start() -> None:
     }
     for stale in ("HERDR_SOCKET_PATH", "HERDR_CLIENT_SOCKET_PATH", "HERDR_SESSION", "MUSTER_CONFIG"):
         env.pop(stale, None)
+    return root, env, root / "config/herdr/sessions/muster/herdr.sock"
 
-    socket = root / "config/herdr/sessions/muster/herdr.sock"
+
+def check_a_pane_can_drive_its_own_window() -> None:
+    """A program inside a pane runs `muster` and is answered by the window it is drawn in.
+
+    Three things have to be true at once and each is invisible on its own: the app has to put a
+    link to its CLI in `~/.muster/bin`, the daemon it starts has to carry that directory on the
+    PATH it hands every pane, and the pane has to be handed `MUSTER_PANE` and `MUSTER_SOCKET` in
+    the request that made it. Every one has a test of its own; nothing but this says they meet.
+
+    A cold start, because only a daemon Muster started gets that PATH. The text is typed through
+    herdr rather than through Muster's own endpoint, so what is being proved is the pane's own
+    environment rather than a path this script already knows.
+    """
+    root, env, socket = scratch_home("driving")
+    answered = root / "answered.txt"
+    app = subprocess.Popen(
+        [str(APP)],
+        env={**env, "MUSTER_LOG_FILE": str(ROOT / "driving.jsonl")},
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
+    )
+    try:
+        deadline = time.time() + 25.0
+        while time.time() < deadline:
+            if any(r["event"] == "app.ready" for r in read_log(ROOT / "driving.jsonl")):
+                break
+            if app.poll() is not None:
+                raise Failure("the app exited before it was ready")
+            time.sleep(0.2)
+
+        link = root / "home/.muster/bin/muster"
+        if not link.exists():
+            raise Failure(
+                f"the app put no muster command at {link}, so no pane can run one. A build "
+                "stages it beside the app - try `./dev -b`."
+            )
+
+        client = Client(socket, root)
+        panes = client.request("pane.list", {})["panes"]
+        if len(panes) != 1:
+            raise Failure(f"a cold start should leave one pane to type into, and left {panes}")
+        pane = panes[0]["pane_id"]
+
+        # Written to a file rather than read off the pane's screen: a grid wraps at its width and
+        # carries the shell's own echo of the command, so reading one cannot tell an answer from
+        # the question.
+        client.request(
+            "pane.send_text",
+            {"pane_id": pane, "text": f"muster window > {answered} 2>&1; echo $MUSTER_PANE >> {answered}"},
+        )
+        client.request("pane.send_input", {"pane_id": pane, "keys": ["enter"]})
+
+        deadline = time.time() + 20.0
+        while time.time() < deadline:
+            if answered.exists() and answered.read_text().strip():
+                break
+            time.sleep(0.25)
+        said = answered.read_text() if answered.exists() else ""
+        if "connected" not in said:
+            raise Failure(
+                "a pane ran `muster window` and did not get a window back, so nothing running "
+                f"in a pane can drive the window it is in. It got:\n{said or '(nothing at all)'}"
+            )
+        named = said.strip().splitlines()[-1]
+        if not re.fullmatch(r"p[0-9a-z]{9}", named):
+            raise Failure(
+                f"the pane read $MUSTER_PANE as {named!r}, so a program inside it cannot say "
+                "which pane it is and every command it sends would act on whichever pane the "
+                "keyboard happens to be on"
+            )
+        if named not in said:
+            raise Failure(
+                f"the window did not list {named}, which is the pane that asked - so a pane's "
+                f"own name is not one the window answers to. It said:\n{said}"
+            )
+    finally:
+        stop(app)
+        subprocess.run(
+            [str(REPO / ".build/arm64-apple-macosx/debug/herdr"), "server", "stop"],
+            env=env,
+            capture_output=True,
+            check=False,
+        )
+
+
+def check_cold_start() -> None:
+    """No daemon, no config, nothing: the app has to produce a window anyway.
+
+    The first launch on a machine, and the reason Muster carries a herdr at all. Nothing is
+    running, nothing names a socket, and the app has to start its own daemon, ask it for a
+    workspace, and end up with a pane somebody can type into. Every other check here is
+    handed a daemon that already exists.
+
+    Its own scratch home, so the daemon this starts is not the developer's - and stopped
+    afterwards, since the whole point of the thing is that it outlives the app.
+    """
+    root, env, socket = scratch_home("cold")
     try:
         # Longer than the rest: this one waits on a daemon starting from nothing.
         records = launch(env, [], "cold", settle=20.0)
@@ -527,6 +711,10 @@ def main() -> int:
             ("a pane that does not exist says why", lambda: check_bad_pane(daemon)),
             ("a bare launch opens a usable window", lambda: check_bare_launch(daemon)),
             ("a clean machine gets a daemon and a workspace", check_cold_start),
+            (
+                "a pane can drive the window it is drawn in",
+                check_a_pane_can_drive_its_own_window,
+            ),
             # Last, because it splits the tab the checks above are written against.
             (
                 "a split tab becomes splits, all of them typeable",
@@ -554,8 +742,9 @@ def main() -> int:
         return 1
     print(
         "\nsmoke: the app launches, connects, paints, renders a split tab as splits, shows "
-        "what its agents are doing, lists the panes nothing is showing, and comes up on a "
-        "machine with no daemon by starting one."
+        "what its agents are doing, lists the panes nothing is showing, comes up on a machine "
+        "with no daemon by starting one, and hands every pane a `muster` that answers for the "
+        "window it is drawn in."
     )
     return 0
 
