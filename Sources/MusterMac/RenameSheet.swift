@@ -77,7 +77,13 @@ public enum RenameSheet {
     sheet.makeFirstResponder(field)
   }
 
-  private nonisolated(unsafe) static var held: [ObjectIdentifier: Finisher] = [:]
+  /// The sheets currently up, keeping each one's button target alive until it answers.
+  ///
+  /// Isolated like everything else here rather than `nonisolated(unsafe)`. It was the latter,
+  /// which bought nothing - every reader is already on the main actor - while turning off the
+  /// one check that would refuse a future call from a background thread. A dictionary written
+  /// from two threads corrupts silently; a compiler error does not.
+  private static var held: [ObjectIdentifier: Finisher] = [:]
 
   /// What the two buttons are wired to. A class because a button's target has to be an object.
   @MainActor
