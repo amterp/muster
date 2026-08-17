@@ -1,0 +1,17 @@
+{
+  "_v": 3,
+  "alias": "the-bundle-ships",
+  "alias_explicit": false,
+  "column": "backlog-lo",
+  "created_at_millis": 1786929125531,
+  "creator": "Alexander Terp",
+  "description": "NOTICE covers Ghostty and herdr, and build_bundle stages licenses/herdr/LICENSE into muster.app. Nothing covers swift-protobuf (Apache-2.0, pinned at 1.38.1 in Package.resolved), whose runtime library is linked into the shipped binaries rather than only generating code at build time - nor the ~90 Rust crates in Cargo.lock that end up inside libmuster.dylib and muster-bridge.\n\nDeferrable while nothing works yet and nothing leaves this machine, which is why this is not in next. It stops being deferrable the first time --bundle output goes to somebody outside the project, and that is the kind of thing that happens on a day nobody planned it. Worth doing before then rather than after.\n\nThe mechanical half is easy - cargo-about or cargo-bundle-licenses can generate the Rust set - so most of the work is deciding what the bundle should carry and where, and whether the gate should fail when a new dependency arrives without a license beside it.",
+  "id": "a_29LOhso0b",
+  "position": "UUUUUUUU",
+  "title": "📜 The bundle ships licenses it does not carry",
+  "type": "chore",
+  "updated_at_millis": 1786929125531,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1786929125531}
+  ]
+}

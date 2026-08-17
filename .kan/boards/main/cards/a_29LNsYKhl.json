@@ -1,0 +1,24 @@
+{
+  "_v": 3,
+  "alias": "two-actions-can-hold",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1786929093713,
+  "creator": "Alexander Terp",
+  "description": "Bindings::bind (crates/muster-core/src/input/bindings.rs:479) inserts into a BTreeMap<Action, Chord> without ever asking whether another action already holds that chord. Two actions land on one key equivalent, AppMenu.swift sets both, and which one macOS fires is undefined. The project already refuses this exact shape one table over - config.rs:850 rejects a [text] block that binds one chord twice under different spellings, whole file and all - so what is missing is the check rather than the doctrine.\n\nThree collisions are possible and they are not equally easy to call:\n\n1. Two [keymap] actions on one chord. Unambiguously wrong, and the refusal writes itself in the voice already there: \"the config file binds both zoom and find to cmd+f, and only one menu item can hold it. None of the file was applied. Give one of them a different chord.\"\n\n2. [keymap] against [text]. Binding zoom to shift+enter under [keymap] and shift+enter to a newline under [text] both parse; the menu eats the chord first and the [text] entry silently never fires. Same shape, and the two tables are parsed independently today - config.rs:476-487 never cross-references them.\n\n3. [keymap] against Muster's own pane-level editing (input/keymap.rs:122). This is the one worth thinking about. opt+left is word-left in every pane, and focus_left is a natural thing to rebind to opt+left, since the default is cmd+opt+left. Take it and word-motion silently stops working in every shell in the window, with nothing on screen connecting the two. But refusing it outright means Muster declares a set of chords nobody may rebind onto, which is a larger claim than the other two and may want to be a warning rather than a refusal.\n\n1 and 2 look like clear refusals. 3 is the call.",
+  "id": "a_29LNsYKhl",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "title": "⌨️ Two actions can hold one chord, and nothing says so",
+  "type": "chore",
+  "updated_at_millis": 1786929093713,
+  "history": [
+    {
+      "field": "column",
+      "value": "backlog-hi",
+      "at": 1786929093713
+    }
+  ]
+}

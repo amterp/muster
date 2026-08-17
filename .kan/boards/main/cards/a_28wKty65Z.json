@@ -6,6 +6,14 @@
     "testing"
   ],
   "column": "backlog-hi",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Measured while reviewing: frame.decode reads 1.76 ns/byte here against a baseline of 0.83, which trips the 2.00x tolerance and makes ./dev --perf red before anybody changes anything. frame.vt_parse reads 5.72 against its own baseline without tripping, so the whole table looks shifted rather than one entry being wrong - consistent with the baseline having been recorded on a different machine rather than with a real regression.\n\nAlso confirmed from the same run: roster.build is measured and printed as 'new... nothing gates it yet' because perf/baseline.json has no entry for it. Comparison::is_clean() only fails on regressions and missing entries, not unbaselined ones, so that cost cannot fail a run today - and it is the per-title-change, per-pane cost architecture.md names as the one worth watching. Whatever re-records the baseline should pick it up.\n\nNot re-recorded here: the machine was busy with the review, and choosing what a baseline describes is a call worth making deliberately.",
+      "created_at_millis": 1786929072997,
+      "id": "c_29LNL9TPd"
+    }
+  ],
   "created_at_millis": 1786869397272,
   "creator": "Alexander Terp",
   "description": "`./dev --perf` fails on an unchanged tree. Measured 2026-08-16: with the working tree stashed, `frame.decode` reports 1.84 ns/byte against a baseline of 0.83 (2.22x, tolerance 2.00x), and every other benchmark is up by a similar factor - `input.encode` 35 to 57.5, `mirror.apply` 228 to 326, `frame.vt_parse` 3.79 to 5.70. Nothing on those paths has changed; the numbers were recorded 2026-08-13 and the failure reproduces with no diff at all.\n\nSo the tier currently cannot tell a regression from the machine, which is worse than not having it: a real regression now lands in a run that was already red.\n\n**Do not just re-record.** `./dev --perf --record` would bake in whatever this machine is doing today, and if the cause is thermal or load then tomorrow's baseline is wrong in the other direction. Worth finding out which it is first:\n\n- Whether it reproduces on an idle machine, cold, with nothing else running - six herdr daemons and a browser were up when this was measured.\n- Whether the harness is measuring what it thinks it is. A uniform ~2x across four unrelated benchmarks looks more like a timer, a build flag or CPU frequency scaling than like four independent slowdowns.\n- Whether the baseline needs a per-machine dimension at all. It already records `machine` and `recorded`; what it does not record is whether the machine was quiet, which is the variable that appears to matter.\n\nAlso worth deciding whether the tolerance is the right shape. 2.00x on a benchmark whose absolute cost is under a nanosecond per byte is a tight ratio on a small number, and a fixed ratio treats `frame.decode` and `pane.channel` (85 microseconds per pane) as equally noisy when they cannot be.\n\nFound while checking that the config-reload work had not slowed the keystroke path. It had not - `input.encode` was faster with the change than without it on the same run - but establishing that took three runs and a stash, which is the cost this card is about.\n\nAdjacent: a_28UsunMWa, the perf tier failing after the ssh tier.",
@@ -13,7 +21,7 @@
   "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
   "title": "📉 The perf baseline no longer describes this machine",
   "type": "chore",
-  "updated_at_millis": 1786869397272,
+  "updated_at_millis": 1786929072997,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786869397272}
   ]
