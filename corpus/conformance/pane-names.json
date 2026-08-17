@@ -60,6 +60,33 @@
       "expect": { "trace": ["p1w3r07bsd", "p1w3r0a4a9"], "located": { "p1w3r0a4a9": "local/w1:p2" } }
     },
     {
+      "name": "a pane the daemon has not described yet keeps its name",
+      "why": "A backend names a pane in its reply to the request that made it and announces the pane a moment later, so in between the registry holds a name for a pane no snapshot mentions. Read as a pane that has closed, that forgets the name of the pane somebody just made - and the pane is still there, still running, now holding a MUSTER_PANE that resolves to nothing. This is the gap, and it is the one prune must not act in.",
+      "given": {
+        "seed": 1,
+        "do": [
+          { "reserve": "A" },
+          { "settle": { "as": "A", "at": "local/w1:p7" } },
+          { "prune": { "daemon": "local", "holds": [] } }
+        ]
+      },
+      "expect": { "trace": ["p1w3r07bsd"], "located": { "p1w3r07bsd": "local/w1:p7" } }
+    },
+    {
+      "name": "a pane the daemon described once and no longer holds is forgotten",
+      "why": "The other half of the case above, and what stops the protection becoming permanent: once a prune has seen the daemon holding the pane, absence from a later one is the daemon saying it is gone. Without this a name minted for a pane Muster made would never be forgotten, and the file would grow a line for every pane ever opened from inside Muster - which is most of them.",
+      "given": {
+        "seed": 1,
+        "do": [
+          { "reserve": "A" },
+          { "settle": { "as": "A", "at": "local/w1:p7" } },
+          { "prune": { "daemon": "local", "holds": ["w1:p7"] } },
+          { "prune": { "daemon": "local", "holds": [] } }
+        ]
+      },
+      "expect": { "trace": ["p1w3r07bsd"], "located": {} }
+    },
+    {
       "name": "forgetting one daemon's panes leaves another daemon's alone",
       "why": "A pane on a daemon nothing is attached to is not gone, it is unwitnessed. Dropping its name because some other daemon's snapshot did not mention it would strand an agent that is still working, and there would be nothing left to say what it used to be called.",
       "given": {

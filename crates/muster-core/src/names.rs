@@ -238,6 +238,17 @@ pub struct PaneNames {
     /// spoken - it is in the request, and about to be in the pane's environment - and nothing
     /// answers to it. Held here so a second draw in that moment cannot land on it.
     reserved: BTreeSet<PaneId>,
+    /// Names bound from a backend's own answer, whose pane it has not described yet.
+    ///
+    /// A backend names a pane in its reply to the request that made it and announces the pane
+    /// a moment later, so in between there is a name whose pane no mirror has heard of. Without
+    /// this, [`prune`](PaneNames::prune) reads that as a pane that has closed and forgets the
+    /// name of the pane somebody just made - taking its keyboard and its `MUSTER_PANE` with it.
+    ///
+    /// Left the first time a prune sees the pane, so it covers that gap and nothing wider: a
+    /// name read back from a previous launch was never in here, and a pane that closed while
+    /// Muster was shut is forgotten on the first prune the way it should be.
+    unannounced: BTreeSet<PaneId>,
 }
 
 impl Default for PaneNames {
@@ -255,6 +266,7 @@ impl PaneNames {
             located: BTreeMap::new(),
             named: BTreeMap::new(),
             reserved: BTreeSet::new(),
+            unannounced: BTreeSet::new(),
         }
     }
 
@@ -292,6 +304,7 @@ impl PaneNames {
     /// Says where a reserved name's pane turned out to be.
     pub fn settle(&mut self, name: &PaneId, daemon: &DaemonId, backend: &BackendPaneId) {
         self.reserved.remove(name);
+        self.unannounced.insert(name.clone());
         self.bind(name.clone(), Located { daemon: daemon.clone(), backend: backend.clone() });
     }
 
@@ -331,11 +344,27 @@ impl PaneNames {
     /// one daemon, because that is the only question this can answer safely: a name belonging
     /// to a daemon nothing is attached to is not gone, it is unwitnessed - and dropping it
     /// would strand an agent that is still running in it.
+    ///
+    /// A pane the daemon has not got round to describing is not gone either, which is the whole
+    /// job of `unannounced` above: absence from `held` means "closed" only for a pane this
+    /// registry has seen the daemon hold at least once.
     pub fn prune(&mut self, daemon: &DaemonId, held: &BTreeSet<BackendPaneId>) {
-        self.located
-            .retain(|_, located| &located.daemon != daemon || held.contains(&located.backend));
-        self.named
-            .retain(|located, _| &located.daemon != daemon || held.contains(&located.backend));
+        // Taken out and put back because the retains below read it while borrowing the maps it
+        // is filtered against.
+        let mut unannounced = std::mem::take(&mut self.unannounced);
+        unannounced.retain(|name| !self.holds(daemon, held, name));
+        self.located.retain(|name, at| {
+            &at.daemon != daemon || held.contains(&at.backend) || unannounced.contains(name)
+        });
+        self.named.retain(|at, name| {
+            &at.daemon != daemon || held.contains(&at.backend) || unannounced.contains(name)
+        });
+        self.unannounced = unannounced;
+    }
+
+    /// Whether this daemon is holding the pane it calls by this name.
+    fn holds(&self, daemon: &DaemonId, held: &BTreeSet<BackendPaneId>, name: &PaneId) -> bool {
+        self.located.get(name).is_some_and(|at| &at.daemon == daemon && held.contains(&at.backend))
     }
 
     /// Every name, and where its pane is. In name order, so two writes of an unchanged
