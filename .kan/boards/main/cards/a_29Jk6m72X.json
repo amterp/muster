@@ -1,0 +1,19 @@
+{
+  "_v": 3,
+  "alias": "a-refused-config",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1786925181654,
+  "creator": "Alexander Terp",
+  "description": "The reload path is exactly what the README promises - a file that will not parse changes nothing at all, and the log says so with an impact line and a check line (crates/muster-seam/src/handler.rs:985). What it does not do is reach the person who just saved the file.\n\nThey are in an editor, not in the run log. From the window's side a rejected save and a save that changed nothing look identical: nothing happens. The one moment somebody most needs telling is the moment they have just broken their config, and that is the moment Muster is quietest.\n\nLeft for a call rather than built, because every answer costs something the project has an opinion about. A banner over the window is chrome Muster otherwise does not have. A pane-sized notice is a pane nobody asked for. The title bar already carries daemon health and would then carry two unrelated things. Reusing the notification path is closest to what exists - attention routing is built, and this is arguably attention - but it stretches 'an agent needs you' to cover 'your file is broken'.\n\nWorth an answer before anybody but the author edits a config file.",
+  "id": "a_29Jk6m72X",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "title": "🔇 A refused config reload is only ever a log line",
+  "updated_at_millis": 1786925181654,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1786925181654}
+  ]
+}

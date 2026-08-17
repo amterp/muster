@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "until-is-written",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1786925196185,
+  "creator": "Alexander Terp",
+  "description": "Every daemon-backed test needs the same helper - poll a condition until a deadline, then fail naming what never happened - and there are four independent copies: crates/muster-seam/tests/numbering.rs:203, crates/muster-seam/tests/inherited.rs:246, crates/muster-herdr/tests/pane_arranging.rs:211 (marked #[allow(dead_code)]), and crates/muster-herdr/tests/split_sides.rs. Tests/MusterMacTests/Recording.swift has the Swift one, which is fine - that is the other language.\n\nThey already differ. Deadlines are 10s in three and 5s in the Swift one, poll intervals are 20ms, 20ms and 5ms, and only the muster-seam pair takes an on_failure closure that says what the mirror actually held when it gave up. That last one is the difference worth keeping, and it is the one two of the four do not have - so a timeout in pane_arranging tells you a condition never came true and nothing about what was true instead.\n\nNot urgent and not a bug. It matters because this is exactly the helper the end-to-end gesture tier will want (a_298rp2Pss), and writing a fifth copy is the likely default. herdr-harness is the obvious home, since everything that needs 'until' already depends on it.",
+  "id": "a_29JkUDhdt",
+  "position": "UUUUUUU",
+  "title": "🧰 'until' is written four times over",
+  "type": "chore",
+  "updated_at_millis": 1786925196185,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1786925196185}
+  ]
+}
