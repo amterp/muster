@@ -12,8 +12,9 @@
 //! test: which of `pane.swap` and `pane.move` a drop becomes is the core's decision and is
 //! exactly what would go unnoticed.
 //!
-//! One test per binary, for the reason the others here are: the seam holds one session per
-//! process, and a `Startup` points the whole process at one daemon.
+//! One test here so far, and no longer because a second could not be had: the seam's session
+//! is reset between tests and they take their turns through `muster::testing::fresh_session`,
+//! which is what the first line of each one is asking for.
 
 use std::sync::Mutex;
 
@@ -27,6 +28,7 @@ use serde_json::json;
 
 #[test]
 fn a_row_dropped_on_another_moves_the_pane_it_names() {
+    let _turn = muster::testing::fresh_session();
     let daemon = Daemon::start();
     daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "one", "focus": true }));
     daemon.call("pane.split", &json!({ "direction": "right" }));

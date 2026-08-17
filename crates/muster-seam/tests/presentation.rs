@@ -9,8 +9,9 @@
 //! the whole of what a shell has to go on - a window shows the list because it was told to,
 //! and a core that changed its mind privately would look identical from inside.
 //!
-//! One test per binary, for the reason the others here are: the seam holds one session per
-//! process and a `Startup` points the whole process at one state file.
+//! One test here so far, and no longer because a second could not be had: the seam's session
+//! is reset between tests and they take their turns through `muster::testing::fresh_session`,
+//! which is what the first line of each one is asking for.
 
 use std::sync::Mutex;
 
@@ -23,6 +24,7 @@ use prost::Message;
 
 #[test]
 fn putting_the_roster_away_is_remembered() {
+    let _turn = muster::testing::fresh_session();
     // Nothing here starts a bridge, so the pane below is one that never becomes typeable -
     // and that is an error, which opens a roster this test has just put away. Switched off
     // rather than sized generously, because a deadline crossed on a loaded runner would fail

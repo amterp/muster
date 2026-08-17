@@ -20,6 +20,7 @@ use prost::Message;
 
 #[test]
 fn a_window_writes_down_what_it_is_showing() {
+    let _turn = muster::testing::fresh_session();
     let daemon = Daemon::start();
     let state = daemon.muster_config().with_file_name("window.toml");
 

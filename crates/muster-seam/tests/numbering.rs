@@ -12,9 +12,9 @@
 //! numbering panes at all - reaching one has to bring its tab on screen, or nine chords do not
 //! replace what the tab numbers used to do.
 //!
-//! One test in this binary, on purpose. The seam holds the session in a process global and
-//! this points the whole process at a scratch daemon through the environment; a second test
-//! here would race both.
+//! One test here so far, and no longer because a second could not be had: the seam's session
+//! is reset between tests and they take their turns through `muster::testing::fresh_session`,
+//! which is what the first line of each one is asking for.
 
 use std::sync::Mutex;
 
@@ -28,6 +28,7 @@ use serde_json::{Value, json};
 
 #[test]
 fn a_numbered_chord_lands_on_the_row_carrying_that_number() {
+    let _turn = muster::testing::fresh_session();
     let daemon = Daemon::start();
     a_session_of_two_tabs(&daemon);
 

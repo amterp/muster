@@ -20,8 +20,9 @@
 //! process plumbing. What the bridge does with the line is `control_socket.rs`'s subject; what
 //! this is about is whether the app sends one, and whether the number in it is right.
 //!
-//! One test in this binary, for the reason the others here are: the seam holds one session per
-//! process, and this one quits it.
+//! One test here so far, and no longer because a second could not be had: the seam's session
+//! is reset between tests and they take their turns through `muster::testing::fresh_session`,
+//! which is what the first line of each one is asking for.
 
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Write};
@@ -44,6 +45,7 @@ const WINDOW: (u16, u16) = (120, 40);
 
 #[test]
 fn quitting_hands_every_pane_back_at_the_size_its_daemon_draws_it() {
+    let _turn = muster::testing::fresh_session();
     // Nothing here paints a pane, so it never becomes typeable - an error, which opens the
     // roster and republishes. Harmless and noisy, so it is switched off rather than waited out.
     // SAFETY: nothing else in this process reads the environment concurrently. This runs
@@ -100,8 +102,12 @@ fn quitting_puts_a_pane_back(daemon: &Daemon, panes: &[String]) {
 
     // Read before the controllers are killed, so nothing here can be explained by them going.
     let after: Vec<(u16, u16)> = panes.iter().map(|pane| size(daemon, pane)).collect();
+    // Waited for, not just signalled. A caller that runs this twice would otherwise open its
+    // second control stream on a pane the first one has not finished letting go of, and which
+    // client is driving a pane is exactly what this whole file is about.
     for controller in &mut controllers {
         let _ = controller.kill();
+        let _ = controller.wait();
     }
 
     for ((pane, held), wanted) in panes.iter().zip(&after).zip(&wanted) {

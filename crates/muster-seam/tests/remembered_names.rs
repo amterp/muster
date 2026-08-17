@@ -14,7 +14,9 @@
 //! naming a pane and a tab the daemon already holds, and asserts the window comes up calling them
 //! that - then that the next publish writes the file back with both names in it.
 //!
-//! One test in this binary, on purpose: the seam holds one session per process.
+//! One test here so far, and no longer because a second could not be had: the seam's session
+//! is reset between tests and they take their turns through `muster::testing::fresh_session`,
+//! which is what the first line of each one is asking for.
 
 use std::sync::Mutex;
 
@@ -32,6 +34,7 @@ const REMEMBERED_TAB: &str = "t1w3r07bsd";
 
 #[test]
 fn a_pane_and_a_tab_keep_the_names_they_had_before_this_launch() {
+    let _turn = muster::testing::fresh_session();
     let daemon = Daemon::start();
     daemon
         .call("workspace.create", &json!({ "cwd": "/tmp", "label": "remembered", "focus": true }));

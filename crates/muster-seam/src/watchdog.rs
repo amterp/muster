@@ -97,6 +97,16 @@ pub(crate) fn closed(pane: &PaneKey) {
     KNOCK.notify_all();
 }
 
+/// Forgets every pane being waited on, for a process starting over.
+///
+/// The thread stays. It is parked on the condvar with nothing owed, which is what it does
+/// between panes anyway, and stopping it would mean a way to start a second one - which is a
+/// mechanism nothing in a shipped window would ever use.
+pub(crate) fn forget_everything() {
+    *poison::lock(&WAITING, "typeable") = Waiting::new();
+    KNOCK.notify_all();
+}
+
 /// Starts the thread that watches the clock, once per process.
 ///
 /// Lazily, because a run that never opens a pane should not carry a thread, and parked on a

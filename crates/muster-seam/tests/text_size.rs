@@ -6,8 +6,9 @@
 //! opens at the size of the pane it came from, and that the answer arrives on the pane in the
 //! published view rather than on a message a shell would have to join against it.
 //!
-//! One test in this binary, for the reason the others here are: the seam holds one session per
-//! process, so a second test would race this one's daemon and its state file.
+//! One test here so far, and no longer because a second could not be had: the seam's session
+//! is reset between tests and they take their turns through `muster::testing::fresh_session`,
+//! which is what the first line of each one is asking for.
 
 use std::sync::Mutex;
 
@@ -20,6 +21,7 @@ use prost::Message;
 
 #[test]
 fn a_chord_sizes_one_pane_and_a_split_inherits_it() {
+    let _turn = muster::testing::fresh_session();
     // Nothing here starts a bridge, so every pane is one that never becomes typeable - an
     // error, which opens the roster and republishes. Harmless to this test and noisy in its
     // log, so it is switched off rather than waited out.

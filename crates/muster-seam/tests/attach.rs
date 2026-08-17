@@ -10,9 +10,11 @@
 //! renders nothing and ignores the keyboard, which is indistinguishable from every other
 //! way this can go wrong and is the symptom that has cost this project the most time.
 //!
-//! One test in this binary, on purpose. The seam holds the session in a process global and
-//! this points the whole process at a scratch daemon through the environment; a second test
-//! here would race both.
+//! One test per behaviour, each with a daemon and a session of its own. They were nine
+//! scenarios chained through one test until `muster::testing` existed, because the seam holds
+//! its session in a process global - and a chained scenario stops at the first failure, so
+//! everything after it went unrun and one red run could not say whether that broke too. The
+//! turn each takes is what serialises them; the fixture below is what they share.
 
 use std::collections::BTreeSet;
 use std::sync::Mutex;
@@ -20,13 +22,26 @@ use std::sync::Mutex;
 use herdr_harness::{Daemon, until};
 use muster::proto::{
     AttachPane, ClosePane, CreateTab, Event, FocusPane, Paste, Request, Response, RosterChanged,
-    SplitPane, Startup, ViewChanged, ViewNode, WindowFocus, event, request, response, view_node,
+    SplitPane, Startup, ViewChanged, ViewNode, WindowFocus, ZoomPane, event, request, response,
+    view_node,
 };
 use prost::Message;
 use serde_json::{Value, json};
 
-#[test]
-fn attaching_places_a_pane_where_the_keyboard_can_find_it() {
+/// A window on a session that was already running, which is where every test here starts.
+///
+/// The daemon comes back with it because dropping one kills it, so a test that let go of it
+/// would be a test whose panes stop existing halfway through. The three names are the *daemon's*
+/// own ids, which is what the raw calls and every oracle here want; [`named`] reads back what
+/// Muster calls the same panes.
+struct Open {
+    daemon: Daemon,
+    first: String,
+    second: String,
+    finished: String,
+}
+
+fn a_window_onto_work_already_running() -> Open {
     let daemon = Daemon::start();
     let (first, second, finished) = a_session_with_work_already_in_it(&daemon);
 
@@ -38,11 +53,31 @@ fn attaching_places_a_pane_where_the_keyboard_can_find_it() {
     // and the order is load-bearing: startup begins following the configured daemons, so a
     // callback registered after it misses the whole first bootstrap - every pane that already
     // existed, and whatever their agents were already doing.
-    muster::ffi::muster_set_event_callback(Some(note_view));
+    watch();
     assert_ok(&answer(request::Payload::Startup(Startup {
         config_path: config.to_string_lossy().into_owned(),
         ..Startup::default()
     })));
+
+    Open { daemon, first, second, finished }
+}
+
+/// Starts collecting what the core pushes, from nothing.
+///
+/// The collectors below are statics, so they outlive a test the way the session used to - and a
+/// roster left by the last test is a `named` that answers instantly with a pane this daemon has
+/// never held.
+fn watch() {
+    *VIEW.lock().expect("a panicking reader poisoned the view") = None;
+    STATES.lock().expect("a panicking reader poisoned the states").clear();
+    *ROSTER.lock().expect("a panicking reader poisoned the roster") = None;
+    muster::ffi::muster_set_event_callback(Some(note_view));
+}
+
+#[test]
+fn attaching_places_a_pane_where_the_keyboard_can_find_it() {
+    let _turn = muster::testing::fresh_session();
+    let Open { daemon, first, second, finished } = a_window_onto_work_already_running();
 
     // Before any attach, so this is the state a window is in on the way up rather than one
     // it fell back to.
@@ -148,15 +183,6 @@ fn attaching_places_a_pane_where_the_keyboard_can_find_it() {
         "the keyboard should follow the pane just attached, and the text landed in {first} \
          as well as, or instead of, {second}"
     );
-
-    // Both spellings, because these reach both sides: what Muster calls a pane for the
-    // requests, and what the daemon calls it for the oracles.
-    an_agent_finishing_unseen_waits_to_be_noticed(&daemon, &second, &named("second"));
-    a_pane_no_region_shows_can_still_be_reached(&daemon);
-    the_window_follows_and_drives_the_tree(&daemon, &second, &named("second"));
-    a_new_tab_is_made_and_then_shown(&daemon);
-    // Last, because it empties the session this whole test was built on.
-    an_emptied_window_can_be_refilled(&daemon);
 }
 
 /// Closing the last pane, and getting one back.
@@ -169,7 +195,12 @@ fn attaching_places_a_pane_where_the_keyboard_can_find_it() {
 /// Driven through the daemon rather than through the core's own close, because what is under
 /// test is what a window does once it is empty, and this reaches that state the way the
 /// commonest one does: the daemon lost the panes and said so.
-fn an_emptied_window_can_be_refilled(daemon: &Daemon) {
+#[test]
+fn an_emptied_window_can_be_refilled() {
+    let _turn = muster::testing::fresh_session();
+    let Open { daemon, .. } = a_window_onto_work_already_running();
+    let daemon = &daemon;
+
     for pane in panes(daemon) {
         daemon.call("pane.close", &json!({ "pane_id": pane }));
     }
@@ -206,7 +237,15 @@ fn an_emptied_window_can_be_refilled(daemon: &Daemon) {
 /// the mirror has not heard of it yet and the next reconcile drops a region whose tab it does
 /// not know. So the tab is remembered and shown by the event that makes it true, and this is
 /// what says that actually happens.
-fn a_new_tab_is_made_and_then_shown(daemon: &Daemon) {
+#[test]
+fn a_new_tab_is_made_and_then_shown() {
+    let _turn = muster::testing::fresh_session();
+    let Open { daemon, .. } = a_window_onto_work_already_running();
+    let daemon = &daemon;
+    // A window showing something, which every one of these starts from. The pane it lands on
+    // is the one this fixture's session put a second pane beside.
+    attach(&named("second"));
+
     let before =
         latest_view().expect("the window is showing something by now").regions[0].tab_id.clone();
     let tabs_before = tab_count(daemon);
@@ -311,7 +350,15 @@ fn a_session_with_work_already_in_it(daemon: &Daemon) -> (String, String, String
 /// agent that finished or is waiting for somebody is most often on a pane no region is
 /// showing, and being told about it only helps if going there works. Before this, focusing
 /// such a pane was refused by name - which is a list of things you cannot reach.
-fn a_pane_no_region_shows_can_still_be_reached(daemon: &Daemon) {
+#[test]
+fn a_pane_no_region_shows_can_still_be_reached() {
+    let _turn = muster::testing::fresh_session();
+    let Open { daemon, .. } = a_window_onto_work_already_running();
+    let daemon = &daemon;
+    // A window showing something, which every one of these starts from. The pane it lands on
+    // is the one this fixture's session put a second pane beside.
+    attach(&named("second"));
+
     let before = latest_view().expect("the window is showing something by now");
     daemon.call("tab.create", &json!({ "cwd": "/tmp" }));
 
@@ -375,7 +422,16 @@ fn a_pane_no_region_shows_can_still_be_reached(daemon: &Daemon) {
 /// The settling assertion is the one that cannot pass by accident. herdr never revises its
 /// answer when a Muster window gains focus, because it cannot see that happen at all, so a
 /// core relaying the daemon would leave this `done` forever.
-fn an_agent_finishing_unseen_waits_to_be_noticed(daemon: &Daemon, backend: &str, pane: &str) {
+#[test]
+fn an_agent_finishing_unseen_waits_to_be_noticed() {
+    let _turn = muster::testing::fresh_session();
+    let Open { daemon, second, .. } = a_window_onto_work_already_running();
+    // Both spellings, because this reaches both sides: what Muster calls the pane for the
+    // requests, and what the daemon calls it for the oracles.
+    let (daemon, backend) = (&daemon, second.as_str());
+    let pane = &named("second");
+    attach(pane);
+
     let report = |state: &str| {
         daemon.call(
             "pane.report_agent",
@@ -407,11 +463,77 @@ fn an_agent_finishing_unseen_waits_to_be_noticed(daemon: &Daemon, backend: &str,
     );
 }
 
+/// Moving the keyboard inside a zoomed tab.
+///
+/// The pane on screen has to be the pane being typed into, and it was not: a backend spells
+/// zoom as a flag beside its own focused pane, publishes no layout event when focus moves, and
+/// Muster was reading that stale cursor - so ⌘2 in a zoomed tab left the previous pane filling
+/// the region while the keyboard fed one nobody could see.
+///
+/// Against a real daemon rather than only in `composition.json`, because the case turns on what
+/// the daemon does and does not announce, and a recorded world cannot be wrong about that in
+/// the way a real one just was.
+#[test]
+fn zoom_follows_the_keyboard() {
+    let _turn = muster::testing::fresh_session();
+    let Open { daemon: _daemon, .. } = a_window_onto_work_already_running();
+    let (first, second) = (named("first"), named("second"));
+    attach(&second);
+
+    until(
+        "the tab's tree to settle at both panes",
+        || settled(2).is_some(),
+        || format!("the last view the core published: {:?}", latest_view()),
+    );
+    assert_ok(&answer(request::Payload::ZoomPane(ZoomPane::default())));
+    until(
+        "the region to be filled by the pane the keyboard is on",
+        || zoomed_pane().as_deref() == Some(second.as_str()),
+        || format!("the last view the core published: {:?}", latest_view()),
+    );
+
+    // The whole of it. Nothing about the zoom was touched - the tab is still zoomed, and the
+    // daemon has said nothing since - so a window reading the daemon's cursor stays on the
+    // pane it was already showing.
+    assert_ok(&answer(request::Payload::FocusPane(FocusPane {
+        daemon_id: String::new(),
+        pane_id: first.clone(),
+    })));
+    until(
+        "the zoom to follow the keyboard onto the other pane",
+        || zoomed_pane().as_deref() == Some(first.as_str()),
+        || format!("the last view the core published: {:?}", latest_view()),
+    );
+}
+
+/// The pane filling the region, when one is - and nothing when the region is showing its tree.
+fn zoomed_pane() -> Option<String> {
+    let region = latest_view()?.regions.into_iter().next()?;
+    if !region.zoomed {
+        return None;
+    }
+    match region.root?.node? {
+        view_node::Node::Pane(pane) => Some(pane.pane_id),
+        // A zoomed region publishes the one pane, so a split here is the resolution not having
+        // happened at all - which is the bug this is about, and it is not an answer.
+        view_node::Node::Split(_) => None,
+    }
+}
+
 /// The view the core publishes, and the two directions it moves in.
 ///
 /// Its own function because the test above had grown into three things; still one test,
 /// because the seam holds the session in a process global and a second one would race it.
-fn the_window_follows_and_drives_the_tree(daemon: &Daemon, backend: &str, second: &str) {
+#[test]
+fn the_window_follows_and_drives_the_tree() {
+    let _turn = muster::testing::fresh_session();
+    let Open { daemon, second: backend, .. } = a_window_onto_work_already_running();
+    // Both spellings again: the daemon's id for the raw calls, Muster's name for the requests
+    // and for reading the published tree.
+    let (daemon, backend) = (&daemon, backend.as_str());
+    let second = &named("second");
+    attach(second);
+
     // Both panes in one region, because a region shows a tab and both panes are in it. A
     // second region here would mean attaching a pane opened a second copy of its tab.
     //
@@ -426,7 +548,7 @@ fn the_window_follows_and_drives_the_tree(daemon: &Daemon, backend: &str, second
     let view = latest_view().expect("attaching publishes what the window is showing");
     assert_eq!(view.regions.len(), 1, "one tab, one region: {view:?}");
     assert_eq!(view.focused_region, view.regions[0].region_id);
-    assert_eq!(view.regions[0].pane_id, second, "the keyboard is on the pane just attached");
+    assert_eq!(&view.regions[0].pane_id, second, "the keyboard is on the pane just attached");
 
     // A split made from another client. Nothing here asked Muster for it, which is the
     // point twice over: the view follows the daemon rather than Muster's own record of what

@@ -20,6 +20,7 @@ mod convert;
 pub mod ffi;
 mod handler;
 mod session;
+pub mod testing;
 mod watchdog;
 
 /// Muster's vocabulary, under the name the rest of this crate has always called it.

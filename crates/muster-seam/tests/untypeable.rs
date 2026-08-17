@@ -28,6 +28,7 @@ const DEADLINE_MS: &str = "300";
 
 #[test]
 fn a_pane_whose_bridge_never_dials_is_reported() {
+    let _turn = muster::testing::fresh_session();
     // SAFETY: nothing else in this process reads the environment concurrently. This runs
     // before the daemon is started and before any pane opens, which is when the core reads it.
     unsafe { std::env::set_var("MUSTER_TYPEABLE_DEADLINE_MS", DEADLINE_MS) };

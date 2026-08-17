@@ -794,6 +794,51 @@ struct Search {
 pub(crate) static SESSION: LazyLock<Mutex<Session>> =
     LazyLock::new(|| Mutex::new(Session::default()));
 
+/// Puts this process back where it was before any of it started.
+///
+/// One window per process is the arrangement everything above is written against, and a global
+/// is the honest expression of it - but a test binary is a process too, and one that could not
+/// start over was a binary that could hold one test. That is what this is for and the only
+/// thing that calls it (`crate::testing`).
+///
+/// **Every process-wide thing this crate holds belongs here.** The statics above are settings a
+/// shell hands over once at startup, and one left behind is the last test's answer arriving in
+/// the next one's window - a state path, so a test writes over another's file; bindings, so a
+/// chord means what somebody else configured. There is no compiler check for that, so adding a
+/// static above means adding a line here, and the way it fails otherwise is a test that passes
+/// alone and not in company.
+///
+/// Dropping the session is the whole teardown: a `Backend` owns its subscription, its ssh
+/// master and its panes' sockets, and dropping one ends the threads behind all three. So this
+/// is the shutdown path that already existed, called deliberately rather than at exit.
+pub(crate) fn reset() {
+    *poison::lock(&SESSION, "session") = Session::default();
+
+    *poison::lock(&DAEMON_BINARY, "daemon-binary") = None;
+    *poison::lock(&PLATFORM_LOCALE, "locale") = None;
+    *poison::lock(&COMMANDS, "commands") = None;
+    *poison::lock(&STATE, "saved-arrangement") = None;
+    *poison::lock(&NAMES_FILE, "saved-names") = None;
+    *poison::lock(&BINDINGS, "bindings") = None;
+    *poison::lock(&PANE_INPUT, "input-settings") = None;
+    *poison::lock(&PANES, "pane-settings") = None;
+    *poison::lock(&DAEMON_CONFIG, "daemon-config") = None;
+    *poison::lock(&FEEL, "settings") = None;
+    *poison::lock(&CONFIG_PATH, "settings") = None;
+    *poison::lock(&APPEARANCE, "settings") = None;
+    *poison::lock(&PROBLEMS, "problems") = None;
+    *poison::lock(&CONFIGURED_DAEMONS, "settings") = None;
+    OPENED.store(false, Ordering::Relaxed);
+
+    // Not this file's, and here anyway: what needs resetting is a property of the process
+    // rather than of a module, and a caller that had to remember three doors would eventually
+    // remember two. The endpoint is given up by asking for nowhere, which is the same path a
+    // shell configured with no socket takes.
+    watchdog::forget_everything();
+    command::listen("");
+    ffi::muster_set_event_callback(None);
+}
+
 impl Session {
     /// Starts following a daemon, or leaves the one already being followed alone.
     ///

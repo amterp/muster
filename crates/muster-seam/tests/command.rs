@@ -9,7 +9,9 @@
 //! A real daemon behind it, because the answer is about panes and a stand-in would be Muster's
 //! own guess at what a daemon holds.
 //!
-//! One test in this binary, on purpose: the seam holds one session per process.
+//! One test here so far, and no longer because a second could not be had: the seam's session
+//! is reset between tests and they take their turns through `muster::testing::fresh_session`,
+//! which is what the first line of each one is asking for.
 
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
@@ -25,6 +27,7 @@ use serde_json::json;
 
 #[test]
 fn a_caller_outside_this_process_can_ask_what_the_window_is_showing() {
+    let _turn = muster::testing::fresh_session();
     let daemon = Daemon::start();
     daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "driven", "focus": true }));
 

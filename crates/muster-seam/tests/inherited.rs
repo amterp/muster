@@ -34,6 +34,7 @@ use serde_json::json;
 
 #[test]
 fn a_window_opened_on_somebody_elses_session_can_reach_all_of_it() {
+    let _turn = muster::testing::fresh_session();
     let daemon = Daemon::start();
 
     // Somebody else's work, made before Muster has heard of this daemon. A second tab holding

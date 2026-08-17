@@ -6,8 +6,9 @@
 //! settled reaches the same file the arrangement does, and - the one that has broken before -
 //! that a frame reported during launch is not thrown away by the restore that follows it.
 //!
-//! One test per binary, for the reason the others here are: the seam holds one session per
-//! process and a `Startup` points the whole process at one state file.
+//! One test here so far, and no longer because a second could not be had: the seam's session
+//! is reset between tests and they take their turns through `muster::testing::fresh_session`,
+//! which is what the first line of each one is asking for.
 
 use herdr_harness::Daemon;
 use muster::proto::{
@@ -25,6 +26,7 @@ const ON_A_MONITOR_THAT_IS_GONE: Frame =
 
 #[test]
 fn a_window_comes_back_the_size_it_was_left() {
+    let _turn = muster::testing::fresh_session();
     let daemon = Daemon::start();
     let state = daemon.muster_config().with_file_name("window.toml");
 

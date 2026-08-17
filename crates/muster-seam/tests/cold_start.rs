@@ -24,6 +24,7 @@ use prost::Message;
 
 #[test]
 fn a_window_opened_on_an_empty_daemon_can_be_typed_into() {
+    let _turn = muster::testing::fresh_session();
     let daemon = Daemon::start();
     let config = daemon.muster_config();
 
