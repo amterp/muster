@@ -68,6 +68,22 @@ impl HerdrClient {
 
     /// Sends one request and returns the `result` object.
     pub fn request(&self, method: &str, params: &Value) -> Result<Value, Failure> {
+        self.request_within(method, params, self.timeout)
+    }
+
+    /// The same, for a call whose answer is worth waiting longer than a keystroke for.
+    ///
+    /// A timeout per call rather than per client, because each request opens a connection of
+    /// its own anyway - so the bound belongs to the question being asked. The default is short
+    /// on purpose (see [`DEFAULT_TIMEOUT`](HerdrClient::DEFAULT_TIMEOUT)); a call that is
+    /// *waiting for something to happen* rather than asking what is true has no business being
+    /// held to it.
+    pub fn request_within(
+        &self,
+        method: &str,
+        params: &Value,
+        timeout: Duration,
+    ) -> Result<Value, Failure> {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed) + 1;
         let envelope = json!({ "id": format!("muster:{id}"), "method": method, "params": params });
         let mut payload = envelope.to_string().into_bytes();
@@ -77,12 +93,14 @@ impl HerdrClient {
 
         let mut stream = UnixStream::connect(&self.socket_path)
             .map_err(|error| Failure::Unreachable(error.to_string()))?;
-        stream.set_read_timeout(Some(self.timeout)).map_err(|_| Failure::TimedOut)?;
-        stream.set_write_timeout(Some(self.timeout)).map_err(|_| Failure::TimedOut)?;
+        stream.set_read_timeout(Some(timeout)).map_err(|_| Failure::TimedOut)?;
+        stream.set_write_timeout(Some(timeout)).map_err(|_| Failure::TimedOut)?;
 
+        // Written and then left open. Half-closing the write side here is what this did until
+        // the first call arrived that the daemon answers slowly: herdr reads its one request
+        // line and does not need end-of-write, and for `pane.wait_for_output` it treats a
+        // half-closed socket as a caller that has gone and hangs up without answering.
         stream.write_all(&payload).map_err(|_| Failure::TimedOut)?;
-        // The daemon waits for end-of-write before answering.
-        stream.shutdown(std::net::Shutdown::Write).map_err(|_| Failure::TimedOut)?;
 
         let line = read_line(&mut stream).ok_or(Failure::TimedOut)?;
         let object: Value =

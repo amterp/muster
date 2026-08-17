@@ -932,3 +932,41 @@ Evidence: `corpus/herdr-0.8.0/naming/` - `FACTS.json` for the verdicts, `events.
 for what a subscriber saw, `replay.ndjson` and `replayed-pane-created.json` for the
 replay, `before-restart.snapshot.json` and `after-restart.snapshot.json` for the
 restart. Re-record with `tools/herdr-probe/probe naming`.
+
+## 18. Waiting for a pane to print needs the connection left open
+
+`pane.wait_for_output` is the only call herdr answers slowly on purpose, and it is the
+only one that cares how the caller holds the socket. Muster's client sent its request line
+and then half-closed the write side, on the belief that the daemon waits for end-of-write
+before answering. It does not - it reads exactly one line - and given a half-closed socket
+this call reads the caller as gone and hangs up without answering.
+
+    ping, session.snapshot, pane.read, pane.split     answered either way
+    pane.wait_for_output, write side half-closed      nothing, in under 1 ms
+    pane.wait_for_output, write side left open        output_matched, as documented
+
+The failure is the shape of a success. A hang-up is indistinguishable from a read timeout
+at the socket, so Muster saw `TimedOut` roughly a millisecond after asking for a
+five-second wait - which reads as "the daemon is wedged" rather than "this call needs a
+connection nobody has closed".
+
+**A timeout is a clean refusal.** Asking for a pattern nothing prints returned
+`code: "timeout"`, `message: "timed out waiting for output match"`, after the
+`timeout_ms` asked for. That is what lets a caller tell "nothing printed" from "the daemon
+went away", and the two want opposite responses: send anyway, or stop.
+
+**`match` is a substring or a regex, and there is no "anything at all".** So "the shell
+has drawn its prompt" is spelled as the regex `\S` against `source: visible`. A prompt
+configured to draw nothing visible is therefore a timeout rather than a match, which is a
+real configuration and the reason the timeout has to be survivable.
+
+**There is no way to spawn a command with a pane.** `pane.split` takes `cwd`, `direction`,
+`env`, `focus`, `ratio`, `target_pane_id` and `workspace_id` - no command, and neither do
+`tab.create` or `workspace.create`. A pane runs the daemon's `default_shell` and nothing
+else, so "make a pane running this" is necessarily a split, a wait for the prompt, and
+then the text - three calls, and the wait is the only thing standing between the text and
+a shell that has not finished starting.
+
+Pinned by `crates/muster-herdr/tests/client_connection.rs`, which asserts both directions:
+the ordinary calls answer with the write side half-closed, and `pane.wait_for_output` does
+not. Nothing else in the suite would notice a half-close coming back.
