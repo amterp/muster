@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Asks macOS who it holds responsible for a pane's program, and records the answer.
+#
+# Builds a throwaway app around probe.swift, launches it through Launch Services, and writes
+# the transcript to corpus/macos-<version>/. Findings read off it live in the observation file
+# of the same version, docs/observations/macos-<version>.md.
+#
+# Launch Services rather than running the binary: responsibility is assigned when a process is
+# started, and a binary run from a shell has no bundled ancestor to be charged to - every line
+# then says "itself" and the run looks meaningful while measuring nothing.
+set -euo pipefail
+
+here=$(cd "$(dirname "$0")" && pwd)
+repo=$(cd "$here/../.." && pwd)
+app="$here/.build/Probe.app"
+# Named for the macOS that answered, so re-running on an upgrade records beside the old answer
+# instead of over it - what changed between two versions is the thing worth seeing.
+version=$(sw_vers -productVersion)
+out="$repo/corpus/macos-$version"
+
+# Its own bundle identifier, and nothing of Muster's is signed or touched. Re-signing Muster is
+# what revokes Muster's own permissions, which is half of what this probe exists to explain.
+rm -rf "$here/.build"
+mkdir -p "$app/Contents/MacOS" "$out"
+swiftc -O "$here/probe.swift" -o "$app/Contents/MacOS/Probe"
+# LSBackgroundOnly, so nothing appears on screen or takes the keyboard while this runs.
+cat > "$app/Contents/Info.plist" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleName</key><string>Probe</string>
+  <key>CFBundleExecutable</key><string>Probe</string>
+  <key>CFBundleIdentifier</key><string>dev.muster.tccprobe</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>LSBackgroundOnly</key><true/>
+</dict></plist>
+PLIST
+codesign -f -s - "$app" >/dev/null 2>&1
+
+transcript="$out/responsible-process.txt"
+rm -f "$transcript"
+{
+  echo "# who macOS holds responsible for a pane's program"
+  echo "#"
+  echo "# recorded $(date -u +%Y-%m-%dT%H:%M:%SZ) on macOS $version $(uname -m)"
+  echo "# by tools/tcc-probe/probe; read in docs/observations/macos-$version.md"
+  echo
+} > "$transcript"
+
+open -a "$app" --stderr "$out/.raw"
+# The probe's own timeline is 32 seconds of deliberate waiting; this outlasts it.
+sleep 34
+cat "$out/.raw" >> "$transcript"
+rm -f "$out/.raw"
+
+cat "$transcript"

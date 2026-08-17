@@ -262,10 +262,59 @@ fn write_info_plist(contents):
       <key>NSHighResolutionCapable</key><true/>
       <key>NSSupportsAutomaticTermination</key><false/>
       <key>NSSupportsSuddenTermination</key><false/>
+    {usage_descriptions()}
     </dict>
     </plist>
     """
     write_file("{contents}/Info.plist", plist)
+
+// Why macOS is asking, in the one place a person ever sees it.
+//
+// macOS charges a protected request to the responsible process, which for anything inside a
+// pane is Muster - measured, and the whole table is in docs/observations/macos-26.4.1.md. So the
+// prompt says Muster and the request came from an agent, and the only place that can be
+// explained is here. Left unset, the prompt says nothing at all about why, and a prompt
+// somebody cannot judge is a prompt they refuse.
+//
+// One voice for all of them, and it names the pane rather than the app: Muster is what macOS
+// charges but never what is asking, and a prompt reading as though the terminal itself wanted
+// your Contacts is worse than a blank one.
+//
+// The list is long because a missing string is not a worse prompt - it is a kill. macOS
+// terminates a process that requests a protected service when the responsible app declares
+// none, so without the AppleEvents line an agent that runs `osascript` dies rather than asking.
+// Muster runs whatever agents somebody already runs and cannot know which of these they reach
+// for, which is the same reason Ghostty carries the same set.
+fn usage_descriptions():
+    asks = {
+        // The four the report named, plus the volumes that fail the same way.
+        "NSDesktopFolderUsageDescription": "read and write files on your Desktop.",
+        "NSDocumentsFolderUsageDescription": "read and write files in your Documents folder.",
+        "NSDownloadsFolderUsageDescription": "read and write files in your Downloads folder.",
+        "NSNetworkVolumesUsageDescription": "read and write files on network volumes.",
+        "NSRemovableVolumesUsageDescription": "read and write files on removable volumes.",
+        // Everything else macOS lets an app word. An agent reaches for scripting and for
+        // elevated privileges often, and for the rest rarely - but rarely is not never, and
+        // the cost of omitting one is the pane's program dying with no prompt and no reason.
+        "NSAppleEventsUsageDescription": "control another application with AppleScript.",
+        "NSSystemAdministrationUsageDescription": "make a change that needs elevated privileges.",
+        "NSLocalNetworkUsageDescription": "reach devices on your local network.",
+        "NSCameraUsageDescription": "use the camera.",
+        "NSMicrophoneUsageDescription": "use the microphone.",
+        "NSAudioCaptureUsageDescription": "record this machine's audio.",
+        "NSSpeechRecognitionUsageDescription": "use speech recognition.",
+        "NSContactsUsageDescription": "read your Contacts.",
+        "NSCalendarsUsageDescription": "read or change your Calendar.",
+        "NSRemindersUsageDescription": "read or change your Reminders.",
+        "NSPhotoLibraryUsageDescription": "read your Photo Library.",
+        "NSBluetoothAlwaysUsageDescription": "use Bluetooth.",
+        "NSLocationUsageDescription": "read your location.",
+        "NSMotionUsageDescription": "read motion data.",
+    }
+    // Two spaces, because the block this lands in is dedented by the four in front of its
+    // closing quotes and every sibling key sits at two.
+    lines = ["  <key>{key}</key><string>A program running in a Muster pane wants to {what}</string>" for key, what in asks]
+    return join(lines, "\n")
 
 // One version, read from where the workspace already declares it.
 //

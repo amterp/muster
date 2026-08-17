@@ -1,0 +1,11 @@
+# who macOS holds responsible for a pane's program
+#
+# recorded 2026-08-17T16:13:38Z on macOS 26.4.1 arm64
+# by tools/tcc-probe/probe; read in docs/observations/macos-26.4.1.md
+
+  0.0s  app                                pid=48483 ppid=1 responsible=48483
+  0.0s  daemon, app alive                  pid=49070 ppid=48483 responsible=48483
+  0.0s  pane made while app alive          pid=49072 ppid=49070 responsible=48483
+ 12.0s  daemon, app gone                   pid=49070 ppid=1 responsible=49070
+  0.0s  pane made after app gone           pid=49312 ppid=49070 responsible=49312
+ 12.0s  same pane, app now gone            pid=49072 ppid=49070 responsible=49072

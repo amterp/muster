@@ -668,11 +668,20 @@ and because the layer that can honestly answer each is different.
 
 | | what is lost | who can help |
 |---|---|---|
-| Muster quits or crashes | nothing | nobody needs to; the daemon owns the PTYs |
+| Muster quits or crashes | nothing of the session; the OS permissions its panes were granted | nobody needs to; the daemon owns the PTYs |
 | the connection drops (VPN, lid, SSH) | nothing; the view goes stale and resyncs | the degradation model above |
 | the daemon restarts | every process; scrollback | herdr restores the tree and cwds |
 | the machine reboots | the same, plus the daemon must come back | as above |
 | the machine is gone | local work only | remote daemons keep running |
+
+**The first row's exception is the platform's rather than Muster's, and it cannot be written down.** macOS charges a
+protected request - a folder, the camera, AppleScript - to the *responsible* process, which for a pane's program is
+the Muster that started its daemon. That holds only while that Muster is alive: measured, every surviving pane
+becomes its own responsible process the moment the app exits, and a later Muster cannot adopt them, because
+responsibility is fixed when a process is spawned and nothing lets an app claim a chain it did not start
+(`observations/macos-26.4.1.md`). So a permission granted to Muster covers every pane until the relaunch, and after
+it a prompt names the agent's own binary. Nothing in this document fixes that; it is here because "Muster quits or
+crashes: nothing is lost" is otherwise a promise with a silent hole in it.
 
 Two things follow.
 
