@@ -1,2 +1,2 @@
-[  7043ms] with no viewer attached, detection settled in [1.6, 0.84, 0.47, 0.47]s
-[ 11040ms] with a control stream attached, detection settled in [0.48, 0.86, 0.47, 0.48]s
+[  7154ms] with no viewer attached, detection settled in [1.58, 0.86, 0.49, 0.48]s
+[ 11172ms] with a control stream attached, detection settled in [0.48, 0.84, 0.47, 0.47]s

@@ -1,0 +1,7 @@
+[  4455ms] a title set with OSC 2 delivered 1 event(s): ['pane_updated']; the event itself carried 'first working build'
+[  7737ms] five spinner rotations over one unchanged title: 0 pane_updated event(s)
+[  8847ms] a pane rename announced [] and answered with label='🔥 payments spike'
+[  8963ms] a renamed pane keeps its title beside the name: label=True title=True
+[ 12863ms] a tab named and then emptied: '1' -> 'release' -> ''
+[ 15628ms] a fresh subscription's replayed pane_created: title=None name=None
+[ 19493ms] across a daemon restart: name='🔥 payments spike' title=None

@@ -1,0 +1,52 @@
+{
+  "arrangements_published_across_the_pair": [
+    [
+      "w1:p1",
+      "w1:p2"
+    ],
+    [
+      "w1:p2",
+      "w1:p1"
+    ]
+  ],
+  "arrival_gaps_ms": [
+    0.1,
+    99.9
+  ],
+  "event_arrival_ms": [
+    [
+      213.3,
+      "pane_created"
+    ],
+    [
+      213.4,
+      "layout_updated"
+    ],
+    [
+      313.3,
+      "layout_updated"
+    ]
+  ],
+  "pair_answered_in_ms": 221.4,
+  "pair_event_kinds": [
+    "pane_created",
+    "layout_updated",
+    "layout_updated"
+  ],
+  "settled_tree_shape": "right(w1:p2, w1:p1@0.5)",
+  "split_then_swap_answered_ms": [
+    115.2,
+    106.2
+  ],
+  "swap_answer_arrangement": [
+    "w1:p2",
+    "w1:p1"
+  ],
+  "swap_answers_with_a_layout": true,
+  "swap_changed": true,
+  "swap_focused_pane": "w1:p1",
+  "swap_reason": null,
+  "swap_with_no_target": {
+    "raised": "pane.swap failed: {\"code\": \"invalid_pane_swap\", \"message\": \"missing target_pane_id\"}"
+  }
+}

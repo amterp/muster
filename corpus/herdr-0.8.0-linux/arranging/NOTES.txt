@@ -1,0 +1,6 @@
+[  5514ms] a swap within one tab announced ['layout_updated']
+[  7126ms] a move across tabs announced ['layout_updated', 'pane_focused', 'pane_moved', 'tab_focused', 'workspace_focused']; the pane_moved payload carried ['pane', 'previous_pane_id', 'previous_tab_id', 'previous_workspace_id', 'type']
+[ 10595ms] a client subscribed to everything but pane.moved saw ['layout_updated']
+[ 13979ms] a tab moved to the front announced ['tab_moved']; the tab_moved payload carried ['insert_index', 'tab_id', 'tabs', 'type', 'workspace_id']
+[ 15286ms] moving a tab to the place it already had announced []
+[ 18027ms] a client subscribed to everything but tab.moved saw []

@@ -36,14 +36,14 @@
   "session_survives_daemon_restart": true,
   "splits_after_apply": 1,
   "terminal_ids_after_restart": {
-    "w1:p1": "term_65910cc58e8871",
-    "w1:p2": "term_65910cc58ef482",
-    "w1:p3": "term_65910cc58f4973"
+    "w1:p1": "term_65945dd2adc4a1",
+    "w1:p2": "term_65945dd2adfcf2",
+    "w1:p3": "term_65945dd2ae3643"
   },
   "terminal_ids_before_restart": {
-    "w1:p1": "term_65910cc1a0c701",
-    "w1:p2": "term_65910cc1bcf3a2",
-    "w1:p3": "term_65910cc1d8b663"
+    "w1:p1": "term_65945dced0fd31",
+    "w1:p2": "term_65945dceeb6ce2",
+    "w1:p3": "term_65945dcf054723"
   },
   "terminals_survive_daemon_restart": false,
   "workspaces_after_restart": [

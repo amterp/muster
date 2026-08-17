@@ -354,24 +354,35 @@ SSH, and diffed:
 
 ```
 $ tools/herdr-probe/diff-corpus corpus/herdr-0.8.0 corpus/herdr-0.8.0-linux
-0 difference(s) across 11 shared scenario(s); 9 volatile fact(s) not compared
+--- corpus/herdr-0.8.0 (Darwin/arm64)
++++ corpus/herdr-0.8.0-linux (Linux/aarch64)
+
+0 difference(s) across 15 shared scenario(s); 13 volatile fact(s) not compared; 4 not comparable across platforms
 ```
 
 Not one recorded fact differs. The attach frame is the same 35,605 bytes, the PTY
 walks the same 53x23 to 100x30 to 120x40, `done` derives the same way, and
-`pane.send_keys` refuses the same seven key names. The facts not compared are timings,
-frame counts, and two kinds of value that are about the machine rather than about the
-daemon: the opaque terminal ids stamped per run, and a home directory. What is being
-asked of those - were the terminals reused, did the working directories survive - is
-recorded separately as a boolean, and those are compared.
+`pane.send_keys` refuses the same seven key names. The thirteen facts not compared are
+timings, frame counts, and two kinds of value that are about the machine rather than
+about the daemon: the opaque terminal ids stamped per run, and a home directory. What is
+being asked of those - were the terminals reused, did the working directories survive -
+is recorded separately as a boolean, and those are compared.
+
+The four beside them are a weaker exemption and are worth naming, because a reader
+should know what this section does not cover. Three are `arranging`'s move payloads,
+which carry a whole layout tree worth comparing and are skipped because a `cwd` and a
+`terminal_id` sit inside the same blob. The fourth is where a line too long for the pane
+wraps in `read-depth`, measured from where the shell's echo of the command began - so it
+reports the width of a prompt as much as the daemon's wrapping. All four are compared
+when both recordings come from the same platform.
 
 So the remote path is the same path, and "local and remote in one window" costs the
 adapter nothing beyond the transport. `./dev --ssh` re-runs this against a scratch
 recording on every invocation, so the day it stops printing zero is the day the remote
 path needs its own handling.
 
-Two corrections to what this section said when it was first written, both found by
-re-running it after the scenario set grew from six to eleven.
+Three corrections to what this section said when it was first written, each found by
+re-running it after the scenario set grew - from six to eleven, and then to fifteen.
 
 The first is that it was six, and the claim was quietly narrower than it read. The
 five scenarios added since - input encoding, layout reconstruction, lifecycle,
@@ -389,6 +400,16 @@ happens once per scenario rather than on every start, and a stop over there stop
 daemon rather than only the tunnel, so the event being measured is the event the
 scenario names. Linux survives a restart exactly as macOS does, keeping pane ids and
 losing terminals.
+
+The third repeats the first, which is the point of writing it down again. Four more
+scenarios arrived - `arranging`, `naming`, `read-depth`, `split-sides` - and this section
+went on claiming eleven while `./dev --ssh` had been failing on the new four since they
+landed. Every difference turned out to be the machine rather than the daemon, which is
+what the paragraph above about the four exempted facts now records. One of them was a bug
+in the probe again: a recording stamped whichever machine ran it, so the whole Linux
+corpus claimed to be `Darwin/arm64`, and nothing caught it because nothing read the
+stamp. The diff reads it now, which is what lets it tell a fact two platforms cannot
+share from one that merely moved.
 
 ## 9. Input-to-glyph is 1.4 ms, and its tail is a render throttle
 

@@ -1,10 +1,10 @@
-[  4009ms] three panes, two levels: export tree depth 2, snapshot lists 2 split border(s)
-[ 10519ms] agent state changes, watched without naming the pane: [['working', ['pane_agent_detected']], ['idle', []], ['blocked', []]]
-[ 12348ms] the same change, watched by a subscriber that named the pane: ['pane.agent_status_changed']
-[ 13271ms] created 5 pane(s), 2 announced their removal, 2 vanished with a parent
-[ 13271ms] kinds delivered: ['layout_updated', 'pane_agent_detected', 'pane_closed', 'pane_created', 'pane_exited', 'pane_focused', 'tab_closed', 'tab_created', 'tab_focused', 'workspace_closed', 'workspace_created', 'workspace_focused']
-[ 13271ms] removals: ['pane_closed', 'pane_exited', 'tab_closed', 'workspace_closed']
-[ 13271ms] subscribe replayed 7 event(s) for a one-pane session
-[ 13271ms] pane_exited followed by a pane_closed: ['layout_updated']
-[ 15328ms] pane revision: 0 -> 0 after an agent state change -> 1 after a title change
-[ 19235ms] agent state_change_seq across panes: {'w1:p1': 10, 'w1:p5': 8}
+[  3900ms] three panes, two levels: export tree depth 2, snapshot lists 2 split border(s)
+[ 10419ms] agent state changes, watched without naming the pane: [['working', ['pane_agent_detected']], ['idle', []], ['blocked', []]]
+[ 12244ms] the same change, watched by a subscriber that named the pane: ['pane.agent_status_changed']
+[ 13162ms] created 5 pane(s), 2 announced their removal, 2 vanished with a parent
+[ 13162ms] kinds delivered: ['layout_updated', 'pane_agent_detected', 'pane_closed', 'pane_created', 'pane_exited', 'pane_focused', 'tab_closed', 'tab_created', 'tab_focused', 'workspace_closed', 'workspace_created', 'workspace_focused']
+[ 13162ms] removals: ['pane_closed', 'pane_exited', 'tab_closed', 'workspace_closed']
+[ 13162ms] subscribe replayed 7 event(s) for a one-pane session
+[ 13162ms] pane_exited followed by a pane_closed: ['layout_updated']
+[ 15202ms] pane revision: 0 -> 0 after an agent state change -> 1 after a title change
+[ 19089ms] agent state_change_seq across panes: {'w1:p1': 10, 'w1:p5': 8}
