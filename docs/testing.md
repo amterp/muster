@@ -154,6 +154,12 @@ nineteen common keystrokes encode to, what a recorded frame stream paints - and 
 for that. Both implementations read the same bytes, which is what makes "the port did not have to re-record them"
 worth anything: a snapshot that gets regenerated to make a rewrite pass was never an oracle.
 
+**What a snapshot renders is data too**, in a `survey` section beside the cases. The rendering belongs to the driver,
+but the inputs to it are the corpus's to state: a keystroke list left in one language's tests is nineteen entries the
+next language re-types, and then a snapshot both languages agree on says nothing about a list only one of them has. A
+survey argues its reason once - that is the whole argument for it not being cases - so the per-case `why` rule does not
+apply to it, and the gate holds it to a `why` of its own instead.
+
 **What stays native.** Not everything should be data, and forcing it produces an unreadable pseudo-language. The
 line falls where behavior stops being expressible in Muster's vocabulary: driving an `NSView` with a synthesized
 `NSEvent`, or proving that two processes appending to one log file never tear a line. Translation *into* the

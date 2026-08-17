@@ -2,7 +2,125 @@
   "concept": "keyEncoder.encode",
   "source": "ported",
   "citation": "libghostty-vt is the encoder; ghostty src/input/function_keys.zig:199 for the shift+enter entry. Cross-checkable against herdr tests/fixtures/keyboard_protocol_corpus.tsv, which encodes the same protocol from Rust.",
-  "why": "The encoder is libghostty-vt's, so these do not test escape-sequence generation - upstream does that, and a second implementation written to agree with it would be the bug. What they pin is everything around it that is ours: that the modifier bits still line up with the ABI they are cast to, that a mode profile actually reaches the encoder, that a composing keystroke stays out of the pane, and what the conservative default costs in bytes.\n\nThe broad survey of common keys lives as a rendered snapshot (Tests/MusterVTTests/snapshots/keys-*.txt) rather than as cases here, because it is one matrix with one reason rather than nineteen behaviors, and its oracle is upstream. A port reproduces the same rendering. Kan a_27Haa38Gp carries moving its keystroke list into data.",
+  "why": "The encoder is libghostty-vt's, so these do not test escape-sequence generation - upstream does that, and a second implementation written to agree with it would be the bug. What they pin is everything around it that is ours: that the modifier bits still line up with the ABI they are cast to, that a mode profile actually reaches the encoder, that a composing keystroke stays out of the pane, and what the conservative default costs in bytes.\n\nThe broad survey of common keys is not cases: it is one matrix with one reason rather than nineteen behaviors, and its oracle is upstream, so it lives as `survey` below and renders to `corpus/snapshots/keys-*.txt`. A port reproduces the same rendering from the same list.",
+  "survey": {
+    "why": "What Muster puts on a pane's input for the keys people press constantly. One matrix with one reason rather than nineteen behaviours, and its oracle is libghostty upstream, so it stays a rendered snapshot instead of becoming cases above with nineteen manufactured justifications.\n\nThe keystrokes are here rather than in a driver because they are the only part of it that is ours to state. A second implementation renders this list to the same file, and a snapshot that has to be re-recorded to make a rewrite pass was never an oracle - which is exactly what nineteen hand-copied entries would have cost, since a wrong entry changes the file it is checked against.",
+    "snapshots": [
+      {
+        "profile": "unknownPane",
+        "file": "keys-unknown-pane.txt"
+      },
+      {
+        "profile": "herdrTUI",
+        "file": "keys-herdr-tui.txt"
+      }
+    ],
+    "keystrokes": [
+      {
+        "name": "a",
+        "key": "KeyA",
+        "text": "a",
+        "unshiftedCodepoint": "a"
+      },
+      {
+        "name": "shift+a",
+        "key": "KeyA",
+        "text": "A",
+        "unshiftedCodepoint": "a",
+        "modifiers": [
+          "shift"
+        ]
+      },
+      {
+        "name": "ctrl+c",
+        "key": "KeyC",
+        "text": "",
+        "unshiftedCodepoint": "c",
+        "modifiers": [
+          "control"
+        ]
+      },
+      {
+        "name": "enter",
+        "key": "Enter"
+      },
+      {
+        "name": "shift+enter",
+        "key": "Enter",
+        "modifiers": [
+          "shift"
+        ]
+      },
+      {
+        "name": "tab",
+        "key": "Tab"
+      },
+      {
+        "name": "shift+tab",
+        "key": "Tab",
+        "modifiers": [
+          "shift"
+        ]
+      },
+      {
+        "name": "escape",
+        "key": "Escape"
+      },
+      {
+        "name": "backspace",
+        "key": "Backspace"
+      },
+      {
+        "name": "arrow up",
+        "key": "ArrowUp"
+      },
+      {
+        "name": "arrow down",
+        "key": "ArrowDown"
+      },
+      {
+        "name": "home",
+        "key": "Home"
+      },
+      {
+        "name": "end",
+        "key": "End"
+      },
+      {
+        "name": "page up",
+        "key": "PageUp"
+      },
+      {
+        "name": "delete",
+        "key": "Delete"
+      },
+      {
+        "name": "f1",
+        "key": "F1"
+      },
+      {
+        "name": "f12",
+        "key": "F12"
+      },
+      {
+        "name": "alt+b",
+        "key": "KeyB",
+        "text": "b",
+        "unshiftedCodepoint": "b",
+        "modifiers": [
+          "alt"
+        ]
+      },
+      {
+        "name": "ctrl+alt+delete",
+        "key": "Delete",
+        "modifiers": [
+          "control",
+          "alt"
+        ]
+      }
+    ]
+  },
   "cases": [
     {
       "name": "enter is a carriage return under the conservative default",

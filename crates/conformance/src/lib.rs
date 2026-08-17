@@ -98,6 +98,19 @@ pub struct Conformance {
     pub source: Source,
     pub numbers: Numbers,
     pub cases: Vec<Case>,
+    /// Data a file carries that is not cases, for the drivers that read it.
+    ///
+    /// Some behavior is one matrix with one reason rather than N behaviors with N
+    /// justifications, and the honest shape for that is a rendered snapshot. But the inputs
+    /// to a rendering are still the corpus's to state: left in a driver, the next language
+    /// re-types them, and a snapshot both languages agree on says nothing about a list only
+    /// one of them has. So a file may carry one beside its cases, and the `why` rule above
+    /// stays about `cases` alone - a survey states its reason once, which is the whole
+    /// argument for it not being cases.
+    ///
+    /// Unvalidated here beyond existing: what shape a survey has is its driver's business,
+    /// and tools/corpus-lint.py is the language-neutral authority on the rest.
+    pub survey: Option<Value>,
 }
 
 /// Why a case could not be evaluated, as opposed to evaluating to the wrong answer.
@@ -228,7 +241,8 @@ impl Conformance {
             cases.push(Case { name: name.to_string(), why: why.to_string(), given, expect });
         }
 
-        Conformance { file: file.to_string(), concept, source, numbers, cases }
+        let survey = document.get("survey").cloned();
+        Conformance { file: file.to_string(), concept, source, numbers, cases, survey }
     }
 
     /// Runs every case through `subject` and compares what comes back to `expect`.

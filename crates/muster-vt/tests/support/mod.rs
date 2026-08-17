@@ -8,6 +8,8 @@
 // only one of them needs reads as dead code in the others.
 #![allow(dead_code)]
 
+pub(crate) mod keys;
+
 use std::path::{Path, PathBuf};
 
 /// Bytes of a file under `corpus/`.

@@ -4,72 +4,68 @@
 //! so it stays a rendered snapshot instead of becoming conformance cases with nineteen
 //! manufactured justifications.
 //!
-//! It reads the same two files the Swift suite reads, from `corpus/snapshots`. That is the
-//! point of it during the port: if these had to be re-recorded to pass, they were never an
-//! oracle, and the difference would say the Rust encoder is driving libghostty differently
-//! from the Swift one.
+//! The keystrokes and the profiles come from the `survey` section of
+//! `corpus/conformance/key-encoder.json`; what stays here is the rendering, which is the
+//! snapshot's format rather than the corpus's. A list left in this file is one the next
+//! language re-types, and then a snapshot both languages agree on says nothing about it -
+//! the same failure as a snapshot re-recorded to make a rewrite pass.
 
 mod support;
 
 use std::fmt::Write as _;
 
-use muster_core::input::{Key, KeyEvent, Modifiers, TerminalModeProfile};
+use conformance::Conformance;
+use muster_core::input::{KeyEvent, TerminalModeProfile};
 use muster_vt::KeyEncoder;
+use serde_json::Value;
 use support::expect_snapshot;
+use support::keys::{key_event, named_profile};
 
-/// The matrix, as one readable list. Every row is a keystroke a user makes constantly.
-fn common_keystrokes() -> Vec<(&'static str, KeyEvent)> {
-    let letter = |key, text: &str, unshifted: char, modifiers| KeyEvent {
-        key,
-        modifiers,
-        text: text.to_string(),
-        unshifted_codepoint: Some(unshifted),
-        ..KeyEvent::default()
-    };
-    let bare = |key, modifiers| KeyEvent { key, modifiers, ..KeyEvent::default() };
-
-    vec![
-        ("a", letter(Key::KeyA, "a", 'a', Modifiers::NONE)),
-        ("shift+a", letter(Key::KeyA, "A", 'a', Modifiers::SHIFT)),
-        ("ctrl+c", letter(Key::KeyC, "", 'c', Modifiers::CONTROL)),
-        ("enter", bare(Key::Enter, Modifiers::NONE)),
-        ("shift+enter", bare(Key::Enter, Modifiers::SHIFT)),
-        ("tab", bare(Key::Tab, Modifiers::NONE)),
-        ("shift+tab", bare(Key::Tab, Modifiers::SHIFT)),
-        ("escape", bare(Key::Escape, Modifiers::NONE)),
-        ("backspace", bare(Key::Backspace, Modifiers::NONE)),
-        ("arrow up", bare(Key::ArrowUp, Modifiers::NONE)),
-        ("arrow down", bare(Key::ArrowDown, Modifiers::NONE)),
-        ("home", bare(Key::Home, Modifiers::NONE)),
-        ("end", bare(Key::End, Modifiers::NONE)),
-        ("page up", bare(Key::PageUp, Modifiers::NONE)),
-        ("delete", bare(Key::Delete, Modifiers::NONE)),
-        ("f1", bare(Key::F1, Modifiers::NONE)),
-        ("f12", bare(Key::F12, Modifiers::NONE)),
-        ("alt+b", letter(Key::KeyB, "b", 'b', Modifiers::ALT)),
-        ("ctrl+alt+delete", bare(Key::Delete, Modifiers::CONTROL | Modifiers::ALT)),
-    ]
-}
-
+/// What the keys people press constantly put on a pane, under every profile the survey names.
+///
+/// One test rather than one per profile, because the corpus decides how many profiles there
+/// are: a third added there and not here would be data nothing reads, which is the
+/// silently-skipped suite in its newest costume.
+///
+/// `herdrTUI` is not reachable today - it needs mode state herdr does not expose - and is
+/// rendered anyway, because the difference between the two files is exactly what the upstream
+/// ask is worth.
 #[test]
-fn what_an_unknown_pane_gets_for_the_keys_people_press_constantly() {
-    expect_snapshot(&render(TerminalModeProfile::UNKNOWN_PANE), "keys-unknown-pane.txt");
+fn what_the_keys_people_press_constantly_put_on_a_pane() {
+    let corpus = Conformance::load("key-encoder.json");
+    let survey = corpus.survey.as_ref().expect("key-encoder.json carries a `survey` section");
+    let keystrokes = keystrokes(survey);
+    let snapshots = survey["snapshots"].as_array().expect("`snapshots` is a list");
+    assert!(!snapshots.is_empty(), "a survey that renders nothing verifies nothing");
+
+    for snapshot in snapshots {
+        let name = snapshot["profile"].as_str().expect("a snapshot names its profile");
+        let profile = named_profile(name).expect("the survey names a profile the encoder has");
+        let file = snapshot["file"].as_str().expect("a snapshot names its file");
+        expect_snapshot(&render(profile, &keystrokes), file);
+    }
 }
 
-#[test]
-fn what_the_same_keys_become_once_a_panes_kitty_flags_are_known() {
-    // Not reachable today - it needs mode state herdr does not expose - and recorded anyway,
-    // because the difference between these two files is exactly what the upstream ask is
-    // worth.
-    expect_snapshot(&render(TerminalModeProfile::HERDR_TUI), "keys-herdr-tui.txt");
+/// The matrix, as the corpus states it: a label and the keystroke it stands for.
+fn keystrokes(survey: &Value) -> Vec<(String, KeyEvent)> {
+    let listed = survey["keystrokes"].as_array().expect("`keystrokes` is a list");
+    assert!(!listed.is_empty(), "a survey of nothing renders an empty file and passes");
+    listed
+        .iter()
+        .map(|entry| {
+            let name = entry["name"].as_str().expect("a keystroke carries its label").to_string();
+            let key = key_event(entry)
+                .unwrap_or_else(|error| panic!("the survey's `{name}` does not read: {error}"));
+            (name, key)
+        })
+        .collect()
 }
 
-fn render(profile: TerminalModeProfile) -> String {
+fn render(profile: TerminalModeProfile, keystrokes: &[(String, KeyEvent)]) -> String {
     let encoder = KeyEncoder::new(profile).expect("libghostty-vt should give us an encoder");
-    let keystrokes = common_keystrokes();
     let width = keystrokes.iter().map(|(name, _)| name.len()).max().unwrap_or(0);
     let mut out = String::new();
-    for (name, event) in &keystrokes {
+    for (name, event) in keystrokes {
         let bytes = encoder.encode(event).expect("every keystroke here encodes");
         let _ = writeln!(out, "{name:width$}  {}", readable(&bytes));
     }

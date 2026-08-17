@@ -12,6 +12,9 @@ So this is the language-neutral authority on the corpus itself:
     it inconveniences;
   - every file declares `source` as recorded, ported or authored, so a reader knows how
     far to trust it, and a `recorded` file carries the command that re-derives it;
+  - a `survey` - data a file carries that is not cases, because it renders to a snapshot
+    rather than standing as N behaviors - says its reason once and names snapshots that
+    exist, so the exemption from the per-case `why` rule stays an argued one;
   - every file is claimed by at least one driver.
 
 Runs in the default gate: it reads files and nothing else.
@@ -26,6 +29,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 CORPUS = REPO / "corpus/conformance"
+SNAPSHOTS = REPO / "corpus/snapshots"
 DRIVER_ROOTS = (REPO / "Tests", REPO / "crates")
 SOURCES = {"recorded", "ported", "authored"}
 # The width a file's expectations are compared at, when it is narrower than JSON's own.
@@ -91,6 +95,9 @@ def problems_in(path: Path) -> list[str]:
             "another one is asking for a comparison no driver can make."
         )
 
+    if "survey" in document:
+        found.extend(survey_problems(name, document["survey"]))
+
     cases = document.get("cases")
     if not isinstance(cases, list) or not cases:
         found.append(f"{name}: no cases. An empty corpus passes every driver.")
@@ -109,6 +116,60 @@ def problems_in(path: Path) -> list[str]:
             found.append(f"{name}: case {label!r} has no `why`")
         if "given" not in case or "expect" not in case:
             found.append(f"{name}: case {label!r} has no `given`/`expect`")
+    return found
+
+
+def survey_problems(name: str, survey: object) -> list[str]:
+    """Whether a file's non-case data still meets the contract cases are held to.
+
+    A survey exists to be exempt from the per-case `why` rule - it is one matrix with one
+    reason rather than N behaviors - so the exemption has to be paid for: the reason is
+    stated once, and the snapshots it renders to are real files. Unchecked, `survey` would
+    be the one place in the corpus where reasoning is optional, and the rest of the file
+    would drain into it.
+    """
+    found = []
+    if not isinstance(survey, dict):
+        return [f"{name}: `survey` is not an object"]
+    if not survey.get("why"):
+        found.append(
+            f"{name}: the `survey` has no `why`. It is exempt from the per-case rule because "
+            "it argues its reason once - so without one it is a list nobody has justified."
+        )
+
+    snapshots = survey.get("snapshots")
+    if not isinstance(snapshots, list) or not snapshots:
+        found.append(
+            f"{name}: the `survey` renders to no snapshot, so nothing compares it to anything."
+        )
+    else:
+        for index, snapshot in enumerate(snapshots):
+            file = snapshot.get("file") if isinstance(snapshot, dict) else None
+            if not file:
+                found.append(f"{name}: survey snapshot {index} names no `file`")
+            elif not (SNAPSHOTS / file).is_file():
+                found.append(
+                    f"{name}: the survey renders to {file}, which is not in "
+                    f"{SNAPSHOTS.relative_to(REPO)}. A driver comparing against a file that is "
+                    "not there fails loudly; one that writes it would record whatever the "
+                    "implementation happened to do as the expectation."
+                )
+
+    keystrokes = survey.get("keystrokes")
+    if not isinstance(keystrokes, list) or not keystrokes:
+        found.append(f"{name}: the `survey` lists no keystrokes, so it renders an empty file.")
+    else:
+        seen = set()
+        for index, keystroke in enumerate(keystrokes):
+            label = keystroke.get("name") if isinstance(keystroke, dict) else None
+            if not label:
+                found.append(f"{name}: survey keystroke {index} has no `name`")
+            elif label in seen:
+                # The label is the left column of the rendering, so two of them are two rows
+                # a reader cannot tell apart in the file the whole survey is judged by.
+                found.append(f"{name}: two survey keystrokes named {label!r}")
+            else:
+                seen.add(label)
     return found
 
 
