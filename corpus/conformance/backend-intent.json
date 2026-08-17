@@ -528,7 +528,9 @@
         "intent": "split",
         "pane": "p1w3r07bsd",
         "side": "right",
-        "names": { "p1w3r07bsd": "w1:p3" }
+        "names": {
+          "p1w3r07bsd": "w1:p3"
+        }
       },
       "expect": {
         "method": "pane.split",
@@ -546,7 +548,9 @@
         "intent": "split",
         "pane": "p1w3r07bsd",
         "side": "right",
-        "names": { "pgone00000": "w1:p9" }
+        "names": {
+          "pgone00000": "w1:p9"
+        }
       },
       "expect": {
         "refused": "no pane called p1w3r07bsd on local"
@@ -561,7 +565,9 @@
         "side": "down",
         "run": "claude",
         "name": "🤖 A",
-        "env": { "HOME": "/home/a" }
+        "env": {
+          "HOME": "/home/a"
+        }
       },
       "expect": {
         "method": "pane.split",
@@ -607,6 +613,40 @@
           "pane_id": "p1",
           "text": "read AGENTS.md and wait"
         }
+      }
+    },
+    {
+      "name": "a tab Muster named goes out as the id the daemon knows",
+      "why": "The tab half of the translation, and the only case here that can see it. Every other tab case names a tab `t1` and gets `t1` on the wire, which is what makes them cases about the envelope - but above this file nothing spells a tab herdr's way. A registry that stopped translating would pass a Muster name through, and herdr ignores a `tab_id` it does not recognize and renames whatever it has focused instead: somebody else's tab, relabelled, reported as success.",
+      "given": {
+        "intent": "rename-tab",
+        "tab": "t1w3r07bsd",
+        "name": "the build",
+        "tabs_seen": [
+          "w1:t3"
+        ]
+      },
+      "expect": {
+        "method": "tab.rename",
+        "params": {
+          "tab_id": "w1:t3",
+          "label": "the build"
+        }
+      }
+    },
+    {
+      "name": "a tab name that resolves to nothing sends no request at all",
+      "why": "The reason a tab resolves to a refusal rather than a pass-through, which is the same reason a pane does. The daemon holds one tab and the caller names a different one - a tab that has closed, read out of an older `muster window` or held by a script that has been running since it went. Passed through, herdr would ignore a `tab_id` it does not recognize and rename whichever tab it has focused, and answer success. Refusing names the tab, which is something a person or an agent can act on.",
+      "given": {
+        "intent": "rename-tab",
+        "tab": "t1w3r0a4a9",
+        "name": "the build",
+        "tabs_seen": [
+          "w1:t9"
+        ]
+      },
+      "expect": {
+        "refused": "no tab called t1w3r0a4a9 on local"
       }
     }
   ]

@@ -19,7 +19,8 @@ use std::collections::BTreeMap;
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::Shell;
 use muster_proto::{
-    ClosePane, FocusPane, ReadWindow, RenamePane, Request, SendToPane, SplitPane, ZoomPane, request,
+    ClosePane, FocusPane, FocusTab, ReadWindow, RenamePane, RenameTab, Request, SendToPane,
+    SplitPane, ZoomPane, request,
 };
 
 use crate::{docs, environment};
@@ -65,6 +66,11 @@ A REF is a pane's name, as `muster window` prints it: p1w3r07bsd. It is Muster's
 pane and is unique across every machine the window is showing, so it needs nothing else beside \
 it. Leaving it out means the pane this command is running in ($MUSTER_PANE), and failing that the \
 pane the window's keyboard is on.
+
+A tab has one too - t1w3r07bsd - and `tab` takes it wherever a pane command takes a REF. Nothing \
+puts a tab's name in a pane's environment, because nothing has to tell a tab which tab it is, so \
+there is no equivalent of $MUSTER_PANE: read the name out of `muster window`, where every pane \
+says which tab holds it.
 
 `pane new` prints the name of the pane it made, which is what makes the next line of a script \
 possible. It does not move the keyboard: making a pane is not the same act as looking at one, and \
@@ -122,6 +128,12 @@ enum What {
     Pane {
         #[command(subcommand)]
         doing: Doing,
+    },
+
+    /// Go to a tab, or name one
+    Tab {
+        #[command(subcommand)]
+        doing: WithTab,
     },
 
     /// Put the window's keyboard on a pane
@@ -223,6 +235,36 @@ enum Doing {
     },
 }
 
+/// What `muster tab` can do.
+///
+/// Two verbs rather than the pane's four, because the other two do not exist for a tab: a tab
+/// closes when its last pane does, and nothing types into a tab.
+#[derive(Debug, Subcommand)]
+enum WithTab {
+    /// Bring a tab on screen and put the window's keyboard in it
+    Focus {
+        /// The tab to go to
+        //
+        // A `String` rather than an `Option<String>`, which is what makes clap demand one. A pane
+        // command with no ref means the pane it is running in, and there is no such answer for a
+        // tab: nothing tells a pane which tab it is in, and "the tab the keyboard is already in"
+        // is not somewhere to ask to go.
+        #[arg(value_name = "REF")]
+        tab: String,
+    },
+
+    /// Call a tab something. An empty name takes the name away again
+    Rename {
+        /// The tab to rename, or the one the window's keyboard is in
+        #[arg(long, value_name = "REF")]
+        tab: Option<String>,
+
+        /// What to call it, joined with spaces if it arrives in pieces
+        #[arg(required = true, value_name = "NAME")]
+        name: Vec<String>,
+    },
+}
+
 /// Reads a command line, or says why it cannot be one.
 pub fn parse(
     argv: &[String],
@@ -237,6 +279,7 @@ pub fn parse(
     let asking = match &cli.what {
         What::Window => send(request::Payload::ReadWindow(ReadWindow {})),
         What::Pane { doing } => pane(doing, environment),
+        What::Tab { doing } => tab(doing),
         What::Focus { pane } => {
             // The only command where an empty pane is not an answer: everywhere else the core
             // reads it as "the pane the keyboard is on", and asking to focus the focused pane is
@@ -305,6 +348,25 @@ fn pane(doing: &Doing, environment: &BTreeMap<String, String>) -> Asking {
         Doing::Close { pane } => send(request::Payload::ClosePane(ClosePane {
             pane_id: pane_ref(pane.as_ref(), environment),
             ..ClosePane::default()
+        })),
+    }
+}
+
+/// No environment, unlike [`pane`] beside it.
+///
+/// A tab name is not in any pane's environment - nothing has to tell a tab which tab it is - so
+/// there is nothing here to fall back to. `focus` demands one; `rename` leaves the field empty,
+/// which the schema already reads as the tab the keyboard's pane is in.
+fn tab(doing: &WithTab) -> Asking {
+    match doing {
+        WithTab::Focus { tab } => send(request::Payload::FocusTab(FocusTab {
+            tab_id: tab.clone(),
+            ..FocusTab::default()
+        })),
+        WithTab::Rename { tab, name } => send(request::Payload::RenameTab(RenameTab {
+            tab_id: tab.clone().unwrap_or_default(),
+            name: name.join(" "),
+            ..RenameTab::default()
         })),
     }
 }

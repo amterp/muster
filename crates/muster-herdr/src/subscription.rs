@@ -530,7 +530,7 @@ impl AgentWatchers {
         // pane the mirror holds and the registry does not, which cannot happen - the mirror is
         // filled through the registry - so there is nothing here to report and no watcher to
         // start.
-        let Ok(backend) = names.backend(pane) else { return Watcher { stream: slot } };
+        let Ok(backend) = names.backend_pane(pane) else { return Watcher { stream: slot } };
         let subscription =
             vec![json!({ "type": "pane.agent_status_changed", "pane_id": backend.as_str() })];
         let pane = pane.clone();
@@ -604,7 +604,7 @@ fn read_agent_state(
     let expected = poison::lock(mirror, "mirror").agent_state(pane)?;
 
     let answer = HerdrClient::new(socket_path)
-        .request("pane.get", &json!({ "pane_id": names.backend(pane).ok()?.as_str() }))
+        .request("pane.get", &json!({ "pane_id": names.backend_pane(pane).ok()?.as_str() }))
         .ok()?;
     // `{"type":"pane_info","pane":{..,"agent_status":".."}}`, with the outer `result`
     // already unwrapped by the client.

@@ -28,6 +28,21 @@ Muster sets `$MUSTER_PANE` in every pane it creates. A pane created by something
 name and can be addressed by anybody, but has nothing in its environment - see `muster docs
 limits`.
 
+## Tab names
+
+A tab's name looks like `t1w3r07bsd`. The same registry mints it, on the same terms: unique
+across every machine, so `muster tab focus t1w3r07bsd` needs nothing beside it. The leading
+letter says which noun, so a tab's name can never be mistaken for a pane's.
+
+The difference is that nothing tells a tab which tab it is. There is no `$MUSTER_TAB`, and a tab
+is named the first time a daemon mentions it rather than before it is made. To act on the tab a
+script is sitting in, read the name out of `muster window`, where every pane says which tab holds
+it - see `muster docs limits`.
+
+`muster tab focus` needs a name, because there is no "the tab I am in" to fall back on.
+`muster tab rename` without one means the tab the window's keyboard is in, which is what the
+menu item means.
+
 ## Which window
 
 `$MUSTER_SOCKET` names the window a pane is drawn in, and Muster sets it in every pane it

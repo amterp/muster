@@ -28,7 +28,7 @@ use muster_core::input::{Bindings, PaneInput, PaneInputSettings, ScrollDirection
 use muster_core::intent::{BackendChannel, BackendIntent, Refusal};
 use muster_core::mirror::backend::{PaneId, Snapshot, TabId, WorkspaceId};
 use muster_core::mirror::{Change, Health, Mirror};
-use muster_core::names::{self, Mint, Names, PaneNames};
+use muster_core::names::{self, Mint, Names, PaneNames, TabNames};
 use muster_core::problems::{Problem, Problems, Severity};
 use muster_core::roster::{Roster, RosterTab, TabStep};
 use muster_herdr::subscription::{Notice, Subscription};
@@ -132,10 +132,10 @@ fn mark_opened() {
     OPENED.store(true, Ordering::Relaxed);
 }
 
-/// Where the pane-name registry is written, and the text last written there.
+/// Where the name registries are written, and the text last written there.
 ///
 /// Beside [`STATE`] and for the same reasons, including the string compare: the names change
-/// only when a pane appears or goes, and a publish follows every agent transition.
+/// only when a pane or a tab appears or goes, and a publish follows every agent transition.
 static NAMES_FILE: Mutex<Option<(String, String)>> = Mutex::new(None);
 
 /// Which chord asks for which action, as the config file left it.
@@ -420,10 +420,11 @@ pub(crate) fn set_state_path(path: &str) {
 /// Says where names are remembered, and reads back the ones already there.
 ///
 /// Read here rather than lazily, because it has to happen before any daemon is attached: the
-/// first snapshot mints a name for every pane it describes, and a name minted for a pane that
-/// already had one is a pane whose environment now names something else.
+/// first snapshot mints a name for every pane and tab it describes, and a name minted for
+/// something that already had one is a pane whose environment now names something else, or a
+/// tab the saved arrangement can no longer find.
 pub(crate) fn set_pane_names_path(path: &str) {
-    *poison::lock(&NAMES_FILE, "saved-pane-names") =
+    *poison::lock(&NAMES_FILE, "saved-names") =
         if path.is_empty() { None } else { Some((path.to_string(), String::new())) };
     if path.is_empty() {
         return;
@@ -431,18 +432,20 @@ pub(crate) fn set_pane_names_path(path: &str) {
 
     let Ok(text) = std::fs::read_to_string(path) else { return };
     match names::from_toml(&text, Mint::Drawn) {
-        Ok(read) => {
+        Ok((panes, tabs)) => {
             let session = poison::lock(&SESSION, "session");
-            *poison::lock(&session.names, "pane-names") = read;
+            *poison::lock(&session.names, "pane-names") = panes;
+            *poison::lock(&session.tab_names, "tab-names") = tabs;
         }
         Err(detail) => log::warn(
-            "pane-names.restore.failed",
+            "names.restore.failed",
             fields! {
                 "path" => path.to_string(),
                 "detail" => detail,
                 "impact" => "every pane already open is named again, so a program still \
                              running in one holds a name that resolves to nothing and its \
-                             commands are refused. The window itself is unaffected",
+                             commands are refused; and every tab is named again, so this \
+                             window opens without the arrangement it was left in",
                 "check" => "the file - it is TOML, and it is replaced by the next publish. A \
                             pane made from now on is named and told its name as usual",
             },
@@ -760,6 +763,10 @@ pub(crate) struct Session {
     /// Shared behind a lock because two threads mint into it - a daemon's subscription thread
     /// when a pane appears, and whichever thread dispatched a split.
     names: Arc<Mutex<PaneNames>>,
+
+    /// The same for tabs, on the same terms, and a second lock rather than one over both so
+    /// that decoding a pane event never waits on a tab being named.
+    tab_names: Arc<Mutex<TabNames>>,
 }
 
 /// One pane's live search.
@@ -808,7 +815,7 @@ impl Session {
         let seeded = mirror.bootstrap(seed);
         let mirror = Arc::new(Mutex::new(mirror));
 
-        let names = Names::new(id.clone(), Arc::clone(&self.names));
+        let names = Names::new(id.clone(), Arc::clone(&self.names), Arc::clone(&self.tab_names));
         let reporting = id.clone();
         let subscription = Subscription::start(
             &reached.socket_path,
@@ -835,24 +842,28 @@ impl Session {
         seeded
     }
 
-    /// Drops the names of panes their daemons no longer hold.
+    /// Drops the names of panes and tabs their daemons no longer hold.
     ///
     /// Only where the daemon is answering. A mirror that has gone stale is not evidence a pane
     /// is gone - it is a connection nobody is hearing from - and forgetting a name on a dropped
     /// VPN would strand an agent that is still working on the far side with a name nothing can
-    /// resolve.
-    fn forget_closed_panes(&self) {
+    /// resolve. A forgotten tab name is milder and wrong in the same direction: the saved
+    /// arrangement would stop finding the tab a region was showing.
+    fn forget_what_closed(&self) {
         for backend in self.backends.values() {
             let mirror = poison::lock(&backend.mirror, "mirror");
             if mirror.health() != Health::Connected {
                 continue;
             }
-            let held: Vec<PaneId> = mirror.panes().map(|pane| pane.id.clone()).collect();
+            let panes: Vec<PaneId> = mirror.panes().map(|pane| pane.id.clone()).collect();
+            let tabs: Vec<TabId> = mirror.tabs().map(|tab| tab.id.clone()).collect();
             drop(mirror);
             // The mirror holds Muster's names, so this asks the registry for each one's backend
             // id rather than the other way round.
-            let held = held.iter().filter_map(|pane| backend.names.backend(pane).ok());
-            backend.names.prune(held);
+            let held = panes.iter().filter_map(|pane| backend.names.backend_pane(pane).ok());
+            backend.names.prune_panes(held);
+            let held = tabs.iter().filter_map(|tab| backend.names.backend_tab(tab).ok());
+            backend.names.prune_tabs(held);
         }
     }
 
@@ -955,7 +966,7 @@ impl Session {
         let socket_path = backend.socket_path.clone();
         // Resolved once, here, because both things this opens speak to the daemon directly:
         // the second input channel below, and the bridge the shell starts from the answer.
-        let backend_pane = backend.names.backend(pane).map_err(|_| {
+        let backend_pane = backend.names.backend_pane(pane).map_err(|_| {
             format!(
                 "{daemon} does not hold a pane called {pane}, so there is nothing to open a \
                  channel to. A name the window is still showing and the registry has already \
@@ -1131,7 +1142,7 @@ impl Session {
             },
             |daemon, pane| {
                 let backend = self.backends.get(daemon)?;
-                Some(backend.names.backend(pane).ok()?.as_str().to_string())
+                Some(backend.names.backend_pane(pane).ok()?.as_str().to_string())
             },
         )
     }
@@ -1757,7 +1768,10 @@ fn attach_daemon(daemon: &Daemon) -> Result<(), String> {
     let reached = reach(&daemon.id, &daemon.endpoint)?;
     // Named through the session's registry rather than one of its own, because a name minted
     // reading this snapshot is the name the mirror will hold from here on.
-    let names = Names::new(daemon.id.clone(), Arc::clone(&poison::lock(&SESSION, "session").names));
+    let names = {
+        let session = poison::lock(&SESSION, "session");
+        Names::new(daemon.id.clone(), Arc::clone(&session.names), Arc::clone(&session.tab_names))
+    };
     let (snapshot, dropped) = fetch_snapshot(&reached.socket_path, &names).map_err(|failure| {
         format!("the daemon {} did not answer at {} ({failure}).", daemon.id, reached.socket_path)
     })?;
@@ -2096,6 +2110,24 @@ pub(crate) fn tab_of(daemon: &DaemonId, pane: &PaneId) -> Option<TabId> {
     Some(mirror.pane(pane)?.tab.clone())
 }
 
+/// Which followed daemon holds the tab Muster calls this, if any followed one does.
+///
+/// What lets a caller name a tab and nothing else, on exactly the terms
+/// [`daemon_holding`] gives a pane: a tab name is minted unique across every attached machine,
+/// so saying which machine holds it would be asking for something the caller has no way to know.
+///
+/// The mirror rather than the registry, because the registry remembers a tab until a prune and
+/// the mirror is what the window is actually showing - and a request about a tab that has closed
+/// should be refused rather than sent.
+pub(crate) fn daemon_holding_tab(tab: &TabId) -> Option<DaemonId> {
+    let session = poison::lock(&SESSION, "session");
+    session
+        .backends
+        .iter()
+        .find(|(_, backend)| poison::lock(&backend.mirror, "mirror").tab(tab).is_some())
+        .map(|(id, _)| id.clone())
+}
+
 /// Which followed daemon holds this pane, and where in it.
 ///
 /// A name is Muster's own and unique across every attached machine, so exactly one daemon can
@@ -2201,16 +2233,18 @@ fn save(composition: &Composition, presentation: Presentation) {
     }
 }
 
-/// Writes down what Muster calls each pane, if it has changed since the last time.
+/// Writes down what Muster calls each pane and each tab, if it has changed since the last time.
 ///
 /// The same shape as [`save`] beside it, including the staged rename: a window killed
 /// mid-write would otherwise come back to a file that parses as far as the third pane and
 /// stops, which would strand every pane after it.
-fn save_names(names: &Arc<Mutex<PaneNames>>) {
-    let mut held = poison::lock(&NAMES_FILE, "saved-pane-names");
+///
+/// Panes are locked before tabs, and this is the only caller that holds both.
+fn save_names(panes: &Arc<Mutex<PaneNames>>, tabs: &Arc<Mutex<TabNames>>) {
+    let mut held = poison::lock(&NAMES_FILE, "saved-names");
     let Some((path, written)) = held.as_mut() else { return };
 
-    let text = names::to_toml(&poison::lock(names, "pane-names"));
+    let text = names::to_toml(&poison::lock(panes, "pane-names"), &poison::lock(tabs, "tab-names"));
     if &text == written {
         return;
     }
@@ -2225,13 +2259,15 @@ fn save_names(names: &Arc<Mutex<PaneNames>>) {
         Ok(()) => *written = text,
         Err(error) => {
             log::warn(
-                "pane-names.save.failed",
+                "names.save.failed",
                 fields! {
                     "path" => path.clone(),
                     "detail" => error.to_string(),
                     "impact" => "these names last until this Muster quits. Every pane open at \
                                  that moment keeps a name in its environment that the next \
-                                 launch will not know, so commands from inside them are refused",
+                                 launch will not know, so commands from inside them are \
+                                 refused - and the next launch cannot find the tabs its saved \
+                                 arrangement names, so it opens fresh",
                     "check" => "whether that directory exists and is writable",
                 },
             );
@@ -2336,8 +2372,8 @@ fn publish() {
         // Here because this is the moment composition is settled, and because everything that
         // changes it ends up here - so nothing has to remember to save.
         save(&session.composition, session.presentation);
-        session.forget_closed_panes();
-        save_names(&session.names);
+        session.forget_what_closed();
+        save_names(&session.names, &session.tab_names);
         (view, roster, settled)
     };
 

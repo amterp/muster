@@ -13,7 +13,7 @@
 //! Deliberately not here: the names of the variables a pane is handed. Those are set by the
 //! herdr adapter, which must not depend on the wire format - a schema in the adapter's
 //! dependency graph is an invitation to translate protobuf where translation does not belong.
-//! `crates/muster-cli/src/window_env.rs` carries the CLI's own spelling and a test that the
+//! `crates/muster-cli/src/environment.rs` carries the CLI's own spelling and a test that the
 //! two still agree.
 
 pub mod frame;

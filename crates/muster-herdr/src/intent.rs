@@ -134,7 +134,7 @@ impl BackendChannel for HerdrBackend {
 
         Ok(Outcome {
             created,
-            created_tab: created_tab(&result),
+            created_tab: created_tab(&result, &self.names),
             settled,
             // Either the rename this intent *was*, or the one a split asked for on the way. Both
             // are the only route there is - herdr announces a rename to nobody
@@ -156,7 +156,7 @@ impl BackendChannel for HerdrBackend {
     /// gone away is `NotThere`, which is how the window learns it is showing something the
     /// daemon no longer holds.
     fn find(&self, pane: &PaneId, needle: &Needle) -> Result<Found, Refusal> {
-        let (method, params) = read_request(&self.names.backend(pane)?);
+        let (method, params) = read_request(&self.names.backend_pane(pane)?);
         let result = self.client.request(method, &params).map_err(|failure| refusal(&failure))?;
         let text = nested(&result, "text").and_then(Value::as_str).unwrap_or_default();
         // Absent means "there is no more", which is the safe way round: claiming a search
@@ -167,7 +167,7 @@ impl BackendChannel for HerdrBackend {
     }
 
     fn viewport(&self, pane: &PaneId) -> Result<Viewport, Refusal> {
-        let params = json!({ "pane_id": self.names.backend(pane)?.as_str() });
+        let params = json!({ "pane_id": self.names.backend_pane(pane)?.as_str() });
         let result =
             self.client.request("pane.get", &params).map_err(|failure| refusal(&failure))?;
         let scroll = nested(&result, "scroll");
@@ -243,7 +243,7 @@ impl HerdrBackend {
                 self.names.settle(name, backend);
                 Some(name.clone())
             }
-            (Some(backend), None) => Some(self.names.name(backend)),
+            (Some(backend), None) => Some(self.names.pane(backend)),
             (None, Some(name)) => {
                 self.names.release(name);
                 None
@@ -279,7 +279,7 @@ impl HerdrBackend {
 
     /// Calls a pane what the request asked it to be called.
     fn label(&self, pane: &PaneId, label: &str) -> Option<(PaneId, Option<String>)> {
-        let backend = self.names.backend(pane).ok()?;
+        let backend = self.names.backend_pane(pane).ok()?;
         let params = json!({ "pane_id": backend.as_str(), "label": label });
         match self.client.request("pane.rename", &params) {
             Ok(_) => Some((pane.clone(), Some(label.to_string()))),
@@ -316,7 +316,7 @@ impl HerdrBackend {
     /// asserts the wait changes an outcome - `client_connection.rs` asserts the mechanism works,
     /// and this is a precaution rather than a demonstrated fix.
     fn start(&self, pane: &PaneId, command: &str) {
-        let Ok(backend) = self.names.backend(pane) else { return };
+        let Ok(backend) = self.names.backend_pane(pane) else { return };
         self.ready(&backend);
 
         let text = json!({ "pane_id": backend.as_str(), "text": command });
@@ -342,7 +342,7 @@ impl HerdrBackend {
     /// pane's live modes - which is what a program reading a bracketed paste needs in order to
     /// treat this as a submission rather than as more text to buffer.
     fn press_enter(&self, pane: &PaneId) {
-        let Ok(backend) = self.names.backend(pane) else { return };
+        let Ok(backend) = self.names.backend_pane(pane) else { return };
         let enter = json!({ "pane_id": backend.as_str(), "keys": ["enter"] });
         if let Err(failure) = self.client.request("pane.send_input", &enter) {
             log::warn(
@@ -414,8 +414,8 @@ impl HerdrBackend {
     /// Undoing is the one thing worse than a pane on the wrong side.
     fn rearrange(&self, pane: &PaneId, created: &PaneId) -> Option<SettledLayout> {
         let params = json!({
-            "source_pane_id": self.names.backend(pane).ok()?.as_str(),
-            "target_pane_id": self.names.backend(created).ok()?.as_str(),
+            "source_pane_id": self.names.backend_pane(pane).ok()?.as_str(),
+            "target_pane_id": self.names.backend_pane(created).ok()?.as_str(),
         });
         let answer = match self.client.request("pane.swap", &params) {
             Ok(answer) => answer,
@@ -536,7 +536,7 @@ pub fn request(
                 // ignores a key it does not know and splits whichever pane it has focused,
                 // so the wrong name reads as a split landing in an arbitrary place rather
                 // than as a refusal. Every other pane verb takes `pane_id`.
-                "target_pane_id": names.backend(pane)?.as_str(),
+                "target_pane_id": names.backend_pane(pane)?.as_str(),
                 "direction": direction(*side),
                 // The daemon's cursor follows the new pane, because a person who split
                 // something is looking at what they made. Muster's own keyboard is moved
@@ -594,7 +594,7 @@ pub fn request(
         // goes over as it stands, and how far a divider may travel stays herdr's own rule.
         BackendIntent::ResizePane { pane, direction, fraction } => {
             let mut params = json!({
-                "pane_id": names.backend(pane)?.as_str(),
+                "pane_id": names.backend_pane(pane)?.as_str(),
                 "direction": direction.as_str(),
             });
             if let Some(fraction) = fraction {
@@ -606,20 +606,21 @@ pub fn request(
         // Muster restating a default it agrees with, and the day herdr changes that default
         // is the day this should notice rather than silently keep the old one.
         BackendIntent::ZoomPane { pane } => {
-            ("pane.zoom", json!({ "pane_id": names.backend(pane)?.as_str() }))
+            ("pane.zoom", json!({ "pane_id": names.backend_pane(pane)?.as_str() }))
         }
         BackendIntent::ClosePane { pane } => {
-            ("pane.close", json!({ "pane_id": names.backend(pane)?.as_str() }))
+            ("pane.close", json!({ "pane_id": names.backend_pane(pane)?.as_str() }))
         }
         BackendIntent::FocusPane { pane } => {
-            ("pane.focus", json!({ "pane_id": names.backend(pane)?.as_str() }))
+            ("pane.focus", json!({ "pane_id": names.backend_pane(pane)?.as_str() }))
         }
         // The text only. Return is `pane.send_input` afterwards, because herdr encodes a named
         // key against the pane's live modes and a newline in the text is just a newline - which
         // a harness reading a bracketed paste treats as more text rather than as a submission.
-        BackendIntent::SendText { pane, text, enter: _ } => {
-            ("pane.send_text", json!({ "pane_id": names.backend(pane)?.as_str(), "text": text }))
-        }
+        BackendIntent::SendText { pane, text, enter: _ } => (
+            "pane.send_text",
+            json!({ "pane_id": names.backend_pane(pane)?.as_str(), "text": text }),
+        ),
         // `source_pane_id` and `target_pane_id`, the same pair the leftward-split rearrange
         // sends. Note that herdr moves its own cursor to the *source* pane whatever was
         // focused before (`observations/herdr-0.8.0.md` section 14); Muster's keyboard is its
@@ -627,8 +628,8 @@ pub fn request(
         BackendIntent::SwapPanes { pane, with } => (
             "pane.swap",
             json!({
-                "source_pane_id": names.backend(pane)?.as_str(),
-                "target_pane_id": names.backend(with)?.as_str(),
+                "source_pane_id": names.backend_pane(pane)?.as_str(),
+                "target_pane_id": names.backend_pane(with)?.as_str(),
             }),
         ),
         // `destination` is a tagged object rather than a bare id: herdr's `pane.move` can also
@@ -646,11 +647,11 @@ pub fn request(
         BackendIntent::MovePane { pane, tab, after } => (
             "pane.move",
             json!({
-                "pane_id": names.backend(pane)?.as_str(),
+                "pane_id": names.backend_pane(pane)?.as_str(),
                 "destination": {
                     "type": "tab",
-                    "tab_id": tab.as_str(),
-                    "target_pane_id": names.backend(after)?.as_str(),
+                    "tab_id": names.backend_tab(tab)?.as_str(),
+                    "target_pane_id": names.backend_pane(after)?.as_str(),
                     "split": "right",
                 },
                 "focus": false,
@@ -659,7 +660,7 @@ pub fn request(
         BackendIntent::SetSplitRatio { tab, path, ratio } => (
             "layout.set_split_ratio",
             json!({
-                "tab_id": tab.as_str(),
+                "tab_id": names.backend_tab(tab)?.as_str(),
                 "path": path.iter().map(|turn| *turn == Branch::Second).collect::<Vec<bool>>(),
                 "ratio": ratio,
             }),
@@ -670,7 +671,7 @@ pub fn request(
         BackendIntent::RenamePane { pane, name } => (
             "pane.rename",
             json!({
-                "pane_id": names.backend(pane)?.as_str(),
+                "pane_id": names.backend_pane(pane)?.as_str(),
                 "label": name.as_ref().map_or(Value::Null, |name| json!(name)),
             }),
         ),
@@ -681,7 +682,10 @@ pub fn request(
         // unnamed and draws the place, so the window is right and herdr's own interface is not.
         BackendIntent::RenameTab { tab, name } => (
             "tab.rename",
-            json!({ "tab_id": tab.as_str(), "label": name.clone().unwrap_or_default() }),
+            json!({
+                "tab_id": names.backend_tab(tab)?.as_str(),
+                "label": name.clone().unwrap_or_default(),
+            }),
         ),
     })
 }
@@ -759,8 +763,10 @@ fn created(intent: &BackendIntent, result: &Value) -> Option<String> {
 /// `tab.create` answers with the tab under `tab`, and `workspace.create` with the one it
 /// started the workspace off with. Read for the same reason the pane is: a tab nothing is
 /// showing is a tab nobody asked for twice.
-fn created_tab(result: &Value) -> Option<TabId> {
-    Some(TabId::new(result.get("tab")?.get("tab_id")?.as_str()?))
+fn created_tab(result: &Value, names: &Names) -> Option<TabId> {
+    // Named from an answer, so the name is held against the next prune: the tab is announced a
+    // moment after this and until then no mirror holds anything by that name.
+    Some(names.tab_from_answer(result.get("tab")?.get("tab_id")?.as_str()?))
 }
 
 /// The axis herdr splits along to produce a side, named the way herdr names it.

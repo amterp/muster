@@ -221,8 +221,13 @@ message RenamePane {
 // same operation underneath: a tab rename is announced to every client and a pane rename is
 // announced to none, and only a pane's can be fully undone.
 message RenameTab {
+  // Empty finds the daemon from the tab, which is what a caller naming only a tab means. Only
+  // read when no tab is named, where it decides whose keyboard's tab this is about.
   string daemon_id = 1;
 
+  // What Muster calls the tab - `t1w3r07bsd` - minted by Muster and unique across every attached
+  // machine, so it is an answer on its own (crates/muster-core/src/names.rs).
+  //
   // Empty means the tab the keyboard's pane is in.
   string tab_id = 2;
 
@@ -648,7 +653,13 @@ message ArrangePane {
 // Where the keyboard lands inside it is the core's to decide - the tab's first pane in roster
 // order - because going to a tab and reading its rows have to agree about which comes first.
 message FocusTab {
+  // Empty finds the daemon from the tab. A caller that read a tab's name out of a window has said
+  // enough, and which machine holds it is not something a script has any way to know.
   string daemon_id = 1;
+
+  // What Muster calls the tab, as `muster window` prints it. Required, unlike a pane id: there is
+  // no "the focused tab" to fall back to, and a request naming neither is a caller that had a tab
+  // in hand and dropped it.
   string tab_id = 2;
 }
 
@@ -669,9 +680,11 @@ message FocusPaneAt {
 
 // Moves one divider in a tab's tree.
 message SetSplitRatio {
-  // Tabs collide across daemons for the same reason panes do. Empty means the daemon this
-  // window's keyboard is on.
+  // Empty finds the daemon from the tab, as everywhere a tab is named: a tab name is Muster's own
+  // and unique across every attached machine, so it cannot mean two tabs.
   string daemon_id = 4;
+
+  // What Muster calls the tab, as `muster window` prints it.
   string tab_id = 1;
 
   // The turns from the tab's root down to the divider: false takes the first child, true the
@@ -1168,6 +1181,12 @@ message RosterDaemon {
 
 message RosterTab {
   string daemon_id = 1;
+
+  // What Muster calls this tab - `t1w3r07bsd` - and what every tab id in this schema means.
+  // Minted by Muster rather than borrowed from the backend, and unique across every attached
+  // machine, so it is what a script or an agent addresses a tab by. Unlike a pane there is no
+  // backend spelling beside it: nothing outside the core ever names a tab to a daemon, because
+  // no bridge streams one.
   string tab_id = 2;
 
   // Where this tab sits in the window's whole tab order, counting from one. The order
@@ -1250,6 +1269,8 @@ message ViewChanged {
 message ViewRegion {
   string region_id = 1;
   string daemon_id = 2;
+
+  // What Muster calls the tab this region shows. See RosterTab.tab_id.
   string tab_id = 3;
 
   // The pane in this region the keyboard feeds while the region is focused. Empty when the

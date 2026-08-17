@@ -10,6 +10,7 @@
 //! on, so a fourth way of making a pane fails here rather than leaking quietly.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use conformance::{CaseError, Conformance, fields, repo_root};
 use muster_core::intent::{BackendIntent, Branch, Side};
@@ -32,9 +33,9 @@ fn backend_intent_conformance() {
         // valid values that herdr accepts, and only one of them can be scrolled to.
         let names = names(given);
         let built = match text(given, "intent")?.as_str() {
-            "find-read" => {
-                names.backend(&PaneId::new(&text(given, "pane")?)).map(|pane| read_request(&pane))
-            }
+            "find-read" => names
+                .backend_pane(&PaneId::new(&text(given, "pane")?))
+                .map(|pane| read_request(&pane)),
             _ => request(&intent(given)?, &pane_environment(given), &names),
         };
         match built {
@@ -438,16 +439,37 @@ fn text(given: &Value, key: &str) -> Result<String, CaseError> {
 /// name Muster minted leaves as the id the daemon knows, which is the whole point of the
 /// registry and the one thing no other case here can see.
 fn names(given: &Value) -> Names {
-    let Some(bindings) = given.get("names").and_then(Value::as_object) else {
+    let panes = given.get("names").and_then(Value::as_object);
+    // An array rather than a map, unlike the panes above: a tab name is drawn rather than chosen,
+    // so a case says which of the daemon's tabs have been seen and in what order, and the names
+    // that come out are the ones `tab-names.json` pins for this instant and seed.
+    let tabs = given.get("tabs_seen").and_then(Value::as_array);
+    if panes.is_none() && tabs.is_none() {
         return backend_names();
-    };
-    let names = Names::alone("local", Mint::Drawn);
-    for (name, backend) in bindings {
+    }
+    // Reproducible rather than drawn, because a tab name cannot be bound the way a pane's is:
+    // nothing reserves a tab, so the only way to bind one is to let the registry name it - and a
+    // case has to be able to say in advance what it will be called. The instant and seed are
+    // `tab-names.json`'s, so a name written in a case here is the same name written there.
+    let names = Names::alone("local", Mint::Replayed { at: minting_at(), seed: 1 });
+    for (name, backend) in panes.into_iter().flatten() {
         // Bound directly rather than reserved first: what a case here is about is the
         // translation, and how a name came to exist is `pane-names.json`'s subject.
         names.settle(&PaneId::new(name.as_str()), backend.as_str().unwrap_or_default());
     }
+    for backend in tabs.into_iter().flatten().filter_map(Value::as_str) {
+        names.tab(backend);
+    }
     names
+}
+
+/// `2026-08-17T00:00:00Z`, the instant `tab-names.json` mints at.
+// Seconds rather than the hours clippy prefers: 1786924800 is a Unix timestamp, which a reader can
+// recognize and look up. 496368 hours is a number nobody can place. The same trade `names::spelling`
+// makes about its epoch.
+#[allow(clippy::duration_suboptimal_units)]
+fn minting_at() -> SystemTime {
+    UNIX_EPOCH + Duration::from_secs(1_786_924_800)
 }
 
 /// A registry whose name for a pane is the daemon's own id for it.

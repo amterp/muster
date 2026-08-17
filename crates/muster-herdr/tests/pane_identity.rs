@@ -50,7 +50,7 @@ fn a_pane_muster_made_is_told_which_pane_it_is() {
     // environment.
     let dump = PathBuf::from(format!("/tmp/muster-test/pane-identity-{}.txt", std::process::id()));
     let _ = std::fs::remove_file(&dump);
-    let pane = names.backend(&made).expect("the name Muster just minted resolves");
+    let pane = names.backend_pane(&made).expect("the name Muster just minted resolves");
     daemon.call(
         "pane.send_text",
         &json!({

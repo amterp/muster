@@ -43,6 +43,9 @@ One name per concept; docs and code use these terms. Alphabetical.
 - **shell** - the per-OS native layer: windows, chrome, key capture, surfaces. Owns nothing.
 - **surface** - one libghostty terminal view rendering one pane channel; disposable.
 - **tab** - the unit that owns one pane tree, inside a workspace; daemon truth.
+- **tab name** - what Muster calls a tab: `t1w3r07bsd`, from the same registry as a pane name and on the same terms,
+  and what every message and every CLI argument means by a tab. Nothing tells a tab which tab it is, so no pane's
+  environment carries one - a script reads it out of `muster window`.
 - **vocabulary** - the backend contract's nouns and verbs, owned by Muster; the contract corpus is its executable
   form.
 - **workspace** - a daemon's top-level container of tabs.

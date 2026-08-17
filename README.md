@@ -408,7 +408,14 @@ core and this is the other door into it.
     muster window
     muster pane new --down --run claude --name "🤖 A"
     muster pane send --pane p1w3r07bsd "read AGENTS.md and wait" --enter
+    muster tab focus t1w3r07bsd
     muster window --json
+
+**Tabs are named too, and for a narrower reason than panes.** `t1w3r07bsd`, minted by Muster and
+unique across every machine a window shows, so `muster tab focus` and `muster tab rename` reach one
+without saying which daemon holds it. What a tab does not get is a name in any pane's environment:
+nothing has to tell a tab which tab it is, so there is no `$MUSTER_TAB`, and a script that means the
+tab it is sitting in reads that out of `muster window` - where every pane says which tab holds it.
 
 `muster docs` is the reference and it ships inside the binary, so it describes the version you are
 running. `muster --help` has the grammar, `muster completions zsh` writes a completion script.

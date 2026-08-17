@@ -1,0 +1,344 @@
+{
+  "concept": "names.tab",
+  "source": "authored",
+  "citation": "docs/architecture.md, ownership of truth: Muster names its own tabs. docs/cli/overview.md, tab names. kan a_29e9boMfk.",
+  "why": "A tab name is what a script says to reach a tab, so its spelling is a contract and not an implementation detail: a name that changed shape between versions would break every script and every skill that had learned to read one out of `muster window`. These cases pin the spelling a seed produces and the two directions a name is asked in. Every other corpus here drives the registry in its `backend` mint, so that a case about the mirror or the roster says `w1:t1` and is a case about the mirror or the roster - which is why the naming has cases of its own. The pane half is next door in pane-names.json; the two are separate files because the two nouns are named for different reasons and a case should say which it is about.",
+  "cases": [
+    {
+      "name": "a tab is named the first time a daemon mentions it",
+      "why": "The whole difference from a pane. A pane's name has to exist before the pane does, because it rides into the pane's environment; nothing tells a tab which tab it is, so there is no reservation and no moment before first sight. Naming on sight also means a tab another client made is addressable, which is the ordinary case for a window attached to a daemon that outlived it.",
+      "given": {
+        "do": [
+          {
+            "see": "local/w1:t1"
+          }
+        ]
+      },
+      "expect": {
+        "trace": [
+          "t1w3r07bsd"
+        ],
+        "located": {
+          "t1w3r07bsd": "local/w1:t1"
+        }
+      }
+    },
+    {
+      "name": "the same tab seen twice keeps one name",
+      "why": "herdr replays a whole session as synthetic events when a subscription opens, and its snapshot describes every tab as well - so the mirror sees each tab at least twice on every connect. A second name would leave the first one resolving to nothing, and the saved arrangement points at the first one.",
+      "given": {
+        "do": [
+          {
+            "see": "local/w1:t1"
+          },
+          {
+            "see": "local/w1:t1"
+          }
+        ]
+      },
+      "expect": {
+        "trace": [
+          "t1w3r07bsd",
+          "t1w3r07bsd"
+        ],
+        "located": {
+          "t1w3r07bsd": "local/w1:t1"
+        }
+      }
+    },
+    {
+      "name": "one backend id on two daemons is two tabs",
+      "why": "Why a tab is named at all. herdr numbers tabs per session, so a laptop and a devenv both hold a `w1:t1` - and a window showing both had no way to say which one a request meant. Two names is what makes a tab name an answer on its own.",
+      "given": {
+        "do": [
+          {
+            "see": "local/w1:t1"
+          },
+          {
+            "see": "devenv/w1:t1"
+          }
+        ]
+      },
+      "expect": {
+        "trace": [
+          "t1w3r07bsd",
+          "t1w3r0a4a9"
+        ],
+        "located": {
+          "t1w3r07bsd": "local/w1:t1",
+          "t1w3r0a4a9": "devenv/w1:t1"
+        }
+      }
+    },
+    {
+      "name": "a name says when its tab was made",
+      "why": "Two tabs made ten seconds apart get names that sort into the order they were made. Pinned rather than assumed, because it falls out of the epoch and the tick size being chosen together and a change to either would lose it silently. Not the same thing as the order the roster draws tabs in: a tab another client moved was still made when it was made, so creation order is a fact about the name and arrival order is a fact about the mirror.",
+      "given": {
+        "at": "2026-08-17T00:00:00Z",
+        "do": [
+          {
+            "see": "local/w1:t1"
+          }
+        ]
+      },
+      "expect": {
+        "trace": [
+          "t1w3r07bsd"
+        ],
+        "located": {
+          "t1w3r07bsd": "local/w1:t1"
+        }
+      }
+    },
+    {
+      "name": "a tab minted later in the day sorts after one minted earlier",
+      "why": "The same property, stated as the comparison somebody actually depends on. A later instant has to spell a name that sorts after an earlier one, which is what stops a list of tab names read off two runs coming back in the wrong order.",
+      "given": {
+        "at": "2026-08-17T12:00:00Z",
+        "do": [
+          {
+            "see": "local/w1:t9"
+          }
+        ]
+      },
+      "expect": {
+        "trace": [
+          "t1w7z07bsd"
+        ],
+        "located": {
+          "t1w7z07bsd": "local/w1:t9"
+        }
+      }
+    },
+    {
+      "name": "a name resolves back to what the daemon calls the tab",
+      "why": "The outward direction, and the one every request needs: a caller says a tab name and the adapter has to put herdr's own id on the wire. The trace of minted names says nothing about this direction, so it has a step of its own.",
+      "given": {
+        "do": [
+          {
+            "see": "local/w1:t1"
+          },
+          {
+            "resolve": "local/t1w3r07bsd"
+          }
+        ]
+      },
+      "expect": {
+        "trace": [
+          "t1w3r07bsd",
+          "w1:t1"
+        ],
+        "located": {
+          "t1w3r07bsd": "local/w1:t1"
+        }
+      }
+    },
+    {
+      "name": "a name resolves to nothing on a daemon that does not hold it",
+      "why": "What stops a request going to the wrong machine about an id that machine happens to also use. Both daemons have a `w1:t1`, so a name scoped to neither would rename the devenv's tab when the caller meant the laptop's - and herdr would report success.",
+      "given": {
+        "do": [
+          {
+            "see": "local/w1:t1"
+          },
+          {
+            "see": "devenv/w1:t1"
+          },
+          {
+            "resolve": "devenv/t1w3r07bsd"
+          }
+        ]
+      },
+      "expect": {
+        "trace": [
+          "t1w3r07bsd",
+          "t1w3r0a4a9",
+          "(nothing)"
+        ],
+        "located": {
+          "t1w3r07bsd": "local/w1:t1",
+          "t1w3r0a4a9": "devenv/w1:t1"
+        }
+      }
+    },
+    {
+      "name": "a name nobody minted resolves to nothing",
+      "why": "A name from an older window, or one whose tab closed, has to be refused rather than passed through. herdr ignores a `tab_id` it does not recognize and acts on whatever it has focused, so a hopeful send would move somebody else's tab and report success - which is worse than a refusal by a wide margin.",
+      "given": {
+        "do": [
+          {
+            "resolve": "local/t1w3r07bsd"
+          }
+        ]
+      },
+      "expect": {
+        "trace": [
+          "(nothing)"
+        ],
+        "located": {}
+      }
+    },
+    {
+      "name": "a tab the daemon no longer holds is forgotten",
+      "why": "Names are never reused, so the registry only grows unless something drops what has gone. Driven by what the daemon says it holds rather than by a name going unused: a tab nobody has asked about lately is not a closed tab.",
+      "given": {
+        "do": [
+          {
+            "see": "local/w1:t1"
+          },
+          {
+            "see": "local/w1:t2"
+          },
+          {
+            "prune": {
+              "daemon": "local",
+              "holds": [
+                "w1:t2"
+              ]
+            }
+          }
+        ]
+      },
+      "expect": {
+        "trace": [
+          "t1w3r07bsd",
+          "t1w3r0a4a9"
+        ],
+        "located": {
+          "t1w3r0a4a9": "local/w1:t2"
+        }
+      }
+    },
+    {
+      "name": "pruning one daemon leaves another daemon's tabs alone",
+      "why": "A prune is scoped to the daemon that answered, because that is the only question it can answer safely. A daemon nothing is hearing from is not a daemon whose tabs are gone - it is a dropped VPN - and forgetting the devenv's tabs would lose the arrangement of the half of the window still working.",
+      "given": {
+        "do": [
+          {
+            "see": "local/w1:t1"
+          },
+          {
+            "see": "devenv/w1:t1"
+          },
+          {
+            "prune": {
+              "daemon": "local",
+              "holds": []
+            }
+          }
+        ]
+      },
+      "expect": {
+        "trace": [
+          "t1w3r07bsd",
+          "t1w3r0a4a9"
+        ],
+        "located": {
+          "t1w3r0a4a9": "devenv/w1:t1"
+        }
+      }
+    },
+    {
+      "name": "a tab named from an answer survives the prune before it is announced",
+      "why": "`tab.create` names the tab in its reply and the daemon announces it a moment later, so there is a window where the registry holds a name no mirror has heard of. A prune in that moment reads it as a tab that has closed and forgets the name of the tab somebody just made - which is what the pane half of this registry had to be fixed for, found only after it shipped.",
+      "given": {
+        "do": [
+          {
+            "answered": "local/w1:t1"
+          },
+          {
+            "prune": {
+              "daemon": "local",
+              "holds": []
+            }
+          },
+          {
+            "resolve": "local/t1w3r07bsd"
+          }
+        ]
+      },
+      "expect": {
+        "trace": [
+          "t1w3r07bsd",
+          "w1:t1"
+        ],
+        "located": {
+          "t1w3r07bsd": "local/w1:t1"
+        }
+      }
+    },
+    {
+      "name": "the protection lifts once a prune has seen the tab",
+      "why": "It covers that gap and nothing wider. Once the daemon has described the tab at least once, absence really does mean closed - and a name held forever would be a registry that never shrinks.",
+      "given": {
+        "do": [
+          {
+            "answered": "local/w1:t1"
+          },
+          {
+            "prune": {
+              "daemon": "local",
+              "holds": [
+                "w1:t1"
+              ]
+            }
+          },
+          {
+            "prune": {
+              "daemon": "local",
+              "holds": []
+            }
+          },
+          {
+            "resolve": "local/t1w3r07bsd"
+          }
+        ]
+      },
+      "expect": {
+        "trace": [
+          "t1w3r07bsd",
+          "(nothing)"
+        ],
+        "located": {}
+      }
+    },
+    {
+      "name": "under the backend mint a tab name is the daemon's own id",
+      "why": "What every other corpus here is driven with, and the reason they did not move when tabs gained names: a case pinning what the roster draws for `w1:t1` still says `w1:t1`. It gives up the uniqueness a minted name has, which is why it is never a mint a running Muster uses.",
+      "given": {
+        "mint": "backend",
+        "do": [
+          {
+            "see": "local/w1:t1"
+          }
+        ]
+      },
+      "expect": {
+        "trace": [
+          "w1:t1"
+        ],
+        "located": {
+          "w1:t1": "local/w1:t1"
+        }
+      }
+    },
+    {
+      "name": "under the backend mint a tab nothing has seen still resolves",
+      "why": "The mapping is the identity in both directions, so a case can pin the request Muster builds for `w1:t1` without first walking an event that mentions it. Under a real mint that same resolve is `(nothing)`, which is the case above.",
+      "given": {
+        "mint": "backend",
+        "do": [
+          {
+            "resolve": "local/w1:t1"
+          }
+        ]
+      },
+      "expect": {
+        "trace": [
+          "w1:t1"
+        ],
+        "located": {}
+      }
+    }
+  ]
+}

@@ -14,11 +14,17 @@ Muster names and can be addressed by anybody. Neither has anything in its enviro
 rebuilds a restored pane with no launch environment at all. So `muster` run inside one falls back
 to the pane the window's keyboard is on, which is usually not the pane you meant. Pass `--pane`.
 
-## Tabs cannot be addressed
+## A pane is not told which tab it is in
 
-`muster window` names a tab by its place and its label and gives no id, because the only id a
-tab has is its daemon's and that means nothing on another machine. Focus a pane in the tab
-instead, which brings the tab on screen.
+`$MUSTER_PANE` says which pane a command is running in; there is no `$MUSTER_TAB`, because
+nothing has to tell a tab which tab it is. So a script that means "the tab I am in" reads it
+out of the window rather than out of its environment:
+
+    muster tab rename --tab "$(muster window --json | jq -r \
+      --arg me "$MUSTER_PANE" '.panes[] | select(.pane == $me) | .tab')" 'the build'
+
+`muster tab rename` with no `--tab` is not that. It means the tab the window's keyboard is in,
+which is what a chord means and is a different tab whenever the keyboard is somewhere else.
 
 ## Closing with no --pane closes the pane you are in
 

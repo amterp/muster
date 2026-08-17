@@ -97,7 +97,7 @@ fn window_text(window: &Window) -> String {
             lines.push(styled("  no tabs, so this daemon is holding nothing", QUIET));
         }
         for tab in &daemon.tabs {
-            lines.push(tab_line(tab));
+            lines.push(tab_line(&widths, tab));
             for pane in &tab.panes {
                 lines.push(pane_line(
                     &widths,
@@ -135,8 +135,21 @@ fn daemon_line(daemon: &str, state: &str, detail: &str) -> String {
     line
 }
 
-fn tab_line(tab: &muster_proto::RosterTab) -> String {
-    let mut line = format!("  {} {}", styled("tab", QUIET), tab.place);
+/// One tab's row: its place, its name, what to call it, and whether anything is showing it.
+///
+/// Place then name, the order a pane row uses. Not aligned with the pane rows under it, which are
+/// a level in rather than a column beside; padded so that the labels line up between tabs when two
+/// daemons spell their ids to different lengths.
+///
+/// The name is what `muster tab` takes, which is why it is drawn at all - a row somebody can read
+/// and not act on is what this said before tabs were named.
+fn tab_line(widths: &Widths, tab: &muster_proto::RosterTab) -> String {
+    let mut line = format!(
+        "  {} {}  {}",
+        styled("tab", QUIET),
+        tab.place,
+        pad(&tab.tab_id, widths.name, PLAIN, Align::Left),
+    );
     if !tab.label.is_empty() {
         line.push_str("  ");
         line.push_str(&tab.label);
@@ -225,7 +238,9 @@ fn pad(text: &str, width: usize, style: Style, align: Align) -> String {
 /// How wide each column has to be to hold every row.
 ///
 /// Measured over the whole window rather than per tab, so the columns line up down the page - the
-/// list is read as one list even though it is drawn in groups.
+/// list is read as one list even though it is drawn in groups. `name` measures tab names as well as
+/// pane names, so that a window whose two daemons spell their ids to different lengths still lines
+/// its labels up.
 struct Widths {
     place: usize,
     name: usize,
@@ -235,17 +250,19 @@ struct Widths {
 impl Widths {
     fn across(window: &Window, states: &BTreeMap<&str, &str>) -> Widths {
         let mut widths = Widths { place: 1, name: 0, state: 0 };
-        let panes = window
+        let tabs = window
             .roster
             .iter()
             .flat_map(|roster| roster.daemons.iter())
-            .flat_map(|daemon| daemon.tabs.iter())
-            .flat_map(|tab| tab.panes.iter());
-        for pane in panes {
-            widths.place = widths.place.max(pane.place.to_string().width());
-            widths.name = widths.name.max(pane.pane_id.width());
-            let state = states.get(pane.pane_id.as_str()).copied().unwrap_or("unknown");
-            widths.state = widths.state.max(state.width());
+            .flat_map(|daemon| daemon.tabs.iter());
+        for tab in tabs {
+            widths.name = widths.name.max(tab.tab_id.width());
+            for pane in &tab.panes {
+                widths.place = widths.place.max(pane.place.to_string().width());
+                widths.name = widths.name.max(pane.pane_id.width());
+                let state = states.get(pane.pane_id.as_str()).copied().unwrap_or("unknown");
+                widths.state = widths.state.max(state.width());
+            }
         }
         widths
     }
@@ -265,6 +282,7 @@ fn window_json(window: &Window) -> Value {
     for daemon in roster {
         for tab in &daemon.tabs {
             tabs.push(json!({
+                "tab": tab.tab_id,
                 "daemon": daemon.daemon_id,
                 "place": tab.place,
                 "label": tab.label,
@@ -276,7 +294,7 @@ fn window_json(window: &Window) -> Value {
                     "pane": pane.pane_id,
                     "place": pane.place,
                     "daemon": daemon.daemon_id,
-                    "tab": tab.place,
+                    "tab": tab.tab_id,
                     "label": pane.label,
                     "given_name": pane.given_name,
                     "subtitle": pane.subtitle,
@@ -300,9 +318,10 @@ fn window_json(window: &Window) -> Value {
         })
         .collect();
 
-    // A tab has no id here, and that is deliberate: the only id a tab has is the backend's, which
-    // means nothing on another machine and is not something to address. A tab is its place and its
-    // label; to reach one, focus a pane in it.
+    // A pane says which tab holds it by name rather than by place, so one read is enough to act
+    // on it: `.panes[] | select(.pane == $MUSTER_PANE) | .tab` is how a pane finds its own tab,
+    // and there is nothing in a pane's environment that says. The place is still in `tabs[]` for
+    // anyone who wants it.
     json!({ "daemons": daemons, "keyboard": keyboard, "tabs": tabs, "panes": panes })
 }
 

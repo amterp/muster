@@ -5,7 +5,7 @@ panes, and what the agent in each pane is doing. An agent has no eyes, so this i
 out what it did.
 
     local  connected
-      tab 1  ~/src/muster  on screen
+      tab 1  t1w3r07bsd  ~/src/muster  on screen
       ▸ 1  p1w3r07bsd  unknown  ~/src/muster
         2  p1w3r0ab2n  working  🤖 A · reading AGENTS.md
         3  p1w3r0cd4x  blocked  🤖 B  (hidden)
@@ -26,7 +26,9 @@ One entry per pane every followed daemon holds, on screen or not.
 - `place` - where it sits in the window's whole pane order, counting from one across every
   daemon and every tab. The number ⌘1 to ⌘9 name.
 - `daemon` - which machine holds it.
-- `tab` - the `place` of the tab it is in.
+- `tab` - the name of the tab it is in, and what to pass to `muster tab`. A name rather than a
+  place, so that one read is enough to act on: this is how a pane finds its own tab, since
+  nothing in its environment says which one holds it.
 - `label` - what to call it to somebody who did not open it: the name somebody gave it, or
   failing that its directory and the harness detected in it.
 - `given_name` - the name somebody gave it, empty when nobody has.
@@ -37,9 +39,16 @@ One entry per pane every followed daemon holds, on screen or not.
 
 ## tabs[] and keyboard
 
-`tabs[]` carry `daemon`, `place`, `label`, `given_name` and `on_screen`. A tab has no id here,
-because the only id a tab has is its daemon's, which means nothing on another machine. To bring
-a tab on screen, focus a pane in it.
+`tabs[]` carry `tab`, `daemon`, `place`, `label`, `given_name` and `on_screen`.
+
+- `tab` - its name, and what to pass to `muster tab focus` and `muster tab rename --tab`. Muster's
+  own name, unique across every machine the window is showing, so it needs nothing beside it.
+- `place` - where it sits in the window's whole tab order, counting from one across every daemon.
+  What `next_tab` walks. No chord names it - ⌘1 to ⌘9 number panes.
+- `label` - what to call it to somebody who did not open it. `given_name` is what somebody typed,
+  empty when nobody has.
+- `on_screen` - whether a region is showing it. Not the same question as its panes being on
+  screen: a zoomed tab is on screen while all but one of its panes are not.
 
 `keyboard` at the top level is the name of the pane the window's keyboard is on, or `null` when
 no pane has it.

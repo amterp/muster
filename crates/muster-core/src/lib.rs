@@ -28,7 +28,7 @@ pub use find::{Found, Hit, Needle, found_in};
 pub use input::{Key, KeyEvent, Keymap, Modifiers, PaneInput};
 pub use intent::{BackendChannel, BackendIntent};
 pub use mirror::{BackendEvent, Change, Mirror};
-pub use names::{BackendPaneId, Mint, Names, PaneNames};
+pub use names::{BackendPaneId, BackendTabId, Mint, Names, PaneNames, TabNames};
 pub use problems::{Problem, Problems, Severity};
 pub use roster::{Roster, RosterPane};
 pub use typeable::Waiting;

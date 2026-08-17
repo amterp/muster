@@ -40,5 +40,10 @@ them. Use them when an agent needs attention, not to show off work.
 **Name every pane you make.** `--name '🤖 A'` costs nothing and is the only way a person running
 several agents can tell them apart. Muster's own pane names are unique but unmemorable.
 
+**`muster tab rename` with no `--tab` is not your tab.** It means the tab the person's keyboard is
+in, which is usually somewhere else. Nothing tells a pane which tab holds it, so name the tab
+outright: `muster window --json` gives every pane a `tab`, and yours is the row whose `pane` matches
+`$MUSTER_PANE`.
+
 **Muster imposes no workflow.** Panes, states and names are primitives. Nothing here is a way of
 working you are expected to follow.

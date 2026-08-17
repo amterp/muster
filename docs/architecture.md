@@ -290,7 +290,18 @@ codegen - a surface that cannot express an action is a missing message, visible 
   one this window's keyboard is on", which is what a keybinding means and what every menu item sends.
   Two handles do still travel in the backend's vocabulary, both marked as such in the schema: `ViewPane`'s
   `backend_pane_id` and `ViewRegion`'s `backend_socket`, for the bridge, which streams frames from the daemon
-  directly. Tabs and workspaces keep the backend's ids, because nothing has to tell a tab which tab it is.
+  directly. Workspaces keep the backend's ids.
+- **Muster names its own tabs too, for the other half of the reason.** `t1w3r07bsd`, from the same registry and
+  translated at the same wire. Nothing has to tell a tab which tab it is, so there is no reservation before creation
+  and no `MUSTER_TAB` in any pane's environment - a tab name is minted the first time a daemon mentions the tab. What
+  it buys is only the uniqueness: `w1:t1` is a string both machines hand out, so a window showing a laptop beside a
+  devenv could describe a tab and offer no way to act on it. Now a request that names a tab and no daemon finds the
+  daemon from the tab, exactly as a pane request does, and `muster tab focus` and `muster tab rename` are sayable.
+  Unlike a pane there is no backend spelling beside it in the schema, because nothing outside the core ever names a
+  tab to a daemon: no bridge streams one.
+  A tab name is written down with the pane names, and for a reason that is about neither: the saved arrangement
+  records which tab each region was showing, so a registry that forgot its tabs would fail every region's check on
+  reopen and open the window as a first launch, every launch.
 - **Health is per connection, and so is what a window says about it.** A laptop and a devenv have two answers and one
   title bar. The unhappiest is what shows, named - reporting one state for the window would let a dropped VPN read as
   though every session had gone.
@@ -410,7 +421,8 @@ of panes cannot say which of them sit side by side, and a region shows one tab, 
 question about tabs. A tab also says whether a region is showing it, which is not the same question as its panes
 being on screen: a zoomed tab is on screen while all but one of its panes are not. Naming is the core's, on the same
 terms as the ordering, and it drops what a backend's own label repeats - herdr names an unnamed tab after its
-position, and Muster has a better position to write one from.
+position, and Muster has a better position to write one from. Each row carries the tab's Muster name beside its place,
+so reading the roster and acting on what it says are the same vocabulary.
 
 **One numbering, and it is on the panes.** Every pane carries a place in a single count that runs across every
 attached daemon and every tab, and that number is what the list draws and what ⌘1 to ⌘9 name. It is on panes because

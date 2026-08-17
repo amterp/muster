@@ -12,7 +12,7 @@ use std::collections::BTreeSet;
 
 use muster_core::AgentState;
 use muster_core::mirror::BackendEvent;
-use muster_core::mirror::backend::{Pane, Tab, TabId, Workspace, WorkspaceId};
+use muster_core::mirror::backend::{Pane, Tab, Workspace, WorkspaceId};
 use muster_core::names::Names;
 use serde_json::Value;
 
@@ -129,7 +129,9 @@ fn decode(line: &[u8], names: &Names) -> Decoded {
         "workspace_closed" => id(data, "workspace_id")
             .or_else(|| data.get("workspace").and_then(|w| id(w, "workspace_id")))
             .map(|id| BackendEvent::WorkspaceRemoved(WorkspaceId::new(id))),
-        "tab_created" => data.get("tab").and_then(read_tab).map(BackendEvent::TabUpserted),
+        "tab_created" => {
+            data.get("tab").and_then(|tab| read_tab(tab, names)).map(BackendEvent::TabUpserted)
+        }
         // Not the same event as a creation, though the two used to be read as one. A
         // creation carries the label the tab was made with - herdr's is the tab's position -
         // and a subscription replays it forever, so folding them together lets a replay put
@@ -138,10 +140,10 @@ fn decode(line: &[u8], names: &Names) -> Decoded {
         // The label rides the envelope here rather than a nested `tab`, unlike every other
         // tab event, so this reads its own shape.
         "tab_renamed" => id(data, "tab_id").map(|tab| BackendEvent::TabRenamed {
-            tab: TabId::new(tab),
+            tab: names.tab(&tab),
             label: text(data, "label").to_string(),
         }),
-        "tab_closed" => id(data, "tab_id").map(|id| BackendEvent::TabRemoved(TabId::new(id))),
+        "tab_closed" => id(data, "tab_id").map(|id| BackendEvent::TabRemoved(names.tab(&id))),
         // The third name for the same payload, and the one that carries a pane to a
         // different tab. Muster is what causes these - a row dropped on a row in another tab
         // is a `pane.move` - and the pane it carries already states the tab it landed in, so
@@ -160,7 +162,7 @@ fn decode(line: &[u8], names: &Names) -> Decoded {
         // never a `pane_closed` afterwards, so a mirror keyed on the latter alone renders
         // dead panes forever (`observations/herdr-0.8.0.md` section 10).
         "pane_closed" | "pane_exited" => {
-            id(data, "pane_id").map(|id| BackendEvent::PaneRemoved(names.name(&id)))
+            id(data, "pane_id").map(|id| BackendEvent::PaneRemoved(names.pane(&id)))
         }
         // Both spellings, because they are the same fact from two schemas: the dotted one
         // is what a per-pane subscription answers with, the snake one is in the
@@ -170,13 +172,13 @@ fn decode(line: &[u8], names: &Names) -> Decoded {
         // moves.
         "pane.agent_status_changed" | "pane_agent_status_changed" => {
             id(data, "pane_id").map(|pane| BackendEvent::AgentStateChanged {
-                pane: names.name(&pane),
+                pane: names.pane(&pane),
                 state: AgentState::from_backend(text(data, "agent_status")),
             })
         }
         "pane_agent_detected" => id(data, "pane_id").and_then(|pane| {
             data.get("agent").and_then(Value::as_str).map(|agent| BackendEvent::AgentDetected {
-                pane: names.name(&pane),
+                pane: names.pane(&pane),
                 agent: agent.to_string(),
             })
         }),
@@ -190,13 +192,13 @@ fn decode(line: &[u8], names: &Names) -> Decoded {
         }),
         "tab_focused" => Some(BackendEvent::FocusMoved {
             workspace: id(data, "workspace_id").map(WorkspaceId::new),
-            tab: id(data, "tab_id").map(TabId::new),
+            tab: id(data, "tab_id").map(|tab| names.tab(&tab)),
             pane: None,
         }),
         "pane_focused" => Some(BackendEvent::FocusMoved {
             workspace: id(data, "workspace_id").map(WorkspaceId::new),
             tab: None,
-            pane: id(data, "pane_id").map(|pane| names.name(&pane)),
+            pane: id(data, "pane_id").map(|pane| names.pane(&pane)),
         }),
         // The whole tab, in absolute values, so applying it twice is applying it once. It
         // follows every pane change and no tab or workspace change, which is why the mirror
@@ -239,9 +241,9 @@ fn read_workspace(value: &Value) -> Option<Workspace> {
     })
 }
 
-fn read_tab(value: &Value) -> Option<Tab> {
+fn read_tab(value: &Value, names: &Names) -> Option<Tab> {
     Some(Tab {
-        id: TabId::new(id(value, "tab_id")?),
+        id: names.tab(&id(value, "tab_id")?),
         workspace: WorkspaceId::new(id(value, "workspace_id")?),
         label: text(value, "label").to_string(),
     })
@@ -249,8 +251,8 @@ fn read_tab(value: &Value) -> Option<Tab> {
 
 fn read_pane(value: &Value, names: &Names) -> Option<Pane> {
     Some(Pane {
-        id: names.name(&id(value, "pane_id")?),
-        tab: TabId::new(id(value, "tab_id")?),
+        id: names.pane(&id(value, "pane_id")?),
+        tab: names.tab(&id(value, "tab_id")?),
         workspace: WorkspaceId::new(id(value, "workspace_id")?),
         agent_state: AgentState::from_backend(text(value, "agent_status")),
         // Null rather than absent when there is no agent, and both mean the same here.

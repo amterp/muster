@@ -7,12 +7,18 @@
 
 use crate::AgentState;
 
-/// The three ids are separate types because they are all strings shaped `w1:p1` and
-/// `w1:t1`, and passing one where another belongs is a lookup that quietly finds
-/// nothing. A pane that never appears is much harder to debug than a type error.
+/// The ids are separate types because they are all strings shaped `w1:p1` and `w1:t1`, and
+/// passing one where another belongs is a lookup that quietly finds nothing. A pane that
+/// never appears is much harder to debug than a type error.
+///
+/// [`crate::names`] mints two of them and builds its own backend-spelled pair from this same
+/// macro, which is why it is importable rather than private to this module: the opaqueness
+/// below is the invariant all five share, and one place that states it is fewer than five.
 macro_rules! id_type {
-    ($name:ident, $what:literal, $whose:literal) => {
-        #[doc = concat!("Identifies one ", $what, ", ", $whose, " Opaque: Muster never parses it.")]
+    ($name:ident, $doc:expr) => {
+        #[doc = $doc]
+        #[doc = ""]
+        #[doc = "Opaque: Muster never parses it."]
         #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
         pub struct $name(String);
 
@@ -37,17 +43,33 @@ macro_rules! id_type {
                 $name(id.to_string())
             }
         }
+
+        // The owned half, which the name registry needs: it is generic over these types and
+        // draws a `String` it then has to make an id of.
+        impl From<String> for $name {
+            fn from(id: String) -> $name {
+                $name(id)
+            }
+        }
     };
 }
 
-id_type!(WorkspaceId, "workspace", "as the backend spells it.");
-id_type!(TabId, "tab", "as the backend spells it.");
+pub(crate) use id_type;
+
+id_type!(WorkspaceId, "Identifies one workspace, as the backend spells it.");
+id_type!(
+    TabId,
+    "Identifies one tab, as *Muster* spells it - a name Muster minted and the adapter \
+     translates at the wire (see [`crate::names`]).\n\nNamed so that it can be addressed, \
+     which is the half of a pane's reason that applies here: nothing has to tell a tab which \
+     tab it is, but a backend's tab id is `w1:t1` on every machine, so it stops being an \
+     answer the moment a window shows two."
+);
 id_type!(
     PaneId,
-    "pane",
-    "as *Muster* spells it - a name Muster minted and the adapter translates at the wire \
-     (see [`crate::names`]). The one id here that is not the backend's, because Muster has to \
-     be able to tell a pane which pane it is and a backend's id arrives too late for that."
+    "Identifies one pane, as *Muster* spells it - a name Muster minted and the adapter \
+     translates at the wire (see [`crate::names`]). Named because Muster has to be able to \
+     tell a pane which pane it is and a backend's id arrives too late for that."
 );
 
 /// One daemon-owned terminal, and what its agent is doing.

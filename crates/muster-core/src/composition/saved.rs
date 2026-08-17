@@ -122,7 +122,13 @@ impl Saved {
 /// version is not this one is ignored rather than guessed at: the cost of ignoring it is a
 /// window that opens the way a first launch does, and the cost of guessing is a window that
 /// opens wrong.
-const VERSION: i64 = 1;
+///
+/// **2 because `region.tab` changed meaning.** A version 1 file holds the backend's tab id,
+/// which no longer resolves now that Muster mints its own (`crate::names`). Left at 1 the file
+/// still parses and every region silently fails its check, so the arrangement vanishes with
+/// nothing said; refused by version, the log names what it found and why the window opened
+/// fresh. One lost arrangement either way - this is the one that explains itself.
+const VERSION: i64 = 2;
 
 /// The arrangement as the text that gets written to disk.
 ///

@@ -131,6 +131,15 @@ fn described(request: &Request) -> Value {
         request::Payload::ZoomPane(zoom) => json!({
             "zoom_pane": fields([("pane_id", said(&zoom.pane_id))])
         }),
+        request::Payload::FocusTab(focus) => json!({
+            "focus_tab": fields([("tab_id", said(&focus.tab_id))])
+        }),
+        request::Payload::RenameTab(rename) => json!({
+            "rename_tab": fields([
+                ("tab_id", said(&rename.tab_id)),
+                ("name", Some(json!(rename.name))),
+            ])
+        }),
         other => json!(format!(
             "{other:?}, which this CLI has no way to build - so either the corpus or the parser \
              has grown a request the other has not"

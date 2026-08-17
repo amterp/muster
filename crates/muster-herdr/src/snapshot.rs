@@ -9,7 +9,7 @@
 use std::time::Duration;
 
 use muster_core::AgentState;
-use muster_core::mirror::backend::{Focus, Pane, Snapshot, Tab, TabId, Workspace, WorkspaceId};
+use muster_core::mirror::backend::{Focus, Pane, Snapshot, Tab, Workspace, WorkspaceId};
 use muster_core::names::Names;
 use serde_json::{Value, json};
 
@@ -67,7 +67,7 @@ pub fn read_snapshot(snapshot: &Value, names: &Names) -> (Snapshot, usize) {
     });
     let tabs = collect(snapshot, "tabs", &mut dropped, |value| {
         Some(Tab {
-            id: TabId::new(id(value, "tab_id")?),
+            id: names.tab(&id(value, "tab_id")?),
             workspace: WorkspaceId::new(id(value, "workspace_id")?),
             label: text(value, "label").to_string(),
         })
@@ -77,8 +77,8 @@ pub fn read_snapshot(snapshot: &Value, names: &Names) -> (Snapshot, usize) {
     // subset would lose every pane that has no agent, which is most of them.
     let panes = collect(snapshot, "panes", &mut dropped, |value| {
         Some(Pane {
-            id: names.name(&id(value, "pane_id")?),
-            tab: TabId::new(id(value, "tab_id")?),
+            id: names.pane(&id(value, "pane_id")?),
+            tab: names.tab(&id(value, "tab_id")?),
             workspace: WorkspaceId::new(id(value, "workspace_id")?),
             agent_state: AgentState::from_backend(text(value, "agent_status")),
             agent: value.get("agent").and_then(Value::as_str).map(str::to_string),
@@ -113,8 +113,8 @@ pub fn read_snapshot(snapshot: &Value, names: &Names) -> (Snapshot, usize) {
         layouts,
         focus: Focus {
             workspace: id(snapshot, "focused_workspace_id").map(WorkspaceId::new),
-            tab: id(snapshot, "focused_tab_id").map(TabId::new),
-            pane: id(snapshot, "focused_pane_id").map(|pane| names.name(&pane)),
+            tab: id(snapshot, "focused_tab_id").map(|tab| names.tab(&tab)),
+            pane: id(snapshot, "focused_pane_id").map(|pane| names.pane(&pane)),
         },
         agent_state_seq,
     };

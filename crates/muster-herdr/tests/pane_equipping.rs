@@ -194,7 +194,7 @@ fn text_runs_when_it_asked_for_a_return_and_waits_when_it_did_not() {
 /// effect, and Muster's own record of it comes from the same reply the assertion would be
 /// reading.
 fn label(daemon: &Daemon, names: &Names, pane: &PaneId) -> Option<String> {
-    let backend = names.backend(pane).expect("a name Muster minted resolves");
+    let backend = names.backend_pane(pane).expect("a name Muster minted resolves");
     let got = daemon.call("pane.get", &json!({ "pane_id": backend.as_str() }));
     got["pane"]["label"].as_str().filter(|label| !label.is_empty()).map(str::to_string)
 }

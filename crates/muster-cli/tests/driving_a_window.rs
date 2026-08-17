@@ -82,12 +82,14 @@ fn a_pane_can_drive_the_window_it_is_drawn_in() {
         "a split that did not ask for focus took it anyway: {window}"
     );
 
+    let tab = a_tab_is_addressable_by_name(&window, &inside(&first));
+
     // The other rendering of the same answer. Read here rather than eyeballed because it is what a
     // person sees, and because a pane whose name lines up in a column is the whole reason the
     // column widths are computed at all.
     let readable = run(&["window"], &inside(&first));
     assert_eq!(readable.code, 0, "`muster window` failed: {}", readable.errors);
-    for expected in [first.as_str(), made_pane.as_str(), "🤖 A", "local", "tab 1"] {
+    for expected in [first.as_str(), made_pane.as_str(), tab.as_str(), "🤖 A", "local", "tab 1"] {
         assert!(
             readable.out.contains(expected),
             "`muster window` said nothing about {expected:?}, so somebody reading it cannot see \
@@ -129,9 +131,70 @@ fn a_pane_can_drive_the_window_it_is_drawn_in() {
     assert_eq!(sent.code, 0, "`muster pane send` failed: {}", sent.errors);
     until_file(&told, "text sent to a pane by name to have run there");
 
-    only_making_a_pane_prints_a_pane(&made_pane, &inside(&first));
+    only_making_a_pane_prints_a_pane(&made_pane, &tab, &inside(&first));
+    a_tab_nobody_holds_is_refused_by_name(&inside(&first));
     a_mistyped_flag_is_refused_and_says_what_was_meant(&inside(&first));
     with_no_window_to_ask_nothing_is_guessed(daemon.root());
+}
+
+/// A tab name that resolves to nothing is refused, and the refusal says which name.
+///
+/// The daemon is not on the command line - a tab name is unique across machines, so the window
+/// finds which one holds it. That is what makes this the case worth having: the lookup either finds
+/// the tab or finds nothing, and "nothing" used to be unreachable because a request with no daemon
+/// was refused before the tab was ever looked for. herdr acts on whatever it has focused when it
+/// does not recognize a `tab_id`, so a name passed through would move somebody else's tab.
+fn a_tab_nobody_holds_is_refused_by_name(environment: &[(&str, String)]) {
+    let refused = run(&["tab", "focus", "t000000000"], environment);
+    assert_eq!(
+        refused.code, 1,
+        "a tab the window does not hold should be refused by the window and exit 1, and exited \
+         {}. stderr:\n{}",
+        refused.code, refused.errors
+    );
+    assert!(
+        refused.errors.contains("t000000000"),
+        "the refusal does not name the tab that went nowhere, so whoever sent it cannot tell \
+         which of several names was stale:\n{}",
+        refused.errors
+    );
+}
+
+/// A tab can be found by name and acted on by name.
+///
+/// The half of this surface a script could read and not act on until tabs were named: `muster
+/// window` described every tab and gave no id, so the only way to reach one was to focus a pane in
+/// it - which means already knowing a pane in it.
+///
+/// Both halves of the read are asserted because either alone is useless: a name in `tabs[]` nothing
+/// can join to, or a pane pointing at a tab the answer does not describe. Then the rename, named
+/// outright rather than left to the keyboard, because a script's own tab is not the one the
+/// keyboard is in. No daemon travels with any of it.
+fn a_tab_is_addressable_by_name(window: &Value, environment: &[(&str, String)]) -> String {
+    let tab = window["tabs"][0]["tab"].as_str().unwrap_or_default().to_string();
+    assert!(
+        tab.starts_with('t'),
+        "the CLI is answered with Muster's own name for a tab, never the daemon's - a herdr tab id \
+         is not unique across machines and is not addressable. Got {tab:?} from {window}"
+    );
+    assert_eq!(
+        window["panes"][0]["tab"],
+        json!(tab),
+        "a pane says which tab holds it by name, which is the only way a pane can find its own \
+         tab - nothing in its environment says: {window}"
+    );
+
+    let renamed = run(&["tab", "rename", "--tab", &tab, "🗂 the build"], environment);
+    assert_eq!(renamed.code, 0, "`muster tab rename` failed: {}", renamed.errors);
+    until("the window to list the tab under the name it was given", || {
+        let window = json_from(&run(&["window", "--json"], environment));
+        let named = window["tabs"]
+            .as_array()?
+            .iter()
+            .any(|held| held["tab"] == json!(tab) && held["given_name"] == json!("🗂 the build"));
+        named.then_some(())
+    });
+    tab
 }
 
 /// A command that made nothing prints nothing.
@@ -141,11 +204,13 @@ fn a_pane_can_drive_the_window_it_is_drawn_in() {
 /// a name for something it did not create - which it would then go and address. Found in the
 /// running app: a rename printed the pane it had renamed, because the daemon answers a rename with
 /// the same pane payload it answers a split with.
-fn only_making_a_pane_prints_a_pane(pane: &str, environment: &[(&str, String)]) {
+fn only_making_a_pane_prints_a_pane(pane: &str, tab: &str, environment: &[(&str, String)]) {
     for argv in [
         vec!["pane", "rename", "--pane", pane, "🤖 renamed"],
         vec!["zoom", pane],
         vec!["focus", pane],
+        vec!["tab", "focus", tab],
+        vec!["tab", "rename", "--tab", tab, "🗂 renamed"],
     ] {
         let quiet = run(&argv, environment);
         assert_eq!(quiet.code, 0, "`muster {}` failed: {}", argv.join(" "), quiet.errors);

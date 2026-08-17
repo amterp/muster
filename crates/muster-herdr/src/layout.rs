@@ -71,11 +71,11 @@ struct Border {
 /// arrangement did not read - a missing id, or rectangles that do not describe a tree - and
 /// the caller keeps whatever it had rather than rendering a tab as empty.
 pub fn read_layout(value: &Value, names: &Names) -> Option<Layout> {
-    let tab = TabId::new(non_empty(value, "tab_id")?);
+    let tab = names.tab(&non_empty(value, "tab_id")?);
 
     let mut panes = Vec::new();
     for pane in value.get("panes").and_then(Value::as_array).into_iter().flatten() {
-        let id = names.name(&non_empty(pane, "pane_id")?);
+        let id = names.pane(&non_empty(pane, "pane_id")?);
         panes.push((id, rect(pane.get("rect")?)?));
     }
     // A tab always has at least one pane, so an empty list is a payload that will not
@@ -108,7 +108,7 @@ pub fn read_layout(value: &Value, names: &Names) -> Option<Layout> {
 /// told apart by which key they have - `panes` against `root` - rather than by asking the
 /// caller, so a verb that starts answering with either needs no change here.
 pub fn read_exported_layout(value: &Value, names: &Names) -> Option<Layout> {
-    let tab = TabId::new(non_empty(value, "tab_id")?);
+    let tab = names.tab(&non_empty(value, "tab_id")?);
     Some(assemble(value, tab, read_node(value.get("root")?, names)?, names))
 }
 
@@ -119,7 +119,7 @@ pub fn read_exported_layout(value: &Value, names: &Names) -> Option<Layout> {
 /// put panes in places no daemon agreed to.
 fn read_node(value: &Value, names: &Names) -> Option<LayoutNode> {
     match value.get("type").and_then(Value::as_str)? {
-        "pane" => Some(LayoutNode::Pane(names.name(&non_empty(value, "pane_id")?))),
+        "pane" => Some(LayoutNode::Pane(names.pane(&non_empty(value, "pane_id")?))),
         "split" => Some(LayoutNode::Split {
             axis: axis(value.get("direction").and_then(Value::as_str)?)?,
             ratio: ratio(value)?,
@@ -136,7 +136,7 @@ fn read_node(value: &Value, names: &Names) -> Option<LayoutNode> {
 /// what a reader has to produce, and the rest is a cursor and a flag that mean the same thing
 /// absent as they do false.
 fn assemble(value: &Value, tab: TabId, root: LayoutNode, names: &Names) -> Layout {
-    let focused = value.get("focused_pane_id").and_then(Value::as_str).map(|pane| names.name(pane));
+    let focused = value.get("focused_pane_id").and_then(Value::as_str).map(|pane| names.pane(pane));
     Layout {
         tab,
         root,

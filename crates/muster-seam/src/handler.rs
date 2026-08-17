@@ -207,19 +207,22 @@ fn rename_pane(rename: &proto::RenamePane) -> Response {
 /// the keyboard is on - which is what a chord and a menu item mean, since neither can point
 /// at a tab any other way.
 fn rename_tab(rename: &proto::RenameTab) -> Response {
+    let name = wanted_name(&rename.name);
+
+    if !rename.tab_id.is_empty() {
+        // The daemon comes from the tab, the way it comes from a pane in `act`: a tab name is
+        // unique across every attached machine, so a caller that has one has said enough.
+        let tab = TabId::new(&rename.tab_id);
+        let Some(daemon) = holder_of(&tab, &rename.daemon_id) else {
+            return no_such_tab(&tab, "renamed");
+        };
+        return submit(&daemon, &BackendIntent::RenameTab { tab, name }, Keyboard::Follows);
+    }
+
     let daemon = match resolve_daemon(&rename.daemon_id) {
         Ok(daemon) => daemon,
         Err(refusal) => return refusal,
     };
-    let name = wanted_name(&rename.name);
-
-    if !rename.tab_id.is_empty() {
-        return submit(
-            &daemon,
-            &BackendIntent::RenameTab { tab: TabId::new(&rename.tab_id), name },
-            Keyboard::Follows,
-        );
-    }
     let Some(pane) = session::focused_pane() else {
         return Response::failure(
             "no pane has this window's keyboard, so there was no tab to rename. A request that \
@@ -275,22 +278,23 @@ fn focus_relative(direction: &str) -> Response {
 
 /// Puts a divider where a drag left it, named by the turns down to it.
 fn set_split_ratio(set: proto::SetSplitRatio) -> Response {
-    match resolve_daemon(&set.daemon_id) {
-        Ok(daemon) => submit(
-            &daemon,
-            &BackendIntent::SetSplitRatio {
-                tab: TabId::new(set.tab_id),
-                path: set
-                    .path
-                    .into_iter()
-                    .map(|second| if second { Branch::Second } else { Branch::First })
-                    .collect(),
-                ratio: set.ratio,
-            },
-            Keyboard::Follows,
-        ),
-        Err(refusal) => refusal,
-    }
+    let tab = TabId::new(set.tab_id);
+    let Some(daemon) = holder_of(&tab, &set.daemon_id) else {
+        return no_such_tab(&tab, "resized");
+    };
+    submit(
+        &daemon,
+        &BackendIntent::SetSplitRatio {
+            tab,
+            path: set
+                .path
+                .into_iter()
+                .map(|second| if second { Branch::Second } else { Branch::First })
+                .collect(),
+            ratio: set.ratio,
+        },
+        Keyboard::Follows,
+    )
 }
 
 /// One wheel notch or trackpad gesture, scaled by what the config file asked for.
@@ -670,15 +674,48 @@ fn arrange_pane(arrange: &proto::ArrangePane) -> Response {
 }
 
 /// Brings a named tab on screen, which is what clicking its caption means.
+///
+/// The daemon is optional and found from the tab when it is absent, because a tab name is
+/// Muster's own and unique across every attached machine - so a script that read one out of
+/// `muster window` has said enough. The tab itself is not optional: unlike a pane, a tab has no
+/// "the focused one" to fall back to, and a request naming neither is a caller that had a tab in
+/// hand and dropped it.
 fn focus_tab(daemon_id: &str, tab_id: &str) -> Response {
-    if daemon_id.is_empty() || tab_id.is_empty() {
+    if tab_id.is_empty() {
         return Response::failure(
             "a tab was asked for without naming one, so the keyboard stayed where it was. \
              Unlike a pane, a tab has no 'the focused one' to fall back to - whatever built \
              this request had a tab in hand and dropped it.",
         );
     }
-    answer(session::focus_tab(&DaemonId::new(daemon_id), &TabId::new(tab_id)))
+    let tab = TabId::new(tab_id);
+    let Some(daemon) = holder_of(&tab, daemon_id) else {
+        return no_such_tab(&tab, "focused");
+    };
+    answer(session::focus_tab(&daemon, &tab))
+}
+
+/// Which daemon a request about this tab goes to: the one it named, or the one holding the tab.
+fn holder_of(tab: &TabId, daemon_id: &str) -> Option<DaemonId> {
+    if daemon_id.is_empty() {
+        return session::daemon_holding_tab(tab);
+    }
+    Some(DaemonId::new(daemon_id))
+}
+
+/// Why a tab name went nowhere.
+///
+/// The same answer the registry gives for a name it has dropped, and it means the same thing:
+/// whoever said this name is talking about a tab that is not there. Refused rather than sent to
+/// whichever daemon happens to be focused, because herdr ignores a `tab_id` it does not
+/// recognize and acts on what it has focused instead - so a hopeful send would move or rename
+/// somebody else's tab and report success.
+fn no_such_tab(tab: &TabId, verb: &str) -> Response {
+    Response::failure(format!(
+        "no daemon this window is following holds a tab called {tab}, so nothing was {verb}. \
+         Either it closed while this was in flight, or the name came from an older window - \
+         `muster window` lists the tabs this one has."
+    ))
 }
 
 /// Goes to the pane at a place in the window's pane order, counting from one.
