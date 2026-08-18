@@ -51,6 +51,15 @@ pub fn measure(
         best: samples[0] / units,
         median: samples[samples.len() / 2] / units,
         iterations,
+        // Kept alongside the rate rather than folded into it. Together they say what was
+        // actually observed, which is what lets a later run notice that the workload moved
+        // and that the fastest iteration was too short to time.
+        units: Some(units_per_iteration),
+        nanos: Some(samples[0]),
+        // Decided when a baseline is written rather than when a cost is measured: what a
+        // benchmark may drift by is a judgement about that benchmark, and it belongs in the
+        // file somebody can argue with.
+        tolerance: None,
     }
 }
 

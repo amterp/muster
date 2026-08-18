@@ -23,6 +23,7 @@ args:
     corpus_linux bool  # Diff the recorded corpus against the container's Linux daemon. Docker and python3 only.
     perf bool      # Measure the per-unit budgets against perf/baseline.json. Not in the gate.
     record bool    # With --perf, record this run as the new baseline instead of judging it.
+    anyway bool    # With --perf, measure on a busy machine anyway rather than refusing.
     latency bool   # Time input-to-glyph against a real herdr. Needs a daemon; not in the gate.
     doctor bool    # Say what this repo's own tooling has left running on this machine.
 
@@ -963,6 +964,16 @@ if record and not perf:
     print_err("Try: ./dev --perf --record")
     exit(1)
 
+// Deliberately not implied by --record. Recording on a busy machine is the worst case
+// rather than the exception: a judged run that read slow is one red run, and a baseline
+// recorded slow is every run after it reading green when it should not.
+if anyway and not perf:
+    print_err(red("--anyway only means something with --perf."))
+    print_err("It waives the load check that stops --perf judging a busy machine, and no")
+    print_err("other tier has one to waive.")
+    print_err("Try: ./dev --perf --anyway")
+    exit(1)
+
 if proto:
     build = true
 
@@ -1140,15 +1151,41 @@ if corpus_linux:
 
 if perf:
     announce("perf")
+    // Everywhere else a loaded machine only makes a run slow. Here it makes the run lie: these
+    // numbers are judged against a checked-in baseline, so a benchmark that spent its time
+    // waiting for a core reports a regression that nothing in the code caused. Refusing is
+    // defensible here and nowhere else.
+    //
+    // The line is the performance cores rather than all of them, because past that many runnable
+    // threads the scheduler starts handing work to the efficiency cores, which run this at
+    // roughly half the speed - and half is most of the way to the 2.00x tolerance on its own.
+    if not anyway and cores > 0 and load1 >= fast_cores:
+        print_err(red("The machine is too busy for --perf to judge anything."))
+        print_err("Load is {load1:.2} against {fast_cores} performance core(s), so a benchmark")
+        print_err("thread is sharing a core with other work and every number reads slow.")
+        print_err("Impact: nothing was measured, so no per-unit budget was verified. Judging")
+        print_err("this against the baseline would report a regression that is not one.")
+        print_err("./dev --doctor says what is on the machine. Or measure anyway and read the")
+        print_err("numbers yourself rather than letting them gate:")
+        print_err("  ./dev --perf --anyway")
+        exit(1)
+
     // Release, always. A debug build runs several times slower than what ships, so a budget
     // measured there describes a binary nobody uses - and it would report headroom the
     // shipped binary does not have.
     $`cargo build --release --bin muster-perf`
+    // Handed over rather than sampled again on the other side, for the same reason the log path
+    // and the screens are: what a load average means is a per-OS question, and this script is
+    // where this repo answers those. What the harness does with it is record it, so that a
+    // baseline says what the machine was doing when it was written - which is the one thing
+    // perf/baseline.json has never recorded and the variable that turns out to matter.
+    load = "{load1:.2},{load5:.2},{load15:.2}"
+    counts = "{cores},{fast_cores}"
     if record:
-        stdout, stderr, code = $`target/release/muster-perf --record` catch:
+        stdout, stderr, code = $`target/release/muster-perf --record --load {load} --cores {counts}` catch:
             fail_perf(stdout, stderr, code)
     else:
-        stdout, stderr, code = $`target/release/muster-perf` catch:
+        stdout, stderr, code = $`target/release/muster-perf --load {load} --cores {counts}` catch:
             fail_perf(stdout, stderr, code)
     print(stdout.trim())
 

@@ -9,5 +9,5 @@ mod cost;
 mod report;
 
 pub use benchmark::{clock_resolution_nanos, measure};
-pub use cost::{Baseline, Comparison, Cost, RESOLVABLE_NANOS, Regression, compare};
-pub use report::{pending, table, verdict};
+pub use cost::{Baseline, Comparison, Cost, Load, RESOLVABLE_NANOS, Regression, Restated, compare};
+pub use report::{context, pending, table, verdict};

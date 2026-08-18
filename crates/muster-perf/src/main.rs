@@ -25,19 +25,23 @@ use muster_core::mirror::{BackendEvent, Mirror};
 use muster_core::names::{Mint, Names};
 use muster_core::roster::Roster;
 use muster_herdr::{EventDecoder, FrameDecoder, PaneControlChannel, PaneFrame, PaneStreamEvent};
-use muster_perf::{Baseline, Cost, compare, measure, pending, table, verdict};
+use muster_perf::{Baseline, Cost, Load, compare, context, measure, pending, table, verdict};
 use muster_vt::{KeyEncoder, Terminal};
 use prost::Message;
 
 const USAGE: &str = "\
 usage: muster-perf [--record] [--baseline <path>] [--corpus <path>] [--tolerance <x>]
+                   [--load <one,five,fifteen>] [--cores <total,fast>]
 
 Measures the per-unit costs on Muster's hot paths and compares them to a baseline.
 
   --record       write this run's numbers as the new baseline instead of judging
   --baseline     where the baseline lives (default perf/baseline.json)
   --corpus       recorded frames to replay (default corpus)
-  --tolerance    how many times the recorded cost still passes (default 2.0)";
+  --tolerance    how many times the recorded cost still passes, for a benchmark
+                 whose baseline entry does not carry its own (default 2.0)
+  --load         what the machine was doing, sampled by ./dev
+  --cores        how many cores it has, and how many run at full speed";
 
 /// How many panes a window is budgeted for.
 ///
@@ -56,6 +60,53 @@ const PENDING: [(&str, &str); 1] = [(
      libghostty's own renderer threads do with fifteen surfaces, which no offline benchmark \
      can see - it needs a real window in front of a real daemon, which is ./dev --latency.",
 )];
+
+/// How far each cost may drift before it counts as a regression, written into the baseline
+/// when one is recorded.
+///
+/// One number for the whole file treated a benchmark that is arithmetic over a byte array and
+/// one that binds fifteen unix sockets as equally noisy, which they are not - and the number
+/// had to be loose enough for the noisiest of them, which left the quiet ones ungated. A 2.00x
+/// tolerance on `frame.decode` passes a change that doubles the cost of every byte Muster
+/// reads.
+///
+/// The numbers below come from eight consecutive runs of this harness on one unchanged tree,
+/// on a ten-core laptop sitting at a load average of about ten. Each benchmark's own
+/// worst-to-best spread across those runs was:
+///
+/// ```text
+/// frame.decode 1.05x   frame.vt_parse 1.06x   mirror.apply 1.06x   roster.build 1.06x
+/// seam.dispatch 1.09x  view.build 1.09x       input.encode 1.14x
+/// pane.encoder 1.27x   pane.channel 1.42x
+/// ```
+///
+/// So the six arithmetic-over-a-buffer benchmarks are stable to within a tenth even on a busy
+/// machine, and the two that touch the OS are not. A single 2.00x covered the noisiest of them
+/// and left the quiet ones ungated: a change doubling the cost of every byte Muster reads
+/// passed.
+///
+/// Recorded into the baseline file rather than applied from here, so the number gating a cost
+/// sits beside the cost and can be argued with by editing one line.
+const TOLERANCES: [(&str, f64); 2] = [
+    // Fifteen bound unix sockets, fifteen reader threads and fifteen key encoders per
+    // iteration, at 90 µs/pane - three orders of magnitude above everything else here, and the
+    // only benchmark whose time is mostly the kernel's. Measured spread 1.42x, so 2.00x would
+    // have left it barely a margin at all.
+    ("pane.channel", 3.0),
+    // Builds a libghostty key encoder per pane, which crosses into a dylib and reads its mode
+    // tables. Cheaper than pane.channel and steadier, but not arithmetic either.
+    ("pane.encoder", 2.0),
+];
+
+/// What everything else gets. Comfortably outside the 1.14x these were measured to vary by,
+/// and tight enough that a cost growing by half is something somebody has to look at.
+const DEFAULT_TOLERANCE: f64 = 1.5;
+
+fn with_tolerance(mut cost: Cost) -> Cost {
+    let found = TOLERANCES.iter().find(|(name, _)| *name == cost.name);
+    cost.tolerance = Some(found.map_or(DEFAULT_TOLERANCE, |(_, tolerance)| *tolerance));
+    cost
+}
 
 fn main() {
     let options = Options::parse();
@@ -79,7 +130,7 @@ fn main() {
     println!();
 
     if options.recording {
-        record(&costs, &options.baseline);
+        record(&costs, &options);
     }
     judge(&costs, &options);
 }
@@ -89,6 +140,9 @@ struct Options {
     baseline: String,
     corpus: String,
     tolerance: f64,
+    /// What ./dev found the machine doing. Absent when the harness was run by hand, which is
+    /// worth distinguishing from a quiet machine rather than defaulting to zero.
+    load: Option<Load>,
 }
 
 impl Options {
@@ -98,7 +152,10 @@ impl Options {
             baseline: "perf/baseline.json".to_string(),
             corpus: "corpus".to_string(),
             tolerance: 2.0,
+            load: None,
         };
+        let mut averages: Option<[f64; 3]> = None;
+        let mut counts: Option<[usize; 2]> = None;
         let mut arguments = std::env::args().skip(1);
         while let Some(argument) = arguments.next() {
             let mut value = |name: &str| {
@@ -114,6 +171,8 @@ impl Options {
                 "--tolerance" => {
                     options.tolerance = value("--tolerance").parse().unwrap_or(options.tolerance);
                 }
+                "--load" => averages = triple(&value("--load")),
+                "--cores" => counts = pair(&value("--cores")),
                 "-h" | "--help" => {
                     println!("{USAGE}");
                     std::process::exit(0);
@@ -124,7 +183,32 @@ impl Options {
                 }
             }
         }
+        // Both halves or neither. A load average without a core count beside it says nothing -
+        // four is quiet on a laptop and desperate on a Raspberry Pi - so a run that was handed
+        // one and not the other records that it was not told, rather than half a fact.
+        if let (Some([one, five, fifteen]), Some([cores, fast_cores])) = (averages, counts) {
+            options.load = Some(Load { one, five, fifteen, cores, fast_cores });
+        }
         options
+    }
+}
+
+/// Three comma-separated numbers, or nothing if that is not what arrived.
+fn triple(text: &str) -> Option<[f64; 3]> {
+    let parsed: Vec<f64> = text.split(',').filter_map(|field| field.trim().parse().ok()).collect();
+    match parsed[..] {
+        [one, five, fifteen] => Some([one, five, fifteen]),
+        _ => None,
+    }
+}
+
+/// Two comma-separated counts, or nothing.
+fn pair(text: &str) -> Option<[usize; 2]> {
+    let parsed: Vec<usize> =
+        text.split(',').filter_map(|field| field.trim().parse().ok()).collect();
+    match parsed[..] {
+        [first, second] => Some([first, second]),
+        _ => None,
     }
 }
 
@@ -457,13 +541,15 @@ fn typed(key: Key, modifiers: Modifiers, text: &str) -> KeyEvent {
     KeyEvent { key, modifiers, text: text.to_string(), ..KeyEvent::default() }
 }
 
-fn record(costs: &[Cost], path: &str) -> ! {
+fn record(costs: &[Cost], options: &Options) -> ! {
+    let path = &options.baseline;
     let baseline = Baseline {
         recorded: muster_core::diagnostics::format_iso8601(
             muster_core::diagnostics::wall_clock_millis(),
         ),
         machine: machine_description(),
-        costs: costs.to_vec(),
+        load: options.load,
+        costs: costs.iter().cloned().map(with_tolerance).collect(),
     };
     let Ok(mut json) = serde_json::to_string_pretty(&baseline) else {
         eprintln!("muster-perf: could not encode the baseline");
@@ -495,17 +581,13 @@ fn judge(costs: &[Cost], options: &Options) -> ! {
         std::process::exit(2);
     };
 
-    if baseline.machine != machine_description() {
-        println!(
-            "note: baseline recorded on {}, running on {}. A cross-machine comparison \
-             explains a failure that is not a regression.",
-            baseline.machine,
-            machine_description()
-        );
+    let notes = context(&baseline, &machine_description(), options.load);
+    if !notes.is_empty() {
+        println!("{notes}");
     }
 
     let comparison = compare(costs, &baseline, options.tolerance);
-    println!("{}", verdict(&comparison, options.tolerance));
+    println!("{}", verdict(&comparison));
     std::process::exit(i32::from(!comparison.is_clean()));
 }
 
