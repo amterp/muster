@@ -2,16 +2,25 @@
   "_v": 3,
   "alias": "publish-the-first",
   "alias_explicit": false,
-  "column": "next",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "**Shipped.** v0.1.0 is public and installable:\n\n```sh\nbrew install amterp/tap/muster\n```\n\nDone, in order: the bundle id moved to `dev.amterp.muster` before anything shipped; `./dev --bundle --notarize` built a signed, notarized, stapled arm64 artifact from `ffaecf0`; `amterp/muster` went public with a description and topics; the release was cut with that artifact attached; the cask went to `amterp/homebrew-tap` with the real checksum.\n\nVerified by doing it rather than by reasoning about it: `brew install --cask` pulled from the public release URL, matched sha256 `281fd9a4…`, placed `Muster.app` with `spctl` reporting accepted / source=Notarized Developer ID, linked `muster-cli` onto PATH as `muster`, and that binary drove a live window.\n\nOne piece did not land: **the tag-triggered release workflow still cannot cut a release**, because `./dev` interpolates the signing identity into a shell command unquoted under CI's rad and the identity has parentheses in it. All seven secrets are set; the failure is `./dev`. Tracked as a_2ABxHZCao, blocked on rad 0.12.\n\nSo the next release is a local `./dev --notarize` plus `gh release create` until that card closes, rather than a tag.",
+      "created_at_millis": 1787054397887,
+      "id": "c_2ABxc4Les"
+    }
+  ],
   "created_at_millis": 1787052291403,
   "creator": "Alexander Terp",
   "description": "Everything needed to release exists and nothing has been released. The name question that gated this is settled (a_26BJbFai3 - `muster` stays), the app signs and notarizes, the cask is written, and the repo is still private with no tag on it.\n\nWhat is already built and verified, so this card is sequencing rather than work:\n\n- `./dev --notarize` produces a signed, notarized, stapled arm64 bundle. Verified against Apple end to end: `spctl` reports it accepted, source Notarized Developer ID.\n- `.github/workflows/release.yml` is tag-triggered and does the same thing in CI, taking the App Store Connect key from repository secrets rather than a keychain a runner does not have.\n- `packaging/homebrew/muster.rb` is the cask, with placeholder `version` and `sha256` awaiting a real release. `./dev --notarize` prints the checksum and the workflow puts it in the release body.\n- `licenses/` and `NOTICE` cover what the bundle redistributes, and the gate fails if they stop describing it.\n\nThe steps, in the order they have to happen:\n\n1. **Make `amterp/muster` public.** A secrets sweep over the full history came back clean; the `pre-squash` tag is from an earlier rewrite. This is the irreversible one.\n2. **Tag `v0.1.0`** and let the workflow build the release. The version already sits in `Cargo.toml` under `[workspace.package]` and the bundle reads it from there.\n3. **Copy the cask to `amterp/homebrew-tap`** as `Casks/muster.rb` with the real version and checksum, and add the row to that repo's README table.\n4. **Install it from the tap on a machine that has never built Muster** - that is the only thing that actually tests the claim, since every other check so far has run beside a checkout.\n\nWorth deciding at the tag rather than now: whether `0.1.0` is the right number for a first public release of something the README describes as working but incomplete, and whether the release notes point at the board's open cards the way the README now does.",
   "id": "a_2AB4oVQAs",
-  "position": "UUUUUUUUUUUUUUUUUUUU",
+  "position": "!!!!!!!!!!!!!!!!!!6",
   "title": "🚀 Publish the first release",
   "type": "chore",
-  "updated_at_millis": 1787052291403,
+  "updated_at_millis": 1787054397929,
   "history": [
-    {"field":"column","value":"next","at":1787052291403}
+    {"field":"column","value":"next","at":1787052291403},
+    {"field":"column","value":"done","at":1787054397929}
   ]
 }
