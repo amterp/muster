@@ -1,0 +1,15 @@
+{
+  "_v": 3,
+  "id": "a_2A9TXb4En",
+  "alias": "muster-cli-allow",
+  "alias_explicit": false,
+  "title": "muster cli: allow reading what's rendered in a given pane",
+  "creator": "Alexander Terp",
+  "created_at_millis": 1787048475382,
+  "updated_at_millis": 1787048475382,
+  "column": "backlog-hi",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1787048475382}
+  ]
+}
