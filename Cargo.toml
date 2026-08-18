@@ -77,6 +77,31 @@ missing_errors_doc = "allow"
 missing_panics_doc = "allow"
 must_use_candidate = "allow"
 
+# What a debug build costs per generation, measured on a clean build of this
+# workspace: 1.6 GB before this block and 1.4 GB after, with the object files that
+# carry the debug info halving from 0.23 GB to 0.11 GB. A modest lever, and it is
+# on the quantity that multiplies - see the note below. Line tables keep what a
+# backtrace is read for, a file and a line, and give up the variable inspection a
+# debugger would want, which is a trade worth making on the profile nobody ships.
+[profile.dev]
+debug = 1
+
+# Dependencies get none at all. Nobody steps through serde or prost, and symbol
+# names come from the symbol table rather than from DWARF, so their frames still
+# appear in a backtrace - without line numbers. `"*"` reaches dependencies only;
+# workspace members keep what the block above gives them.
+[profile.dev.package."*"]
+debug = false
+
+# Neither line above is the real answer. Cargo never garbage-collects a target
+# directory, and that is what actually fills a disk here: a single build of this
+# workspace writes 6,319 object files, and one checkout was measured holding
+# 480,801 - the same build laid down some seventy-six times and never collected.
+# No profile setting reaches that. `cargo clean gc` prunes by last use and is
+# nightly-only, while this toolchain is pinned to stable on purpose, so cleaning
+# periodically is the answer until it lands.
+# https://github.com/rust-lang/cargo/issues/12633
+
 # The perf harness measures this core, and a debug build describes a binary nobody runs.
 # Line tables kept so a profile names functions instead of addresses.
 [profile.release]
