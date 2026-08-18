@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "the-perf-baseline",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1787050736919,
+  "creator": "Alexander Terp",
+  "description": "The harness now records three things a baseline written before it does not carry, and each is inert until a baseline is written with them:\n\n- **A per-cost tolerance.** `compare()` reads `Cost.tolerance` and falls back to the run's single number when it is absent, which every entry in the current file is. So the measured tolerances - 1.5x default, 2.0x for `pane.encoder`, 3.0x for `pane.channel` - are in the code and gating nothing. Until then a change doubling the cost of every byte `frame.decode` reads still passes.\n- **The workload each rate divides out.** `Cost.units` is what lets a run notice that `frame.decode` is replaying a corpus a third larger than the one its number was measured over. It needs a value on *both* sides to compare, so the guard is dormant against the current file.\n- **What the machine was doing.** `Baseline.load`. Every run currently prints \"the baseline does not record what the machine was doing when it was written\", which is accurate and will stay true until this happens.\n\n`roster.build` picks up its first gating entry at the same time. It is measured, printed as unbaselined, and `Comparison::is_clean()` cannot fail on it - and architecture.md names it as the per-title-change, per-pane cost worth watching.\n\n**Not urgent, and specifically not for the reason it might look.** The a_28wKty65Z investigation found the 2026-08-13 numbers still describe this machine: eight consecutive runs of an unchanged tree, at a load average of about ten, sat within 1.14x of the baseline for every arithmetic benchmark, and the tier reads green. This is about turning on gating the harness can now do, not about a baseline that has gone wrong.\n\n**What a good recording needs**, from what that investigation measured:\n\n- A quiet machine. `./dev --perf` now refuses above a one-minute load average of the performance-core count, six here, which is a ceiling rather than a target - the spread data above was taken at ten and the numbers held, but a baseline is worth recording nearer idle.\n- More than one run. `frame.decode` was seen at 0.79 through 1.84 across the day, with the high readings landing on the first run after a build. Take several and check they agree before keeping one.\n- `view.build` settled first. It reads 137-150 against a baseline of 118.7, consistently, and that is a changed benchmark rather than a busy machine - see the card for it. Recording while it is unexplained bakes the confusion in.",
+  "id": "a_2AAQNGWQ5",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "title": "📊 The perf baseline does not yet carry what the harness records",
+  "type": "chore",
+  "updated_at_millis": 1787050736919,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1787050736919}
+  ]
+}

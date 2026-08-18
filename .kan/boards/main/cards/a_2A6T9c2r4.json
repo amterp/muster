@@ -6,12 +6,21 @@
   "title": "try out control scheme: select tab then pane e.g. cmd+2 \u003e cmd+2 selects the 2nd tab \u003e 2nd pane in that tab",
   "creator": "Alexander Terp",
   "created_at_millis": 1787041310779,
-  "updated_at_millis": 1787047305148,
-  "column": "next",
-  "position": "!1",
+  "updated_at_millis": 1787051218920,
+  "comments": [
+    {
+      "id": "c_2AAcuicN4",
+      "body": "Built on main2 as d6620ea, behind `numbered_chords = \"tab_then_pane\"` in\n~/.muster/config.toml. The default is unchanged, and saving the file switches\nit live either way.\n\nWhat to feel for while driving it:\n\n- Pressing cmd+2 then cmd+3 expecting the third TAB, and landing on the third\n  pane of tab 2. This is the prefix-key tax and it is not fixable inside the\n  scheme. If it bites often, that is the answer.\n- Whether acting on the first press feels right or premature: cmd+2 moves you\n  before you have said what you wanted.\n- Whether the numbers moving in the sidebar is enough to know which state you\n  are in, or whether you end up guessing anyway. There is deliberately no\n  timeout, so a first press waits forever - watch for coming back to the\n  keyboard armed without knowing it.\n- Whether nine tabs is a better nine than nine panes for the windows you\n  actually run.\n\nLeft in in-progress: the card asks for a decision after using it, and that has\nnot happened yet.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1787051218920
+    }
+  ],
+  "column": "in-progress",
+  "position": "U",
   "history": [
     {"field":"column","value":"backlog-lo","at":1787041310779},
     {"field":"column","value":"in-progress","at":1787041483308},
-    {"field":"column","value":"next","at":1787047305148}
+    {"field":"column","value":"next","at":1787047305148},
+    {"field":"column","value":"in-progress","at":1787049242884}
   ]
 }

@@ -5,15 +5,25 @@
   "area": [
     "testing"
   ],
-  "column": "backlog-hi",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Half of this card is answered directly: `./dev --ssh` now ends by saying the devenv container is still up on port 2222, that it is left up deliberately, that `./dev --perf` reads slow against its baseline while it runs, and how to stop it. The measurement on this card - `frame.decode` at 1.67 ns/byte with the container up against 1.44 with it stopped - is what makes that worth saying at the point it matters rather than in a doc.\n\nThe other half turned out differently than this card assumed. It reads \"`frame.decode` now sits close enough to its 2.00x tolerance that ordinary machine load crosses it, which means the baseline was recorded on a quieter machine than the one anybody runs this on\". Measured on a_28wKty65Z: the baseline still describes this machine. Eight consecutive runs of an unchanged tree at a load average of about ten sat within 1.14x of it for every arithmetic benchmark, `frame.decode` among them at 0.79-0.83 against a baseline of 0.83.\n\nSo the fix is not a re-recorded baseline. It is the two things now in place: `--perf` refuses to judge above a one-minute load average of the performance-core count, and the run says what the machine was doing while it measured. The container being up is one of the things that pushes a machine over that line, which is why the tier now names it on the way out.",
+      "created_at_millis": 1787050767698,
+      "id": "c_2AARAvZtl"
+    }
+  ],
   "created_at_millis": 1786803972902,
   "creator": "Alexander Terp",
   "description": "Running `./dev --ssh` and then `./dev --perf` reports a regression that is not one. The ssh tier leaves its devenv containers running, and `frame.decode` measures 1.67 ns/byte against a 0.83 baseline with them up and 1.44 with them stopped - so the obvious thing to do, running the out-of-gate tiers in sequence, produces a false failure.\n\nTwo things behind it. The containers are left running deliberately, since a devenv is a thing you keep; nothing says so at the point where it matters. And `frame.decode` now sits close enough to its 2.00x tolerance that ordinary machine load crosses it, which means the baseline was recorded on a quieter machine than the one anybody runs this on.\n\nA perf tier that fails for reasons unrelated to the code is one people learn to skip, which costs more than the regression it was built to catch. Worth deciding between: measuring load and refusing to judge when the machine is busy, re-recording the baseline against a realistic machine, or having the ssh tier say what it left running.",
   "id": "a_28UsunMWa",
-  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "position": "!!!!!!!!!!!!!!!!!2",
   "title": "📉 The perf tier fails if you ran the ssh tier first",
-  "updated_at_millis": 1786803972902,
+  "updated_at_millis": 1787050767877,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1786803972902}
+    {"field":"column","value":"backlog-hi","at":1786803972902},
+    {"field":"column","value":"in-progress","at":1787049245523},
+    {"field":"column","value":"done","at":1787050767877}
   ]
 }

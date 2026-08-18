@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "view-build-costs",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1787050736783,
+  "creator": "Alexander Terp",
+  "description": "`view.build` measures 137-150 ns/pane against a baseline of 118.7, and it does so consistently - across eight consecutive runs at a load average of about ten, its own run-to-run spread was 1.09x while it sat 1.2x above the recorded number. So this is not the machine.\n\n`view_cost()` has changed since the baseline was recorded at `b5daf00`. `View::of` gained four closures (title, socket path, name, text size) and `full_window` now puts `agent: Some(\"claude\")` and a title on every pane, deliberately, because \"the roster decides per row whether a title says anything the label does not, and a pane with neither would skip that work\". So the benchmark is doing more per pane than the number it is judged against describes.\n\nWhich leaves a question worth answering before anyone re-records: is 137-150 the honest cost of the view Muster actually builds now, or did the benchmark quietly grow past what it was budgeting? The unit count is unchanged at 3,000, so the workload guard added for `frame.decode` cannot see this - the shape of the work changed, not the amount.\n\nThe same question applies to `mirror.apply`, whose input now decodes through `Names::alone(\"local\", Mint::Backend)`, though that one reads within noise of its baseline so nothing is pressing there.\n\nFound while separating the causes on a_28wKty65Z, and left alone deliberately: sweeping it into a re-record would turn a real 1.2x into a new baseline nobody questioned.",
+  "id": "a_2AAQN3Of9",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "title": "📉 view.build costs more than its baseline number describes",
+  "type": "chore",
+  "updated_at_millis": 1787050736783,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1787050736783}
+  ]
+}
