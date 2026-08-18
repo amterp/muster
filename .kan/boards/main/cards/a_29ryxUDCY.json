@@ -1,0 +1,17 @@
+{
+  "_v": 3,
+  "alias": "herdr-keeps-a-pane-s",
+  "alias_explicit": false,
+  "column": "uncommitted",
+  "created_at_millis": 1787006784012,
+  "creator": "Alexander Terp",
+  "description": "Split out of a_26LAtezW0. herdr holds a pane's terminal at whatever geometry its controlling client asked for, and does not put it back when that client goes: measured 53x23 -\u003e 120x40 -\u003e still 120x40 ten seconds after detach (docs/observations/herdr-0.8.0.md section 4, corpus/herdr-0.8.0/geometry/).\n\nNo client can work around it properly, only paper over it. The size a pane had before is not recoverable from the API - herdr publishes rows as scroll.viewport_rows and columns nowhere at all - so the best any client can do is hand the pane back at the rectangle herdr's own layout gives it, which Muster now does on quit. That is a guess at what herdr wants rather than a restoration, and it is one every client would have to make.\n\nWorth raising upstream: it reads as a defect rather than a design, and it sits directly against sessions outliving their clients. Whether to file it, and in whose words, is Alex's call - this card is the proposal, not the issue.",
+  "id": "a_29ryxUDCY",
+  "position": "UUUUUU",
+  "title": "🔼 herdr keeps a pane's PTY at the size a detached client set",
+  "type": "chore",
+  "updated_at_millis": 1787006784012,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1787006784012}
+  ]
+}

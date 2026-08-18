@@ -3,6 +3,14 @@
   "alias": "a-devenv-pane-cannot",
   "alias_explicit": false,
   "column": "backlog-hi",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Not closed in the devenv round (2026-08-18), and the reason is a prerequisite the card does not name. Forwarding the endpoint over the ssh master is the half this card anticipated; the other half is that something on the far machine has to receive it, and the `muster` command is built from this repo with nothing shipping a Linux one. So closing this needs a remote `muster` alongside the remote daemon - which the same round just built the machinery for: the pin, the platform probe, the cache, and placing a file over the master all exist now.\n\nCorrected while here: the limits entry claimed a devenv pane is told nothing, understating what works. `$MUSTER_PANE` is set over there and always has been, so such a pane knows which pane it is and only lacks a socket to say so. docs/cli/limits.md now says which is which.",
+      "created_at_millis": 1787034116086,
+      "id": "c_2A3RzUTr1"
+    }
+  ],
   "created_at_millis": 1786973827397,
   "creator": "Alexander Terp",
   "description": "`MUSTER_SOCKET` is a unix socket path on the machine the window runs on, so Muster sets it only in panes held by a local daemon. A pane on an SSH devenv is told nothing and a program in it correctly concludes it cannot drive anything - it can still be addressed by name from a local pane, and `muster window` still describes it.\n\nStated rather than chased, because the scenario the CLI was built for is unaffected: the integrator is local and the agents it starts need not drive anything. Closing it means forwarding the endpoint over the same ssh master the control plane already opens, and deciding what a remote caller may ask for.\n\nDocumented in `docs/cli/limits.md`.",
@@ -14,7 +22,7 @@
   ],
   "title": "🛰️ A devenv pane cannot drive the window it is drawn in",
   "type": "feature",
-  "updated_at_millis": 1786973850129,
+  "updated_at_millis": 1787034116086,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786973827397}
   ]

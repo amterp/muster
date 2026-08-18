@@ -1,0 +1,16 @@
+{
+  "_v": 3,
+  "id": "a_2A3MOmupb",
+  "alias": "click-and-mouse",
+  "alias_explicit": false,
+  "title": "click and mouse placement detection maybe doesn't work?",
+  "description": "like claude code which could use it and detecting where in the pane the mouse is and where they're clicking-- not sure we're passing that information thru?",
+  "creator": "Alexander Terp",
+  "created_at_millis": 1787033901134,
+  "updated_at_millis": 1787033942840,
+  "column": "backlog-lo",
+  "position": "UUUUUUUUUUU",
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1787033901134}
+  ]
+}

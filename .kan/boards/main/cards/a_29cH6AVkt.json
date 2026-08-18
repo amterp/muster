@@ -5,16 +5,18 @@
   "area": [
     "testing"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "created_at_millis": 1786969348833,
   "creator": "Alexander Terp",
   "description": "`corpus/conformance/backend-intent.json` compares the driver's output to the case's `expect` as exact JSON, and the wire carries an f32. So a case written with `\"amount\": 0.05` fails against an actual of `0.05000000074505806`, and the only fractions expressible are the ones exactly representable in binary: 0.5, 0.25, 0.125, 0.0625.\n\nFound writing the resize-unit cases (a_29XVSQKAC), which now use 0.25 and 0.125 with a note saying why. That works and reads slightly wrong - the numbers are powers of two for a reason no reader of the case can see without the note, and herdr's own default step is 0.05, which the corpus cannot state.\n\nThe corpus is meant to be text a reviewer can read, so putting 0.05000000074505806 in the file is the wrong way out. The fix is on the comparison side: the driver should compare numbers at the width the wire carries rather than as decimal text. Worth checking whether any other case has quietly picked its numbers to dodge this - the split ratios are all 0.25/0.5/0.75, which may be taste or may be the same workaround.",
   "id": "a_29cH6AVkt",
-  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "position": "!!!!!!!!!!!!!!!E",
   "title": "🔢 A corpus case cannot say 0.05",
   "type": "chore",
-  "updated_at_millis": 1786969348833,
+  "updated_at_millis": 1787003614101,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1786969348833}
+    {"field":"column","value":"backlog-hi","at":1786969348833},
+    {"field":"column","value":"in-progress","at":1787003453650},
+    {"field":"column","value":"done","at":1787003614101}
   ]
 }

@@ -5,16 +5,18 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "created_at_millis": 1786485304583,
   "creator": "Alexander Terp",
   "description": "A controlling client holds the pane's PTY at its geometry and never lets go: after the controller detaches the pane keeps that size rather than reverting (verified 53x23 -\u003e 120x40 -\u003e still 120x40, docs/observations/herdr-0.8.0.md section 4).\n\nSo quitting Muster leaves every pane it touched sized to a window that no longer exists, and the herdr TUI inherits that. This cuts against 'sessions outlive everything' - the fallback promise is that a rough Muster never costs a workday, and handing back mis-sized panes costs one.\n\nMuster restores geometry on detach until herdr does it. Worth an upstream issue too: it looks like a defect rather than a design.",
   "id": "a_26LAtezW0",
-  "position": "UUUUUUUUUUU",
+  "position": "!!!!!!!!!!!!!!!!!U",
   "title": "Restore pane geometry when Muster detaches",
   "type": "chore",
-  "updated_at_millis": 1786485304583,
+  "updated_at_millis": 1787006990019,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1786485304583}
+    {"field":"column","value":"backlog-hi","at":1786485304583},
+    {"field":"column","value":"in-progress","at":1787005513376},
+    {"field":"column","value":"done","at":1787006990019}
   ]
 }

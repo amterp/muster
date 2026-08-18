@@ -6,16 +6,17 @@
     "testing",
     "devenv"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "created_at_millis": 1786779067811,
   "creator": "Alexander Terp",
   "description": "The gate runs on macOS and stops there. The corpus diff against the container's daemon needs only docker and python3 - no Rust, Swift or Zig - so it is the cheapest second job there could be, and it is what catches a herdr re-pin that changes behavior on one platform and not the other.\n\nBlocked on nothing now that ./dev --ssh exists; what a workflow adds is building the devenv image on a runner and caching it, since the image downloads a pinned herdr of its own.",
   "id": "a_28KR1I9JL",
-  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "position": "!!!!!!!!!!!!!!!!0",
   "title": "🐧 Run the Linux corpus diff in CI",
   "type": "chore",
-  "updated_at_millis": 1786779067811,
+  "updated_at_millis": 1787006801863,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1786779067811}
+    {"field":"column","value":"backlog-hi","at":1786779067811},
+    {"field":"column","value":"done","at":1787006801863}
   ]
 }

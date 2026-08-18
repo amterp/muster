@@ -6,10 +6,12 @@
   "title": "zoom in/out should be per pane, but right now is across all panes",
   "creator": "Alexander Terp",
   "created_at_millis": 1786977928780,
-  "updated_at_millis": 1786977928780,
-  "column": "backlog-hi",
-  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "updated_at_millis": 1787005513305,
+  "column": "done",
+  "position": "!!!!!!!!!!!!!!!!6",
   "history": [
-    {"field":"column","value":"backlog-hi","at":1786977928780}
+    {"field":"column","value":"backlog-hi","at":1786977928780},
+    {"field":"column","value":"in-progress","at":1787004283508},
+    {"field":"column","value":"done","at":1787005513305}
   ]
 }

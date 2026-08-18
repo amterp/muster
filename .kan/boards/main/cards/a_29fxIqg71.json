@@ -6,10 +6,12 @@
   "title": "if in zoomed-in mode (cmd+shift+enter) and you then switch panes with e.g. cmd+2, then right now it continues displaying the previous zoomed pane. should instead display the new pane, also zoomed",
   "creator": "Alexander Terp",
   "created_at_millis": 1786978121020,
-  "updated_at_millis": 1786978121020,
-  "column": "backlog-hi",
-  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "updated_at_millis": 1787004283436,
+  "column": "done",
+  "position": "!!!!!!!!!!!!!!!2",
   "history": [
-    {"field":"column","value":"backlog-hi","at":1786978121020}
+    {"field":"column","value":"backlog-hi","at":1786978121020},
+    {"field":"column","value":"in-progress","at":1787004080400},
+    {"field":"column","value":"done","at":1787004283436}
   ]
 }

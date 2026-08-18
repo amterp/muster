@@ -2,20 +2,22 @@
   "_v": 3,
   "alias": "nothing-shows-the",
   "alias_explicit": false,
-  "column": "backlog-hi",
+  "column": "done",
   "created_at_millis": 1786973862342,
   "creator": "Alexander Terp",
   "description": "`pane new --run` waits for the new pane's shell to print something before typing, so a program still starting up does not miss the command. No test shows the wait changing an outcome: it was removed and the suite passed three times, because a pty buffers and a plain shell runs early input anyway.\n\nThe wait is a precaution against a program that resets the terminal as it starts and discards what is pending, which is what a full-screen agent harness does and what `sh` will not do on demand. So either find a program that reproduces it and pin the wait, or decide the buffering is enough and take the wait out - the current state is code carrying an unproven claim.\n\nStated in `crates/muster-herdr/tests/pane_equipping.rs` and in `HerdrBackend::start`'s own doc.",
   "id": "a_29eAW1Yxk",
-  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "position": "!!!!!!!!!!!!!!!!U",
   "tags": [
     "testing",
     "backend"
   ],
   "title": "🕰️ Nothing shows the readiness wait before a pane's first command matters",
   "type": "chore",
-  "updated_at_millis": 1786973862342,
+  "updated_at_millis": 1787004981353,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1786973862342}
+    {"field":"column","value":"backlog-hi","at":1786973862342},
+    {"field":"column","value":"in-progress","at":1787004367747},
+    {"field":"column","value":"done","at":1787004981353}
   ]
 }

@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "re-recording-the",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1787004361151,
+  "creator": "Alexander Terp",
+  "description": "`corpus/conformance/layout-export.json` declares `source: recorded` and `regenerate: tools/herdr-probe/probe layout`. Running that command fails two tests.\n\n`corpus/herdr-0.8.0/layout/wire.ndjson` is five concatenated runs, one of them from a scenario order that no longer exists - the recorder's own docstring names that accumulation as a bug it has since fixed, so the checked-in file predates the fix. Three `layout-export.json` cases are pinned to lines only that stale run contains.\n\nConcretely: \"a divider drag answers with the arrangement it settled on\" is the five-pane tree with the root at 0.3, but the scenario now drags after the same-axis split that adds w1:p6, so the answer is a six-pane tree. `dragged-layout.export.json` has held the six-pane shape for a while, so the artifacts already disagree with the case. \"sixteen panes at every depth the recording reached\" is stale the same way.\n\n`the_two_readers_describe_the_same_tab_the_same_way` is what makes it more than a re-derivation: it requires the drag's answer and the deep rects to be one tab arrangement differing only in the root ratio. Restoring that means either moving the drag before the same-axis split, or re-deriving all three cases and rewriting what that test pairs.\n\nFound while adding the layout-replay scenario (a_27WZ30MO1). Left alone deliberately: it is a spec decision about someone else's concept, and the fix wants to be one commit that is about this.",
+  "id": "a_29qxvebDg",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "title": "🧪 Re-recording the layout scenario turns the suite red",
+  "type": "chore",
+  "updated_at_millis": 1787004361151,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1787004361151}
+  ]
+}

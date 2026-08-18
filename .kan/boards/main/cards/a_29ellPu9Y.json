@@ -5,16 +5,18 @@
   "area": [
     "testing"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "created_at_millis": 1786975294165,
   "creator": "Alexander Terp",
   "description": "`crates/muster-seam/tests/` now holds eight files and eight `#[test]` functions, one each, and every one carries the same comment: the seam keeps its session in a process global, so a second test in the same binary would race the first. Adding a gesture therefore costs a new file and a new daemon, which is why `attach.rs` chains nine sub-scenarios through helpers instead.\n\nThe real cost is bisectability rather than coverage. A chained scenario aborts at the first failure, so the later behaviour never runs and one red CI run cannot say whether that broke too.\n\nWhat it needs is a way to get a fresh session between tests - a reset entry point beside `muster_set_event_callback`, or a session handle the tests own rather than a global. `session.rs` holds twelve module statics plus `SESSION: LazyLock\u003cMutex\u003cSession\u003e\u003e` and has no reset of any kind today, so this is a real refactor rather than a helper.\n\nSplit out of a_298rp2Pss, which took the other half (extending `--contract`, and the first gestures). Sequenced deliberately: slot 1's muster-CLI work rewrites `session.rs` heavily, and a structural change written against the current file would be written against a version about to be replaced. Worth picking up once that has landed.",
   "id": "a_29ellPu9Y",
-  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "position": "!!!!!!!!!!!!!!!!!E",
   "title": "🧪 One test per binary is what stops the gesture tier growing",
   "type": "chore",
-  "updated_at_millis": 1786975294165,
+  "updated_at_millis": 1787007624270,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1786975294165}
+    {"field":"column","value":"backlog-hi","at":1786975294165},
+    {"field":"column","value":"in-progress","at":1787006990091},
+    {"field":"column","value":"done","at":1787007624270}
   ]
 }
