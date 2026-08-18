@@ -10,7 +10,7 @@ mod pane_channel;
 mod pane_input;
 mod settings;
 
-pub use bindings::{Action, Bindings, Chord};
+pub use bindings::{Action, Bindings, Chord, NumberedChords};
 pub use composition::{Outcome as CompositionOutcome, outcome as composition_outcome};
 pub use key::Key;
 pub use key_event::{KeyAction, KeyEvent, Modifiers};

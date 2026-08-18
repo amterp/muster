@@ -12,16 +12,16 @@
 //! numbering panes at all - reaching one has to bring its tab on screen, or nine chords do not
 //! replace what the tab numbers used to do.
 //!
-//! One test here so far, and no longer because a second could not be had: the seam's session
-//! is reset between tests and they take their turns through `muster::testing::fresh_session`,
-//! which is what the first line of each one is asking for.
+//! The second test is the prototype scheme beside it, for the same reason: every layer of a
+//! two-stage chord is pinned in the corpus, and what only a running window shows is that the
+//! first press does not quietly disarm itself on whatever it causes the shell to send back.
 
 use std::sync::Mutex;
 
 use herdr_harness::{Daemon, until};
 use muster::proto::{
-    Event, FocusPaneAt, OpenWindow, Request, Response, RosterChanged, Startup, ViewChanged, event,
-    request, response,
+    Event, FocusPaneAt, OpenWindow, ReloadConfig, Request, Response, RosterChanged, Startup,
+    ViewChanged, WindowFocus, event, request, response,
 };
 use prost::Message;
 use serde_json::{Value, json};
@@ -88,6 +88,219 @@ fn a_numbered_chord_lands_on_the_row_carrying_that_number() {
         showing(&hidden),
         "a refused chord moved the keyboard, so it did something rather than nothing"
     );
+}
+
+#[test]
+fn under_the_prototype_a_tab_is_named_first_and_a_pane_inside_it_second() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = Daemon::start();
+    a_session_of_two_tabs_the_second_holding_two(&daemon);
+
+    muster::ffi::muster_set_event_callback(Some(note));
+    assert_ok(&answer(request::Payload::Startup(Startup {
+        config_path: daemon
+            .muster_config_with("numbered_chords = \"tab_then_pane\"")
+            .to_string_lossy()
+            .into_owned(),
+        ..Startup::default()
+    })));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+
+    until(
+        "the roster to arrive with all three panes in it",
+        || roster().is_some_and(|roster| rows(&roster).len() == 3),
+        || format!("the roster holds {:?}", roster().map(|held| places(&held))),
+    );
+
+    // At rest the numbers are on the tabs and nowhere else, which is the whole indicator: what
+    // ⌘2 does is answered by reading the list rather than by remembering what you last pressed.
+    assert_eq!(numbered_tabs(), vec![1, 2], "the chords should be naming tabs before any press");
+    assert_eq!(
+        numbered_panes(),
+        Vec::<u32>::new(),
+        "a pane carrying a number while the tabs do would be two numberings in one list"
+    );
+
+    let inner_second = named(INNER_SECOND);
+    assert_ok(&answer(request::Payload::FocusPaneAt(FocusPaneAt { place: 2 })));
+
+    // Acted on immediately rather than waiting for a second press: the tab is on screen and the
+    // keyboard is on its first pane, which is where a click on its caption would have put it.
+    until(
+        "the second tab to be on screen with the keyboard on its first pane",
+        || showing(&named(INNER_FIRST)),
+        || format!("the view still shows {:?}", shown()),
+    );
+
+    // And the numbers have moved inside it, so the second press is legible before it is made.
+    assert_eq!(
+        numbered_tabs(),
+        Vec::<u32>::new(),
+        "the tabs kept their numbers after one was named, so two things are numbered at once"
+    );
+    assert_eq!(
+        numbered_panes(),
+        vec![1, 2],
+        "the named tab's panes should be the numbered ones, and only them"
+    );
+
+    assert_ok(&answer(request::Payload::FocusPaneAt(FocusPaneAt { place: 2 })));
+    until(
+        "the second pane of the second tab to have the keyboard",
+        || showing(&inner_second),
+        || format!("the view still shows {:?}", shown()),
+    );
+
+    // The flat scheme would have landed the same two presses on the second pane of the window
+    // twice over, which is a different pane - so this passing under both schemes is impossible.
+    assert_ne!(inner_second, named(INNER_FIRST), "the arrangement this test needs came apart");
+}
+
+#[test]
+fn anything_between_the_two_presses_takes_the_first_one_back() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = Daemon::start();
+    a_session_of_two_tabs_the_second_holding_two(&daemon);
+
+    muster::ffi::muster_set_event_callback(Some(note));
+    assert_ok(&answer(request::Payload::Startup(Startup {
+        config_path: daemon
+            .muster_config_with("numbered_chords = \"tab_then_pane\"")
+            .to_string_lossy()
+            .into_owned(),
+        ..Startup::default()
+    })));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    until(
+        "the roster to arrive with all three panes in it",
+        || roster().is_some_and(|roster| rows(&roster).len() == 3),
+        || format!("the roster holds {:?}", roster().map(|held| places(&held))),
+    );
+
+    assert_ok(&answer(request::Payload::FocusPaneAt(FocusPaneAt { place: 2 })));
+    until(
+        "the second tab to be named",
+        || numbered_panes() == vec![1, 2],
+        || format!("the tabs carry {:?} and the panes {:?}", numbered_tabs(), numbered_panes()),
+    );
+
+    // The window losing focus is one of the ordinary things that happen between two keystrokes,
+    // and it stands here for all of them: the rule is that anything which is not a read takes
+    // the arm back. Asserted through the published numbers rather than through where the next
+    // press lands, because the numbers are what a person is reading while deciding to press.
+    assert_ok(&answer(request::Payload::WindowFocus(WindowFocus { focused: false })));
+    until(
+        "the numbers to go back to the tabs",
+        || numbered_tabs() == vec![1, 2],
+        || format!("the tabs carry {:?} and the panes {:?}", numbered_tabs(), numbered_panes()),
+    );
+
+    // So the press that follows is a first press again, and reaches a tab rather than a pane.
+    assert_ok(&answer(request::Payload::FocusPaneAt(FocusPaneAt { place: 1 })));
+    until(
+        "the first tab's only pane to have the keyboard",
+        || showing(&named(VISIBLE)),
+        || format!("the view still shows {:?}", shown()),
+    );
+}
+
+#[test]
+fn turning_the_prototype_off_moves_the_numbers_back_on_the_save() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = Daemon::start();
+    a_session_of_two_tabs_the_second_holding_two(&daemon);
+
+    muster::ffi::muster_set_event_callback(Some(note));
+    assert_ok(&answer(request::Payload::Startup(Startup {
+        config_path: daemon
+            .muster_config_with("numbered_chords = \"tab_then_pane\"")
+            .to_string_lossy()
+            .into_owned(),
+        ..Startup::default()
+    })));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    until(
+        "the chords to be naming tabs",
+        || numbered_tabs() == vec![1, 2],
+        || format!("the tabs carry {:?} and the panes {:?}", numbered_tabs(), numbered_panes()),
+    );
+
+    // Written to the same path, which is what saving the file is. Going back to the settled
+    // scheme is the likeliest thing to happen to this option, so it is the half worth pinning.
+    daemon.muster_config_with("numbered_chords = \"panes\"");
+    assert_ok(&answer(request::Payload::ReloadConfig(ReloadConfig {})));
+
+    // Asserted the moment the reload returns rather than waited for, and that is the test.
+    // A reload asks the daemon to re-read its own config, so it says something shortly
+    // afterwards and the roster is republished anyway - which means a version of this that
+    // waited would pass whether or not the reload announced anything, and would be pinning the
+    // daemon's timing rather than Muster's guarantee.
+    assert_eq!(
+        numbered_panes(),
+        vec![1, 2, 3],
+        "the save returned with the numbers still on the tabs, so the sidebar was promising \
+         that ⌘2 reaches the second tab while it had already gone back to the second pane"
+    );
+    assert_eq!(numbered_tabs(), Vec::<u32>::new(), "the tabs kept numbers the chords do not name");
+
+    // And the chords agree with them: ⌘2 is the second pane of the window again, in one press.
+    assert_ok(&answer(request::Payload::FocusPaneAt(FocusPaneAt { place: 2 })));
+    until(
+        "the second pane of the window to have the keyboard",
+        || showing(&named(INNER_FIRST)),
+        || format!("the view still shows {:?}", shown()),
+    );
+}
+
+/// Two tabs on one daemon, the second holding two panes.
+///
+/// Arranged so that the two schemes cannot agree: the second pane of the window sits in the
+/// first tab, and the second pane of the second tab is the window's third. A test on a session
+/// of one pane per tab would pass whichever scheme was in force.
+fn a_session_of_two_tabs_the_second_holding_two(daemon: &Daemon) {
+    daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "numbering", "focus": true }));
+    let first = only_pane(daemon);
+    daemon.call("tab.create", &json!({ "focus": false }));
+    let inner_first = panes(daemon)
+        .into_iter()
+        .find(|pane| pane != &first)
+        .expect("the new tab brings a pane of its own");
+    daemon.call("pane.split", &json!({ "target_pane_id": inner_first, "direction": "right" }));
+    let inner_second = panes(daemon)
+        .into_iter()
+        .find(|pane| pane != &first && pane != &inner_first)
+        .expect("splitting makes a second pane in that tab");
+
+    for (pane, given) in
+        [(&first, VISIBLE), (&inner_first, INNER_FIRST), (&inner_second, INNER_SECOND)]
+    {
+        daemon.call("pane.rename", &json!({ "pane_id": pane, "label": given }));
+    }
+}
+
+/// What the second tab's two panes are called, so the assertions read as the arrangement.
+const INNER_FIRST: &str = "inner-first";
+const INNER_SECOND: &str = "inner-second";
+
+/// The number on every tab that carries one, in the order the roster lists them.
+fn numbered_tabs() -> Vec<u32> {
+    roster()
+        .into_iter()
+        .flat_map(|roster| roster.daemons)
+        .flat_map(|daemon| daemon.tabs)
+        .filter_map(|tab| (tab.number > 0).then_some(tab.number))
+        .collect()
+}
+
+/// The number on every pane that carries one, in the order the roster lists them.
+fn numbered_panes() -> Vec<u32> {
+    roster()
+        .into_iter()
+        .flat_map(|roster| roster.daemons)
+        .flat_map(|daemon| daemon.tabs)
+        .flat_map(|tab| tab.panes)
+        .filter_map(|pane| (pane.number > 0).then_some(pane.number))
+        .collect()
 }
 
 /// Two tabs on one daemon, one pane each, so that the second pane is in a tab nothing shows.

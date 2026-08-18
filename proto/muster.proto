@@ -1230,9 +1230,20 @@ message RosterTab {
   string tab_id = 2;
 
   // Where this tab sits in the window's whole tab order, counting from one. The order
-  // next_tab walks, counted across every daemon rather than within one. No chord names it -
-  // ⌘1 to ⌘9 number panes - and it is what a tab nobody named is called.
+  // next_tab walks, counted across every daemon rather than within one. It is what a tab
+  // nobody named is called, and under the scheme Muster ships no chord names it - ⌘1 to ⌘9
+  // number panes. Whether one does at this moment is `number` below, not this.
   uint32 place = 3;
+
+  // Which numbered chord reaches this tab right now - 2 means ⌘2 gets you here - and 0 when
+  // none does, which is the ordinary answer and what every tab carries under the settled
+  // scheme. Distinct from `place` above, which is where the tab sits whether or not anything
+  // can reach it by number.
+  //
+  // Sent per row rather than as a mode beside the list, because "which chord reaches this
+  // row" is the question a sidebar is drawing the answer to, and a mode plus a place is two
+  // things a reader could combine differently from the way the core did.
+  uint32 number = 8;
 
   // What to call this tab to somebody who did not open it: the workspace it belongs to when
   // the daemon holds more than one, and the tab's own name otherwise.
@@ -1283,6 +1294,12 @@ message RosterPane {
   // Numbered past nine even though no chord goes that far: the number is what the pane's
   // position is, and how far to draw them is the sidebar's decision.
   uint32 place = 7;
+
+  // Which numbered chord reaches this pane right now, 0 when none does. Under the settled
+  // scheme this is `place` for the first nine panes and 0 after that; under the prototype
+  // `numbered_chords` turns on, it is 0 until a chord has named this pane's tab. See
+  // RosterTab.number.
+  uint32 number = 8;
 }
 
 // Everything this window is showing, as one message.

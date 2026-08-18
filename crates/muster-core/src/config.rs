@@ -24,7 +24,7 @@ use std::collections::BTreeMap;
 use toml::Value;
 
 use crate::input::{
-    Action, Binding, Bindings, Chord, OptionAsAlt, PaneInputSettings, TEXT_EDITING,
+    Action, Binding, Bindings, Chord, NumberedChords, OptionAsAlt, PaneInputSettings, TEXT_EDITING,
 };
 
 use crate::composition::{Daemon, DaemonId, Endpoint};
@@ -170,9 +170,11 @@ impl CursorStyle {
 /// The small answers a terminal is expected to let somebody change about how it handles.
 ///
 /// Grouped because they share a shape rather than a subject: each is one value, read once,
-/// with a defensible default, and neither is a decision Muster wants to make on somebody's
-/// behalf. What they have in common is that getting them wrong is an irritation nobody can
-/// name - a resize that moves too far, a trackpad that scrolls too slowly.
+/// with a defensible default, and none is a decision Muster wants to make on somebody's
+/// behalf. What the first two have in common is that getting them wrong is an irritation
+/// nobody can name - a resize that moves too far, a trackpad that scrolls too slowly.
+/// `numbered_chords` is a bigger question wearing the same shape, and is here on sufferance
+/// while it is being tried.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Feel {
     /// How far a resize chord moves a divider.
@@ -188,11 +190,19 @@ pub struct Feel {
     /// size is the input device's business: a trackpad reports many small ones and a wheel
     /// mouse a few large ones, and only the person using them knows which needs adjusting.
     pub scroll_multiplier: f64,
+
+    /// What ⌘1 to ⌘9 name.
+    ///
+    /// The odd one out here, and knowingly: the others are small answers with a defensible
+    /// default, and this is a whole control scheme being tried beside the settled one. It
+    /// sits with them because it is still one value read once, and because a prototype that
+    /// grew a `[table]` of its own would be advertising a permanence it has not earned.
+    pub numbered_chords: NumberedChords,
 }
 
 impl Default for Feel {
     fn default() -> Feel {
-        Feel { resize_step: None, scroll_multiplier: 1.0 }
+        Feel { resize_step: None, scroll_multiplier: 1.0, numbered_chords: NumberedChords::Panes }
     }
 }
 
@@ -410,13 +420,14 @@ impl std::fmt::Display for Rgb {
 const DAEMON_KEYS: [&str; 4] = ["id", "socket", "host", "ssh_options"];
 
 /// The keys the file itself may carry.
-const ROOT_KEYS: [&str; 12] = [
+const ROOT_KEYS: [&str; 13] = [
     "daemon",
     "keymap",
     "text",
     "option_as_alt",
     "resize_step",
     "scroll_multiplier",
+    "numbered_chords",
     "pane_padding",
     "scrollback_bytes",
     "font",
@@ -570,7 +581,7 @@ fn read_shell(block: Option<&toml::Table>) -> Result<Shell, String> {
     Ok(shell)
 }
 
-/// The two knobs, each absent from the file more often than not.
+/// The knobs at the root of the file, each absent from it more often than not.
 fn read_feel(root: &toml::Table) -> Result<Feel, String> {
     let mut feel = Feel::default();
 
@@ -592,6 +603,26 @@ fn read_feel(root: &toml::Table) -> Result<Feel, String> {
             ));
         }
         feel.scroll_multiplier = multiplier;
+    }
+
+    if let Some(value) = root.get("numbered_chords") {
+        let name = value.as_str().ok_or_else(|| {
+            format!(
+                "`numbered_chords` in the config file is {}, and it has to be one of {}. None \
+                 of the file was applied.",
+                described(value),
+                quoted(&NumberedChords::READABLE),
+            )
+        })?;
+        feel.numbered_chords = NumberedChords::parse(name).ok_or_else(|| {
+            format!(
+                "`numbered_chords` in the config file is {name:?}, which is not a scheme ⌘1 to \
+                 ⌘9 can be on, so none of the file was applied. It is one of {}: `panes` counts \
+                 down the whole agent list, and `tab_then_pane` is a prototype where the first \
+                 press picks a tab and the next picks a pane inside it.",
+                quoted(&NumberedChords::READABLE),
+            )
+        })?;
     }
 
     Ok(feel)

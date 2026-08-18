@@ -106,6 +106,7 @@ extension Roster {
             Roster.Tab(
               key: TabKey(daemon: tab.daemonID, tab: tab.tabID),
               place: Int(tab.place),
+              number: Int(tab.number),
               label: tab.label,
               onScreen: tab.onScreen,
               givenName: tab.givenName,
@@ -113,6 +114,7 @@ extension Roster {
                 Roster.Pane(
                   key: PaneKey(daemon: pane.daemonID, pane: pane.paneID),
                   place: Int(pane.place),
+                  number: Int(pane.number),
                   label: pane.label,
                   subtitle: pane.subtitle,
                   givenName: pane.givenName,

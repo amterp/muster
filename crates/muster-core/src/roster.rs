@@ -23,6 +23,7 @@
 //! a decision, and the sidebar, the CLI and an agent must not each make their own.
 
 use crate::composition::{Composition, DaemonId, PaneKey, TabKey};
+use crate::input::NumberedChords;
 use crate::mirror::Mirror;
 use crate::mirror::backend::{Pane, PaneId, TabId};
 
@@ -46,10 +47,12 @@ pub struct RosterTab {
 
     /// Where this tab sits in the window's whole tab order, counting from one.
     ///
-    /// The order `next_tab` walks, and what a tab nobody has named is called. No chord names
-    /// it: ⌘1 to ⌘9 number panes, because the rows carrying the agent states are pane rows and
-    /// two numberings in one sidebar is worse than either. Counted across every daemon rather
-    /// than within one, because a window showing a laptop beside a devenv is one list.
+    /// The order `next_tab` walks, and what a tab nobody has named is called. Under the scheme
+    /// Muster ships no chord names it: ⌘1 to ⌘9 number panes, because the rows carrying the
+    /// agent states are pane rows and two numberings in one sidebar is worse than either.
+    /// Whether a chord names it at this moment is [`Numbering::on_tab`], not this. Counted
+    /// across every daemon rather than within one, because a window showing a laptop beside a
+    /// devenv is one list.
     pub place: usize,
 
     /// What to call this tab to somebody who did not open it.
@@ -78,9 +81,10 @@ pub struct RosterPane {
 
     /// Where this pane sits in the window's whole pane order, counting from one.
     ///
-    /// The handle ⌘1 to ⌘9 name, so the fourth row down the sidebar and ⌘4 are one pane.
-    /// Counted across every daemon and every tab rather than within one, because the sidebar
-    /// is one list and somebody reading it counts down the whole thing.
+    /// The handle ⌘1 to ⌘9 name under the scheme Muster ships, so the fourth row down the
+    /// sidebar and ⌘4 are one pane. Counted across every daemon and every tab rather than
+    /// within one, because the sidebar is one list and somebody reading it counts down the
+    /// whole thing.
     ///
     /// Positional: it is read off the row rather than remembered, and it moves when a pane
     /// opens or closes above it. That is the cost of numbering the thing that churns, and it
@@ -90,6 +94,14 @@ pub struct RosterPane {
     /// Numbered past nine even though no chord goes that far, because the number is what the
     /// pane's position *is*; what to draw is the sidebar's decision and it stops at nine.
     pub place: usize,
+
+    /// Where this pane sits among its own tab's panes, counting from one.
+    ///
+    /// The same position [`RosterPane::place`] is, read within one tab instead of down the
+    /// whole window. Both are here because they answer different questions and a reader
+    /// should not have to count rows to get the second: the sidebar reads down the list and
+    /// wants the first, and anything scoped to a tab wants this.
+    pub place_in_tab: usize,
 
     /// What to call this pane to somebody who did not open it.
     pub label: String,
@@ -113,6 +125,102 @@ pub struct RosterPane {
     /// as long as they disagreed. It is also the thing the list is for - a pane nobody is
     /// showing is the one worth going to.
     pub on_screen: bool,
+}
+
+/// What the numbered chords name right now.
+///
+/// One value with three states rather than a scheme plus a flag, because the rule this holds
+/// up is that only one thing may be numbered at a time. Split into two values, a reader would
+/// have to combine them to answer "what does ⌘2 do", and the sidebar and the chord could
+/// combine them differently - which is exactly the disagreement the settled scheme was
+/// designed to make impossible.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum Numbering {
+    /// Every pane, counted down the whole window. What Muster does.
+    #[default]
+    Panes,
+
+    /// Every tab, counted across the window. The prototype scheme, waiting for a first press.
+    Tabs,
+
+    /// The panes inside one tab. The prototype scheme, after a first press named that tab.
+    PanesIn(TabKey),
+}
+
+impl Numbering {
+    /// What the chords name, given the scheme, the tab a press named, and what exists.
+    ///
+    /// Derived from all three every time rather than remembered, so the order things happen in
+    /// stops mattering: a tab that closed while a press had named it is simply not in the
+    /// roster, and the answer falls back to numbering tabs. Deciding this once, at the moment
+    /// an input arrived, is the shape of a bug this codebase has shipped before.
+    pub fn of(scheme: NumberedChords, named: Option<&TabKey>, roster: &Roster) -> Numbering {
+        match scheme {
+            NumberedChords::Panes => Numbering::Panes,
+            NumberedChords::TabThenPane => match named {
+                Some(key) if roster.tabs().any(|tab| &tab.key == key) => {
+                    Numbering::PanesIn(key.clone())
+                }
+                _ => Numbering::Tabs,
+            },
+        }
+    }
+
+    /// Which ⌘N reaches this tab right now, if any does.
+    pub fn on_tab(&self, tab: &RosterTab) -> Option<usize> {
+        match self {
+            Numbering::Tabs => Some(tab.place),
+            Numbering::Panes | Numbering::PanesIn(_) => None,
+        }
+    }
+
+    /// Which ⌘N reaches this pane right now, if any does.
+    ///
+    /// Takes the tab holding it because two of the three answers are about the tab rather
+    /// than the pane, and a pane does not carry its own tab.
+    pub fn on_pane(&self, tab: &RosterTab, pane: &RosterPane) -> Option<usize> {
+        match self {
+            Numbering::Panes => Some(pane.place),
+            Numbering::Tabs => None,
+            Numbering::PanesIn(key) => (&tab.key == key).then_some(pane.place_in_tab),
+        }
+    }
+}
+
+/// Where a numbered chord lands, and what the press after it will name.
+///
+/// The second half is why this is not just a pane: reaching a tab has to leave the numbering
+/// somewhere different from where it found it, and only whatever resolved the chord knows
+/// that.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Landing<'a> {
+    /// This pane, and the numbering stays where it was.
+    Pane(&'a RosterPane),
+
+    /// This tab, landing on the pane named, and its panes are what gets numbered next.
+    Tab(&'a RosterTab, &'a RosterPane),
+}
+
+impl Landing<'_> {
+    /// The pane the keyboard goes to, which every landing has one of.
+    pub fn pane(&self) -> &RosterPane {
+        match self {
+            Landing::Pane(pane) | Landing::Tab(_, pane) => pane,
+        }
+    }
+
+    /// The tab this press named, for the press after it to count inside.
+    ///
+    /// `None` after landing on a pane, so the next press starts over at whatever the scheme
+    /// numbers first. That is what keeps the sequence two deep: three ⌘2s in a row are the
+    /// second tab, its second pane, and the second tab again, rather than descending into
+    /// something with no third level to descend into.
+    pub fn named(&self) -> Option<TabKey> {
+        match self {
+            Landing::Pane(_) => None,
+            Landing::Tab(tab, _) => Some(tab.key.clone()),
+        }
+    }
 }
 
 /// Which way a step through the window's tabs goes.
@@ -201,12 +309,14 @@ impl Roster {
                             given_name: given_name(tab_own_name(tab)),
                             panes: ordered_panes(held, &tab.id)
                                 .into_iter()
-                                .map(|pane| {
+                                .enumerate()
+                                .map(|(at, pane)| {
                                     let key = PaneKey::new(daemon, &pane.id);
                                     let label = pane_label(pane);
                                     pane_place += 1;
                                     RosterPane {
                                         place: pane_place,
+                                        place_in_tab: at + 1,
                                         subtitle: pane_subtitle(pane, &label),
                                         label,
                                         given_name: given_name(pane.name.as_deref()),
@@ -245,6 +355,35 @@ impl Roster {
     /// would make ⌘9 mean something different every time a pane opened.
     pub fn at(&self, place: usize) -> Option<&RosterPane> {
         self.panes().find(|pane| pane.place == place)
+    }
+
+    /// Where the numbered chord for `place` lands, under the numbering in force.
+    ///
+    /// Answered by looking for the row carrying that number rather than by indexing into
+    /// whatever is being counted. Slower by a walk of fifteen rows, and worth it: it is the
+    /// same pair of functions the sidebar draws its numbers from, so the number you can see
+    /// beside a row is by construction the number that reaches it. A second implementation
+    /// here would be a second place that rule lives, and the two would eventually disagree.
+    ///
+    /// `None` for a place past the end of whatever is being counted, which is what ⌘9 means
+    /// in a window of two. Doing nothing is the answer in every branch, for the reason
+    /// [`Roster::at`] gives: a chord that landed elsewhere once the list grew would mean
+    /// something different every time a pane opened. An armed tab that has since closed lands
+    /// here too, which is what un-arms it.
+    pub fn numbered(&self, numbering: &Numbering, place: usize) -> Option<Landing<'_>> {
+        for tab in self.tabs() {
+            if numbering.on_tab(tab) == Some(place) {
+                // A tab with no panes has nothing for the keyboard to land on, so the chord
+                // does nothing rather than arming a tab you cannot then get into.
+                return tab.panes.first().map(|pane| Landing::Tab(tab, pane));
+            }
+            if let Some(pane) =
+                tab.panes.iter().find(|pane| numbering.on_pane(tab, pane) == Some(place))
+            {
+                return Some(Landing::Pane(pane));
+            }
+        }
+        None
     }
 
     /// Where the keyboard goes when stepping one tab from the one it is on.

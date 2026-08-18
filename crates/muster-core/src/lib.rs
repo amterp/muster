@@ -30,5 +30,5 @@ pub use intent::{BackendChannel, BackendIntent};
 pub use mirror::{BackendEvent, Change, Mirror};
 pub use names::{BackendPaneId, BackendTabId, Mint, Names, PaneNames, TabNames};
 pub use problems::{Problem, Problems, Severity};
-pub use roster::{Roster, RosterPane};
+pub use roster::{Landing, Numbering, Roster, RosterPane};
 pub use typeable::Waiting;

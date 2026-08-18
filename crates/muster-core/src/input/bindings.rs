@@ -282,6 +282,51 @@ const PANE_PLACES: [&str; 9] = [
     "focus_pane_9",
 ];
 
+/// What ⌘1 to ⌘9 name: panes, or a tab and then a pane inside it.
+///
+/// **A prototype sits beside the settled answer here, and may not survive.** `Panes` is what
+/// Muster does and what the whole argument in the README is for - one flat count down the
+/// agent list, so ⌘3 is the third row whichever machine holds it. `TabThenPane` is the other
+/// shape, being tried: ⌘2 goes to the second tab, and the ⌘2 after it goes to that tab's
+/// second pane.
+///
+/// The two coexist rather than one replacing the other because the question is how the
+/// second one feels after a day, and that cannot be answered by reading. Deleting the
+/// prototype is deleting the second variant, and then this type.
+///
+/// Note what does *not* change with it: the nine actions, their names, their chords and
+/// their menu items are the same either way. A scheme that added nine more actions on the
+/// same nine chords would be refused by Muster's own collision rule, and one that spelled
+/// out tab-by-pane would be eighty-one names. So the chord stays put and its meaning moves,
+/// which is also why `focus_pane_3` reads as a small lie under the prototype - a cost taken
+/// deliberately, because renaming nine actions is what would make this expensive to remove.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum NumberedChords {
+    #[default]
+    Panes,
+    TabThenPane,
+}
+
+impl NumberedChords {
+    pub fn parse(name: &str) -> Option<NumberedChords> {
+        match name {
+            "panes" => Some(NumberedChords::Panes),
+            "tab_then_pane" => Some(NumberedChords::TabThenPane),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            NumberedChords::Panes => "panes",
+            NumberedChords::TabThenPane => "tab_then_pane",
+        }
+    }
+
+    /// Every value, for a refusal that has to say what was allowed.
+    pub const READABLE: [&'static str; 2] = ["panes", "tab_then_pane"];
+}
+
 /// The digit key a numbered pane action sits on, in place order.
 const PANE_DIGITS: [Key; 9] = [
     Key::Digit1,

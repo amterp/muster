@@ -7,9 +7,10 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use conformance::{CaseError, Conformance, fields};
 use muster_core::composition::{Composition, Daemon, DaemonId, Endpoint, PaneKey, TabKey};
+use muster_core::input::NumberedChords;
 use muster_core::mirror::Mirror;
 use muster_core::mirror::backend::{PaneId, TabId, WorkspaceId};
-use muster_core::roster::{Roster, RosterPane, RosterTab, TabStep};
+use muster_core::roster::{Landing, Numbering, Roster, RosterPane, RosterTab, TabStep};
 use serde_json::{Value, json};
 use support::backend::{read_snapshot, text};
 
@@ -64,6 +65,7 @@ fn roster_conformance() {
                     .and_then(|place| usize::try_from(place).ok())
                     .map(|place| json!(roster.at(place).map(|pane| pane.key.to_string()))),
             ),
+            ("pressed", read_presses(given, &roster)?),
             ("tabs", Some(json!(roster.tabs().map(describe_tab).collect::<Vec<String>>()))),
             (
                 "panes",
@@ -79,6 +81,28 @@ fn roster_conformance() {
 
     assert_eq!(ran, corpus.cases.len());
     assert!(ran > 0);
+}
+
+#[test]
+fn every_numbering_scheme_is_pressed_in_the_corpus() {
+    // A scheme added to the config and not pressed here is a control scheme nothing decides.
+    // Both of these fail invisibly: the settled one would stop being pinned the moment the
+    // prototype's cases outnumbered it, and the prototype has no other test of what a second
+    // press means.
+    let corpus = Conformance::load("roster.json");
+    let pressed: Vec<String> = corpus
+        .cases
+        .iter()
+        .filter_map(|case| case.given.get("numbered"))
+        .map(|asked| text(asked, "scheme"))
+        .collect();
+
+    for scheme in NumberedChords::READABLE {
+        assert!(
+            pressed.iter().any(|named| named == scheme),
+            "no corpus case presses a chord under `{scheme}`, so nothing pins what one does"
+        );
+    }
 }
 
 /// One tab, as a line.
@@ -121,6 +145,56 @@ fn describe_pane(tab: &RosterTab, pane: &RosterPane) -> String {
         described("given-name", pane.given_name.as_deref()),
         if pane.on_screen { "on-screen" } else { "hidden" }
     )
+}
+
+/// The numbered chords a case presses, and what each one reached.
+///
+/// A sequence rather than one press, because under `tab_then_pane` a press means one thing or
+/// another depending on what the press before it did - so a case pressing once could only ever
+/// pin half the scheme. The line for each press says what it landed on *and* what the chords
+/// name afterwards, which is the pair a person driving this has to be able to predict.
+///
+/// Run through the same [`Numbering::of`] and [`Landing::named`] the window runs on. A driver
+/// that tracked the armed tab its own way would be a second implementation of the one thing
+/// these cases exist to pin.
+fn read_presses(given: &Value, roster: &Roster) -> Result<Option<Value>, CaseError> {
+    let Some(asked) = given.get("numbered") else { return Ok(None) };
+    let spelled = text(asked, "scheme");
+    let scheme = NumberedChords::parse(&spelled).ok_or_else(|| {
+        CaseError::new(format!(
+            "`{spelled}` is not a numbering scheme - write `panes` or `tab_then_pane`"
+        ))
+    })?;
+
+    let mut named = None;
+    let mut landed = Vec::new();
+    for press in asked.get("press").and_then(Value::as_array).into_iter().flatten() {
+        let place = press
+            .as_u64()
+            .and_then(|place| usize::try_from(place).ok())
+            .ok_or_else(|| CaseError::new("`press` holds something that is not a place"))?;
+        let numbering = Numbering::of(scheme, named.as_ref(), roster);
+        let landing = roster.numbered(&numbering, place);
+        landed.push(describe_press(place, &numbering, landing.as_ref()));
+        named = landing.and_then(|landing| landing.named());
+    }
+    Ok(Some(json!(landed)))
+}
+
+/// One press, as a line: what was being counted, what it reached, and what it left armed.
+fn describe_press(place: usize, numbering: &Numbering, landing: Option<&Landing<'_>>) -> String {
+    let counting = match numbering {
+        Numbering::Panes => "panes".to_string(),
+        Numbering::Tabs => "tabs".to_string(),
+        Numbering::PanesIn(key) => format!("panes in {key}"),
+    };
+    match landing {
+        Some(Landing::Pane(pane)) => format!("⌘{place} of {counting} → pane {}", pane.key),
+        Some(Landing::Tab(tab, pane)) => {
+            format!("⌘{place} of {counting} → tab {} landing on {}", tab.key, pane.key)
+        }
+        None => format!("⌘{place} of {counting} → nothing"),
+    }
 }
 
 /// The step a case asks for, or none for a case that is only about the list.

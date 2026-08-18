@@ -9,8 +9,14 @@ public struct Roster: Equatable {
   public struct Pane: Equatable {
     public let key: PaneKey
 
-    /// Where this pane sits in the window's whole pane order, counting from one. What ⌘N names.
+    /// Where this pane sits in the window's whole pane order, counting from one.
     public let place: Int
+
+    /// Which numbered chord reaches this pane right now, or 0 when none does. What the row
+    /// draws. Distinct from `place` above, which is where the row sits whether or not a chord
+    /// gets you there - the two agree for the first nine panes under the scheme Muster ships,
+    /// and part company under `numbered_chords = "tab_then_pane"`.
+    public let number: Int
 
     /// What to call this pane to somebody who did not open it.
     public let label: String
@@ -26,11 +32,12 @@ public struct Roster: Equatable {
     public let onScreen: Bool
 
     public init(
-      key: PaneKey, place: Int = 0, label: String, subtitle: String = "", givenName: String = "",
-      onScreen: Bool
+      key: PaneKey, place: Int = 0, number: Int = 0, label: String, subtitle: String = "",
+      givenName: String = "", onScreen: Bool
     ) {
       self.key = key
       self.place = place
+      self.number = number
       self.label = label
       self.subtitle = subtitle
       self.givenName = givenName
@@ -41,9 +48,13 @@ public struct Roster: Equatable {
   public struct Tab: Equatable {
     public let key: TabKey
 
-    /// Where this tab sits in the window's whole tab order, counting from one. Not a chord -
-    /// ⌘N names panes - and the number in the caption of a tab nobody named.
+    /// Where this tab sits in the window's whole tab order, counting from one. The number in
+    /// the caption of a tab nobody named.
     public let place: Int
+
+    /// Which numbered chord reaches this tab right now, or 0 when none does - which is every
+    /// tab under the scheme Muster ships, where ⌘N names panes. See `Pane.number`.
+    public let number: Int
 
     /// What to call this tab to somebody who did not open it.
     public let label: String
@@ -59,11 +70,12 @@ public struct Roster: Equatable {
     public let panes: [Pane]
 
     public init(
-      key: TabKey, place: Int, label: String, onScreen: Bool, givenName: String = "",
-      panes: [Pane]
+      key: TabKey, place: Int, number: Int = 0, label: String, onScreen: Bool,
+      givenName: String = "", panes: [Pane]
     ) {
       self.key = key
       self.place = place
+      self.number = number
       self.label = label
       self.onScreen = onScreen
       self.givenName = givenName
@@ -122,10 +134,10 @@ public enum SidebarModel {
   public enum Kind: Equatable {
     /// A machine's name, over the tabs it holds.
     case daemon
-    /// A tab, over the panes in it.
-    case tab
-    /// A pane, carrying the place a numbered chord names.
-    case pane(place: Int)
+    /// A tab, over the panes in it, carrying the numbered chord that reaches it or 0.
+    case tab(number: Int)
+    /// A pane, carrying the numbered chord that reaches it or 0.
+    case pane(number: Int)
   }
 
   /// One line in the list.
@@ -170,6 +182,11 @@ public enum SidebarModel {
     /// Whether picking this row means something. A daemon heading names no destination.
     public var isDestination: Bool { kind != .daemon }
 
+    public var isTab: Bool {
+      if case .tab = kind { return true }
+      return false
+    }
+
     public var isPane: Bool {
       if case .pane = kind { return true }
       return false
@@ -185,15 +202,21 @@ public enum SidebarModel {
   /// has not bootstrapped is an ordinary moment on the way up, and a heading over nothing
   /// reads as a machine that lost its session.
   ///
-  /// **A window with one tab draws no caption.** There is nothing to navigate between, so a
-  /// row saying which tab you are in is a line that answers a question nobody has - and this
+  /// **A window with one tab draws no caption, unless a chord names it.** There is nothing to
+  /// navigate between, so a row saying which tab you are in is a line that answers a question
+  /// nobody has - and this
   /// is the common case, so paying a level of nesting for it would make the list worse for
   /// most people to make it better for some. The moment a second tab exists anywhere in the
   /// window, every tab gets a caption, including the tabs on a daemon that only holds one:
   /// captions in patches would read as a boundary that comes and goes.
   ///
-  /// Pane numbers are drawn either way, because they count across the whole window and a
-  /// window with one tab still has panes for ⌘1 to ⌘9 to name.
+  /// The exception is `numbered_chords = "tab_then_pane"`, where a tab is what ⌘1 names and a
+  /// window of one tab would otherwise hide the only numbered row in it. A number nothing
+  /// draws is a chord nobody can find.
+  ///
+  /// **Which rows carry numbers is the core's answer, not this one's.** Every row arrives with
+  /// the chord that reaches it or with none, so a caption numbered `2` and a ⌘2 that goes
+  /// somewhere else is not a state this side can produce.
   ///
   /// `keyboard` is the pane the core's view says has the keyboard, or nil when no region
   /// does. Passed in rather than derived here: which pane that is arrives on the view, and
@@ -201,7 +224,7 @@ public enum SidebarModel {
   public static func rows(roster: Roster, states: [PaneKey: String], keyboard: PaneKey? = nil)
     -> [Row]
   {
-    let captions = roster.tabs.count > 1
+    let captions = roster.tabs.count > 1 || roster.tabs.contains { $0.number > 0 }
     var rows: [Row] = []
     for daemon in roster.daemons where !daemon.tabs.isEmpty {
       rows.append(
@@ -212,14 +235,14 @@ public enum SidebarModel {
         if captions {
           rows.append(
             Row(
-              kind: .tab, daemon: daemon.id, tab: tab.key, pane: nil,
+              kind: .tab(number: tab.number), daemon: daemon.id, tab: tab.key, pane: nil,
               label: tab.label, subtitle: "", givenName: tab.givenName, state: "",
               onScreen: tab.onScreen, hasKeyboard: false))
         }
         for pane in tab.panes {
           rows.append(
             Row(
-              kind: .pane(place: pane.place), daemon: daemon.id, tab: tab.key, pane: pane.key,
+              kind: .pane(number: pane.number), daemon: daemon.id, tab: tab.key, pane: pane.key,
               label: pane.label,
               subtitle: pane.subtitle, givenName: pane.givenName,
               // A pane the core has said nothing about is unknown, not idle. An agent we have
@@ -587,7 +610,7 @@ final class SidebarRowView: NSView {
       name.font = .systemFont(ofSize: 10, weight: .semibold)
       name.stringValue = row.label.uppercased()
       name.textColor = .secondaryLabelColor
-    case .tab:
+    case .tab(let reached):
       // The tab on screen is named in full, and the ones behind it are quieter. This says a
       // different thing from the keyboard highlight on purpose: one is where you are
       // looking, the other is where you are typing, and in a two-region window those are
@@ -595,20 +618,11 @@ final class SidebarRowView: NSView {
       name.font = .systemFont(ofSize: 11, weight: row.onScreen ? .semibold : .regular)
       name.stringValue = row.label
       name.textColor = row.onScreen ? .labelColor : .secondaryLabelColor
-    case .pane(let place):
+      draw(number: reached)
+    case .pane(let reached):
       name.font = .systemFont(ofSize: 12, weight: .regular)
       name.stringValue = row.label
-      // The number a chord names, beside the dot rather than instead of it: the dot is what
-      // the row is for and the number is how to get there, so a row needs both. Only up to
-      // nine, because that is how far ⌘N goes - a tenth pane is reachable by next-pane, by a
-      // direction and by clicking, and a number nothing is bound to would be a promise the
-      // keyboard breaks.
-      if place >= 1, place <= 9 {
-        number.stringValue = String(place)
-        number.font = .monospacedDigitSystemFont(ofSize: 10, weight: .regular)
-        number.textColor = .tertiaryLabelColor
-        addSubview(number)
-      }
+      draw(number: reached)
       // A pane no region is showing is reachable, not absent - dimming it says "not here yet"
       // rather than "gone", which is the difference between a row worth clicking and one that
       // looks broken.
@@ -633,6 +647,24 @@ final class SidebarRowView: NSView {
     name.lineBreakMode = .byTruncatingTail
     name.toolTip = row.label
     addSubview(name)
+  }
+
+  /// The chord that reaches this row, drawn beside the dot rather than instead of it.
+  ///
+  /// The dot is what the row is for and the number is how to get there, so a row wants both.
+  /// Zero draws nothing, which is what a row no chord reaches carries - every tab under the
+  /// scheme Muster ships, and every pane past the ninth.
+  ///
+  /// One function for both kinds of row because it is one number meaning one thing. Under
+  /// `numbered_chords = "tab_then_pane"` the numbers move between tab rows and pane rows as
+  /// chords are pressed, and two implementations of "draw the number" would be two chances
+  /// for them to look different depending on which row they landed on.
+  private func draw(number reached: Int) {
+    guard reached >= 1, reached <= 9 else { return }
+    number.stringValue = String(reached)
+    number.font = .monospacedDigitSystemFont(ofSize: 10, weight: .regular)
+    number.textColor = .tertiaryLabelColor
+    addSubview(number)
   }
 
   required init?(coder: NSCoder) {

@@ -97,6 +97,7 @@ option_as_alt = "left"         # never (the default) | always | left | right
 resize_step = "20c"            # per resize chord: cells (c) or points (px). Omit for the
                                # daemon's own step. The unit is required.
 scroll_multiplier = 1.5        # scales what the trackpad or wheel reported
+numbered_chords = "panes"      # panes (the default) | tab_then_pane. A prototype; see below
 pane_padding = 2               # points between a pane's text and its edges; 0 fits the most rows
 scrollback_bytes = 50000000    # history a pane keeps; omit for the daemon's own answer
 
@@ -185,6 +186,25 @@ config carried over from before should get - silently binding `cmd+3` to somethi
 what it used to reach is the one outcome worse than the refusal. Tab captions lose their
 numbers in the same change: two numberings in one list is worse than either, and a tab you
 have not named is now captioned `Tab 2` rather than carrying a chord's number.
+
+**`numbered_chords = "tab_then_pane"` is a prototype of the other answer, and may be deleted
+rather than finished.** Under it `cmd+2` goes to the second tab and the `cmd+2` after it goes
+to that tab's second pane. Everything above stays true and stays the default; this is here
+because the argument above is one nobody can settle by reading it, and a day of driving the
+other scheme is the only thing that will. Two of its costs are worth knowing before you turn
+it on. It is a prefix key, which is a thing this README's own desiderata say Muster does not
+have - so if it feels good, something above has to change rather than both staying. And a
+sequence has to be able to end, so anything at all except that second press takes the first
+one back: a keystroke into a pane, another chord, a click. Nothing times out, so a first
+press waits for as long as you leave it.
+
+While it is on, the numbers in the agent list move. At rest they sit on the tab captions, and
+once a chord has named a tab they sit on that tab's panes and nowhere else - so what `cmd+2`
+will reach is something you read rather than something you remember, and only one thing in the
+window carries numbers at any moment. The nine actions do not move: `focus_pane_3` is still
+what `[keymap]` names and still what the menu carries, and under this scheme it means the
+third numbered chord rather than the third pane. Renaming nine actions for a prototype is the
+thing that would make it expensive to take out again.
 
 **Two things cannot hold one chord, and the file is refused rather than one of them losing.**
 Three ways that happens: two `[keymap]` actions on the same chord, a `[keymap]` action on a
@@ -342,9 +362,9 @@ you ask for somebody else's daemon on purpose.
 **Saving the file is enough.** Muster watches it and reads it again, and `cmd+shift+,` or
 Reload Configuration asks for the same thing when you would rather say so yourself - the
 watcher dispatches that action rather than being a second way in. Colours, fonts, the cursor,
-the keymap, `[text]`, `option_as_alt`, `resize_step` and `scroll_multiplier` all take effect
-where they are, including in panes that were already open; `pane_padding` reaches panes opened
-afterwards, because that is as far as the renderer takes it. `[shell]` and `scrollback_bytes`
+the keymap, `[text]`, `option_as_alt`, `resize_step`, `scroll_multiplier` and `numbered_chords`
+all take effect where they are, including in panes that were already open; `pane_padding`
+reaches panes opened afterwards, because that is as far as the renderer takes it. `[shell]` and `scrollback_bytes`
 reach panes opened afterwards too, and for the same shape of reason: the daemon takes both when
 it builds a pane, so a pane you are already typing in keeps what it was made with.
 

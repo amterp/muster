@@ -9,7 +9,7 @@
 use muster_core::composition::{View, ViewNode};
 use muster_core::input::{Key, KeyAction, KeyEvent, Modifiers};
 use muster_core::mirror::backend::SplitAxis;
-use muster_core::roster::Roster;
+use muster_core::roster::{Numbering, Roster};
 
 use crate::proto;
 
@@ -50,7 +50,11 @@ pub(crate) fn view(view: &View) -> proto::ViewChanged {
 }
 
 /// What exists, on its way out to the shell.
-pub(crate) fn roster(roster: &Roster) -> proto::RosterChanged {
+///
+/// The numbering travels as a number on each row rather than as a mode beside the list, so
+/// that "which ⌘N reaches this row" has exactly one answer in the message and a shell cannot
+/// combine a mode and a place into a different one than the core did.
+pub(crate) fn roster(roster: &Roster, numbering: &Numbering) -> proto::RosterChanged {
     proto::RosterChanged {
         daemons: roster
             .daemons
@@ -69,6 +73,7 @@ pub(crate) fn roster(roster: &Roster) -> proto::RosterChanged {
                         // tab. No window holds four billion tabs; this is a floor, not a
                         // case anybody meets. Same for a pane's place, below.
                         place: u32::try_from(tab.place).unwrap_or_default(),
+                        number: numbered(numbering.on_tab(tab)),
                         label: tab.label.clone(),
                         on_screen: tab.on_screen,
                         // Empty is how a string field says nothing was named, the same
@@ -83,6 +88,7 @@ pub(crate) fn roster(roster: &Roster) -> proto::RosterChanged {
                                 daemon_id: pane.key.daemon.to_string(),
                                 pane_id: pane.key.pane.to_string(),
                                 place: u32::try_from(pane.place).unwrap_or_default(),
+                                number: numbered(numbering.on_pane(tab, pane)),
                                 label: pane.label.clone(),
                                 on_screen: pane.on_screen,
                                 subtitle: pane.subtitle.clone().unwrap_or_default(),
@@ -93,6 +99,19 @@ pub(crate) fn roster(roster: &Roster) -> proto::RosterChanged {
                     .collect(),
             })
             .collect(),
+    }
+}
+
+/// The number a row carries, as the wire spells "none".
+///
+/// Zero, which is proto3's own word for a field nobody set - and there is no ⌘0 among the
+/// numbered chords, so the value cannot be mistaken for a real one. A number past nine is
+/// none as well: those places exist as positions but no chord reaches them, and sending one
+/// would invite a sidebar to draw a number nothing can press.
+fn numbered(place: Option<usize>) -> u32 {
+    match place {
+        Some(place) if (1..=9).contains(&place) => u32::try_from(place).unwrap_or_default(),
+        _ => 0,
     }
 }
 

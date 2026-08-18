@@ -26,6 +26,9 @@ fn feel(feel: &config::Feel) -> Vec<String> {
     if feel.scroll_multiplier != config::Feel::default().scroll_multiplier {
         set.push(format!("scroll_multiplier={}", feel.scroll_multiplier));
     }
+    if feel.numbered_chords != config::Feel::default().numbered_chords {
+        set.push(format!("numbered_chords={}", feel.numbered_chords.as_str()));
+    }
     set
 }
 

@@ -2456,6 +2456,598 @@
           "local/w1:p11 place=11 tab=w1:t11 label=\"p11\" hidden"
         ]
       }
+    },
+    {
+      "name": "with the settled scheme a numbered chord names a pane and nothing is left over",
+      "why": "The half of `numbered_chords` that has to keep working exactly as it did. ⌘2 is the second row down the whole list, one press is the whole gesture, and no press leaves anything behind for the next one to mean something different. This window is arranged so the two schemes disagree - the second pane of the window and the second pane of the second tab are different panes - so a case that passed under either would be pinning nothing.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              },
+              {
+                "id": "w1:t2",
+                "workspace": "w1",
+                "label": "t2"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/first"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/second"
+              },
+              {
+                "id": "w1:p3",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/third"
+              },
+              {
+                "id": "w1:p4",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/fourth"
+              },
+              {
+                "id": "w1:p5",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/fifth"
+              }
+            ],
+            "layouts": []
+          }
+        },
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          }
+        ],
+        "regions": [
+          {
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          }
+        ],
+        "numbered": {
+          "scheme": "panes",
+          "press": [
+            2,
+            2
+          ]
+        }
+      },
+      "expect": {
+        "pressed": [
+          "⌘2 of panes → pane local/w1:p2",
+          "⌘2 of panes → pane local/w1:p2"
+        ],
+        "tabs": [
+          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen",
+          "local/w1:t2 place=2 label=\"t2\" given-name=\"t2\" hidden"
+        ],
+        "panes": [
+          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
+          "local/w1:p2 place=2 tab=w1:t1 label=\"second\" hidden",
+          "local/w1:p3 place=3 tab=w1:t2 label=\"third\" hidden",
+          "local/w1:p4 place=4 tab=w1:t2 label=\"fourth\" hidden",
+          "local/w1:p5 place=5 tab=w1:t2 label=\"fifth\" hidden"
+        ]
+      }
+    },
+    {
+      "name": "the first press picks a tab and the one after it picks a pane inside that tab",
+      "why": "The prototype, in one line. Pressing ⌘2 twice reaches the second tab's second pane, which is the fourth pane of the window - so the second press is counting inside the tab the first one named rather than down the list. Both halves are needed to see it: after the first press the chords are counting panes in that tab, and that is what makes the same keystroke mean two things.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              },
+              {
+                "id": "w1:t2",
+                "workspace": "w1",
+                "label": "t2"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/first"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/second"
+              },
+              {
+                "id": "w1:p3",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/third"
+              },
+              {
+                "id": "w1:p4",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/fourth"
+              },
+              {
+                "id": "w1:p5",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/fifth"
+              }
+            ],
+            "layouts": []
+          }
+        },
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          }
+        ],
+        "regions": [
+          {
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          }
+        ],
+        "numbered": {
+          "scheme": "tab_then_pane",
+          "press": [
+            2,
+            2
+          ]
+        }
+      },
+      "expect": {
+        "pressed": [
+          "⌘2 of tabs → tab local/w1:t2 landing on local/w1:p3",
+          "⌘2 of panes in local/w1:t2 → pane local/w1:p4"
+        ],
+        "tabs": [
+          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen",
+          "local/w1:t2 place=2 label=\"t2\" given-name=\"t2\" hidden"
+        ],
+        "panes": [
+          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
+          "local/w1:p2 place=2 tab=w1:t1 label=\"second\" hidden",
+          "local/w1:p3 place=3 tab=w1:t2 label=\"third\" hidden",
+          "local/w1:p4 place=4 tab=w1:t2 label=\"fourth\" hidden",
+          "local/w1:p5 place=5 tab=w1:t2 label=\"fifth\" hidden"
+        ]
+      }
+    },
+    {
+      "name": "reaching a tab lands on its first pane, so ⌘2 alone is ⌘2 ⌘1",
+      "why": "Where a tab is entered is one rule, shared with clicking its caption and with next_tab, so that three ways of arriving agree. The consequence is worth pinning rather than deriving: the first press is not a half-gesture waiting to be completed, it has already put you somewhere, and the somewhere is the one the second press would have named with a 1.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              },
+              {
+                "id": "w1:t2",
+                "workspace": "w1",
+                "label": "t2"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/first"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/second"
+              },
+              {
+                "id": "w1:p3",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/third"
+              },
+              {
+                "id": "w1:p4",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/fourth"
+              },
+              {
+                "id": "w1:p5",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/fifth"
+              }
+            ],
+            "layouts": []
+          }
+        },
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          }
+        ],
+        "regions": [
+          {
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          }
+        ],
+        "numbered": {
+          "scheme": "tab_then_pane",
+          "press": [
+            2,
+            1
+          ]
+        }
+      },
+      "expect": {
+        "pressed": [
+          "⌘2 of tabs → tab local/w1:t2 landing on local/w1:p3",
+          "⌘1 of panes in local/w1:t2 → pane local/w1:p3"
+        ],
+        "tabs": [
+          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen",
+          "local/w1:t2 place=2 label=\"t2\" given-name=\"t2\" hidden"
+        ],
+        "panes": [
+          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
+          "local/w1:p2 place=2 tab=w1:t1 label=\"second\" hidden",
+          "local/w1:p3 place=3 tab=w1:t2 label=\"third\" hidden",
+          "local/w1:p4 place=4 tab=w1:t2 label=\"fourth\" hidden",
+          "local/w1:p5 place=5 tab=w1:t2 label=\"fifth\" hidden"
+        ]
+      }
+    },
+    {
+      "name": "a third press starts over rather than going a level deeper",
+      "why": "There is no third level, so the alternative would be a chord that does nothing at all - and a person holding ⌘ and tapping a digit has to be able to predict the third tap. Landing on a pane is what ends the sequence, so ⌘2 ⌘2 ⌘2 is the second tab, its second pane, and the second tab again.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              },
+              {
+                "id": "w1:t2",
+                "workspace": "w1",
+                "label": "t2"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/first"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/second"
+              },
+              {
+                "id": "w1:p3",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/third"
+              },
+              {
+                "id": "w1:p4",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/fourth"
+              },
+              {
+                "id": "w1:p5",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/fifth"
+              }
+            ],
+            "layouts": []
+          }
+        },
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          }
+        ],
+        "regions": [
+          {
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          }
+        ],
+        "numbered": {
+          "scheme": "tab_then_pane",
+          "press": [
+            2,
+            2,
+            2
+          ]
+        }
+      },
+      "expect": {
+        "pressed": [
+          "⌘2 of tabs → tab local/w1:t2 landing on local/w1:p3",
+          "⌘2 of panes in local/w1:t2 → pane local/w1:p4",
+          "⌘2 of tabs → tab local/w1:t2 landing on local/w1:p3"
+        ],
+        "tabs": [
+          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen",
+          "local/w1:t2 place=2 label=\"t2\" given-name=\"t2\" hidden"
+        ],
+        "panes": [
+          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
+          "local/w1:p2 place=2 tab=w1:t1 label=\"second\" hidden",
+          "local/w1:p3 place=3 tab=w1:t2 label=\"third\" hidden",
+          "local/w1:p4 place=4 tab=w1:t2 label=\"fourth\" hidden",
+          "local/w1:p5 place=5 tab=w1:t2 label=\"fifth\" hidden"
+        ]
+      }
+    },
+    {
+      "name": "a second press past the end of its tab does nothing, and the press after it starts over",
+      "why": "The second tab holds three panes, so ⌘9 after it has nothing to reach. Doing nothing rather than landing on the last pane is the same answer the flat scheme gives, for the same reason - a chord that landed elsewhere as the tab grew would mean something different every time a pane opened. What is new is what it leaves behind: nothing, so the next press is a first press again rather than being stuck counting inside a tab.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              },
+              {
+                "id": "w1:t2",
+                "workspace": "w1",
+                "label": "t2"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/first"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/second"
+              },
+              {
+                "id": "w1:p3",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/third"
+              },
+              {
+                "id": "w1:p4",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/fourth"
+              },
+              {
+                "id": "w1:p5",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/fifth"
+              }
+            ],
+            "layouts": []
+          }
+        },
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          }
+        ],
+        "regions": [
+          {
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          }
+        ],
+        "numbered": {
+          "scheme": "tab_then_pane",
+          "press": [
+            2,
+            9,
+            1
+          ]
+        }
+      },
+      "expect": {
+        "pressed": [
+          "⌘2 of tabs → tab local/w1:t2 landing on local/w1:p3",
+          "⌘9 of panes in local/w1:t2 → nothing",
+          "⌘1 of tabs → tab local/w1:t1 landing on local/w1:p1"
+        ],
+        "tabs": [
+          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen",
+          "local/w1:t2 place=2 label=\"t2\" given-name=\"t2\" hidden"
+        ],
+        "panes": [
+          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
+          "local/w1:p2 place=2 tab=w1:t1 label=\"second\" hidden",
+          "local/w1:p3 place=3 tab=w1:t2 label=\"third\" hidden",
+          "local/w1:p4 place=4 tab=w1:t2 label=\"fourth\" hidden",
+          "local/w1:p5 place=5 tab=w1:t2 label=\"fifth\" hidden"
+        ]
+      }
+    },
+    {
+      "name": "a first press past the last tab does nothing, and the window is still counting tabs",
+      "why": "Two tabs, so ⌘5 reaches nothing. Worth its own case beside the one above because the refusal a person meets is about tabs rather than panes, and because it pins that a press which reached nothing has not quietly armed anything - the press after it is counting tabs, which is where it started.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              },
+              {
+                "id": "w1:t2",
+                "workspace": "w1",
+                "label": "t2"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/first"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/second"
+              },
+              {
+                "id": "w1:p3",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/third"
+              },
+              {
+                "id": "w1:p4",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/fourth"
+              },
+              {
+                "id": "w1:p5",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/fifth"
+              }
+            ],
+            "layouts": []
+          }
+        },
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          }
+        ],
+        "regions": [
+          {
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          }
+        ],
+        "numbered": {
+          "scheme": "tab_then_pane",
+          "press": [
+            5,
+            2
+          ]
+        }
+      },
+      "expect": {
+        "pressed": [
+          "⌘5 of tabs → nothing",
+          "⌘2 of tabs → tab local/w1:t2 landing on local/w1:p3"
+        ],
+        "tabs": [
+          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen",
+          "local/w1:t2 place=2 label=\"t2\" given-name=\"t2\" hidden"
+        ],
+        "panes": [
+          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
+          "local/w1:p2 place=2 tab=w1:t1 label=\"second\" hidden",
+          "local/w1:p3 place=3 tab=w1:t2 label=\"third\" hidden",
+          "local/w1:p4 place=4 tab=w1:t2 label=\"fourth\" hidden",
+          "local/w1:p5 place=5 tab=w1:t2 label=\"fifth\" hidden"
+        ]
+      }
     }
   ]
 }

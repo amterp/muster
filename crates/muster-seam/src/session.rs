@@ -30,7 +30,7 @@ use muster_core::mirror::backend::{PaneId, Snapshot, TabId, WorkspaceId};
 use muster_core::mirror::{Change, Health, Mirror};
 use muster_core::names::{self, Mint, Names, PaneNames, TabNames};
 use muster_core::problems::{Problem, Problems, Severity};
-use muster_core::roster::{Roster, RosterTab, TabStep};
+use muster_core::roster::{Numbering, Roster, RosterTab, TabStep};
 use muster_herdr::subscription::{Notice, Subscription};
 use muster_herdr::{
     HerdrBackend, HerdrClient, HerdrPaneChannel, PaneControlChannel, PaneEnvironment, daemon,
@@ -225,7 +225,7 @@ pub(crate) fn set_daemon_config_path(path: &str) {
     *held = if path.is_empty() { None } else { Some((path.to_string(), String::new())) };
 }
 
-/// The two knobs, held for whatever asks about them next.
+/// The root knobs, held for whatever asks about them next.
 ///
 /// Beside [`BINDINGS`] and [`PANE_INPUT`], for the same reason: a resize arrives from a
 /// keystroke and a scroll from a wheel, and neither caller has a config file in hand.
@@ -862,6 +862,18 @@ pub(crate) struct Session {
     /// The same for tabs, on the same terms, and a second lock rather than one over both so
     /// that decoding a pane event never waits on a tab being named.
     tab_names: Arc<Mutex<TabNames>>,
+
+    /// The tab a numbered chord has just named, while `numbered_chords = "tab_then_pane"`.
+    ///
+    /// The whole of the prototype scheme's state, and it is here because on macOS a chord is
+    /// a menu item and a menu item's only way to say anything is to dispatch a request - so
+    /// this side is the only side that sees both presses. A flag in the shell would be
+    /// unreachable from a test, the corpus and the CLI alike.
+    ///
+    /// Advisory rather than authoritative: [`Session::numbering`] derives what is numbered
+    /// from this *and* the roster every time, so a tab that closed while it was armed reads
+    /// as disarmed rather than wedging the chords. Always `None` under the settled scheme.
+    armed: Option<TabKey>,
 }
 
 /// One pane's live search.
@@ -1336,6 +1348,15 @@ impl Session {
             |daemon| mirrors.get(daemon).map(|held| &**held),
             &view.showing(),
         )
+    }
+
+    /// What ⌘1 to ⌘9 name at this moment.
+    ///
+    /// The scheme is the config file's answer and the armed tab is this session's; putting
+    /// the two together is [`Numbering::of`]'s, so that the corpus is exercising the same
+    /// function the window runs on rather than a second copy of the same reasoning.
+    fn numbering(&self, roster: &Roster) -> Numbering {
+        Numbering::of(feel().numbered_chords, self.armed.as_ref(), roster)
     }
 
     /// The pane this window's keyboard feeds.
@@ -1825,30 +1846,131 @@ pub(crate) fn focus_tab(daemon: &DaemonId, tab: &TabId) -> Result<(), String> {
     focus(&daemon, &pane)
 }
 
-/// Puts the keyboard on the pane at a given place in the window's pane order.
+/// Puts the keyboard on whatever the numbered chord for `place` names.
 ///
-/// What ⌘1 to ⌘9 mean. A place past the last pane is refused by name rather than clamped to
-/// the last one: a chord that lands somewhere different every time a pane opens is worse than
-/// a chord that does nothing until there is a pane to do it to.
+/// What ⌘1 to ⌘9 mean, and under `numbered_chords = "panes"` that is a pane at a place in the
+/// window's pane order and nothing else happens. A place past the last one is refused by name
+/// rather than clamped to the last: a chord that lands somewhere different every time a pane
+/// opens is worse than a chord that does nothing until there is something to do it to.
 ///
-/// No `landing` step, unlike stepping tabs: a pane names itself, where a tab has to nominate
-/// one of its own. Reaching a tab nothing is showing still works, because [`focus`] surfaces
-/// the tab holding the pane - which is the argument for numbering panes rather than tabs.
+/// Under `tab_then_pane` the same request means the second press as readily as the first, and
+/// which one it is depends on what the press before it did. That is the prototype's whole
+/// cost, and it is paid here rather than in the shell because on macOS a menu item cannot hold
+/// two-stage state - the round trip into this side is the only place both presses meet.
+///
+/// **Reaching a tab acts immediately.** ⌘2 goes to the second tab there and then, landing
+/// through the same [`landing`] rule a click on a caption and `next_tab` use, so three ways of
+/// entering a tab agree about where you arrive. A chord that did nothing until the next one
+/// arrived would be indistinguishable from a dead key, and if the tab was all that was wanted
+/// you are already there.
+///
+/// No `landing` step for a pane, unlike a tab: a pane names itself, where a tab has to
+/// nominate one of its own. Reaching a tab nothing is showing still works either way, because
+/// [`focus`] surfaces the tab holding the pane.
 pub(crate) fn focus_pane_at(place: usize) -> Result<(), String> {
     let found = {
-        let session = poison::lock(&SESSION, "session");
+        let mut session = poison::lock(&SESSION, "session");
         let roster = session.roster(&session.view());
-        match roster.at(place) {
-            Some(pane) => Ok((pane.key.daemon.clone(), pane.key.pane.clone())),
-            None => Err(format!(
-                "this window holds {} panes, so there is no pane {place} to go to and the \
-                 keyboard stayed where it was.",
-                roster.panes().count()
-            )),
+        let numbering = session.numbering(&roster);
+        if let Some(landing) = roster.numbered(&numbering, place) {
+            let pane = landing.pane();
+            let found = (pane.key.daemon.clone(), pane.key.pane.clone());
+            // Set from the landing either way, so that a press onto a pane starts the next one
+            // over: three ⌘2s are the second tab, its second pane, and the second tab again.
+            session.armed = landing.named();
+            Ok(found)
+        } else {
+            session.armed = None;
+            Err(nothing_numbered(&roster, &numbering, place))
         }
     };
     let (daemon, pane) = found?;
     focus(&daemon, &pane)
+}
+
+/// Why a numbered chord reached nothing, said in the terms of whatever it was counting.
+///
+/// One refusal per branch rather than one for all three, because "this window holds 2 panes"
+/// in front of somebody whose ⌘9 was asking about tabs sends them looking in the wrong place.
+fn nothing_numbered(roster: &Roster, numbering: &Numbering, place: usize) -> String {
+    match numbering {
+        Numbering::Panes => format!(
+            "this window holds {} panes, so there is no pane {place} to go to and the keyboard \
+             stayed where it was.",
+            roster.panes().count()
+        ),
+        Numbering::Tabs => format!(
+            "this window holds {} tabs, so there is no tab {place} to go to and the keyboard \
+             stayed where it was. ⌘1 to ⌘9 are naming tabs because `numbered_chords` is \
+             `tab_then_pane`; under `panes` they would be naming panes.",
+            roster.tabs().count()
+        ),
+        Numbering::PanesIn(key) => {
+            let held = roster.tabs().find(|tab| &tab.key == key).map_or(0, |tab| tab.panes.len());
+            format!(
+                "{key} holds {held} panes, so there is no pane {place} in it and the keyboard \
+                 stayed where it was. This was the second press of a `tab_then_pane` chord, so \
+                 the number was counting inside that tab rather than down the whole window."
+            )
+        }
+    }
+}
+
+/// Forgets a tab a numbered chord had named, and says so on the way out.
+///
+/// Called for every request that changes anything, so that the second half of a `tab_then_pane`
+/// chord has to be the very next thing that happens. See [`crate::handler`] for the rule, and
+/// why it is one line there rather than a list of callers here.
+///
+/// Announces rather than only forgetting, because forgetting moves the numbers back onto the
+/// tabs and the sidebar is drawing them. Most of the requests that land here - a keystroke, a
+/// close, a drag - never publish, so an arm dropped silently would leave a list of numbers
+/// nothing can press. It runs at most once per armed chord: the second call finds nothing.
+pub(crate) fn disarm() {
+    let held = {
+        let mut session = poison::lock(&SESSION, "session");
+        session.armed.take().is_some()
+    };
+    if held {
+        announce_roster();
+    }
+}
+
+/// Says what exists and what reaches it, without settling anything else.
+///
+/// The narrow half of [`publish`], for the callers that have changed which rows carry numbers
+/// and nothing else. Going through `publish` would reconcile every daemon and save the
+/// composition on a keystroke, which is a lot of work to say that a number moved.
+pub(crate) fn announce_roster() {
+    let (roster, numbering) = {
+        let session = poison::lock(&SESSION, "session");
+        let roster = session.roster(&session.view());
+        let numbering = session.numbering(&roster);
+        (roster, numbering)
+    };
+    // The same line `publish` writes, because the question a run log has to answer about this
+    // is "which rows carried numbers, and when" - and half the answers arriving on a line that
+    // says nothing would make the log worse than no log for exactly the feature it is for.
+    log::info(
+        "roster.numbering",
+        fields! {
+            "numbering" => describe_numbering(&numbering),
+            "tabs" => roster.tabs().count().to_string(),
+            "panes" => roster.panes().count().to_string(),
+        },
+    );
+    ffi::emit(&Event {
+        payload: Some(event::Payload::RosterChanged(convert::roster(&roster, &numbering))),
+    });
+}
+
+/// One numbering, as a log line says it.
+fn describe_numbering(numbering: &Numbering) -> String {
+    match numbering {
+        Numbering::Panes => "panes".to_string(),
+        Numbering::Tabs => "tabs".to_string(),
+        Numbering::PanesIn(key) => format!("panes in {key}"),
+    }
 }
 
 /// Where the keyboard lands when a tab is shown.
@@ -1904,6 +2026,9 @@ pub(crate) fn focused_daemon() -> Option<DaemonId> {
 pub(crate) struct WindowNow {
     pub view: View,
     pub roster: Roster,
+    /// What the numbered chords name at this moment, so the answer carries the same numbers
+    /// the sidebar is drawing rather than leaving a reader to guess the scheme.
+    pub numbering: Numbering,
     /// Every pane, with the state the window would paint for it - which is not always the one
     /// the daemon reported: `done` is this window's answer rather than the daemon's, because a
     /// daemon cannot see which window has been looked at.
@@ -1919,6 +2044,7 @@ pub(crate) fn window() -> WindowNow {
     // needed reconciling has already published.
     let view = session.view();
     let roster = session.roster(&view);
+    let numbering = session.numbering(&roster);
 
     let mut agents = Vec::new();
     let mut daemons = Vec::new();
@@ -1932,7 +2058,7 @@ pub(crate) fn window() -> WindowNow {
         }
     }
 
-    WindowNow { view, roster, agents, daemons }
+    WindowNow { view, roster, numbering, agents, daemons }
 }
 
 /// Starts following every daemon a config file named.
@@ -2567,7 +2693,7 @@ fn publish() {
     // two are settled together rather than left to drift. `settled` is the panes that were
     // waiting to be noticed and have now been - re-announced below, after the shell has been
     // handed the arrangement they appear in.
-    let (view, roster, settled) = {
+    let (view, roster, numbering, settled) = {
         let mut session = poison::lock(&SESSION, "session");
         // Before the view is built, and over every daemon rather than whichever one prompted
         // this. Several paths change what is on screen without going near a reconcile:
@@ -2590,13 +2716,14 @@ fn publish() {
         }
         let view = session.view();
         let roster = session.roster(&view);
+        let numbering = session.numbering(&roster);
         let settled = session.attention.showing(view.showing());
         // Here because this is the moment composition is settled, and because everything that
         // changes it ends up here - so nothing has to remember to save.
         save(&session.composition, session.presentation, &session.font_sizes);
         session.forget_what_closed();
         save_names(&session.names, &session.tab_names);
-        (view, roster, settled)
+        (view, roster, numbering, settled)
     };
 
     // The shape, not the fact. "the view changed" is useless in a bug report and what it
@@ -2625,10 +2752,13 @@ fn publish() {
             "tabs_on_screen" => roster.tabs().filter(|tab| tab.on_screen).count().to_string(),
             "panes" => roster.panes().count().to_string(),
             "on_screen" => roster.panes().filter(|pane| pane.on_screen).count().to_string(),
+            "numbering" => describe_numbering(&numbering),
         },
     );
     ffi::emit(&Event { payload: Some(event::Payload::ViewChanged(convert::view(&view))) });
-    ffi::emit(&Event { payload: Some(event::Payload::RosterChanged(convert::roster(&roster))) });
+    ffi::emit(&Event {
+        payload: Some(event::Payload::RosterChanged(convert::roster(&roster, &numbering))),
+    });
 
     // After the view, so that a pane surfaced by this very publish has somewhere to be
     // painted before it is told it is no longer waiting on anyone.

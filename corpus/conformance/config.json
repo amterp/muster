@@ -514,6 +514,51 @@
       }
     },
     {
+      "name": "the prototype scheme is asked for by name",
+      "why": "`numbered_chords` decides what ⌘1 to ⌘9 reach, and the whole reason it exists is that both answers get to be lived with before one is chosen. So the file has to be able to say either out loud - a bool would have named only the departure from the default, and the default is the half with the argument written down.",
+      "given": {
+        "file": [
+          "numbered_chords = \"tab_then_pane\""
+        ]
+      },
+      "expect": {
+        "daemons": [],
+        "keymap": [],
+        "option_as_alt": "never",
+        "text": [],
+        "feel": [
+          "numbered_chords=tab_then_pane"
+        ]
+      }
+    },
+    {
+      "name": "the settled scheme written out is the same as leaving it out",
+      "why": "Somebody who tried the prototype and went back writes `panes` rather than deleting the line, and has to land exactly where a file that never mentioned it lands. This is also what pins that turning the option off is a return rather than a third state.",
+      "given": {
+        "file": [
+          "numbered_chords = \"panes\""
+        ]
+      },
+      "expect": {
+        "daemons": [],
+        "keymap": [],
+        "option_as_alt": "never",
+        "text": []
+      }
+    },
+    {
+      "name": "a numbering scheme Muster does not have is refused with the two that exist",
+      "why": "The near-miss is the likely mistake here as it is for `option_as_alt` - `tab-then-pane` and `tabs` are both things somebody would write - and a file that silently kept the old scheme would look like the prototype had been tried and found unremarkable.",
+      "given": {
+        "file": [
+          "numbered_chords = \"tabs\""
+        ]
+      },
+      "expect": {
+        "refused": "`numbered_chords` in the config file is \"tabs\", which is not a scheme ⌘1 to ⌘9 can be on, so none of the file was applied. It is one of `panes`, `tab_then_pane`: `panes` counts down the whole agent list, and `tab_then_pane` is a prototype where the first press picks a tab and the next picks a pane inside it."
+      }
+    },
+    {
       "name": "a step in points, which is the other unit and the other arithmetic",
       "why": "A cell is about 8 by 17 points, so `\"2c\"` moves a divider twice as far up and down as it does side to side, and four symmetric chords that travel visibly different distances is not what a hand expects. Points are what a nudge is felt in. Both units are read back out spelled the way they were written, which is what pins that Muster kept the distinction rather than converting one into the other at parse time - it cannot, because the size of a cell is not known here.",
       "given": {
@@ -820,7 +865,7 @@
         ]
       },
       "expect": {
-        "refused": "the config file has a key called \"divider_color\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: daemon, keymap, text, option_as_alt, resize_step, scroll_multiplier, pane_padding, scrollback_bytes, font, colors, cursor, shell."
+        "refused": "the config file has a key called \"divider_color\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: daemon, keymap, text, option_as_alt, resize_step, scroll_multiplier, numbered_chords, pane_padding, scrollback_bytes, font, colors, cursor, shell."
       }
     },
     {

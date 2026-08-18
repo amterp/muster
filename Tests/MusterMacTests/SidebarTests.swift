@@ -14,26 +14,33 @@ struct SidebarTests {
   /// The place is stated rather than counted here, for the same reason a tab's is: the core
   /// decides it, and a helper that numbered for itself would make these tests agree with a rule
   /// the shell does not follow. Defaults to one, since most cases here are about something else.
+  ///
+  /// The chord that reaches it defaults to its place, which is what the core sends under the
+  /// scheme Muster ships. A case about `numbered_chords = "tab_then_pane"` states it instead,
+  /// because that is the whole of what that scheme changes up here.
   private func pane(
-    _ daemon: String, _ id: String, place: Int = 1, label: String? = nil, subtitle: String = "",
-    givenName: String = "", onScreen: Bool = false
+    _ daemon: String, _ id: String, place: Int = 1, number: Int? = nil, label: String? = nil,
+    subtitle: String = "", givenName: String = "", onScreen: Bool = false
   ) -> Roster.Pane {
     Roster.Pane(
-      key: PaneKey(daemon: daemon, pane: id), place: place, label: label ?? id, subtitle: subtitle,
-      givenName: givenName, onScreen: onScreen)
+      key: PaneKey(daemon: daemon, pane: id), place: place, number: number ?? place,
+      label: label ?? id, subtitle: subtitle, givenName: givenName, onScreen: onScreen)
   }
 
   /// One tab, numbered as the core would have numbered it.
   ///
   /// The place is stated rather than counted here, because the core decides it - a helper that
   /// numbered for itself would make these tests agree with a rule the shell does not follow.
+  ///
+  /// No chord reaches it unless a case says one does: under the scheme Muster ships the
+  /// numbers are on the panes, and a tab carrying one would be two numberings in one list.
   private func tab(
-    _ daemon: String, _ id: String = "w1:t1", place: Int = 1, label: String? = nil,
-    onScreen: Bool = false, panes: [Roster.Pane]
+    _ daemon: String, _ id: String = "w1:t1", place: Int = 1, number: Int = 0,
+    label: String? = nil, onScreen: Bool = false, panes: [Roster.Pane]
   ) -> Roster.Tab {
     Roster.Tab(
-      key: TabKey(daemon: daemon, tab: id), place: place, label: label ?? id, onScreen: onScreen,
-      panes: panes)
+      key: TabKey(daemon: daemon, tab: id), place: place, number: number, label: label ?? id,
+      onScreen: onScreen, panes: panes)
   }
 
   @Test("each daemon's panes sit under a heading of their own")
@@ -166,7 +173,7 @@ struct SidebarTests {
     ])
     let rows = SidebarModel.rows(roster: roster, states: [:])
 
-    #expect(rows.map(\.kind) == [.daemon, .pane(place: 1)])
+    #expect(rows.map(\.kind) == [.daemon, .pane(number: 1)])
   }
 
   @Test("a second tab anywhere in the window gives every tab a caption")
@@ -196,9 +203,93 @@ struct SidebarTests {
 
     #expect(
       rows.map(\.kind) == [
-        .daemon, .tab, .pane(place: 1), .tab, .pane(place: 2), .daemon, .tab, .pane(place: 3),
+        .daemon, .tab(number: 0), .pane(number: 1), .tab(number: 0), .pane(number: 2),
+        .daemon, .tab(number: 0), .pane(number: 3),
       ])
-    #expect(rows.filter { $0.kind == .tab }.map(\.label) == ["one", "two", "three"])
+    #expect(rows.filter { $0.isTab }.map(\.label) == ["one", "two", "three"])
+  }
+
+  @Test("under the prototype the numbers sit on the tabs, and on no pane")
+  func theProtoypeNumbersTabsAtRest() {
+    // What `numbered_chords = "tab_then_pane"` looks like before anything is pressed. The
+    // point of drawing it at all is that a person can read what ⌘2 will do instead of
+    // remembering what they last pressed - and the way that stays honest is that only one
+    // kind of row carries a number at a time.
+    let roster = Roster(daemons: [
+      Roster.Daemon(
+        id: "local",
+        tabs: [
+          tab(
+            "local", "w1:t1", place: 1, number: 1, onScreen: true,
+            panes: [pane("local", "w1:p1", place: 1, number: 0)]),
+          tab(
+            "local", "w1:t2", place: 2, number: 2,
+            panes: [
+              pane("local", "w1:p2", place: 2, number: 0),
+              pane("local", "w1:p3", place: 3, number: 0),
+            ]),
+        ])
+    ])
+
+    let rows = SidebarModel.rows(roster: roster, states: [:])
+
+    #expect(
+      rows.map(\.kind) == [
+        .daemon, .tab(number: 1), .pane(number: 0), .tab(number: 2), .pane(number: 0),
+        .pane(number: 0),
+      ])
+  }
+
+  @Test("once a chord has named a tab, that tab's panes are the numbered rows")
+  func theProtoypeNumbersOneTabsPanes() {
+    // The armed half, which is the same list a moment later: the numbers have moved inside
+    // the tab that was named and left every other row without one. Nothing here decides that -
+    // the core sends which row carries what, and this is the assertion that the list draws the
+    // answer it was given rather than one of its own.
+    let roster = Roster(daemons: [
+      Roster.Daemon(
+        id: "local",
+        tabs: [
+          tab(
+            "local", "w1:t1", place: 1, number: 0,
+            panes: [pane("local", "w1:p1", place: 1, number: 0)]),
+          tab(
+            "local", "w1:t2", place: 2, number: 0, onScreen: true,
+            panes: [
+              pane("local", "w1:p2", place: 2, number: 1),
+              pane("local", "w1:p3", place: 3, number: 2),
+            ]),
+        ])
+    ])
+
+    let rows = SidebarModel.rows(roster: roster, states: [:])
+
+    #expect(
+      rows.map(\.kind) == [
+        .daemon, .tab(number: 0), .pane(number: 0), .tab(number: 0), .pane(number: 1),
+        .pane(number: 2),
+      ])
+  }
+
+  @Test("a window of one tab draws its caption when a chord names it")
+  func oneTabStillShowsACaptionWhenItIsNumbered() {
+    // The rule that a single tab needs no caption is right until a chord names the tab, and
+    // then it hides the only numbered row in the window - so ⌘1 would be a key with nothing
+    // on screen to say what it does. This is the whole reason that rule has an exception, and
+    // a window of one tab is the common case rather than an edge.
+    let roster = Roster(daemons: [
+      Roster.Daemon(
+        id: "local",
+        tabs: [
+          tab(
+            "local", "w1:t1", place: 1, number: 1, onScreen: true,
+            panes: [pane("local", "w1:p1", place: 1, number: 0)])
+        ])
+    ])
+
+    let rows = SidebarModel.rows(roster: roster, states: [:])
+
+    #expect(rows.map(\.kind) == [.daemon, .tab(number: 1), .pane(number: 0)])
   }
 
   @Test("a row can only be dropped on a pane row belonging to the same daemon")
@@ -228,7 +319,7 @@ struct SidebarTests {
     let sameDaemon = try #require(rows.first { $0.pane == PaneKey(daemon: "local", pane: "w1:p2") })
     let otherDaemon = try #require(
       rows.first { $0.pane == PaneKey(daemon: "devenv", pane: "w1:p1") })
-    let caption = try #require(rows.first { $0.kind == .tab })
+    let caption = try #require(rows.first { $0.isTab })
     let heading = try #require(rows.first { $0.isHeader })
 
     #expect(SidebarModel.canArrange(dragged, onto: sameDaemon))
@@ -277,7 +368,7 @@ struct SidebarTests {
 
     #expect(
       rows.filter { $0.isPane }.map(\.kind)
-        == [.pane(place: 1), .pane(place: 2), .pane(place: 3)])
+        == [.pane(number: 1), .pane(number: 2), .pane(number: 3)])
   }
 
   @Test("a tab caption says whether a region is showing it")
@@ -456,7 +547,7 @@ struct SidebarTests {
     ])
 
     let rows = SidebarModel.rows(roster: roster, states: [:])
-    #expect(rows.first { $0.kind == .tab }?.givenName == "release")
+    #expect(rows.first { $0.isTab }?.givenName == "release")
     #expect(rows.first { $0.pane?.pane == "w1:p1" }?.givenName == "🔥 payments spike")
     #expect(rows.first { $0.pane?.pane == "w1:p2" }?.givenName == "")
   }

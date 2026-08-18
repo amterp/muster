@@ -52,6 +52,25 @@ fn handle(request: Request) -> Response {
         );
     };
 
+    // A `tab_then_pane` chord is armed by one request and spent by the next, so the rule that
+    // ends it is stated here rather than at every caller that could: **a request that only
+    // reads keeps it, and anything that changes something clears it.** So the second press
+    // uses it, and a keystroke into a pane, an Escape, another action, a click or a divider
+    // drag all take it away. One rule a person can hold, in the one place every request
+    // passes through - a list of callers would be a list somebody eventually forgets to add
+    // to, and the forgotten one is a chord that fires two gestures later.
+    //
+    // A request added after this defaults to clearing, which is the safe direction: an
+    // over-eager disarm costs a chord, and a stuck one is a window whose numbers lie.
+    //
+    // It costs one uncontended lock on every request, including each keystroke, and that is
+    // affordable next to the protobuf decode two lines above it - which allocates, on the same
+    // path, for every one of them. Skipping it when nothing can be armed would mean reading
+    // whether anything is, which is the same lock.
+    if !only_reads(&payload) {
+        session::disarm();
+    }
+
     match payload {
         request::Payload::Startup(startup) => start(&startup),
         request::Payload::LogRecord(record) => write(record),
@@ -137,6 +156,26 @@ fn handle(request: Request) -> Response {
             Response::ok()
         }
     }
+}
+
+/// Whether a request only asks a question, and so leaves an armed numbered chord alone.
+///
+/// Deliberately a short allowlist with everything else falling through: see the rule at the
+/// top of [`handle`]. Two of these matter more than they look. The shell logs through the core,
+/// often, and a run log that disarmed the chords would make the prototype work only in a build
+/// nobody was watching. And `FocusPaneAt` is the second press itself - the one request whose
+/// whole job is to spend what the first one armed.
+fn only_reads(payload: &request::Payload) -> bool {
+    matches!(
+        payload,
+        request::Payload::LogRecord(_)
+            | request::Payload::ReadBindings(_)
+            | request::Payload::ReadWindow(_)
+            | request::Payload::ReadAppearance(_)
+            | request::Payload::ReadWindowFrame(_)
+            | request::Payload::ReportFontFamily(_)
+            | request::Payload::FocusPaneAt(_)
+    )
 }
 
 /// Looks for something in a pane, and puts the first match on screen.
@@ -827,7 +866,7 @@ fn read_window() -> Response {
     Response {
         payload: Some(response::Payload::Window(proto::Window {
             view: Some(convert::view(&now.view)),
-            roster: Some(convert::roster(&now.roster)),
+            roster: Some(convert::roster(&now.roster, &now.numbering)),
             panes: now
                 .agents
                 .iter()
@@ -1330,6 +1369,17 @@ fn reload_config() -> Response {
     );
     announce_bindings();
     announce_appearance();
+    // The roster too, because `numbered_chords` decides which rows carry a number and the
+    // sidebar is drawing them. Without this, saving a file that changes the scheme moves what
+    // the chords do and leaves the numbers beside the rows saying what they used to do - which
+    // is the one failure the numbers are drawn to prevent.
+    //
+    // Announced here rather than left to the next publish, and the difference is the whole
+    // point: a reload asks the daemon to re-read its own config, so it says something shortly
+    // afterwards and the roster is republished anyway. The numbers would come right either
+    // way - by luck, a moment later. What has to be true is that they are right when the save
+    // returns.
+    session::announce_roster();
     Response::ok()
 }
 
