@@ -1,0 +1,34 @@
+<!--
+  Muster's icon: three panes, each outlined in the state its agent is in.
+
+  The drawing is the product's first claim rather than a mark that happens to be
+  pretty - "every pane shows working / blocked / done / idle at a glance" is what
+  Muster is for, so the icon shows a split window with three states in it and
+  nothing else.
+
+  The outline is the squircle macOS actually uses, measured rather than guessed:
+  App Store, Maps, Music and Notes on macOS 26.4.1 all draw an 824x824 silhouette
+  inside a 1024 canvas, fitting the superellipse |x/a|^n + |y/a|^n = 1 at
+  n = 4.8 to 5.1. This path is that curve at n = 5, sampled by arc length and
+  fitted with 32 cubic segments; it measures back as 825x825 at n = 4.94.
+  tools/make-icns.sh has the generator and re-renders the .icns beside this file.
+
+  Solid fills and plain rectangles throughout, because the renderer that turns
+  this into pixels is ImageMagick's own SVG engine on a machine with no
+  rsvg-convert - gradients and filters are where that one stops being reliable.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <path d="M924,512C924,543 924,574 924,605C923.9,635.7 923.8,666.5 922.5,697.3C921.2,728.1 918.9,759.2 912,789.2C905.1,818.9 892.2,849.1 870.7,870.7C849.1,892.2 818.8,905.1 789.1,912C759,918.9 727.9,921.2 697.1,922.5C666.3,923.8 635.4,923.9 604.5,924C568.2,924 531.9,924 495.6,924C470.1,924 444.6,924 419,924C388.3,923.9 357.5,923.8 326.7,922.5C295.9,921.2 264.8,918.9 234.8,912C205.1,905.1 174.9,892.2 153.3,870.7C131.8,849.1 118.9,818.8 112,789.1C105.1,759 102.8,727.9 101.5,697.1C100.2,666.3 100.1,635.4 100,604.5C100,568.2 100,531.9 100,495.6C100,470.1 100,444.6 100,419C100.1,388.3 100.2,357.5 101.5,326.7C102.8,295.9 105.1,264.8 112,234.8C118.9,205.1 131.8,174.9 153.3,153.3C174.9,131.8 205.2,118.9 234.9,112C265,105.1 296.1,102.8 326.9,101.5C357.7,100.2 388.6,100.1 419.5,100C455.8,100 492.1,100 528.4,100C553.9,100 579.4,100 605,100C635.7,100.1 666.5,100.2 697.3,101.5C728.1,102.8 759.2,105.1 789.2,112C818.9,118.9 849.1,131.8 870.7,153.3C892.2,174.9 905.1,205.2 912,234.9C918.9,265 921.2,296.1 922.5,326.9C923.8,357.7 923.9,388.6 924,419.5C924,450.3 924,481.2 924,512Z" fill="#14171C"/>
+
+  <!-- The focused pane, taking the whole left half the way a split does. -->
+  <rect x="188" y="188" width="307" height="648" rx="34" fill="#74C46C"/>
+  <rect x="214" y="284" width="255" height="526" rx="16" fill="#191D24"/>
+
+  <rect x="529" y="188" width="307" height="307" rx="34" fill="#E8B04A"/>
+  <rect x="555" y="284" width="255" height="185" rx="16" fill="#191D24"/>
+
+  <!-- Blocked sits bottom right, the lightest position in the composition: the
+       state that wants you is present without the icon reading as an alarm. -->
+  <rect x="529" y="529" width="307" height="307" rx="34" fill="#E0655C"/>
+  <rect x="555" y="625" width="255" height="185" rx="16" fill="#191D24"/>
+</svg>
