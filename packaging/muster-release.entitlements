@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  What a release build asks the hardened runtime for, and nothing else.
+
+  The hardened runtime is not optional here - notarization refuses a bundle
+  without it - and it takes several things away by default. Most of them Muster
+  never used: it sets no DYLD_ variables, loads no library it did not sign
+  itself, and generates no executable memory, so library validation, the dyld
+  variables and the JIT entitlements are all absent because nothing needs them
+  rather than because they were forgotten.
+
+  The one that is here is the one a terminal cannot do without. Sending an Apple
+  event from a hardened process requires it, and while the process that runs
+  `osascript` in a pane is a child of the daemon rather than Muster, macOS
+  charges a protected request to the responsible app - which is Muster, measured
+  in docs/observations/macos-26.4.1.md, and the reason the Info.plist carries an
+  NSAppleEventsUsageDescription at all. Ghostty's own Developer ID build asks for
+  the same thing, which is the closest thing to evidence available for a
+  question whose failure mode is a program dying in somebody else's pane.
+
+  Deliberately not here: get-task-allow. That is what SwiftPM signs a debug build
+  with so a debugger can attach, and it is the direct contradiction of the
+  hardened runtime - a bundle carrying both is refused. The local ad-hoc path in
+  `dev` keeps it; this one cannot.
+-->
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.automation.apple-events</key>
+  <true/>
+</dict>
+</plist>

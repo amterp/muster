@@ -18,6 +18,7 @@ args:
     clean c bool   # Delete build artifacts.
     proto bool     # Regenerate the seam's Swift types, whether or not the schema changed.
     bundle bool    # Assemble muster.app around the built binary. Not in the gate.
+    notarize bool  # Sign for release, send it to Apple, and staple. Needs credentials; not in the gate.
     contract bool  # Run the app against a real herdr. Needs a GUI session; not in the gate.
     ssh bool       # Run the remote tier against the devenv container. Needs docker; not in the gate.
     corpus_linux bool  # Diff the recorded corpus against the container's Linux daemon. Docker and python3 only.
@@ -50,6 +51,14 @@ HERDR_RELEASES = "https://github.com/herdrdev/herdr/releases/download"
 BUNDLE = ".build/muster.app"
 // The app's identity to the OS, and what a notification permission grant will attach to.
 BUNDLE_ID = "com.amterp.muster"
+// What the bundle is called once it leaves this machine. `.build/muster.app` is lowercase
+// because it is a path somebody types; nobody types the path of an app they downloaded, and
+// what a person sees in /Applications should be the name the app calls itself.
+RELEASE_APP = "Muster.app"
+ICNS = "packaging/Muster.icns"
+ENTITLEMENTS = "packaging/muster-release.entitlements"
+THIRD_PARTY = "licenses/THIRD-PARTY.md"
+GHOSTTY_LICENSES = "licenses/GHOSTTY-EMBEDDED.md"
 PROTO = "proto/muster.proto"
 PROTO_OUT = "Sources/MusterMac/Generated"
 // Gitignored, beside the code it describes: the hash of the schema that produced it. The
@@ -521,6 +530,16 @@ fn build_bundle():
     // stays offline and so the text cannot silently stop matching what ships.
     $`cp licenses/herdr/LICENSE {contents}/Resources/LICENSE-herdr.txt`
     $`cp NOTICE {contents}/Resources/NOTICE.txt`
+    // The Rust crates and swift-protobuf are linked into the binaries above rather than
+    // copied beside them, so nothing else in this directory tells you they are here. The
+    // second file is the same problem one layer down: libghostty is MIT, and the archive it
+    // links in carries ten other projects' object code with it, measured rather than assumed.
+    $`cp {THIRD_PARTY} {contents}/Resources/THIRD-PARTY.md`
+    $`cp {GHOSTTY_LICENSES} {contents}/Resources/GHOSTTY-EMBEDDED.md`
+
+    // Rendered from packaging/icon.svg and committed, so a bundle needs no image toolchain.
+    // tools/make-icns.sh is what regenerates it.
+    $`cp {ICNS} {contents}/Resources/Muster.icns`
 
     write_info_plist(contents)
 
@@ -552,6 +571,7 @@ fn write_info_plist(contents):
       <key>CFBundleName</key><string>Muster</string>
       <key>CFBundleDisplayName</key><string>Muster</string>
       <key>CFBundleExecutable</key><string>muster</string>
+      <key>CFBundleIconFile</key><string>Muster</string>
       <key>CFBundleIdentifier</key><string>{BUNDLE_ID}</string>
       <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
       <key>CFBundlePackageType</key><string>APPL</string>
@@ -629,12 +649,51 @@ fn workspace_version():
         exit(1)
     return version
 
-// Ad-hoc, inner code first.
+// Inner code first, and with whose name on it depending on where this build is going.
 //
-// Not a security measure - an ad-hoc signature asserts nothing about who built this. It is
-// what macOS requires before it will run a Mach-O at all, and everything here has just been
-// edited or copied out from under its old signature.
+// MUSTER_SIGN_IDENTITY unset is the local build and the default, and it is unchanged: ad-hoc,
+// which is not a security measure - it asserts nothing about who built this. It is what macOS
+// requires before it will run a Mach-O at all, and everything here has just been edited or
+// copied out from under its old signature.
+//
+// Set, it names a Developer ID and this is a build somebody else will run. Beyond Gatekeeper
+// that buys a thing worth having: an ad-hoc signature is keyed by cdhash, so every rebuild is
+// a new identity to TCC and a permission somebody granted silently stops applying - measured,
+// docs/observations/macos-26.4.1.md. A Developer ID is keyed by team and bundle id, so a grant
+// survives an upgrade.
+//
+// The override is an environment variable rather than a flag, following MUSTER_HERDR: a
+// signing identity is a value and every flag here is a bool, and the run says which it used.
 fn sign_bundle(swift_bin, contents):
+    identity = get_env("MUSTER_SIGN_IDENTITY")
+    if identity == "":
+        sign_ad_hoc(swift_bin)
+        return
+
+    print(dim("signing with {identity}"))
+    // --options runtime everywhere, because notarization refuses a bundle in which any nested
+    // executable lacks the hardened runtime - and --timestamp because a signature without one
+    // stops verifying the day the certificate expires rather than outliving it.
+    inner = [
+        "{contents}/Frameworks/libghostty-vt.dylib",
+        "{contents}/Frameworks/libmuster.dylib",
+        "{contents}/MacOS/muster-bridge",
+        "{contents}/MacOS/muster-cli",
+        // herdr is somebody else's binary, redistributed unmodified. Re-signing it with our
+        // own identity is what nesting it inside a signed bundle requires, and changes nothing
+        // about whose software it is - NOTICE and Resources/LICENSE-herdr.txt say that.
+        "{contents}/MacOS/herdr",
+    ]
+    for path in inner:
+        $`codesign -f -s {identity} --options runtime --timestamp {path}`
+    $`codesign -f -s {identity} --options runtime --timestamp --entitlements {ENTITLEMENTS} {BUNDLE}`
+
+    // Asked of the signature rather than assumed of the commands, because every failure mode
+    // here is one that produces a bundle that launches on this machine and nowhere else.
+    $`codesign --verify --deep --strict --verbose=2 {BUNDLE}`
+
+fn sign_ad_hoc(swift_bin):
+    contents = "{BUNDLE}/Contents"
     $`codesign -f -s - {contents}/Frameworks/libghostty-vt.dylib`
     $`codesign -f -s - {contents}/Frameworks/libmuster.dylib`
     $`codesign -f -s - {contents}/MacOS/muster-bridge`
@@ -642,12 +701,183 @@ fn sign_bundle(swift_bin, contents):
     $`codesign -f -s - {contents}/MacOS/herdr`
 
     // The entitlement SwiftPM signs a debug build with: it is what lets a debugger attach,
-    // and re-signing without it would make the bundle the one build nobody can debug.
+    // and re-signing without it would make the bundle the one build nobody can debug. It is
+    // also why the release path above cannot simply reuse this one - get-task-allow and the
+    // hardened runtime are the two halves of a contradiction, and notarization refuses it.
     entitlements = "{swift_bin}/muster-entitlement.plist"
     if get_path(entitlements).exists:
         $`codesign -f -s - --entitlements {entitlements} {BUNDLE}`
     else:
         $`codesign -f -s - {BUNDLE}`
+
+// Sends the signed bundle to Apple, waits for the answer, and staples it.
+//
+// Stapling is the half people forget and the half that matters on the machine that
+// downloads it: notarization alone means Gatekeeper has to ask Apple at first launch, so a
+// laptop with no network shows the dialog that says the app is damaged. A stapled ticket
+// travels inside the bundle and needs nobody.
+//
+// Zipped twice on purpose. The first archive is only transport - the ticket is stapled into
+// the .app and not into the archive that carried it there - so the one that gets published
+// has to be built afterwards, from the stapled bundle.
+//
+// Several of the details below are taken from ~/src/bep's release script rather than worked
+// out here, and are marked where they are not obvious.
+fn notarize_bundle():
+    // The cask this feeds declares `depends_on arch: :arm64`, so producing the artifact
+    // anywhere else would ship an x86_64 build under an arm64 name to people whose machines
+    // cannot run it - and nothing downstream would notice.
+    stdout = $`uname -m`
+    if stdout.trim() != "arm64":
+        print_err(red("A release is built on Apple Silicon, and this machine is {stdout.trim()}."))
+        print_err("Impact: the artifact would be x86_64 while the cask promises arm64, so brew")
+        print_err("would install an app that cannot launch. Build the release on an arm64")
+        print_err("machine - .github/workflows/release.yml runs on macos-26, which is one.")
+        exit(1)
+
+    check_release_signature()
+
+    version = workspace_version()
+    staging = ".build/release"
+    app = "{staging}/{RELEASE_APP}"
+    archive = ".build/Muster-{version}-arm64.zip"
+    transport = "{staging}/notarize.zip"
+
+    $`rm -rf {staging} {archive} && mkdir -p {staging}`
+    // ditto rather than cp throughout: it is the one copier that carries extended attributes
+    // and resource forks across, and a signature travels in those. A cp'd bundle verifies on
+    // this machine and fails on the one that unzipped it.
+    $`ditto {BUNDLE} {app}`
+    $`ditto -c -k --keepParent {app} {transport}`
+
+    // Two credential shapes, spelled out at each call site rather than built into a
+    // variable: Rad quotes an interpolated value as one shell word, so a variable holding
+    // `--key x --key-id y` arrives as a single unreadable flag.
+    profile, key, key_id, issuer = notary_credentials()
+    print(dim("submitting to Apple - this usually takes a few minutes"))
+    if profile != "":
+        stdout = $`xcrun notarytool submit {transport} --keychain-profile {profile} --wait --timeout 45m --output-format json`
+    else:
+        stdout = $`xcrun notarytool submit {transport} --key {key} --key-id {key_id} --issuer {issuer} --wait --timeout 45m --output-format json`
+    judge_notarization(stdout, profile, key, key_id, issuer)
+
+    $`xcrun stapler staple {app}` catch:
+        // bep: error 65 is the ticket not having reached Apple's CDN yet, which is a wait
+        // rather than a refusal.
+        print(dim("the ticket has not propagated yet - waiting and trying again"))
+        sleep(15)
+        $`xcrun stapler staple {app}`
+
+    $`xcrun stapler validate {app}`
+    // What a person's machine will actually ask, asked here instead. Anything short of
+    // "accepted" means the artifact is not ready to publish, whatever the steps above said.
+    $`spctl -a -vv -t exec {app}`
+
+    $`rm -f {transport} && ditto -c -k --keepParent {app} {archive}`
+    stdout = $`shasum -a 256 {archive}`
+    print("notarized {archive}")
+    print("sha256 {stdout.split(" ")[0]}  - this is what the Homebrew cask needs")
+
+// notarytool's exit code is not the verdict.
+//
+// bep learned this the expensive way: it has historically exited 0 on a rejection, so the
+// status in the payload is the answer and the exit code is decoration. The two failures are
+// also different questions - a submission with no verdict is still queued on Apple's side,
+// and telling somebody their build was rejected when it is merely slow sends them looking
+// for a defect that is not there. A first submission from a new account can take 20 minutes.
+fn judge_notarization(stdout, profile, key, key_id, issuer):
+    result = parse_json(stdout)
+    submission = result.id ?? "unknown"
+    status = result.status ?? ""
+
+    if status == "":
+        print_err(red("Apple has not returned a verdict yet, so nothing was stapled."))
+        print_err("Impact: the bundle is signed but not shippable - and this is a wait, not a")
+        print_err("rejection. The submission is still queued. Check on it with:")
+        print_err("  xcrun notarytool info {submission} <the credentials you just used>")
+        print_err("Once it says Accepted, run ./dev --bundle --notarize again.")
+        exit(1)
+
+    if status != "Accepted":
+        print_err(red("Apple returned {status} for submission {submission}."))
+        print_err("Impact: Gatekeeper will refuse this build on every machine but this one.")
+        print_err("The log below says which binary and why. The usual causes are a nested")
+        print_err("binary signed without --options runtime, a signature with no secure")
+        print_err("timestamp, or an ad-hoc signature that got through.")
+        if profile != "":
+            $`xcrun notarytool log {submission} --keychain-profile {profile}`
+        else:
+            $`xcrun notarytool log {submission} --key {key} --key-id {key_id} --issuer {issuer}`
+        exit(1)
+
+// Asked of the bundle before Apple is, because every one of these comes back as a rejection
+// twenty minutes later otherwise. get-task-allow is the sharp one: it means MUSTER_SIGN_IDENTITY
+// was unset and this is the local ad-hoc bundle, which looks identical from the outside.
+fn check_release_signature():
+    stdout = $`codesign -d --entitlements - --xml {BUNDLE} 2>/dev/null`
+    if stdout.count("get-task-allow") > 0:
+        print_err(red("This bundle carries get-task-allow, so it was signed for debugging."))
+        print_err("Impact: notarization refuses it, and it would take twenty minutes to say so.")
+        print_err("Set MUSTER_SIGN_IDENTITY to a Developer ID and assemble it again:")
+        print_err("  MUSTER_SIGN_IDENTITY=\"Developer ID Application: ...\" ./dev --bundle --notarize")
+        exit(1)
+
+    stdout = $`codesign -dvvv {BUNDLE} 2>&1`
+    // bep: match the flag's name rather than its hex, because the numeric value legitimately
+    // changes as other signing flags are set beside it.
+    for needle in ["Authority=Developer ID Application", "(runtime)", "Timestamp="]:
+        if stdout.count(needle) == 0:
+            print_err(red("The bundle's signature is missing: {needle}"))
+            print_err("Impact: Apple rejects it, so nothing ships. sign_bundle in this script is")
+            print_err("what applies all three - check that MUSTER_SIGN_IDENTITY named a Developer")
+            print_err("ID Application identity rather than an Apple Development one.")
+            exit(1)
+
+// Credentials, in whichever of the two shapes this machine has.
+//
+// A keychain profile locally, because that is what `xcrun notarytool store-credentials`
+// leaves behind and nobody should keep an App Store Connect private key lying on disk to
+// notarize their own build. CI has no keychain worth storing one in - the login keychain on
+// a runner is locked and nobody is there to unlock it - so the workflow hands over the key
+// file itself and this returns that instead.
+//
+// Returns the profile name and three empty strings, or an empty profile and the three parts
+// of a key.
+fn notary_credentials():
+    key = get_env("MUSTER_NOTARY_KEY")
+    if key != "":
+        key_id = require_env("MUSTER_NOTARY_KEY_ID", "the App Store Connect key's ID")
+        issuer = require_env("MUSTER_NOTARY_ISSUER", "your App Store Connect issuer UUID")
+        return ["", key, key_id, issuer]
+
+    profile = get_env("MUSTER_NOTARY_PROFILE")
+    if profile == "":
+        profile = "muster-notary"
+
+    // Asked before the build is zipped, so a missing credential costs a second rather than
+    // the minutes it takes to get here. Captured rather than announced: it answers with the
+    // account's whole submission history, which is not what somebody asked to see.
+    stdout, stderr, code = quiet $`xcrun notarytool history --keychain-profile {profile}` catch:
+        print_err(red("No notarytool credentials are stored under the profile {profile}."))
+        print_err("Impact: the bundle is signed but cannot be notarized, so Gatekeeper will")
+        print_err("refuse it on every machine but this one. Store an App Store Connect API key")
+        print_err("once with:")
+        print_err("  xcrun notarytool store-credentials {profile} --key <p8> --key-id <id> --issuer <uuid>")
+        print_err("Or name a profile you already have: MUSTER_NOTARY_PROFILE=<name>")
+        exit(1)
+    return [profile, "", "", ""]
+
+// A missing credential is a sentence rather than whatever the tool three lines down would
+// have said about a flag it was handed empty.
+fn require_env(name, what):
+    value = get_env(name)
+    if value == "":
+        print_err(red("{name} is not set, so this build cannot be notarized."))
+        print_err("Impact: the bundle is signed but Gatekeeper will still refuse it elsewhere.")
+        print_err("Set it to {what}. In CI these come from repository secrets; see")
+        print_err(".github/workflows/release.yml for the whole set.")
+        exit(1)
+    return value
 
 // The seam's types are generated on both sides and committed on neither, so a checkout
 // cannot hold a shell and a core that disagree - it holds neither until something builds
@@ -981,7 +1211,13 @@ if proto:
 if bundle:
     build = true
 
-if not (deps or build or test or lint or format or clean or bundle or contract or ssh or corpus_linux or perf or latency or doctor):
+// And nothing to notarize until a bundle exists. Assembling one is also where the Developer
+// ID signature gets applied, so the two are one act rather than two that happen to run in
+// order - notarizing yesterday's ad-hoc bundle is a failure with a confusing message.
+if notarize:
+    bundle = true
+
+if not (deps or build or test or lint or format or clean or bundle or notarize or contract or ssh or corpus_linux or perf or latency or doctor):
     deps = true
     build = true
     test = true
@@ -1061,6 +1297,10 @@ if bundle:
     announce("bundle")
     build_bundle()
 
+if notarize:
+    announce("notarize")
+    notarize_bundle()
+
 // Clippy is a compile, so it cannot move up with the rest of the style checks - but it
 // goes before the suite rather than after it. Which lints are on is declared in Cargo.toml,
 // so that cargo, rust-analyzer and this all judge the code the same way; the gate's job is
@@ -1082,6 +1322,17 @@ if test:
     // and no driver can catch that, since the check is about the file it never opened.
     stdout, stderr, code = $`python3 tools/corpus-lint.py` catch:
         print_err(stdout.trim())
+        print_err(stderr.trim())
+        exit(1)
+    print(dim(stdout.trim()))
+
+    // Beside the corpus check because it is the same kind of claim: a file checked in to
+    // describe something, which nothing else notices has stopped describing it. The thing
+    // here is what the bundle redistributes, and a dependency arrives inside a change about
+    // something else entirely - so nobody reviewing that change is thinking about licenses.
+    // It reads the registry cargo already filled during the build above, so it is offline.
+    stdout, stderr, code = $`python3 tools/licenses.py --check` catch:
+        print_err(red("The bundle's attribution no longer matches what is in it."))
         print_err(stderr.trim())
         exit(1)
     print(dim(stdout.trim()))

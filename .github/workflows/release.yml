@@ -1,0 +1,254 @@
+# Muster's release, on a version tag.
+#
+# One job, and the same shape as the gate: everything above the last two steps
+# exists only to put a toolchain or a credential where `./dev` expects to find
+# one. What a release actually *is* lives in `./dev --bundle --notarize`, so a
+# person holding the certificate can produce the same artifact on their own
+# machine and find out it works before a tag exists.
+#
+# The gate does not run here. A tag points at a commit that has already been
+# through `gate.yml` on its way to main, and re-running it would mean a release
+# waits on a suite that has already answered - while a tag on a commit that
+# never passed is a mistake this workflow cannot fix anyway.
+#
+# Apple Silicon only, which is a decision rather than an omission: building
+# universal would mean cross-building libghostty under Zig for x86_64, and the
+# Homebrew cask declares `depends_on arch: :arm64` so an Intel Mac is told no
+# by brew rather than by a crash. `./dev --notarize` refuses to run anywhere but
+# arm64 for the same reason.
+#
+# Repository secrets this needs, all of them under Settings -> Secrets:
+#
+#   MACOS_CERT_P12          Developer ID Application certificate and private key,
+#                           exported from Keychain Access as .p12 and base64'd:
+#                           `base64 -i cert.p12 | pbcopy`
+#   MACOS_CERT_PASSWORD     the password set on that export
+#   MACOS_KEYCHAIN_PASSWORD any string; it locks the throwaway keychain below
+#   MACOS_SIGN_IDENTITY     the identity's full name, e.g.
+#                           "Developer ID Application: Alexander Terp (CV4835A2BN)"
+#   APPLE_NOTARY_KEY        the App Store Connect .p8 private key, base64'd
+#   APPLE_NOTARY_KEY_ID     that key's ID
+#   APPLE_NOTARY_ISSUER_ID  the issuer UUID from App Store Connect
+#
+# Signing credentials come from these and never from a local keychain, which is
+# what makes the release reproducible by somebody who is not the author. Running
+# the same thing on your own machine is the other way round: store the App Store
+# Connect key once with `xcrun notarytool store-credentials muster-notary`, and
+# `./dev --notarize` finds it without a key file existing anywhere. Set
+# MUSTER_NOTARY_PROFILE to use a profile under a different name.
+
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+# A tag is a fixed point, so two runs of one tag are two attempts to publish the
+# same release. Letting the second cancel the first is safer than racing.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    # Pinned rather than macos-latest, for the reason gate.yml pins it: the image
+    # chooses the Xcode and so the Swift. It is also an arm64 image, which is what
+    # makes this the right machine to build an Apple Silicon release on.
+    runs-on: macos-26
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # First, because everything after it is wasted if the answer is no - and
+      # because the failure it catches is silent otherwise. write_info_plist
+      # stamps CFBundleShortVersionString from Cargo.toml, so a v0.2.0 tag on a
+      # 0.1.0 workspace ships an app that reports the old version: Launch
+      # Services cannot tell an upgrade from a downgrade, and the Homebrew cask
+      # would name a version the app denies having.
+      - name: Check the tag against the workspace version
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          version=$(sed -n '/^\[workspace\.package\]/,$ s/^version *= *"\(.*\)"/\1/p' Cargo.toml | head -1)
+          echo "tag=$tag workspace=$version"
+          if [ "$tag" != "$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match Cargo.toml's [workspace.package] version $version."
+            echo "Impact: the app would report $version while the release and the cask call it $tag,"
+            echo "so an upgrade cannot be told from a downgrade and 'brew upgrade' would loop."
+            echo "Either bump the workspace version and re-tag, or delete the tag and tag the"
+            echo "commit that carries the version you meant."
+            exit 1
+          fi
+
+      - name: Check the Swift toolchain
+        run: |
+          set -euo pipefail
+          swift --version
+          required=6.2
+          found=$(swift --version 2>&1 | sed -n 's/.*Swift version \([0-9][0-9.]*\).*/\1/p' | head -1)
+          if [ -z "$found" ]; then
+            echo "::error::Could not read a Swift version out of 'swift --version'."
+            echo "Impact: the shell cannot be built, so there is nothing to release."
+            exit 1
+          fi
+          if [ "$(printf '%s\n%s\n' "$required" "$found" | sort -V | head -1)" != "$required" ]; then
+            echo "::error::Package.swift declares swift-tools-version $required; this runner has $found."
+            echo "Impact: SwiftPM refuses the manifest, so no binary is produced and no release"
+            echo "is published. Select a newer Xcode with xcode-select, or move the runs-on label."
+            exit 1
+          fi
+
+      # Same pin, same reason, same code as the gate: ./dev is written in Rad, so
+      # it is already running by the time it could fetch its own interpreter.
+      - name: Install the pinned Rad
+        run: |
+          set -euo pipefail
+          version=$(python3 -c 'import json; print(json.load(open("deps/rad.pin"))["version"])')
+          case "$(uname -m)" in
+            arm64|aarch64) arch=arm64 ;;
+            *) arch=amd64 ;;
+          esac
+          asset="rad_darwin_${arch}.tar.gz"
+          want=$(python3 -c "import json; print(json.load(open('deps/rad.pin'))['checksums']['$asset'])")
+          curl -fsSL -o "$RUNNER_TEMP/$asset" \
+            "https://github.com/amterp/rad/releases/download/v$version/$asset"
+          echo "$want  $RUNNER_TEMP/$asset" | shasum -a 256 -c -
+          tar -xzf "$RUNNER_TEMP/$asset" -C "$RUNNER_TEMP" rad
+          mkdir -p "$HOME/.local/bin"
+          mv "$RUNNER_TEMP/rad" "$HOME/.local/bin/rad"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+
+      # Shared with the gate's keys deliberately: a tag usually points at a
+      # commit the gate has just built, so these are warm and the release costs
+      # minutes rather than the better part of an hour.
+      - name: Cache the built libghostty
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps/.built
+            deps/ghostty/macos/GhosttyKit.xcframework
+            deps/ghostty/zig-out
+          key: ghostty-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('deps/ghostty.pin') }}
+
+      - name: Cache the pinned herdr
+        uses: actions/cache@v4
+        with:
+          path: deps/herdr
+          key: herdr-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('deps/herdr.pin') }}
+
+      - name: Cache the Rust build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: cargo-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Cache the SwiftPM build
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: swiftpm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Package.resolved') }}
+          restore-keys: swiftpm-${{ runner.os }}-${{ runner.arch }}-
+
+      # Hand-rolled with `security` rather than an action, on the same terms as
+      # gate.yml's one third-party action: this handles a private key, and the
+      # fewer parties that touch it the better.
+      #
+      # A throwaway keychain rather than the login one, because the login
+      # keychain on a runner is locked and stays locked - codesign would prompt
+      # for a password no one is there to type, and the job would hang until it
+      # timed out rather than fail.
+      - name: Import the Developer ID certificate
+        env:
+          CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          keychain="$RUNNER_TEMP/muster-signing.keychain-db"
+          cert="$RUNNER_TEMP/certificate.p12"
+          echo "$CERT_P12" | base64 --decode > "$cert"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
+          # Otherwise it relocks on a timer partway through a long build, and the
+          # signature at the end fails for a reason that reads as a bad certificate.
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
+          security import "$cert" -k "$keychain" -P "$CERT_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/security
+          # Without this, the first codesign call raises a GUI prompt to allow
+          # access to the key - on a machine with nobody at it.
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$keychain" > /dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          rm -f "$cert"
+          security find-identity -v -p codesigning "$keychain"
+
+      - name: Build, sign, notarize and staple
+        env:
+          MUSTER_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+          MUSTER_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          MUSTER_NOTARY_ISSUER: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+          NOTARY_KEY: ${{ secrets.APPLE_NOTARY_KEY }}
+        run: |
+          set -euo pipefail
+          # notarytool wants a path, so the key has to land on disk. Outside the
+          # workspace, so nothing can sweep it into the artifact.
+          export MUSTER_NOTARY_KEY="$RUNNER_TEMP/notary.p8"
+          echo "$NOTARY_KEY" | base64 --decode > "$MUSTER_NOTARY_KEY"
+          chmod 600 "$MUSTER_NOTARY_KEY"
+          ./dev --bundle --notarize
+          rm -f "$MUSTER_NOTARY_KEY"
+
+      # What a person's machine will conclude, asked before publishing rather
+      # than after. `-t exec` is Gatekeeper's own question about an application.
+      - name: Verify the stapled bundle
+        run: |
+          set -euo pipefail
+          app=.build/release/Muster.app
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign -dv --verbose=4 "$app" 2>&1 | grep -E 'Authority|TeamIdentifier|flags'
+          spctl -a -vv -t exec "$app"
+          xcrun stapler validate "$app"
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          archive=".build/Muster-${version}-arm64.zip"
+          sha=$(shasum -a 256 "$archive" | cut -d' ' -f1)
+          # The number the Homebrew cask needs, in the release body rather than
+          # only in a log that ages out - updating the tap is a separate step by
+          # a person, possibly days later.
+          gh release create "$GITHUB_REF_NAME" "$archive" \
+            --title "Muster $version" \
+            --generate-notes \
+            --notes "Apple Silicon, macOS 14 or newer. Notarized and stapled.
+
+          \`\`\`
+          brew install amterp/tap/muster
+          \`\`\`
+
+          sha256 \`$sha\`"
+
+      # Runs even when something above failed, because a keychain holding a
+      # Developer ID private key should not outlive the job that needed it.
+      - name: Remove the signing keychain
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/muster-signing.keychain-db" || true
+          rm -f "$RUNNER_TEMP/notary.p8"
