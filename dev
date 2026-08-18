@@ -50,7 +50,7 @@ HERDR_RELEASES = "https://github.com/herdrdev/herdr/releases/download"
 // person types the path of - and `swift package clean` still takes it with the rest.
 BUNDLE = ".build/muster.app"
 // The app's identity to the OS, and what a notification permission grant will attach to.
-BUNDLE_ID = "com.amterp.muster"
+BUNDLE_ID = "dev.amterp.muster"
 // What the bundle is called once it leaves this machine. `.build/muster.app` is lowercase
 // because it is a path somebody types; nobody types the path of an app they downloaded, and
 // what a person sees in /Applications should be the name the app calls itself.

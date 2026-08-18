@@ -68,7 +68,7 @@ its permission for no visible reason, and this is the mechanism.
 
 Follows from section 3 rather than being separately measured, and worth stating because this
 repo is developed in several worktrees at once. `BUNDLE_ID` is one constant, so every checkout
-that runs `./dev --bundle` produces an app claiming `com.amterp.muster` with a code identity of
+that runs `./dev --bundle` produces an app claiming `dev.amterp.muster` with a code identity of
 its own. TCC has one entry for that identifier, and whichever build it was recorded against is
 the only one it matches.
 
@@ -81,7 +81,7 @@ preceding hour and three quarters. No write is what a code-identity mismatch loo
 stored row is untouched and simply stops matching - so that is consistent with the mismatch and
 does not on its own prove which build caused it.
 
-`tccutil reset ScreenCapture com.amterp.muster` clears the entry so the next request prompts
+`tccutil reset ScreenCapture dev.amterp.muster` clears the entry so the next request prompts
 again, which is the way back.
 
 ## 5. What a stable signing identity does and does not buy

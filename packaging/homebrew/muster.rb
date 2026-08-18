@@ -61,13 +61,13 @@ cask "muster" do
   # would have repaired it is the app that just left. Deleted rather than
   # trashed: a dangling link on somebody's PATH is worse than no link, and a
   # dangling link in the Trash is just confusing.
-  uninstall quit:   "com.amterp.muster",
+  uninstall quit:   "dev.amterp.muster",
             delete: "~/.muster/bin/muster"
 
   zap trash: [
     "~/.muster",
-    "~/Library/Preferences/com.amterp.muster.plist",
-    "~/Library/Saved Application State/com.amterp.muster.savedState",
+    "~/Library/Preferences/dev.amterp.muster.plist",
+    "~/Library/Saved Application State/dev.amterp.muster.savedState",
   ]
 
   caveats <<~EOS
