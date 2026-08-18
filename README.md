@@ -485,7 +485,10 @@ the default suite is allowed to require.
 `./dev --ssh` is the remote tier, and sits out of the gate for the same reason: it needs docker rather than a GUI
 session. It recreates the devenv container, runs the remote tests against it while it holds no daemon at all - which
 is the claim, that Muster puts its own herdr on a machine with nothing on it and a pane there works - and then drops
-a pinned Linux daemon in for the corpus half below.
+a pinned Linux daemon in for the corpus half below. It leaves that container running, deliberately: a devenv is a
+thing you keep, and recreating it per run is what `up` is for. The tier says so on the way out, because the thing
+most likely to run next is `--perf`, and a container running beside a benchmark is enough to move the numbers it
+judges - `./devenv/devenv down` when you are finished with it.
 
 `./dev --corpus-linux` is that corpus half on its own: record the probe's scenarios against the container's Linux
 daemon and diff them against the macOS recording, which is what catches a herdr re-pin that moves one platform and
@@ -496,6 +499,19 @@ not the other. Docker and python3 are the whole toolchain, no Rust, Swift or Zig
 against a checked-in baseline and fails on regression, the second times input-to-glyph against a real daemon, at one
 pane and at a full window of fifteen with fourteen of them printing. A functional green is never a performance
 claim, so neither runs by default.
+
+`--perf` also refuses to run at all on a machine whose fast cores are already committed. Everywhere else a busy
+machine only makes a run slow; here it makes the run lie against a file in the repository, and a tier that fails for
+reasons unrelated to the code is one people learn to skip. The line is a one-minute load average at the machine's
+performance-core count, which on Apple silicon is fewer than its cores - past that many runnable threads, work
+starts landing on the slower ones. `./dev --perf --anyway` measures regardless, for when you want the numbers and
+not the verdict.
+
+`./dev --doctor` says what this repo's own tooling has left running on this machine: herdr daemons paired with the
+work each one holds, the devenv container, and whatever is currently eating the CPU. It answers the question the
+load average at the top of every run raises and cannot itself answer, which is *what* is busy - and it is what makes
+ending a stray daemon safe, since the process holding somebody's live agent looks exactly like the nineteen that
+hold nothing.
 
 Two toolchains, one door: the gate builds, tests and lints the Rust core and the Swift shell together, and a suite
 that discovers zero tests fails in either language rather than reporting green.

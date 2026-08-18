@@ -99,8 +99,24 @@ Muster's principles, adapted to that evidence:
   daemon spawn one and stay in the default gate, because 25 ms is not a tier boundary. What remains genuinely out
   of the gate is what needs something a developer's machine cannot be assumed to have: `--contract` needs a
   logged-in GUI session to launch the app, `--latency` and `--perf` measure timing and would be flaky as
-  assertions, and the SSH tier needs the devenv container. That is the real line, and it is narrower than the one
-  drawn when the backend was going to be faked.
+  assertions, `--corpus-linux` and the SSH tier need the devenv container. That is the real line, and it is
+  narrower than the one drawn when the backend was going to be faked.
+
+  **A tier that measures time reads the machine before it judges one.** Everywhere else a loaded machine only
+  makes a run slow; in `--perf` it makes the run lie, because those numbers are judged against a checked-in
+  baseline and a benchmark that spent its time waiting for a core reports a regression nothing in the code caused.
+  So `--perf` refuses above a one-minute load average of the machine's *performance* core count - past that many
+  runnable threads the scheduler starts handing work to the slower cores - and `--perf --anyway` measures without
+  gating for anyone who wants the numbers regardless. Refusing is defensible there and nowhere else, so nowhere
+  else does it.
+
+  Every run says what the machine was doing, narrowed flags included, because the failure this guards against is
+  not a red run but a plausible one: seventy-four minutes of a machine with seven of its ten cores eaten by
+  orphaned background loops read as nothing worse than a gate taking half an hour, which is not obviously wrong
+  for a run that builds two toolchains. The baseline records the same sample, so a comparison can say whether the
+  two runs were measured under conditions that resemble each other at all. `./dev --doctor` is the other half:
+  load says the machine is busy, and the doctor says what is on it - the daemons and containers this repo's own
+  tooling leaves behind, and what is currently eating the CPU.
 - **The suite proves itself.** A bug fix lands as a failing test first, then the fix - two commits, so CI shows red
   then green (cmux's discipline). Guard against silently skipped tests. Performance is measured against cardinality
   budgets separately; a functional green is never a performance claim.
