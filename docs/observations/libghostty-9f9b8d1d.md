@@ -329,3 +329,54 @@ is `GhosttyKit.xcframework`, which is where panes come from. So search is availa
 where Muster needs it, and would not have been had the surfaces come from the other library.
 The two headers are byte-identical either way, so this is not something a build failure
 would report.
+
+## 11. The archive brings ten other projects in with it
+
+Measured 2026-08-18, while working out what a public release has to attribute. libghostty is
+MIT and `NOTICE` said so, which was true and stopped one layer too early: `libghostty-internal.a`
+is 129 MB, it is statically linked into `Contents/MacOS/muster`, and it carries object code from
+ten of the 38 Zig packages in `build.zig.zon.json`.
+
+Which ten cannot be read off the manifest, because a static archive contributes only the members
+the linker pulls. Asking the linked binary is the only reliable question, and the answer is
+narrower than the package list:
+
+```
+gettext         6 symbols   LGPL-2.1-or-later
+breakpad      336           BSD-3-Clause
+sentry          4           MIT
+freetype        4           FTL OR GPL-2.0-or-later
+libpng          6           libpng-2.0
+zlib            8           Zlib
+oniguruma       4           BSD-2-Clause
+wuffs         178           Apache-2.0 OR MIT
+spirv_cross 10195           Apache-2.0
+glslang      4459           BSD-3-Clause AND Apache-2.0
+```
+
+`tools/ghostty-embeds.py --print` reproduces exactly that, and without `--print` writes
+`licenses/GHOSTTY-EMBEDDED.md` with each project's license text. **Re-run it when
+`deps/ghostty.pin` moves**, because that is the only thing that changes the answer.
+
+Three things worth keeping.
+
+**harfbuzz, fontconfig and libxml2 are in the package set and none of them links.** Text shaping
+on macOS goes through CoreText, so the whole font stack the manifest advertises is dead weight
+that the linker never reaches for. Reading the manifest would have attributed three projects that
+are not there and missed nothing that is - but the error would have been in the safe direction,
+which is why it took measuring to notice how far off it was.
+
+**`libghostty-vt.dylib` carries none of them.** It is the terminal state machine and nothing
+else, which is consistent with section 8's account of why the two libraries stay apart.
+
+**gettext is the one with an obligation attached.** What links in is `gettext-runtime/intl`,
+LGPL-2.1-or-later - not the GPL half of that package, which is the tools and never ships. Static
+linking under the LGPL asks that whoever holds the binary can relink it against their own
+libintl, and the shape of this repo already provides that rather than promising it: the source is
+public and Apache-2.0, `deps/ghostty.pin` names the commit, and that build resolves gettext at a
+pinned hash, so `./dev` rebuilds the chain from source with whatever libintl you substitute.
+
+Nothing here reaches the network. sentry-native and breakpad are what Ghostty uses to write a
+crash report, and `src/crash/sentry.zig` compiles no DSN and states the intent outright: reports
+are written to disk and it is the user who sends them on. `strings` over the linked binary finds
+no DSN-shaped value, so Muster inherits a local crash writer and no endpoint.

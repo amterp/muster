@@ -28,11 +28,58 @@ Muster also links libghostty and libghostty-vt from the same project. Those are
 built from source at the commit pinned in deps/ghostty.pin and are not vendored
 here.
 
+libghostty brings other projects with it. It is built from a Zig package set,
+and the static archive linked into Contents/MacOS/muster carries the object code
+of ten of them: gettext, breakpad, sentry-native, FreeType, libpng, zlib,
+oniguruma, Wuffs, SPIRV-Cross and glslang. licenses/GHOSTTY-EMBEDDED.md names
+each with its license and reproduces the text, and ships in the bundle as
+Contents/Resources/GHOSTTY-EMBEDDED.md. Which ten is measured rather than read
+off a manifest - a static archive contributes only the members the linker pulls,
+and on macOS that is a narrower set than the package list suggests.
+libghostty-vt.dylib carries none of them.
+
+One of those is copyleft and worth stating plainly. What links in from gettext
+is gettext-runtime/intl, under the LGPL, version 2.1 or later - not the GPL half
+of that package, which is the tools and does not ship. Static linking under the
+LGPL asks that whoever holds the binary be able to relink it against their own
+libintl. Muster can offer that rather than promise it: this source is public and
+Apache-2.0, deps/ghostty.pin names the commit libghostty was built from, and
+that build resolves gettext at a pinned hash, so ./dev rebuilds the whole chain
+from source with whatever libintl you put in it.
+
+None of this reaches the network. sentry-native and breakpad are linked in and
+are what Ghostty uses to write a crash report, and Ghostty compiles no DSN into
+them - the reports are written to disk for a person to send on if they choose.
+Muster changes nothing about that and adds no endpoint of its own.
+
 Muster's app bundle redistributes herdr (https://github.com/herdrdev/herdr),
 licensed under the Apache License, Version 2.0. The binary is the release named
 in deps/herdr.pin, unmodified; a copy of its license ships beside it in the
-bundle and is kept at licenses/herdr/LICENSE. Muster starts that daemon and
-speaks to it over its socket, and contains no herdr source.
+bundle and is kept at licenses/herdr/LICENSE. That copy is herdr's own file
+byte for byte, including the unfilled placeholders in the Apache appendix -
+which is why it names nobody, and why this paragraph rather than that file is
+where herdr is attributed. Muster starts that daemon and speaks to it over its
+socket, and contains no herdr source.
+
+Muster links swift-protobuf (https://github.com/apple/swift-protobuf), licensed
+under the Apache License, Version 2.0, at the version pinned in
+Package.resolved. Its runtime library is compiled into Contents/MacOS/muster
+rather than only generating code at build time, so it is redistributed.
+
+Muster also links around sixty Rust crates into libmuster.dylib, muster-cli and
+muster-bridge. They are compiled in rather than copied beside them, so nothing
+in the bundle's own contents shows that they are there; licenses/THIRD-PARTY.md
+names every one and reproduces the license text it published, and ships in the
+bundle as Contents/Resources/THIRD-PARTY.md. tools/licenses.py writes that file
+from the dependency graph, and ./dev fails if it has stopped describing what the
+binaries actually contain.
+
+Two of those crates ask for more than a copy of their license. prost is
+Apache-2.0 only rather than the usual dual offer, so its terms travel with the
+binary on Apache-2.0's own conditions. unicode-ident is
+"(MIT OR Apache-2.0) AND Unicode-3.0" - the AND is not a choice, and the
+Unicode terms apply on top of whichever of the other two you take. Both texts
+are in licenses/THIRD-PARTY.md.
 
 The MIT License text is reproduced below.
 
