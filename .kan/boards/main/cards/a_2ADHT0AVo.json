@@ -1,0 +1,16 @@
+{
+  "_v": 3,
+  "id": "a_2ADHT0AVo",
+  "alias": "work-on-the-ux-of",
+  "alias_explicit": false,
+  "title": "work on the UX of the tab -\u003e pane switching shortcuts",
+  "description": "it's a little awkward right now with the injection of the pane-level numbers that shifts everything in the sidebar's entries, hard to eyeball and track\n\nalso if you do just cmd+2 and switch tab, and it does all the shifting, then it sorta just stays shifted until you press a second number (for the pane) or click. maybe it should automatically go away when you release cmd, since that's kind of an indication you're done swapping and dont intend to follow up with a specific pane\n\nlastly, would be neat if, after the tab switch, and still holding cmd, and you see the panes, if there were large overlayed semi-transparent numbers in the center of each panel, so you can see which number corresponds to which, and you can then click the respective number",
+  "creator": "Alexander Terp",
+  "created_at_millis": 1787057544356,
+  "updated_at_millis": 1787057701516,
+  "column": "next",
+  "position": "UUUUUUUUUUUUUUUUUUUUUU",
+  "history": [
+    {"field":"column","value":"next","at":1787057544356}
+  ]
+}

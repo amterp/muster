@@ -1,0 +1,16 @@
+{
+  "_v": 3,
+  "id": "a_2AJS0Xz7I",
+  "alias": "evaluate-and-ensure",
+  "alias_explicit": false,
+  "title": "evaluate and ensure we're not tying ourselves too much to claude",
+  "description": "support other harnesses",
+  "creator": "Alexander Terp",
+  "created_at_millis": 1787072249229,
+  "updated_at_millis": 1787072257095,
+  "column": "backlog-hi",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1787072249229}
+  ]
+}

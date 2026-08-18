@@ -1,0 +1,16 @@
+{
+  "_v": 3,
+  "id": "a_2AI4n1Fer",
+  "alias": "support-multiple",
+  "alias_explicit": false,
+  "title": "support multiple windows",
+  "description": "including in the CLI",
+  "creator": "Alexander Terp",
+  "created_at_millis": 1787068973443,
+  "updated_at_millis": 1787068978507,
+  "column": "next",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUU",
+  "history": [
+    {"field":"column","value":"next","at":1787068973443}
+  ]
+}

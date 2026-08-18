@@ -1,0 +1,15 @@
+{
+  "_v": 3,
+  "id": "a_2ADMeD8nM",
+  "alias": "bug-if-i-highlight",
+  "alias_explicit": false,
+  "title": "bug: if i highlight some text, and then scroll, the highlihgted cells dont follow the specific text - it stays still positionally on the screen, highlighting other text as you scroll",
+  "creator": "Alexander Terp",
+  "created_at_millis": 1787057743516,
+  "updated_at_millis": 1787057743516,
+  "column": "backlog-hi",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1787057743516}
+  ]
+}

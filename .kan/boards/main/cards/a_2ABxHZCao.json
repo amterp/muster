@@ -5,16 +5,25 @@
   "area": [
     "testing"
   ],
-  "column": "next",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Fixed. deps/rad.pin now names rad 0.12.0, whose shell interpolation quotes every value it substitutes - verified against the released binary:\n\n    v = \"Developer ID Application: Alexander Terp (CV4835A2BN)\"\n    $`echo -s {v}`\n    -\u003e echo -s 'Developer ID Application: Alexander Terp (CV4835A2BN)'\n\nThat also settles the follow-up this card asked for. The sweep does not have to check each interpolation in ./dev one by one, because the quoting is systematic rather than per-site: no value a user can put a space or a bracket in reaches bash unquoted any more.\n\nrelease.yml then cut v0.1.1 end to end - built, signed with the Developer ID, notarized, stapled, and published - in 4m48s with no local involvement. spctl on the published artifact reports accepted, source=Notarized Developer ID.",
+      "created_at_millis": 1787071071633,
+      "id": "c_2AIxNDqSw"
+    }
+  ],
   "created_at_millis": 1787054385183,
   "creator": "Alexander Terp",
   "description": "`release.yml` gets as far as signing and dies there. All seven secrets are set and correct - the Developer ID certificate imports fine - so this is `./dev`, not credentials.\n\nThe identity is `Developer ID Application: Alexander Terp (CV4835A2BN)`, and the parentheses are the problem. `sign_developer_id` interpolates it into a shell command:\n\n```\n$`codesign -f -s {identity} --options runtime --timestamp {path}`\n```\n\nUnder CI's rad it arrives unquoted, so bash reads `(CV4835A2BN)` as a subshell:\n\n```\n/bin/bash: -c: line 0: syntax error near unexpected token `('\n```\n\n**It works locally and fails in CI, which is the part worth writing down.** The same command from the same file on this laptop emits `codesign -f -s 'Developer ID Application: Alexander Terp (CV4835A2BN)' ...` - quoted, correct, and the artifact v0.1.0 ships was signed and notarized that way. Both rads report `v0.11.0` and `deps/rad.pin` names 0.11.0, so the version strings agree while the behaviour does not; the laptop is evidently running a build ahead of the released one. Per amterp, the quoting fix is in rad 0.12, which is not released yet.\n\nSo the fix is a pin bump once 0.12 is out, then re-run the workflow. Worth checking at the same time whether any other interpolation in `./dev` carries a value a user could put a space or a bracket in - the identity is the one that bit, but it is not obviously the only candidate, and this is a failure that a laptop cannot reproduce.\n\nNot blocking anything shipped: v0.1.0 is public, installable through the tap, and its artifact was built and notarized locally. What is missing is the ability to cut the *next* release from a tag, which is what `release.yml` exists for.",
   "id": "a_2ABxHZCao",
-  "position": "UUUUUUUUUUUUUUUUUUUUU",
+  "position": "!!!!!!!!!!!!!!!!!!2",
   "title": "🔏 The release workflow cannot sign, and only in CI",
   "type": "bug",
-  "updated_at_millis": 1787054385183,
+  "updated_at_millis": 1787071074212,
   "history": [
-    {"field":"column","value":"next","at":1787054385183}
+    {"field":"column","value":"next","at":1787054385183},
+    {"field":"column","value":"done","at":1787071074212}
   ]
 }
