@@ -24,6 +24,7 @@ args:
     perf bool      # Measure the per-unit budgets against perf/baseline.json. Not in the gate.
     record bool    # With --perf, record this run as the new baseline instead of judging it.
     latency bool   # Time input-to-glyph against a real herdr. Needs a daemon; not in the gate.
+    doctor bool    # Say what this repo's own tooling has left running on this machine.
 
 ZIG_VERSION = "0.16.0"
 GHOSTTY_REPO = "https://github.com/ghostty-org/ghostty"
@@ -70,6 +71,221 @@ PROTO_STAMP = "Sources/MusterMac/Generated/.proto.sha256"
 
 fn announce(name):
     print(bold("\n▸ {name}"))
+
+// What the machine is doing, sampled once and said out loud at the top of every run.
+//
+// Per-OS, so this is the shell's answer to hand over rather than the core's - the same as
+// the log path and the screens. A load average means nothing without a core count beside
+// it, and on Apple silicon the count that matters is the *performance* cores: past that
+// many runnable threads the scheduler starts putting work on the efficiency cores, which
+// run this kind of code at roughly half the speed. That is the line between a run that is
+// merely slow and a run whose numbers lie, and it is where --perf refuses.
+//
+// Returns [cores, fast_cores, load1, load5, load15]. Nothing here can fail a run: a machine
+// that will not answer yields zeros, and zero reads as "unknown" at every use. Refusing to
+// build because a sysctl was missing would be absurd.
+fn machine():
+    stdout, stderr, code = quiet $`uname -s` catch:
+        stdout = ""
+    if stdout.trim() == "Darwin":
+        stdout, stderr, code = quiet $`sysctl -n hw.ncpu` catch:
+            stdout = ""
+        cores = parse_int(stdout.trim()) catch:
+            cores = 0
+
+        // hw.perflevel0 is the performance half of an Apple silicon chip, and is absent on
+        // Intel Macs - where there is one kind of core and hw.ncpu already counted it.
+        stdout, stderr, code = quiet $`sysctl -n hw.perflevel0.logicalcpu` catch:
+            stdout = ""
+        fast = parse_int(stdout.trim()) catch:
+            fast = cores
+
+        stdout, stderr, code = quiet $`sysctl -n vm.loadavg` catch:
+            stdout = ""
+        loads = three_loads(stdout)
+        return [cores, fast, loads[0], loads[1], loads[2]]
+
+    stdout, stderr, code = quiet $`nproc` catch:
+        stdout = ""
+    cores = parse_int(stdout.trim()) catch:
+        cores = 0
+    stdout, stderr, code = quiet $`cat /proc/loadavg` catch:
+        stdout = ""
+    loads = three_loads(stdout)
+    // Nothing here reports a performance/efficiency split, so every core counts as a fast one.
+    return [cores, cores, loads[0], loads[1], loads[2]]
+
+// The three averages out of a load-average line, whatever else is around them.
+//
+// One parser for two shapes rather than one per platform: macOS answers with the numbers
+// between braces and /proc/loadavg follows them with a running/total count and a pid. Both
+// are whitespace-separated, so taking the first three fields that parse as a number covers
+// each without knowing which it is reading. A line neither of them recognises yields zeros,
+// because a diagnostic that cannot read the machine should say nothing rather than stop it.
+fn three_loads(text):
+    found = []
+    for field in text.split(" "):
+        if len(found) < 3:
+            // A load average is never negative, so this stands in for "not a number".
+            value = parse_float(field.trim()) catch:
+                value = -1.0
+            if value >= 0:
+                found = found + [value]
+    while len(found) < 3:
+        found = found + [0.0]
+    return found
+
+// The one line that would have turned seventy-four invisible minutes into something anybody
+// could see (a_29iw10a58). On every run including narrowed ones, because a number raised only
+// when it is bad is a number people learn to scroll past, and because the run it explains is
+// usually the one nobody thought to question.
+fn report_machine(cores, fast, load1, load5, load15):
+    if cores == 0:
+        print(dim("machine: this OS would not say how many cores it has or what its load is"))
+        return
+    counted = cores == fast ? "{cores} cores" : "{cores} cores ({fast} performance)"
+    line = "machine: {counted}, load {load1:.2} {load5:.2} {load15:.2}"
+    if load1 < fast:
+        print(dim(line))
+        return
+    // Not dim, because at this point the run is sharing every fast core with something else
+    // and how long it takes says nothing about the code.
+    print(yellow("{line} - the fast cores are already committed, so this run will be slow"))
+
+// What this repo's own tooling has left running, named rather than counted.
+//
+// Reports and never fails. A check that could stop a build is one people stop running, and
+// this one exists to be run at the moment somebody is already suspicious.
+fn run_doctor():
+    doctor_processes()
+    doctor_herdr()
+    doctor_devenv()
+
+// Load says the machine is busy; this says what is eating it.
+//
+// The two are different questions and a_29iw10a58 needed both answered: eight orphaned busy
+// loops at 89% of a core each were invisible in a gate that only ever got slower, and half an
+// hour is not obviously wrong for a run that builds two toolchains.
+fn doctor_processes():
+    print(bold("\nbusiest processes"))
+    // Sorted with `sort` rather than with ps, because the flag that sorts by CPU is spelled
+    // differently on macOS and Linux and the first column is the same number on both.
+    stdout, stderr, code = quiet $`ps -Ao pcpu,etime,comm | sort -rn | head -5` catch:
+        print(dim("  ps would not answer, so nothing here says what is running"))
+        return
+    print(dim("  %cpu   elapsed      command"))
+    for line in stdout.split_lines():
+        fields = line.split(" ").filter(fn(field) field != "")
+        if len(fields) >= 3:
+            // Reassembled rather than printed as ps laid it out: sorting strips the alignment
+            // ps had, and a command name is a path or three words depending on the process.
+            command = join(fields[2:], " ")
+            print("  {fields[0]:<7}{fields[1]:<13}{command.truncate(76)}")
+
+// The daemons this machine is carrying, each paired with the work it holds.
+//
+// Built out of the OS rather than out of herdr's API, because the API cannot answer it. You can
+// ask a socket what it holds and you can ask the OS which sockets a process has open, and there
+// is no method that gets from one to the other - the schema has server.stop, reload_config,
+// live_handoff and agent_manifests, and nothing that answers "which process are you"
+// (a_28YghIUw2). So this walks pids to sockets and dials each socket back.
+//
+// The hazard is real and it is the reason this prints a cwd rather than a count: of twenty-odd
+// daemons on this machine one held somebody's working agent, and it was neither the oldest nor
+// the youngest. Sorting by age picks the wrong process.
+fn doctor_herdr():
+    print(bold("\nherdr daemons"))
+    stdout, stderr, code = quiet $`pgrep -x herdr` catch:
+        stdout = ""
+    pids = stdout.trim().split_lines().filter(fn(pid) pid.trim() != "")
+    if len(pids) == 0:
+        print(dim("  none running"))
+        return
+
+    print("  {len(pids)} alive")
+    herdr = doctor_herdr_binary()
+    print(dim("  pid    age          socket"))
+    for pid in pids:
+        print("  {doctor_daemon(pid.trim(), herdr)}")
+    print(dim("  The test harness tears its own daemons down; what accumulates is what a person"))
+    print(dim("  or a fixture started outside it. Twenty together drew 0.1% CPU (a_28YghIUw2), so"))
+    print(dim("  this is about knowing which one holds work before ending it, not about speed."))
+
+// One daemon: how old, which socket, and what is in its panes.
+//
+// `lsof -a` rather than `lsof`. Without -a, lsof ORs its selection options, so `lsof -p <pid> -U`
+// returns every unix socket on the machine and each pid appears to hold whichever one is read
+// first. Over twenty daemons that produces twenty identical rows, which reads as a finished
+// inventory rather than as a broken one - measured, on this machine, on a_28YghIUw2.
+fn doctor_daemon(pid, herdr):
+    stdout, stderr, code = quiet $`ps -o etime= -p {pid}` catch:
+        stdout = ""
+    age = stdout.trim()
+
+    stdout, stderr, code = quiet $`lsof -a -p {pid} -U` catch:
+        stdout = ""
+    socket = ""
+    for line in stdout.split_lines():
+        fields = line.split(" ").filter(fn(field) field != "")
+        if len(fields) > 0 and fields[-1].ends_with("/herdr.sock"):
+            socket = fields[-1]
+
+    if socket == "":
+        // A herdr with no API socket is a client, not a server. Worth a row rather than a
+        // silent omission: it is still a process somebody may be about to kill.
+        return "{pid:<7}{age:<13}no API socket - a client rather than a daemon"
+
+    // A daemon still bound to a socket whose path has been deleted is one nothing can reach
+    // any more, which is a different fact from one that declined to answer - and it is the
+    // one that says ending this process costs nobody anything.
+    if not get_path(socket).exists:
+        return "{pid:<7}{age:<13}{socket}  unreachable, its socket path is gone"
+
+    scratch = socket.starts_with("/tmp/") or socket.starts_with("/private/tmp/")
+    where = scratch ? "scratch" : "kept"
+    return "{pid:<7}{age:<13}{socket}  {where}{doctor_panes(socket, herdr)}"
+
+// The pinned daemon if it is already on disk, and nothing if it is not.
+//
+// Never downloaded for this. A diagnostic that fetches 18 MB before it will say anything is one
+// nobody runs twice, and without it the census still pairs a pid with a socket - which is the
+// half that makes ending one safe.
+fn doctor_herdr_binary():
+    cached = "{HERDR_DIR}/{pinned_version()}/herdr"
+    if get_path(cached).exists:
+        return get_path(cached).full_path
+    print(dim("  the pinned herdr is not downloaded, so no socket can be asked what it holds"))
+    return ""
+
+// What one socket holds, asked of the daemon rather than guessed from its path.
+fn doctor_panes(socket, herdr):
+    if herdr == "":
+        return ""
+    stdout, stderr, code = quiet $`HERDR_SOCKET_PATH={socket} {herdr} pane list` catch:
+        return "  not answering"
+    parsed = parse_json(stdout) catch:
+        return "  answered something this cannot read"
+    panes = parsed.result.panes catch:
+        return "  answered without a pane list"
+    if len(panes) == 0:
+        return "  no panes"
+    directories = join(unique([pane.cwd for pane in panes]), ", ")
+    return "  {len(panes)} pane(s) in {directories}"
+
+// The container the remote tier leaves up, named here because nothing else names it.
+fn doctor_devenv():
+    print(bold("\ndevenv container"))
+    stdout, stderr, code = quiet $`docker ps --filter 'name=^muster-devenv$'` catch:
+        print(dim("  docker is not answering, so nothing this repo starts in it is up"))
+        return
+    rows = stdout.trim().split_lines()
+    if len(rows) < 2:
+        print(dim("  not running"))
+        return
+    for row in rows:
+        print("  {row.trim()}")
+    print(dim("  ./dev --ssh leaves this up deliberately - a devenv is a thing you keep. Stop it"))
+    print(dim("  with: ./devenv/devenv down"))
 
 fn fail_empty_suite(language, cure):
     print_err(red("No {language} tests were discovered."))
@@ -743,7 +959,7 @@ if proto:
 if bundle:
     build = true
 
-if not (deps or build or test or lint or format or clean or bundle or contract or ssh or corpus_linux or perf or latency):
+if not (deps or build or test or lint or format or clean or bundle or contract or ssh or corpus_linux or perf or latency or doctor):
     deps = true
     build = true
     test = true
@@ -770,6 +986,15 @@ if test:
 // answers with one line, and the freshness check below costs a stamp read and four path tests.
 if build or lint or perf:
     deps = true
+
+// Sampled once and reported before anything else runs, so that every run - the full gate and
+// a narrowed flag alike - opens with what the machine was doing while it happened.
+cores, fast_cores, load1, load5, load15 = machine()
+report_machine(cores, fast_cores, load1, load5, load15)
+
+if doctor:
+    announce("doctor")
+    run_doctor()
 
 if clean:
     announce("clean")
