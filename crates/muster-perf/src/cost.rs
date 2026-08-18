@@ -2,6 +2,13 @@
 
 use serde::{Deserialize, Serialize};
 
+/// The shortest iteration this harness will judge, in nanoseconds.
+///
+/// Below this a measurement is mostly the clock rather than the code. A thousand nanoseconds
+/// is roughly a thousand ticks of the clock this harness uses, which is enough for the fastest
+/// sample to say something about the work rather than about the timing around it.
+pub const RESOLVABLE_NANOS: f64 = 1_000.0;
+
 /// One cost, measured.
 ///
 /// Costs are always per unit of work rather than per run - nanoseconds per byte, per key,

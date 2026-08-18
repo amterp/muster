@@ -331,8 +331,14 @@ fn measure_everything(streams: &[Vec<u8>]) -> Vec<Cost> {
         let held: Vec<_> = (0..BUDGETED_PANES).filter_map(bind_pane_socket).collect();
         black_box(held.len());
     }));
-    costs.push(measure("pane.encoder", "ns/pane", BUDGETED_PANES, 10, 3, || {
-        for _ in 0..BUDGETED_PANES {
+    // Twenty windows' worth per iteration rather than one, so that the fastest sample is
+    // hundreds of microseconds instead of one. A full window of encoders costs about a
+    // microsecond, which was a single tick of the clock this harness used to read - so the
+    // number recorded for it was the clock's resolution over fifteen panes and nothing about
+    // the encoder. Still ns/pane, so the figure means what it always meant.
+    let encoders = BUDGETED_PANES * 20;
+    costs.push(measure("pane.encoder", "ns/pane", encoders, 10, 3, || {
+        for _ in 0..encoders {
             black_box(KeyEncoder::new(TerminalModeProfile::UNKNOWN_PANE).is_ok());
         }
     }));
