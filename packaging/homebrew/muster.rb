@@ -5,10 +5,10 @@
 # and a file that changes with the app should be reviewed alongside it. The tap
 # is a different repository; the copy there is what `brew install` reads.
 #
-# `version` and `sha256` below are placeholders until the first release exists.
-# `./dev --notarize` prints the real checksum, and the release workflow puts it
-# in the release body so it is still there when somebody updates the tap a week
-# later.
+# `version` and `sha256` below name the current release. Both come from
+# `./dev --notarize`, which prints the checksum of the artifact it just built;
+# the release workflow also puts it in the release body, so it is still findable
+# when somebody updates the tap a week later.
 #
 # One cask rather than a cask and a formula, because the app and the CLI are one
 # artifact: `muster-cli` is a file inside the bundle, built from the same commit
@@ -17,7 +17,7 @@
 
 cask "muster" do
   version "0.1.0"
-  sha256 "0000000000000000000000000000000000000000000000000000000000000000"
+  sha256 "281fd9a447067491d4f209201bd3596f0fbd55901413e384927ed46c7839bfa9"
 
   url "https://github.com/amterp/muster/releases/download/v#{version}/Muster-#{version}-arm64.zip"
   name "Muster"
