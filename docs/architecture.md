@@ -6,7 +6,7 @@ concurrency mechanisms - implementing agents research those at build time and wi
 this document could. When a decision here proves wrong in practice, change it: update this document in the same
 change, and put the why in the commit.
 
-The desiderata in `README.md` are the requirements. `origin.md` holds the founding history and `glossary.md` the
+The desiderata in `AGENTS.md` are the requirements. `origin.md` holds the founding history and `glossary.md` the
 terms; large decisions are recorded as MIPs in `mip/`, routine rationale lives in commit messages, and open
 questions live on the kan board. This document is the bridge between the desiderata and code.
 

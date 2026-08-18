@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Renders packaging/Muster.icns from packaging/icon.svg.
+# Renders packaging/Muster.icns and packaging/readme-icon.png from packaging/icon.svg.
 #
 # Run this when the drawing changes, and commit what it produces. The .icns is
 # checked in for the same reason licenses/herdr/LICENSE is: assembling a bundle
@@ -46,3 +46,12 @@ render "$svg"   1024 512x512@2x
 
 iconutil -c icns "$set" -o "$out"
 echo "wrote $out ($(wc -c < "$out" | tr -d ' ') bytes)"
+
+# The README's mark, rendered here so it cannot drift from the app's. A PNG
+# rather than the SVG itself because this one is read by GitHub, whose markdown
+# renderer proxies images and is choosier about SVG than a browser is - and the
+# front door failing to draw is a worse trade than a checked-in bitmap.
+# 256 for a mark shown at 128, so it stays sharp on a retina display.
+readme=packaging/readme-icon.png
+magick -background none "$svg" -resize 256x256 "$readme"
+echo "wrote $readme ($(wc -c < "$readme" | tr -d ' ') bytes)"
