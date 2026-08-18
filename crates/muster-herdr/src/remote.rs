@@ -283,10 +283,18 @@ fn fetch(url: &str, path: &str) -> Result<(), String> {
 /// A mismatch removes the file and refuses. Refuses rather than warns because the whole point
 /// of the pin is that the daemon Muster runs is the daemon its corpus was recorded against, and
 /// a warning nobody reads turns that into a preference.
+/// What a downloaded daemon is judged by: SHA-256, lowercase hex, no separators.
+///
+/// Its own function because `deps/herdr.pin` spells its checksums this way, so the algorithm
+/// and the spelling are part of the pin's contract rather than this file's choice.
+pub fn digest(bytes: &[u8]) -> String {
+    format!("{:x}", Sha256::digest(bytes))
+}
+
 fn verified(path: &str, want: &str, url: &str) -> Result<Vec<u8>, String> {
     let bytes = std::fs::read(path)
         .map_err(|error| format!("could not read the downloaded daemon at {path} ({error})"))?;
-    let found = format!("{:x}", Sha256::digest(&bytes));
+    let found = digest(&bytes);
     if found != want {
         let _ = std::fs::remove_file(path);
         return Err(format!(
@@ -306,7 +314,7 @@ fn verified(path: &str, want: &str, url: &str) -> Result<Vec<u8>, String> {
 /// the machine it is asking about and can treat "not Darwin" as Linux, while this is asking
 /// about somebody else's. Sending an x86_64 Linux binary to a FreeBSD box on that reasoning
 /// would fail as a daemon that will not start, three layers from the guess that caused it.
-fn asset_name(platform: &Platform, host: &str) -> Result<String, String> {
+pub fn asset_name(platform: &Platform, host: &str) -> Result<String, String> {
     let system = match platform.system.as_str() {
         "Darwin" => "macos",
         "Linux" => "linux",
@@ -342,7 +350,7 @@ fn asset_name(platform: &Platform, host: &str) -> Result<String, String> {
 ///
 /// Named for the asset as well as the version, because one Muster attached to two devenvs of
 /// different architectures needs both at once.
-fn cached_at(cache: &str, version: &str, asset: &str) -> String {
+pub fn cached_at(cache: &str, version: &str, asset: &str) -> String {
     format!("{cache}/herdr/{version}/{asset}/herdr")
 }
 
@@ -356,7 +364,7 @@ pub fn configuration_path(environment: &BTreeMap<String, String>) -> Option<Stri
 }
 
 /// Where the daemon goes on the far machine.
-fn installed_at(home: &str, version: &str) -> String {
+pub fn installed_at(home: &str, version: &str) -> String {
     format!("{home}/herdr/{version}/herdr")
 }
 
@@ -365,7 +373,7 @@ fn installed_at(home: &str, version: &str) -> String {
 /// A second copy of the rule the shell answers here (`Sources/MusterMac/MusterHome.swift`), and
 /// the one place a second copy is unavoidable: only the shell can ask an OS a question, and
 /// this is a question about an OS the shell is not running on.
-fn muster_home(environment: &BTreeMap<String, String>) -> Option<String> {
+pub fn muster_home(environment: &BTreeMap<String, String>) -> Option<String> {
     let lookup = |name: &str| environment.get(name).filter(|value| !value.is_empty());
     if let Some(explicit) = lookup("MUSTER_HOME") {
         return Some(explicit.trim_end_matches('/').to_string());
@@ -377,48 +385,13 @@ fn muster_home(environment: &BTreeMap<String, String>) -> Option<String> {
 mod tests {
     use super::*;
 
-    fn environment(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
-        pairs.iter().map(|(name, value)| ((*name).to_string(), (*value).to_string())).collect()
-    }
-
     fn platform(system: &str, machine: &str) -> Platform {
         Platform { system: system.to_string(), machine: machine.to_string() }
     }
 
-    #[test]
-    fn a_linux_devenv_gets_the_linux_asset() {
-        assert_eq!(
-            asset_name(&platform("Linux", "aarch64"), "devenv").as_deref(),
-            Ok("herdr-linux-aarch64")
-        );
-        assert_eq!(
-            asset_name(&platform("Linux", "x86_64"), "devenv").as_deref(),
-            Ok("herdr-linux-x86_64")
-        );
-    }
-
-    #[test]
-    fn a_mac_spells_its_architecture_differently_and_gets_the_same_asset() {
-        // `uname -m` says arm64 on macOS and aarch64 on Linux for the same silicon.
-        assert_eq!(
-            asset_name(&platform("Darwin", "arm64"), "other-mac").as_deref(),
-            Ok("herdr-macos-aarch64")
-        );
-    }
-
-    #[test]
-    fn an_unpinned_platform_is_refused_rather_than_guessed_at() {
-        let refusal = asset_name(&platform("FreeBSD", "amd64"), "buildbox")
-            .expect_err("FreeBSD is not pinned");
-        assert!(refusal.contains("FreeBSD"), "the refusal should quote what it was told");
-        assert!(refusal.contains("socket"), "and name the way out");
-    }
-
-    #[test]
-    fn an_unpinned_architecture_is_refused_too() {
-        asset_name(&platform("Linux", "riscv64"), "buildbox").expect_err("riscv64 is not pinned");
-    }
-
+    /// The mapping itself is stated in corpus/conformance/remote-daemon.json. This is the
+    /// other direction, and it belongs here rather than there because it is a claim about
+    /// this repo's own pin file rather than a rule a second implementation would obey.
     #[test]
     fn every_asset_the_pin_carries_is_one_some_platform_names() {
         let pin = pinned().expect("the pin should parse");
@@ -437,49 +410,10 @@ mod tests {
         }
     }
 
-    #[test]
-    fn muster_home_over_there_is_a_dot_directory_under_home() {
-        assert_eq!(
-            muster_home(&environment(&[("HOME", "/home/dev")])).as_deref(),
-            Some("/home/dev/.muster")
-        );
-    }
-
-    #[test]
-    fn the_far_machines_own_muster_home_wins() {
-        let said = environment(&[("HOME", "/home/dev"), ("MUSTER_HOME", "/srv/muster")]);
-        assert_eq!(muster_home(&said).as_deref(), Some("/srv/muster"));
-    }
-
-    #[test]
-    fn a_machine_with_no_home_has_nowhere_to_put_a_daemon() {
-        assert_eq!(muster_home(&environment(&[("PATH", "/usr/bin")])), None);
-    }
-
-    #[test]
-    fn a_trailing_slash_does_not_become_a_doubled_one() {
-        assert_eq!(
-            muster_home(&environment(&[("HOME", "/home/dev/")])).as_deref(),
-            Some("/home/dev/.muster")
-        );
-    }
-
-    #[test]
-    fn the_install_path_carries_the_version_so_two_can_sit_side_by_side() {
-        assert_eq!(
-            installed_at("/home/dev/.muster", "0.8.0"),
-            "/home/dev/.muster/herdr/0.8.0/herdr"
-        );
-    }
-
-    #[test]
-    fn the_cache_path_carries_the_asset_so_two_architectures_can_sit_side_by_side() {
-        assert_eq!(
-            cached_at("/Users/a/.muster/cache", "0.8.0", "herdr-linux-x86_64"),
-            "/Users/a/.muster/cache/herdr/0.8.0/herdr-linux-x86_64/herdr"
-        );
-    }
-
+    /// The two below stay in Rust while the rest of this module's cases moved to the corpus.
+    /// They read and delete a real file, and the refusal quotes a path and a URL that differ
+    /// per run, so neither is a pure function over stated inputs. What the corpus states is
+    /// the part that is: the digest these compare.
     #[test]
     fn bytes_that_are_not_the_pinned_ones_are_removed_and_refused() {
         let path = std::env::temp_dir().join(format!("muster-verify-{}", std::process::id()));
@@ -500,7 +434,7 @@ mod tests {
         let path = std::env::temp_dir().join(format!("muster-verify-ok-{}", std::process::id()));
         std::fs::write(&path, b"herdr").expect("the scratch file should write");
         let name = path.to_string_lossy().into_owned();
-        let want = format!("{:x}", Sha256::digest(b"herdr"));
+        let want = digest(b"herdr");
 
         let read = verified(&name, &want, "https://example.invalid/herdr")
             .expect("these are the bytes it was told to expect");

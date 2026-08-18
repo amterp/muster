@@ -1,0 +1,98 @@
+{
+  "concept": "muster.remoteDaemon",
+  "source": "authored",
+  "citation": "deps/herdr.pin names one version and a checksum per release asset; the four asset names below are the four keys it carries. The `uname -sm` spellings are the machines' own: the devenv container answers `Linux aarch64` and this laptop answers `Darwin arm64` for the same silicon.",
+  "why": "Muster runs the herdr it pinned rather than whichever one a machine happens to have, and that promise is worth only as much as its weakest end. On an SSH endpoint the binary has to be chosen, fetched, checked and placed before any of it is true, and each step has a way of being quietly wrong: an asset name guessed for an unpinned platform sends a binary that will not execute, a path without the version in it lets one Muster overwrite the daemon another is running, and a digest computed differently accepts bytes nobody pinned. These are pure functions over what the far machine said about itself, which is what makes them cases here rather than something only a devenv can answer.",
+  "cases": [
+    {
+      "name": "a Linux devenv on arm gets the Linux arm asset",
+      "why": "The ordinary case, and the one the devenv container exercises on every remote run.",
+      "given": { "asset_for": { "system": "Linux", "machine": "aarch64", "host": "devenv" } },
+      "expect": { "asset": "herdr-linux-aarch64" }
+    },
+    {
+      "name": "a Linux devenv on intel gets the Linux intel asset",
+      "why": "The second half of the Linux pair, so a build box and a container on different silicon are both covered by the mapping rather than only the one somebody happened to test.",
+      "given": { "asset_for": { "system": "Linux", "machine": "x86_64", "host": "devenv" } },
+      "expect": { "asset": "herdr-linux-x86_64" }
+    },
+    {
+      "name": "a Mac spells its architecture differently and gets the same silicon's asset",
+      "why": "`uname -m` says arm64 on macOS and aarch64 on Linux for the same chip. Passing the machine's own spelling through would ask for `herdr-macos-arm64`, which the pin does not carry, so a Mac remote would fail to install a daemon that exists.",
+      "given": { "asset_for": { "system": "Darwin", "machine": "arm64", "host": "other-mac" } },
+      "expect": { "asset": "herdr-macos-aarch64" }
+    },
+    {
+      "name": "an intel Mac remote gets the intel Mac asset",
+      "why": "The fourth pinned asset, here so that every key in deps/herdr.pin is reachable from some platform a machine can report. An asset nothing asks for is one the pin carries for no reason, and this is where that would show.",
+      "given": { "asset_for": { "system": "Darwin", "machine": "x86_64", "host": "other-mac" } },
+      "expect": { "asset": "herdr-macos-x86_64" }
+    },
+    {
+      "name": "a system the pin does not carry is refused rather than guessed at",
+      "why": "Guessing is worse than failing here. An unpinned system has no checksum, so a guessed asset name either fetches nothing or fetches bytes nothing can verify, and both surface far from the machine that caused them. `./dev` may treat not-Darwin as Linux because it runs on the machine it is asking about; this is asking about somebody else's.",
+      "given": { "asset_for": { "system": "FreeBSD", "machine": "amd64", "host": "buildbox" } },
+      "expect": {
+        "asset": null,
+        "refused": "buildbox says it is running FreeBSD, and Muster pins a herdr for macOS and Linux only - so there is no daemon this build could put on it. That machine's panes are absent from the window. Install a herdr over there yourself and name its socket in the config file's `socket` key."
+      }
+    },
+    {
+      "name": "an architecture the pin does not carry is refused too",
+      "why": "The same rule one field along, and the one a system-only check would miss. Linux is pinned and riscv64 is not, so a mapping that stopped at the system would send that machine an arm or intel binary, failing as a daemon that will not start rather than as a machine nobody pinned.",
+      "given": { "asset_for": { "system": "Linux", "machine": "riscv64", "host": "buildbox" } },
+      "expect": {
+        "asset": null,
+        "refused": "buildbox says its machine is riscv64, and Muster pins a herdr for aarch64 and x86_64 only - so there is no daemon this build could put on it. That machine's panes are absent from the window. Install a herdr over there yourself and name its socket in the config file's `socket` key."
+      }
+    },
+    {
+      "name": "everything Muster owns over there sits under a dot directory in home",
+      "why": "The far machine gets the arrangement this one has: a single directory holding the daemon, its config and its state, so somebody who wants to know what Muster put on their devenv lists one path.",
+      "given": { "muster_home_from": { "HOME": "/home/dev" } },
+      "expect": { "muster_home": "/home/dev/.muster" }
+    },
+    {
+      "name": "the far machine's own MUSTER_HOME wins over its home directory",
+      "why": "MUSTER_HOME moves everything Muster owns, and it has to mean that on the machine whose files are being moved. Reading this machine's value instead would put the daemon at a path that exists here and need not exist there.",
+      "given": { "muster_home_from": { "HOME": "/home/dev", "MUSTER_HOME": "/srv/muster" } },
+      "expect": { "muster_home": "/srv/muster" }
+    },
+    {
+      "name": "a machine that says nothing about home has nowhere to put a daemon",
+      "why": "A path built from an empty base names something directly under the filesystem root, so a missing HOME would arrive as a permission error during the copy instead of an answer at the point the question was asked.",
+      "given": { "muster_home_from": { "PATH": "/usr/bin" } },
+      "expect": { "muster_home": null }
+    },
+    {
+      "name": "a home directory with a trailing slash does not become a doubled one",
+      "why": "Container images hand out `HOME=/root/` often enough for this to matter, and a `//` in the middle survives every filesystem call while making the path in a log line look like a different one.",
+      "given": { "muster_home_from": { "HOME": "/home/dev/" } },
+      "expect": { "muster_home": "/home/dev/.muster" }
+    },
+    {
+      "name": "the installed daemon carries its version in its path",
+      "why": "Two Musters of different versions can attach to one devenv, each running the herdr its own pin names. A path without the version would have the second overwrite the first's binary underneath a daemon already running from it.",
+      "given": { "installed_at": { "muster_home": "/home/dev/.muster", "version": "0.8.0" } },
+      "expect": { "path": "/home/dev/.muster/herdr/0.8.0/herdr" }
+    },
+    {
+      "name": "a cached asset carries both the version and which machine it is for",
+      "why": "One laptop attaches to devenvs of different architectures, so the cache holds several daemons of one version at once. Keying on the version alone would serve an intel remote whatever was cached first, which passes its checksum and then fails to execute over there.",
+      "given": {
+        "cached_at": {
+          "cache": "/Users/a/.muster/cache",
+          "version": "0.8.0",
+          "asset": "herdr-linux-x86_64"
+        }
+      },
+      "expect": { "path": "/Users/a/.muster/cache/herdr/0.8.0/herdr-linux-x86_64/herdr" }
+    },
+    {
+      "name": "a downloaded daemon is judged by its SHA-256, in lowercase hex",
+      "why": "This is what `deps/herdr.pin` states its checksums in, so the algorithm and the spelling are both part of the contract rather than an implementation's choice - an implementation digesting the same bytes into uppercase, or into base64, would refuse every asset the pin describes. `printf 'herdr' | shasum -a 256` reproduces this value. What the digest is then used for is not here: comparing it, deleting a file that fails and reporting where it came from all touch the disk, and live in crates/muster-herdr/src/remote.rs.",
+      "given": { "digest_of": "herdr" },
+      "expect": { "sha256": "78193ef266c1e3c2ce4ea2a86d7fc87e8c52799653faaac8536533a1c9300f82" }
+    }
+  ]
+}
