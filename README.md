@@ -3,8 +3,22 @@
 Native workspace for AI coding agents: real splits, real keybindings, agent status at a glance, local and SSH agents
 side by side in one window, on daemon-owned sessions that outlive the app.
 
-Pre-alpha; nothing works yet. Start with `docs/origin.md` for why this exists and `docs/architecture.md` for the
-shape.
+    brew install amterp/tap/muster
+
+Apple Silicon, macOS 14 or newer. One command brings the app and the `muster` command, because they are one
+artifact - the CLI is a file inside the bundle, built from the same commit and carrying the same signature.
+
+**Early, and specific about which parts.** Built, and covered by the suite: splits and tabs, a rebindable keymap
+that ships Ghostty's chords where Ghostty has one, an agent list carrying a state on every row with a chord to each
+of the first nine, renaming, trading two agents' places by dragging a row, configuration that reloads when you save
+it, a CLI that drives the window from inside a pane, and a second daemon on an SSH machine in the same window -
+where Muster installs its own herdr rather than trusting whatever is over there. Not built, and worth knowing
+before you install rather than after: an agent that needs you shows it on its row but does not notify you, the
+shape of a split cannot be changed once it is made, mouse buttons and motion do not reach a pane, a pane on a
+devenv cannot drive the window it is drawn in, and find is known to mishandle a long scrollback.
+
+`docs/origin.md` is why this exists, `docs/architecture.md` is the shape, and `docs/cli/limits.md` is the same
+honest account for the CLI.
 
 ## Desiderata
 
@@ -473,9 +487,21 @@ running. `muster --help` has the grammar, `muster completions zsh` writes a comp
 Every pane Muster makes can drive the window it is drawn in without being set up first: the
 command is on its `PATH` from `~/.muster/bin`, `$MUSTER_PANE` says which pane it is, and
 `$MUSTER_SOCKET` says which window to tell. So `muster pane new` inside a pane splits that pane,
-and an agent told "split two panes below you and start an agent in each" can do it. Add
-`~/.muster/bin` to your own `PATH` for terminals outside Muster; it holds a link to the command
-belonging to the running app, refreshed at every launch.
+and an agent told "split two panes below you and start an agent in each" can do it.
+
+**Two paths reach `muster`, and it matters less than it looks which one you get.**
+`~/.muster/bin/muster` is the app's, repointed at every launch to the CLI of the app that is
+running, and Muster hands its daemon a `PATH` with that directory at the front. Homebrew's
+`muster` is a second link, into `/Applications`, for terminals that are not panes. Whichever
+one a pane ends up finding drives the window it is drawn in, because both read `$MUSTER_SOCKET`
+and that is what names the window - so the two do not compete over *which* window, only over
+which build of the CLI answers, and that is a question only while they are different versions.
+
+Front of the `PATH` is what Muster asks for rather than what you necessarily get. A login shell
+rebuilds `PATH` from your profile after the daemon has handed one over, and on the machine this
+was measured on that leaves `~/.muster/bin` in 49th place and `/opt/homebrew/bin` in 20th. If you
+install no Homebrew copy, add `~/.muster/bin` to your own `PATH` and terminals outside Muster
+reach the running app's CLI the same way.
 
 Muster imposes no workflow. These are primitives, and `extras/skill/SKILL.md` is a Claude Code
 skill that points an agent at them and nothing more.
@@ -495,8 +521,27 @@ during a build and committed nowhere, so a suite that skipped it ran the shell a
 and went green while the schema said something else.
 
 `./dev --bundle` assembles `.build/muster.app` around the built binary - a thing you can double-click, keep in the
-Dock, or hand to somebody, with the pinned herdr and both dylibs inside it. Out of the gate because nothing in the
-gate needs one, and it is also the only way to meet the descriptor ceiling launchd imposes on a GUI-launched process.
+Dock, or hand to somebody, with the pinned herdr, both dylibs, the icon and the licenses inside it. Out of the gate
+because nothing in the gate needs one, and it is also the only way to meet the descriptor ceiling launchd imposes on
+a GUI-launched process. The signature is ad-hoc, which is what macOS needs to run a Mach-O at all and asserts nothing
+about who built it.
+
+**`MUSTER_SIGN_IDENTITY` is what makes a bundle somebody else can run**, and `./dev --notarize` is the rest of it.
+Set the variable to a Developer ID and the same `--bundle` signs with it instead, under the hardened runtime and with
+`packaging/muster-release.entitlements` rather than the debug entitlement SwiftPM signs a local build with - and the
+run says which identity it used. `--notarize` then sends the result to Apple, waits, staples the ticket into the
+bundle and asks `spctl` what a stranger's machine will conclude - which is the only answer worth having, since a
+signature that verifies locally and a notarized one look identical until Gatekeeper is asked.
+
+Credentials come from a `notarytool` keychain profile, so notarizing your own build needs no key file on disk:
+`xcrun notarytool store-credentials muster-notary` once, and `MUSTER_NOTARY_PROFILE` names a profile stored under
+another name. CI has no keychain worth storing one in, so `.github/workflows/release.yml` hands over the App Store
+Connect key itself from repository secrets, and its header comment names the whole set. It runs both flags on a `v*`
+tag, and refuses a tag that disagrees with `Cargo.toml`'s version.
+
+A release is Apple Silicon only, and `--notarize` refuses to run anywhere else. Building universal would mean
+cross-building libghostty under Zig for a second architecture, and the Homebrew cask in `packaging/homebrew/` says
+`depends_on arch: :arm64` so an Intel Mac is turned away by brew rather than by a crash.
 
 `./dev --contract` is the exception that stays out of the gate. It launches the real app against a real herdr and
 reads its run log to see what connected, so it needs a daemon on PATH and a logged-in GUI session - neither of which
@@ -577,6 +622,12 @@ regenerates on demand; a normal build does it only when the schema's hash change
   the reference `muster docs` ships inside the CLI binary, so a file there is prose the gate checks is reachable.
 - `extras/` holds things that are Muster-adjacent rather than Muster: today one Claude Code skill pointing an agent
   at `muster docs`.
+- `packaging/` is everything that exists only so that Muster can leave this machine: the icon and its source, the
+  entitlements a release is signed with, and the Homebrew cask - which lives here rather than only in the tap because
+  it changes when the app does, and should be reviewed beside it.
+- `licenses/` is what the bundle carries about software that is not ours. `THIRD-PARTY.md` is generated by
+  `tools/licenses.py` from the dependency graph and the gate fails when it stops describing what the binaries
+  contain; `NOTICE` covers what ships as a whole file rather than compiled in.
 - `corpus/`: what the code is judged against, in no language. `conformance/` holds the cases that define the core's
   behavior, `snapshots/` the rendered oracles too broad to be cases, and the rest raw transcripts recorded from a
   real dependency. The gate fails if a file here is checked in and never run.
