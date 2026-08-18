@@ -6,13 +6,19 @@
   "title": "try out control scheme: select tab then pane e.g. cmd+2 \u003e cmd+2 selects the 2nd tab \u003e 2nd pane in that tab",
   "creator": "Alexander Terp",
   "created_at_millis": 1787041310779,
-  "updated_at_millis": 1787051218920,
+  "updated_at_millis": 1787052271262,
   "comments": [
     {
       "id": "c_2AAcuicN4",
       "body": "Built on main2 as d6620ea, behind `numbered_chords = \"tab_then_pane\"` in\n~/.muster/config.toml. The default is unchanged, and saving the file switches\nit live either way.\n\nWhat to feel for while driving it:\n\n- Pressing cmd+2 then cmd+3 expecting the third TAB, and landing on the third\n  pane of tab 2. This is the prefix-key tax and it is not fixable inside the\n  scheme. If it bites often, that is the answer.\n- Whether acting on the first press feels right or premature: cmd+2 moves you\n  before you have said what you wanted.\n- Whether the numbers moving in the sidebar is enough to know which state you\n  are in, or whether you end up guessing anyway. There is deliberately no\n  timeout, so a first press waits forever - watch for coming back to the\n  keyboard armed without knowing it.\n- Whether nine tabs is a better nine than nine panes for the windows you\n  actually run.\n\nLeft in in-progress: the card asks for a decision after using it, and that has\nnot happened yet.",
       "author": "Alexander Terp",
       "created_at_millis": 1787051218920
+    },
+    {
+      "id": "c_2AB4I2xXV",
+      "body": "**Built and landed; the trying-out has not happened yet, which is the half this card is actually about.** Left in-progress deliberately rather than moved to done - the code is in `main` and green, but nothing has been decided.\n\n`numbered_chords = \"tab_then_pane\"` puts ⌘1-⌘9 on tabs and the press after one of them on the panes inside the tab it named. `panes` stays the default and is exactly what it was.\n\nDecisions made while building it, each reversible and each worth arguing with after a day of driving:\n\n- The first press acts immediately rather than waiting for a second.\n- Nothing times out. A read keeps the tab a press named; anything that changes something takes it back - so a keystroke, an Escape, another chord, a click or a divider drag all end it, and a request added later ends it by default.\n- The numbers move as the indicator: at rest on the tab captions, and on that tab's panes once a chord has named one. Exactly one thing in the window carries numbers at any moment.\n- The nine `focus_pane_N` action names stay, which makes the whole thing cheap to delete. Under the prototype they read as \"the Nth numbered chord\" rather than \"the Nth pane\", which is a small lie the alternative did not justify - renaming nine actions, nine menu titles and nine config spellings is what would have made this expensive to take out.\n\nWhat to feel for: whether a two-stage chord reads as a prefix key in the hand. \"Native feel\" says no prefix key, and the README argues at length for the flat numbering this sits beside. Neither argument can be settled by reading it again.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1787052271262
     }
   ],
   "column": "in-progress",

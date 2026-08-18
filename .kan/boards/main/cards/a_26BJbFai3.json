@@ -2,7 +2,15 @@
   "_v": 3,
   "alias": "name-collision-check",
   "alias_explicit": false,
-  "column": "backlog-lo",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "**Swept, and the name stays `muster`.** Nothing found is well enough known to be worth a rename, which was the call this card existed to make.\n\nWhat is out there, so the next person asking does not sweep it again:\n\n- **crates.io** holds `muster` and `muster-cli` (`scott2b/muster`, \"terminal session group management built on tmux\", 195 and 112 downloads), and `muster-workspace` (`sagoez/muster`, \"a terminal workspace for running CLI agents and dev processes side by side\", v0.8.0, 175 downloads). The last of those is the closest thing to a collision anywhere - very nearly this project's own one-line pitch - and it is still a crate almost nobody has installed.\n- **npm** has `@musterhq/cli` (\"governed agent harness for production AI agents\"), a `@dws/muster-*` family, and a plain `muster` that validates objects in JavaScript.\n- **GitHub** has `giantswarm/muster` (MCP tool management), `facebookarchive/muster`, `json4s/muster`, `llnl/muster` and others, none in this space and none active in it.\n- **Homebrew core is clear**, and a tap namespaces the install regardless: `brew install amterp/tap/muster`.\n\nThe download counts are the whole argument. Three digits on the nearest neighbour means the name is shared rather than taken, and sharing it costs less than an `fr` sweep across a repo this size plus every doc, config key and binary name in it.\n\nWorth knowing rather than acted on: `muster-cli` is both this repo's own binary name and a published crate. Nothing in Muster publishes to crates.io (`publish = false`), so the two never meet - but that is the one place a future decision to publish a crate would run into this.",
+      "created_at_millis": 1787052217449,
+      "id": "c_2AB2tEmab"
+    }
+  ],
   "created_at_millis": 1786461806334,
   "creator": "Alexander Terp",
   "description": "Sweep brew, crates, npm, GitHub for 'muster' clashes in the terminal/devtool space. Renaming is cheap now (fr sweep), expensive after a release.",
@@ -10,11 +18,12 @@
   "labels": [
     "ai-hi"
   ],
-  "position": "UUUU",
+  "position": "!!!!!!!!!!!!!!!!!!U",
   "title": "Name-collision check before going public",
   "type": "chore",
-  "updated_at_millis": 1786461806334,
+  "updated_at_millis": 1787052217493,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1786461806334}
+    {"field":"column","value":"backlog-lo","at":1786461806334},
+    {"field":"column","value":"done","at":1787052217493}
   ]
 }
