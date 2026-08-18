@@ -5,7 +5,7 @@
   "area": [
     "testing"
   ],
-  "column": "backlog-hi",
+  "column": "next",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -18,11 +18,13 @@
   "creator": "Alexander Terp",
   "description": "On 2026-08-17 an agent investigating a_29eAVr11v needed a loaded machine to reproduce a wedge, so it made one:\n\n```sh\nfor c in $(seq 1 8); do (while :; do :; done) \u0026 done\nBURNERS=$(jobs -p)\nfor r in $(seq 1 8); do ... catch-hang.sh ... done\nkill $BURNERS\n```\n\nThe rounds finished, the shell that owned the jobs exited, and the `kill` never ran. Eight busy loops were orphaned to init and kept spinning at about 89% of a core each for seventy-four minutes - roughly seven of this machine's ten cores, continuously, while three agents and an integrator ran `./dev` against what was left.\n\nNothing said so. Not the shell that leaked them, not the gate they were taxing, not the agent that made them. The only symptom was that `./dev` took half an hour, and half an hour is not obviously wrong for a run that builds two toolchains - so the integrator attributed it to parallel agents and wrote that down as a fact about running agents in parallel. Load average was 22.34 against ten cores at the time, and 14.05 within seconds of the loops being killed.\n\nThe same family has bitten before from the other direction: a_28YghIUw2 records eight herdr processes on this machine, seven of them scratch daemons left by agent sessions, and no way to tell which held live work.\n\nTwo halves, separable, and the second is the one worth having:\n\n- **Cleanup.** A rig that spawns background work should take it down when it dies rather than on the happy path - `trap` in a shell, a guard object in a test. That is a convention rather than a change, and conventions do not reach the ad-hoc one-liner an agent writes at the moment it needs one, which is exactly where this came from.\n- **Detection.** Nothing in this repo reads what the machine is doing before judging it. `./dev` could sample load at the start and say what it found, which would have turned seventy-four invisible minutes into one line at the top of every run. Cheap, and it points somewhere.\n\nWorth deciding rather than defaulting:\n\n- **Warn, record, or refuse.** Refusing on a busy machine blocks legitimate work on a laptop that is also doing something else. Recording is honest and ignorable. Warning is the middle, and the middle is where warnings get tuned out - unless the number is in every run's header rather than raised only when it is bad.\n- **What the number is.** Load average needs a core count beside it to mean anything, and it is per-OS - so this is the shell's answer to hand over rather than the core's, the same as the log path and the screens.\n- **Whether the perf tier is different.** a_28UsunMWa already wants this and has the strongest claim: it judges nanoseconds against a checked-in baseline, so a loaded machine does not slow it down, it makes it lie. Refusing to judge is defensible there and nowhere else.\n- **Whether stray processes deserve their own check.** Load says the machine is busy, not what is eating it. A `./dev --doctor` that names what this repo's own tooling has left running - herdr daemons, devenv containers, orphaned harnesses - is the version that answers the next question too, and a_28YghIUw2 wants half of it already.",
   "id": "a_29iw10a58",
-  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "position": "!0",
   "title": "🔥 A machine being eaten looks exactly like a slow gate",
   "type": "chore",
-  "updated_at_millis": 1786988167708,
+  "updated_at_millis": 1787047303976,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1786985221352}
+    {"field":"column","value":"backlog-hi","at":1786985221352},
+    {"field":"column","value":"in-progress","at":1787041101800},
+    {"field":"column","value":"next","at":1787047303976}
   ]
 }

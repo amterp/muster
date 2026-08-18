@@ -1,0 +1,17 @@
+{
+  "_v": 3,
+  "id": "a_2A6T9c2r4",
+  "alias": "try-out-control",
+  "alias_explicit": false,
+  "title": "try out control scheme: select tab then pane e.g. cmd+2 \u003e cmd+2 selects the 2nd tab \u003e 2nd pane in that tab",
+  "creator": "Alexander Terp",
+  "created_at_millis": 1787041310779,
+  "updated_at_millis": 1787047305148,
+  "column": "next",
+  "position": "!1",
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1787041310779},
+    {"field":"column","value":"in-progress","at":1787041483308},
+    {"field":"column","value":"next","at":1787047305148}
+  ]
+}
