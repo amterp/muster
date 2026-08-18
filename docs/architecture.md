@@ -562,6 +562,17 @@ points a link in it at the CLI the running app shipped, and gives the directory 
 front of that daemon's `PATH`. A pane is a child of its daemon, so that is every pane. The link is refreshed at each
 launch rather than installed once, because the app it points at moves.
 
+An install now puts a second `muster` on the `PATH` outside Muster, and what keeps that from mattering is
+`$MUSTER_SOCKET` rather than the prepend. Prepending is best effort and measurably so: a login shell rebuilds `PATH`
+from a profile after the daemon has handed one over, and on the machine this was measured on `~/.muster/bin` came
+49th while Homebrew's directory came 20th. It costs nothing, because a pane's window is named by the environment and
+not by which binary answers - either CLI drives the window it is sitting in, and the only difference left is which
+build does the driving, which is a question only across versions. Wanting the prepend to hold would mean Muster
+rewriting a person's `PATH` after their own profile had, which is not a thing a terminal should do.
+
+The one thing an install does owe the link is cleanup: uninstall deletes the bundle the link points into, and the
+app that would have repaired it is the one that just left.
+
 **It is not a view-layer CLI beside the backend's own.** That was the earlier plan, on the reasoning that herdr has a
 good CLI already and Muster should not reimplement it, and three things sank it. A window can be attached to more
 than one daemon, and a backend CLI inside a pane reaches that pane's daemon and no other - so it cannot put a pane on

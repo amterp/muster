@@ -109,6 +109,36 @@ import Testing
     """)
 }
 
+@Test func aLinkFromSomewhereElseIsTakenOverRatherThanLeft() throws {
+  let scratch = try scratchDirectory()
+  defer { try? FileManager.default.removeItem(at: scratch) }
+  let staged = try stagedCommand(in: scratch)
+  let commands = scratch.appendingPathComponent("bin")
+  try FileManager.default.createDirectory(at: commands, withIntermediateDirectories: true)
+  // What Homebrew leaves behind: a `muster` in this directory that resolves perfectly well, and
+  // to a different install than the one now running. Distinct from the dangling link two tests
+  // up, which is the easy case.
+  let other = scratch.appendingPathComponent("another-install", isDirectory: true)
+  try FileManager.default.createDirectory(at: other, withIntermediateDirectories: true)
+  let elsewhere = try stagedCommand(in: other)
+  try FileManager.default.createSymbolicLink(
+    at: commands.appendingPathComponent("muster"), withDestinationURL: elsewhere)
+  #expect(FileManager.default.isExecutableFile(atPath: elsewhere.path))
+
+  _ = refreshMusterCommand(
+    executable: scratch.appendingPathComponent("muster").path, commands: commands.path)
+
+  let link = commands.appendingPathComponent("muster")
+  #expect(
+    try FileManager.default.destinationOfSymbolicLink(atPath: link.path) == staged.path,
+    """
+    this one is deliberate rather than incidental, and it is the opposite of the rule one test \
+    down: a working `muster` that belongs to another install is still repointed, because inside \
+    a pane the promise is that `muster` means the window you are sitting in. Somebody else's \
+    file is spared only when this build staged no CLI to offer instead.
+    """)
+}
+
 @Test func noDirectoryToUseIsNotAnError() {
   #expect(refreshMusterCommand(executable: "/nowhere/muster", commands: nil) == nil)
 }

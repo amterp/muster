@@ -50,9 +50,17 @@ creates on this machine. Without it, `muster` looks for a listening window under
 `~/.muster/state`, and refuses rather than guessing if more than one answers. `--socket PATH`
 names one outright.
 
-Muster puts `~/.muster/bin` on the `PATH` of every pane it makes, which is why `muster` is
-there to run at all. That directory holds a link to the command belonging to the running app,
-refreshed at every launch. Add it to your own `PATH` for terminals outside Muster.
+Muster puts `~/.muster/bin` at the front of the `PATH` of every pane it makes, which is why
+`muster` is there to run at all. That directory holds a link to the command belonging to the
+running app, refreshed at every launch. A login shell rebuilds `PATH` from your profile
+afterwards and can move it, so front is what Muster asks for rather than a guarantee.
+
+Little rides on which copy wins. Every one of them finds the window through `$MUSTER_SOCKET`,
+so a Homebrew `muster` inside a pane drives that pane's window exactly as the app's own does;
+what differs is the build, and only while the two are different versions.
+
+Outside a pane it is whatever your own `PATH` finds. A Homebrew install puts one there
+pointing into `/Applications`; from a build of your own, add `~/.muster/bin` to your `PATH`.
 
 ## Output
 
