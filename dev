@@ -364,6 +364,17 @@ fn run_ssh_tier():
 
     run_linux_corpus_diff(root, version)
 
+    // Said here because this is where it matters and nothing else says it. The container is
+    // left up deliberately - a devenv is a thing you keep - but it goes on costing the machine
+    // after the tier that started it has finished, and the tier most likely to run next is the
+    // one that cannot survive it: a_28UsunMWa measured frame.decode at 1.67 ns/byte with this
+    // container up against 1.44 with it stopped, both against a 0.83 baseline. Somebody running
+    // the out-of-gate tiers in sequence gets a perf failure that nothing in the code caused.
+    print(dim("\nThe devenv container is still up on port 2222, deliberately - a devenv is a"))
+    print(dim("thing you keep. It costs this machine something while it runs, and ./dev --perf"))
+    print(dim("reads slow against its baseline until it stops. Stop it with:"))
+    print(dim("  ./devenv/devenv down"))
+
 // The pinned daemon built for the container rather than for this machine, on this machine.
 //
 // Not deps/herdr/<version>/herdr - that one is this laptop's, and the container is Linux.
