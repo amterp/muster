@@ -12,9 +12,15 @@
   The one that is here is the one a terminal cannot do without. Sending an Apple
   event from a hardened process requires it, and while the process that runs
   `osascript` in a pane is a child of the daemon rather than Muster, macOS
-  charges a protected request to the responsible app - which is Muster, measured
-  in docs/observations/macos-26.4.1.md, and the reason the Info.plist carries an
-  NSAppleEventsUsageDescription at all. Ghostty's own Developer ID build asks for
+  charges a protected request to the responsible app - and the reason the
+  Info.plist carries an NSAppleEventsUsageDescription at all.
+
+  This file is signed onto two bundles, not one. In a build assembled by
+  `./dev --bundle` the responsible app for anything in a pane is the daemon's own
+  helper bundle rather than Muster, since Launch Services starts it and it
+  outlives every launch (docs/observations/macos-26.4.1.md). Muster keeps the
+  entitlement too, because a plain `swift build` spawns a bare daemon and panes
+  are charged to Muster there exactly as they used to be. Ghostty's own Developer ID build asks for
   the same thing, which is the closest thing to evidence available for a
   question whose failure mode is a program dying in somebody else's pane.
 

@@ -63,6 +63,68 @@ func theOverrideWins() throws {
   #expect(found == "/elsewhere/herdr")
 }
 
+@Test("the helper bundle wins over the binary beside the app")
+func theBundleIsPreferred() throws {
+  // What macOS charges a pane's protected request to is decided by how the daemon was
+  // started, and only a bundle can be started through Launch Services. A build that carries
+  // both must hand over the bundle, or every pane goes back to being charged to Muster until
+  // Muster exits and to nothing nameable after that.
+  let contents = try scratchDirectory().appendingPathComponent("Contents", isDirectory: true)
+  let executables = contents.appendingPathComponent("MacOS", isDirectory: true)
+  let bundle =
+    contents
+    .appendingPathComponent("Library", isDirectory: true)
+    .appendingPathComponent("MusterSessions.app", isDirectory: true)
+  try FileManager.default.createDirectory(at: executables, withIntermediateDirectories: true)
+  try FileManager.default.createDirectory(at: bundle, withIntermediateDirectories: true)
+  FileManager.default.createFile(
+    atPath: executables.appendingPathComponent("herdr").path, contents: Data(),
+    attributes: [.posixPermissions: 0o755])
+
+  let found = herdrPath(
+    executable: executables.appendingPathComponent("muster").path, environment: [:])
+
+  #expect(found == bundle.path)
+}
+
+@Test("a plain build with no bundle keeps the binary beside it")
+func withoutABundleTheBinaryStands() throws {
+  // `./dev` stages a bare binary for a plain `swift build`, and every test in this repo uses
+  // one. Both keep the spawn they always had, so this is the answer that must not move.
+  let contents = try scratchDirectory().appendingPathComponent("Contents", isDirectory: true)
+  let executables = contents.appendingPathComponent("MacOS", isDirectory: true)
+  try FileManager.default.createDirectory(at: executables, withIntermediateDirectories: true)
+  let staged = executables.appendingPathComponent("herdr").path
+  FileManager.default.createFile(
+    atPath: staged, contents: Data(), attributes: [.posixPermissions: 0o755])
+
+  let found = herdrPath(
+    executable: executables.appendingPathComponent("muster").path, environment: [:])
+
+  #expect(found == staged)
+}
+
+@Test("MUSTER_HERDR wins over the bundle too")
+func theOverrideBeatsTheBundle() throws {
+  // The override exists to bisect herdr, which means pointing it at a build somebody just
+  // made rather than at a bundle. A bundle silently outranking it would make the override
+  // look like it did nothing.
+  let contents = try scratchDirectory().appendingPathComponent("Contents", isDirectory: true)
+  let executables = contents.appendingPathComponent("MacOS", isDirectory: true)
+  let bundle =
+    contents
+    .appendingPathComponent("Library", isDirectory: true)
+    .appendingPathComponent("MusterSessions.app", isDirectory: true)
+  try FileManager.default.createDirectory(at: executables, withIntermediateDirectories: true)
+  try FileManager.default.createDirectory(at: bundle, withIntermediateDirectories: true)
+
+  let found = herdrPath(
+    executable: executables.appendingPathComponent("muster").path,
+    environment: ["MUSTER_HERDR": "/elsewhere/herdr"])
+
+  #expect(found == "/elsewhere/herdr")
+}
+
 private func scratchDirectory() throws -> URL {
   let directory = FileManager.default.temporaryDirectory
     .appendingPathComponent("muster-herdr-location-\(UUID().uuidString)", isDirectory: true)

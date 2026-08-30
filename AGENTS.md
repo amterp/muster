@@ -225,7 +225,9 @@ version, and one too old to parse `./dev` says which line it could not read.
 herdr is not something you install. Muster ships one: `deps/herdr.pin` names a release and a checksum per platform,
 `./dev` downloads that binary into `deps/herdr/<version>/` once and verifies it, and every place that needs a daemon
 gets that one - the tests spawn it, a build stages it beside the app, and `./dev --bundle` puts it inside
-`muster.app`, where the app starts it on a socket of its own. Deliberately **not** your PATH, and deliberately not
+`muster.app` - as a helper application of its own, which the app starts through Launch Services on a socket of its
+own, so that macOS charges every pane's permission prompts to the daemon rather than to a Muster that will quit
+(`docs/observations/macos-26.4.1.md`). Deliberately **not** your PATH, and deliberately not
 the socket your own herdr uses: a Muster talking to a daemon its corpus was never recorded against is a window whose
 every behaviour is unverified. So the herdr you run for your own work stays whatever version you want, a suite that
 passed did so against the daemon the corpus was recorded with, and the app never meets either.

@@ -1,0 +1,11 @@
+# who macOS charges for this shell, and whether it may reach the local network
+#
+# recorded 2026-08-30T21:56:21Z on macOS 26.4.1 arm64
+# by tools/tcc-probe/probe --here; read in docs/observations/macos-26.4.1.md
+#
+# Unlike the four arrangements this records one real process rather than a model of
+# one, so what it says is true of wherever it was run and nowhere else. Run in a
+# Muster pane whose Muster has been relaunched, it is the reported failure itself.
+
+  16:56:21.134  here         this shell                     pid=61578 ppid=61530 responsible=61578 prompts-say=nothing - no bundle
+  16:56:21.155  here         local network                  multicast=REFUSED errno=65 No route to host  unicast-to-gateway=sent

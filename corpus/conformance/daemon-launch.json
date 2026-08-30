@@ -1,0 +1,139 @@
+{
+  "concept": "daemon.launch",
+  "source": "authored",
+  "citation": "docs/observations/macos-26.4.1.md sections 1 and 8; corpus/macos-26.4.1/responsible-process.txt; kan a_29i4bxafd",
+  "why": "macOS charges a pane's protected request - a folder, the camera, AppleScript, the local network - not to the process making it but to the responsible one, and which process that is was decided when the pane was spawned. A spawned child inherits its spawner's; only a process Launch Services started is its own.\n\nMeasured, four arrangements at once. A daemon Muster spawns is charged to Muster while Muster lives and to nothing nameable once it exits, so a permission behaves one way before the first relaunch and another way after it, under two names. A daemon Muster opens is its own responsible process from its first instant and every pane it ever makes is charged to it, whether or not a Muster is running - one subject, permanently, and a subject with a bundle behind it, so macOS has a name for the prompt and a usage string to read.\n\nSo how the daemon is started decides what every pane in the window is charged to for as long as that daemon lives, which is across every relaunch, because the daemon is started and never stopped.\n\nThe rule is read off the path rather than configured, because the two are the same question: only a bundle can be opened, and a bundle is what the app ships. A plain `swift build` and every test in this repo stage a bare binary and keep the spawn they always had, which is why both answers have to stay correct rather than one replacing the other.\n\n`open` is asked for the environment as repeated `--env` flags. It adds to what launchd gives a GUI process rather than replacing it, so unlike the spawn's `env_clear` the daemon starts from launchd's `HOME`, `PATH`, `SHELL`, `USER`, `LOGNAME`, `TMPDIR` and `SSH_AUTH_SOCK` with Muster's own answers laid over the top. Every name the allowlist cares about is overridden here, so what survives underneath is what somebody set for their whole login session on purpose.",
+  "cases": [
+    {
+      "name": "a bare binary beside the app is spawned",
+      "why": "What a plain `swift build` stages and what every test in this repo uses. It is also what Muster did before any of this, so the answer has to stay the one it always was: nothing about a dev build or a test should take the Launch Services path, which needs a bundle that only `./dev --bundle` assembles.",
+      "given": {
+        "binary": "/Users/a/src/muster/.build/debug/herdr"
+      },
+      "expect": {
+        "launch": "directly"
+      }
+    },
+    {
+      "name": "a helper bundle is opened",
+      "why": "The arrangement the card settled on. The path names the nested app rather than the executable inside it, because that is what `open` takes and what Launch Services registers - and it is the bundle, not the binary, that becomes the responsible process every pane is charged to.",
+      "given": {
+        "binary": "/Applications/Muster.app/Contents/Library/MusterDaemon.app"
+      },
+      "expect": {
+        "launch": "through launch services",
+        "output": null,
+        "open": [
+          "-n",
+          "-a",
+          "/Applications/Muster.app/Contents/Library/MusterDaemon.app",
+          "--env",
+          "HERDR_SESSION=muster",
+          "--args",
+          "server"
+        ]
+      }
+    },
+    {
+      "name": "the executable inside a bundle is spawned, not opened",
+      "why": "The distinction the measurement turned on, and the one an implementation is most likely to get wrong by reaching for the binary it can see. A bundle's executable spawned directly is charged to whatever spawned it exactly as a bare binary is: the daemon keeps its bundle name afterwards and its panes do not, so this path buys nothing and must not be mistaken for the one that does.",
+      "given": {
+        "binary": "/Applications/Muster.app/Contents/Library/MusterDaemon.app/Contents/MacOS/herdr"
+      },
+      "expect": {
+        "launch": "directly"
+      }
+    },
+    {
+      "name": "a trailing slash does not hide a bundle",
+      "why": "A directory path can arrive with or without one and means the same thing. Getting this wrong would spawn a directory, which fails with a permission error naming the bundle - an error that reads like a signing problem and is not one.",
+      "given": {
+        "binary": "/Applications/Muster.app/Contents/Library/MusterDaemon.app/"
+      },
+      "expect": {
+        "launch": "through launch services",
+        "output": null,
+        "open": [
+          "-n",
+          "-a",
+          "/Applications/Muster.app/Contents/Library/MusterDaemon.app/",
+          "--env",
+          "HERDR_SESSION=muster",
+          "--args",
+          "server"
+        ]
+      }
+    },
+    {
+      "name": "MUSTER_HERDR pointing at a bare binary keeps the spawn",
+      "why": "The override exists for bisecting herdr itself, which means pointing it at a build somebody just made rather than at a bundle. It has to go on working, and it has to go on meaning the old attribution - a bisect is not the moment to also change what macOS charges.",
+      "given": {
+        "binary": "/Users/a/src/herdr/target/release/herdr"
+      },
+      "expect": {
+        "launch": "directly"
+      }
+    },
+    {
+      "name": "opening a bundle carries the environment, the session and the subcommand",
+      "why": "The whole of what `open` is asked for. `-n` because Launch Services would otherwise activate a daemon that is already running instead of starting one, and this path is only reached when nothing answered the socket. HERDR_SESSION is passed as an environment entry rather than on the command line so that it reaches the panes the daemon spawns too, which is what makes `herdr pane list` inside a Muster pane talk to the daemon that owns it. `server` goes after `--args`, which is where `open` stops reading its own flags.",
+      "given": {
+        "binary": "/Applications/Muster.app/Contents/Library/MusterDaemon.app",
+        "config": "/Users/a/.muster/state/herdr.toml",
+        "env": {
+          "HOME": "/Users/a",
+          "PATH": "/usr/bin",
+          "LANG": "en_AU.UTF-8"
+        }
+      },
+      "expect": {
+        "launch": "through launch services",
+        "output": "/Users/a/.muster/state/herdr.out",
+        "open": [
+          "-n",
+          "-a",
+          "/Applications/Muster.app/Contents/Library/MusterDaemon.app",
+          "--stderr",
+          "/Users/a/.muster/state/herdr.out",
+          "--env",
+          "HOME=/Users/a",
+          "--env",
+          "LANG=en_AU.UTF-8",
+          "--env",
+          "PATH=/usr/bin",
+          "--env",
+          "HERDR_CONFIG_PATH=/Users/a/.muster/state/herdr.toml",
+          "--env",
+          "HERDR_SESSION=muster",
+          "--args",
+          "server"
+        ]
+      }
+    },
+    {
+      "name": "a launch with no config file still opens, and says nowhere",
+      "why": "Muster writes the daemon's config file from its own, and a launch that found nowhere to write one is a real state rather than a failure. What is lost is not the daemon but the file a daemon that died before opening its own log would have written to, so the timeout message has to stop naming a path it does not have.",
+      "given": {
+        "binary": "/Applications/Muster.app/Contents/Library/MusterDaemon.app",
+        "env": {
+          "HOME": "/Users/a"
+        }
+      },
+      "expect": {
+        "launch": "through launch services",
+        "output": null,
+        "open": [
+          "-n",
+          "-a",
+          "/Applications/Muster.app/Contents/Library/MusterDaemon.app",
+          "--env",
+          "HOME=/Users/a",
+          "--env",
+          "HERDR_SESSION=muster",
+          "--args",
+          "server"
+        ]
+      }
+    }
+  ]
+}

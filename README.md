@@ -97,9 +97,6 @@ rather than after:
 - One window. There is no `cmd+n`, and no way to open a second.
 - Selecting text and then scrolling leaves the highlight where it was on screen, over other text.
 - A pane in a tab you are not looking at cannot be split.
-- Quitting Muster costs your agents nothing but costs them macOS permissions: while Muster runs it
-  is what the prompts are charged to, and once it exits each pane is charged to itself and asks
-  again under its program's name.
 
 Muster is not a multiplexer, an agent framework, or a workflow: it gives you panes, states, sessions
 and a scriptable surface, and has no opinion about how you run your agents. `AGENTS.md` is the

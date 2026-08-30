@@ -84,7 +84,9 @@ cask "muster" do
     costs you nothing and your agents keep working. `brew uninstall --zap muster`
     is what stops them.
 
-    The first launch may ask for permissions - the prompts say Muster, and the
-    request came from a program running in one of its panes.
+    The first launch may ask for permissions. They say Muster Sessions, which is
+    the daemon that owns your panes, and the request came from a program running
+    in one of them. Answering once covers every pane from then on, including
+    after you quit and come back.
   EOS
 end

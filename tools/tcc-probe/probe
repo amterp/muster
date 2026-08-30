@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Asks macOS who it holds responsible for a pane's program, and records the answer.
+# Asks macOS who it holds responsible for a pane's program, and whether that pane may then
+# reach the local network. Records both.
 #
-# Builds a throwaway app around probe.swift, launches it through Launch Services, and writes
+# Builds four arrangements of Muster's shape around probe.swift, runs them at once, and writes
 # the transcript to corpus/macos-<version>/. Findings read off it live in the observation file
 # of the same version, docs/observations/macos-<version>.md.
 #
@@ -11,46 +12,144 @@
 set -euo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
+mode=${1:-arrangements}
 repo=$(cd "$here/../.." && pwd)
-app="$here/.build/Probe.app"
+build="$here/.build"
 # Named for the macOS that answered, so re-running on an upgrade records beside the old answer
 # instead of over it - what changed between two versions is the thing worth seeing.
 version=$(sw_vers -productVersion)
 out="$repo/corpus/macos-$version"
+agent="dev.muster.tccprobe.agent"
+plist="$HOME/Library/LaunchAgents/$agent.plist"
 
-# Its own bundle identifier, and nothing of Muster's is signed or touched. Re-signing Muster is
-# what revokes Muster's own permissions, which is half of what this probe exists to explain.
-rm -rf "$here/.build"
-mkdir -p "$app/Contents/MacOS" "$out"
-swiftc -O "$here/probe.swift" -o "$app/Contents/MacOS/Probe"
-# LSBackgroundOnly, so nothing appears on screen or takes the keyboard while this runs.
-cat > "$app/Contents/Info.plist" <<'PLIST'
+# The one arm that leaves something behind on this machine, so it comes out however this exits.
+cleanup() {
+  launchctl bootout "gui/$(id -u)/$agent" 2>/dev/null || true
+  rm -f "$plist"
+}
+trap cleanup EXIT
+
+# Asking the same two questions of whatever shell this is, which is the case somebody hits
+# rather than a model of it: who macOS charges for this process, and whether it may reach the
+# local network. Run inside a Muster pane it answers "why does my agent get No route to host",
+# which is the question that produced this arm - and it needs no app, no bundle and no job.
+if [ "$mode" = "--here" ]; then
+  gateway=$(route -n get default 2>/dev/null | awk '/gateway/{print $2}' || true)
+  scratch=$(mktemp -d)
+  trap 'rm -rf "$scratch"' EXIT
+  swiftc -O "$here/probe.swift" -o "$scratch/probe"
+  mkdir -p "$out"
+  "$scratch/probe" here "$scratch" here "$gateway" >/dev/null 2>&1 &
+  wait $! 2>/dev/null || true
+  transcript="$out/local-network-from-here.txt"
+  {
+    echo "# who macOS charges for this shell, and whether it may reach the local network"
+    echo "#"
+    echo "# recorded $(date -u +%Y-%m-%dT%H:%M:%SZ) on macOS $version $(uname -m)"
+    echo "# by tools/tcc-probe/probe --here; read in docs/observations/macos-$version.md"
+    echo "#"
+    echo "# Unlike the four arrangements this records one real process rather than a model of"
+    echo "# one, so what it says is true of wherever it was run and nowhere else. Run in a"
+    echo "# Muster pane whose Muster has been relaunched, it is the reported failure itself."
+    echo
+    grep -v "^$" "$scratch/transcript.raw" | sed 's/^/  /'
+  } > "$transcript"
+  cat "$transcript"
+  exit 0
+fi
+
+# The control for the multicast line. Empty is not a failure - the transcript then says the
+# unicast question was not asked, which is honest, rather than carrying a line nothing checks.
+gateway=$(route -n get default 2>/dev/null | awk '/gateway/{print $2}' || true)
+
+rm -rf "$build"
+mkdir -p "$build" "$out"
+swiftc -O "$here/probe.swift" -o "$build/probe-bare"
+
+# One app bundle per arrangement, each with an identifier of its own. Two arms would otherwise
+# share a TCC subject, and a permission answered once for either would decide the other's
+# result - which is the whole of what the local-network half measures.
+#
+# NSLocalNetworkUsageDescription is here because Muster's own Info.plist carries it: macOS reads
+# a usage string from the *responsible* process's bundle, so a bundle that declares none is not
+# the arrangement being proposed. LSBackgroundOnly, so nothing appears on screen or takes the
+# keyboard while this runs.
+bundle() {
+  local app="$build/$1.app" identifier="$2"
+  mkdir -p "$app/Contents/MacOS"
+  cp "$build/probe-bare" "$app/Contents/MacOS/Probe"
+  cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-  <key>CFBundleName</key><string>Probe</string>
+  <key>CFBundleName</key><string>$1</string>
   <key>CFBundleExecutable</key><string>Probe</string>
-  <key>CFBundleIdentifier</key><string>dev.muster.tccprobe</string>
+  <key>CFBundleIdentifier</key><string>$identifier</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>LSBackgroundOnly</key><true/>
+  <key>NSLocalNetworkUsageDescription</key><string>A program running in a Muster pane wants to reach devices on your local network.</string>
 </dict></plist>
 PLIST
-codesign -f -s - "$app" >/dev/null 2>&1
+  codesign -f -s - "$app" >/dev/null 2>&1
+}
+
+# Nothing of Muster's is signed or touched. Re-signing Muster is what revokes Muster's own
+# permissions, which is half of what this probe exists to explain.
+bundle Probe        dev.muster.tccprobe
+bundle ProbeSpawned dev.muster.tccprobe.spawned
+bundle ProbeOpened  dev.muster.tccprobe.opened
+
+# The card's own option: a bare binary started by a per-user launchd job rather than by the app.
+# `gui/<uid>` rather than a LaunchDaemon, because that is the domain a permission prompt can
+# appear in at all - and because an orphan reparented to launchd, which is what Muster leaves
+# behind today, is not the same thing as a job launchd started.
+cat > "$plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>$agent</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>$build/probe-bare</string>
+    <string>daemon</string>
+    <string>$build</string>
+    <string>launchagent</string>
+    <string>$gateway</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>LimitLoadToSessionType</key><string>Aqua</string>
+</dict></plist>
+PLIST
+
+: > "$build/transcript.raw"
+launchctl bootstrap "gui/$(id -u)" "$plist"
+# The app has no arrangement of its own, so it holds that slot open with a dash
+# rather than letting the gateway slide into it.
+open -a "$build/Probe.app" --args app "$build" "-" "$gateway"
+
+# The arrangements' own timeline is 24 seconds of deliberate waiting; this outlasts it.
+sleep 28
 
 transcript="$out/responsible-process.txt"
-rm -f "$transcript"
 {
-  echo "# who macOS holds responsible for a pane's program"
+  echo "# who macOS holds responsible for a pane's program, and whether that pane may"
+  echo "# reach the local network"
   echo "#"
   echo "# recorded $(date -u +%Y-%m-%dT%H:%M:%SZ) on macOS $version $(uname -m)"
   echo "# by tools/tcc-probe/probe; read in docs/observations/macos-$version.md"
+  echo "#"
+  echo "# Four arrangements of one shape, differing only in what the daemon is and who starts"
+  echo "# it. 'child' is what Muster does today; the other three are the candidates on kan"
+  echo "# a_29i4bxafd. The app exits about five seconds in, which is what 'app gone' names -"
+  echo "# the launchagent arm never had it in its chain and is timed against the same moment."
+  echo "#"
+  echo "# The unicast column is the control. Same process, same instant: if the datagram to"
+  echo "# the gateway goes and the multicast one does not, routing is not what refused it."
+  echo "#"
+  echo "# Sorted by wall clock, because the four arms run at once."
   echo
+  echo "  time          arrangement  moment"
+  sort "$build/transcript.raw" | sed 's/^/  /'
 } > "$transcript"
-
-open -a "$app" --stderr "$out/.raw"
-# The probe's own timeline is 32 seconds of deliberate waiting; this outlasts it.
-sleep 34
-cat "$out/.raw" >> "$transcript"
-rm -f "$out/.raw"
 
 cat "$transcript"

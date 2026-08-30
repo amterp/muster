@@ -65,6 +65,17 @@ bundle carries the binary named in `deps/herdr.pin`, the app finds it beside its
 and it runs it under a herdr session of its own. A stranger is then not something to detect; it is something that
 cannot arise.
 
+**How it runs it is a permissions decision rather than a packaging one.** In a bundle the daemon is a helper
+application of its own, `Contents/Library/MusterSessions.app`, and Muster starts it through Launch Services rather
+than spawning it. macOS charges a pane's protected request to the *responsible* process; a spawned child inherits its
+spawner's, and only a process Launch Services started is its own. Spawned, the daemon is charged to Muster until
+Muster exits and to nothing nameable after that, so a permission behaves one way before the first relaunch and
+another way after it. Opened, it is charged to its own bundle for as long as it lives - which, since it is never
+stopped, is across every relaunch - and that bundle carries the same usage strings the app's does, so macOS has both
+a name for the prompt and a reason to put in it. Measured with the arrangements side by side in
+`observations/macos-26.4.1.md`. A plain `swift build` stages a bare binary and keeps the spawn, which is also what
+every test uses, so both paths have to stay correct rather than one replacing the other.
+
 Started, never stopped, because sessions outliving the app is the point. What it costs is the escape hatch - a
 terminal's `herdr pane list` does not see Muster's panes - and `herdr --session muster` buys it back, since the
 session is herdr's own concept rather than one invented here. Naming a `socket` in Muster's config file is the way
@@ -773,20 +784,25 @@ and because the layer that can honestly answer each is different.
 
 | | what is lost | who can help |
 |---|---|---|
-| Muster quits or crashes | nothing of the session; the OS permissions its panes were granted | nobody needs to; the daemon owns the PTYs |
+| Muster quits or crashes | nothing | nobody needs to; the daemon owns the PTYs, and holds the panes' permissions with them |
 | the connection drops (VPN, lid, SSH) | nothing; the view goes stale and resyncs | the degradation model above |
 | the daemon restarts | every process; scrollback | herdr restores the tree and cwds |
 | the machine reboots | the same, plus the daemon must come back | as above |
 | the machine is gone | local work only | remote daemons keep running |
 
-**The first row's exception is the platform's rather than Muster's, and it cannot be written down.** macOS charges a
-protected request - a folder, the camera, AppleScript - to the *responsible* process, which for a pane's program is
-the Muster that started its daemon. That holds only while that Muster is alive: measured, every surviving pane
-becomes its own responsible process the moment the app exits, and a later Muster cannot adopt them, because
-responsibility is fixed when a process is spawned and nothing lets an app claim a chain it did not start
-(`observations/macos-26.4.1.md`). So a permission granted to Muster covers every pane until the relaunch, and after
-it a prompt names the agent's own binary. Nothing in this document fixes that; it is here because "Muster quits or
-crashes: nothing is lost" is otherwise a promise with a silent hole in it.
+**The first row used to have an exception, and what closed it is the daemon being a helper application.** macOS
+charges a protected request - a folder, the camera, AppleScript, the local network - to the *responsible* process.
+For a pane's program that used to be the Muster which started its daemon, and only while that Muster was alive:
+every surviving pane became its own responsible process the moment the app exited, a later Muster could not adopt
+them, and a permission therefore behaved one way before the first relaunch and another way after it, under two
+names and with no prompt saying which case you were in. Starting the daemon through Launch Services makes it its own
+responsible process from its first instant, so every pane it ever makes is charged to one subject that outlives every
+launch (`observations/macos-26.4.1.md`, section 8).
+
+Two things it does not fix, and both are worth knowing before reading the row as absolute. A daemon restart is row
+three and takes the permissions with the processes, because the new daemon is a new subject. And a build whose
+signature changes is a new subject too, which is why an ad-hoc `./dev --bundle` still re-prompts and a Developer ID
+does not.
 
 Two things follow.
 

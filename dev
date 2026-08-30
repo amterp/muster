@@ -55,6 +55,19 @@ BUNDLE_ID = "dev.amterp.muster"
 // because it is a path somebody types; nobody types the path of an app they downloaded, and
 // what a person sees in /Applications should be the name the app calls itself.
 RELEASE_APP = "Muster.app"
+// The daemon's own bundle, nested in the app's Contents/Library the way a helper application
+// is. It exists so the daemon can be started through Launch Services rather than spawned, and
+// that is not packaging pedantry: macOS charges a pane's protected request to the responsible
+// process, only a process Launch Services started is its own, and the daemon is started and
+// never stopped - so this is what makes one permission grant cover every pane across every
+// relaunch instead of lapsing when the app quits (docs/observations/macos-26.4.1.md).
+//
+// A name of its own rather than the app's, because both appear in System Settings under
+// Privacy and two rows reading "Muster" are two rows nobody can tell apart when they want to
+// revoke one.
+DAEMON_BUNDLE = "MusterSessions.app"
+DAEMON_BUNDLE_ID = "dev.amterp.muster.sessions"
+DAEMON_BUNDLE_NAME = "Muster Sessions"
 ICNS = "packaging/Muster.icns"
 ENTITLEMENTS = "packaging/muster-release.entitlements"
 THIRD_PARTY = "licenses/THIRD-PARTY.md"
@@ -519,7 +532,6 @@ fn build_bundle():
     $`cp {swift_bin}/muster {contents}/MacOS/muster`
     $`cp {swift_bin}/muster-bridge {contents}/MacOS/muster-bridge`
     $`cp {swift_bin}/muster-cli {contents}/MacOS/muster-cli`
-    $`cp {swift_bin}/herdr {contents}/MacOS/herdr`
     $`cp target/debug/libmuster.dylib {contents}/Frameworks/libmuster.dylib`
     $`cp {GHOSTTY_DIR}/zig-out/lib/libghostty-vt.dylib {contents}/Frameworks/libghostty-vt.dylib`
 
@@ -540,6 +552,7 @@ fn build_bundle():
     $`cp {ICNS} {contents}/Resources/Muster.icns`
 
     write_info_plist(contents)
+    write_daemon_bundle(contents, swift_bin)
 
     // The rpaths compiled in are loader-relative to target/debug and to the ghostty
     // checkout (Package.swift, .cargo/config.toml), and neither exists inside a bundle. So
@@ -550,6 +563,53 @@ fn build_bundle():
 
     sign_bundle(swift_bin, contents)
     print("assembled {BUNDLE} - open it, or drag it to the Dock")
+
+// The daemon, as a bundle Launch Services can start.
+//
+// herdr is a plain command-line binary and this makes an application out of it, which sounds
+// like a costume and is the whole mechanism. macOS decides who to charge a pane's protected
+// request to when that pane is spawned: a spawned child inherits its spawner's answer, and only
+// a process Launch Services started is its own. Spawned, the daemon is charged to Muster until
+// Muster exits and then to nothing that can be named; opened, it is charged to this bundle for
+// as long as it lives, and every pane it ever makes with it.
+//
+// So the Info.plist below carries the same usage descriptions the app's does. macOS reads a
+// usage string from the *responsible* process's bundle, and after this change that is this one -
+// a missing string is not a worse prompt but a kill, so a helper that declared none would be
+// strictly worse than the bare binary it replaced.
+//
+// LSUIElement rather than LSBackgroundOnly. Both keep it out of the Dock and the app switcher;
+// the difference is that a UIElement application may put something on screen, and a permission
+// prompt is something on screen. A background-only daemon that could never present one would
+// turn every un-granted permission into a silent denial, which is the failure this whole card
+// is about.
+fn write_daemon_bundle(contents, swift_bin):
+    bundle = "{contents}/Library/{DAEMON_BUNDLE}"
+    $`mkdir -p {bundle}/Contents/MacOS`
+    $`cp {swift_bin}/herdr {bundle}/Contents/MacOS/herdr`
+    version = workspace_version()
+    plist = """
+    <?xml version="1.0" encoding="UTF-8"?>
+    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+    <plist version="1.0">
+    <dict>
+      <key>CFBundleName</key><string>{DAEMON_BUNDLE_NAME}</string>
+      <key>CFBundleDisplayName</key><string>{DAEMON_BUNDLE_NAME}</string>
+      <key>CFBundleExecutable</key><string>herdr</string>
+      <key>CFBundleIdentifier</key><string>{DAEMON_BUNDLE_ID}</string>
+      <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+      <key>CFBundlePackageType</key><string>APPL</string>
+      <key>CFBundleShortVersionString</key><string>{version}</string>
+      <key>CFBundleVersion</key><string>{version}</string>
+      <key>LSMinimumSystemVersion</key><string>14.0</string>
+      <key>LSUIElement</key><true/>
+      <key>NSSupportsAutomaticTermination</key><false/>
+      <key>NSSupportsSuddenTermination</key><false/>
+    {usage_descriptions()}
+    </dict>
+    </plist>
+    """
+    write_file("{bundle}/Contents/Info.plist", plist)
 
 // What Launch Services reads before anything of Muster's runs.
 //
@@ -676,13 +736,25 @@ fn sign_bundle(swift_bin, contents):
         "{contents}/Frameworks/libmuster.dylib",
         "{contents}/MacOS/muster-bridge",
         "{contents}/MacOS/muster-cli",
-        // herdr is somebody else's binary, redistributed unmodified. Re-signing it with our
-        // own identity is what nesting it inside a signed bundle requires, and changes nothing
-        // about whose software it is - NOTICE and Resources/LICENSE-herdr.txt say that.
-        "{contents}/MacOS/herdr",
     ]
     for path in inner:
         $`codesign -f -s {identity} --options runtime --timestamp {path}`
+
+    // Inside out, because a signature covers everything beneath it: signing the daemon's
+    // bundle after the app's would invalidate the app's, and codesign will not tell you - the
+    // failure arrives as Gatekeeper refusing the download on somebody else's machine.
+    //
+    // herdr is somebody else's binary, redistributed unmodified. Re-signing it with our own
+    // identity is what nesting it inside a signed bundle requires, and changes nothing about
+    // whose software it is - NOTICE and Resources/LICENSE-herdr.txt say that.
+    //
+    // The same entitlements as the app, and for the reason the file itself gives: a pane that
+    // runs `osascript` needs the responsible process to hold the Apple events entitlement, and
+    // in a bundle the responsible process is this daemon rather than Muster.
+    daemon = "{contents}/Library/{DAEMON_BUNDLE}"
+    $`codesign -f -s {identity} --options runtime --timestamp {daemon}/Contents/MacOS/herdr`
+    $`codesign -f -s {identity} --options runtime --timestamp --entitlements {ENTITLEMENTS} {daemon}`
+
     $`codesign -f -s {identity} --options runtime --timestamp --entitlements {ENTITLEMENTS} {BUNDLE}`
 
     // Asked of the signature rather than assumed of the commands, because every failure mode
@@ -695,7 +767,11 @@ fn sign_ad_hoc(swift_bin):
     $`codesign -f -s - {contents}/Frameworks/libmuster.dylib`
     $`codesign -f -s - {contents}/MacOS/muster-bridge`
     $`codesign -f -s - {contents}/MacOS/muster-cli`
-    $`codesign -f -s - {contents}/MacOS/herdr`
+    // Inside out, for the reason the release path gives: a signature covers everything beneath
+    // it, so the daemon's bundle has to be settled before the app's is taken.
+    daemon = "{contents}/Library/{DAEMON_BUNDLE}"
+    $`codesign -f -s - {daemon}/Contents/MacOS/herdr`
+    $`codesign -f -s - {daemon}`
 
     // The entitlement SwiftPM signs a debug build with: it is what lets a debugger attach,
     // and re-signing without it would make the bundle the one build nobody can debug. It is

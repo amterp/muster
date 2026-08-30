@@ -1,11 +1,50 @@
-# who macOS holds responsible for a pane's program
+# who macOS holds responsible for a pane's program, and whether that pane may
+# reach the local network
 #
-# recorded 2026-08-17T16:13:38Z on macOS 26.4.1 arm64
+# recorded 2026-08-30T21:54:59Z on macOS 26.4.1 arm64
 # by tools/tcc-probe/probe; read in docs/observations/macos-26.4.1.md
+#
+# Four arrangements of one shape, differing only in what the daemon is and who starts
+# it. 'child' is what Muster does today; the other three are the candidates on kan
+# a_29i4bxafd. The app exits about five seconds in, which is what 'app gone' names -
+# the launchagent arm never had it in its chain and is timed against the same moment.
+#
+# The unicast column is the control. Same process, same instant: if the datagram to
+# the gateway goes and the multicast one does not, routing is not what refused it.
+#
+# Sorted by wall clock, because the four arms run at once.
 
-  0.0s  app                                pid=48483 ppid=1 responsible=48483
-  0.0s  daemon, app alive                  pid=49070 ppid=48483 responsible=48483
-  0.0s  pane made while app alive          pid=49072 ppid=49070 responsible=48483
- 12.0s  daemon, app gone                   pid=49070 ppid=1 responsible=49070
-  0.0s  pane made after app gone           pid=49312 ppid=49070 responsible=49312
- 12.0s  same pane, app now gone            pid=49072 ppid=49070 responsible=49072
+  time          arrangement  moment
+  16:54:31.187  launchagent  daemon, app alive              pid=60312 ppid=1 responsible=60312 prompts-say=nothing - no bundle
+  16:54:31.216  launchagent  pane made while app alive      pid=60323 ppid=60312 responsible=60312
+  16:54:31.275  launchagent  local network                  multicast=sent  unicast-to-gateway=sent
+  16:54:31.342  -            app                            pid=60315 ppid=1 responsible=60315 prompts-say=Probe (dev.muster.tccprobe)
+  16:54:31.373  child        daemon, app alive              pid=60324 ppid=60315 responsible=60315
+  16:54:31.392  child        pane made while app alive      pid=60327 ppid=60324 responsible=60315
+  16:54:31.404  child        local network                  multicast=sent  unicast-to-gateway=sent
+  16:54:31.561  bundled      daemon, app alive              pid=60325 ppid=60315 responsible=60315
+  16:54:31.593  bundled      pane made while app alive      pid=60329 ppid=60325 responsible=60315
+  16:54:31.608  bundled      local network                  multicast=sent  unicast-to-gateway=sent
+  16:54:31.744  opened       daemon, app alive              pid=60328 ppid=1 responsible=60328 prompts-say=ProbeOpened (dev.muster.tccprobe.opened)
+  16:54:31.763  opened       pane made while app alive      pid=60332 ppid=60328 responsible=60328
+  16:54:31.774  opened       local network                  multicast=sent  unicast-to-gateway=sent
+  16:54:43.220  launchagent  daemon, app gone               pid=60312 ppid=1 responsible=60312 prompts-say=nothing - no bundle
+  16:54:43.234  launchagent  pane made after app gone       pid=60442 ppid=60312 responsible=60312
+  16:54:43.286  launchagent  local network                  multicast=sent  unicast-to-gateway=sent
+  16:54:43.322  launchagent  same pane, app now gone        pid=60323 ppid=60312 responsible=60312
+  16:54:43.324  launchagent  local network                  multicast=sent  unicast-to-gateway=sent
+  16:54:43.394  child        daemon, app gone               pid=60324 ppid=1 responsible=60324 prompts-say=nothing - no bundle
+  16:54:43.409  child        same pane, app now gone        pid=60327 ppid=60324 responsible=60327 prompts-say=nothing - no bundle
+  16:54:43.413  child        local network                  multicast=sent  unicast-to-gateway=sent
+  16:54:43.422  child        pane made after app gone       pid=60448 ppid=60324 responsible=60448 prompts-say=nothing - no bundle
+  16:54:43.456  child        local network                  multicast=sent  unicast-to-gateway=sent
+  16:54:43.593  bundled      daemon, app gone               pid=60325 ppid=1 responsible=60325 prompts-say=ProbeSpawned (dev.muster.tccprobe.spawned)
+  16:54:43.614  bundled      same pane, app now gone        pid=60329 ppid=60325 responsible=60329 prompts-say=nothing - no bundle
+  16:54:43.618  bundled      local network                  multicast=sent  unicast-to-gateway=sent
+  16:54:43.622  bundled      pane made after app gone       pid=60449 ppid=60325 responsible=60449 prompts-say=nothing - no bundle
+  16:54:43.652  bundled      local network                  multicast=sent  unicast-to-gateway=sent
+  16:54:43.766  opened       daemon, app gone               pid=60328 ppid=1 responsible=60328 prompts-say=ProbeOpened (dev.muster.tccprobe.opened)
+  16:54:43.780  opened       same pane, app now gone        pid=60332 ppid=60328 responsible=60328
+  16:54:43.790  opened       local network                  multicast=sent  unicast-to-gateway=sent
+  16:54:43.790  opened       pane made after app gone       pid=60450 ppid=60328 responsible=60328
+  16:54:43.828  opened       local network                  multicast=sent  unicast-to-gateway=sent
