@@ -360,6 +360,30 @@ public enum SidebarModel {
     row.subtitle.isEmpty ? oneLine : twoLines
   }
 
+  /// What the list has to be told when the rows come out different.
+  ///
+  /// Two answers rather than one, because a table treats them as two questions. `redraw` is
+  /// the positions whose contents moved. `remeasure` is the subset whose *height* moved with
+  /// them, and it is separate because redrawing a row rebuilds its view inside the frame it
+  /// already had - the height it was last measured at stands until something asks for it
+  /// again. A row that gains its second line and is only redrawn draws two lines in a
+  /// one-line frame.
+  ///
+  /// Nil means the shape of the list moved - a pane opened, a tab closed, a drag reordered
+  /// them - so the rows are not the same rows and comparing them by position would compare
+  /// different things. The whole list wants redrawing then, which measures it too.
+  ///
+  /// Here rather than in the view for the reason `height(of:)` and `widths(in:shown:)` are:
+  /// a decision inside a redraw is a decision no test can reach.
+  public static func changes(from previous: [Row], to fresh: [Row]) -> (
+    redraw: IndexSet, remeasure: IndexSet
+  )? {
+    guard previous.count == fresh.count else { return nil }
+    let redraw = IndexSet(fresh.indices.filter { previous[$0] != fresh[$0] })
+    let remeasure = redraw.filteredIndexSet { height(of: previous[$0]) != height(of: fresh[$0]) }
+    return (redraw, remeasure)
+  }
+
   /// Wide enough for a directory and a harness name, narrow enough to leave a full window of
   /// panes readable beside it.
   public static let width: CGFloat = 200
@@ -417,6 +441,17 @@ public final class SidebarView: NSView {
   public var onPaneArranged: ((PaneKey, PaneKey) -> Void)?
 
   public private(set) var rows: [SidebarModel.Row] = []
+
+  /// The frames the list has settled on for its rows.
+  ///
+  /// Not the same question as what `heightOfRow` would answer, which is the point: a table
+  /// keeps the height it was last told, and the two part company exactly when this is worth
+  /// asking. So a test that reads these is checking what somebody would see rather than what
+  /// this side meant.
+  var drawnRows: [CGRect] {
+    table.layoutSubtreeIfNeeded()
+    return rows.indices.map { table.rect(ofRow: $0) }
+  }
 
   /// Muster's own pasteboard type, so nothing outside this window can offer a drop this
   /// accepts and nothing here accepts a file somebody dragged in from the Finder.
@@ -527,17 +562,29 @@ public final class SidebarView: NSView {
   /// closed, rows reordered by a drag - because then the rows are not the same rows and
   /// comparing them position by position would be comparing different things. That case is
   /// rare; a state blinking is not.
+  ///
+  /// **Two calls, because `reloadData(forRowIndexes:)` does not re-measure.** It rebuilds a
+  /// row's view inside the frame that row already had, and `noteHeightOfRows` is the only
+  /// thing that makes a table ask again. Skipping it is how a pane whose agent titles itself
+  /// came to draw two lines in a one-line frame until something unrelated reloaded the lot.
+  ///
+  /// Instantly rather than animated: a note animates by default, and a row growing under
+  /// somebody reading the list is the movement the two heights exist to avoid.
   public func apply(roster: Roster, states: [PaneKey: String], keyboard: PaneKey? = nil) {
     let fresh = SidebarModel.rows(roster: roster, states: states, keyboard: keyboard)
     let previous = rows
     rows = fresh
-    guard previous.count == fresh.count else {
+    guard let changed = SidebarModel.changes(from: previous, to: fresh) else {
       table.reloadData()
       return
     }
-    let moved = IndexSet(fresh.indices.filter { previous[$0] != fresh[$0] })
-    guard !moved.isEmpty else { return }
-    table.reloadData(forRowIndexes: moved, columnIndexes: IndexSet(integer: 0))
+    guard !changed.redraw.isEmpty else { return }
+    table.reloadData(forRowIndexes: changed.redraw, columnIndexes: IndexSet(integer: 0))
+    guard !changed.remeasure.isEmpty else { return }
+    NSAnimationContext.runAnimationGroup { context in
+      context.duration = 0
+      table.noteHeightOfRows(withIndexesChanged: changed.remeasure)
+    }
   }
 
   @objc private func rowClicked() {

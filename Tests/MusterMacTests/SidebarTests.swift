@@ -566,4 +566,104 @@ struct SidebarTests {
     #expect(rows.first { $0.pane?.pane == "w1:p1" }?.givenName == "🔥 payments spike")
     #expect(rows.first { $0.pane?.pane == "w1:p2" }?.givenName == "")
   }
+
+  /// One daemon, one tab, the panes given. The shape most of the redraw cases want, where
+  /// what is under test is what moved between two rosters rather than how they nest.
+  private func roster(_ panes: [Roster.Pane]) -> Roster {
+    Roster(daemons: [Roster.Daemon(id: "local", tabs: [tab("local", panes: panes)])])
+  }
+
+  @Test("a second line arriving asks for the row to be measured again, not just drawn again")
+  func aSecondLineArrivingAsksForAMeasure() {
+    // The bug this pins: redrawing a row builds its view again inside the frame it already
+    // had, so a row that grew a second line drew two lines in a one-line frame until
+    // something unrelated reloaded the whole list. Both answers matter - the row has to be
+    // drawn again because its words changed, and measured again because its height did.
+    let before = SidebarModel.rows(
+      roster: roster([pane("local", "w1:p1"), pane("local", "w1:p2", place: 2)]), states: [:])
+    let after = SidebarModel.rows(
+      roster: roster([
+        pane("local", "w1:p1", subtitle: "align-agent-state colours"),
+        pane("local", "w1:p2", place: 2),
+      ]), states: [:])
+
+    let changed = SidebarModel.changes(from: before, to: after)
+    // Row 0 is the daemon heading, so the first pane is row 1.
+    #expect(changed?.redraw == IndexSet(integer: 1))
+    #expect(changed?.remeasure == IndexSet(integer: 1))
+  }
+
+  @Test("a second line leaving asks for the same thing")
+  func aSecondLineLeavingAsksForAMeasure() {
+    // The way back matters as much as the way there: an agent that stops titling itself
+    // leaves a row that would otherwise keep a two-line frame with one line in it.
+    let before = SidebarModel.rows(
+      roster: roster([pane("local", "w1:p1", subtitle: "align-agent-state colours")]),
+      states: [:])
+    let after = SidebarModel.rows(roster: roster([pane("local", "w1:p1")]), states: [:])
+
+    let changed = SidebarModel.changes(from: before, to: after)
+    #expect(changed?.redraw == IndexSet(integer: 1))
+    #expect(changed?.remeasure == IndexSet(integer: 1))
+  }
+
+  @Test("an agent blinking is drawn again and never measured again")
+  func aBlinkCostsNoMeasure() {
+    // The property the per-row redraw was bought with, and the one a careless fix for the
+    // height would spend: a state change is the most frequent thing that happens in a window
+    // full of agents, and none of them can move a row. Measuring on every blink would put
+    // the cost back in a different place.
+    let panes = [pane("local", "w1:p1"), pane("local", "w1:p2", place: 2)]
+    let key = PaneKey(daemon: "local", pane: "w1:p1")
+    let before = SidebarModel.rows(roster: roster(panes), states: [key: "idle"])
+    let after = SidebarModel.rows(roster: roster(panes), states: [key: "working"])
+
+    let changed = SidebarModel.changes(from: before, to: after)
+    #expect(changed?.redraw == IndexSet(integer: 1))
+    #expect(changed?.remeasure.isEmpty == true)
+  }
+
+  @Test("a pane opening asks for the whole list, because the rows are not the same rows")
+  func aPaneOpeningReloadsEverything() {
+    let before = SidebarModel.rows(roster: roster([pane("local", "w1:p1")]), states: [:])
+    let after = SidebarModel.rows(
+      roster: roster([pane("local", "w1:p1"), pane("local", "w1:p2", place: 2)]), states: [:])
+
+    #expect(SidebarModel.changes(from: before, to: after) == nil)
+  }
+
+  @Test("a row that grows a second line is drawn at the taller height")
+  @MainActor func theListRedrawsTallEnough() {
+    // On the view rather than the model, because the model already answered this correctly
+    // while the list drew it wrong: a table keeps the height it was last told until
+    // something asks again, and only the frames it settles on say whether it was asked.
+    let sidebar = SidebarView(
+      frame: NSRect(x: 0, y: 0, width: SidebarModel.width, height: 400))
+    sidebar.apply(roster: roster([pane("local", "w1:p1", label: "muster · claude")]), states: [:])
+    #expect(sidebar.drawnRows.map(\.height) == [SidebarModel.oneLine, SidebarModel.oneLine])
+
+    sidebar.apply(
+      roster: roster([
+        pane("local", "w1:p1", label: "muster · claude", subtitle: "align-agent-state colours")
+      ]), states: [:])
+    #expect(sidebar.drawnRows.map(\.height) == [SidebarModel.oneLine, SidebarModel.twoLines])
+  }
+
+  @Test("rows are drawn against the width the list was given, not the one it was born with")
+  @MainActor func theListDrawsAtItsRealWidth() {
+    // Built at zero and framed afterwards, which is the order the window uses: the list is a
+    // stored property and its size arrives from a layout pass later. A row is laid out
+    // against its own bounds, so a table left at the width it was born with would truncate
+    // every label earlier than the list's width says and look like a labelling bug rather
+    // than a sizing one. Written down because the shortcuts panel had to be told to follow
+    // its clip view explicitly and says so in a comment, which makes this look like a
+    // question the list has answered by luck. It has not - but the day somebody frames the
+    // table by hand the way that panel does, the luck is what they would be spending.
+    let sidebar = SidebarView(frame: .zero)
+    sidebar.frame = NSRect(x: 0, y: 0, width: SidebarModel.width, height: 400)
+    sidebar.layoutSubtreeIfNeeded()
+    sidebar.apply(roster: roster([pane("local", "w1:p1", label: "muster · claude")]), states: [:])
+
+    #expect(sidebar.drawnRows.allSatisfy { $0.width == SidebarModel.width })
+  }
 }

@@ -1,0 +1,19 @@
+{
+  "_v": 3,
+  "alias": "a-sidebar-row-keeps",
+  "alias_explicit": false,
+  "column": "done",
+  "created_at_millis": 1788124854042,
+  "creator": "Alexander Terp",
+  "description": "A pane row is one line or two, and gains its second when the harness titles itself something the first line does not already say. The list redraws that row's contents but never its height, so two lines are laid out in a 20pt frame and both get shaved. It only comes right when something else changes the row count and forces a whole reload.\n\nIntroduced by 416b2fa, which traded a full reloadData for a per-row one: a partial reload rebuilds a row's view and keeps AppKit's cached height.",
+  "id": "a_2HR74EpIJ",
+  "position": "!!!!!!!!!!!!!!!!!!!E",
+  "title": "🪟 A sidebar row keeps its old height when a second line arrives",
+  "type": "bug",
+  "updated_at_millis": 1788125477084,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1788124854042},
+    {"field":"column","value":"in-progress","at":1788124855969},
+    {"field":"column","value":"done","at":1788125477084}
+  ]
+}
