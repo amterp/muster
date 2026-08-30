@@ -50,11 +50,22 @@ pub fn another_window(environment: &BTreeMap<String, String>) -> Result<String, 
     // and no second process starts, which would look exactly like a launch that did nothing.
     //
     // Through `open` rather than by running the executable, because a window is a GUI app and
-    // LaunchServices is what makes one: activation, the Dock, and which application macOS
-    // charges a permission prompt to. The cost is that it hands over no environment, so the
-    // one variable the new window cannot work out for itself travels as an argument.
+    // Launch Services is what makes one: activation, the Dock, and which application macOS
+    // charges a permission prompt to.
+    //
+    // `env_clear` on `open` itself, on the same terms and for the same measured reason as the
+    // daemon's launch (`muster-herdr`'s `daemon::start`, and `observations/macos-26.4.1.md`
+    // section 8): `open` hands the app *its own* environment, so without this every variable
+    // the caller held reaches the new window - and the caller is usually a pane, which carries
+    // `MUSTER_PANE`, `MUSTER_SOCKET` and a `HERDR_SOCKET_PATH` naming a daemon. That is the
+    // bug `a_28YgGqYq7` fixed arriving through a third door, and it is invisible, because the
+    // window opens and works.
+    //
+    // Cleared, the new window gets what launchd gives any GUI process, which is what a window
+    // opened from the Dock gets. So the one thing it cannot then work out for itself travels
+    // as an argument.
     let mut opening = Command::new("/usr/bin/open");
-    opening.arg("-n").arg("-a").arg(&app);
+    opening.env_clear().arg("-n").arg("-a").arg(&app);
     if let Some(home) = environment::muster_home(environment) {
         opening.arg("--args").arg("--home").arg(home);
     }

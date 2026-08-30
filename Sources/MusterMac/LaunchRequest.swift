@@ -37,11 +37,17 @@ public func launchRequest(arguments: [String]) -> LaunchRequest {
 
 /// Where a launch was told to keep Muster's own files, if it was told.
 ///
-/// An argument rather than only `$MUSTER_HOME`, because of how a second window gets made:
-/// `muster window new` starts the app through `open`, which goes via LaunchServices and does
-/// not hand over the caller's environment. So a window opened from a pane would land in the
-/// default home whatever the pane was told, and a test driving this would land in the
-/// developer's own. Passed on the command line, it survives.
+/// An argument rather than only `$MUSTER_HOME`, because of how a second window gets made.
+/// `muster window new` starts the app through `open` with the environment cleared, and a
+/// menu item starts it through Launch Services, which gives a new app launchd's environment
+/// rather than this one's. Either way the new window is handed what a Dock-launched Muster
+/// gets, which says nothing about where this one was told to keep its files. Passed on the
+/// command line, it survives.
+///
+/// Clearing rather than forwarding is deliberate and is not this file's decision: `open`
+/// hands the app its own environment, so a window opened from a pane would otherwise inherit
+/// that pane's `MUSTER_PANE`, `MUSTER_SOCKET` and `HERDR_SOCKET_PATH`
+/// (`observations/macos-26.4.1.md` section 8).
 ///
 /// The environment still wins where it is set on this process directly, because that is the
 /// case somebody set up deliberately - see `applicationDidFinishLaunching`, which is the one

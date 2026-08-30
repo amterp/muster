@@ -812,10 +812,12 @@ extension MusterWindow {
   /// starting an app is an OS act. There is no request that could carry it, and a core that
   /// grew one would be a core that has to be running before a window can exist.
   ///
-  /// Through LaunchServices rather than by spawning the executable, because that is what makes
+  /// Through Launch Services rather than by spawning the executable, because that is what makes
   /// a GUI app: activation, the Dock, and which application macOS charges a permission prompt
-  /// to. It hands over no environment, so where Muster keeps its files travels as an argument -
-  /// the same thing `muster window new` does, and read back by `launchHome`.
+  /// to. A new app is given launchd's environment rather than this one's, so where Muster keeps
+  /// its files travels as an argument - the same thing `muster window new` does, which reaches
+  /// Launch Services through `open` and has to clear that command's own environment to get the
+  /// same answer. Read back by `launchHome`.
   @objc public func newWindow(_ sender: Any?) {
     let configuration = NSWorkspace.OpenConfiguration()
     configuration.createsNewApplicationInstance = true
