@@ -7,10 +7,19 @@
   "description": "including in the CLI",
   "creator": "Alexander Terp",
   "created_at_millis": 1787068973443,
-  "updated_at_millis": 1787068978507,
-  "column": "next",
-  "position": "UUUUUUUUUUUUUUUUUUUUUUU",
+  "updated_at_millis": 1788131569420,
+  "comments": [
+    {
+      "id": "c_2HTvlWO4g",
+      "body": "Done in 4db9390. Second process per window, as the code already assumed.\n\nThe part worth recording is what the spike found. Two Musters on one daemon work with no core change - but they disagreed about pane names: measured, they agreed about exactly one pane, the one that existed before the second window opened, and the window that saved last took the other's bindings with it. Naming now happens while holding panes.toml under a lock, so the second window to meet a pane finds it already named. Regression tests in crates/muster-seam/src/shared_names.rs.\n\nStill open: a second window is not reopened after a quit, and a name somebody types reaches the other window only when it next asks the daemon (upstream, a_297GbD1zi). Both are in the README and muster docs limits.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1788131569420
+    }
+  ],
+  "column": "done",
+  "position": "!!!!!!!!!!!!!!!!!!!!E",
   "history": [
-    {"field":"column","value":"next","at":1787068973443}
+    {"field":"column","value":"next","at":1787068973443},
+    {"field":"column","value":"done","at":1788131558355}
   ]
 }
