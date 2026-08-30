@@ -69,15 +69,18 @@ PROTO_STAMP = "Sources/MusterMac/Generated/.proto.sha256"
 // anything else - not even `_`.
 //
 // Rad fills a capture by name when every target is spelled one of those three, and by
-// position otherwise. Rad v0.12 reorders the positional form from (code, stdout, stderr)
-// to (stdout, stderr, code), so a positional capture means one thing under the pinned Rad
-// and another under a newer one - while the named form means the same under both. This
-// script is read by two Rads that disagree: deps/rad.pin is what CI installs, and a
-// contributor's own rad is whatever they have.
+// position otherwise - and v0.12 reorders the positional form from (code, stdout, stderr)
+// to (stdout, stderr, code). A named capture reads the same either way, so bumping
+// deps/rad.pin does not mean re-reading every one.
 //
 // It is worth being strict about because the failure is quiet. `uname -s` captured
 // positionally binds the exit code on one side and "Darwin" on the other, and the gate
 // died at the `.trim()` two lines later, naming a type rather than a command.
+//
+// Where one result is wanted, this reads it off the command instead - `$`cmd`.stdout` -
+// which has no slots to get wrong and lets the value keep a name that says what it is.
+// The captures that remain are the ones that also need the other stream swallowed: an
+// accessor captures only the stream it names, and the rest still reach the terminal.
 
 fn announce(name):
     print(bold("\n▸ {name}"))
@@ -343,8 +346,7 @@ fn run_ssh_tier():
 
     // Absolute, because cargo runs an integration test from its own package root and a
     // repo-relative key silently becomes 'no such file' and then 'permission denied'.
-    stdout = $`pwd`
-    root = stdout.trim()
+    root = $`pwd`.stdout.trim()
     key = "{root}/devenv/.ssh/id_ed25519"
     // The container is a local fixture on a port nobody else uses, and its key changes every
     // time it is rebuilt, so pinning its host key would mean editing a file per rebuild.
@@ -395,8 +397,7 @@ fn run_ssh_tier():
 // Which asset is asked of the container rather than assumed. Docker runs the image for the
 // host's architecture, and a tier that guessed would fail as a binary that will not exec.
 fn container_cache(root, version):
-    stdout = $`./devenv/devenv ssh uname -m`
-    machine = stdout.trim()
+    machine = $`./devenv/devenv ssh uname -m`.stdout.trim()
     arch = machine == "arm64" or machine == "aarch64" ? "aarch64" : "x86_64"
     asset = "herdr-linux-{arch}"
 
@@ -460,8 +461,7 @@ fn run_corpus_linux_tier():
         print_err("Impact: a herdr re-pin that moved Linux behaviour would go unnoticed.")
         print_err("Check that docker is running, then: ./devenv/devenv up")
         exit(1)
-    stdout = $`pwd`
-    root = stdout.trim()
+    root = $`pwd`.stdout.trim()
     run_linux_corpus_diff(root, pinned_version())
 
 // The app finds its helpers beside its own executable - right for a shipped bundle, and
@@ -475,8 +475,7 @@ fn run_corpus_linux_tier():
 // does not read PATH either. So a build that produced no daemon would produce an app that
 // opens an empty window - and this is the one step that touches the network.
 fn stage_helpers():
-    stdout = $`swift build --show-bin-path`
-    swift_bin = stdout.trim()
+    swift_bin = $`swift build --show-bin-path`.stdout.trim()
     stage(target = "target/debug/muster-bridge", into = "{swift_bin}/muster-bridge")
     // The CLI, staged under a different name than cargo built it under: the app's own executable
     // is already `muster`, and the two would collide in one directory. The app puts a link called
@@ -506,8 +505,7 @@ fn stage(target, into):
 // Signing and notarization are a separate question and belong with going public. This is
 // about launching it like an app on the machine that built it.
 fn build_bundle():
-    stdout = $`swift build --show-bin-path`
-    swift_bin = stdout.trim()
+    swift_bin = $`swift build --show-bin-path`.stdout.trim()
     contents = "{BUNDLE}/Contents"
 
     // Assembled from nothing every time. A bundle that accumulated across builds could
@@ -640,8 +638,7 @@ fn usage_descriptions():
 // sed rather than awk because a `{}` in a command is Rad interpolation, and an awk program
 // is mostly braces.
 fn workspace_version():
-    stdout = $`sed -n '/^\[workspace\.package\]/,$ s/^version *= *"\(.*\)"/\1/p' Cargo.toml | head -1`
-    version = stdout.trim()
+    version = $`sed -n '/^\[workspace\.package\]/,$ s/^version *= *"\(.*\)"/\1/p' Cargo.toml | head -1`.stdout.trim()
     if version == "":
         print_err(red("Cargo.toml's [workspace.package] has no version, so the bundle has none."))
         print_err("Impact: Launch Services shows the app as unversioned and an upgrade cannot")
@@ -727,9 +724,9 @@ fn notarize_bundle():
     // The cask this feeds declares `depends_on arch: :arm64`, so producing the artifact
     // anywhere else would ship an x86_64 build under an arm64 name to people whose machines
     // cannot run it - and nothing downstream would notice.
-    stdout = $`uname -m`
-    if stdout.trim() != "arm64":
-        print_err(red("A release is built on Apple Silicon, and this machine is {stdout.trim()}."))
+    machine = $`uname -m`.stdout.trim()
+    if machine != "arm64":
+        print_err(red("A release is built on Apple Silicon, and this machine is {machine}."))
         print_err("Impact: the artifact would be x86_64 while the cask promises arm64, so brew")
         print_err("would install an app that cannot launch. Build the release on an arm64")
         print_err("machine - .github/workflows/release.yml runs on macos-26, which is one.")
@@ -774,9 +771,9 @@ fn notarize_bundle():
     $`spctl -a -vv -t exec {app}`
 
     $`rm -f {transport} && ditto -c -k --keepParent {app} {archive}`
-    stdout = $`shasum -a 256 {archive}`
+    checksum = $`shasum -a 256 {archive}`.stdout.split(" ")[0]
     print("notarized {archive}")
-    print("sha256 {stdout.split(" ")[0]}  - this is what the Homebrew cask needs")
+    print("sha256 {checksum}  - this is what the Homebrew cask needs")
 
 // notarytool's exit code is not the verdict.
 //
@@ -814,19 +811,19 @@ fn judge_notarization(stdout, profile, key, key_id, issuer):
 // twenty minutes later otherwise. get-task-allow is the sharp one: it means MUSTER_SIGN_IDENTITY
 // was unset and this is the local ad-hoc bundle, which looks identical from the outside.
 fn check_release_signature():
-    stdout = $`codesign -d --entitlements - --xml {BUNDLE} 2>/dev/null`
-    if stdout.count("get-task-allow") > 0:
+    entitlements = $`codesign -d --entitlements - --xml {BUNDLE} 2>/dev/null`.stdout
+    if entitlements.count("get-task-allow") > 0:
         print_err(red("This bundle carries get-task-allow, so it was signed for debugging."))
         print_err("Impact: notarization refuses it, and it would take twenty minutes to say so.")
         print_err("Set MUSTER_SIGN_IDENTITY to a Developer ID and assemble it again:")
         print_err("  MUSTER_SIGN_IDENTITY=\"Developer ID Application: ...\" ./dev --bundle --notarize")
         exit(1)
 
-    stdout = $`codesign -dvvv {BUNDLE} 2>&1`
+    signature = $`codesign -dvvv {BUNDLE} 2>&1`.stdout
     // bep: match the flag's name rather than its hex, because the numeric value legitimately
     // changes as other signing flags are set beside it.
     for needle in ["Authority=Developer ID Application", "(runtime)", "Timestamp="]:
-        if stdout.count(needle) == 0:
+        if signature.count(needle) == 0:
             print_err(red("The bundle's signature is missing: {needle}"))
             print_err("Impact: Apple rejects it, so nothing ships. sign_bundle in this script is")
             print_err("what applies all three - check that MUSTER_SIGN_IDENTITY named a Developer")
@@ -886,8 +883,7 @@ fn require_env(name, what):
 // builds swift-protobuf's vendored protoc from source - about half a minute, once - and
 // gates the run on the schema's hash the way deps/.built gates libghostty.
 fn proto_hash():
-    stdout = $`shasum -a 256 {PROTO}`
-    return stdout.split(" ")[0]
+    return $`shasum -a 256 {PROTO}`.stdout.split(" ")[0]
 
 fn proto_is_current():
     if not get_path(PROTO_OUT).exists:
@@ -898,8 +894,7 @@ fn proto_is_current():
 
 fn generate_proto():
     print(dim("generating the seam's Swift types - builds protoc from source the first time"))
-    stdout = $`swift build --show-bin-path`
-    bin = stdout.trim()
+    bin = $`swift build --show-bin-path`.stdout.trim()
     $`swift build --product protoc`
     $`swift build --product protoc-gen-swift`
     $`mkdir -p {PROTO_OUT}`
@@ -973,16 +968,11 @@ fn herdr_binary():
 
 // The release assets are named for platform, and there is one binary per pair.
 fn herdr_asset_name():
-    // Assigned before trimming, deliberately: a method chained straight onto a command
-    // does not apply, and the failure is silent - `uname -s` compares as "Darwin\n" and
-    // every platform looks like Linux.
-    //
-    // And assigned to `stdout` rather than a name of its own - this is the line the gate
-    // died on, and the note on captures at the top of this file says why.
-    stdout = $`uname -s`
-    os = stdout.trim()
-    stdout = $`uname -m`
-    machine = stdout.trim()
+    // Trimmed, because `uname -s` answers "Darwin\n" and an untrimmed compare makes every
+    // platform look like Linux. The gate died on these two lines once, when they went
+    // through a capture that handed back the exit code rather than the output.
+    os = $`uname -s`.stdout.trim()
+    machine = $`uname -m`.stdout.trim()
     system = os == "Darwin" ? "macos" : "linux"
     arch = machine == "arm64" or machine == "aarch64" ? "aarch64" : "x86_64"
     return "herdr-{system}-{arch}"
@@ -1010,8 +1000,7 @@ fn fetch_herdr(version, asset, cached):
 // replaced or truncated between runs and the failure would otherwise surface as a daemon
 // that will not start.
 fn verify_herdr_checksum(want, cached):
-    stdout = $`shasum -a 256 {cached}`
-    found = stdout.trim().split(" ")[0]
+    found = $`shasum -a 256 {cached}`.stdout.trim().split(" ")[0]
     if found != want:
         print_err(red("{cached} is not the herdr this repo pins."))
         print_err("  expected {want}")
@@ -1048,8 +1037,8 @@ fn check_herdr_schema(binary, version):
         print_err("test failure rather than by a diff naming the method that moved.")
         print_err("Fix: {binary} api schema --json > {recorded_path}")
         exit(1)
-    stdout = $`{binary} api schema --json`
-    if stdout.trim() != recorded.content.trim():
+    reported = $`{binary} api schema --json`.stdout.trim()
+    if reported != recorded.content.trim():
         print_err(red("herdr {version} reports a different API schema than the one recorded."))
         print_err("Impact: this daemon's wire is not the wire the corpus was recorded")
         print_err("against, so passing tests would prove less than they appear to.")
