@@ -29,7 +29,35 @@ pub fn ask(
     socket: Option<&str>,
     environment: &BTreeMap<String, String>,
 ) -> Result<Response, Trouble> {
-    let (path, mut stream) = reach(socket, environment)?;
+    let (path, stream) = reach(socket, environment)?;
+    exchange(&path, stream, request)
+}
+
+/// Every window listening on this machine, and what each one answers.
+///
+/// One connection each, and a window that will not answer is kept in the list with its reason
+/// rather than dropped: a caller looking for a window it cannot find is better served by "this
+/// one is there and did not answer" than by a shorter list.
+///
+/// Deliberately not routed through [`reach`]. That refuses when several windows answer, which
+/// is the right answer to "drive a window" and the wrong one to "which windows are there".
+pub fn survey(
+    environment: &BTreeMap<String, String>,
+    request: &Request,
+) -> Vec<(String, Result<Response, Trouble>)> {
+    candidates(environment)
+        .into_iter()
+        .filter_map(|path| match dial(&path) {
+            Ok(stream) => Some((path.clone(), exchange(&path, stream, request))),
+            // Not an entry. A socket nothing is listening on is a window that has gone, and
+            // the file outliving it is ordinary - a killed Muster never unlinks its own.
+            Err(_) => None,
+        })
+        .collect()
+}
+
+/// One request down a connection already made, and the answer back.
+fn exchange(path: &str, mut stream: UnixStream, request: &Request) -> Result<Response, Trouble> {
     let _ = stream.set_read_timeout(Some(PATIENCE));
     let _ = stream.set_write_timeout(Some(PATIENCE));
 
@@ -114,9 +142,11 @@ fn dial(path: &str) -> std::io::Result<UnixStream> {
 
 /// Every endpoint socket in Muster's state directory, in a settled order.
 ///
+/// Public so that making a window can wait for one to appear that was not here before.
+///
 /// Sorted so that a refusal naming several of them reads the same twice in a row - a directory
 /// hands them back in whatever order it likes.
-fn candidates(environment: &BTreeMap<String, String>) -> Vec<String> {
+pub fn candidates(environment: &BTreeMap<String, String>) -> Vec<String> {
     let Some(state) = state_directory(environment) else { return Vec::new() };
     let Ok(entries) = std::fs::read_dir(&state) else { return Vec::new() };
 

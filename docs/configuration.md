@@ -60,7 +60,7 @@ blink = true                   # omit to let the program in the pane decide
 
 `[keymap]` is partial, so a file that names one action rebinds one action. Chords are
 modifiers and a key, in any order and any case, spelled the way you would say them: `cmd`,
-`opt`, `ctrl`, `shift`, and `left`, `return`, `f5`, `[`. The actions are `new_tab`,
+`opt`, `ctrl`, `shift`, and `left`, `return`, `f5`, `[`. The actions are `new_window`, `new_tab`,
 `next_tab`, `previous_tab`, `split_*` for each direction, `close_pane`, `next_pane`,
 `previous_pane`, `focus_*` and `resize_*` for each direction, `focus_pane_1` to
 `focus_pane_9`, `rename_pane`, `rename_tab`, `find`, `find_next`, `find_previous`, `zoom`,

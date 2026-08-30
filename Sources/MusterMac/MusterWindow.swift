@@ -805,6 +805,39 @@ extension MusterWindow {
 
   /// Opens the list of what this window does. Answered here rather than by the core: the
   /// list is built from what the core already publishes, and a window is a shell's to open.
+  /// Opens another Muster, which is what another window is.
+  ///
+  /// Nothing is asked of the core, on the same terms as `showShortcuts` below: a window is a
+  /// process - the core holds one session per process - so making one is starting an app, and
+  /// starting an app is an OS act. There is no request that could carry it, and a core that
+  /// grew one would be a core that has to be running before a window can exist.
+  ///
+  /// Through LaunchServices rather than by spawning the executable, because that is what makes
+  /// a GUI app: activation, the Dock, and which application macOS charges a permission prompt
+  /// to. It hands over no environment, so where Muster keeps its files travels as an argument -
+  /// the same thing `muster window new` does, and read back by `launchHome`.
+  @objc public func newWindow(_ sender: Any?) {
+    let configuration = NSWorkspace.OpenConfiguration()
+    configuration.createsNewApplicationInstance = true
+    if let home = ProcessInfo.processInfo.environment["MUSTER_HOME"], !home.isEmpty {
+      configuration.arguments = ["--home", home]
+    }
+    NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: configuration) {
+      _, error in
+      guard let error else { return }
+      Core.warn(
+        "window.open.failed",
+        [
+          "detail": error.localizedDescription,
+          "bundle": Bundle.main.bundleURL.path,
+          "impact": "no second window opened, and the one you are looking at is unaffected",
+          "check":
+            "whether this build is a real bundle - a window opened from a build tree has no "
+            + "app to make a second copy of",
+        ])
+    }
+  }
+
   @objc public func showShortcuts(_ sender: Any?) {
     shortcuts.show(bindings: Core.bindings())
   }

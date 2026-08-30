@@ -24,6 +24,14 @@ use super::{Key, Modifiers};
 /// a shell dispatches, so adding one is one entry here and one place in each shell.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Action {
+    /// Opens another window, which means another Muster.
+    ///
+    /// The one action here the core does not carry out. A window is a process - the session is
+    /// a global, one per process - so making one is starting an app, which is an OS act the
+    /// shell performs itself. It is an action rather than a plain menu item so that it can be
+    /// rebound and unbound like everything else, on the same terms as `show_shortcuts`, which
+    /// the shell also answers alone.
+    NewWindow,
     NewTab,
     NextTab,
     PreviousTab,
@@ -91,7 +99,8 @@ impl Action {
     /// Deliberately not alphabetical: a menu is read top to bottom, and the order here is what
     /// somebody scanning it expects - making something, then arranging it, then moving around
     /// it. A shell that sorted these would produce a menu nobody can find anything in.
-    pub const ALL: [Action; 39] = [
+    pub const ALL: [Action; 40] = [
+        Action::NewWindow,
         Action::NewTab,
         Action::NextTab,
         Action::PreviousTab,
@@ -172,6 +181,7 @@ impl Action {
             Action::ResetFontSize => "reset_font_size",
             Action::ToggleSidebar => "toggle_sidebar",
             Action::ReloadConfig => "reload_config",
+            Action::NewWindow => "new_window",
             Action::ShowShortcuts => "show_shortcuts",
         }
     }
@@ -197,6 +207,9 @@ impl Action {
         let optioned = Modifiers(Modifiers::SUPER.0 | Modifiers::ALT.0);
         let resizing = Modifiers(Modifiers::SUPER.0 | Modifiers::CONTROL.0 | Modifiers::SHIFT.0);
         match self {
+            // Ghostty's, and every other macOS app's. It was the one chord in that set
+            // Muster had nothing to put behind it.
+            Action::NewWindow => Some(Chord::new(Key::KeyN, command)),
             Action::NewTab => Some(Chord::new(Key::KeyT, command)),
             // Ghostty's, and one finger away from next and previous pane - which is what they
             // are: the same walk, one level up. Muster's list crosses daemons where Ghostty's

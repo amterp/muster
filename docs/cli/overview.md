@@ -50,6 +50,19 @@ creates on this machine. Without it, `muster` looks for a listening window under
 `~/.muster/state`, and refuses rather than guessing if more than one answers. `--socket PATH`
 names one outright.
 
+`muster window list` says which windows are listening, marking the one this command is running
+in. `muster window new` opens another and prints the socket that reaches it, so the next line of
+a script is `muster --socket "$W" pane new --run claude`.
+
+A window is a process. That is why each one has its own socket named after its pid, and why
+making one starts an app rather than asking a running one for it - the case `window new` exists
+for includes there being no window to ask.
+
+Panes are not a window's, so two windows showing one machine show the same panes under the same
+names: the names are written down where both can read them. Moving an agent to another window is
+therefore showing its tab over there, `muster --socket "$W" tab focus t1w3r07bsd`, rather than
+moving anything - a pane is a process and it lives where it lives.
+
 Muster puts `~/.muster/bin` at the front of the `PATH` of every pane it makes, which is why
 `muster` is there to run at all. That directory holds a link to the command belonging to the
 running app, refreshed at every launch. A login shell rebuilds `PATH` from your profile

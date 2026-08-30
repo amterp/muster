@@ -43,18 +43,26 @@ line under that, so a row reads `payments spike` over `chasing a flaky test`. Dr
 another and the two panes trade places; drop it on a row in a different tab and the agent moves
 there.
 
+**More than one window, and `cmd+n` to make one.** Each is its own process, so quitting one leaves
+the others alone, and each has its own address for the CLI - `muster window list` says which are
+open. Panes are not a window's: two windows showing one machine show the same panes under the same
+names, so an agent named in one is the same agent, named the same way, in the other.
+
 **Local and remote in one window.** Name an SSH host in your config and its agents appear in the
 same list as the ones on your laptop. You install nothing over there: Muster copies across the
 session daemon it was tested against, checked against a pinned checksum.
 
-**A CLI that drives the window.** `muster` reports what every agent is doing, makes panes, names
-them, types into them, moves the keyboard and zooms. Every pane Muster opens can reach it, and it
-talks to the window that pane is drawn in - the address is in the pane's environment, so nothing has
-to be told which window it belongs to.
+**A CLI that drives the window.** `muster` reports what every agent is doing, reads back what any
+pane has printed, makes panes and tabs, moves and resizes them, names them, types into them, moves
+the keyboard and zooms. Every pane Muster opens can reach it, and it talks to the window that pane
+is drawn in - the address is in the pane's environment, so nothing has to be told which window it
+belongs to.
 
     muster window
     muster pane new --down --run claude --name "🤖 reviewer"
     muster pane send --pane p1w3r07bsd "read AGENTS.md and wait" --enter
+    muster pane read --pane p1w3r07bsd
+    muster pane move --pane p1w3r0ab2n --onto p1w3r07bsd
 
 <p align="center">
   <img src="packaging/readme-cli.png" width="760" alt="muster window printing a tree of five tabs and eight panes, each row carrying its agent's state.">
@@ -89,12 +97,14 @@ Muster is young - this is v0.1 - and these are the gaps worth knowing about befo
 rather than after:
 
 - An agent that needs you shows it on its row, but does not notify you.
-- A split's shape cannot be changed once it is made.
 - Mouse buttons and motion do not reach a pane.
 - A pane on an SSH machine cannot drive the window it is drawn in.
 - Find only reaches the last thousand rows of a pane, and says nothing about the rest - so a match
   further back reads as no match at all.
-- One window. There is no `cmd+n`, and no way to open a second.
+- A second window is not reopened after you quit. Its panes are not lost - those belong to the
+  daemon - but its arrangement is.
+- A name you give a pane reaches another window the next time that window asks the daemon what it
+  holds, rather than at the moment you type it. Muster's own names are the same in every window.
 - Selecting text and then scrolling leaves the highlight where it was on screen, over other text.
 - A pane in a tab you are not looking at cannot be split.
 

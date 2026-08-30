@@ -60,5 +60,9 @@ answer.
 not belong in this tab at all. It takes `--run` and `--name` exactly as `pane new` does, and prints
 the pane it made rather than the tab.
 
+**There may be more than one window.** `muster window list` says which are open and marks the one
+you are in. Pane names are the same in every window, so a name you read in one addresses the same
+pane from another with `--socket`. `muster window new` opens one and prints its socket.
+
 **Muster imposes no workflow.** Panes, states and names are primitives. Nothing here is a way of
 working you are expected to follow.

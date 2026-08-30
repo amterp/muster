@@ -41,10 +41,14 @@ pub struct Invocation {
 /// Either something to ask a window, or something this CLI can answer by itself.
 #[derive(Debug)]
 pub enum Asking {
-    /// Boxed because a `Request` is two orders of magnitude the size of the other variant, and
+    /// Boxed because a `Request` is two orders of magnitude the size of the other variants, and
     /// every invocation would otherwise carry room for the largest message Muster has.
     Send(Box<Request>),
     Print(String),
+    /// Every window on this machine, asked the same thing and answered together.
+    Survey,
+    /// Another window, which means another process - so this starts one rather than asking.
+    MakeWindow,
 }
 
 /// Why a command line produced no request.
@@ -129,7 +133,10 @@ struct Cli {
 #[derive(Debug, Subcommand)]
 enum What {
     /// What the window is showing: its daemons, its tabs, its panes, and what each agent is doing
-    Window,
+    Window {
+        #[command(subcommand)]
+        doing: Option<AboutWindows>,
+    },
 
     /// Make a pane, name one, read it, type into one, move it, resize it, or close it
     Pane {
@@ -208,6 +215,23 @@ enum What {
         /// The shell to write for
         shell: Shell,
     },
+}
+
+/// What `muster window` can do besides describe the one window this is about.
+///
+/// A subcommand rather than a flag, and optional, so that `muster window` keeps meaning what it
+/// has always meant: the window this command is talking to. Everything here is about windows in
+/// the plural, which is a different question and the only one `--socket` cannot narrow.
+#[derive(Debug, Subcommand)]
+enum AboutWindows {
+    /// List every Muster window on this machine
+    List,
+
+    /// Open another window, and print the socket that reaches it
+    //
+    // The one command that dials no window, because it is the one asked when there may be none.
+    // A window is a process, so this starts one.
+    New,
 }
 
 /// What `muster font` can ask for.
@@ -437,7 +461,11 @@ pub fn parse(
     let cli = Cli::try_parse_from(words).map_err(|error| Failure::Usage(Box::new(error)))?;
 
     let asking = match &cli.what {
-        What::Window => send(request::Payload::ReadWindow(ReadWindow {})),
+        What::Window { doing: None } => send(request::Payload::ReadWindow(ReadWindow {})),
+        // Asked of every window rather than of one, which is why it is not a `Send`: `--socket`
+        // and $MUSTER_SOCKET both narrow to one window, and the question here is which there are.
+        What::Window { doing: Some(AboutWindows::List) } => Asking::Survey,
+        What::Window { doing: Some(AboutWindows::New) } => Asking::MakeWindow,
         What::Pane { doing } => pane(doing, environment),
         What::Tab { doing } => tab(doing, environment),
         What::Focus { pane, next, previous, left, right, up, down, place } => {

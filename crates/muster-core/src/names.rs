@@ -211,6 +211,48 @@ impl RandomSource for Seeded<'_> {
     }
 }
 
+/// The written record of these names, which another Muster may be holding open too.
+///
+/// **The reason this exists is that a window is a process.** Two Musters attached to one daemon
+/// both see every pane it holds, and both would name one nobody had named yet - so the same
+/// pane ends up called two things, each window's `muster window` disagrees with the other's,
+/// and the one that writes the file last takes the other's bindings with it. Measured, not
+/// feared: two windows on one daemon agreed only about the pane that existed before the second
+/// one opened.
+///
+/// So naming something new is done while holding the record, rather than in memory and written
+/// out afterwards. `exclusively` is the whole of what the core asks for; where the record lives
+/// and how it is locked is the shell's business, like every other file.
+pub trait SharedNames: Send + Sync + std::fmt::Debug {
+    /// Runs `while_held` with nobody else able to read or write the record.
+    ///
+    /// `while_held` is given what the record says at that moment and answers with what to write
+    /// back, or `None` to leave it alone. A record that cannot be reached does not stop
+    /// anything: `while_held` still runs, given nothing, and this Muster names things the way
+    /// it did before there was a record to share - which is right, because a window that
+    /// refused to name a pane would be a window that cannot draw one.
+    fn exclusively(&self, while_held: &mut dyn FnMut(&str) -> Option<String>);
+
+    /// Whether the record has moved since this Muster last read it.
+    ///
+    /// What keeps the common answer cheap. Naming something this window has already named is
+    /// the overwhelming majority of these calls - every pane of every layout the daemon
+    /// describes - and taking a lock for each would be a lock per keystroke somebody typed
+    /// into an agent. So a name already held is handed straight back, unless the record has
+    /// changed underneath, in which case another Muster has written something and this window
+    /// takes the hold to find out what.
+    ///
+    /// Needed because a window can be *wrong* rather than merely ignorant: a pane created in
+    /// another window may be seen here, and named here, before that window has settled the
+    /// name it already put in the pane's environment. Without this, the guess would stand
+    /// forever, since nothing else would ever look at the record again.
+    ///
+    /// False by default, which is right for a record nothing else writes.
+    fn moved(&self) -> bool {
+        false
+    }
+}
+
 /// Every thing of one noun that Muster has a name for.
 ///
 /// Both directions, because both are asked: outward, to turn a name a caller said into the id
@@ -356,6 +398,38 @@ where
         name
     }
 
+    /// What this is already called, without naming it if it is not.
+    ///
+    /// The half of [`name`](Registry::name) that costs nothing, so that the common answer -
+    /// something this registry has seen before - is reached without the record two Musters
+    /// share ever being opened.
+    pub fn known(&self, daemon: &DaemonId, backend: &B) -> Option<N> {
+        self.named.get(&Located { daemon: daemon.clone(), backend: backend.clone() }).cloned()
+    }
+
+    /// Takes another Muster's word for what things are called.
+    ///
+    /// Every binding in `theirs` replaces whatever this registry had, rather than being skipped
+    /// where the two disagree, and that direction is the point: the record is what both windows
+    /// resolve against, so the one that reads it has to end up agreeing with it. A binding this
+    /// window had and the record contradicts was minted in the moment before the record was
+    /// read, and keeping it would leave two windows permanently disagreeing about one pane.
+    ///
+    /// Reserved names are not touched. A reserved name is already inside a pane's environment,
+    /// so it is the one thing here that cannot be revised - and it reaches the record on its
+    /// own settle, which is what makes the other window adopt it rather than the other way
+    /// round.
+    pub fn adopt(&mut self, theirs: Registry<N, B>) {
+        for (name, at) in theirs.located {
+            if self.reserved.contains(&name) {
+                continue;
+            }
+            // `bind` takes out whatever the two maps used to say, which is what makes this a
+            // replacement rather than a second answer sitting beside the first.
+            self.bind(name, at);
+        }
+    }
+
     /// Where this name's thing is, or nothing at all.
     ///
     /// Nothing is the ordinary answer for a name whose thing has closed, and the CLI turns it
@@ -416,7 +490,20 @@ where
         self.located.iter()
     }
 
+    /// Binds a name to a thing, and takes out whatever the two used to say.
+    ///
+    /// The two maps are one fact read from either end, so a stale entry in one of them is a
+    /// registry that answers differently depending which way it is asked. That became
+    /// reachable when a second window could name a pane this one has already named: settling a
+    /// reserved name over a guessed one left the guess in `located`, both names went into the
+    /// record, and the next window to read it adopted whichever came first.
     fn bind(&mut self, name: N, at: Located<B>) {
+        if let Some(previous) = self.named.remove(&at) {
+            self.located.remove(&previous);
+        }
+        if let Some(previous) = self.located.remove(&name) {
+            self.named.remove(&previous);
+        }
         self.located.insert(name.clone(), at.clone());
         self.named.insert(at, name);
     }
@@ -458,6 +545,11 @@ pub struct Names {
     daemon: DaemonId,
     panes: Arc<Mutex<PaneNames>>,
     tabs: Arc<Mutex<TabNames>>,
+    /// The record another Muster may be naming things in at the same moment.
+    ///
+    /// `None` is a registry with nowhere to write - a conformance driver, or a window told to
+    /// remember nothing - and it names things exactly as it did before this existed.
+    shared: Option<Arc<dyn SharedNames>>,
 }
 
 impl Names {
@@ -466,7 +558,17 @@ impl Names {
         panes: Arc<Mutex<PaneNames>>,
         tabs: Arc<Mutex<TabNames>>,
     ) -> Names {
-        Names { daemon, panes, tabs }
+        Names { daemon, panes, tabs, shared: None }
+    }
+
+    /// The same, sharing its record with whatever else is holding that record open.
+    pub fn sharing(
+        daemon: DaemonId,
+        panes: Arc<Mutex<PaneNames>>,
+        tabs: Arc<Mutex<TabNames>>,
+        shared: Arc<dyn SharedNames>,
+    ) -> Names {
+        Names { daemon, panes, tabs, shared: Some(shared) }
     }
 
     /// Registries of its own, for a caller that has no session to share them with.
@@ -483,17 +585,53 @@ impl Names {
 
     /// What Muster calls this pane of this daemon's, naming it now if nobody has.
     pub fn pane(&self, backend: &str) -> PaneId {
-        self.locked_panes().name(&self.daemon, &BackendPaneId::new(backend))
+        let backend = BackendPaneId::new(backend);
+        if self.settled()
+            && let Some(known) = self.locked_panes().known(&self.daemon, &backend)
+        {
+            return known;
+        }
+        self.naming(|panes, _| panes.name(&self.daemon, &backend))
     }
 
     /// What Muster calls this tab of this daemon's, naming it now if nobody has.
     pub fn tab(&self, backend: &str) -> TabId {
-        self.locked_tabs().name(&self.daemon, &BackendTabId::new(backend))
+        let backend = BackendTabId::new(backend);
+        if self.settled()
+            && let Some(known) = self.locked_tabs().known(&self.daemon, &backend)
+        {
+            return known;
+        }
+        self.naming(|_, tabs| tabs.name(&self.daemon, &backend))
+    }
+
+    /// Whether what this window holds can be trusted without opening the record.
+    fn settled(&self) -> bool {
+        self.shared.as_ref().is_none_or(|shared| !shared.moved())
     }
 
     /// The same, for a tab the daemon has only just said it made.
     pub fn tab_from_answer(&self, backend: &str) -> TabId {
-        self.locked_tabs().name_from_answer(&self.daemon, &BackendTabId::new(backend))
+        let backend = BackendTabId::new(backend);
+        self.naming(|_, tabs| tabs.name_from_answer(&self.daemon, &backend))
+    }
+
+    /// Names something while holding the shared record, and leaves the record saying so.
+    ///
+    /// Read, name, write, all inside one hold. Two Musters that both meet a pane neither has
+    /// named therefore take it in turns: the second one reads what the first wrote and finds
+    /// the pane already named, so `name` below hands back that name rather than drawing a
+    /// second one. Doing this in memory and saving afterwards is what let them disagree.
+    ///
+    /// Both registries are locked whichever noun is being named, and panes before tabs, because
+    /// the record holds both and writing it back reads both - so a caller that took only one
+    /// would write a record half of which was somebody else's.
+    fn naming<T>(&self, draw: impl FnOnce(&mut PaneNames, &mut TabNames) -> T) -> T {
+        if let Some(shared) = self.shared.clone() {
+            return holding(&self.panes, &self.tabs, shared.as_ref(), draw);
+        }
+        let (mut panes, mut tabs) = (self.locked_panes(), self.locked_tabs());
+        draw(&mut panes, &mut tabs)
     }
 
     /// What this daemon calls the pane Muster calls `name`, or why it cannot say.
@@ -526,8 +664,14 @@ impl Names {
     }
 
     /// Says which of this daemon's panes a reserved name turned out to be.
+    ///
+    /// Under the shared record like a mint, and for a sharper reason: this name is already in
+    /// the pane's environment, so it is the one binding that cannot be revised afterwards.
+    /// Writing it while holding the record is what makes another window adopt it rather than
+    /// go on calling the same pane whatever it had guessed.
     pub fn settle(&self, name: &PaneId, backend: &str) {
-        self.locked_panes().settle(name, &self.daemon, &BackendPaneId::new(backend));
+        let backend = BackendPaneId::new(backend);
+        self.naming(|panes, _| panes.settle(name, &self.daemon, &backend));
     }
 
     /// Gives back a name whose pane the daemon never made.
@@ -597,6 +741,52 @@ pub fn to_toml(panes: &PaneNames, tabs: &TabNames) -> String {
 
     toml::to_string_pretty(&toml::Value::Table(root))
         .unwrap_or_else(|error| panic!("names should always render as TOML: {error}"))
+}
+
+/// Reads the shared record, does something to the registries, and writes them back.
+///
+/// The whole of what makes two Musters agree: read, name, write, all inside one hold, so the
+/// second window to meet a pane reads what the first wrote and finds it already named. In
+/// memory first and saved afterwards is what let them disagree.
+///
+/// Panes are locked before tabs, here and everywhere else that takes both.
+fn holding<T>(
+    panes: &Arc<Mutex<PaneNames>>,
+    tabs: &Arc<Mutex<TabNames>>,
+    shared: &dyn SharedNames,
+    draw: impl FnOnce(&mut PaneNames, &mut TabNames) -> T,
+) -> T {
+    let mut drawn = None;
+    let mut pending = Some(draw);
+    shared.exclusively(&mut |record| {
+        let mut panes = poison::lock(panes, "pane-names");
+        let mut tabs = poison::lock(tabs, "tab-names");
+        // What the record says now, which may be more than this window knew a moment ago. A
+        // record that will not read is left to whoever owns the file to complain about, and
+        // naming carries on from what this window holds - a window that refused to name a pane
+        // would be a window that cannot draw one.
+        if let Ok((theirs, their_tabs)) = from_toml(record, panes.mint) {
+            panes.adopt(theirs);
+            tabs.adopt(their_tabs);
+        }
+        let work = pending.take().expect("a hold does its work once");
+        drawn = Some(work(&mut panes, &mut tabs));
+        Some(to_toml(&panes, &tabs))
+    });
+    drawn.expect("`exclusively` runs what it is given, with a record or without one")
+}
+
+/// Puts these registries into the shared record, keeping whatever it has learned meanwhile.
+///
+/// What a window calls when it has changed the registries without naming anything - forgetting
+/// what a daemon no longer holds, or giving back a reservation. The same hold as a mint,
+/// because a plain overwrite is exactly the thing that used to lose another window's bindings.
+pub fn save_shared(
+    panes: &Arc<Mutex<PaneNames>>,
+    tabs: &Arc<Mutex<TabNames>>,
+    shared: &dyn SharedNames,
+) {
+    holding(panes, tabs, shared, |_, _| ());
 }
 
 /// One registry's entries as the tables that go in the file.

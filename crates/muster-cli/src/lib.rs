@@ -17,6 +17,7 @@ pub mod args;
 pub mod dial;
 pub mod docs;
 pub mod environment;
+pub mod opening;
 pub mod render;
 
 /// Why a run ended without an answer.
@@ -83,6 +84,33 @@ pub fn run(
             let _ = writeln!(out, "{}", text.trim_end());
             return 0;
         }
+        args::Asking::MakeWindow => {
+            return match opening::another_window(environment) {
+                Ok(socket) => {
+                    // The socket alone, with nothing around it, for the reason `pane new` prints
+                    // a bare pane name: the next line is
+                    // `muster --socket "$(muster window new)" pane new --run claude`.
+                    let _ = writeln!(
+                        out,
+                        "{}",
+                        if json {
+                            serde_json::json!({ "socket": socket }).to_string()
+                        } else {
+                            socket
+                        }
+                    );
+                    0
+                }
+                Err(trouble) => report(&trouble, json, errors),
+            };
+        }
+        args::Asking::Survey => {
+            let answers = dial::survey(environment, &read_window());
+            let here = environment.get(environment::WINDOW_SOCKET).filter(|path| !path.is_empty());
+            let text = render::windows(&answers, here.map(String::as_str), json);
+            let _ = writeln!(out, "{}", text.trim_end());
+            return 0;
+        }
         args::Asking::Send(request) => request,
     };
 
@@ -117,4 +145,15 @@ fn report(trouble: &Trouble, json: bool, errors: &mut impl Write) -> i32 {
         );
     }
     trouble.code()
+}
+
+/// The request that asks a window what it is showing.
+///
+/// Built here as well as in `args` because two commands that name no window still have to ask
+/// one something: listing windows asks every window this, and making one asks a window that has
+/// only just appeared whether it is ready to be handed to a caller.
+fn read_window() -> muster_proto::Request {
+    muster_proto::Request {
+        payload: Some(muster_proto::request::Payload::ReadWindow(muster_proto::ReadWindow {})),
+    }
 }

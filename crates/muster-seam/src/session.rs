@@ -43,6 +43,7 @@ use crate::proto::{
     BackendHealth, Event, PaneStateChanged, PaneTypeable, PresentationChanged,
     Problem as ProblemMessage, ProblemsChanged, event,
 };
+use crate::shared_names::NamesFile;
 use crate::{command, convert, ffi, watchdog};
 
 /// What Muster calls the daemon it found for itself.
@@ -156,6 +157,13 @@ fn mark_opened() {
 /// Beside [`STATE`] and for the same reasons, including the string compare: the names change
 /// only when a pane or a tab appears or goes, and a publish follows every agent transition.
 static NAMES_FILE: Mutex<Option<(String, String)>> = Mutex::new(None);
+
+/// That same file as the record two Musters name things in, rather than as somewhere to save.
+///
+/// Kept apart from [`NAMES_FILE`] above because they answer different questions: that one is
+/// "has anything changed since the last write", which is a cache and belongs to this process,
+/// and this one is the hold every naming goes through, which belongs to whoever else is open.
+static SHARED_NAMES: Mutex<Option<Arc<NamesFile>>> = Mutex::new(None);
 
 /// Which chord asks for which action, as the config file left it.
 ///
@@ -442,9 +450,14 @@ pub(crate) fn set_state_path(path: &str) {
 /// first snapshot mints a name for every pane and tab it describes, and a name minted for
 /// something that already had one is a pane whose environment now names something else, or a
 /// tab the saved arrangement can no longer find.
+///
+/// The same path becomes the record this window shares with any other Muster that is open, and
+/// from here on nothing writes it except through that - see `shared_names`.
 pub(crate) fn set_pane_names_path(path: &str) {
     *poison::lock(&NAMES_FILE, "saved-names") =
         if path.is_empty() { None } else { Some((path.to_string(), String::new())) };
+    *poison::lock(&SHARED_NAMES, "shared-names") =
+        (!path.is_empty()).then(|| Arc::new(NamesFile::at(path)));
     if path.is_empty() {
         return;
     }
@@ -919,6 +932,7 @@ pub(crate) fn reset() {
     *poison::lock(&COMMANDS, "commands") = None;
     *poison::lock(&STATE, "saved-arrangement") = None;
     *poison::lock(&NAMES_FILE, "saved-names") = None;
+    *poison::lock(&SHARED_NAMES, "shared-names") = None;
     *poison::lock(&BINDINGS, "bindings") = None;
     *poison::lock(&PANE_INPUT, "input-settings") = None;
     *poison::lock(&PANES, "pane-settings") = None;
@@ -967,7 +981,17 @@ impl Session {
         let seeded = mirror.bootstrap(seed);
         let mirror = Arc::new(Mutex::new(mirror));
 
-        let names = Names::new(id.clone(), Arc::clone(&self.names), Arc::clone(&self.tab_names));
+        // Sharing the record where there is one, so that naming a pane this daemon has just
+        // described cannot race another Muster naming the same one.
+        let names = match shared_names() {
+            Some(shared) => Names::sharing(
+                id.clone(),
+                Arc::clone(&self.names),
+                Arc::clone(&self.tab_names),
+                shared,
+            ),
+            None => Names::new(id.clone(), Arc::clone(&self.names), Arc::clone(&self.tab_names)),
+        };
         let reporting = id.clone();
         let subscription = Subscription::start(
             &reached.socket_path,
@@ -2593,39 +2617,41 @@ fn save(composition: &Composition, presentation: Presentation, font_sizes: &Font
 ///
 /// Panes are locked before tabs, and this is the only caller that holds both.
 fn save_names(panes: &Arc<Mutex<PaneNames>>, tabs: &Arc<Mutex<TabNames>>) {
-    let mut held = poison::lock(&NAMES_FILE, "saved-names");
-    let Some((path, written)) = held.as_mut() else { return };
+    let Some(shared) = shared_names() else { return };
 
-    let text = names::to_toml(&poison::lock(panes, "pane-names"), &poison::lock(tabs, "tab-names"));
-    if &text == written {
-        return;
-    }
-
-    let file = std::path::PathBuf::from(&*path);
-    let staged = file.with_extension("writing");
-    let result = std::fs::create_dir_all(file.parent().unwrap_or(std::path::Path::new(".")))
-        .and_then(|()| std::fs::write(&staged, &text))
-        .and_then(|()| std::fs::rename(&staged, &file));
-
-    match result {
-        Ok(()) => *written = text,
-        Err(error) => {
-            log::warn(
-                "names.save.failed",
-                fields! {
-                    "path" => path.clone(),
-                    "detail" => error.to_string(),
-                    "impact" => "these names last until this Muster quits. Every pane open at \
-                                 that moment keeps a name in its environment that the next \
-                                 launch will not know, so commands from inside them are \
-                                 refused - and the next launch cannot find the tabs its saved \
-                                 arrangement names, so it opens fresh",
-                    "check" => "whether that directory exists and is writable",
-                },
-            );
-            written.clear();
+    // The compare first, and outside the hold, because this runs on every publish and a publish
+    // follows every agent transition - while the names change only when a pane or a tab appears
+    // or goes. Taking a file lock and reading a file for each of those would be a lock per
+    // keystroke somebody typed into an agent. What is compared is this window's own last write,
+    // so another Muster's change is not missed by it: that is adopted inside the hold, by
+    // whichever naming next takes it.
+    {
+        let mut held = poison::lock(&NAMES_FILE, "saved-names");
+        let Some((_, written)) = held.as_mut() else { return };
+        let text =
+            names::to_toml(&poison::lock(panes, "pane-names"), &poison::lock(tabs, "tab-names"));
+        if &text == written {
+            return;
         }
+        // Cleared rather than set to `text`: what actually lands in the record is decided
+        // inside the hold, where another Muster's entries are taken on first, so the text
+        // computed here is not what to compare against next time.
+        written.clear();
     }
+
+    names::save_shared(panes, tabs, shared.as_ref());
+
+    // What did land, so the next publish can skip the hold.
+    let mut held = poison::lock(&NAMES_FILE, "saved-names");
+    if let Some((_, written)) = held.as_mut() {
+        *written =
+            names::to_toml(&poison::lock(panes, "pane-names"), &poison::lock(tabs, "tab-names"));
+    }
+}
+
+/// The record this window shares, if it has one.
+fn shared_names() -> Option<Arc<NamesFile>> {
+    poison::lock(&SHARED_NAMES, "shared-names").clone()
 }
 
 /// The arrangement this window was left in, or nothing.

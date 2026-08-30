@@ -16,6 +16,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private var watcher: ConfigWatcher?
 
   func applicationDidFinishLaunching(_ notification: Notification) {
+    // Before anything asks where Muster's files are, because everything below reads it through
+    // the environment and this is the one moment it can still be answered. A window opened by
+    // `muster window new` is started through LaunchServices, which hands over no environment,
+    // so the home it was told about arrives on the command line instead - and is put back into
+    // the environment here rather than threaded through the eight places that ask.
+    //
+    // The environment wins where this process already has one, which is somebody who set it up
+    // deliberately: a test, or a second Muster launched by hand.
+    if ProcessInfo.processInfo.environment["MUSTER_HOME"] == nil,
+      let home = launchHome(arguments: Array(CommandLine.arguments.dropFirst()))
+    {
+      setenv("MUSTER_HOME", home, 1)
+    }
+
     // Before the core, because the core attaches daemons as it starts and every one of those
     // opens sockets. Reported a few lines further down, once there is somewhere to report to.
     let descriptors = DescriptorLimit.raise()

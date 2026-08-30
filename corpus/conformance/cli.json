@@ -439,8 +439,8 @@
       }
     },
     {
-      "name": "a command that takes no arguments is not given one",
-      "why": "`muster window p1w3r07bsd` reads like a request to describe one pane, and there is no such request. Answering the whole window instead would look like it had been narrowed and had not.",
+      "name": "a pane name where a window subcommand goes is refused",
+      "why": "`muster window p1w3r07bsd` reads like a request to describe one pane, and there is no such request. Answering the whole window instead would look like it had been narrowed and had not. Refused as an unknown subcommand rather than a stray argument since `window` grew `list` and `new` under it, which is the more useful of the two complaints: it names what may go there.",
       "given": {
         "argv": [
           "window",
@@ -448,7 +448,7 @@
         ]
       },
       "expect": {
-        "usage": "UnknownArgument"
+        "usage": "InvalidSubcommand"
       }
     },
     {
@@ -958,6 +958,46 @@
             "pane_id": "p1w3r0ab2n",
             "rows": 40
           }
+        }
+      }
+    },
+    {
+      "name": "windows are listed without naming one",
+      "why": "The one read that cannot be narrowed. `--socket` and $MUSTER_SOCKET both mean `this window`, and the question here is which windows there are - so this dials every endpoint rather than the one a caller is standing in, and sends no request that any single window could answer.",
+      "given": {
+        "argv": [
+          "window",
+          "list"
+        ]
+      },
+      "expect": {
+        "answers_here": "asking every window on this machine"
+      }
+    },
+    {
+      "name": "making a window asks no window for it",
+      "why": "A window is a process, so this starts one rather than sending a request - and it has to, because the case it exists for is having no window to ask. It is the only verb here that is not something the keyboard could send instead.",
+      "given": {
+        "argv": [
+          "window",
+          "new"
+        ]
+      },
+      "expect": {
+        "answers_here": "starting another Muster"
+      }
+    },
+    {
+      "name": "a bare window read is still a read",
+      "why": "`muster window` kept its meaning when `window` grew subcommands under it. A caller that had this in a script before is asking the same thing after, which is the whole reason the subcommand is optional.",
+      "given": {
+        "argv": [
+          "window"
+        ]
+      },
+      "expect": {
+        "request": {
+          "read_window": {}
         }
       }
     }

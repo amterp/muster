@@ -82,6 +82,78 @@ fn named(payload: &response::Payload) -> &'static str {
     }
 }
 
+/// Every window on this machine, one row each.
+///
+/// A summary rather than each window's whole answer: what somebody running this wants is which
+/// window is which, and the `--socket` to reach it with. `muster window --socket <path>` is the
+/// whole of it after that.
+pub fn windows(
+    answers: &[(String, Result<Response, Trouble>)],
+    here: Option<&str>,
+    json: bool,
+) -> String {
+    if json {
+        let listed: Vec<Value> = answers
+            .iter()
+            .map(|(path, answer)| {
+                let mut row = json!({ "socket": path, "here": here == Some(path.as_str()) });
+                match answer.as_ref().map(|response| response.payload.as_ref()) {
+                    Ok(Some(response::Payload::Window(window))) => {
+                        row["panes"] = json!(counted_panes(window));
+                        row["tabs"] = json!(counted_tabs(window));
+                        row["keyboard"] = json!(keyboard_pane(window));
+                    }
+                    // Listed with its reason rather than dropped: a window that is there and
+                    // will not answer is the case somebody running this is looking for.
+                    Ok(_) => row["unreadable"] = json!("the window answered with something else"),
+                    Err(trouble) => row["unreadable"] = json!(trouble.detail()),
+                }
+                row
+            })
+            .collect();
+        return json!({ "windows": listed }).to_string();
+    }
+
+    if answers.is_empty() {
+        return styled("no Muster window is listening", QUIET);
+    }
+    answers
+        .iter()
+        .map(|(path, answer)| {
+            // The pane the keyboard is on, because a person picking between two windows knows
+            // them by what they were doing in one - not by a pid.
+            let summary = match answer.as_ref().map(|response| response.payload.as_ref()) {
+                Ok(Some(response::Payload::Window(window))) => {
+                    format!("{} panes, {} tabs", counted_panes(window), counted_tabs(window))
+                }
+                Ok(_) => "answered with something else".to_string(),
+                Err(trouble) => trouble.detail().to_string(),
+            };
+            let mark = if here == Some(path.as_str()) { "▸" } else { " " };
+            format!("{mark} {} {}", styled(path, NAME), styled(&summary, QUIET))
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn counted_panes(window: &Window) -> usize {
+    window
+        .roster
+        .iter()
+        .flat_map(|roster| roster.daemons.iter())
+        .map(|daemon| daemon.tabs.iter().map(|tab| tab.panes.len()).sum::<usize>())
+        .sum()
+}
+
+fn counted_tabs(window: &Window) -> usize {
+    window
+        .roster
+        .iter()
+        .flat_map(|roster| roster.daemons.iter())
+        .map(|daemon| daemon.tabs.len())
+        .sum()
+}
+
 /// A window as somebody reads it: each daemon, its tabs, and the panes in them.
 fn window_text(window: &Window) -> String {
     let keyboard = keyboard_pane(window);

@@ -17,6 +17,7 @@ public enum MenuActions {
   /// where a menu bar puts it, and a menu bar is one platform's answer. So the grouping is
   /// here, and a shell without a menu bar ignores it.
   public enum Group: String, CaseIterable {
+    case window = "Window"
     case tab = "Tab"
     case pane = "Pane"
     case view = "View"
@@ -57,6 +58,8 @@ public enum MenuActions {
   }()
 
   private static let fixed: [String: Described] = [
+    "new_window": Described(
+      title: "New Window", selector: #selector(MusterWindow.newWindow(_:)), group: .window),
     "new_tab": Described(
       title: "New Tab", selector: #selector(MusterWindow.newTab(_:)), group: .tab),
     "next_tab": Described(

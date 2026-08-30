@@ -40,7 +40,20 @@ fn cli_conformance() {
                     "request",
                     match &invocation.asking {
                         Asking::Send(request) => Some(described(request)),
-                        Asking::Print(_) => None,
+                        _ => None,
+                    },
+                ),
+                // What a command line means when it is not a request. Named rather than left
+                // blank, because "this sends nothing" and "this was not understood" would
+                // otherwise be the same case, and the commands that dial no window are exactly
+                // the ones worth being sure about.
+                (
+                    "answers_here",
+                    match &invocation.asking {
+                        Asking::Send(_) => None,
+                        Asking::Print(_) => Some(json!("printing something this binary holds")),
+                        Asking::Survey => Some(json!("asking every window on this machine")),
+                        Asking::MakeWindow => Some(json!("starting another Muster")),
                     },
                 ),
                 ("json", invocation.json.then_some(json!(true))),

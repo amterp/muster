@@ -21,16 +21,18 @@
       }
     },
     {
-      "name": "making a tab and closing a pane",
-      "why": "Both are chords the platform already means something by, so a default has to be the one people expect rather than a free choice.",
+      "name": "making a window, making a tab, and closing a pane",
+      "why": "All three are chords the platform already means something by, so a default has to be the one people expect rather than a free choice. `new_window` is the one that was missing: cmd+N is what every other macOS app does with it, and until a window could be a second process there was nothing to put behind it.",
       "given": {
         "actions": [
+          "new_window",
           "new_tab",
           "close_pane"
         ]
       },
       "expect": {
         "chords": [
+          "new_window=super+KeyN",
           "new_tab=super+KeyT",
           "close_pane=super+KeyW"
         ]
@@ -191,9 +193,9 @@
         ]
       },
       "expect": {
-        "actions": 39,
-        "bound": 36,
-        "distinct_chords": 36
+        "actions": 40,
+        "bound": 37,
+        "distinct_chords": 37
       }
     },
     {

@@ -67,6 +67,20 @@ currently keep.
 command here - which kills the shell that ran it. It is listed here because it is the one
 command whose default destroys something.
 
+## A second window is not reopened for you
+
+`muster window new` opens one and it behaves like any other, but nothing brings it back after a
+quit: Muster reopens the window it was last in, and the others are gone. Their panes are not -
+those belong to the daemon and outlive every window - so what is lost is the arrangement, not
+the work. Open another window and go to the tabs you want.
+
+## A name somebody typed does not cross windows straight away
+
+Panes and tabs have the same names in every window, and a name somebody *gives* one takes longer
+to arrive. The daemon announces a rename to nobody, so a second window learns it the next time it
+asks the daemon what it holds rather than at the moment it happens. Muster's own names are not
+affected: those are written down where every window reads them.
+
 ## Outside a pane, two open windows are ambiguous
 
 Each window listens on its own socket, named after its process. A caller inside a pane reaches
