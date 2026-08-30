@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "agent-watchers-may",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1788120739873,
+  "creator": "Alexander Terp",
+  "description": "Suspected from reading, not yet reproduced.\n\n`AgentWatchers` is built once outside the reconnect loop (`crates/muster-herdr/src/subscription.rs:212`). Per-pane watcher threads deliberately have no retry of their own (:543-548), on the stated grounds that `follow()` rebuilds every watcher when the structure subscription reconnects.\n\nBut `follow()` (:513-525) only spawns for panes absent from `watching`, and `mark_stale` (`crates/muster-core/src/mirror/state.rs:650`) leaves the mirror's panes in place. herdr also reuses pane ids across a restart. So on reconnect the map still holds handles whose threads exited when the socket died, `contains_key` is true, and nothing respawns them.\n\nIf that is right: after a daemon restart or a dropped socket, pre-existing panes get their state corrected once by the bootstrap snapshot and then freeze forever, on a connection that looks healthy. That is the 'shows working forever' shape, and it is the failure the whole product is about.\n\nThe existing reconnect test (`subscription.rs:664`, a_mirror_survives_the_daemon_going_away_and_coming_back) asserts pane count and pane name survive a restart. It does not assert that agent state still flows afterwards, so this ships green.\n\nFirst move is a test: restart the daemon, then drive a transition on a pane that existed before, and assert it arrives. That either kills the suspicion or turns this into a small fix - a liveness check in `follow`, or dropping the watchers when the mirror goes stale.",
+  "id": "a_2HPO2UZ7u",
+  "position": "!U",
+  "title": "🧟 Agent watchers may never respawn after a daemon reconnect",
+  "type": "bug",
+  "updated_at_millis": 1788120739873,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1788120739873}
+  ]
+}
