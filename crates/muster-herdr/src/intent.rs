@@ -273,7 +273,15 @@ impl HerdrBackend {
     /// unnamed pane looks like one nobody named, and an untyped command looks like a shell
     /// sitting at a prompt.
     fn equip(&self, intent: &BackendIntent, pane: &PaneId) -> Option<(PaneId, Option<String>)> {
-        let BackendIntent::SplitPane { run, name, .. } = intent else { return None };
+        // Every intent that makes a pane, rather than the split alone. A tab makes one too, and
+        // the wait for its shell to draw a prompt is the same wait - a caller that had to do it
+        // itself would be racing a prompt it cannot see, which is what `run` exists to avoid.
+        let (BackendIntent::SplitPane { run, name, .. }
+        | BackendIntent::CreateTab { run, name, .. }
+        | BackendIntent::CreateWorkspace { run, name, .. }) = intent
+        else {
+            return None;
+        };
 
         let renamed = name.as_ref().and_then(|label| self.label(pane, label));
         if let Some(command) = run {
@@ -642,7 +650,7 @@ pub fn request(
             }
             ("pane.split", params)
         }
-        BackendIntent::CreateTab { workspace, cwd } => {
+        BackendIntent::CreateTab { workspace, cwd, .. } => {
             // `workspace_id`, and nothing else names where this goes. herdr ignores a key it
             // does not know, so a `pane_id` sent hopefully would be dropped in silence and
             // the tab would land in whichever workspace that daemon had focused.
@@ -655,7 +663,7 @@ pub fn request(
             }
             ("tab.create", params)
         }
-        BackendIntent::CreateWorkspace { cwd } => {
+        BackendIntent::CreateWorkspace { cwd, .. } => {
             let mut params = json!({
                 // The daemon's cursor follows it, for the same reason a split's does: this is
                 // asked for by somebody who wants to be looking at what it makes.

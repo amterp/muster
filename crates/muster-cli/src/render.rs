@@ -334,7 +334,39 @@ fn window_json(window: &Window) -> Value {
     // on it: `.panes[] | select(.pane == $MUSTER_PANE) | .tab` is how a pane finds its own tab,
     // and there is nothing in a pane's environment that says. The place is still in `tabs[]` for
     // anyone who wants it.
-    json!({ "daemons": daemons, "keyboard": keyboard, "tabs": tabs, "panes": panes })
+    json!({
+        "daemons": daemons,
+        "keyboard": keyboard,
+        "regions": regions(window),
+        "tabs": tabs,
+        "panes": panes,
+    })
+}
+
+/// The columns the window is divided into, left to right.
+///
+/// JSON only. A person reads `on_screen` on a tab and has the window in front of them; a script
+/// arranging one has neither, and `tabs[].on_screen` cannot say which tabs sit beside each other
+/// or how wide each column is. This is the only part of the arrangement Muster owns outright -
+/// no daemon knows another one exists - so nothing else in the answer implies it.
+fn regions(window: &Window) -> Vec<Value> {
+    let Some(view) = window.view.as_ref() else { return Vec::new() };
+    view.regions
+        .iter()
+        .map(|region| {
+            json!({
+                "region": region.region_id,
+                "daemon": region.daemon_id,
+                "tab": region.tab_id,
+                "pane": region.pane_id,
+                // A share of the sum rather than a fraction of the window, which is how the
+                // core holds it: every region starts at 1, so three untouched regions read as
+                // 1, 1, 1 rather than as three thirds that have to add up.
+                "weight": region.weight,
+                "keyboard": region.region_id == view.focused_region,
+            })
+        })
+        .collect()
 }
 
 /// Which pane this window's keyboard is on, by way of the region that has it.

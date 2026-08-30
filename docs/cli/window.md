@@ -53,6 +53,26 @@ One entry per pane every followed daemon holds, on screen or not.
 `keyboard` at the top level is the name of the pane the window's keyboard is on, or `null` when
 no pane has it.
 
+## regions[]
+
+The columns the window is divided into, left to right, and JSON only. A person reading the plain
+output has the window in front of them; a script arranging one has neither that nor any other way
+to tell which tabs sit side by side - `tabs[].on_screen` says a tab is showing somewhere and not
+where.
+
+- `region` - Muster's name for the column.
+- `daemon` - which machine's tab it is showing.
+- `tab` - the tab it is showing.
+- `pane` - the pane in it the keyboard feeds while this region is focused. Empty while the daemon
+  has not yet said what is in that tab.
+- `weight` - its share of the window's width, relative to the other regions. A weight rather than
+  a fraction, so three untouched columns read as `1, 1, 1` rather than as three thirds. Divide by
+  the sum to get a width.
+- `keyboard` - whether this is the region the window's keyboard is in.
+
+This is the one part of the arrangement Muster owns outright rather than mirrors from a daemon: no
+daemon knows the other one exists, so nothing else in this answer implies it.
+
 ## Agent states
 
 `working`, `blocked`, `idle` and `done` come from the harness running in the pane. `unknown` is

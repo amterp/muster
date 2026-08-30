@@ -333,7 +333,7 @@
         ]
       },
       "expect": {
-        "refused": "`muster focus` needs a pane, and $MUSTER_PANE is not set - so this is not running inside a pane Muster made. Name one: `muster focus p1w3r07bsd`. `muster window` lists them."
+        "refused": "`muster focus` needs a pane, a direction or a place, and $MUSTER_PANE is not set - so this is not running inside a pane Muster made. Name one: `muster focus p1w3r07bsd`, or say `--next`. `muster window` lists them."
       }
     },
     {
@@ -564,6 +564,340 @@
       },
       "expect": {
         "usage": "InvalidSubcommand"
+      }
+    },
+    {
+      "name": "a tab is made beside the pane this is running in",
+      "why": "The other way to make a pane, and until now the one thing a script could not do: splitting was the only route, so anything that did not belong in this tab had nowhere to go. No pane is named, so the tab joins the workspace of the pane this is running in - the same answer cmd+T means by naming nothing.",
+      "given": {
+        "argv": [
+          "tab",
+          "new"
+        ],
+        "env": {
+          "MUSTER_PANE": "p1w3r07bsd"
+        }
+      },
+      "expect": {
+        "request": {
+          "create_tab": {
+            "pane_id": "p1w3r07bsd"
+          }
+        }
+      }
+    },
+    {
+      "name": "a tab made for an agent carries its program and its name",
+      "why": "The same intention `pane new --run --name` carries, for the same reason: the program travels with the tab because a caller sending it afterwards would race the new shell's prompt, and the name travels because a rename arriving later leaves the pane briefly nameless. A tab that could be made and not equipped would send every caller back to splitting.",
+      "given": {
+        "argv": [
+          "tab",
+          "new",
+          "--run",
+          "claude",
+          "--name",
+          "🤖 reviewer"
+        ]
+      },
+      "expect": {
+        "request": {
+          "create_tab": {
+            "run": "claude",
+            "name": "🤖 reviewer"
+          }
+        }
+      }
+    },
+    {
+      "name": "making a tab does not move the keyboard",
+      "why": "The rule `pane new` already follows, restated because a tab is the louder case: it comes on screen either way, so the only question is whether somebody's cursor goes with it. An agent opening three tabs must not drag it through all three.",
+      "given": {
+        "argv": [
+          "tab",
+          "new",
+          "--focus"
+        ]
+      },
+      "expect": {
+        "request": {
+          "create_tab": {
+            "take_focus": true
+          }
+        }
+      }
+    },
+    {
+      "name": "a tab is stepped to rather than named",
+      "why": "The other axis to stepping panes: `focus --next` reaches every pane the window is showing, and this reaches the tabs behind them. A script that has read one tab out of `muster window` can walk the rest without reading again.",
+      "given": {
+        "argv": [
+          "tab",
+          "focus",
+          "--next"
+        ]
+      },
+      "expect": {
+        "request": {
+          "focus_tab_relative": {
+            "direction": "next"
+          }
+        }
+      }
+    },
+    {
+      "name": "a tab cannot be both named and stepped to",
+      "why": "Two answers to one question. Naming a tab and asking for the next one are different intentions, and honouring either silently would be picking for somebody who said both.",
+      "given": {
+        "argv": [
+          "tab",
+          "focus",
+          "t1w3r07bsd",
+          "--next"
+        ]
+      },
+      "expect": {
+        "usage": "ArgumentConflict"
+      }
+    },
+    {
+      "name": "a pane is moved onto another",
+      "why": "The verb the card is about. The window works out which of the two things this means from where the panes are - the same tab is an exchange, another tab is a move - so one verb here rather than two, and no daemon travels: a pane name is unique across every attached machine.",
+      "given": {
+        "argv": [
+          "pane",
+          "move",
+          "--pane",
+          "p1w3r0ab2n",
+          "--onto",
+          "p1w3r07bsd"
+        ]
+      },
+      "expect": {
+        "request": {
+          "arrange_pane": {
+            "pane_id": "p1w3r0ab2n",
+            "onto_pane_id": "p1w3r07bsd"
+          }
+        }
+      }
+    },
+    {
+      "name": "moving with no --pane moves the pane this is running in",
+      "why": "The rule every pane verb follows, and worth pinning here because moving names two panes and could plausibly have demanded both. An agent asking to be put beside another agent should not have to look up its own name first.",
+      "given": {
+        "argv": [
+          "pane",
+          "move",
+          "--onto",
+          "p1w3r07bsd"
+        ],
+        "env": {
+          "MUSTER_PANE": "p1w3r0ab2n"
+        }
+      },
+      "expect": {
+        "request": {
+          "arrange_pane": {
+            "pane_id": "p1w3r0ab2n",
+            "onto_pane_id": "p1w3r07bsd"
+          }
+        }
+      }
+    },
+    {
+      "name": "moving a pane needs somewhere to put it",
+      "why": "The half that has no default. Where a pane goes is the whole content of the request, and there is no `the obvious place` for the window to fall back to.",
+      "given": {
+        "argv": [
+          "pane",
+          "move",
+          "--pane",
+          "p1w3r0ab2n"
+        ]
+      },
+      "expect": {
+        "usage": "MissingRequiredArgument"
+      }
+    },
+    {
+      "name": "a pane is grown by the window's own step",
+      "why": "What a resize chord means, said from a script. No amount travels, because zero is what the window reads as `your own step` - so a caller with nothing particular in mind gets what the keyboard gets rather than a distance this CLI invented.",
+      "given": {
+        "argv": [
+          "pane",
+          "resize",
+          "--right"
+        ]
+      },
+      "expect": {
+        "request": {
+          "resize_pane": {
+            "direction": "right"
+          }
+        }
+      }
+    },
+    {
+      "name": "a divider can be placed exactly",
+      "why": "The half a chord cannot ask for. A person holds a key down and looks; a script cannot look, so it says how far in one request rather than guessing how many presses that was.",
+      "given": {
+        "argv": [
+          "pane",
+          "resize",
+          "--pane",
+          "p1w3r07bsd",
+          "--down",
+          "--by",
+          "0.25"
+        ]
+      },
+      "expect": {
+        "request": {
+          "resize_pane": {
+            "pane_id": "p1w3r07bsd",
+            "direction": "down",
+            "amount": 0.25
+          }
+        }
+      }
+    },
+    {
+      "name": "resizing needs a direction",
+      "why": "A resize with no direction is not a smaller request, it is an unfinished one - and unlike a split there is no side that happens anyway to default to.",
+      "given": {
+        "argv": [
+          "pane",
+          "resize",
+          "--by",
+          "0.25"
+        ]
+      },
+      "expect": {
+        "usage": "MissingRequiredArgument"
+      }
+    },
+    {
+      "name": "the keyboard steps to the next pane",
+      "why": "The chord's other door. `next` and `previous` walk reading order across every region and wrap, so between them they reach every pane the window is showing - which is the guarantee the four directions do not make.",
+      "given": {
+        "argv": [
+          "focus",
+          "--next"
+        ]
+      },
+      "expect": {
+        "request": {
+          "focus_relative": {
+            "direction": "next"
+          }
+        }
+      }
+    },
+    {
+      "name": "the keyboard steps geometrically",
+      "why": "The four directions are about where a pane is on screen rather than where it sits in a list, and they do not wrap. Spelled with the same four words a split uses, so a caller that reads a side out of an answer can send it straight back.",
+      "given": {
+        "argv": [
+          "focus",
+          "--left"
+        ]
+      },
+      "expect": {
+        "request": {
+          "focus_relative": {
+            "direction": "left"
+          }
+        }
+      }
+    },
+    {
+      "name": "a pane is reached by the number drawn beside it",
+      "why": "`muster window` prints a place for every pane and nothing consumed it until now, which left a number a script could read and not act on. This is cmd+3 from a script.",
+      "given": {
+        "argv": [
+          "focus",
+          "--place",
+          "3"
+        ]
+      },
+      "expect": {
+        "request": {
+          "focus_pane_at": {
+            "place": 3
+          }
+        }
+      }
+    },
+    {
+      "name": "a pane and a direction are two answers to one question",
+      "why": "Where to put the keyboard has one answer. A name, a direction and a place are three ways of giving it, and two at once is a caller who has not decided.",
+      "given": {
+        "argv": [
+          "focus",
+          "p1w3r07bsd",
+          "--next"
+        ]
+      },
+      "expect": {
+        "usage": "ArgumentConflict"
+      }
+    },
+    {
+      "name": "the config file is read again on request",
+      "why": "The fourth door onto one action: a chord, a menu item, a saved file and this all arrive at the same reload. Worth having from a script because editing the file and applying it are two acts, and a script that writes one wants to finish the job.",
+      "given": {
+        "argv": [
+          "reload"
+        ]
+      },
+      "expect": {
+        "request": {
+          "reload_config": {}
+        }
+      }
+    },
+    {
+      "name": "the agent list is shown or put away",
+      "why": "A toggle rather than a set, matching what the chord and the menu item send: neither of them knows which way the list currently is, and the window does.",
+      "given": {
+        "argv": [
+          "sidebar"
+        ]
+      },
+      "expect": {
+        "request": {
+          "toggle_sidebar": {}
+        }
+      }
+    },
+    {
+      "name": "text is made bigger in the pane the keyboard is on",
+      "why": "The window's own three words rather than English ones like `bigger`, on the rule the four sides follow. No pane is named because none can be: the request carries no pane id, and what it means is the pane in front of whoever asked.",
+      "given": {
+        "argv": [
+          "font",
+          "larger"
+        ]
+      },
+      "expect": {
+        "request": {
+          "adjust_font_size": {
+            "change": "larger"
+          }
+        }
+      }
+    },
+    {
+      "name": "a font change nobody has is refused",
+      "why": "Three changes exist and clap knows all three, so a fourth is caught out here with the list beside it rather than by the window with a request already sent.",
+      "given": {
+        "argv": [
+          "font",
+          "bigger"
+        ]
+      },
+      "expect": {
+        "usage": "InvalidValue"
       }
     }
   ]

@@ -245,8 +245,10 @@ fn every_intent() -> Vec<BackendIntent> {
         BackendIntent::CreateTab {
             workspace: WorkspaceId::new("w1"),
             cwd: Some("/src/muster".into()),
+            run: None,
+            name: None,
         },
-        BackendIntent::CreateWorkspace { cwd: Some("/src/muster".into()) },
+        BackendIntent::CreateWorkspace { cwd: Some("/src/muster".into()), run: None, name: None },
         BackendIntent::SetSplitRatio {
             tab: TabId::new("t1"),
             path: vec![Branch::Second],
@@ -375,8 +377,14 @@ fn intent(given: &Value) -> Result<BackendIntent, CaseError> {
         "tab" => Ok(BackendIntent::CreateTab {
             workspace: WorkspaceId::new(&text(given, "workspace")?),
             cwd,
+            run: given.get("run").and_then(Value::as_str).map(str::to_string),
+            name: given.get("name").and_then(Value::as_str).map(str::to_string),
         }),
-        "workspace" => Ok(BackendIntent::CreateWorkspace { cwd }),
+        "workspace" => Ok(BackendIntent::CreateWorkspace {
+            cwd,
+            run: given.get("run").and_then(Value::as_str).map(str::to_string),
+            name: given.get("name").and_then(Value::as_str).map(str::to_string),
+        }),
         "ratio" => {
             let path = given
                 .get("path")

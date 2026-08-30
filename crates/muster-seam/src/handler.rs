@@ -493,9 +493,12 @@ fn act(
 /// and put the tab wherever that daemon last had focus.
 fn create_tab(create: &proto::CreateTab) -> Response {
     let cwd = (!create.cwd.is_empty()).then(|| create.cwd.clone());
+    let run = (!create.run.is_empty()).then(|| create.run.clone());
+    let name = (!create.name.is_empty()).then(|| create.name.clone());
+    let keyboard = if create.take_focus { Keyboard::Follows } else { Keyboard::StaysPut };
     let named = (!create.pane_id.is_empty()).then(|| PaneId::new(&create.pane_id));
     let Some(pane) = named.or_else(session::focused_pane) else {
-        return open_a_workspace(cwd);
+        return open_a_workspace(cwd, run, name);
     };
     let daemon = match resolve_daemon(&create.daemon_id) {
         Ok(daemon) => daemon,
@@ -510,8 +513,8 @@ fn create_tab(create: &proto::CreateTab) -> Response {
     };
     submit(
         &daemon,
-        &BackendIntent::CreateTab { workspace, cwd: cwd.or(inherited) },
-        Keyboard::Follows,
+        &BackendIntent::CreateTab { workspace, cwd: cwd.or(inherited), run, name },
+        keyboard,
     )
 }
 
@@ -527,7 +530,13 @@ fn create_tab(create: &proto::CreateTab) -> Response {
 /// the same choice and stops at local, because filling an empty window is Muster's own idea
 /// and making things on somebody else's machine uninvited is a bigger claim - but pressing
 /// the key is the invitation, so the rule that guards launch has nothing to guard here.
-fn open_a_workspace(cwd: Option<String>) -> Response {
+///
+/// The keyboard follows regardless of what `take_focus` asked for, because this is the one
+/// case where it has nowhere else to be. `take_focus` is false so that an agent making panes
+/// does not drag somebody's cursor around; here there is no cursor to drag and no other pane
+/// to leave it on, and honouring the flag would show a pane nobody can type into until they
+/// click it.
+fn open_a_workspace(cwd: Option<String>, run: Option<String>, name: Option<String>) -> Response {
     let Some(daemon) = session::first_local_daemon().or_else(session::first_attached_daemon) else {
         return Response::failure(
             "this window has no pane to put a tab beside and no daemon to make one on, so \
@@ -536,7 +545,7 @@ fn open_a_workspace(cwd: Option<String>) -> Response {
              daemon was meant to be there.",
         );
     };
-    submit(&daemon, &BackendIntent::CreateWorkspace { cwd }, Keyboard::Follows)
+    submit(&daemon, &BackendIntent::CreateWorkspace { cwd, run, name }, Keyboard::Follows)
 }
 
 /// The daemon a request means, given what it named.
@@ -706,12 +715,11 @@ fn step_tab(direction: &str) -> Response {
 
 /// Puts one pane where another one is, which is what dropping a row on a row means.
 fn arrange_pane(arrange: &proto::ArrangePane) -> Response {
-    if arrange.daemon_id.is_empty() || arrange.pane_id.is_empty() || arrange.onto_pane_id.is_empty()
-    {
+    if arrange.pane_id.is_empty() || arrange.onto_pane_id.is_empty() {
         return Response::failure(
             "a pane was asked to move without naming both ends of the move, so nothing was \
              rearranged. Unlike most verbs here there is no 'the focused one' to fall back to: \
-             a drag names two panes by definition, and whatever built this request dropped one.",
+             a move names two panes by definition, and whatever built this request dropped one.",
         );
     }
     if arrange.pane_id == arrange.onto_pane_id {
@@ -719,11 +727,18 @@ fn arrange_pane(arrange: &proto::ArrangePane) -> Response {
         // telling them off for it would put a message in the log for a mistake with no cost.
         return Response::ok();
     }
-    answer(session::arrange_pane(
-        &DaemonId::new(&arrange.daemon_id),
-        &PaneId::new(&arrange.pane_id),
-        &PaneId::new(&arrange.onto_pane_id),
-    ))
+    let pane = PaneId::new(&arrange.pane_id);
+    // The daemon from the pane when nobody said, like every other request that names one. A
+    // drag always says, because the row it started on knows; a CLI has only the two names, and
+    // a name is meant to be a complete address.
+    let Some(daemon) = pane_holder(&pane, &arrange.daemon_id) else {
+        return Response::failure(format!(
+            "no daemon this window is following holds a pane called {pane}, so nothing was \
+             rearranged. Either it closed while this was in flight, or the name came from an \
+             older window - `muster window` lists the panes this one has."
+        ));
+    };
+    answer(session::arrange_pane(&daemon, &pane, &PaneId::new(&arrange.onto_pane_id)))
 }
 
 /// Brings a named tab on screen, which is what clicking its caption means.
@@ -746,6 +761,19 @@ fn focus_tab(daemon_id: &str, tab_id: &str) -> Response {
         return no_such_tab(&tab, "focused");
     };
     answer(session::focus_tab(&daemon, &tab))
+}
+
+/// Which daemon a request about this pane goes to: the one it named, or the one holding the
+/// pane.
+///
+/// The twin of [`holder_of`] below. Distinct from [`resolve_daemon`], which reads an empty
+/// daemon as the focused region's - right for a request about whatever is in front of the
+/// user, wrong for one that names a pane somewhere else.
+fn pane_holder(pane: &PaneId, daemon_id: &str) -> Option<DaemonId> {
+    if daemon_id.is_empty() {
+        return session::daemon_holding(pane);
+    }
+    Some(DaemonId::new(daemon_id))
 }
 
 /// Which daemon a request about this tab goes to: the one it named, or the one holding the tab.

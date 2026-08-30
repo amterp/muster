@@ -147,6 +147,11 @@ pub enum BackendIntent {
         /// tab has nothing to inherit from, and the backend's own answer is a home directory
         /// nobody asked for.
         cwd: Option<String>,
+        /// What to run in the tab's pane, and what to call it. Both mean what they mean on
+        /// [`BackendIntent::SplitPane`], because a tab is the other way to make a pane and a
+        /// caller equipping one and not the other would have to race a shell prompt itself.
+        run: Option<String>,
+        name: Option<String>,
     },
     /// Makes a workspace, with one tab and one pane in it.
     ///
@@ -158,6 +163,12 @@ pub enum BackendIntent {
         /// this process's directory - Muster's cwd is wherever the app was launched from,
         /// which is meaningless to whoever is looking at the window.
         cwd: Option<String>,
+        /// What to run in its first pane, and what to call that pane. As on
+        /// [`BackendIntent::SplitPane`]. Here because this is what asking for a tab means in a
+        /// window showing nothing, and a caller that asked for a tab running something should
+        /// get one either way.
+        run: Option<String>,
+        name: Option<String>,
     },
     /// Grows or shrinks a pane against its neighbour, by a share of the region.
     ///

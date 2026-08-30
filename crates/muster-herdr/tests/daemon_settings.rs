@@ -88,7 +88,11 @@ fn a_pane_runs_the_shell_musters_own_config_names() {
         Names::alone("local", Mint::Backend),
     );
     backend
-        .submit(&BackendIntent::CreateWorkspace { cwd: Some(root.display().to_string()) })
+        .submit(&BackendIntent::CreateWorkspace {
+            cwd: Some(root.display().to_string()),
+            run: None,
+            name: None,
+        })
         .expect("a daemon that answered ping can make a workspace");
 
     let client = HerdrClient::new(&socket);

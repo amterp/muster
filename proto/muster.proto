@@ -596,6 +596,24 @@ message CreateTab {
   // rather than left to the daemon: a new tab has nothing to inherit from, and herdr's own
   // answer is a home directory nobody asked for.
   string cwd = 3;
+
+  // The three below are SplitPane's, and mean there exactly what they mean here. A tab is the
+  // other way to make a pane, so a caller that can equip a split and not a tab has to make the
+  // tab and then race its shell - which is the wait SplitPane.run exists to own.
+
+  // What to run in it, or empty for whatever a new pane runs anyway. Sent as typed input after
+  // the pane's shell has drawn a prompt, exactly as a split's is.
+  string run = 4;
+
+  // What to call it, or empty for nothing.
+  string name = 5;
+
+  // Whether this window's keyboard follows the tab's pane.
+  //
+  // True is what cmd+T means: you made it, you are looking at it. False is what a script
+  // means, and it is the default for the reason SplitPane.take_focus gives - though a tab
+  // still comes on screen either way, because a tab no region shows is a tab nobody can see.
+  bool take_focus = 6;
 }
 
 message ClosePane {
@@ -648,28 +666,34 @@ message FocusTabRelative {
   string direction = 1;
 }
 
-// Puts one pane where another one is, which is what dropping a row on a row means.
+// Puts one pane where another one is: what dropping a row on a row means, and what
+// `muster pane move` asks for.
 //
-// One message for both halves of the gesture, because the person dragging made one decision:
-// put this agent there. Which request that becomes is the core's to work out from where the
-// two panes are - the same tab is an exchange, a different tab is a move - and a shell that
-// chose would be a second place that rule lives.
+// One message for both outcomes, because whoever asked made one decision: put this agent
+// there. Which request that becomes is the core's to work out from where the two panes are -
+// the same tab is an exchange, a different tab is a move - and a caller that chose would be a
+// second place that rule lives.
 //
-// **Both panes must be on the same daemon**, and the shell refuses the drop rather than
-// sending this. A pane is a PTY its daemon owns, so moving one to another machine would mean
-// killing a process on one host and starting a different one on another; that is not a move,
-// and there is no honest thing for the core to do with the request.
+// **Both panes must be on the same daemon.** A pane is a PTY its daemon owns, so moving one to
+// another machine would mean killing a process on one host and starting a different one on
+// another; that is not a move, and there is no honest thing to do with the request. The
+// sidebar refuses such a drop before sending this and the core refuses it on arrival, which is
+// what a CLI caller gets - it has two names and no way to know they are on different machines.
 //
-// The keyboard does not follow. Arranging the list is not going somewhere, and a drag that
-// took the keyboard would interrupt whatever is being typed into the pane that had it.
+// The keyboard does not follow. Arranging the list is not going somewhere, and moving the
+// keyboard would interrupt whatever is being typed into the pane that had it.
 message ArrangePane {
+  // Empty finds the daemon from the pane, as everywhere else a request names one. A drag says
+  // outright, because the row it started on knows; a caller holding only two pane names has
+  // said enough, and which machine holds them is not something a script can know.
   string daemon_id = 1;
 
-  // The pane being dragged.
+  // The pane being moved. Unlike every other pane request an empty id has no meaning here:
+  // a move names two panes by definition, so there is no "the focused one" to fall back to.
   string pane_id = 2;
 
-  // The pane whose row it was dropped on. In the same tab the two exchange places; in another
-  // tab the dragged pane joins that tab immediately after this one.
+  // Where it goes. In the same tab the two exchange places; in another tab the moved pane
+  // joins that tab immediately after this one.
   string onto_pane_id = 3;
 }
 

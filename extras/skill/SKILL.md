@@ -45,5 +45,15 @@ in, which is usually somewhere else. Nothing tells a pane which tab holds it, so
 outright: `muster window --json` gives every pane a `tab`, and yours is the row whose `pane` matches
 `$MUSTER_PANE`.
 
+**An arrangement you got wrong can be fixed without closing anything.** Three `pane new --down` in
+a row give a column of four, not a grid. `muster pane move --pane X --onto Y` puts one pane where
+another is - trading places inside a tab, joining the other's tab when they are in different ones -
+and nothing running in either stops. Closing a working agent to correct a layout is never the
+answer.
+
+**`muster tab new` is the other way to make a pane**, and the one to reach for when the work does
+not belong in this tab at all. It takes `--run` and `--name` exactly as `pane new` does, and prints
+the pane it made rather than the tab.
+
 **Muster imposes no workflow.** Panes, states and names are primitives. Nothing here is a way of
 working you are expected to follow.

@@ -33,6 +33,52 @@ which is why the command travels with the split instead of arriving as a `pane s
 `--enter` presses Return, which is what submits the text. Without it the text sits on the pane's
 prompt, which is what you want when a person should read it before it runs.
 
+## Rearranging what you made
+
+Three `pane new --down` in a row give a column of four, which is rarely what somebody asking for a
+grid meant. Moving fixes it without ending anything:
+
+    muster pane move --pane p1w3r0ab2n --onto p1w3r07bsd
+
+One verb, two outcomes, and which one you get depends on where the two panes already are. In the
+same tab they trade places. In different tabs the pane joins the other's tab, immediately after it.
+The window works that out from the panes rather than asking you to say, so a script that knows
+where it wants an agent does not also have to know how it got there.
+
+Both panes have to be on the same machine. A pane is a PTY its daemon owns, so there is no move
+that carries one from a laptop to a devenv - `muster window` says which daemon holds each.
+
+`--pane` is the pane the command is running in when you leave it out, like everywhere else, so an
+agent can ask to be put beside another one without looking up its own name.
+
+Panes are not the only unit. A tab is the other way to make one, and the way to put work somewhere
+that does not belong in this tab at all:
+
+    C=$(muster tab new --run claude --name '🤖 C')
+
+It prints the pane it made, not the tab, because the pane is what the next line needs. The tab
+comes on screen whether or not the keyboard follows; `--focus` asks for the keyboard.
+
+To change how much room a pane gets:
+
+    muster pane resize --pane p1w3r07bsd --right 0.2
+
+Saying nothing after the direction takes the same step a held-down chord takes. A fraction places
+the divider outright, which is what a script wants: it cannot look at the result and press again.
+
+## Moving around without a name
+
+    muster focus --next
+    muster focus --left
+    muster focus --place 3
+
+`--next` and `--previous` walk every pane the window is showing and wrap, so between them they
+reach all of it. The four directions are geometric and do not wrap. `--place` takes the number
+`muster window` prints beside each pane, which is the one `cmd+1` to `cmd+9` name.
+
+Tabs step too, on their own axis - `muster tab focus --next` reaches the tabs behind whatever is on
+screen.
+
 ## Asking to be looked at
 
     muster focus

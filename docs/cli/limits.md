@@ -31,6 +31,23 @@ out of the window rather than out of its environment:
 `muster tab rename` with no `--tab` is not that. It means the tab the window's keyboard is in,
 which is what a chord means and is a different tab whenever the keyboard is somewhere else.
 
+## A pane in a tab nothing is showing cannot be split
+
+`muster pane new` refuses with "the daemon local is not showing that pane or tab in this window"
+when the pane it would split is in a tab no region has on screen. Splitting, focusing, zooming and
+resizing all ask the window which region holds the pane, and a pane in a background tab has none.
+
+Renaming, sending, moving and making a tab do not ask, so those reach a pane wherever it is. The
+way through is `muster focus` on the pane first, which brings its tab on screen - at the cost of
+taking the keyboard away from whatever somebody was doing.
+
+## There is no search
+
+`muster` cannot search a pane. The window can, from `cmd+f`, and reading only the last thousand
+rows of a pane while saying nothing about the rest - so a match further back reads as no match at
+all. Putting that into this surface would mean promising it, and the promise is one Muster cannot
+currently keep.
+
 ## Closing with no --pane closes the pane you are in
 
 `muster pane close` acts on the pane it is running in unless told otherwise, like every other

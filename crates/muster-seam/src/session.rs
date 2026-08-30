@@ -1792,27 +1792,29 @@ pub(crate) fn step_tab(direction: TabStep) -> Result<(), String> {
 /// exchange places, and a pane dropped on a row in another tab joins that tab behind it. The
 /// person dragging made one decision, so there is one intent name for it and one rule.
 ///
-/// Both ends have to be on the daemon named. The shell refuses a drop across daemons before it
-/// gets here, so this is the second line rather than the first - but a pane id is only unique
-/// within its daemon, and resolving one against the wrong mirror would find a different pane
-/// and move it.
+/// Both ends have to be on the daemon named. The sidebar refuses a drop across daemons before
+/// it gets here and a CLI caller does not, so for that caller this is the first line rather
+/// than the second - and it has to be, because a pane id is only unique within its daemon and
+/// resolving one against the wrong mirror would find a different pane and move it.
 pub(crate) fn arrange_pane(daemon: &DaemonId, pane: &PaneId, onto: &PaneId) -> Result<(), String> {
     let intent = {
         let session = poison::lock(&SESSION, "session");
         let backend = session.backends.get(daemon).ok_or_else(|| {
             format!(
                 "this window is not following a daemon called {daemon}, so nothing was \
-                 rearranged. A drag crossing daemons should have been refused before it \
-                 was sent."
+                 rearranged. Either it detached while this was in flight, or the request \
+                 named a daemon this window does not have."
             )
         })?;
         let mirror = poison::lock(&backend.mirror, "mirror");
         let holding = |pane: &PaneId| {
             mirror.pane(pane).map(|held| held.tab.clone()).ok_or_else(|| {
                 format!(
-                    "{daemon} holds no pane called {pane}, so nothing was rearranged. Most \
-                         likely it closed while the drag was in flight, which a row in a list \
-                         outlives by a moment."
+                    "{daemon} holds no pane called {pane}, so nothing was rearranged. Either \
+                         it closed while this was in flight, or the two panes are on different \
+                         machines - a pane is a PTY its daemon owns, so there is no move that \
+                         would carry one to the other. `muster window` says which daemon holds \
+                         each."
                 )
             })
         };
@@ -2313,9 +2315,11 @@ fn open_a_workspace_if_the_window_is_empty() {
     };
 
     log::info("workspace.creating", fields! { "daemon" => daemon.to_string() });
-    if let Err(refusal) =
-        submit(&daemon, &BackendIntent::CreateWorkspace { cwd: None }, Keyboard::Follows)
-    {
+    if let Err(refusal) = submit(
+        &daemon,
+        &BackendIntent::CreateWorkspace { cwd: None, run: None, name: None },
+        Keyboard::Follows,
+    ) {
         log::error(
             "workspace.refused",
             fields! {

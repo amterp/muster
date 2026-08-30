@@ -16,11 +16,12 @@
 
 use std::collections::BTreeMap;
 
-use clap::{CommandFactory, Parser, Subcommand};
+use clap::{ArgGroup, CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::Shell;
 use muster_proto::{
-    ClosePane, FocusPane, FocusTab, ReadWindow, RenamePane, RenameTab, Request, SendToPane,
-    SplitPane, ZoomPane, request,
+    AdjustFontSize, ArrangePane, ClosePane, CreateTab, FocusPane, FocusPaneAt, FocusRelative,
+    FocusTab, FocusTabRelative, ReadWindow, ReloadConfig, RenamePane, RenameTab, Request,
+    ResizePane, SendToPane, SplitPane, ToggleSidebar, ZoomPane, request,
 };
 
 use crate::{docs, environment};
@@ -73,9 +74,13 @@ there is no equivalent of $MUSTER_PANE: read the name out of `muster window`, wh
 says which tab holds it.
 
 `pane new` prints the name of the pane it made, which is what makes the next line of a script \
-possible. It does not move the keyboard: making a pane is not the same act as looking at one, and \
-an agent opening three panes should not drag somebody's cursor through all three. Ask with \
---focus.
+possible, and `tab new` prints the pane it put in the tab. Neither moves the keyboard: making a \
+pane is not the same act as looking at one, and an agent opening three panes should not drag \
+somebody's cursor through all three. Ask with --focus.
+
+`pane move` is one verb for two outcomes, because the window works out which from where the panes \
+are: onto a pane in the same tab the two trade places, onto a pane in another tab it joins that \
+tab. Both have to be on the same machine - a pane is a process, and it lives where it lives.
 ";
 
 const EXAMPLES: &str = "\
@@ -83,7 +88,9 @@ Examples:
   muster window --json
   muster pane new --down --run claude --name '🤖 A'
   muster pane send --pane p1w3r07bsd 'read AGENTS.md and wait' --enter
-  muster focus p1w3r07bsd
+  muster pane move --pane p1w3r0ab2n --onto p1w3r07bsd
+  muster tab new --run claude --name '🤖 reviewer'
+  muster focus --next
 
 Which window: $MUSTER_SOCKET names it, and Muster sets that in every pane it makes on this
 machine. Otherwise muster looks for a listening window under ~/.muster/state, and refuses
@@ -124,23 +131,50 @@ enum What {
     /// What the window is showing: its daemons, its tabs, its panes, and what each agent is doing
     Window,
 
-    /// Make a pane, name one, type into one, or close one
+    /// Make a pane, name one, type into one, move it, resize it, or close it
     Pane {
         #[command(subcommand)]
         doing: Doing,
     },
 
-    /// Go to a tab, or name one
+    /// Make a tab, go to one, or name one
     Tab {
         #[command(subcommand)]
         doing: WithTab,
     },
 
-    /// Put the window's keyboard on a pane
+    /// Put the window's keyboard on a pane, or step it somewhere
+    //
+    // A name, a direction and a place are three ways of saying where, and clap holds them in
+    // one group so that two at once is refused before this is read. None of them is the
+    // fourth way, which is the pane this is running in.
     Focus {
         /// The pane to go to, or the one this is running in
-        #[arg(value_name = "REF")]
+        #[arg(value_name = "REF", group = "somewhere")]
         pane: Option<String>,
+
+        /// Go to the next pane the window is showing, wrapping at the end
+        #[arg(long, group = "somewhere")]
+        next: bool,
+        /// Go to the previous one, wrapping at the start
+        #[arg(long, group = "somewhere")]
+        previous: bool,
+        /// Go to the pane left of this one, if there is one
+        #[arg(long, group = "somewhere")]
+        left: bool,
+        /// Go to the pane to the right
+        #[arg(long, group = "somewhere")]
+        right: bool,
+        /// Go to the pane above
+        #[arg(long, group = "somewhere")]
+        up: bool,
+        /// Go to the pane below
+        #[arg(long, group = "somewhere")]
+        down: bool,
+
+        /// Go to the pane at this place in the window's pane order, the number ⌘1 to ⌘9 name
+        #[arg(long, value_name = "N", group = "somewhere")]
+        place: Option<u32>,
     },
 
     /// Fill the region with one pane, or put the others back
@@ -148,6 +182,19 @@ enum What {
         /// The pane to fill with, or the one this is running in
         #[arg(value_name = "REF")]
         pane: Option<String>,
+    },
+
+    /// Read ~/.muster/config.toml again, and apply what changed
+    Reload,
+
+    /// Show the agent list, or put it away
+    Sidebar,
+
+    /// Change the size of the text in the pane the keyboard is on
+    Font {
+        /// Which way
+        #[arg(value_name = "CHANGE")]
+        change: FontChange,
     },
 
     /// Read Muster's own documentation, which ships inside this binary
@@ -161,6 +208,28 @@ enum What {
         /// The shell to write for
         shell: Shell,
     },
+}
+
+/// What `muster font` can ask for.
+///
+/// The schema's own three words rather than English ones like `bigger`, on the same rule the
+/// four sides of a split follow: a caller that reads one of these out of an answer should be
+/// able to send it straight back.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum FontChange {
+    Larger,
+    Smaller,
+    Reset,
+}
+
+impl FontChange {
+    fn wire(self) -> &'static str {
+        match self {
+            FontChange::Larger => "larger",
+            FontChange::Smaller => "smaller",
+            FontChange::Reset => "reset",
+        }
+    }
 }
 
 #[derive(Debug, Subcommand)]
@@ -233,24 +302,100 @@ enum Doing {
         #[arg(long, value_name = "REF")]
         pane: Option<String>,
     },
+
+    /// Put a pane where another one is, without ending what is running in either
+    //
+    // One verb for both outcomes, because the window has one request for them: which of the
+    // two a move becomes is worked out from where the panes are, and a CLI that chose would
+    // be a second place that rule lives. Named `move` rather than `arrange` because moving is
+    // what somebody wants; the exchange is what they get when both panes are in one tab, and
+    // the help and `muster docs agents` say so.
+    Move {
+        /// The pane to move, or the one this is running in
+        #[arg(long, value_name = "REF")]
+        pane: Option<String>,
+
+        /// Where to put it: in the same tab the two swap, in another it lands after this one
+        #[arg(long, required = true, value_name = "REF")]
+        onto: String,
+    },
+
+    /// Move the divider beside a pane, making it bigger in that direction
+    #[command(group = ArgGroup::new("towards").required(true))]
+    Resize {
+        /// Grow it leftwards
+        #[arg(long, group = "towards")]
+        left: bool,
+        /// Grow it rightwards
+        #[arg(long, group = "towards")]
+        right: bool,
+        /// Grow it upwards
+        #[arg(long, group = "towards")]
+        up: bool,
+        /// Grow it downwards
+        #[arg(long, group = "towards")]
+        down: bool,
+
+        /// The pane to grow, or the one this is running in
+        #[arg(long, value_name = "REF")]
+        pane: Option<String>,
+
+        /// How far, as a share of the region between 0 and 1. Omit for the window's own step
+        #[arg(long, value_name = "FRACTION")]
+        by: Option<f32>,
+    },
 }
 
 /// What `muster tab` can do.
 ///
-/// Two verbs rather than the pane's four, because the other two do not exist for a tab: a tab
-/// closes when its last pane does, and nothing types into a tab.
+/// Three verbs rather than the pane's six. There is no `close`, because a tab closes when its
+/// last pane does; and nothing types into a tab, or moves one.
 #[derive(Debug, Subcommand)]
 enum WithTab {
+    /// Make a tab, and print the name of the pane that appears in it
+    //
+    // Prints the pane rather than the tab, because the pane is what a script's next line
+    // needs: naming a tab is something you do once, and sending into its pane is what comes
+    // next. The tab's own name is one `muster window` away, on the row of the pane below.
+    New {
+        /// The pane whose workspace the tab joins, or the one this is running in
+        #[arg(long, value_name = "REF")]
+        pane: Option<String>,
+
+        /// Where its pane starts, or that pane's own directory
+        #[arg(long, value_name = "DIR")]
+        cwd: Option<String>,
+
+        /// A shell line to run in it, waiting for its prompt first
+        #[arg(long, value_name = "CMD")]
+        run: Option<String>,
+
+        /// What to call its pane
+        #[arg(long, value_name = "NAME")]
+        name: Option<String>,
+
+        /// Move the window's keyboard to it. The tab comes on screen either way
+        #[arg(long)]
+        focus: bool,
+    },
+
     /// Bring a tab on screen and put the window's keyboard in it
+    //
+    // A name or a direction, and one of them is required: a pane command with no ref means the
+    // pane it is running in, and there is no such answer for a tab. Nothing tells a pane which
+    // tab it is in, and "the tab the keyboard is already in" is not somewhere to ask to go.
+    #[command(group = ArgGroup::new("which").required(true))]
     Focus {
         /// The tab to go to
-        //
-        // A `String` rather than an `Option<String>`, which is what makes clap demand one. A pane
-        // command with no ref means the pane it is running in, and there is no such answer for a
-        // tab: nothing tells a pane which tab it is in, and "the tab the keyboard is already in"
-        // is not somewhere to ask to go.
-        #[arg(value_name = "REF")]
-        tab: String,
+        #[arg(value_name = "REF", group = "which")]
+        tab: Option<String>,
+
+        /// Go to the next tab instead, wrapping at the end
+        #[arg(long, group = "which")]
+        next: bool,
+        /// Go to the previous one, wrapping at the start
+        #[arg(long, group = "which")]
+        previous: bool,
     },
 
     /// Call a tab something. An empty name takes the name away again
@@ -279,24 +424,50 @@ pub fn parse(
     let asking = match &cli.what {
         What::Window => send(request::Payload::ReadWindow(ReadWindow {})),
         What::Pane { doing } => pane(doing, environment),
-        What::Tab { doing } => tab(doing),
-        What::Focus { pane } => {
-            // The only command where an empty pane is not an answer: everywhere else the core
-            // reads it as "the pane the keyboard is on", and asking to focus the focused pane is
-            // not something to ask for. So it is refused here, where the reason is known.
-            let named = pane.clone().or_else(|| running_in(environment)).ok_or_else(|| {
-                Failure::Refused(format!(
-                    "`muster focus` needs a pane, and ${} is not set - so this is not running \
-                     inside a pane Muster made. Name one: `muster focus p1w3r07bsd`. `muster \
-                     window` lists them.",
-                    environment::PANE_NAME
-                ))
-            })?;
-            send(request::Payload::FocusPane(FocusPane { pane_id: named, ..FocusPane::default() }))
+        What::Tab { doing } => tab(doing, environment),
+        What::Focus { pane, next, previous, left, right, up, down, place } => {
+            // A direction and a place are answers on their own, so they are read before the
+            // pane is - and clap has already refused any two of the three together.
+            let stepped = chosen(&[
+                (*next, "next"),
+                (*previous, "previous"),
+                (*left, "left"),
+                (*right, "right"),
+                (*up, "up"),
+                (*down, "down"),
+            ]);
+            if let Some(step) = stepped {
+                send(request::Payload::FocusRelative(FocusRelative { direction: step.to_string() }))
+            } else if let Some(place) = place {
+                send(request::Payload::FocusPaneAt(FocusPaneAt { place: *place }))
+            } else {
+                // The only command where an empty pane is not an answer: everywhere else the
+                // core reads it as "the pane the keyboard is on", and asking to focus the
+                // focused pane is not something to ask for. So it is refused here, where the
+                // reason is known.
+                let named = pane.clone().or_else(|| running_in(environment)).ok_or_else(|| {
+                    Failure::Refused(format!(
+                        "`muster focus` needs a pane, a direction or a place, and ${} is not \
+                         set - so this is not running inside a pane Muster made. Name one: \
+                         `muster focus p1w3r07bsd`, or say `--next`. `muster window` lists \
+                         them.",
+                        environment::PANE_NAME
+                    ))
+                })?;
+                send(request::Payload::FocusPane(FocusPane {
+                    pane_id: named,
+                    ..FocusPane::default()
+                }))
+            }
         }
         What::Zoom { pane } => send(request::Payload::ZoomPane(ZoomPane {
             pane_id: pane_ref(pane.as_ref(), environment),
             ..ZoomPane::default()
+        })),
+        What::Reload => send(request::Payload::ReloadConfig(ReloadConfig {})),
+        What::Sidebar => send(request::Payload::ToggleSidebar(ToggleSidebar {})),
+        What::Font { change } => send(request::Payload::AdjustFontSize(AdjustFontSize {
+            change: change.wire().to_string(),
         })),
         What::Docs { topic } => Asking::Print(documentation(topic.as_deref())?),
         What::Completions { shell } => Asking::Print(completions(*shell)),
@@ -307,23 +478,15 @@ pub fn parse(
 
 fn pane(doing: &Doing, environment: &BTreeMap<String, String>) -> Asking {
     match doing {
-        Doing::New { left, right: _, up, down, pane, cwd, run, name, focus } => {
+        Doing::New { left, right, up, down, pane, cwd, run, name, focus } => {
             // The same four words the schema uses, and the same words a `muster window --json`
             // answer carries, rather than English ones like `below`: a caller that reads a side out
-            // should be able to send it straight back. `--right` is not read, because it is what
-            // happens anyway - and right rather than any other side because it is where ⌘D splits
-            // to, and a CLI whose default matched no chord would make the two disagree about what
-            // "a split" means. clap holds the four in one group, so two at once is refused before
-            // this is reached.
-            let side = if *left {
-                "left"
-            } else if *up {
-                "up"
-            } else if *down {
-                "down"
-            } else {
-                "right"
-            };
+            // should be able to send it straight back. Saying nothing means right, because that is
+            // where ⌘D splits to, and a CLI whose default matched no chord would make the two
+            // disagree about what "a split" means. clap holds the four in one group, so two at
+            // once is refused before this is reached.
+            let side = chosen(&[(*left, "left"), (*right, "right"), (*up, "up"), (*down, "down")])
+                .unwrap_or("right");
             send(request::Payload::SplitPane(SplitPane {
                 pane_id: pane_ref(pane.as_ref(), environment),
                 side: side.to_string(),
@@ -349,6 +512,29 @@ fn pane(doing: &Doing, environment: &BTreeMap<String, String>) -> Asking {
             pane_id: pane_ref(pane.as_ref(), environment),
             ..ClosePane::default()
         })),
+        Doing::Move { pane, onto } => send(request::Payload::ArrangePane(ArrangePane {
+            pane_id: pane_ref(pane.as_ref(), environment),
+            onto_pane_id: onto.clone(),
+            ..ArrangePane::default()
+        })),
+        Doing::Resize { left, right, up, down, pane, by } => {
+            // clap holds the four in one required group, so exactly one is true here.
+            let direction =
+                chosen(&[(*left, "left"), (*right, "right"), (*up, "up"), (*down, "down")])
+                    .unwrap_or("right");
+            send(request::Payload::ResizePane(ResizePane {
+                pane_id: pane_ref(pane.as_ref(), environment),
+                direction: direction.to_string(),
+                // Zero is what the schema reads as "the window's own step", and it is also
+                // what proto3 sends for an absent float - so omitting `--by` and asking for
+                // nothing are the same request, which is the answer both callers want.
+                amount: by.unwrap_or_default(),
+                // The four measurements stay at zero. They belong to a live surface, and a
+                // caller with no surface gets the daemon's own step rather than a distance
+                // guessed from a font nobody here knows.
+                ..ResizePane::default()
+            }))
+        }
     }
 }
 
@@ -357,18 +543,48 @@ fn pane(doing: &Doing, environment: &BTreeMap<String, String>) -> Asking {
 /// A tab name is not in any pane's environment - nothing has to tell a tab which tab it is - so
 /// there is nothing here to fall back to. `focus` demands one; `rename` leaves the field empty,
 /// which the schema already reads as the tab the keyboard's pane is in.
-fn tab(doing: &WithTab) -> Asking {
+fn tab(doing: &WithTab, environment: &BTreeMap<String, String>) -> Asking {
     match doing {
-        WithTab::Focus { tab } => send(request::Payload::FocusTab(FocusTab {
-            tab_id: tab.clone(),
-            ..FocusTab::default()
-        })),
+        WithTab::New { pane, cwd, run, name, focus } => {
+            send(request::Payload::CreateTab(CreateTab {
+                pane_id: pane_ref(pane.as_ref(), environment),
+                cwd: cwd.clone().unwrap_or_default(),
+                run: run.clone().unwrap_or_default(),
+                name: name.clone().unwrap_or_default(),
+                take_focus: *focus,
+                ..CreateTab::default()
+            }))
+        }
+        WithTab::Focus { tab, next, previous } => {
+            // A direction is an answer on its own; clap has already refused a name beside one,
+            // and required one of the two when no name was given.
+            if let Some(direction) = chosen(&[(*next, "next"), (*previous, "previous")]) {
+                send(request::Payload::FocusTabRelative(FocusTabRelative {
+                    direction: direction.to_string(),
+                }))
+            } else {
+                send(request::Payload::FocusTab(FocusTab {
+                    tab_id: tab.clone().unwrap_or_default(),
+                    ..FocusTab::default()
+                }))
+            }
+        }
         WithTab::Rename { tab, name } => send(request::Payload::RenameTab(RenameTab {
             tab_id: tab.clone().unwrap_or_default(),
             name: name.join(" "),
             ..RenameTab::default()
         })),
     }
+}
+
+/// The first of these words whose flag was given.
+///
+/// One helper for every direction in the surface - the four sides of a split and a resize, the
+/// six steps a focus takes, the two a tab takes - because they are the schema's own words and
+/// have to keep meaning the same thing wherever they are spelled. clap holds each set in one
+/// group, so at most one is ever true and the order here only decides what a bug would look like.
+fn chosen(among: &[(bool, &'static str)]) -> Option<&'static str> {
+    among.iter().find(|(said, _)| *said).map(|(_, word)| *word)
 }
 
 /// Which pane a command is about: the one named, then the one it is running in, then the window's

@@ -140,6 +140,44 @@ fn described(request: &Request) -> Value {
                 ("name", Some(json!(rename.name))),
             ])
         }),
+        request::Payload::CreateTab(create) => json!({
+            "create_tab": fields([
+                ("pane_id", said(&create.pane_id)),
+                ("cwd", said(&create.cwd)),
+                ("run", said(&create.run)),
+                ("name", said(&create.name)),
+                ("take_focus", create.take_focus.then_some(json!(true))),
+            ])
+        }),
+        request::Payload::ArrangePane(arrange) => json!({
+            "arrange_pane": fields([
+                ("pane_id", said(&arrange.pane_id)),
+                ("onto_pane_id", said(&arrange.onto_pane_id)),
+            ])
+        }),
+        // `direction` is always here for the reason `side` is: every resize has one, and the
+        // amount is absent whenever the caller took the window's own step.
+        request::Payload::ResizePane(resize) => json!({
+            "resize_pane": fields([
+                ("pane_id", said(&resize.pane_id)),
+                ("direction", Some(json!(resize.direction))),
+                ("amount", (resize.amount != 0.0).then_some(json!(resize.amount))),
+            ])
+        }),
+        request::Payload::FocusRelative(step) => json!({
+            "focus_relative": json!({ "direction": step.direction })
+        }),
+        request::Payload::FocusTabRelative(step) => json!({
+            "focus_tab_relative": json!({ "direction": step.direction })
+        }),
+        request::Payload::FocusPaneAt(at) => {
+            json!({ "focus_pane_at": json!({ "place": at.place }) })
+        }
+        request::Payload::ReloadConfig(_) => json!({ "reload_config": {} }),
+        request::Payload::ToggleSidebar(_) => json!({ "toggle_sidebar": {} }),
+        request::Payload::AdjustFontSize(adjust) => json!({
+            "adjust_font_size": json!({ "change": adjust.change })
+        }),
         other => json!(format!(
             "{other:?}, which this CLI has no way to build - so either the corpus or the parser \
              has grown a request the other has not"

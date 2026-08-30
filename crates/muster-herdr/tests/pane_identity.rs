@@ -33,7 +33,11 @@ fn a_pane_muster_made_is_told_which_pane_it_is() {
     // under test is the request Muster builds. A test that called the daemon itself would prove
     // that herdr honors an `env` map, which herdr's own suite already covers.
     let outcome = backend
-        .submit(&BackendIntent::CreateWorkspace { cwd: Some("/tmp".to_string()) })
+        .submit(&BackendIntent::CreateWorkspace {
+            cwd: Some("/tmp".to_string()),
+            run: None,
+            name: None,
+        })
         .expect("a daemon that answered ping can make a workspace");
     let made = outcome.created.expect("workspace.create answers with the pane it started");
 

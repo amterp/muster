@@ -34,7 +34,11 @@ fn a_pane_asked_for_with_a_name_and_a_program_gets_both() {
     let backend = HerdrBackend::new(daemon.client(), PaneEnvironment::none(), names.clone());
 
     let outcome = backend
-        .submit(&BackendIntent::CreateWorkspace { cwd: Some("/tmp".to_string()) })
+        .submit(&BackendIntent::CreateWorkspace {
+            cwd: Some("/tmp".to_string()),
+            run: None,
+            name: None,
+        })
         .expect("a daemon that answered ping can make a workspace");
     let first = outcome.created.expect("workspace.create answers with the pane it started");
 
@@ -93,7 +97,11 @@ fn a_split_asking_for_nothing_sends_nothing_extra() {
     let backend = HerdrBackend::new(daemon.client(), PaneEnvironment::none(), names.clone());
 
     let first = backend
-        .submit(&BackendIntent::CreateWorkspace { cwd: Some("/tmp".to_string()) })
+        .submit(&BackendIntent::CreateWorkspace {
+            cwd: Some("/tmp".to_string()),
+            run: None,
+            name: None,
+        })
         .expect("a daemon that answered ping can make a workspace")
         .created
         .expect("workspace.create answers with the pane it started");
@@ -145,7 +153,11 @@ fn text_runs_when_it_asked_for_a_return_and_waits_when_it_did_not() {
     let backend = HerdrBackend::new(daemon.client(), PaneEnvironment::none(), names.clone());
 
     let pane = backend
-        .submit(&BackendIntent::CreateWorkspace { cwd: Some("/tmp".to_string()) })
+        .submit(&BackendIntent::CreateWorkspace {
+            cwd: Some("/tmp".to_string()),
+            run: None,
+            name: None,
+        })
         .expect("a daemon that answered ping can make a workspace")
         .created
         .expect("workspace.create answers with the pane it started");
@@ -217,7 +229,11 @@ fn a_program_that_discards_what_it_was_typed_early_still_gets_what_muster_asked_
     let backend = HerdrBackend::new(daemon.client(), PaneEnvironment::none(), names.clone());
 
     let first = backend
-        .submit(&BackendIntent::CreateWorkspace { cwd: Some("/tmp".to_string()) })
+        .submit(&BackendIntent::CreateWorkspace {
+            cwd: Some("/tmp".to_string()),
+            run: None,
+            name: None,
+        })
         .expect("a daemon that answered ping can make a workspace")
         .created
         .expect("workspace.create answers with the pane it started");

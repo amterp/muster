@@ -210,12 +210,16 @@ fn an_emptied_window_can_be_refilled() {
         || format!("the last view the core published: {:?}", latest_view()),
     );
 
-    // What ⌘T sends: no daemon, no pane, no directory. There is no pane to read a workspace
-    // off, so a core that only knew how to make a tab beside one has nothing to do here.
+    // What ⌘T sends: no daemon, no pane, no directory, and the keyboard following. There is no
+    // pane to read a workspace off, so a core that only knew how to make a tab beside one has
+    // nothing to do here.
     assert_ok(&answer(request::Payload::CreateTab(CreateTab {
         daemon_id: String::new(),
         pane_id: String::new(),
         cwd: String::new(),
+        run: String::new(),
+        name: String::new(),
+        take_focus: true,
     })));
     until(
         "a pane to come back, and the keyboard with it",
@@ -254,6 +258,9 @@ fn a_new_tab_is_made_and_then_shown() {
         daemon_id: String::new(),
         pane_id: String::new(),
         cwd: String::new(),
+        run: String::new(),
+        name: String::new(),
+        take_focus: true,
     })));
 
     until(

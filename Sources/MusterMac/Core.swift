@@ -205,6 +205,10 @@ public enum Core {
     create.daemonID = daemonID
     create.paneID = paneID
     create.cwd = cwd
+    // Said outright for the same reason a split says it, and with the same consequence if it
+    // were left alone: the field defaults to false because false is what a script means, and
+    // cmd+T is somebody making a tab to work in.
+    create.takeFocus = true
     var request = Muster_Request()
     request.createTab = create
     send(request)

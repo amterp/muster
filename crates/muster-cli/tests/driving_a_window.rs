@@ -131,6 +131,13 @@ fn a_pane_can_drive_the_window_it_is_drawn_in() {
     assert_eq!(sent.code, 0, "`muster pane send` failed: {}", sent.errors);
     until_file(&told, "text sent to a pane by name to have run there");
 
+    the_columns_are_described(&inside(&first));
+    // While both panes are still in one tab and on screen, which is what stepping walks.
+    the_keyboard_steps_without_being_given_a_name(&first, &made_pane, &inside(&first));
+
+    let (tabbed_pane, second_tab) = a_tab_is_made_and_equipped(&daemon, &inside(&first));
+    a_pane_moves_to_another_tab(&made_pane, &tabbed_pane, &second_tab, &inside(&first));
+
     only_making_a_pane_prints_a_pane(&made_pane, &tab, &inside(&first));
     a_tab_nobody_holds_is_refused_by_name(&inside(&first));
     a_mistyped_flag_is_refused_and_says_what_was_meant(&inside(&first));
@@ -216,6 +223,162 @@ fn a_tab_is_addressable_by_name(window: &Value, environment: &[(&str, String)]) 
     tab
 }
 
+/// The columns the window is divided into, which nothing else in the answer implies.
+///
+/// A person reading the plain output has the window in front of them. A script arranging one has
+/// neither that nor any other way to tell which tabs sit beside each other: `tabs[].on_screen`
+/// says a tab is showing somewhere and not where, and a weight has no other spelling at all.
+fn the_columns_are_described(environment: &[(&str, String)]) {
+    let window = json_from(&run(&["window", "--json"], environment));
+    let regions = window["regions"].as_array().cloned().unwrap_or_default();
+    assert_eq!(
+        regions.len(),
+        1,
+        "a window showing one daemon's tab is one column, and this answer describes {}: {window}",
+        regions.len()
+    );
+    let region = &regions[0];
+    assert_eq!(
+        region["tab"], window["tabs"][0]["tab"],
+        "the column says it is showing a tab the answer does not describe, so nothing can join \
+         the two: {window}"
+    );
+    assert_eq!(
+        region["keyboard"],
+        json!(true),
+        "no column has the keyboard, though a pane does: {window}"
+    );
+    assert!(
+        region["weight"].as_f64().is_some_and(|weight| weight > 0.0),
+        "a column with no width is a column nothing can be laid out from: {window}"
+    );
+}
+
+/// The keyboard moves by a direction and by a number, neither of which names a pane.
+///
+/// The read half of this has printed a `place` for every pane since tabs were named, and nothing
+/// consumed it - so a script could read the number the sidebar draws and had no way to act on it.
+/// Stepping is the other half of the same gap: `muster window` lists panes in an order, and until
+/// now walking that order meant reading it again after every move.
+fn the_keyboard_steps_without_being_given_a_name(
+    first: &str,
+    made: &str,
+    environment: &[(&str, String)],
+) {
+    let focused = run(&["focus", first], environment);
+    assert_eq!(focused.code, 0, "`muster focus` failed: {}", focused.errors);
+
+    let stepped = run(&["focus", "--next"], environment);
+    assert_eq!(stepped.code, 0, "`muster focus --next` failed: {}", stepped.errors);
+    let landed = until_some("the keyboard to land on the pane after the one it was on", || {
+        let window = json_from(&run(&["window", "--json"], environment));
+        let keyboard = window["keyboard"].as_str()?.to_string();
+        (keyboard != first).then_some(keyboard)
+    });
+    assert_eq!(
+        landed, made,
+        "`focus --next` walks the panes in the order `muster window` lists them, and from {first} \
+         the next one is {made} - it landed on {landed}"
+    );
+
+    // The number drawn beside the row, sent back as the number it is. Read out of the answer
+    // rather than assumed to be 1, because a place is a position in the whole window's pane order
+    // and this test is not the only thing that has made panes.
+    let window = json_from(&run(&["window", "--json"], environment));
+    let place = window["panes"]
+        .as_array()
+        .and_then(|panes| panes.iter().find(|pane| pane["pane"] == json!(first)).cloned())
+        .and_then(|pane| pane["place"].as_u64())
+        .unwrap_or_else(|| panic!("the window describes no pane called {first}: {window}"));
+
+    let numbered = run(&["focus", "--place", &place.to_string()], environment);
+    assert_eq!(numbered.code, 0, "`muster focus --place` failed: {}", numbered.errors);
+    until(
+        "the keyboard to land on the pane at the place the answer gave it",
+        || json_from(&run(&["window", "--json"], environment))["keyboard"] == json!(first),
+        || {
+            format!(
+                "place {place} is {first} in the answer, and the keyboard is on {}",
+                json_from(&run(&["window", "--json"], environment))["keyboard"]
+            )
+        },
+    );
+}
+
+/// A tab is made from a script, with something already running in it.
+///
+/// The other way to make a pane, and the one a script could not reach: splitting was the only
+/// route, so anything that did not belong in this tab had nowhere to go. `--run` is asserted off
+/// the filesystem for the reason `pane send` is - and because it is the half that proves a tab is
+/// equipped the way a split is, rather than made and left bare for the caller to race.
+fn a_tab_is_made_and_equipped(daemon: &Daemon, environment: &[(&str, String)]) -> (String, String) {
+    let ran = daemon.root().join("tabbed.txt");
+    let made = run(
+        &["tab", "new", "--run", &format!("printf 'tabbed' > {}", ran.display()), "--name", "🤖 B"],
+        environment,
+    );
+    assert_eq!(made.code, 0, "`muster tab new` failed: {}", made.errors);
+    let pane = made.out.trim().to_string();
+    assert!(
+        pane.starts_with('p'),
+        "`muster tab new` printed {pane:?}, which is not the name of a pane. It prints the pane \
+         rather than the tab because the pane is what the next line of a script sends into."
+    );
+    until_file(&ran, "the command `tab new --run` carried to have run in the tab's pane");
+
+    let tab = until_some("the window to describe the tab that pane is in", || {
+        let window = json_from(&run(&["window", "--json"], environment));
+        let held = window["panes"].as_array()?.iter().find(|held| held["pane"] == json!(pane))?;
+        (held["given_name"] == json!("🤖 B")).then(|| held["tab"].as_str())?.map(str::to_string)
+    });
+    (pane, tab)
+}
+
+/// A pane moves to another tab, and what was running in it goes on running.
+///
+/// The gap the card is about: `pane new` can build any arrangement, and nothing could change one
+/// that already existed. Getting the split order wrong was correctable only by closing panes and
+/// making them again, which ends whatever they were doing - the opposite of what a daemon-owned
+/// pane tree is for.
+///
+/// Asserted across tabs rather than within one because the two outcomes are told apart by where
+/// the panes are, and only this one moves a pane somewhere it was not.
+fn a_pane_moves_to_another_tab(
+    pane: &str,
+    onto: &str,
+    destination: &str,
+    environment: &[(&str, String)],
+) {
+    let moved = run(&["pane", "move", "--pane", pane, "--onto", onto], environment);
+    assert_eq!(moved.code, 0, "`muster pane move` failed: {}", moved.errors);
+    until(
+        "the window to show the pane in the tab it was moved to",
+        || {
+            let window = json_from(&run(&["window", "--json"], environment));
+            window["panes"].as_array().is_some_and(|panes| {
+                panes
+                    .iter()
+                    .any(|held| held["pane"] == json!(pane) && held["tab"] == json!(destination))
+            })
+        },
+        || {
+            let window = json_from(&run(&["window", "--json"], environment));
+            let row = window["panes"]
+                .as_array()
+                .and_then(|panes| panes.iter().find(|held| held["pane"] == json!(pane)).cloned());
+            match row {
+                Some(row) => {
+                    format!("{pane} should be in {destination} and the window says {row}.")
+                }
+                None => format!(
+                    "the window describes no pane called {pane} at all, so the move did not \
+                     merely go to the wrong tab: {window}"
+                ),
+            }
+        },
+    );
+}
+
 /// A command that made nothing prints nothing.
 ///
 /// `pane new` is the one command whose answer is a pane name, and that is what makes the next line
@@ -228,8 +391,15 @@ fn only_making_a_pane_prints_a_pane(pane: &str, tab: &str, environment: &[(&str,
         vec!["pane", "rename", "--pane", pane, "🤖 renamed"],
         vec!["zoom", pane],
         vec!["focus", pane],
+        vec!["focus", "--next"],
         vec!["tab", "focus", tab],
+        vec!["tab", "focus", "--next"],
         vec!["tab", "rename", "--tab", tab, "🗂 renamed"],
+        vec!["pane", "resize", "--pane", pane, "--right"],
+        vec!["sidebar"],
+        vec!["font", "larger"],
+        vec!["font", "reset"],
+        vec!["reload"],
     ] {
         let quiet = run(&argv, environment);
         assert_eq!(quiet.code, 0, "`muster {}` failed: {}", argv.join(" "), quiet.errors);

@@ -211,7 +211,11 @@ fn a_pane_runs_what_musters_config_named(
         Names::alone("devenv", Mint::Backend),
     );
     backend
-        .submit(&BackendIntent::CreateWorkspace { cwd: Some("/tmp".to_string()) })
+        .submit(&BackendIntent::CreateWorkspace {
+            cwd: Some("/tmp".to_string()),
+            run: None,
+            name: None,
+        })
         .expect("a daemon that answered a snapshot can make a workspace");
 
     let client = HerdrClient::new(socket_path);
