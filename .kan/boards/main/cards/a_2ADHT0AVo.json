@@ -7,10 +7,20 @@
   "description": "it's a little awkward right now with the injection of the pane-level numbers that shifts everything in the sidebar's entries, hard to eyeball and track\n\nalso if you do just cmd+2 and switch tab, and it does all the shifting, then it sorta just stays shifted until you press a second number (for the pane) or click. maybe it should automatically go away when you release cmd, since that's kind of an indication you're done swapping and dont intend to follow up with a specific pane\n\nlastly, would be neat if, after the tab switch, and still holding cmd, and you see the panes, if there were large overlayed semi-transparent numbers in the center of each panel, so you can see which number corresponds to which, and you can then click the respective number",
   "creator": "Alexander Terp",
   "created_at_millis": 1787057544356,
-  "updated_at_millis": 1787057701516,
-  "column": "next",
-  "position": "UUUUUUUUUUUUUUUUUUUUUU",
+  "updated_at_millis": 1788115952700,
+  "comments": [
+    {
+      "id": "c_2HKnZjuCY",
+      "body": "Landed and green through `./dev`. Three fixes plus one the card did not ask for.\n\n**Letting go of the modifier ends the sequence.** New `EndNumberedChord` request; the shell watches `flagsChanged` on a small `NSWindow` subclass and sends it while a chord is half-typed. The modifier watched for is read off the bindings rather than hardcoded to cmd, so `focus_pane_1 = \"ctrl+1\"` still ends correctly. This is the one that changes the scheme's character: it stops being a prefix key, because the mode now lasts exactly as long as your thumb is down - which also means cmd+2 then cmd+3 is two tab jumps unless you deliberately hold.\n\n**Big translucent numbers on the panes.** Drawn over each pane in the named tab after a ~120ms hold, sized off the pane's shorter side. Transparent to the mouse, so clicking the number focuses the pane through the existing click path. With the sidebar closed they are the only indicator.\n\n**The sidebar stops shifting.** Every tab and pane row reserves the number gutter while the scheme is on, so a digit arriving or leaving no longer slides every label 16pt. The numbers you can press next are drawn in the accent colour instead of grey - that replaced the tab-row tint I had planned, since a second highlight beside the keyboard-focus one was worse than emphasising the element the eye is already on.\n\n**A one-pane tab no longer arms** (your call when I asked). Nothing to choose between, so cmd+2 lands and stops.\n\nNot fixed, documented instead: a zoomed tab with several panes still arms and shows one badge.\n\nThe wire gained one field, `RosterChanged.Counting`. The per-row numbers stay authoritative for which chord reaches what; this only says what kind of thing is being counted, which no row can answer - in a one-tab window a settled roster and a half-typed one carry identical rows. I carried the named tab's id beside it at first and dropped it when nothing read it.\n\nStill to do: drive it and say whether the scheme survives. That is a_2A6T9c2r4, still open.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1788109805070
+    }
+  ],
+  "column": "done",
+  "position": "!!!!!!!!!!!!!!!!!!0",
   "history": [
-    {"field":"column","value":"next","at":1787057544356}
+    {"field":"column","value":"next","at":1787057544356},
+    {"field":"column","value":"in-progress","at":1788108131022},
+    {"field":"column","value":"done","at":1788115952700}
   ]
 }
