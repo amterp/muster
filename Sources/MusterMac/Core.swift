@@ -761,6 +761,7 @@ public enum Core {
     case .readBindings: return "read_bindings"
     case .readAppearance: return "read_appearance"
     case .readWindow: return "read_window"
+    case .readPane: return "read_pane"
     case .readWindowFrame: return "read_window_frame"
     case .setWindowFrame: return "set_window_frame"
     case .reportFontFamily: return "report_font_family"

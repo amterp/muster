@@ -150,7 +150,10 @@ fn hits_in(rows: &[&str], needle: &Needle) -> Vec<Hit> {
 /// bottom, which would put every real row one further from the bottom than it is - a hit
 /// that scrolls to the wrong place, and the kind of off-by-one that looks like the
 /// daemon's fault.
-fn rows_of(text: &str) -> Vec<&str> {
+///
+/// Public because a read that is not a search counts the same rows, and two answers to how
+/// many rows a pane just handed back would disagree the moment one of them was fixed.
+pub fn rows_of(text: &str) -> Vec<&str> {
     let body = text.strip_suffix('\n').unwrap_or(text);
     if body.is_empty() { Vec::new() } else { body.split('\n').collect() }
 }

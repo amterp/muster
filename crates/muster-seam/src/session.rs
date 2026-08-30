@@ -26,7 +26,7 @@ use muster_core::fields;
 use muster_core::find::{Found, Needle};
 use muster_core::input::{Bindings, PaneInput, PaneInputSettings, ScrollDirection};
 use muster_core::intent::{BackendChannel, BackendIntent, Refusal};
-use muster_core::mirror::backend::{PaneId, Snapshot, TabId, WorkspaceId};
+use muster_core::mirror::backend::{PaneId, PaneText, Snapshot, TabId, WorkspaceId};
 use muster_core::mirror::{Change, Health, Mirror};
 use muster_core::names::{self, Mint, Names, PaneNames, TabNames};
 use muster_core::problems::{Problem, Problems, Severity};
@@ -3140,6 +3140,20 @@ fn land(search: &Search) {
     if rows > 0 {
         attached.input.scroll(direction, u16::try_from(rows).unwrap_or(u16::MAX));
     }
+}
+
+/// Reads a pane back, and changes nothing.
+///
+/// A round trip at the moment somebody asks, like [`find`] above and for the same reason: a
+/// pane's output never enters the core, so there is nothing held here to answer from. The
+/// channel is taken and the lock dropped before the request goes, because a read is a round
+/// trip and holding the session across one stalls every event arriving from every other
+/// daemon.
+pub(crate) fn read_pane(daemon: &DaemonId, pane: &PaneId, rows: u32) -> Result<PaneText, String> {
+    let channel = channel(daemon)?;
+    channel
+        .read(pane, rows)
+        .map_err(|refusal| format!("the daemon {daemon} would not read pane {pane}: {refusal}"))
 }
 
 /// The way to one daemon, or why there is not one.

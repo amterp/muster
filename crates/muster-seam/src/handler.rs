@@ -43,13 +43,28 @@ pub fn dispatch(request: &[u8]) -> Vec<u8> {
     response.encode_to_vec()
 }
 
+/// A request whose oneof arrived unset, and the likeliest reason for it.
+///
+/// Reachable rather than theoretical, and it became so the day the CLI shipped separately: a
+/// `muster` newer than the window it dials sends a payload this build's schema has no arm for,
+/// protobuf drops the field number it does not know, and what arrives is a request with
+/// nothing in it. Naming the mismatch first is the difference between somebody checking two
+/// versions and somebody hunting a bug in request building that is not there.
+fn nothing_was_asked() -> Response {
+    Response::failure(
+        "the core was handed a request with no payload, so there was nothing to do and \
+         nothing will be retried. The likely cause is a `muster` newer than this window: a \
+         request this build's schema has no arm for decodes to nothing at all, because \
+         protobuf drops a field number it does not know. Check `muster --version` against the \
+         running app, and reach the app's own copy at ~/.muster/bin/muster. If the two agree, \
+         this is a bug in whatever built the request - the field is a oneof and every arm \
+         sets it.",
+    )
+}
+
 fn handle(request: Request) -> Response {
     let Some(payload) = request.payload else {
-        return Response::failure(
-            "the core was handed a request with no payload, so there was nothing to do. \
-             This is a bug in the shell's request building rather than a state worth \
-             recovering from; the field is a oneof and every arm sets it.",
-        );
+        return nothing_was_asked();
     };
 
     // A `tab_then_pane` chord is armed by one request and spent by the next, so the rule that
@@ -98,6 +113,7 @@ fn handle(request: Request) -> Response {
         }
         request::Payload::ReadBindings(_) => read_bindings(),
         request::Payload::ReadWindow(_) => read_window(),
+        request::Payload::ReadPane(read) => read_pane(&read),
         request::Payload::SendToPane(send) => send_to_pane(&send),
         request::Payload::ReadAppearance(_) => read_appearance(),
         request::Payload::ReadWindowFrame(read) => read_window_frame(&read.screens),
@@ -181,8 +197,52 @@ fn only_reads(payload: &request::Payload) -> bool {
             | request::Payload::ReadAppearance(_)
             | request::Payload::ReadWindowFrame(_)
             | request::Payload::ReportFontFamily(_)
+            | request::Payload::ReadPane(_)
             | request::Payload::FocusPaneAt(_)
     )
+}
+
+/// Hands back what a pane has printed.
+///
+/// The pane an agent means is usually not the one it is sitting in, so the daemon comes from
+/// the pane rather than from whatever region is focused - `muster window` names panes across
+/// every attached machine, and a name is meant to be enough on its own.
+fn read_pane(read: &proto::ReadPane) -> Response {
+    let pane = if read.pane_id.is_empty() {
+        match session::focused_pane() {
+            Some(pane) => pane,
+            None => {
+                return Response::failure(
+                    "no pane has this window's keyboard, so there was nothing to read. A read \
+                     that names no pane means the focused one, and this window has none - the \
+                     attach failed earlier, or the pane it succeeded on exited.",
+                );
+            }
+        }
+    } else {
+        PaneId::new(&read.pane_id)
+    };
+    let Some(daemon) = pane_holder(&pane, &read.daemon_id) else {
+        return Response::failure(format!(
+            "no daemon this window is following holds a pane called {pane}, so there was \
+             nothing to read. Either it closed while this was in flight, or the name came from \
+             an older window - `muster window` lists the panes this one has."
+        ));
+    };
+    match session::read_pane(&daemon, &pane, read.rows) {
+        Ok(read) => Response {
+            payload: Some(response::Payload::PaneText(proto::PaneText {
+                // Counted here rather than by whoever reads the text, and counted the way a
+                // search counts the same answer - two ideas of what a row is would disagree
+                // the moment one of them was fixed.
+                rows: u32::try_from(muster_core::find::rows_of(&read.text).len())
+                    .unwrap_or(u32::MAX),
+                text: read.text,
+                truncated: read.truncated,
+            })),
+        },
+        Err(refusal) => Response::failure(refusal),
+    }
 }
 
 /// Looks for something in a pane, and puts the first match on screen.

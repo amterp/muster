@@ -33,6 +33,22 @@ which is why the command travels with the split instead of arriving as a `pane s
 `--enter` presses Return, which is what submits the text. Without it the text sits on the pane's
 prompt, which is what you want when a person should read it before it runs.
 
+## Reading what they printed
+
+`muster window` says what state an agent is in and what it says it is working on. Neither of those
+is its output, and an agent that has stopped tells you it stopped rather than why:
+
+    muster pane read --pane p1w3r0ab2n
+
+The pane's text, newest row last, as far back as the window will go. `--rows 40` asks for the last
+forty instead, which is what checking on somebody wants and what keeps a thousand rows off the
+wire. `--json` adds `rows` and `truncated` beside the text; `truncated` is how you learn there is
+history the read did not reach.
+
+Two things to expect. The rows come off the bottom of the pane's grid, so a small `--rows` on an
+idle pane can come back blank - the bottom of a terminal usually is. And how far back the window
+goes is the daemon's limit rather than a promise made here; see `muster docs limits`.
+
 ## Rearranging what you made
 
 Three `pane new --down` in a row give a column of four, which is rarely what somebody asking for a

@@ -20,7 +20,7 @@ use clap::{ArgGroup, CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::Shell;
 use muster_proto::{
     AdjustFontSize, ArrangePane, ClosePane, CreateTab, FocusPane, FocusPaneAt, FocusRelative,
-    FocusTab, FocusTabRelative, ReadWindow, ReloadConfig, RenamePane, RenameTab, Request,
+    FocusTab, FocusTabRelative, ReadPane, ReadWindow, ReloadConfig, RenamePane, RenameTab, Request,
     ResizePane, SendToPane, SplitPane, ToggleSidebar, ZoomPane, request,
 };
 
@@ -131,7 +131,7 @@ enum What {
     /// What the window is showing: its daemons, its tabs, its panes, and what each agent is doing
     Window,
 
-    /// Make a pane, name one, type into one, move it, resize it, or close it
+    /// Make a pane, name one, read it, type into one, move it, resize it, or close it
     Pane {
         #[command(subcommand)]
         doing: Doing,
@@ -294,6 +294,21 @@ enum Doing {
         /// The text, joined with spaces if it arrives in pieces
         #[arg(required = true, value_name = "TEXT")]
         text: Vec<String>,
+    },
+
+    /// Print what a pane has on it, as far back as the window will go
+    //
+    // The half of a pane an agent could not see. `muster window` says what state every agent
+    // is in and what it claims to be doing; neither of those is the output, and until now
+    // there was no way to read it at all.
+    Read {
+        /// The pane to read, or the one this is running in
+        #[arg(long, value_name = "REF")]
+        pane: Option<String>,
+
+        /// How many rows back to ask for. Omit for as far as the window will go
+        #[arg(long, value_name = "N")]
+        rows: Option<u32>,
     },
 
     /// Close a pane, which ends what is running in it
@@ -507,6 +522,14 @@ fn pane(doing: &Doing, environment: &BTreeMap<String, String>) -> Asking {
             text: text.join(" "),
             enter: *enter,
             ..SendToPane::default()
+        })),
+        Doing::Read { pane, rows } => send(request::Payload::ReadPane(ReadPane {
+            pane_id: pane_ref(pane.as_ref(), environment),
+            // Zero is what the window reads as "as far as you will go", and it is also what
+            // proto3 sends for an absent number - so omitting `--rows` and asking for
+            // everything are the same request.
+            rows: rows.unwrap_or_default(),
+            ..ReadPane::default()
         })),
         Doing::Close { pane } => send(request::Payload::ClosePane(ClosePane {
             pane_id: pane_ref(pane.as_ref(), environment),

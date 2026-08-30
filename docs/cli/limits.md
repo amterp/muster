@@ -41,6 +41,19 @@ Renaming, sending, moving and making a tab do not ask, so those reach a pane whe
 way through is `muster focus` on the pane first, which brings its tab on screen - at the cost of
 taking the keyboard away from whatever somebody was doing.
 
+## A read stops a thousand rows back
+
+`muster pane read` asks the daemon for a pane's recent rows, and herdr answers with at most a
+thousand of them however many are asked for. Asking for more is not refused and does not fail - it
+comes back with the same thousand - so `truncated` in the `--json` answer is the only thing that
+says there was more. A caller that reads the text and not that flag will conclude it has seen the
+whole pane.
+
+The rows come off the bottom of the pane's grid rather than out of a log, which has a second
+consequence: a small `--rows` on a pane sitting at a prompt can answer with nothing at all, because
+the bottom rows of an idle terminal are blank. That is an honest answer rather than a failure, and
+it is why `--rows` is a ceiling rather than a count.
+
 ## There is no search
 
 `muster` cannot search a pane. The window can, from `cmd+f`, and reading only the last thousand

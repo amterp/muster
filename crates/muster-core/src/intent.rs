@@ -11,7 +11,7 @@
 //! side, because that is the question a person answered when they pressed the key.
 
 use crate::find::{Found, Needle};
-use crate::mirror::backend::{Layout, PaneId, TabId, Viewport, WorkspaceId};
+use crate::mirror::backend::{Layout, PaneId, PaneText, TabId, Viewport, WorkspaceId};
 
 /// A direction on screen, as a person means it.
 ///
@@ -441,17 +441,25 @@ pub trait BackendChannel: Send + Sync + std::fmt::Debug {
     /// Asks, and says why not.
     fn submit(&self, intent: &BackendIntent) -> Result<Outcome, Refusal>;
 
-    /// Looks for text in a pane, and changes nothing.
+    /// Reads a pane's history back, and changes nothing.
     ///
-    /// The one read here, and the one place find is swappable. A backend that searches its
-    /// own history answers this directly; one that does not reads the history back and
-    /// matches it with `find::hits_in`, which is what herdr's adapter does today. Either
-    /// way the answer is the same shape and everything above it is the same code, so
-    /// gaining a daemon-side search is one function body rather than a feature rewritten.
+    /// `rows` is a ceiling and zero means "as far as you will go". A backend is free to
+    /// answer with fewer either way, and [`PaneText::truncated`] is how a caller learns it
+    /// did not get everything. A pane's output never enters the core, so this is the only
+    /// way anything above the seam sees what a pane has printed.
     ///
     /// A read rather than an intent because nothing changes: `BackendIntent` is what Muster
     /// asks a backend to *do*, and putting a question in it would make `Outcome` - a
     /// statement about a change just made - carry answers to things that changed nothing.
+    fn read(&self, pane: &PaneId, rows: u32) -> Result<PaneText, Refusal>;
+
+    /// Looks for text in a pane, and changes nothing.
+    ///
+    /// The one place find is swappable. A backend that searches its own history answers this
+    /// directly; one that does not reads the history back with [`BackendChannel::read`] and
+    /// matches it with `find::found_in`, which is what herdr's adapter does today. Either way
+    /// the answer is the same shape and everything above it is the same code, so gaining a
+    /// daemon-side search is one function body rather than a feature rewritten.
     fn find(&self, pane: &PaneId, needle: &Needle) -> Result<Found, Refusal>;
 
     /// Where a pane is looking, so that something found can be scrolled to.

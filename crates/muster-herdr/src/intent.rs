@@ -18,7 +18,7 @@ use muster_core::find::{Found, Needle, found_in};
 use muster_core::intent::{
     BackendChannel, BackendIntent, Branch, Outcome, Refusal, SettledLayout, Side,
 };
-use muster_core::mirror::backend::{PaneId, TabId, Viewport};
+use muster_core::mirror::backend::{PaneId, PaneText, TabId, Viewport};
 use muster_core::names::{BackendPaneId, Names};
 use serde_json::{Value, json};
 
@@ -149,26 +149,34 @@ impl BackendChannel for HerdrBackend {
         })
     }
 
+    /// `pane.read`, which is the only way anything sees what a pane has printed.
+    ///
+    /// A read that fails is a refusal rather than an empty answer. "Nothing there" and
+    /// "nobody looked" are different things to hand back, and a pane that has gone away is
+    /// `NotThere`, which is how the window learns it is showing something the daemon no
+    /// longer holds.
+    fn read(&self, pane: &PaneId, rows: u32) -> Result<PaneText, Refusal> {
+        let (method, params) = read_request(&self.names.backend_pane(pane)?, rows);
+        let result = self.client.request(method, &params).map_err(|failure| refusal(&failure))?;
+        Ok(PaneText {
+            text: nested(&result, "text").and_then(Value::as_str).unwrap_or_default().to_string(),
+            // Absent means "there is no more", which is the safe way round: claiming an
+            // answer was partial when it was whole only costs a caveat nobody needed, while
+            // the reverse is the confident wrong answer the flag exists to avoid.
+            truncated: nested(&result, "truncated").and_then(Value::as_bool).unwrap_or(false),
+        })
+    }
+
     /// Read the pane back, then match it here.
     ///
     /// herdr has no search of its own - `pane.read` and the `pane.output_matched` event are
     /// the whole surface area (`observations/herdr-0.8.0.md` section 17, kan a_29Ayr1P8F) -
-    /// so this is the read-and-match half of the seam. The day a daemon-side search lands,
-    /// this body becomes one request and `find::found_in` stops being called from here.
-    ///
-    /// A read that fails is a refusal rather than an empty answer. "Nothing found" and
-    /// "nobody looked" are different things to put under a search box, and a pane that has
-    /// gone away is `NotThere`, which is how the window learns it is showing something the
-    /// daemon no longer holds.
+    /// so this is the match half and [`HerdrBackend::read`] above is the read half. The day a
+    /// daemon-side search lands, this body becomes one request and `find::found_in` stops
+    /// being called from here.
     fn find(&self, pane: &PaneId, needle: &Needle) -> Result<Found, Refusal> {
-        let (method, params) = read_request(&self.names.backend_pane(pane)?);
-        let result = self.client.request(method, &params).map_err(|failure| refusal(&failure))?;
-        let text = nested(&result, "text").and_then(Value::as_str).unwrap_or_default();
-        // Absent means "there is no more", which is the safe way round: claiming a search
-        // was partial when it was whole only costs a caveat nobody needed, while the
-        // reverse is the confident wrong answer this feature exists to avoid.
-        let truncated = nested(&result, "truncated").and_then(Value::as_bool).unwrap_or(false);
-        Ok(found_in(text, needle, truncated))
+        let read = self.read(pane, ROWS_READ)?;
+        Ok(found_in(&read.text, needle, read.truncated))
     }
 
     fn viewport(&self, pane: &PaneId) -> Result<Viewport, Refusal> {
@@ -211,7 +219,7 @@ const ROWS_READ: u32 = 1000;
 /// caller waiting: that case cannot be waited for at all and always spends the whole allowance.
 const READY_WITHIN: Duration = Duration::from_secs(5);
 
-/// The read a find runs on, as the method and parameters herdr wants for it.
+/// Reading a pane back, as the method and parameters herdr wants for it.
 ///
 /// Public for the reason `request` is: herdr ignores a key it does not recognise, so a
 /// misspelling is a request that quietly answers about the wrong thing rather than a
@@ -221,16 +229,23 @@ const READY_WITHIN: Duration = Duration::from_secs(5);
 /// returns grid rows, so a match's place in the answer is already the offset to scroll to;
 /// `recent_unwrapped` returns whole logical lines, which would match a needle spanning a
 /// wrap and leave nothing able to say where it is. A hit nobody can scroll to is worse than
-/// a hit nobody found.
-pub fn read_request(pane: &BackendPaneId) -> (&'static str, Value) {
+/// a hit nobody found. A caller reading a pane to show somebody wants the same rows for a
+/// duller reason: they are the rows the pane is drawing.
+///
+/// `rows` is capped at [`ROWS_READ`] rather than passed on. herdr clamps anything larger to
+/// the same number and answers, so sending it as asked would make the request claim an
+/// expectation it does not have - and `truncated` in the answer is what actually tells a
+/// caller there was more.
+pub fn read_request(pane: &BackendPaneId, rows: u32) -> (&'static str, Value) {
+    let rows = if rows == 0 { ROWS_READ } else { rows.min(ROWS_READ) };
     (
         "pane.read",
         json!({
             "pane_id": pane.as_str(),
             "source": "recent",
-            "lines": ROWS_READ,
-            // herdr's own default, sent anyway: what this asks for is text to match, and a
-            // default that changed underneath would silently start matching escape codes.
+            "lines": rows,
+            // herdr's own default, sent anyway: a caller matching this text does not want to
+            // match escape codes, and a default that changed underneath would start doing so.
             "strip_ansi": true,
         }),
     )

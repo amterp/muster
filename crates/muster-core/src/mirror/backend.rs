@@ -108,6 +108,25 @@ pub struct Pane {
     pub revision: u64,
 }
 
+/// What a pane has printed, as far back as the backend would go.
+///
+/// Asked for rather than followed, on the same terms as [`Viewport`] below: a pane's output
+/// never enters the core (`architecture.md`, control plane and data plane), so this is the
+/// one place its text is read at all - and it is read at the moment somebody asks rather than
+/// held, because holding it would be a copy of every pane's history going stale between reads.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PaneText {
+    /// Newest row last, the way the pane draws it.
+    pub text: String,
+
+    /// Whether the pane holds history this read never reached.
+    ///
+    /// The backend's own answer rather than a guess from the row count, for the reason
+    /// [`crate::find::Found`] carries the same flag: a thousand rows back may be all a pane
+    /// has or a fifth of it, and only the backend knows which.
+    pub truncated: bool,
+}
+
 /// Where a pane is looking, and how much of it is on screen.
 ///
 /// Asked for rather than followed. A backend reports this on every pane payload, and Muster

@@ -899,6 +899,67 @@
       "expect": {
         "usage": "InvalidValue"
       }
+    },
+    {
+      "name": "a pane is read back",
+      "why": "The half of a pane an agent could not see. `muster window` says what state every agent is in and what it claims to be doing, and neither of those is what the pane printed - so an agent watching another one could tell that it had stopped and not why.",
+      "given": {
+        "argv": [
+          "pane",
+          "read",
+          "--pane",
+          "p1w3r0ab2n"
+        ]
+      },
+      "expect": {
+        "request": {
+          "read_pane": {
+            "pane_id": "p1w3r0ab2n"
+          }
+        }
+      }
+    },
+    {
+      "name": "a read with no rows asks for as much as there is",
+      "why": "Zero is what the window reads as `as far as you will go`, and it is also what an absent number sends - so a caller with nothing particular in mind and a caller who said nothing make the same request rather than two that have to be kept in agreement.",
+      "given": {
+        "argv": [
+          "pane",
+          "read"
+        ],
+        "env": {
+          "MUSTER_PANE": "p1w3r07bsd"
+        }
+      },
+      "expect": {
+        "request": {
+          "read_pane": {
+            "pane_id": "p1w3r07bsd"
+          }
+        }
+      }
+    },
+    {
+      "name": "a read can ask for the last few rows only",
+      "why": "An agent checking whether a command finished wants the bottom of the pane, not a thousand rows of it. Said as a count rather than left to the caller to trim, so the rows never cross the wire.",
+      "given": {
+        "argv": [
+          "pane",
+          "read",
+          "--pane",
+          "p1w3r0ab2n",
+          "--rows",
+          "40"
+        ]
+      },
+      "expect": {
+        "request": {
+          "read_pane": {
+            "pane_id": "p1w3r0ab2n",
+            "rows": 40
+          }
+        }
+      }
     }
   ]
 }

@@ -45,6 +45,11 @@ in, which is usually somewhere else. Nothing tells a pane which tab holds it, so
 outright: `muster window --json` gives every pane a `tab`, and yours is the row whose `pane` matches
 `$MUSTER_PANE`.
 
+**You can read a pane, not just its state.** `muster pane read --pane X` hands back what that
+pane has printed. `muster window` tells you an agent is `blocked` or `done`; only this tells you
+what it said. `--rows 40` for the last page of it, and check `truncated` in `--json` before
+concluding you have seen the whole pane.
+
 **An arrangement you got wrong can be fixed without closing anything.** Three `pane new --down` in
 a row give a column of four, not a grid. `muster pane move --pane X --onto Y` puts one pane where
 another is - trading places inside a tab, joining the other's tab when they are in different ones -

@@ -45,6 +45,14 @@ pub fn answer(response: &Response, json: bool) -> Result<String, Trouble> {
         Some(response::Payload::Window(window)) => {
             Ok(if json { window_json(window).to_string() } else { window_text(window) })
         }
+        Some(response::Payload::PaneText(read)) => Ok(if json {
+            json!({ "text": read.text, "rows": read.rows, "truncated": read.truncated }).to_string()
+        } else {
+            // The text and nothing else. Whatever a pane printed is what somebody asked for,
+            // and a row count printed under it would be this CLI writing into an answer a
+            // reader is about to grep. `--json` is where the two facts beside it live.
+            read.text.clone()
+        }),
         Some(other) => Err(Trouble::Refused(format!(
             "the window answered with {}, which nothing here asked for. That is a bug in muster \
              rather than anything to do with the request.",
@@ -70,6 +78,7 @@ fn named(payload: &response::Payload) -> &'static str {
         response::Payload::Window(_) => "a window",
         response::Payload::Made(_) => "a pane",
         response::Payload::WindowFrame(_) => "a window frame",
+        response::Payload::PaneText(_) => "a pane's text",
     }
 }
 

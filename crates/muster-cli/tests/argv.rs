@@ -173,6 +173,12 @@ fn described(request: &Request) -> Value {
         request::Payload::FocusPaneAt(at) => {
             json!({ "focus_pane_at": json!({ "place": at.place }) })
         }
+        request::Payload::ReadPane(read) => json!({
+            "read_pane": fields([
+                ("pane_id", said(&read.pane_id)),
+                ("rows", (read.rows != 0).then_some(json!(read.rows))),
+            ])
+        }),
         request::Payload::ReloadConfig(_) => json!({ "reload_config": {} }),
         request::Payload::ToggleSidebar(_) => json!({ "toggle_sidebar": {} }),
         request::Payload::AdjustFontSize(adjust) => json!({

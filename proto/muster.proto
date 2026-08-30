@@ -5,10 +5,18 @@
 // to serve the CLI and the agent-facing API, which is what turns "every action runs
 // through one shared path" from a discipline into codegen (mip/0001-portable-core.md).
 //
-// Field numbers are not yet a compatibility promise: today both sides are generated from
-// this file in the same build, so nothing outlives a renumbering. That changes the day a
-// CLI speaks this over a socket to a different build, and this comment should change with
-// it.
+// **Field numbers are a compatibility promise across the socket, and only there.** A shell
+// and a core are generated from this file in one build and cannot disagree, so a renumbering
+// costs them nothing. The CLI is a separately installed binary that speaks this over a unix
+// socket, and it is routinely a different version from the window it dials - a Homebrew copy
+// beside the app's own, or a build in a working tree. So a field number that moves silently
+// mis-decodes there, which nothing detects: there is no version in Request and no handshake
+// in the framing.
+//
+// What that means for a change here: adding an arm is safe in both directions - an older core
+// skips a payload it does not know and answers that it was handed nothing, which `handler.rs`
+// says out loud. Renumbering or reusing a field is not, and neither is changing what an
+// existing field means. Reserve instead, the way PresentationChanged does.
 
 syntax = "proto3";
 
@@ -58,6 +66,7 @@ message Request {
     ReportFontFamily report_font_family = 39;
     Quitting quitting = 40;
     EndNumberedChord end_numbered_chord = 41;
+    ReadPane read_pane = 42;
   }
 }
 
@@ -575,6 +584,33 @@ message SendToPane {
   bool enter = 4;
 }
 
+// Reads back what a pane has printed, and changes nothing.
+//
+// The half of a pane an agent could not see. `muster window` says every pane's state and what
+// its agent claims to be doing; neither of those is the output, and a pane's output never
+// enters the core - it goes from the daemon to a surface through a bridge (architecture.md,
+// data plane). So this is a round trip to the daemon at the moment somebody asks, on the same
+// terms as Find, which reads the same rows in order to match them.
+//
+// Answered with PaneText. How far back is the daemon's own limit rather than a promise made
+// here, and `truncated` is how a caller learns it did not get everything.
+message ReadPane {
+  // Empty finds the daemon from the pane, as everywhere else.
+  string daemon_id = 1;
+
+  // Empty means the pane this window's keyboard is on, as everywhere else - though a caller
+  // reading a pane usually means one it is not sitting in.
+  string pane_id = 2;
+
+  // How many rows back to ask for, newest first. Zero means as far as the daemon will go,
+  // which is what a caller with nothing particular in mind wants.
+  //
+  // A ceiling rather than a promise: a daemon is free to answer with fewer, and herdr clamps
+  // anything above a thousand rather than refusing it (observations/herdr-0.8.0.md section
+  // 17). So asking for more than there is costs nothing and lies about nothing.
+  uint32 rows = 3;
+}
+
 // Makes a tab beside a pane, with one pane in it, and shows it.
 //
 // The unit somebody reaches for several times an hour, and until now the one thing that
@@ -780,6 +816,7 @@ message Response {
     Window window = 7;
     Made made = 8;
     WindowFrame window_frame = 9;
+    PaneText pane_text = 10;
   }
 }
 
@@ -792,6 +829,24 @@ message Response {
 // could not have got any other way.
 message Made {
   string pane_id = 1;
+}
+
+// What a pane has printed, as far back as the daemon went.
+//
+// Its own answer rather than a string in an Ok, because two facts come back and the second one
+// changes what the first means: a caller told a thousand rows and not told there are more will
+// conclude it has read the pane.
+message PaneText {
+  // Newest row last, the way the pane draws it.
+  string text = 1;
+
+  // How many rows this answer holds.
+  uint32 rows = 2;
+
+  // Whether the pane holds history this read never reached. The daemon's own answer rather
+  // than a guess from the row count: a thousand rows back may be all a pane has or a fifth of
+  // it, and those are different things to tell somebody.
+  bool truncated = 3;
 }
 
 // Everything about a window at one moment: what it draws, what it holds, and how the agents in

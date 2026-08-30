@@ -131,6 +131,7 @@ fn a_pane_can_drive_the_window_it_is_drawn_in() {
     assert_eq!(sent.code, 0, "`muster pane send` failed: {}", sent.errors);
     until_file(&told, "text sent to a pane by name to have run there");
 
+    a_pane_can_be_read_back(&made_pane, &inside(&first));
     the_columns_are_described(&inside(&first));
     // While both panes are still in one tab and on screen, which is what stepping walks.
     the_keyboard_steps_without_being_given_a_name(&first, &made_pane, &inside(&first));
@@ -221,6 +222,59 @@ fn a_tab_is_addressable_by_name(window: &Value, environment: &[(&str, String)]) 
         },
     );
     tab
+}
+
+/// What a pane has printed, which nothing else in this surface answers.
+///
+/// Read after `pane send`, so there is something on the pane to find. The check is that the text
+/// the pane was told to print comes back - not that the answer is byte-for-byte a terminal grid,
+/// which it is not: a row wraps at the pane's width and the shell echoes the command as well as
+/// running it, and pinning either would be pinning herdr's rendering rather than this surface.
+fn a_pane_can_be_read_back(pane: &str, environment: &[(&str, String)]) {
+    let read = until_some("the pane to have printed what it was told to", || {
+        let read = run(&["pane", "read", "--pane", pane], environment);
+        assert_eq!(read.code, 0, "`muster pane read` failed: {}", read.errors);
+        read.out.contains("told").then_some(read.out)
+    });
+    assert!(
+        !read.contains('\u{1b}'),
+        "a pane's text came back with escape codes in it, so anything matching on it has to \
+         strip them first: {read:?}"
+    );
+
+    let described = json_from(&run(&["pane", "read", "--pane", pane, "--json"], environment));
+    assert!(
+        described["text"].as_str().is_some_and(|text| text.contains("told")),
+        "`--json` and the plain answer describe different reads: {described}"
+    );
+    assert!(
+        described["rows"].as_u64().is_some_and(|rows| rows > 0),
+        "a read that came back with text says it holds no rows, so a caller cannot tell an \
+         empty pane from a full one: {described}"
+    );
+    assert_eq!(
+        described["truncated"],
+        json!(false),
+        "a pane that has printed two lines is reported as having more history than the read \
+         reached, which is the answer that would make every read look partial: {described}"
+    );
+
+    // Fewer rows than the pane has, which is what an agent checking whether something finished
+    // asks for. A ceiling rather than a count: the rows come off the bottom of the pane's grid
+    // and the bottom of an idle pane is blank, so asking for one row can honestly answer with
+    // none. What has to be true is that the cap held and the caller was told there is more.
+    let fewer =
+        json_from(&run(&["pane", "read", "--pane", pane, "--rows", "1", "--json"], environment));
+    assert!(
+        fewer["rows"].as_u64().is_some_and(|rows| rows <= 1),
+        "a read asking for at most one row came back with more: {fewer}"
+    );
+    assert_eq!(
+        fewer["truncated"],
+        json!(true),
+        "a read that stopped short of a pane's history did not say so, which is the answer that \
+         would let a caller conclude it had read the whole pane: {fewer}"
+    );
 }
 
 /// The columns the window is divided into, which nothing else in the answer implies.
