@@ -215,21 +215,22 @@ struct SidebarTests {
     // point of drawing it at all is that a person can read what ⌘2 will do instead of
     // remembering what they last pressed - and the way that stays honest is that only one
     // kind of row carries a number at a time.
-    let roster = Roster(daemons: [
-      Roster.Daemon(
-        id: "local",
-        tabs: [
-          tab(
-            "local", "w1:t1", place: 1, number: 1, onScreen: true,
-            panes: [pane("local", "w1:p1", place: 1, number: 0)]),
-          tab(
-            "local", "w1:t2", place: 2, number: 2,
-            panes: [
-              pane("local", "w1:p2", place: 2, number: 0),
-              pane("local", "w1:p3", place: 3, number: 0),
-            ]),
-        ])
-    ])
+    let roster = Roster(
+      daemons: [
+        Roster.Daemon(
+          id: "local",
+          tabs: [
+            tab(
+              "local", "w1:t1", place: 1, number: 1, onScreen: true,
+              panes: [pane("local", "w1:p1", place: 1, number: 0)]),
+            tab(
+              "local", "w1:t2", place: 2, number: 2,
+              panes: [
+                pane("local", "w1:p2", place: 2, number: 0),
+                pane("local", "w1:p3", place: 3, number: 0),
+              ]),
+          ])
+      ], numbering: .tabs)
 
     let rows = SidebarModel.rows(roster: roster, states: [:])
 
@@ -238,6 +239,12 @@ struct SidebarTests {
         .daemon, .tab(number: 1), .pane(number: 0), .tab(number: 2), .pane(number: 0),
         .pane(number: 0),
       ])
+    // Every tab and pane row leaves room for a digit, so that the press moving the numbers
+    // inside a tab does not also drag every label in the list sixteen points sideways. This is
+    // the list somebody reads to decide what to press, and it has to hold still while they do.
+    #expect(rows.filter(\.isDestination).allSatisfy { $0.reservesNumber })
+    // Nothing is half-typed yet, so the numbers are a reference rather than a live keystroke.
+    #expect(rows.contains { $0.isSecondPress } == false)
   }
 
   @Test("once a chord has named a tab, that tab's panes are the numbered rows")
@@ -246,21 +253,22 @@ struct SidebarTests {
     // the tab that was named and left every other row without one. Nothing here decides that -
     // the core sends which row carries what, and this is the assertion that the list draws the
     // answer it was given rather than one of its own.
-    let roster = Roster(daemons: [
-      Roster.Daemon(
-        id: "local",
-        tabs: [
-          tab(
-            "local", "w1:t1", place: 1, number: 0,
-            panes: [pane("local", "w1:p1", place: 1, number: 0)]),
-          tab(
-            "local", "w1:t2", place: 2, number: 0, onScreen: true,
-            panes: [
-              pane("local", "w1:p2", place: 2, number: 1),
-              pane("local", "w1:p3", place: 3, number: 2),
-            ]),
-        ])
-    ])
+    let roster = Roster(
+      daemons: [
+        Roster.Daemon(
+          id: "local",
+          tabs: [
+            tab(
+              "local", "w1:t1", place: 1, number: 0,
+              panes: [pane("local", "w1:p1", place: 1, number: 0)]),
+            tab(
+              "local", "w1:t2", place: 2, number: 0, onScreen: true,
+              panes: [
+                pane("local", "w1:p2", place: 2, number: 1),
+                pane("local", "w1:p3", place: 3, number: 2),
+              ]),
+          ])
+      ], numbering: .panesInTab)
 
     let rows = SidebarModel.rows(roster: roster, states: [:])
 
@@ -269,6 +277,13 @@ struct SidebarTests {
         .daemon, .tab(number: 0), .pane(number: 0), .tab(number: 0), .pane(number: 1),
         .pane(number: 2),
       ])
+    // The gutter is the same one it was a moment ago, which is the whole point of reserving
+    // it: these two cases are one list one keystroke apart, and no label may have moved.
+    #expect(rows.filter(\.isDestination).allSatisfy { $0.reservesNumber })
+    // And a pane row's number now says what the very next press does, so it is drawn as the
+    // keystroke it is rather than as something to look up. Captions carry none to emphasise.
+    #expect(rows.filter(\.isPane).allSatisfy { $0.isSecondPress })
+    #expect(rows.filter(\.isTab).contains { $0.isSecondPress } == false)
   }
 
   @Test("a window of one tab draws its caption when a chord names it")

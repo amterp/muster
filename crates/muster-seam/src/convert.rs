@@ -54,8 +54,13 @@ pub(crate) fn view(view: &View) -> proto::ViewChanged {
 /// The numbering travels as a number on each row rather than as a mode beside the list, so
 /// that "which ⌘N reaches this row" has exactly one answer in the message and a shell cannot
 /// combine a mode and a place into a different one than the core did.
+///
+/// [`counting`] rides alongside and does not weaken that: it says what kind of thing is being
+/// counted, never which chord reaches what. Three readers need it and no row can answer them -
+/// see `RosterChanged.Counting` in the schema.
 pub(crate) fn roster(roster: &Roster, numbering: &Numbering) -> proto::RosterChanged {
     proto::RosterChanged {
+        counting: counting(numbering).into(),
         daemons: roster
             .daemons
             .iter()
@@ -99,6 +104,19 @@ pub(crate) fn roster(roster: &Roster, numbering: &Numbering) -> proto::RosterCha
                     .collect(),
             })
             .collect(),
+    }
+}
+
+/// What the chords are counting, as the wire says it.
+///
+/// One arm per [`Numbering`] variant and no default, so a fourth scheme cannot reach the shell
+/// spelled as the settled one - which would be a window drawing badges over its panes for a
+/// gesture nobody made.
+fn counting(numbering: &Numbering) -> proto::roster_changed::Counting {
+    match numbering {
+        Numbering::Panes => proto::roster_changed::Counting::Panes,
+        Numbering::Tabs => proto::roster_changed::Counting::Tabs,
+        Numbering::PanesIn(_) => proto::roster_changed::Counting::PanesInTab,
     }
 }
 

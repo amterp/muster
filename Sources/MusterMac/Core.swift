@@ -596,6 +596,17 @@ public enum Core {
     send(request)
   }
 
+  /// Takes back a numbered chord that named a tab, because the gesture is over.
+  ///
+  /// What letting go of the modifier means under `numbered_chords = "tab_then_pane"`. The core
+  /// decides what that costs; this side only decides that the hand has finished, which is the
+  /// one half of it only a shell can see.
+  public static func endNumberedChord() {
+    var request = Muster_Request()
+    request.endNumberedChord = Muster_EndNumberedChord()
+    send(request)
+  }
+
   /// Puts one pane where another is, which is what dropping a row on a row means.
   ///
   /// Both ends are named because a drag names two panes by definition. Whether this becomes an
@@ -771,6 +782,7 @@ public enum Core {
     case .find: return "find"
     case .findStep: return "find_step"
     case .endFind: return "end_find"
+    case .endNumberedChord: return "end_numbered_chord"
     case .quitting: return "quitting"
     case nil: return "(none)"
     }

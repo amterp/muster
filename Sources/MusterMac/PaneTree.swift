@@ -98,30 +98,44 @@ public struct WindowContents: Equatable {
 extension Roster {
   /// The seam's roster, in the shell's own words.
   init(_ changed: Muster_RosterChanged) {
-    self.init(
-      daemons: changed.daemons.map { daemon in
-        Roster.Daemon(
-          id: daemon.daemonID,
-          tabs: daemon.tabs.map { tab in
-            Roster.Tab(
-              key: TabKey(daemon: tab.daemonID, tab: tab.tabID),
-              place: Int(tab.place),
-              number: Int(tab.number),
-              label: tab.label,
-              onScreen: tab.onScreen,
-              givenName: tab.givenName,
-              panes: tab.panes.map { pane in
-                Roster.Pane(
-                  key: PaneKey(daemon: pane.daemonID, pane: pane.paneID),
-                  place: Int(pane.place),
-                  number: Int(pane.number),
-                  label: pane.label,
-                  subtitle: pane.subtitle,
-                  givenName: pane.givenName,
-                  onScreen: pane.onScreen)
-              })
-          })
-      })
+    let daemons = changed.daemons.map { daemon in
+      Roster.Daemon(
+        id: daemon.daemonID,
+        tabs: daemon.tabs.map { tab in
+          Roster.Tab(
+            key: TabKey(daemon: tab.daemonID, tab: tab.tabID),
+            place: Int(tab.place),
+            number: Int(tab.number),
+            label: tab.label,
+            onScreen: tab.onScreen,
+            givenName: tab.givenName,
+            panes: tab.panes.map { pane in
+              Roster.Pane(
+                key: PaneKey(daemon: pane.daemonID, pane: pane.paneID),
+                place: Int(pane.place),
+                number: Int(pane.number),
+                label: pane.label,
+                subtitle: pane.subtitle,
+                givenName: pane.givenName,
+                onScreen: pane.onScreen)
+            })
+        })
+    }
+    self.init(daemons: daemons, numbering: Roster.Numbering(changed.counting))
+  }
+}
+
+extension Roster.Numbering {
+  /// What the chords are counting, in the shell's own words.
+  init(_ counting: Muster_RosterChanged.Counting) {
+    switch counting {
+    case .tabs: self = .tabs
+    case .panesInTab: self = .panesInTab
+    // A counting this build has no word for is the settled scheme, which is the answer that
+    // draws nothing extra. The alternative - guessing at a newer core's meaning - is a window
+    // overlaying numbers for a gesture nobody made.
+    case .panes, .UNRECOGNIZED: self = .panes
+    }
   }
 }
 

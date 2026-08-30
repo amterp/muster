@@ -108,23 +108,48 @@ numbers in the same change: two numberings in one list is worse than either, and
 have not named is now captioned `Tab 2` rather than carrying a chord's number.
 
 **`numbered_chords = "tab_then_pane"` is a prototype of the other answer, and may be deleted
-rather than finished.** Under it `cmd+2` goes to the second tab and the `cmd+2` after it goes
+rather than finished.** Under it `cmd+2` goes to the second tab, and the `cmd+2` after it goes
 to that tab's second pane. Everything above stays true and stays the default; this is here
 because the argument above is one nobody can settle by reading it, and a day of driving the
-other scheme is the only thing that will. Two of its costs are worth knowing before you turn
-it on. It is a prefix key, which is a thing this README's own desiderata say Muster does not
-have - so if it feels good, something above has to change rather than both staying. And a
-sequence has to be able to end, so anything at all except that second press takes the first
-one back: a keystroke into a pane, another chord, a click. Nothing times out, so a first
-press waits for as long as you leave it.
+other scheme is the only thing that will.
+
+**Hold the modifier to reach a pane, and let go to stop at the tab.** `cmd+2` moves you to the
+second tab the moment you press it. Keep `cmd` down and press `3`, and you land on that tab's
+third pane. Release `cmd` instead and the sequence is over, so `cmd+2` then `cmd+3` is two tab
+jumps rather than a tab and a pane. That is what makes this something other than a prefix key:
+you cannot be left in a mode you have forgotten about, because the mode lasts exactly as long
+as your thumb is down. Whichever modifier the nine chords are bound with is the one that ends
+it, so rebinding them to `ctrl+1` moves that too.
+
+Everything else that ends a sequence still ends it - a keystroke into a pane, another chord, a
+click, `Escape`. Nothing times out. And a tab holding a single pane does not start one at all:
+`cmd+2` onto it lands on the only pane it has and stops there, because there is nothing inside
+to choose between.
 
 While it is on, the numbers in the agent list move. At rest they sit on the tab captions, and
 once a chord has named a tab they sit on that tab's panes and nowhere else - so what `cmd+2`
 will reach is something you read rather than something you remember, and only one thing in the
-window carries numbers at any moment. The nine actions do not move: `focus_pane_3` is still
-what `[keymap]` names and still what the menu carries, and under this scheme it means the
-third numbered chord rather than the third pane. Renaming nine actions for a prototype is the
-thing that would make it expensive to take out again.
+window carries numbers at any moment. Both kinds of row keep space for a digit whether or not
+they have one, so the list holds still while the numbers move around it, and the numbers you
+can press next are drawn in the accent colour rather than grey.
+
+**The panes say their own numbers too.** Hold the modifier after a first press and each pane in
+the tab draws its number over itself, large and half-transparent, so you pick between the panes
+by looking at them rather than by reading a list at the edge of the window. They are transparent
+to the mouse: clicking the number you can see focuses the pane under it, the same as clicking
+anywhere else in it. With the agent list closed they are the only indicator, which is the case
+the list could never cover.
+
+They wait about a tenth of a second first, which is what keeps a tab jump you make and finish
+in one motion from flashing them on the way past.
+
+A zoomed tab is the rough edge. It still starts a sequence when it holds several panes, and you
+will see one number, because only one pane is on screen to draw one.
+
+The nine actions do not move: `focus_pane_3` is still what `[keymap]` names and still what the
+menu carries, and under this scheme it means the third numbered chord rather than the third
+pane. Renaming nine actions for a prototype is the thing that would make it expensive to take
+out again.
 
 **Two things cannot hold one chord, and the file is refused rather than one of them losing.**
 Three ways that happens: two `[keymap]` actions on the same chord, a `[keymap]` action on a

@@ -36,6 +36,13 @@ public final class MusterWindow: NSObject {
   /// order, and whichever is second has to be able to redraw with both.
   private var roster = Roster(daemons: [])
 
+  /// The modifiers a numbered chord is held with, so that letting go of them can end one.
+  ///
+  /// Cached from the bindings rather than asked for per event: this is read on every modifier
+  /// the keyboard reports, which is several a second while somebody types, and the answer only
+  /// moves when the config file does.
+  private var chordModifiers: NSEvent.ModifierFlags = []
+
   /// Every pane's last known agent state, whether or not it is on screen.
   ///
   /// Held here rather than only in the chrome because the two arrive in either order: a pane
@@ -124,18 +131,22 @@ public final class MusterWindow: NSObject {
   public init(renderer: Renderer, executable: String) {
     self.renderer = renderer
     self.executable = executable
-    window = NSWindow(
+    let keyboard = KeyboardWindow(
       contentRect: strip.frame,
       styleMask: [.titled, .closable, .resizable, .miniaturizable],
       backing: .buffered,
       defer: false)
+    window = keyboard
     super.init()
+    keyboard.onModifiersChanged = { [weak self] held in self?.apply(held: held) }
     split.attach(sidebar: sidebar, strip: strip)
     // A window narrowed until the roster will not fit takes the problems area with it, so the
     // title has to pick them up at exactly that moment.
     split.onSidebarVisibilityChanged = { [weak self] in self?.applyTitle() }
     strip.attach(empty: empty)
-    empty.apply(EmptyWindow.message(bindings: Core.bindings()))
+    let bindings = Core.bindings()
+    empty.apply(EmptyWindow.message(bindings: bindings))
+    chordModifiers = NumberedChord.modifiers(bindings)
     window.contentView = split
     window.delegate = self
     // Named rather than left to the default, because `show` toggles into full-screen for a
@@ -266,6 +277,79 @@ public final class MusterWindow: NSObject {
   public func apply(_ roster: Roster) {
     self.roster = roster
     sidebar.apply(roster: roster, states: states, keyboard: keyboardKey)
+    applyBadges()
+  }
+
+  /// How long a numbered chord has to be held before the numbers appear over the panes.
+  ///
+  /// It exists to stop a tab jump you make and finish in one motion from flashing the numbers
+  /// on the way past. Settled by driving it rather than by argument, and zero and 50ms were
+  /// both tried and rejected on the way here: below about a tenth of a second the flash is
+  /// still there, and a flash is worse than a wait nobody notices.
+  ///
+  /// The reveal goes through `asyncAfter` whatever this is, so it lands a runloop turn after
+  /// the roster that caused it rather than inside it. That stays true at zero, which is what
+  /// makes taking the delay away again a change of one constant rather than of a code path.
+  private static let badgeDelay: TimeInterval = 0.12
+
+  /// Whether a chord is being typed right now, which is not yet whether the badges are drawn.
+  private var badgesWanted = false
+  private var badgesShown = false
+
+  /// Which arming the pending reveal belongs to, so a chord that ends inside the delay cancels
+  /// it rather than flashing a moment later over a window that has moved on.
+  private var badgeGeneration = 0
+
+  /// Reveals or hides the numbers over the panes, following the chord being typed.
+  ///
+  /// One timer for the window rather than one per pane: fifteen panes revealing themselves on
+  /// fifteen independent deadlines is fifteen chances to disagree about what moment it is.
+  private func applyBadges() {
+    let wanted = roster.numbering.isHalfTyped
+    guard wanted != badgesWanted else {
+      // The chord has not started or ended, but the panes under it may have. Redrawn so a pane
+      // that opened mid-gesture carries its number.
+      drawBadges()
+      return
+    }
+    badgesWanted = wanted
+    badgeGeneration += 1
+    guard wanted else {
+      badgesShown = false
+      drawBadges()
+      return
+    }
+    drawBadges()
+    let arming = badgeGeneration
+    DispatchQueue.main.asyncAfter(deadline: .now() + MusterWindow.badgeDelay) { [weak self] in
+      guard let self, self.badgeGeneration == arming else { return }
+      self.badgesShown = true
+      self.drawBadges()
+    }
+  }
+
+  /// Hands every pane on screen the number a chord would reach it by, or zero while none would.
+  ///
+  /// The number comes off the roster, which is the same field the agent list draws - so the
+  /// digit over a pane and the digit beside its row are one answer rather than two.
+  private func drawBadges() {
+    for tab in roster.tabs {
+      for pane in tab.panes {
+        for region in regions.values where region.daemonID == pane.key.daemon {
+          region.chrome(for: pane.key.pane)?.apply(badge: badgesShown ? pane.number : 0)
+        }
+      }
+    }
+  }
+
+  /// Takes what the keyboard is holding, and ends a numbered chord that was still being typed.
+  ///
+  /// Under `numbered_chords = "tab_then_pane"` only, and only while a press has named a tab -
+  /// so an idle window makes no round trip for the ⌘ every other shortcut is held with.
+  private func apply(held: NSEvent.ModifierFlags) {
+    guard NumberedChord.ends(numbering: roster.numbering, held: held, chord: chordModifiers)
+    else { return }
+    Core.endNumberedChord()
   }
 
   /// What the window should be showing of itself, as the core decided it.
@@ -317,6 +401,9 @@ public final class MusterWindow: NSObject {
     // The empty window names a chord, so a rebind has to reach it too. A window sitting empty
     // while somebody edits the config file is exactly when a stale hint would be read.
     empty.apply(EmptyWindow.message(bindings: bindings))
+    // Rebinding the nine onto another modifier moves which release ends a two-stage chord, and
+    // a stale answer here is a gesture that either never ends or ends on the wrong key.
+    chordModifiers = NumberedChord.modifiers(bindings)
   }
 
   /// Every divider on screen, region boundaries and pane splits alike.

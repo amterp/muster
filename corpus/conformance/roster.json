@@ -2852,6 +2852,110 @@
       }
     },
     {
+      "name": "a tab holding one pane is not named, so the press after it is still counting tabs",
+      "why": "There is nothing in a one-pane tab to choose between - the press has already landed on the only pane it holds - so naming it would arm a chord that can only miss, and leave the window carrying one number nobody needs. ⌘2 onto such a tab therefore ends there, and ⌘3 after it is the third tab rather than a pane inside the second.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              },
+              {
+                "id": "w1:t2",
+                "workspace": "w1",
+                "label": "t2"
+              },
+              {
+                "id": "w1:t3",
+                "workspace": "w1",
+                "label": "t3"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/first"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/second"
+              },
+              {
+                "id": "w1:p3",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/third"
+              },
+              {
+                "id": "w1:p4",
+                "tab": "w1:t3",
+                "workspace": "w1",
+                "cwd": "/src/fourth"
+              },
+              {
+                "id": "w1:p5",
+                "tab": "w1:t3",
+                "workspace": "w1",
+                "cwd": "/src/fifth"
+              }
+            ],
+            "layouts": []
+          }
+        },
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          }
+        ],
+        "regions": [
+          {
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          }
+        ],
+        "numbered": {
+          "scheme": "tab_then_pane",
+          "press": [
+            2,
+            3
+          ]
+        }
+      },
+      "expect": {
+        "pressed": [
+          "⌘2 of tabs → tab local/w1:t2 landing on local/w1:p3",
+          "⌘3 of tabs → tab local/w1:t3 landing on local/w1:p4"
+        ],
+        "tabs": [
+          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen",
+          "local/w1:t2 place=2 label=\"t2\" given-name=\"t2\" hidden",
+          "local/w1:t3 place=3 label=\"t3\" given-name=\"t3\" hidden"
+        ],
+        "panes": [
+          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
+          "local/w1:p2 place=2 tab=w1:t1 label=\"second\" hidden",
+          "local/w1:p3 place=3 tab=w1:t2 label=\"third\" hidden",
+          "local/w1:p4 place=4 tab=w1:t3 label=\"fourth\" hidden",
+          "local/w1:p5 place=5 tab=w1:t3 label=\"fifth\" hidden"
+        ]
+      }
+    },
+    {
       "name": "a second press past the end of its tab does nothing, and the press after it starts over",
       "why": "The second tab holds three panes, so ⌘9 after it has nothing to reach. Doing nothing rather than landing on the last pane is the same answer the flat scheme gives, for the same reason - a chord that landed elsewhere as the tab grew would mean something different every time a pane opened. What is new is what it leaves behind: nothing, so the next press is a first press again rather than being stuck counting inside a tab.",
       "given": {

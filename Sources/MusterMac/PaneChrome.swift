@@ -37,6 +37,21 @@ public enum PaneAppearance {
     state == "working" || state == "blocked" || state == "done"
   }
 
+  /// How big the number drawn over a pane should be, for a pane this size.
+  ///
+  /// A share of the pane's shorter side, so one number fills a tall narrow split and a wide
+  /// short one alike rather than being sized for whatever arrangement it was designed against.
+  /// Clamped at both ends: past the ceiling it stops being readable as a digit and starts being
+  /// a shape, and under the floor a pane split four ways would draw something too small to find
+  /// - which is exactly the window where finding it matters.
+  ///
+  /// The share and both clamps doubled together, which is what keeps a big pane and a small one
+  /// changing by the same amount: on anything roomy the ceiling is what governs, so moving the
+  /// share alone would have left those panes exactly where they were.
+  public static func badgeSize(in bounds: NSSize) -> CGFloat {
+    min(max(min(bounds.width, bounds.height) * 0.8, 56), 264)
+  }
+
   /// The window title: which pane the keyboard feeds, and whether the daemon is still there.
   ///
   /// Agent state used to be here and is not any more, because a window with fifteen panes has
@@ -135,6 +150,10 @@ public final class PaneChrome: NSView {
 
   private let focusRing = CALayer()
 
+  /// The number a numbered chord would reach this pane by, drawn over it while one is being
+  /// typed. Added over the surface rather than beside it, the way the find bar is.
+  private let badge = PaneBadge(frame: .zero)
+
   public init(frame: NSRect, surface: SurfaceView) {
     self.surface = surface
     super.init(frame: frame)
@@ -153,6 +172,9 @@ public final class PaneChrome: NSView {
       guard let self, let paneID = self.paneID else { return }
       self.onScrollRequested?(paneID, direction, delta)
     }
+    // After the surface, so it composites over libghostty's own layer rather than under it.
+    addSubview(badge)
+    badge.isHidden = true
     applyAppearance()
   }
 
@@ -187,10 +209,27 @@ public final class PaneChrome: NSView {
     applyAppearance()
   }
 
+  /// Draws the number a chord would reach this pane by, or nothing for zero.
+  ///
+  /// Only ever non-zero under `numbered_chords = "tab_then_pane"` while a press has named this
+  /// pane's tab, so the resting window carries nothing extra. What number that is comes off the
+  /// roster - the same field the agent list draws - rather than being counted here, so the
+  /// digit on the pane and the digit on its row cannot come apart.
+  public func apply(badge reached: Int) {
+    badge.apply(number: reached)
+  }
+
+  /// Whether a number is drawn over this pane right now.
+  public var badgeShown: Bool { !badge.isHidden }
+
+  /// The badge itself, so a test can check that a click did not land on it.
+  var badgeView: NSView { badge }
+
   public override func layout() {
     super.layout()
     surface.frame = bounds.insetBy(dx: PaneChrome.inset, dy: PaneChrome.inset)
     focusRing.frame = bounds.insetBy(dx: PaneChrome.borderWidth, dy: PaneChrome.borderWidth)
+    badge.frame = bounds
   }
 
   private func applyAppearance() {
@@ -201,5 +240,68 @@ public final class PaneChrome: NSView {
     focusRing.borderColor =
       isFocused ? NSColor.controlAccentColor.cgColor : NSColor.clear.cgColor
     needsLayout = true
+  }
+}
+
+/// One large number over a pane, while a two-stage numbered chord is being typed.
+///
+/// The agent list already draws these, and drawing them again here is not redundancy: under
+/// `numbered_chords = "tab_then_pane"` the second press picks between panes, and the panes are
+/// what somebody is looking at while deciding. Reading a number off a list at the edge of the
+/// window and mapping it back onto a split is the work this saves - and it is the only
+/// indicator at all when the list is closed.
+///
+/// **Transparent to the mouse.** A click on a pane already asks for the keyboard, and a badge
+/// that swallowed one would make the numbers look pressable and not be. Returning nil from
+/// `hitTest` sends the click to the surface underneath, which is what makes "click the number
+/// you can see" work without a second way to focus a pane.
+@MainActor
+final class PaneBadge: NSView {
+  private var number = 0
+
+  func apply(number reached: Int) {
+    guard reached != number else { return }
+    number = reached
+    isHidden = reached < 1
+    needsDisplay = true
+  }
+
+  /// Never the mouse's. See the note above.
+  override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+  override func draw(_ dirty: NSRect) {
+    guard number >= 1 else { return }
+    // A halo in the page's own background rather than a plate behind the digit: a terminal is
+    // mostly background with text scattered over it, so a rectangle would cover what somebody
+    // is reading while a glow only separates the digit from whatever it happens to land on.
+    let halo = NSShadow()
+    halo.shadowColor = NSColor.textBackgroundColor.withAlphaComponent(0.85)
+    halo.shadowBlurRadius = 16
+    halo.shadowOffset = .zero
+
+    let drawn = NSAttributedString(
+      string: String(number),
+      attributes: [
+        .font: NSFont.monospacedDigitSystemFont(
+          ofSize: PaneAppearance.badgeSize(in: bounds.size), weight: .bold),
+        // Faint enough to read the pane through, strong enough to find at a glance. The pane
+        // underneath is still the thing being chosen between, so the number sits over it
+        // rather than replacing it.
+        .foregroundColor: NSColor.labelColor.withAlphaComponent(0.38),
+        .shadow: halo,
+      ])
+    let size = drawn.size()
+    drawn.draw(
+      at: NSPoint(x: (bounds.width - size.width) / 2, y: (bounds.height - size.height) / 2))
+  }
+
+  /// Kept even though it only calls up: defining `init?(coder:)` below stops `NSView`'s own
+  /// designated initialisers being inherited, and this is the one every caller uses.
+  override init(frame: NSRect) {
+    super.init(frame: frame)
+  }
+
+  required init?(coder: NSCoder) {
+    fatalError("muster builds its views in code")
   }
 }

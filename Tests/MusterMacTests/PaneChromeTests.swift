@@ -200,6 +200,43 @@ struct PaneChromeTests {
     #expect(title.contains("no panes"))
     #expect(title.contains("disconnected devenv"))
   }
+
+  @Test("a number is drawn over a pane only while a chord is reaching for it")
+  @MainActor
+  func theBadgeAppearsOnlyMidChord() {
+    let chrome = pane()
+    // Zero is what every pane carries under the settled scheme and what they go back to the
+    // moment a gesture ends, so a badge visible at rest would be one visible almost always.
+    #expect(chrome.badgeShown == false)
+    chrome.apply(badge: 2)
+    #expect(chrome.badgeShown)
+    chrome.apply(badge: 0)
+    #expect(chrome.badgeShown == false)
+  }
+
+  @Test("the number is transparent to the mouse")
+  @MainActor
+  func theBadgeDoesNotSwallowClicks() {
+    // Clicking a pane already asks for the keyboard, which is what makes "click the number you
+    // can see" work with no second way to focus a pane. A badge that took the click would make
+    // the numbers look pressable and not be, and only while they were on screen - a bug that
+    // appears for a tenth of a second at a time and is gone before anybody can point at it.
+    let chrome = pane()
+    chrome.layoutSubtreeIfNeeded()
+    chrome.apply(badge: 2)
+    #expect(chrome.hitTest(NSPoint(x: 50, y: 50)) !== chrome.badgeView)
+  }
+
+  @Test("the number is sized off the pane, so a narrow split still draws a legible one")
+  func theBadgeFitsThePane() {
+    // A digit sized for one arrangement is a digit that overflows another. What matters is
+    // that it stays a readable digit rather than a shape, at both ends of a real window.
+    let wide = PaneAppearance.badgeSize(in: NSSize(width: 1600, height: 900))
+    let sliver = PaneAppearance.badgeSize(in: NSSize(width: 1600, height: 90))
+    #expect(sliver < wide, "a short pane should draw a smaller number than a tall one")
+    #expect(sliver >= 56, "a number too small to find is worst in the window that needs it most")
+    #expect(wide <= 264, "past a point a digit stops reading as a digit")
+  }
 }
 
 @MainActor

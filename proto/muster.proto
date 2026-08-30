@@ -57,6 +57,7 @@ message Request {
     SetWindowFrame set_window_frame = 38;
     ReportFontFamily report_font_family = 39;
     Quitting quitting = 40;
+    EndNumberedChord end_numbered_chord = 41;
   }
 }
 
@@ -706,6 +707,22 @@ message FocusPaneAt {
   uint32 place = 1;
 }
 
+// Takes back a `tab_then_pane` press that named a tab, because the gesture is over.
+//
+// What releasing the modifier means. Under the prototype scheme ⌘2 names a tab and the press
+// after it names a pane inside it, and until this existed the only way out was to do
+// something else - so letting go of ⌘ and walking away left a window whose numbers were
+// waiting for a press nobody was going to make.
+//
+// A request rather than a modifier event, because the core has no business knowing what a
+// modifier is: the shell watches the keyboard, decides the gesture ended, and says so in
+// Muster's own vocabulary. Which modifier that is falls out of what the numbered chords are
+// bound to, which is a question the shell can already answer.
+//
+// Empty, and safe to send when nothing is armed: the disarm is idempotent, and a window that
+// republished on every ⌘ release would be one that redrew the agent list for every ⌘C.
+message EndNumberedChord {}
+
 // Moves one divider in a tab's tree.
 message SetSplitRatio {
   // Empty finds the daemon from the tab, as everywhere a tab is named: a tab name is Muster's own
@@ -1210,6 +1227,36 @@ message PresentationChanged {
 message RosterChanged {
   // Daemons in the order their regions sit in the window, then any daemon with no region.
   repeated RosterDaemon daemons = 1;
+
+  // Which question the numbers on those rows are answering.
+  Counting counting = 2;
+
+  // What the numbered chords are counting at this moment.
+  //
+  // Not a second source for which chord reaches which row - that stays on the rows below,
+  // where a shell reads it and never recomputes it from this. What this says is what kind of
+  // thing is being counted, and three readers need it that no per-row number can serve. Two
+  // are outside the list entirely: a pane draws a number over itself only while a chord is
+  // half-typed, and the shell ends a half-typed chord when the modifier comes up. The third
+  // is the list's own layout, which reserves room for a digit that is about to arrive.
+  //
+  // No row can answer any of the three. In a window of one tab under `numbered_chords =
+  // "panes"`, a settled roster and a half-typed one carry byte-identical rows: the panes are
+  // numbered either way, and only the reason differs.
+  //
+  // Which tab a press named is deliberately not here. It is the tab whose panes carry the
+  // numbers, so a reader wanting it already has it - and a second spelling of something the
+  // rows say is the disagreement this whole message is shaped to avoid.
+  enum Counting {
+    // Panes, down the whole window. What Muster does.
+    PANES = 0;
+
+    // Tabs, across the window. `tab_then_pane`, with no press outstanding.
+    TABS = 1;
+
+    // The panes inside one tab. `tab_then_pane`, after a press named that tab.
+    PANES_IN_TAB = 2;
+  }
 }
 
 message RosterDaemon {

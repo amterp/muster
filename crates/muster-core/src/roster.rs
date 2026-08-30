@@ -215,9 +215,15 @@ impl Landing<'_> {
     /// numbers first. That is what keeps the sequence two deep: three ⌘2s in a row are the
     /// second tab, its second pane, and the second tab again, rather than descending into
     /// something with no third level to descend into.
+    ///
+    /// `None` too for a tab holding one pane, because there is nothing in it to choose
+    /// between: the press has already landed on the only pane there is. Naming it would leave
+    /// the window in a state whose whole content is one number nobody needs, and would spend
+    /// the press after it on a chord that can only miss.
     pub fn named(&self) -> Option<TabKey> {
         match self {
             Landing::Pane(_) => None,
+            Landing::Tab(tab, _) if tab.panes.len() < 2 => None,
             Landing::Tab(tab, _) => Some(tab.key.clone()),
         }
     }

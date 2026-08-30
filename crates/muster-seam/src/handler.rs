@@ -126,7 +126,7 @@ fn handle(request: Request) -> Response {
         ),
         request::Payload::FocusPane(focus) => match resolve_daemon(&focus.daemon_id) {
             Ok(daemon) => answer(session::focus(&daemon, &PaneId::new(focus.pane_id))),
-            Err(refusal) => refusal,
+            Err(refusal) => *refusal,
         },
         request::Payload::WindowFocus(focus) => {
             session::window_focused(focus.focused);
@@ -153,6 +153,13 @@ fn handle(request: Request) -> Response {
         // everything here has to happen while its bridges are still alive to relay it.
         request::Payload::Quitting(_) => {
             session::quitting();
+            Response::ok()
+        }
+        // The rule at the top has already done this, since this is not a read. Said again
+        // here because an arm reading `Response::ok()` alone would look like a request that
+        // does nothing, and the second call is free: `disarm` takes the arm and finds none.
+        request::Payload::EndNumberedChord(_) => {
+            session::disarm();
             Response::ok()
         }
     }
@@ -185,7 +192,7 @@ fn only_reads(payload: &request::Payload) -> bool {
 fn find_in_pane(find: &proto::Find) -> Response {
     let daemon = match resolve_daemon(&find.daemon_id) {
         Ok(daemon) => daemon,
-        Err(refusal) => return refusal,
+        Err(refusal) => return *refusal,
     };
     let pane = if find.pane_id.is_empty() {
         match session::focused_pane() {
@@ -267,7 +274,7 @@ fn rename_tab(rename: &proto::RenameTab) -> Response {
 
     let daemon = match resolve_daemon(&rename.daemon_id) {
         Ok(daemon) => daemon,
-        Err(refusal) => return refusal,
+        Err(refusal) => return *refusal,
     };
     let Some(pane) = session::focused_pane() else {
         return Response::failure(
@@ -357,7 +364,7 @@ fn scroll_pane(scroll: &proto::Scroll) -> Response {
     };
     let daemon = match resolve_daemon(&scroll.daemon_id) {
         Ok(daemon) => daemon,
-        Err(refusal) => return refusal,
+        Err(refusal) => return *refusal,
     };
     let pane = PaneId::new(&scroll.pane_id);
     let Some(attached) = session::attached_pane(&daemon, &pane) else {
@@ -469,7 +476,7 @@ fn act(
         Some(daemon) if daemon_id.is_empty() => daemon,
         _ => match resolve_daemon(daemon_id) {
             Ok(daemon) => daemon,
-            Err(refusal) => return refusal,
+            Err(refusal) => return *refusal,
         },
     };
     submit(&daemon, &build(pane), keyboard)
@@ -492,7 +499,7 @@ fn create_tab(create: &proto::CreateTab) -> Response {
     };
     let daemon = match resolve_daemon(&create.daemon_id) {
         Ok(daemon) => daemon,
-        Err(refusal) => return refusal,
+        Err(refusal) => return *refusal,
     };
 
     let Some((workspace, inherited)) = session::workspace_of(&daemon, &pane) else {
@@ -537,16 +544,19 @@ fn open_a_workspace(cwd: Option<String>) -> Response {
 /// Empty is the ordinary case rather than an omission: every menu item sends it, because a
 /// menu item is about whatever is in front of the user. Only a window with nothing attached
 /// has no answer, and that is the renderer check.
-fn resolve_daemon(daemon_id: &str) -> Result<DaemonId, Response> {
+/// Boxed refusal, because this is on the scroll path: a wheel resolves a daemon for every
+/// notch, and a `Response` is large enough that returning one by value costs more than the
+/// refusal it almost never is.
+fn resolve_daemon(daemon_id: &str) -> Result<DaemonId, Box<Response>> {
     if !daemon_id.is_empty() {
         return Ok(DaemonId::new(daemon_id));
     }
     session::focused_daemon().ok_or_else(|| {
-        Response::failure(
+        Box::new(Response::failure(
             "this window has no daemon its keyboard is on, so a request that named none had \
              nothing to act on. A window with nothing attached looks like this, and so does \
              one whose every region closed.",
-        )
+        ))
     })
 }
 
@@ -1099,7 +1109,7 @@ fn start(startup: &proto::Startup) -> Response {
     session::set_cache_path(&startup.cache_path);
 
     if let Err(refusal) = start_logging(startup) {
-        return refusal;
+        return *refusal;
     }
     // After logging, because the one line that says where this window is listening is the first
     // thing anybody reads when the CLI cannot find a window - and bound before the config,
@@ -1116,18 +1126,18 @@ fn start(startup: &proto::Startup) -> Response {
 /// Separate from [`start`] so that everything after it in a launch is inside the record. An empty
 /// path is success with nothing to do: it is what a release build asks for, and what every seam
 /// test that names no log gets.
-fn start_logging(startup: &proto::Startup) -> Result<(), Response> {
+fn start_logging(startup: &proto::Startup) -> Result<(), Box<Response>> {
     if startup.log_path.is_empty() {
         return Ok(());
     }
     let Some(sink) = JsonLinesSink::open(&startup.log_path) else {
-        return Err(Response::failure(format!(
+        return Err(Box::new(Response::failure(format!(
             "the core could not open {} for logging, so this run leaves no record. \
              Everything else works; a bug report from it will just be missing the timeline \
              that usually explains what happened. Check that the directory exists and is \
              writable.",
             startup.log_path
-        )));
+        ))));
     };
     let level = if startup.log_level.is_empty() {
         LogLevel::Debug
@@ -1135,12 +1145,12 @@ fn start_logging(startup: &proto::Startup) -> Result<(), Response> {
         match LogLevel::parse(&startup.log_level) {
             Some(level) => level,
             None => {
-                return Err(Response::failure(format!(
+                return Err(Box::new(Response::failure(format!(
                     "the core does not know a log level called {:?}, so logging stayed off \
                      and this run leaves no record. Valid levels are trace, debug, info, \
                      warn and error; check MUSTER_LOG_LEVEL.",
                     startup.log_level
-                )));
+                ))));
             }
         }
     };

@@ -17,18 +17,20 @@
 //! first press does not quietly disarm itself on whatever it causes the shell to send back.
 
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use herdr_harness::{Daemon, until};
 use muster::proto::{
-    Event, FocusPaneAt, OpenWindow, ReloadConfig, Request, Response, RosterChanged, Startup,
-    ViewChanged, WindowFocus, event, request, response,
+    EndNumberedChord, Event, FocusPaneAt, OpenWindow, ReloadConfig, Request, Response,
+    RosterChanged, Startup, ViewChanged, WindowFocus, event, request, response,
+    roster_changed::Counting,
 };
 use prost::Message;
 use serde_json::{Value, json};
 
 #[test]
 fn a_numbered_chord_lands_on_the_row_carrying_that_number() {
-    let _turn = muster::testing::fresh_session();
+    let _turn = a_fresh_window();
     let daemon = Daemon::start();
     a_session_of_two_tabs(&daemon);
 
@@ -92,7 +94,7 @@ fn a_numbered_chord_lands_on_the_row_carrying_that_number() {
 
 #[test]
 fn under_the_prototype_a_tab_is_named_first_and_a_pane_inside_it_second() {
-    let _turn = muster::testing::fresh_session();
+    let _turn = a_fresh_window();
     let daemon = Daemon::start();
     a_session_of_two_tabs_the_second_holding_two(&daemon);
 
@@ -158,7 +160,7 @@ fn under_the_prototype_a_tab_is_named_first_and_a_pane_inside_it_second() {
 
 #[test]
 fn anything_between_the_two_presses_takes_the_first_one_back() {
-    let _turn = muster::testing::fresh_session();
+    let _turn = a_fresh_window();
     let daemon = Daemon::start();
     a_session_of_two_tabs_the_second_holding_two(&daemon);
 
@@ -205,8 +207,95 @@ fn anything_between_the_two_presses_takes_the_first_one_back() {
 }
 
 #[test]
+fn letting_go_of_the_modifier_takes_the_first_press_back() {
+    let _turn = a_fresh_window();
+    let daemon = Daemon::start();
+    a_session_of_two_tabs_the_second_holding_two(&daemon);
+
+    muster::ffi::muster_set_event_callback(Some(note));
+    assert_ok(&answer(request::Payload::Startup(Startup {
+        config_path: daemon
+            .muster_config_with("numbered_chords = \"tab_then_pane\"")
+            .to_string_lossy()
+            .into_owned(),
+        ..Startup::default()
+    })));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    until(
+        "the roster to arrive with all three panes in it",
+        || roster().is_some_and(|roster| rows(&roster).len() == 3),
+        || format!("the roster holds {:?}", roster().map(|held| places(&held))),
+    );
+    assert_eq!(counting(), Counting::Tabs, "the chords should be naming tabs before any press");
+
+    assert_ok(&answer(request::Payload::FocusPaneAt(FocusPaneAt { place: 2 })));
+    until(
+        "the second tab to be named",
+        || counting() == Counting::PanesInTab,
+        || format!("the roster says the chords are counting {:?}", counting()),
+    );
+    // What releasing ⌘ means. Distinct from every other way a chord ends, because it is the one
+    // that happens when somebody decides mid-gesture that the tab was all they wanted - and
+    // until this existed, walking away from the keyboard there left the numbers waiting.
+    assert_ok(&answer(request::Payload::EndNumberedChord(EndNumberedChord {})));
+    until(
+        "the numbers to go back to the tabs",
+        || numbered_tabs() == vec![1, 2],
+        || format!("the tabs carry {:?} and the panes {:?}", numbered_tabs(), numbered_panes()),
+    );
+    assert_eq!(counting(), Counting::Tabs, "the roster still says a chord is half-typed");
+
+    // So the press after it is a first press again, and reaches a tab rather than a pane. This
+    // is the whole complaint the change answers: ⌘2, let go, ⌘1 should be two tab jumps.
+    assert_ok(&answer(request::Payload::FocusPaneAt(FocusPaneAt { place: 1 })));
+    until(
+        "the first tab's only pane to have the keyboard",
+        || showing(&named(VISIBLE)),
+        || format!("the view still shows {:?}", shown()),
+    );
+}
+
+#[test]
+fn ending_a_chord_nobody_started_says_nothing() {
+    let _turn = a_fresh_window();
+    let daemon = Daemon::start();
+    a_session_of_two_tabs_the_second_holding_two(&daemon);
+
+    muster::ffi::muster_set_event_callback(Some(note));
+    assert_ok(&answer(request::Payload::Startup(Startup {
+        config_path: daemon
+            .muster_config_with("numbered_chords = \"tab_then_pane\"")
+            .to_string_lossy()
+            .into_owned(),
+        ..Startup::default()
+    })));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    until(
+        "the roster to arrive with all three panes in it",
+        || roster().is_some_and(|roster| rows(&roster).len() == 3),
+        || format!("the roster holds {:?}", roster().map(|held| places(&held))),
+    );
+
+    // The shell only sends this while a chord is half-typed, but it decides that from a roster
+    // that is by then a moment old, so the harmless case has to stay harmless. Counted rather
+    // than eyeballed: an agent list that repainted on every ⌘ release would repaint on ⌘C.
+    //
+    // Settled first, because this is the one assertion here about something *not* happening -
+    // and a daemon still finishing its bootstrap would publish under it and read as a failure
+    // in code that had done nothing wrong.
+    let before = once_quiet();
+    assert_ok(&answer(request::Payload::EndNumberedChord(EndNumberedChord {})));
+    assert_eq!(
+        rosters(),
+        before,
+        "ending a chord nobody started republished the roster, so every ⌘ release would redraw \
+         the agent list"
+    );
+}
+
+#[test]
 fn turning_the_prototype_off_moves_the_numbers_back_on_the_save() {
-    let _turn = muster::testing::fresh_session();
+    let _turn = a_fresh_window();
     let daemon = Daemon::start();
     a_session_of_two_tabs_the_second_holding_two(&daemon);
 
@@ -392,6 +481,7 @@ fn regions() -> usize {
 
 static VIEW: Mutex<Option<ViewChanged>> = Mutex::new(None);
 static ROSTER: Mutex<Option<RosterChanged>> = Mutex::new(None);
+static ROSTERS: AtomicUsize = AtomicUsize::new(0);
 
 extern "C" fn note(bytes: *const u8, len: usize) {
     // SAFETY: the core guarantees `len` readable bytes for the duration of this call, which is
@@ -404,13 +494,65 @@ extern "C" fn note(bytes: *const u8, len: usize) {
         }
         Some(event::Payload::RosterChanged(roster)) => {
             *ROSTER.lock().expect("a panicking test poisoned the roster") = Some(roster);
+            ROSTERS.fetch_add(1, Ordering::Relaxed);
         }
         _ => {}
     }
 }
 
+/// This test's turn, with what the last one was told forgotten.
+///
+/// [`muster::testing::fresh_session`] resets the core. These statics are this file's own and it
+/// cannot reach them, so left alone they carry the previous test's window into this one - and a
+/// test that waits for "three panes in the roster" is handed three from a window that has
+/// already closed, then asserts against a core that has not started yet.
+fn a_fresh_window() -> muster::testing::Turn {
+    let turn = muster::testing::fresh_session();
+    *VIEW.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+    *ROSTER.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+    ROSTERS.store(0, Ordering::Relaxed);
+    turn
+}
+
 fn roster() -> Option<RosterChanged> {
     ROSTER.lock().expect("a panicking test poisoned the roster").clone()
+}
+
+/// How many times the shell has been told what exists, so a test can assert it was not.
+fn rosters() -> usize {
+    ROSTERS.load(Ordering::Relaxed)
+}
+
+/// Waits for the publishing to stop, and hands back the count it stopped at.
+///
+/// Only a test asserting that nothing was published needs this. Everything else here waits for
+/// something to arrive, which is self-timing; an absence is not, and a bootstrap still landing
+/// underneath one would fail it for reasons that have nothing to do with the code.
+fn once_quiet() -> usize {
+    let mut settled = rosters();
+    until(
+        "the window to stop republishing",
+        || {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            let now = rosters();
+            let quiet = now == settled;
+            settled = now;
+            quiet
+        },
+        || format!("the roster has been published {} times and is still going", rosters()),
+    );
+    settled
+}
+
+/// What the chords are counting, as the roster says it to the shell.
+///
+/// Read off the message rather than out of the session, because the question these tests are
+/// about is what a window is told - a core that knows a chord is half-typed and does not say so
+/// draws no badges and ends no gesture.
+fn counting() -> Counting {
+    roster().map_or(Counting::Panes, |roster| {
+        Counting::try_from(roster.counting).expect("the core sends a counting this build knows")
+    })
 }
 
 fn answer(payload: request::Payload) -> Response {
