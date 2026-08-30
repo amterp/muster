@@ -192,13 +192,25 @@ fn pane_line(
 
 /// What each word means at a glance, so a window with fifteen panes can be read without counting.
 ///
-/// Only the states worth a colour get one: `unknown` is the ordinary answer for a pane running a
-/// shell rather than an agent, and colouring it would put a signal on almost every row.
+/// The legend is the window's rather than this file's: `PaneAppearance.borderColor` in
+/// `Sources/MusterMac/PaneChrome.swift` decides it and `docs/architecture.md` states it with the
+/// reasoning. The two disagreed once - working green here and blue there, done the other way about -
+/// and the cost was not a wrong pixel but a person learning the colours could not be trusted.
+/// Nothing checks them across the language line, so a row that moves here moves in both.
+///
+/// Blocked is yellow because the sixteen have no orange: the medium's limit, not a second opinion.
+/// And what is named is a slot rather than a pixel, so a user who repaints `[colors] palette`
+/// repaints the legend, which is theirs to do.
+///
+/// Only the states worth a colour get one. `unknown` is the ordinary answer for a pane running a
+/// shell rather than an agent, and colouring it would put a signal on almost every row; `idle` goes
+/// bare for the reason the window draws it no border, that no colour is what resting looks like in
+/// a list of words and the row already prints the word.
 fn agent_style(state: &str) -> Style {
     match state {
-        "working" => Style::new().fg_color(Some(anstyle::Color::Ansi(AnsiColor::Green))),
+        "working" => Style::new().fg_color(Some(anstyle::Color::Ansi(AnsiColor::Blue))),
         "blocked" => Style::new().fg_color(Some(anstyle::Color::Ansi(AnsiColor::Yellow))),
-        "done" => Style::new().fg_color(Some(anstyle::Color::Ansi(AnsiColor::Blue))),
+        "done" => Style::new().fg_color(Some(anstyle::Color::Ansi(AnsiColor::Green))),
         _ => QUIET,
     }
 }
@@ -339,4 +351,41 @@ fn keyboard_pane(window: &Window) -> Option<String> {
 /// without knowing where it lives.
 fn states(window: &Window) -> BTreeMap<&str, &str> {
     window.panes.iter().map(|pane| (pane.pane_id.as_str(), pane.state.as_str())).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{QUIET, agent_style};
+    use anstyle::{AnsiColor, Color, Style};
+
+    fn hue(color: AnsiColor) -> Style {
+        Style::new().fg_color(Some(Color::Ansi(color)))
+    }
+
+    /// The window decides the legend and nothing checks the two across the language line, so this
+    /// is the tripwire. A failure here means `muster window` and the window itself contradict each
+    /// other about what the product's own vocabulary looks like, which is how somebody learns to
+    /// stop trusting the colours. Move `Sources/MusterMac/PaneChrome.swift` and
+    /// `docs/architecture.md` with it, or move it back.
+    #[test]
+    fn the_legend_matches_the_window() {
+        assert_eq!(agent_style("working"), hue(AnsiColor::Blue), "the window paints working blue");
+        assert_eq!(
+            agent_style("blocked"),
+            hue(AnsiColor::Yellow),
+            "the window paints blocked orange, and yellow is the nearest of the sixteen"
+        );
+        assert_eq!(agent_style("done"), hue(AnsiColor::Green), "the window paints done green");
+    }
+
+    /// Idle and unknown are the resting answer and the row already prints the word, so neither
+    /// earns a hue. The invented state is this file's half of the window's rule that a state we
+    /// could not read is unknown and never idle: bare says nothing, where a hue would say
+    /// something wrong.
+    #[test]
+    fn resting_states_carry_no_hue() {
+        assert_eq!(agent_style("idle"), QUIET);
+        assert_eq!(agent_style("unknown"), QUIET);
+        assert_eq!(agent_style("compacting"), QUIET);
+    }
 }

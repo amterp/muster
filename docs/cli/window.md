@@ -62,6 +62,11 @@ not be read: an agent Muster failed to read is not an agent that finished.
 `done` is decided per window rather than per daemon, because a daemon cannot see which window
 somebody has looked at.
 
+The state column is coloured: `working` blue, `blocked` yellow, `done` green. `idle` and
+`unknown` are left plain, because they are the resting answer and the row already prints the
+word. It is the same legend the window itself paints, where `blocked` is orange - the sixteen
+colours a terminal has hold no orange, and yellow is the nearest slot.
+
 ## daemons[]
 
 `daemon`, `state`, and `detail`. State is `connected`, `stale` or `disconnected`, and `detail`

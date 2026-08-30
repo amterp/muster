@@ -213,6 +213,25 @@ is seeing for the first time, and the agent channel owns it from then on.
 What this cannot answer, stated rather than hidden: ours is the only focus we can observe, so `done` means "nobody
 *we know of* saw it". A second Muster window, or a herdr TUI open beside us, is outside it.
 
+**One legend, and the window holds it.** working blue, blocked orange, done green, idle grey, and unknown a fainter
+grey rather than a hue of its own. The window's palette is canonical because that is where attention lives: a person
+reads borders and dots all day and reads `muster window` when something has already gone strangely, so the surface
+with the smaller audience is the one that moves. The two did disagree once, working and done inverted between them,
+and what it cost was not a wrong pixel - it was somebody learning that the colours could not be trusted, in the one
+vocabulary this product is about.
+
+**Alignment is hue for hue where both surfaces paint a hue, and no further.** The ANSI sixteen have no orange, so the
+CLI spells blocked yellow - the medium's limit rather than a second opinion, and what it names is a slot, so a user
+who repaints their palette repaints the legend. Idle and unknown it leaves uncoloured: no colour at all is the
+resting rendering of a list of words, the row already prints the state, and the sidebar needs two greys only because
+a dot has to be some colour in order to exist.
+
+**The values live in two files, and nothing checks one against the other.** `PaneAppearance.borderColor` in
+`Sources/MusterMac/PaneChrome.swift` and `agent_style` in `crates/muster-cli/src/render.rs`, each citing this section
+and the other, each with a test that fails if its own row moves. A tripwire rather than a mechanism: five rows that
+change almost never do not earn a generator, and a lint reading both files across the language line is a regex worth
+reaching for the first time a tripwire fails to fire.
+
 ## Control plane, data plane
 
 Two kinds of traffic, opposite needs, different paths. The split is between *output* and *everything else* - not

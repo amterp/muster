@@ -18,6 +18,14 @@ public enum PaneAppearance {
   /// harness could not be read would have been indistinguishable from one with nothing to
   /// do. Faint rather than colorful because `unknown` is an absence of information, and a
   /// hue of its own would read as a fifth thing an agent can be doing.
+  ///
+  /// This table is the legend, and `muster window` paints the same one in the terminal's own
+  /// sixteen (`crates/muster-cli/src/render.rs`, `agent_style`) - the window is canonical
+  /// because that is where attention lives, and the surface with the smaller audience is the
+  /// one that moves. That medium has no orange, so blocked is yellow there, and it leaves idle
+  /// and unknown bare because no color is what resting looks like in a list of words. Nothing
+  /// can check the two across the language line, so a row changed here is changed in that file
+  /// and in `docs/architecture.md` too.
   public static func borderColor(state: String) -> NSColor {
     switch state {
     case "working": return NSColor.systemBlue

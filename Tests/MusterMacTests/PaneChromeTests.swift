@@ -33,6 +33,20 @@ struct PaneChromeTests {
     #expect(PaneAppearance.isHighlighted(state: "unknown") == false)
   }
 
+  @Test("the window's palette is the canonical legend")
+  func theLegendIsCanonical() {
+    // A change-detector on purpose. `muster window` paints these same five rows in the
+    // terminal's own sixteen, and nothing checks the two across the language line - so this
+    // exists to make changing the canon a decision that fails a build and hands you the other
+    // two places it has to change: `crates/muster-cli/src/render.rs` and
+    // `docs/architecture.md`.
+    #expect(PaneAppearance.borderColor(state: "working") == NSColor.systemBlue)
+    #expect(PaneAppearance.borderColor(state: "blocked") == NSColor.systemOrange)
+    #expect(PaneAppearance.borderColor(state: "done") == NSColor.systemGreen)
+    #expect(PaneAppearance.borderColor(state: "idle") == NSColor.systemGray)
+    #expect(PaneAppearance.borderColor(state: "unknown") == NSColor.tertiaryLabelColor)
+  }
+
   @Test("a stale backend is admitted in the title")
   func staleIsVisible() {
     let title = PaneAppearance.title(
