@@ -1,0 +1,24 @@
+{
+  "_v": 3,
+  "alias": "a-pane-that-ssh-d",
+  "alias_explicit": false,
+  "area": [
+    "shell",
+    "backend"
+  ],
+  "column": "uncommitted",
+  "created_at_millis": 1788184807953,
+  "creator": "Alexander Terp",
+  "description": "Noticed while attaching a devenv for the first time: `de` in a local pane opens an ssh session onto the box, and Muster goes on listing that pane under LOCAL - a pane's daemon is decided when it is made and never asked again. Wanting the sidebar to follow is the obvious reaction, and it may well be the wrong one.\n\nDetecting it is cheap. `herdr pane process-info` already returns a pane's foreground processes, and the one in front here was `ssh -t devbox ...`. Matching that destination against the `host` of a configured `[[daemon]]` is a string comparison.\n\nWhat Muster cannot do is move the pane. A PTY belongs to the machine that opened it, which is why `pane move` refuses across machines. So the honest options are a label saying where the pane's attention has gone, or an offer to open a real pane over there - not relocating the row.\n\nThe case against doing anything: the two are not the same thing, and a label would say they were. A real devenv pane is a PTY herdr holds on the box; it survives a dropped VPN and a quit app with nothing else involved, and the agent state on its row is the agent's. An ssh session inside a local pane survives only for as long as something on the far side holds it, and the state Muster reports for that row is an ssh client's. Filing it under the machine's heading makes the weaker arrangement look like the stronger one, in the one place somebody would look to tell them apart.\n\nThe case for: people will do this anyway, because it is what every other terminal has trained them to do, and a window that silently mis-files those panes is not neutral either.\n\nWorth deciding next to the first-pane gap (`a_2HpkpfIfq`). If making the first pane on a machine were one keystroke, most of the reason to ssh by hand goes away, and this question may answer itself.",
+  "id": "a_2HqGk5nOr",
+  "position": "UUUUUUU",
+  "tags": [
+    "shakedown-2026-08-31"
+  ],
+  "title": "🧭 A pane that ssh'd into a machine Muster knows - say so, or leave it?",
+  "type": "chore",
+  "updated_at_millis": 1788200195481,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1788184807953}
+  ]
+}

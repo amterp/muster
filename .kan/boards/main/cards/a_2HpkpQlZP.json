@@ -1,0 +1,24 @@
+{
+  "_v": 3,
+  "alias": "a-devenv-s-first",
+  "alias_explicit": false,
+  "area": [
+    "backend",
+    "testing"
+  ],
+  "column": "next",
+  "created_at_millis": 1788183581178,
+  "creator": "Alexander Terp",
+  "description": "Attaching a machine that has no Muster daemon running installs one and then blocks forever. Measured against a RHEL-family dev box: the app sat in `start()` for four minutes with `daemon.remote.starting` as the last line in the run log, and the Quit AppleEvent queued behind it fired the instant the block was cleared by hand.\n\nThe script `start()` sends (`crates/muster-herdr/src/remote.rs`) is\n\n    mkdir -p '\u003chome\u003e/state' \u0026\u0026 HERDR_SESSION=... nohup '\u003cbinary\u003e' server \u003e\u003e '\u003chome\u003e/state/herdr.out' 2\u003e\u00261 \u003c /dev/null \u0026\n\nand `\u0026` binds to the whole `\u0026\u0026` list rather than to the `nohup`. The far shell forks a subshell for the list and waits on herdr inside it. The redirect covers herdr's own descriptors and not the subshell's, so the subshell holds ssh's stdout and stderr pipes for as long as the daemon lives - and `Remote::shell` is a `wait_with_output()`, which wants EOF on both. Read off `/proc` on the box: the subshell is an `sh` with fds 1 and 2 on pipes, herdr its child with fds 1 and 2 on `herdr.out`.\n\nWhich shell is over there decides it. The box's `/bin/sh` is `/usr/bin/bash`, which forks; the devenv container's dash execs the last command of a backgrounded list, so the subshell is replaced by the redirected process and the pipes close. The daemon-backed devenv tests therefore cannot see this, and a RHEL-ish box hangs on first contact.\n\nThe daemon does start, which is what makes it survivable and also what will make it look intermittent: kill the subshell and the next launch takes the `answers()` adopt path and attaches in a second. Every later launch is fine until something removes the daemon over there.\n\nBackgrounding the command rather than the list fixes it - `mkdir -p X \u0026\u0026 { nohup ... \u0026 }`, or a redirect on the group. It wants a test whose far `/bin/sh` forks, since the container's cannot fail this way.\n\n## Reproducing it\n\nNeeds a remote whose `/bin/sh` forks rather than execs the last command of a backgrounded list. RHEL-family boxes qualify (`/bin/sh` is `/usr/bin/bash`); a Debian-based devenv container does not, because its dash execs and closes the pipes - which is why the suite cannot see this today. Check with `ssh \u003chost\u003e 'readlink -f /bin/sh'`.\n\n1. On the remote, clear what Muster installed so the attach has to install and start rather than adopt:\n\n       ssh \u003chost\u003e 'pkill -f \"herdr server\"; rm -rf $HOME/.muster/herdr'\n\n2. Name that host in a `[[daemon]]` block and launch Muster.\n3. The run log's last line is `daemon.remote.starting` and nothing follows - no `daemon.remote.started`, no `daemon.attached` for that daemon. The window opens without it and stays that way.\n4. The evidence is a process tree on both ends:\n\n       ps -o pid,command -ax | grep 'nohup'        # locally: the ssh running the start script, alive\n       ssh \u003chost\u003e 'ls -l /proc/\u003csh pid\u003e/fd'        # fds 1 and 2 on pipes\n       ssh \u003chost\u003e 'ls -l /proc/\u003cherdr pid\u003e/fd'     # fds 1 and 2 on herdr.out, parent is that sh\n\n5. The app is blocked in `start()`, not crashed. An AppleEvent sent meanwhile - a Quit, say - is queued and fires the instant the block clears.\n6. Unblock it by killing the remote `sh` (not herdr): `ssh \u003chost\u003e 'kill \u003csh pid\u003e'`. The local ssh exits, `start()` returns, `answers()` succeeds, and the daemon attaches within a second.\n\nEvery later launch is fine, because the daemon is now running and the attach adopts it. That is what will make this look intermittent: it reproduces only against a machine with no daemon on it.\n\n## Validating a fix\n\n- With the remote cleared as in step 1, a launch logs `daemon.remote.starting` and `daemon.remote.started` within a second or two, and `daemon.attached` for that daemon.\n- No ssh process running the start script survives the attach: `ps -ax | grep 'muster.*ctl' | grep nohup` is empty afterwards.\n- On the remote, the daemon's parent is init rather than a live `sh` holding pipes.\n- The suite needs a devenv whose `/bin/sh` forks - either a second container image or `ln -sf /bin/bash /bin/sh` in the existing one for this test. Without that the regression cannot fail.",
+  "id": "a_2HpkpQlZP",
+  "position": "!1",
+  "tags": [
+    "shakedown-2026-08-31"
+  ],
+  "title": "⏳ A devenv's first attach hangs, and takes the window's quit with it",
+  "type": "bug",
+  "updated_at_millis": 1788200195300,
+  "history": [
+    {"field":"column","value":"next","at":1788183581178}
+  ]
+}

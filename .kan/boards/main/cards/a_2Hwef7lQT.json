@@ -1,0 +1,23 @@
+{
+  "_v": 3,
+  "alias": "tab-new-takes-the",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "next",
+  "created_at_millis": 1788200027119,
+  "creator": "Alexander Terp",
+  "description": "`muster tab new --pane \u003cref\u003e` fails when the keyboard is on a different machine from the pane named, and blames the pane for it:\n\n    muster: the daemon devenv holds no pane called p2005jfz1e, so there is no\n    workspace to put a tab in and nothing was made. Most likely it closed while\n    this was in flight.\n\nThe pane had not closed. It was a local pane, alive and on screen, named while the window's keyboard sat on a devenv pane.\n\nThis contradicts the CLI's own contract, which `muster --help` states in its first paragraph: *\"A REF is a pane's name, as `muster window` prints it... It is Muster's own name for the pane and is unique across every machine the window is showing, so it needs nothing else beside it.\"* Every other verb honours that. With the keyboard on the devenv and a local pane named:\n\n    muster pane new    --pane \u003clocal\u003e   -\u003e  made a pane on local\n    muster pane read   --pane \u003clocal\u003e   -\u003e  printed the local pane\n    muster pane rename --pane \u003clocal\u003e   -\u003e  renamed it\n    muster tab new     --pane \u003clocal\u003e   -\u003e  refused, naming the wrong daemon\n\n`CreateTab` in `crates/muster-seam/src/handler.rs` takes the two halves from different places. The pane comes from the ref (`named.or_else(session::focused_pane)`), and the daemon comes from `resolve_daemon(\u0026create.daemon_id)`, which falls back to `session::focused_daemon()` when the request names none - which it does, because `cmd+T` and the CLI both leave `daemon_id` empty. `workspace_of(\u0026daemon, \u0026pane)` is then asked for a pane on a machine that does not hold it, and reports it as missing. The pane's own daemon is never consulted, though the mirror knows it.\n\nThe error message makes it worse than a refusal. \"Most likely it closed while this was in flight\" sends you to look at the pane, which is fine, rather than at the keyboard, which is what decided the answer.\n\nFix: when a request names a pane, take the daemon from that pane. Fall back to the focused daemon only when no pane is named, which is what `cmd+T` needs and is the case `resolve_daemon` was written for.\n\n## Reproducing it\n\n1. Attach two machines with a pane on each - `muster window` lists both.\n2. Put the keyboard on machine B's pane: `muster tab focus \u003cB's tab\u003e`, or click it.\n3. Name machine A's pane: `muster tab new --pane \u003cA's pane\u003e`.\n4. It refuses, naming B as the daemon that does not hold A's pane.\n5. Same ref, other verbs, same keyboard position: `muster pane new --pane \u003cA's pane\u003e` and `muster pane read --pane \u003cA's pane\u003e` both work.\n\n## Validating a fix\n\n- With the keyboard on B, `muster tab new --pane \u003cA's pane\u003e` makes a tab on A, and `muster window` shows it under A.\n- With no `--pane`, `tab new` still lands on the machine the keyboard is on - that behaviour is `cmd+T`'s and must not change.\n- The other verbs keep working unchanged; a regression here would be silent, since they take the same kind of ref.\n- Worth a check per verb that accepts a REF, asserting each acts on the named pane's machine rather than the focused one - the conformance corpus already carries the CLI's contract text about refs being unique across machines.",
+  "id": "a_2Hwef7lQT",
+  "position": "!1U",
+  "tags": [
+    "shakedown-2026-08-31"
+  ],
+  "title": "🎯 tab new takes the machine from the keyboard, not from the pane you named",
+  "type": "bug",
+  "updated_at_millis": 1788200195947,
+  "history": [
+    {"field":"column","value":"next","at":1788200027119}
+  ]
+}

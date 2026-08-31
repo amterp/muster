@@ -1,0 +1,23 @@
+{
+  "_v": 3,
+  "alias": "one-tab-so-should",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "uncommitted",
+  "created_at_millis": 1788201083318,
+  "creator": "Alexander Terp",
+  "description": "Under `numbered_chords = \"tab_then_pane\"`, a window holding one tab still spends its first press on that tab. `cmd+1` names the only tab there is, and reaching its second pane means keeping `cmd` down and pressing `2` after it. The proposal: when there is one tab, let `cmd+2` mean that tab's second pane directly, because the tab level is carrying no information.\n\nWhere it would go: `Numbering` (`crates/muster-core/src/roster.rs:138`) has three states - `Panes`, `Tabs` (the prototype waiting for a first press) and `PanesIn(tab)` (after a press named one). The change is starting in `PanesIn(the only tab)` rather than `Tabs` whenever the window holds exactly one.\n\n**The case against is that the chord would change meaning under you.** A person learns `cmd+2` reaches their second pane, then a second tab appears - an agent makes one, a devenv attaches and brings its own - and the same key now names a tab. Nothing on screen announces the switch, and the tab that caused it may belong to a machine they were not looking at. Every other objection here is smaller than that one.\n\nThe list changes shape with it. Under `Tabs` the numbers are drawn on tab rows; under `PanesIn` they sit on pane rows. So a second tab appearing would not only change what `cmd+2` does, it would move every number in the sidebar, which is at least visible - though it makes the sidebar's shape a function of something the user did not do.\n\n**Worth asking whether the default scheme already answers this.** `numbered_chords = \"panes\"` - the default - numbers every pane down the whole window, so `cmd+2` is the second pane and no tab is ever named. Somebody who wants a single-tab window to number panes may simply want the default, and the interesting question is what they lose: with two machines attached the window rarely holds one tab, so the collapse would almost never fire in the setup `tab_then_pane` exists for.\n\nThat is the boundary question, and it decides how much the idea is worth: is the trigger one tab in the whole window, or one tab on the machine holding the keyboard? The first is rare the moment a devenv is attached - each machine contributes at least one. The second fires often, and makes the meaning of the chord depend on which column the keyboard is in, which is worse than depending on the window's shape.\n\nWhat would settle it: drive a single-machine window under both schemes for a day and count the presses that felt wasted. The prototype is already meant to be judged that way rather than argued about, and this is a variation on it rather than a separate idea - if `tab_then_pane` is deleted, this goes with it.",
+  "id": "a_2Hx68fXqr",
+  "position": "UUUUUUUUU",
+  "tags": [
+    "shakedown-2026-08-31"
+  ],
+  "title": "🔢 One tab, so should cmd+2 skip the tab and name a pane?",
+  "type": "enhancement",
+  "updated_at_millis": 1788201083318,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1788201083318}
+  ]
+}

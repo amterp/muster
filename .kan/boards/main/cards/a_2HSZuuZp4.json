@@ -6,6 +6,14 @@
     "shell"
   ],
   "column": "backlog-hi",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Real-session evidence that this is 'a bridge is genuinely attaching twice' rather than the smoke run racing itself: one run logged nine bridge.start and four bridge.attach.failed, w5:p1 and w5:p4 twice each, and the saved arrangement held four regions for three panes. Two regions on one pane spawn two surfaces, two bridges dial one terminal, and the loser reports this error. Written up in a_2Ht74jTXV - if it is the same bug, fixing the composition fixes this check.",
+      "created_at_millis": 1788191607712,
+      "id": "c_2Ht7dTsI6"
+    }
+  ],
   "created_at_millis": 1788128346294,
   "creator": "Alexander Terp",
   "description": "`./dev --contract` has two checks failing on a clean scratch directory at HEAD, unrelated to whatever change you are running it for. A tier that is red before you start is one nobody can judge anything with, which is worse than not having it - found while verifying kan a_29i4bxafd, where establishing that these predate the change cost a stash and a second full build.\n\n**`a bare launch opens a usable window`** fails on an error the app itself logs:\n\n    bridge.attach.failed - terminal attach failed: terminal term_... already\n    has an attached client; retry with --takeover\n    impact: this window stays empty for as long as it is open\n\nReproduced twice on a freshly deleted `/private/tmp/muster-smoke`, so it is not leftover state. Whether the smoke run is racing itself or a bridge is genuinely attaching twice is the thing to find out.\n\n**`a refused config opens the roster it would have had nowhere to appear in`** fails on four copies of one warning:\n\n    composition.restore.failed - the saved arrangement is version 1 and this\n    Muster writes version 2\n\nThe fixture writes a `window.toml` the app no longer reads. That looks like a fixture left behind when the composition format moved to version 2, in which case the fix is the fixture rather than the app - worth confirming rather than assuming, since the same warning would appear if the app had stopped writing version 2.\n\nBoth confirmed present at HEAD with the working tree stashed, so neither comes from the daemon-launch work.",
@@ -13,7 +21,7 @@
   "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
   "title": "🚨 Two contract checks fail at HEAD, so the tier says nothing",
   "type": "bug",
-  "updated_at_millis": 1788128346294,
+  "updated_at_millis": 1788191607712,
   "history": [
     {"field":"column","value":"backlog-hi","at":1788128346294}
   ]
