@@ -100,6 +100,59 @@ fn the_replayed_session_does_not_double_the_one_just_snapshotted() {
     assert_eq!(doubled, 0, "the replay reported creations for panes the snapshot already had");
 }
 
+/// The sibling of the case above, and the one that was missing.
+///
+/// A replay states the session as it *was*, so a pane closed just before the subscription
+/// opened is still described by it. Upsert absorbs a replayed pane that still exists, which
+/// is what "subscribe first, snapshot second" relies on - but a replayed pane that no longer
+/// exists is one the mirror invents out of an event, and nothing arriving afterwards takes it
+/// away. It sits in the roster until something unrelated forces a re-snapshot.
+#[test]
+fn a_pane_closed_before_the_subscription_does_not_come_back() {
+    let daemon = Daemon::start();
+    daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "one", "focus": true }));
+    let split = daemon.call("pane.split", &json!({ "direction": "right" }));
+    let closed = split
+        .get("pane")
+        .and_then(|pane| pane.get("pane_id"))
+        .and_then(|id| id.as_str())
+        .expect("pane.split did not name the pane it made")
+        .to_string();
+    daemon.call("pane.close", &json!({ "pane_id": closed }));
+
+    let (mirror, log, _subscription) = mirror_and_log(&daemon);
+    until("the first bootstrap", || log.bootstraps() > 0, ());
+    // Nothing marks where a replay ends, so this waits out the window it would land in.
+    std::thread::sleep(Duration::from_millis(300));
+
+    assert_eq!(pane_count(&mirror), 1, "a pane closed before the subscription came back");
+}
+
+/// The same hazard one level up, and the reason the guard is not written for panes alone.
+///
+/// A tab closed before the subscription opened is replayed close-first too, so a mirror that
+/// only refused resurrected panes would still draw a caption over a tab holding nothing.
+#[test]
+fn a_tab_closed_before_the_subscription_does_not_come_back() {
+    let daemon = Daemon::start();
+    daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "one", "focus": true }));
+    let made = daemon.call("tab.create", &json!({}));
+    let closed = made
+        .get("tab")
+        .and_then(|tab| tab.get("tab_id"))
+        .and_then(|id| id.as_str())
+        .expect("tab.create did not name the tab it made")
+        .to_string();
+    daemon.call("tab.close", &json!({ "tab_id": closed }));
+
+    let (mirror, log, _subscription) = mirror_and_log(&daemon);
+    until("the first bootstrap", || log.bootstraps() > 0, ());
+    std::thread::sleep(Duration::from_millis(300));
+
+    let mirror = mirror.lock().unwrap();
+    assert_eq!(mirror.tabs().count(), 1, "a tab closed before the subscription came back");
+}
+
 #[test]
 fn a_pane_created_after_the_subscription_arrives_on_it() {
     let daemon = Daemon::start();

@@ -8,7 +8,7 @@
 //! what lets the whole of this behavior be judged by recorded cases rather than by staging
 //! a daemon into each state (`docs/testing.md`).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::mirror::ordered::Ordered;
 
@@ -36,6 +36,39 @@ use crate::mirror::event::{BackendEvent, Change};
 /// visible on screen while being too large costs a few hundred bytes on a tab nobody is
 /// dragging.
 const SUPERSEDED_LIMIT: usize = 32;
+
+/// Entities a backend said were removed before it said they were created.
+///
+/// A replay is not ordered by cause. A pane created and closed before the subscription
+/// opened is replayed close-first, so the removal reaches a mirror that has never heard of
+/// the pane and does nothing, and the creation behind it installs one the session no longer
+/// holds (`observations/herdr-0.8.0.md` section 22). Nothing afterwards corrects it: the
+/// removal arrived first, found nothing to remove, and there is no second one. The entity is
+/// then drawn until something unrelated forces a re-snapshot, which for a pane means a row
+/// in the sidebar taking a place in the numbered chords and a daemon that refuses every
+/// request naming it.
+///
+/// Remembering the removal is what lets the creation behind it be refused. Kept rather than
+/// dropped on the first match, because one replay may state a creation more than once and the
+/// second would put back what the first was denied.
+///
+/// Cleared by a snapshot, which is the census this stands in for and also what bounds it:
+/// nothing accumulates here in a settled session, because a removal for something the mirror
+/// does hold takes the ordinary path.
+#[derive(Debug, Default)]
+struct GoneBeforeKnown {
+    panes: BTreeSet<PaneId>,
+    tabs: BTreeSet<TabId>,
+    workspaces: BTreeSet<WorkspaceId>,
+}
+
+impl GoneBeforeKnown {
+    fn clear(&mut self) {
+        self.panes.clear();
+        self.tabs.clear();
+        self.workspaces.clear();
+    }
+}
 
 /// What the backend says is true, as far as this mirror knows.
 ///
@@ -93,6 +126,8 @@ pub struct Mirror {
     /// and dropped with the pane if it turns out never to have survived. Nothing forgets one on a
     /// timer, because "the daemon is slow today" is exactly the case this exists for.
     names_awaiting_pane: BTreeMap<PaneId, Option<String>>,
+    /// What a replay said was gone before it said it existed.
+    gone_before_known: GoneBeforeKnown,
     focus: Focus,
     health: Health,
     /// Why the health is what it is, for anyone who has to say so out loud. Empty when
@@ -140,6 +175,7 @@ impl Mirror {
         // out of the stream that follows.
         self.superseded.clear();
         self.awaiting_echo.clear();
+        self.gone_before_known.clear();
         // Same reasoning, one step further: a snapshot describing the pane carries the backend's
         // own label for it, which is what the rename produced. Holding the wish past that would
         // let it put back a name a later client had already changed.
@@ -352,6 +388,9 @@ impl Mirror {
     /// storing something new - it is the mirror no longer keeping it to itself.
     fn upsert_workspace(&mut self, workspace: Workspace) -> Vec<Change> {
         let id = workspace.id.clone();
+        if !self.workspaces.contains_key(&id) && self.gone_before_known.workspaces.contains(&id) {
+            return Vec::new();
+        }
         let renamed =
             self.workspaces.get(&id).is_some_and(|before| before.label != workspace.label);
         match self.workspaces.insert(id.clone(), workspace) {
@@ -359,6 +398,77 @@ impl Mirror {
             Some(_) => Vec::new(),
             None => vec![Change::WorkspaceAdded(id)],
         }
+    }
+
+    /// Takes what a backend says a pane is, and says whether anybody has to be told.
+    ///
+    /// Structure only, on a pane that already exists. A backend that carries agent state on
+    /// its structure events is a second writer for it, and the older of the two: herdr replays
+    /// the session as it stood when the subscription opened, so a replayed pane would roll a
+    /// live agent state back to whatever it was then, with nothing arriving afterwards to
+    /// correct it - agent state comes on its own per-pane subscription. That channel owns the
+    /// field, and a pane's first appearance is the only thing taken from here.
+    fn upsert_pane(&mut self, mut pane: Pane) -> Vec<Change> {
+        let id = pane.id.clone();
+        let Some(before) = self.panes.get(&id) else {
+            // A pane already said to be gone is not one an event may bring back. The
+            // statement that it closed arrived first because a replay is not ordered
+            // by cause, and it is still the later fact about this pane.
+            if self.gone_before_known.panes.contains(&id) {
+                return Vec::new();
+            }
+            // A name this pane was already given, before the backend got round to
+            // mentioning it. Taken now or lost: the event carries whatever label the
+            // backend held when it built the payload, which for a pane being introduced
+            // is usually none.
+            if let Some(named) = self.names_awaiting_pane.remove(&id) {
+                pane.name = named;
+            }
+            self.panes.insert(id.clone(), pane);
+            return vec![Change::PaneAdded(id)];
+        };
+        pane.agent_state = before.agent_state;
+        pane.agent = pane.agent.or_else(|| before.agent.clone());
+        // Two more fields structure events may not simply write, for the same reason
+        // as agent state above and measured rather than assumed. herdr's replay is a
+        // ring buffer of past events rather than a fresh statement of the world, and
+        // a subscription drains it *after* its snapshot - so a reconnect replays the
+        // pane's creation payload, which carries neither field because neither
+        // existed yet, and then replays whatever came after it carrying what they
+        // used to say. Applying either on top of the snapshot is going backwards.
+        //
+        // **A name is never taken from an event on a pane already held.** herdr
+        // announces a rename to nobody and stamps no counter for one, so a `label`
+        // on an event is not news: it is whatever was true when that event was
+        // built, and there is nothing to order it by. A snapshot is the only
+        // authority, which costs exactly one thing - a rename made by another client
+        // reaches this window on the next re-snapshot rather than at once. That was
+        // nearly true anyway, since nothing announces one; what is bought is that a
+        // reconnect can no longer put back a name the session has moved past. Found
+        // in the running app, with every layer under it green.
+        //
+        // **A title is taken when it is not older than what is held**, because that
+        // one herdr does count: `revision` moves on a changed stripped title and on
+        // nothing else, so it orders exactly this field. An absent title still means
+        // "this payload does not speak to it" rather than "cleared", or a reconnect
+        // would wipe every one in the window - and the cost of that direction is a
+        // title its program genuinely clears staying until the next change.
+        pane.name.clone_from(&before.name);
+        if pane.revision >= before.revision {
+            pane.title = pane.title.or_else(|| before.title.clone());
+        } else {
+            pane.title.clone_from(&before.title);
+            pane.revision = before.revision;
+        }
+        // What the pane is called, which is not structure and is not state. A pane
+        // that changed directory is listed under a name it no longer has until
+        // something else happens to move, and on a quiet session that is never.
+        let relabelled = pane.cwd != before.cwd
+            || pane.agent != before.agent
+            || pane.name != before.name
+            || pane.title != before.title;
+        self.panes.insert(id.clone(), pane);
+        if relabelled { vec![Change::PaneRelabelled(id)] } else { Vec::new() }
     }
 
     /// Puts one workspace's tabs in the order the backend says they now sit.
@@ -391,6 +501,9 @@ impl Mirror {
                     self.tabs.insert(id, tab);
                     return Vec::new();
                 }
+                if self.gone_before_known.tabs.contains(&id) {
+                    return Vec::new();
+                }
                 self.tabs.insert(id.clone(), tab);
                 vec![Change::TabAdded(id)]
             }
@@ -408,69 +521,7 @@ impl Mirror {
             BackendEvent::TabsReordered { workspace, order } => {
                 self.reorder_tabs(workspace, &order)
             }
-            // Structure only, on a pane that already exists. A backend that carries agent
-            // state on its structure events is a second writer for it, and the older of
-            // the two: herdr replays the session as it stood when the subscription opened,
-            // so a replayed pane would roll a live agent state back to whatever it was
-            // then, with nothing arriving afterwards to correct it - agent state comes on
-            // its own per-pane subscription. That channel owns the field, and a pane's
-            // first appearance is the only thing taken from here.
-            BackendEvent::PaneUpserted(mut pane) => {
-                let id = pane.id.clone();
-                let Some(before) = self.panes.get(&id) else {
-                    // A name this pane was already given, before the backend got round to
-                    // mentioning it. Taken now or lost: the event carries whatever label the
-                    // backend held when it built the payload, which for a pane being introduced
-                    // is usually none.
-                    if let Some(named) = self.names_awaiting_pane.remove(&id) {
-                        pane.name = named;
-                    }
-                    self.panes.insert(id.clone(), pane);
-                    return vec![Change::PaneAdded(id)];
-                };
-                pane.agent_state = before.agent_state;
-                pane.agent = pane.agent.or_else(|| before.agent.clone());
-                // Two more fields structure events may not simply write, for the same reason
-                // as agent state above and measured rather than assumed. herdr's replay is a
-                // ring buffer of past events rather than a fresh statement of the world, and
-                // a subscription drains it *after* its snapshot - so a reconnect replays the
-                // pane's creation payload, which carries neither field because neither
-                // existed yet, and then replays whatever came after it carrying what they
-                // used to say. Applying either on top of the snapshot is going backwards.
-                //
-                // **A name is never taken from an event on a pane already held.** herdr
-                // announces a rename to nobody and stamps no counter for one, so a `label`
-                // on an event is not news: it is whatever was true when that event was
-                // built, and there is nothing to order it by. A snapshot is the only
-                // authority, which costs exactly one thing - a rename made by another client
-                // reaches this window on the next re-snapshot rather than at once. That was
-                // nearly true anyway, since nothing announces one; what is bought is that a
-                // reconnect can no longer put back a name the session has moved past. Found
-                // in the running app, with every layer under it green.
-                //
-                // **A title is taken when it is not older than what is held**, because that
-                // one herdr does count: `revision` moves on a changed stripped title and on
-                // nothing else, so it orders exactly this field. An absent title still means
-                // "this payload does not speak to it" rather than "cleared", or a reconnect
-                // would wipe every one in the window - and the cost of that direction is a
-                // title its program genuinely clears staying until the next change.
-                pane.name.clone_from(&before.name);
-                if pane.revision >= before.revision {
-                    pane.title = pane.title.or_else(|| before.title.clone());
-                } else {
-                    pane.title.clone_from(&before.title);
-                    pane.revision = before.revision;
-                }
-                // What the pane is called, which is not structure and is not state. A pane
-                // that changed directory is listed under a name it no longer has until
-                // something else happens to move, and on a quiet session that is never.
-                let relabelled = pane.cwd != before.cwd
-                    || pane.agent != before.agent
-                    || pane.name != before.name
-                    || pane.title != before.title;
-                self.panes.insert(id.clone(), pane);
-                if relabelled { vec![Change::PaneRelabelled(id)] } else { Vec::new() }
-            }
+            BackendEvent::PaneUpserted(pane) => self.upsert_pane(pane),
             BackendEvent::PaneRemoved(id) => self.remove_pane(&id, false),
             // Kept even for a tab this mirror does not know. herdr sends the layout for a
             // tab it has just created, and nothing says the tab event arrives first - a
@@ -554,6 +605,7 @@ impl Mirror {
     /// to close.
     fn remove_workspace(&mut self, id: &WorkspaceId) -> Vec<Change> {
         if self.workspaces.remove(id).is_none() {
+            self.gone_before_known.workspaces.insert(id.clone());
             return Vec::new();
         }
         let orphaned: Vec<TabId> = self
@@ -576,6 +628,9 @@ impl Mirror {
     /// explain, while a pane does.
     fn remove_tab(&mut self, id: &TabId) -> Vec<Change> {
         if self.tabs.remove(id).is_none() {
+            // Remembered for the reason [`GoneBeforeKnown`] gives: this may be a removal that
+            // has overtaken its own creation, and then it is the only word there will be.
+            self.gone_before_known.tabs.insert(id.clone());
             return Vec::new();
         }
         // The tree goes with the tab and is not reported separately: `layout_updated` does
@@ -604,9 +659,14 @@ impl Mirror {
         // then died before the backend ever described it - and then this is the only word of it.
         self.names_awaiting_pane.remove(id);
         let Some(gone) = self.panes.remove(id) else {
-            // A removal for something already gone is a no-op rather than an error. The
-            // subscription replays, reconnects re-snapshot, and both routinely say a
-            // thing is gone that this mirror already dropped.
+            // Nothing to report: replays and re-snapshots routinely say a thing is gone that
+            // this mirror already dropped, and that is a no-op rather than an error.
+            //
+            // It is remembered all the same, because the other way to reach this line is a
+            // removal that has *overtaken its own creation* in an unordered replay. Then this
+            // is the only word there will ever be that the pane is gone, and forgetting it
+            // lets the creation behind it install a pane the session no longer holds.
+            self.gone_before_known.panes.insert(id.clone());
             return Vec::new();
         };
         self.forget_focus();

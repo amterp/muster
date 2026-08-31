@@ -1159,3 +1159,49 @@ Evidence: `corpus/herdr-0.8.0/arranging/` - `FACTS.json` for the event kinds, th
 and after, the payload and the label renumbering, `wire.ndjson` for the requests and their
 replies, `events.ndjson` for what each subscriber saw. Re-record with
 `tools/herdr-probe/probe arranging`.
+
+## 22. A replay closes a pane before it creates it
+
+**A subscription's replay states past events in an order that is not the order they
+happened in.** Measured 2026-08-30 against herdr 0.8.0 on macOS/arm64. A workspace was
+created, a pane was split off it, and that pane was closed, all before any subscription
+existed. `pane.list` then reported one pane. Subscribing produced this, in this order:
+
+```
+pane_created   w1:p1
+pane_closed    w1:p2
+pane_focused   w1:p1
+layout_updated
+pane_created   w1:p2
+layout_updated
+```
+
+`w1:p2` is closed two lines before it is created. A client that applies these in the order
+they arrive ends up holding a pane the session does not have, and nothing later corrects it:
+the removal arrived first, found nothing to remove, and there is no second one.
+
+**This is what "subscribe first, snapshot second" does not survive.** Muster subscribes
+before it snapshots so that no event can fall into the gap between the two, and relies on
+upsert to absorb the overlap (`muster-herdr/src/subscription.rs`). Upsert does absorb a
+replayed pane that still exists, which is the case section 1 recorded. It cannot absorb one
+that does not, because the event carrying a creation looks the same whether or not that
+creation has since been undone.
+
+**Unguarded, the pane is drawn until something unrelated asks for a fresh snapshot.** From a
+real window on 2026-08-30: the daemon held six panes, the sidebar listed ten, and it stayed
+at ten for forty-one consecutive publishes. What ended it was the user clicking one of the
+four phantom rows, which herdr refused with `pane_not_found: pane w6:p39 not found`, and a
+refusal is one of the few things that re-snapshots. A ghost is worse than a stale row: it
+takes a place in the numbered chords, so ⌘1 to ⌘9 name the wrong panes while it is there.
+
+**What Muster does about it.** A removal for a pane the mirror does not hold is remembered
+instead of discarded, and a creation for a pane already said to be gone is refused
+(`muster-core/src/mirror/state.rs`). A snapshot clears that memory, being the census it
+stands in for. Both orders then converge: close-then-create is refused, and create-then-close
+removes the pane the ordinary way.
+
+Evidence: not in `corpus/herdr-0.8.0/`, unlike every section above. The finding came from a
+hand-run probe against a scratch daemon rather than from `tools/herdr-probe/probe`, and what
+pins it instead is a test: `a_pane_closed_before_the_subscription_does_not_come_back` in
+`crates/muster-herdr/tests/subscription.rs`, which drives a real daemon and fails without the
+guard. Worth folding into the probe next time it is re-recorded.

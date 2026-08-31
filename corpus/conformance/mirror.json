@@ -3854,6 +3854,174 @@
           "tabsReordered:w1"
         ]
       }
+    },
+    {
+      "name": "a replay that closes a pane before it creates it leaves it closed",
+      "why": "A replay is not ordered by cause. Measured on herdr 0.8.0, a pane created and closed before a subscription opened is replayed close-first (`observations/herdr-0.8.0.md` section 22), so the removal reaches a mirror that has never heard of the pane and the creation behind it installs one the session no longer holds. Nothing afterwards corrects it, because the removal has already been spent - the pane is drawn in the sidebar, counted by the numbered chords, and refused by the daemon when anybody tries to focus it. This pins that the removal is remembered, so the creation behind it is refused rather than obeyed.",
+      "given": {
+        "snapshot": {
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "paneRemoved",
+            "id": "w1:p2"
+          },
+          {
+            "kind": "paneUpserted",
+            "id": "w1:p2",
+            "tab": "w1:t1",
+            "workspace": "w1",
+            "agentState": "idle"
+          }
+        ]
+      },
+      "expect": {
+        "tabs": [
+          "w1:t1"
+        ],
+        "workspaces": [],
+        "tabLabels": {
+          "w1:t1": "1"
+        },
+        "layouts": {},
+        "focus": {},
+        "health": "connected",
+        "panes": [
+          "w1:p1"
+        ],
+        "agentStates": {
+          "w1:p1": "idle"
+        },
+        "changes": []
+      }
+    },
+    {
+      "name": "a pane closed before it was known does not stop a later one arriving",
+      "why": "The other half of the case above, and what keeps it from being a freeze on new panes. What is remembered is the pane that was said to be gone, not the fact that something was - so a pane the mirror has genuinely never been told about still arrives on its own creation. Without this, a fix for a replayed ghost would silently cost every pane another client opens.",
+      "given": {
+        "snapshot": {
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "paneRemoved",
+            "id": "w1:p2"
+          },
+          {
+            "kind": "paneUpserted",
+            "id": "w1:p3",
+            "tab": "w1:t1",
+            "workspace": "w1",
+            "agentState": "idle"
+          }
+        ]
+      },
+      "expect": {
+        "tabs": [
+          "w1:t1"
+        ],
+        "workspaces": [],
+        "tabLabels": {
+          "w1:t1": "1"
+        },
+        "layouts": {},
+        "focus": {},
+        "health": "connected",
+        "panes": [
+          "w1:p1",
+          "w1:p3"
+        ],
+        "agentStates": {
+          "w1:p1": "idle",
+          "w1:p3": "idle"
+        },
+        "changes": [
+          "paneAdded:w1:p3"
+        ]
+      }
+    },
+    {
+      "name": "a replay that closes a tab before it creates it leaves it closed",
+      "why": "The same unordered replay that resurrects a pane resurrects a tab, measured on the same daemon: `tab_closed w1:t2` arrived two lines before `tab_created w1:t2` (`observations/herdr-0.8.0.md` section 22). A resurrected tab is worse than a resurrected pane rather than milder, because a tab with no panes draws as a caption over nothing and is what the mirror otherwise infers a closed tab from. Both are pinned so a fix for one cannot be mistaken for a fix for both.",
+      "given": {
+        "snapshot": {
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "tabRemoved",
+            "id": "w1:t2"
+          },
+          {
+            "kind": "tabUpserted",
+            "id": "w1:t2",
+            "workspace": "w1",
+            "label": "2"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1"
+        ],
+        "tabs": [
+          "w1:t1"
+        ],
+        "workspaces": [],
+        "agentStates": {
+          "w1:p1": "idle"
+        },
+        "tabLabels": {
+          "w1:t1": "1"
+        },
+        "layouts": {},
+        "focus": {},
+        "health": "connected",
+        "changes": []
+      }
     }
   ]
 }
