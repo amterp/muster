@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "a-brew-installed-0-3",
+  "alias_explicit": false,
+  "area": [
+    "backend",
+    "testing"
+  ],
+  "column": "next",
+  "created_at_millis": 1788178669697,
+  "creator": "Alexander Terp",
+  "description": "Every pane of the 0.3.0 cask renders nothing, and says so:\n\n    muster-bridge: could not start herdr: No such file or directory (os error 2)\n\n`herdr_binary()` looks for a file called `herdr` beside the bridge's own executable, and falls back to PATH (`crates/muster-bridge/src/main.rs:258-266`). `1d7ace3` moved the daemon into `Contents/Library/MusterSessions.app/` and dropped the `cp` that put a copy in `Contents/MacOS/`, so in a real bundle neither lookup finds one: `Contents/MacOS/` holds the three muster binaries and nothing else, and a pane's PATH is `~/.muster/bin:...`, which holds only the `muster` symlink.\n\n`1d7ace3` is an ancestor of the 0.3.0 commit, so every `brew install amterp/tap/muster` since the release opens a window where no pane works.\n\nA dev build hides it. `./dev` stages herdr beside the bridge in the SwiftPM bin directory (`dev:497-498`), which is the one layout the \"beside me\" rule is right about, and `tools/smoke-launch.py` launches `.build/arm64-apple-macosx/debug/muster` - so the contract tier never sees a bundle either.\n\nConfirmed on a work laptop with a clean cask install: a symlink at `~/.muster/bin/herdr` pointing into the helper bundle makes a new pane render, which is the PATH fallback finally finding something.\n\nTwo ways to fix it, differing in where the rule lives. The bridge could learn the bundle layout - beside, then `../Library/MusterSessions.app/Contents/MacOS/herdr`, then PATH - which is small, but then two files know that path. Or the app could hand the binary over as `--herdr-binary`, the way it already hands over `--herdr-socket`: it resolves the daemon in `HerdrLocation.swift` anyway, and the bridge's own comment on `herdr_socket` argues for being told rather than discovering. Keep the PATH fallback either way, since running the bridge by hand is how it gets debugged.\n\nWhichever it is, it wants a check that runs against an assembled bundle. Nothing in the suite launches one today, which is why this reached a release.",
+  "id": "a_2Hnh3g0Y5",
+  "position": "!0",
+  "title": "📦 A brew-installed 0.3.0 renders nothing in every pane",
+  "type": "bug",
+  "updated_at_millis": 1788178669697,
+  "history": [
+    {"field":"column","value":"next","at":1788178669697}
+  ]
+}
