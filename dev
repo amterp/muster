@@ -1168,6 +1168,30 @@ fn keycodes_are_current(pin):
             return false
     return true
 
+// The entitlements a release is signed with have to be well-formed XML, and nothing
+// else in the gate ever opens the file.
+//
+// codesign reads it through AMFI, and AMFI only reads it when a real identity signs a
+// bundle - every local build is ad-hoc and passes no entitlements at all. So a malformed
+// one is invisible until the release workflow, which is where it cost the 0.3.0 build:
+// `Failed to parse entitlements: AMFIUnserializeXML: syntax error near line 19`.
+//
+// `plutil -lint` is not this check and says OK to the file that broke that build. What
+// XML forbids and AMFI enforces is a double hyphen inside a comment, which is easy to
+// write by accident because it is how every flag in this repo is spelled.
+fn check_entitlements():
+    // Exits with the parser's own one-line verdict rather than a traceback, which buries
+    // the line number this is entirely about.
+    reader = "import sys, xml.dom.minidom\ntry:\n xml.dom.minidom.parse(sys.argv[1])\nexcept Exception as error:\n sys.exit(str(error))"
+    stdout, stderr, code = $`python3 -c {reader} {ENTITLEMENTS}` catch:
+        print_err(red("{ENTITLEMENTS} is not well-formed XML."))
+        print_err("Impact: codesign refuses it, so a release fails at the signing step and")
+        print_err("publishes nothing. No local build reads the file, so the gate is green.")
+        print_err("Fix: the likely cause is a double hyphen inside the comment - spelling a")
+        print_err("flag out in prose is enough to do it. The parser says where:")
+        print_err(stderr.trim())
+        exit(1)
+
 fn check_keycodes():
     pin = read_pin()
     if keycodes_are_current(pin):
@@ -1341,6 +1365,7 @@ if lint:
     // The probe is a dev tool rather than a component, so it gets a syntax check and
     // no more. It has no test suite of its own; running it needs a real herdr daemon.
     $`python3 -m compileall -q tools`
+    check_entitlements()
 
 if deps:
     announce("deps")

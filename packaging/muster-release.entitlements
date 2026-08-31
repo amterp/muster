@@ -15,14 +15,20 @@
   charges a protected request to the responsible app - and the reason the
   Info.plist carries an NSAppleEventsUsageDescription at all.
 
-  This file is signed onto two bundles, not one. In a build assembled by
-  `./dev --bundle` the responsible app for anything in a pane is the daemon's own
-  helper bundle rather than Muster, since Launch Services starts it and it
-  outlives every launch (docs/observations/macos-26.4.1.md). Muster keeps the
-  entitlement too, because a plain `swift build` spawns a bare daemon and panes
-  are charged to Muster there exactly as they used to be. Ghostty's own Developer ID build asks for
-  the same thing, which is the closest thing to evidence available for a
-  question whose failure mode is a program dying in somebody else's pane.
+  This file is signed onto two bundles, not one. In a bundle `dev` assembles,
+  the responsible app for anything in a pane is the daemon's own helper bundle
+  rather than Muster, since Launch Services starts it and it outlives every
+  launch (docs/observations/macos-26.4.1.md). Muster keeps the entitlement too,
+  because a plain `swift build` spawns a bare daemon and panes are charged to
+  Muster there exactly as they used to be. Ghostty's own Developer ID build
+  asks for the same thing, which is the closest thing to evidence available for
+  a question whose failure mode is a program dying in somebody else's pane.
+
+  Nothing in this comment may contain a double hyphen. XML forbids one inside a
+  comment, and the parser that refuses it is AMFI's, inside codesign, which runs
+  only when a real identity signs a bundle. `plutil -lint` accepts the file
+  anyway, so the whole local gate stays green and the release is where it
+  breaks: naming a flag by spelling out its dashes cost the 0.3.0 build.
 
   Deliberately not here: get-task-allow. That is what SwiftPM signs a debug build
   with so a debugger can attach, and it is the direct contradiction of the
