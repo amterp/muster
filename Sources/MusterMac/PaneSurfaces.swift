@@ -143,8 +143,12 @@ public final class PaneSurfaces {
   /// screen leaves this way; without it, a window that visits fifteen tabs holds fifteen
   /// tabs' worth of bridges until it quits.
   ///
-  /// Only parked panes, never one a region is showing. A roster that arrives empty - a daemon
-  /// mid-reconnect, a publish between arrangements - would otherwise tear down the window.
+  /// Only parked panes, never one a region is showing, so a pane on screen survives a roster
+  /// that does not name it. A parked pane has no such cover: a roster naming nothing releases
+  /// every one of them. That is safe only because a roster cannot arrive empty while a daemon
+  /// holds panes - a mirror is seeded from its snapshot before its backend is registered, and
+  /// nothing empties one afterwards except the next snapshot. If that stops being true, this
+  /// is where a window loses every off-screen bridge to a daemon that was only reconnecting.
   public func release(everythingBut alive: Set<PaneKey>) {
     for (key, entry) in held
     where !alive.contains(key) && entry.chrome.superview === parking {

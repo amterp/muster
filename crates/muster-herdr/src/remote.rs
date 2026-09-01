@@ -5,11 +5,18 @@
 //! under a herdr session of its own, started and never stopped. What changes is only that the
 //! binary has to get there first.
 //!
-//! **This machine fetches, and the far one never reaches the network.** Whoever is running
+//! **This machine fetches the daemon, and the far one never has to.** Whoever is running
 //! Muster demonstrably has web access - they got Muster somehow - while a devenv is often a
 //! container or a build box with no route out. So the release asset is downloaded here,
 //! verified against the pin here, kept in a cache here, and pushed over the ssh master that is
-//! already open. Nothing about the far machine's connectivity has to be true.
+//! already open. Getting a daemon over there asks nothing of that machine's connectivity.
+//!
+//! That is a claim about the install and no longer about everything the daemon does afterwards.
+//! Muster leaves herdr's `manifest_check` at herdr's own default, which is on, because freezing
+//! agent-detection rules is what once made `working` unreachable (`crate::config`, and kan
+//! a_2HxSqYtuA) - so the daemon started here goes looking for manifests like any other. What a
+//! machine with no route out does about that is herdr's answer rather than Muster's, and has
+//! not been measured.
 //!
 //! Four platforms are pinned and this build carries none of them, which is the other half of
 //! the decision: bundling all four would be about 72 MB of app, most of it daemons for machines
@@ -303,11 +310,6 @@ fn fetch(url: &str, path: &str) -> Result<(), String> {
         .map_err(|error| format!("could not put the downloaded daemon at {path} ({error})"))
 }
 
-/// The file's bytes, once they are the bytes the pin names.
-///
-/// A mismatch removes the file and refuses. Refuses rather than warns because the whole point
-/// of the pin is that the daemon Muster runs is the daemon its corpus was recorded against, and
-/// a warning nobody reads turns that into a preference.
 /// What a downloaded daemon is judged by: SHA-256, lowercase hex, no separators.
 ///
 /// Its own function because `deps/herdr.pin` spells its checksums this way, so the algorithm
@@ -316,6 +318,11 @@ pub fn digest(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 
+/// The file's bytes, once they are the bytes the pin names.
+///
+/// A mismatch removes the file and refuses. Refuses rather than warns because the whole point
+/// of the pin is that the daemon Muster runs is the daemon its corpus was recorded against, and
+/// a warning nobody reads turns that into a preference.
 fn verified(path: &str, want: &str, url: &str) -> Result<Vec<u8>, String> {
     let bytes = std::fs::read(path)
         .map_err(|error| format!("could not read the downloaded daemon at {path} ({error})"))?;

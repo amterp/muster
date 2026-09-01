@@ -93,8 +93,8 @@ write instead. `docs/configuration.md` is every key.
 
 ## What is not built yet
 
-Muster is young - this is v0.1 - and these are the gaps worth knowing about before you install
-rather than after:
+Muster is young, and these are the gaps worth knowing about before you install rather than
+after:
 
 - An agent that needs you shows it on its row, but does not notify you.
 - Mouse buttons and motion do not reach a pane.
