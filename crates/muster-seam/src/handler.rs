@@ -552,9 +552,9 @@ fn target(daemon_id: &str, pane_id: &str) -> Result<(DaemonId, Option<PaneId>), 
 
 /// Why a request that named no pane found none.
 ///
-/// Two states with two ways out, so the message carries both: a machine showing nothing wants
-/// a pane made on it, and a machine that has a region and no pane in it is a tab whose panes
-/// have not been described yet, which resolves on its own.
+/// Two states with two ways out, so they get a message each. A machine showing nothing wants a
+/// pane made on it. A machine that has a region and no pane in it is a tab whose panes have not
+/// been described yet, which resolves on its own and wants nothing done about it.
 fn nothing_to_act_on(daemon: &DaemonId) -> Response {
     if session::showing_nothing(daemon) {
         return Response::failure(format!(

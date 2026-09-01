@@ -839,11 +839,11 @@ pub(crate) struct Session {
 
     /// Machines Muster has asked for a workspace and has not heard back about.
     ///
-    /// The third of these and the one that guards the *asking* rather than what to do with the
-    /// answer. A machine holding nothing is asked for a workspace, and until that workspace
-    /// exists the machine still holds nothing - so an unguarded rule would ask again on every
-    /// event any *other* machine sent, and a laptop that chatters would give a devenv a dozen
-    /// workspaces before the first reply landed.
+    /// Beside `wanted_tabs` and `wanted_panes` above, and the one of the three that guards the
+    /// *asking* rather than what to do with the answer. A machine holding nothing is asked for a
+    /// workspace, and until that workspace exists the machine still holds nothing - so an
+    /// unguarded rule would ask again on every event any *other* machine sent, and a laptop that
+    /// chatters would give a devenv a dozen workspaces before the first reply landed.
     ///
     /// Shared with the launch-time rule rather than kept beside it, which is the whole reason
     /// it is here and not a local. Launch asks before any daemon has spoken; this asks once one
@@ -2376,14 +2376,14 @@ fn follow_implicitly_if_nothing_else() -> Result<(), String> {
 
 /// Asks for one workspace when nothing else has produced anything to show.
 ///
-/// The impatient rule, and that is what separates it from
-/// [`open_remaining_regions`] beside it. This one runs during launch, before any daemon has
-/// answered a subscription, so it can tell an empty window from a full one and cannot tell
-/// which machine is empty - and it has to fire anyway, because a daemon Muster started a moment
-/// ago holds nothing and every rule above it produces an empty window. So it picks, and it picks
-/// the first local machine: a remote one is somebody else's, and choosing it uninvited is a
-/// bigger claim than filling a window. Once a machine has spoken, `open_remaining_regions` asks
-/// each one that holds nothing, remote ones included, and no longer has to pick.
+/// This runs during launch, before any daemon has answered a subscription, which is what
+/// separates it from [`open_remaining_regions`] beside it: it can tell an empty window from a
+/// full one and cannot tell which machine is empty. It has to fire anyway, because a daemon
+/// Muster started a moment ago holds nothing and every rule above it produces an empty window.
+/// So it picks, and it picks the first local machine: a remote one is somebody else's, and
+/// choosing it uninvited is a bigger claim than filling a window. Once a machine has spoken,
+/// `open_remaining_regions` asks each one that holds nothing, remote ones included, and no
+/// longer has to pick.
 ///
 /// Nothing is opened here. The daemon answers by publishing a workspace, a tab and a pane,
 /// and the region appears the way every other region does - through the reconcile that
