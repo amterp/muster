@@ -439,6 +439,42 @@ fn a_machine_this_window_is_not_following_is_refused_by_name() {
     }
 }
 
+/// A pane and a machine that disagree, refused rather than resolved either way.
+///
+/// The CLI cannot send this - `--pane` and `--daemon` are one clap group - and the window
+/// cannot either, because a click reads both off one view. The socket has neither guard, and
+/// this project treats it as a surface equal to the other two.
+///
+/// Refusing matters more than which one would have won. Acting on the machine sends the
+/// laptop's pane to the devenv, and the devenv answers "holds no pane called ..., most likely
+/// it closed while this was in flight" - a race blamed for a caller's mistake, and the exact
+/// sentence a_2Hwef7lQT was about.
+#[test]
+fn a_pane_and_a_machine_that_disagree_are_refused() {
+    let _turn = muster::testing::fresh_session();
+    let TwoMachines { laptop, devenv } = a_window_showing_two_machines();
+
+    let on_laptop = pane_on("laptop").expect("the fixture waited for it");
+    let (before, elsewhere) = (panes(&laptop).len(), panes(&devenv).len());
+
+    let reason = refusal(request::Payload::SplitPane(SplitPane {
+        daemon_id: "devenv".to_string(),
+        pane_id: on_laptop.clone(),
+        side: "right".to_string(),
+        ..SplitPane::default()
+    }));
+
+    for expected in [on_laptop.as_str(), "laptop", "devenv"] {
+        assert!(
+            reason.contains(expected),
+            "a refusal should name the pane, the machine holding it and the one that was \
+             asked for, and did not mention {expected}: {reason}"
+        );
+    }
+    assert_eq!(panes(&laptop).len(), before, "a refused split reached the laptop anyway");
+    assert_eq!(panes(&devenv).len(), elsewhere, "a refused split reached the devenv anyway");
+}
+
 fn put_the_keyboard_back(on_devenv: &str) {
     assert_ok(&answer(request::Payload::FocusPane(FocusPane {
         daemon_id: String::new(),

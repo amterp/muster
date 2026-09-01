@@ -526,6 +526,10 @@ fn act(
 /// - A request that names neither acts on the machine the keyboard is on, which is what a
 ///   keybinding means and a keybinding is the common caller. A click names both, having read
 ///   them off the view it was rendered from.
+/// - A request that names both, and names a machine that is not the one holding the pane, is
+///   refused. The two cannot both be right, and either answer to a contradiction is a request
+///   somebody did not make - so this is the one place the fourth case is decided rather than
+///   guessed at by each verb.
 ///
 /// The pane is optional, because a machine can have nothing on screen. What that means is the
 /// caller's to say: `tab new` and `pane new` turn it into a workspace, and the verbs that need
@@ -534,7 +538,13 @@ fn target(daemon_id: &str, pane_id: &str) -> Result<(DaemonId, Option<PaneId>), 
     if !pane_id.is_empty() {
         let pane = PaneId::new(pane_id);
         let daemon = match session::daemon_holding(&pane) {
-            Some(daemon) if daemon_id.is_empty() => daemon,
+            Some(holder) if daemon_id.is_empty() => holder,
+            Some(holder) if holder.as_str() != daemon_id => {
+                return Err(Box::new(held_elsewhere(&pane, &holder, daemon_id)));
+            }
+            // Either the two agree, or no mirror has heard of this pane yet - which is a pane
+            // the backend has only just made, and refusing that would refuse a request that is
+            // about to be right.
             _ => resolve_daemon(daemon_id)?,
         };
         return Ok((daemon, Some(pane)));
@@ -587,6 +597,27 @@ fn no_such_daemon(daemon: &DaemonId) -> Response {
          machine's name is the `id` of its `[[daemon]]` block and is what `muster window` \
          prints beside it. A block added since this window launched is not attached until it \
          is relaunched."
+    ))
+}
+
+/// Why a request naming a pane and a machine that disagree is refused.
+///
+/// Acting on either one would be acting on a request nobody made. Taking the machine sends the
+/// pane's name to a daemon that does not hold it, which answers that it is not showing that
+/// pane and it most likely closed while the request was in flight - a race blamed for a
+/// caller's mistake, which is the shape of answer 6b387ae was written to stop Muster giving.
+/// Taking the pane would quietly discard a field somebody filled in on purpose.
+///
+/// Only the raw request surface can produce this. The CLI puts `--pane` and `--daemon` in one
+/// clap group, and the window reads both off a single view, so the two agree by construction
+/// there. Something driving the socket has neither guard, and this is what tells it.
+fn held_elsewhere(pane: &PaneId, holder: &DaemonId, named: &str) -> Response {
+    Response::failure(format!(
+        "the pane {pane} is on {holder} and this request named the machine {named}, so \
+         nothing was done - the two cannot both be right. A pane's name is Muster's own and \
+         unique across every attached machine, so it is already a complete address: send this \
+         again naming only the pane. Naming a machine instead of a pane is for one you have no \
+         pane on yet, which is what `--daemon` is for."
     ))
 }
 
