@@ -5,6 +5,8 @@
 //! adapter translates into these types, and a second backend would translate into the
 //! same ones.
 
+use std::collections::BTreeSet;
+
 use crate::AgentState;
 
 /// The ids are separate types because they are all strings shaped `w1:p1` and `w1:t1`, and
@@ -348,6 +350,31 @@ pub struct Snapshot {
     /// The highest agent-state sequence the backend has issued, if it issues one. Lets a
     /// later gap be noticed rather than merely survived (`architecture.md`, event model).
     pub agent_state_seq: Option<u64>,
+}
+
+impl Snapshot {
+    /// The tabs this snapshot lists that none of its own panes are in.
+    ///
+    /// A snapshot disagreeing with itself, and the answer to it is settled: **a tab is never
+    /// legitimately empty**, because on creation the pane arrives before the tab
+    /// (`observations/herdr-0.8.0.md` section 15, measured on the events). So "this tab holds
+    /// no panes" means one thing, and `Mirror::remove_pane` already acts on it - it drops a
+    /// tab whose last pane went, because herdr closes such a tab and announces nothing.
+    ///
+    /// Bootstrap needs the same rule, and not having it is what put five tabs in a window
+    /// holding one (kan a_2HvxMgXai). A daemon there answered `session.snapshot` with tabs its
+    /// own `tab list` denied holding, and Muster drew every one: rows taking chord numbers, a
+    /// region on a tab with no pane to close, and an agent list four fifths fiction.
+    ///
+    /// Shared with the adapter so it can say how many were denied without restating the rule.
+    pub fn empty_tabs(&self) -> Vec<TabId> {
+        let occupied: BTreeSet<&TabId> = self.panes.iter().map(|pane| &pane.tab).collect();
+        self.tabs
+            .iter()
+            .filter(|tab| !occupied.contains(&tab.id))
+            .map(|tab| tab.id.clone())
+            .collect()
+    }
 }
 
 /// How much of the backend's truth Muster currently has.

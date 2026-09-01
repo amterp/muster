@@ -2832,15 +2832,34 @@ fn reconcile(daemon: &DaemonId) {
 /// the shell's business, so every pane is sent and the shell decides.
 fn announce(daemon: &DaemonId, notice: Notice) {
     match notice {
-        Notice::Bootstrapped { changes, dropped } => {
+        Notice::Bootstrapped { changes, dropped, denied_tabs } => {
             log::info(
                 "mirror.bootstrap",
                 fields! {
                     "daemon" => daemon.to_string(),
                     "changes" => changes.len().to_string(),
                     "dropped" => dropped.to_string(),
+                    "denied_tabs" => denied_tabs.to_string(),
                 },
             );
+            if denied_tabs > 0 {
+                log::warn(
+                    "mirror.tabs_denied",
+                    fields! {
+                        "daemon" => daemon.to_string(),
+                        "count" => denied_tabs.to_string(),
+                        "impact" => "this daemon's snapshot disagreed with itself and the tabs \
+                                     it could not account for are not drawn. Right where the \
+                                     daemon is holding tabs no pane is in; wrong if it holds \
+                                     panes this snapshot left out, and then those panes are \
+                                     missing from the window too",
+                        "check" => "ask this daemon `herdr api snapshot` and compare its tabs \
+                                    with its panes. A tab no pane names is one herdr has \
+                                    already closed and not announced \
+                                    (observations/herdr-0.8.0.md section 15)",
+                    },
+                );
+            }
             if dropped > 0 {
                 log::warn(
                     "mirror.entries_dropped",

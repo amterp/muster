@@ -49,6 +49,10 @@ pub enum Notice {
     Bootstrapped {
         changes: Vec<Change>,
         dropped: usize,
+        /// Tabs the snapshot listed that none of its own panes were in, which the mirror
+        /// refused. Separate from `dropped`, which counts entries that would not parse: this
+        /// is a snapshot that parsed and disagreed with itself (kan a_2HvxMgXai).
+        denied_tabs: usize,
     },
     Changed(Change),
     /// The connection dropped. The mirror is still the best answer available and is now a
@@ -393,8 +397,11 @@ fn bootstrap(
     names: &Names,
 ) -> Result<(), Failure> {
     let (snapshot, dropped) = fetch_snapshot_within(socket_path, names, SESSION_ALLOWANCE)?;
+    // Asked here rather than counted inside the mirror, which is pure and reports through
+    // `Change` alone. One rule either way: both callers ask `Snapshot::empty_tabs`.
+    let denied_tabs = snapshot.empty_tabs().len();
     let changes = poison::lock(mirror, "mirror").bootstrap(snapshot);
-    report(Notice::Bootstrapped { changes, dropped });
+    report(Notice::Bootstrapped { changes, dropped, denied_tabs });
     Ok(())
 }
 

@@ -159,12 +159,23 @@ impl Mirror {
     /// replay: patching across a gap is the one thing convergence cannot save. Reporting
     /// the difference rather than "everything changed" is what lets a reconnect update the
     /// view without repainting panes that were never affected.
-    pub fn bootstrap(&mut self, snapshot: Snapshot) -> Vec<Change> {
+    pub fn bootstrap(&mut self, mut snapshot: Snapshot) -> Vec<Change> {
+        // A tab none of this snapshot's own panes are in is not a tab, and this is the same
+        // inference `remove_pane` makes on the event path - see `Snapshot::empty_tabs` for the
+        // measurement that makes it safe. Applied before anything else, so nothing below has to
+        // know: no `TabAdded`, no tree, no focus cursor pointing at one.
+        let phantom: BTreeSet<TabId> = snapshot.empty_tabs().into_iter().collect();
+        if !phantom.is_empty() {
+            snapshot.tabs.retain(|tab| !phantom.contains(&tab.id));
+            snapshot.layouts.retain(|layout| !phantom.contains(&layout.tab));
+        }
+
         let previous_panes = std::mem::take(&mut self.panes);
         let previous_tabs = std::mem::take(&mut self.tabs);
         let previous_workspaces = std::mem::take(&mut self.workspaces);
         let previous_layouts = std::mem::take(&mut self.layouts);
         let previous_focus = std::mem::replace(&mut self.focus, snapshot.focus);
+        // Set before the maps below are filled, so the forgetting has to wait until they are.
 
         self.workspaces = snapshot.workspaces.into_iter().map(|w| (w.id.clone(), w)).collect();
         self.tabs = snapshot.tabs.into_iter().map(|t| (t.id.clone(), t)).collect();
@@ -180,6 +191,10 @@ impl Mirror {
         // own label for it, which is what the rename produced. Holding the wish past that would
         // let it put back a name a later client had already changed.
         self.names_awaiting_pane.retain(|pane, _| !self.panes.contains_key(pane));
+        // A cursor the snapshot set on a tab that was just denied would dangle, and every
+        // reader then has to handle a focused tab the mirror does not hold. Same call the
+        // event path makes after a removal, for the same reason.
+        self.forget_focus();
         self.health = Health::Connected;
         self.health_detail.clear();
         let previous_seq = std::mem::replace(&mut self.agent_state_seq, snapshot.agent_state_seq);

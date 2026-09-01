@@ -108,7 +108,14 @@
               "label": "1"
             }
           ],
-          "panes": [],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "unknown"
+            }
+          ],
           "layouts": []
         },
         "events": [
@@ -125,14 +132,18 @@
         ]
       },
       "expect": {
-        "panes": [],
+        "panes": [
+          "w1:p1"
+        ],
         "tabs": [
           "w1:t1"
         ],
         "workspaces": [
           "w1"
         ],
-        "agentStates": {},
+        "agentStates": {
+          "w1:p1": "unknown"
+        },
         "tabLabels": {
           "w1:t1": "1"
         },
@@ -3269,6 +3280,14 @@
               "workspace": "w1",
               "label": "release"
             }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "unknown"
+            }
           ]
         },
         "events": [
@@ -3281,12 +3300,16 @@
         ]
       },
       "expect": {
-        "panes": [],
+        "panes": [
+          "w1:p1"
+        ],
         "tabs": [
           "w1:t1"
         ],
         "workspaces": [],
-        "agentStates": {},
+        "agentStates": {
+          "w1:p1": "unknown"
+        },
         "tabLabels": {
           "w1:t1": "release"
         },
@@ -3307,6 +3330,14 @@
               "workspace": "w1",
               "label": "1"
             }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "unknown"
+            }
           ]
         },
         "events": [
@@ -3318,12 +3349,16 @@
         ]
       },
       "expect": {
-        "panes": [],
+        "panes": [
+          "w1:p1"
+        ],
         "tabs": [
           "w1:t1"
         ],
         "workspaces": [],
-        "agentStates": {},
+        "agentStates": {
+          "w1:p1": "unknown"
+        },
         "tabLabels": {
           "w1:t1": "release"
         },
@@ -4013,6 +4048,216 @@
         "workspaces": [],
         "agentStates": {
           "w1:p1": "idle"
+        },
+        "tabLabels": {
+          "w1:t1": "1"
+        },
+        "layouts": {},
+        "focus": {},
+        "health": "connected",
+        "changes": []
+      }
+    },
+    {
+      "name": "a snapshot's tab that none of its panes are in is not a tab",
+      "why": "kan a_2HvxMgXai. A window drew five tabs while both daemons answered `herdr api snapshot` with empty tabs and empty panes, and `tab list` and `pane list` agreed with the snapshot. Three of the five held no panes at all. The rows took chord numbers, one drew a region with no pane in it to close, and the agent list - the one place that answers \"what am I running and where\" - was four fifths fiction.\n\nRefusing is safe because a tab is never legitimately empty: on creation the pane arrives before the tab, measured on the same events (`observations/herdr-0.8.0.md` section 15). So \"this tab holds no panes\" means one thing, and `remove_pane` already acts on it - a tab whose last pane goes is dropped, because herdr closes it and announces nothing. Bootstrap now makes the same inference from a statement of the whole world, where absence is evidence in a way it never is mid-stream.",
+      "given": {
+        "snapshot": {
+          "workspaces": [
+            {
+              "id": "w1",
+              "label": "tmp"
+            }
+          ],
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            },
+            {
+              "id": "w1:t2",
+              "workspace": "w1",
+              "label": "2"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "unknown"
+            }
+          ],
+          "layouts": []
+        },
+        "events": []
+      },
+      "expect": {
+        "panes": [
+          "w1:p1"
+        ],
+        "tabs": [
+          "w1:t1"
+        ],
+        "workspaces": [
+          "w1"
+        ],
+        "agentStates": {
+          "w1:p1": "unknown"
+        },
+        "tabLabels": {
+          "w1:t1": "1"
+        },
+        "layouts": {},
+        "focus": {},
+        "health": "connected",
+        "changes": []
+      }
+    },
+    {
+      "name": "a refused tab takes its tree and the cursor pointing at it",
+      "why": "Half a refusal is worse than none. A tree left behind names panes the mirror does not hold, and a focus cursor on a tab nobody holds is the dangling case every reader has to handle and one of them will forget - which draws a tab that is not there. Both are cleared the way the event path clears them.",
+      "given": {
+        "snapshot": {
+          "workspaces": [
+            {
+              "id": "w1",
+              "label": "tmp"
+            }
+          ],
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            },
+            {
+              "id": "w1:t2",
+              "workspace": "w1",
+              "label": "2"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "unknown"
+            }
+          ],
+          "layouts": [
+            {
+              "tab": "w1:t1",
+              "root": "w1:p1"
+            },
+            {
+              "tab": "w1:t2",
+              "root": "w1:p9"
+            }
+          ],
+          "focus": {
+            "workspace": "w1",
+            "tab": "w1:t2"
+          }
+        },
+        "events": []
+      },
+      "expect": {
+        "panes": [
+          "w1:p1"
+        ],
+        "tabs": [
+          "w1:t1"
+        ],
+        "workspaces": [
+          "w1"
+        ],
+        "agentStates": {
+          "w1:p1": "unknown"
+        },
+        "tabLabels": {
+          "w1:t1": "1"
+        },
+        "layouts": {
+          "w1:t1": "w1:p1"
+        },
+        "focus": {
+          "workspace": "w1"
+        },
+        "health": "connected",
+        "changes": []
+      }
+    },
+    {
+      "name": "a tab the daemon cannot account for is never announced as added",
+      "why": "The refusal has to happen before the diff, or a reconnect reports a tab arriving and then nothing ever reports it leaving - and every reader that acted on the arrival is holding a tab no snapshot will mention again. Stated as a re-snapshot because that is where a bootstrap's changes are read: the first one is setup.",
+      "given": {
+        "snapshot": {
+          "workspaces": [
+            {
+              "id": "w1",
+              "label": "tmp"
+            }
+          ],
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "unknown"
+            }
+          ]
+        },
+        "events": [],
+        "resnapshot": {
+          "workspaces": [
+            {
+              "id": "w1",
+              "label": "tmp"
+            }
+          ],
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            },
+            {
+              "id": "w1:t2",
+              "workspace": "w1",
+              "label": "2"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "unknown"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "panes": [
+          "w1:p1"
+        ],
+        "tabs": [
+          "w1:t1"
+        ],
+        "workspaces": [
+          "w1"
+        ],
+        "agentStates": {
+          "w1:p1": "unknown"
         },
         "tabLabels": {
           "w1:t1": "1"
