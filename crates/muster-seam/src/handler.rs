@@ -140,8 +140,10 @@ fn handle(request: Request) -> Response {
              other pane request, an empty id has no useful meaning here - it would ask to \
              focus whatever is already focused - so the shell building this has a bug.",
         ),
-        request::Payload::FocusPane(focus) => match resolve_daemon(&focus.daemon_id) {
-            Ok(daemon) => answer(session::focus(&daemon, &PaneId::new(focus.pane_id))),
+        // The pane is never absent here, because an empty id was refused by the arm above.
+        request::Payload::FocusPane(focus) => match target(&focus.daemon_id, &focus.pane_id) {
+            Ok((daemon, Some(pane))) => answer(session::focus(&daemon, &pane)),
+            Ok((daemon, None)) => nothing_to_act_on(&daemon),
             Err(refusal) => *refusal,
         },
         request::Payload::WindowFocus(focus) => {
@@ -250,23 +252,12 @@ fn read_pane(read: &proto::ReadPane) -> Response {
 /// Named like every other pane request: an empty pane means the one the keyboard is on,
 /// which is the pane a find bar is drawn over and so the only case a chord produces.
 fn find_in_pane(find: &proto::Find) -> Response {
-    let daemon = match resolve_daemon(&find.daemon_id) {
-        Ok(daemon) => daemon,
+    let (daemon, pane) = match target(&find.daemon_id, &find.pane_id) {
+        Ok(target) => target,
         Err(refusal) => return *refusal,
     };
-    let pane = if find.pane_id.is_empty() {
-        match session::focused_pane() {
-            Some(pane) => pane,
-            None => {
-                return Response::failure(
-                    "no pane has this window's keyboard, so there was nothing to search. A find \
-                     that names no pane means the focused one, and this window has none - the \
-                     attach failed earlier, or the pane it succeeded on exited.",
-                );
-            }
-        }
-    } else {
-        PaneId::new(&find.pane_id)
+    let Some(pane) = pane else {
+        return nothing_to_act_on(&daemon);
     };
     found(session::find(&daemon, &pane, &Needle::new(&find.needle)))
 }
@@ -503,43 +494,100 @@ fn with_pane(what: &str, act: impl FnOnce(&AttachedPane) -> Response) -> Respons
 }
 
 /// Builds an intent about a pane and asks for it.
-///
-/// An empty pane id means the one this window's keyboard feeds, and an empty daemon means
-/// the daemon that pane is on, because that is what a keybinding means and a keybinding is
-/// the common caller. A click sends both, having read them off the view it was rendered
-/// from; a CLI that names a pane gets the pane it named.
 fn act(
     daemon_id: &str,
     pane_id: &str,
     keyboard: Keyboard,
     build: impl FnOnce(PaneId) -> BackendIntent,
 ) -> Response {
-    let pane = if pane_id.is_empty() {
-        match session::focused_pane() {
-            Some(pane) => pane,
-            None => {
-                return Response::failure(
-                    "no pane has this window's keyboard, so there was nothing to act on. A \
-                     request that names no pane means the focused one, and this window has \
-                     none - the attach failed earlier, or the pane it succeeded on exited.",
-                );
-            }
-        }
-    } else {
-        PaneId::new(pane_id)
+    let (daemon, pane) = match target(daemon_id, pane_id) {
+        Ok(target) => target,
+        Err(refusal) => return *refusal,
     };
-    // The daemon comes from the pane when a request named one and no daemon. A pane name is
-    // Muster's own and unique across every attached machine, so it already says which - and
-    // asking a caller to name the machine too would mean a CLI could not reach a devenv pane
-    // without first working out where it lives.
-    let daemon = match session::daemon_holding(&pane) {
-        Some(daemon) if daemon_id.is_empty() => daemon,
-        _ => match resolve_daemon(daemon_id) {
-            Ok(daemon) => daemon,
-            Err(refusal) => return *refusal,
-        },
+    let Some(pane) = pane else {
+        return nothing_to_act_on(&daemon);
     };
     submit(&daemon, &build(pane), keyboard)
+}
+
+/// Which machine a request is about, and which of its panes.
+///
+/// One rule for every verb that takes a ref, because they all take the same kind of ref. A
+/// verb reading it its own way is a request sent to the wrong machine and blamed on the pane,
+/// which is what `muster tab new --pane` did whenever the keyboard was on the other machine.
+///
+/// - A request that names a pane acts on the machine holding it. A pane name is Muster's own
+///   and unique across every attached machine, so it already says which - and asking a caller
+///   to name the machine too would mean a CLI could not reach a devenv pane without first
+///   working out where it lives.
+/// - A request that names a machine and no pane acts on that machine, on the pane its region
+///   has the keyboard on. This is what `--daemon` is for, and the only way to say "over
+///   there" about a machine you have no pane on.
+/// - A request that names neither acts on the machine the keyboard is on, which is what a
+///   keybinding means and a keybinding is the common caller. A click names both, having read
+///   them off the view it was rendered from.
+///
+/// The pane is optional, because a machine can have nothing on screen. What that means is the
+/// caller's to say: `tab new` and `pane new` turn it into a workspace, and the verbs that need
+/// something to act on refuse.
+fn target(daemon_id: &str, pane_id: &str) -> Result<(DaemonId, Option<PaneId>), Box<Response>> {
+    if !pane_id.is_empty() {
+        let pane = PaneId::new(pane_id);
+        let daemon = match session::daemon_holding(&pane) {
+            Some(daemon) if daemon_id.is_empty() => daemon,
+            _ => resolve_daemon(daemon_id)?,
+        };
+        return Ok((daemon, Some(pane)));
+    }
+    let daemon = resolve_daemon(daemon_id)?;
+    // Checked here rather than inside `resolve_daemon`, which is also on the scroll path and
+    // pays for what it does per wheel notch. This is the one branch a name somebody typed
+    // arrives on; every other caller reads the daemon off the view it was drawn from.
+    if !daemon_id.is_empty() && !session::is_following(&daemon) {
+        return Err(Box::new(no_such_daemon(&daemon)));
+    }
+    let pane = session::focused_pane_on(&daemon);
+    Ok((daemon, pane))
+}
+
+/// Why a request that named no pane found none.
+///
+/// Two states with two ways out, so the message carries both: a machine showing nothing wants
+/// a pane made on it, and a machine that has a region and no pane in it is a tab whose panes
+/// have not been described yet, which resolves on its own.
+fn nothing_to_act_on(daemon: &DaemonId) -> Response {
+    if session::showing_nothing(daemon) {
+        return Response::failure(format!(
+            "the daemon {daemon} has nothing on screen in this window, so a request that named \
+             no pane had nothing to act on and nothing happened. `muster pane new --daemon \
+             {daemon}` makes it a pane; every other verb needs one to already be there."
+        ));
+    }
+    Response::failure(format!(
+        "the daemon {daemon} is showing a tab this window has not been told the panes of yet, \
+         so a request that named no pane had nothing to act on and nothing happened. The \
+         daemon's event is on its way - ask again. A request that names no pane means the one \
+         that machine's region has the keyboard on."
+    ))
+}
+
+/// Why a name somebody gave a machine reached no machine.
+fn no_such_daemon(daemon: &DaemonId) -> Response {
+    let attached = session::attached_daemons();
+    let held = if attached.is_empty() {
+        "this window is following none".to_string()
+    } else {
+        format!(
+            "the ones it has are {}",
+            attached.iter().map(ToString::to_string).collect::<Vec<_>>().join(", ")
+        )
+    };
+    Response::failure(format!(
+        "this window is following no daemon called {daemon}, so nothing was done - {held}. A \
+         machine's name is the `id` of its `[[daemon]]` block and is what `muster window` \
+         prints beside it. A block added since this window launched is not attached until it \
+         is relaunched."
+    ))
 }
 
 /// Makes a tab beside a pane, in the directory that pane is in.
@@ -556,13 +604,25 @@ fn create_tab(create: &proto::CreateTab) -> Response {
     let run = (!create.run.is_empty()).then(|| create.run.clone());
     let name = (!create.name.is_empty()).then(|| create.name.clone());
     let keyboard = if create.take_focus { Keyboard::Follows } else { Keyboard::StaysPut };
-    let named = (!create.pane_id.is_empty()).then(|| PaneId::new(&create.pane_id));
-    let Some(pane) = named.or_else(session::focused_pane) else {
-        return open_a_workspace(cwd, run, name);
-    };
-    let daemon = match resolve_daemon(&create.daemon_id) {
-        Ok(daemon) => daemon,
+
+    // A window showing nothing, answered before anything else because every rule below starts
+    // from a machine and here nobody has named one - not the request, and not the keyboard.
+    // ⌘T is the one request that can refill such a window, so Muster picks the machine itself.
+    if create.pane_id.is_empty()
+        && create.daemon_id.is_empty()
+        && session::focused_daemon().is_none()
+    {
+        return open_a_workspace(None, keyboard, cwd, run, name);
+    }
+
+    let (daemon, pane) = match target(&create.daemon_id, &create.pane_id) {
+        Ok(target) => target,
         Err(refusal) => return *refusal,
+    };
+    // A tab lives in a workspace and a machine showing nothing has none to put one in, so what
+    // was asked for becomes the request that makes both.
+    let Some(pane) = pane else {
+        return open_a_workspace(Some(daemon), keyboard, cwd, run, name);
     };
 
     let Some((workspace, inherited)) = session::workspace_of(&daemon, &pane) else {
@@ -578,26 +638,42 @@ fn create_tab(create: &proto::CreateTab) -> Response {
     )
 }
 
-/// Makes a workspace, when there is no pane to put a tab beside.
+/// Makes a workspace, when there is no pane to make one beside.
 ///
-/// What asking for a tab means in a window showing nothing - every pane closed, or the
-/// daemons hold none yet. A tab lives in a workspace and a workspace is named by a pane in
-/// it, so a window with none has nothing to name and a workspace is the only request that
-/// can produce a pane. Without this a window that empties is a window nobody can refill:
-/// every other action is about a pane, and there is no pane.
+/// What asking for a tab or a pane means on a machine showing nothing - every pane closed, a
+/// devenv attached for the first time, or a window with nothing on screen at all. A tab lives
+/// in a workspace and a workspace is named by a pane in it, so a machine with no pane has
+/// nothing to name and a workspace is the only request that can produce one. Without this,
+/// any machine that reaches zero panes is a machine nobody can put one back on: every other
+/// action is about a pane, and there is no pane.
 ///
-/// The first local daemon, and any daemon at all when none of them is local. Launch makes
-/// the same choice and stops at local, because filling an empty window is Muster's own idea
-/// and making things on somebody else's machine uninvited is a bigger claim - but pressing
-/// the key is the invitation, so the rule that guards launch has nothing to guard here.
+/// `on` is the machine somebody named, and `None` means nobody did - a window showing nothing,
+/// where Muster picks: the first local daemon, and any daemon at all when none of them is
+/// local. Launch makes the same choice and stops at local, because filling an empty window is
+/// Muster's own idea and making things on somebody else's machine uninvited is a bigger claim.
+/// Naming a machine is the invitation, so that caution has nothing to guard here.
 ///
-/// The keyboard follows regardless of what `take_focus` asked for, because this is the one
-/// case where it has nowhere else to be. `take_focus` is false so that an agent making panes
-/// does not drag somebody's cursor around; here there is no cursor to drag and no other pane
-/// to leave it on, and honouring the flag would show a pane nobody can type into until they
-/// click it.
-fn open_a_workspace(cwd: Option<String>, run: Option<String>, name: Option<String>) -> Response {
-    let Some(daemon) = session::first_local_daemon().or_else(session::first_attached_daemon) else {
+/// A machine that *has* a region and no pane in it is refused rather than given a workspace.
+/// That is a tab whose panes this window has not been told about yet - a moment, not an
+/// absence - and answering it with a workspace would leave somebody a pane they never asked
+/// for every time an event ran late.
+///
+/// The keyboard follows whatever was asked for, except in a window that has nowhere else to
+/// put it. `take_focus` is false so that an agent making panes does not drag somebody's cursor
+/// around, and on a named machine that still holds: the keyboard is in a pane on another
+/// machine and somebody is typing into it. In a window showing nothing there is no cursor to
+/// drag and no other pane to leave it on, and honouring the flag there would show a pane
+/// nobody can type into until they click it.
+fn open_a_workspace(
+    on: Option<DaemonId>,
+    keyboard: Keyboard,
+    cwd: Option<String>,
+    run: Option<String>,
+    name: Option<String>,
+) -> Response {
+    let chosen =
+        on.or_else(|| session::first_local_daemon().or_else(session::first_attached_daemon));
+    let Some(daemon) = chosen else {
         return Response::failure(
             "this window has no pane to put a tab beside and no daemon to make one on, so \
              nothing was opened. A window with nothing attached looks like this, and so does \
@@ -605,7 +681,12 @@ fn open_a_workspace(cwd: Option<String>, run: Option<String>, name: Option<Strin
              daemon was meant to be there.",
         );
     };
-    submit(&daemon, &BackendIntent::CreateWorkspace { cwd, run, name }, Keyboard::Follows)
+    if !session::showing_nothing(&daemon) {
+        return nothing_to_act_on(&daemon);
+    }
+    let nowhere_else = session::focused_daemon().is_none();
+    let keyboard = if nowhere_else { Keyboard::Follows } else { keyboard };
+    submit(&daemon, &BackendIntent::CreateWorkspace { cwd, run, name }, keyboard)
 }
 
 /// The daemon a request means, given what it named.
@@ -1044,18 +1125,36 @@ fn split_pane(split: &proto::SplitPane) -> Response {
         ));
     };
     let keyboard = if split.take_focus { Keyboard::Follows } else { Keyboard::StaysPut };
-    act(&split.daemon_id, &split.pane_id, keyboard, |pane| BackendIntent::SplitPane {
-        pane,
-        side,
-        // Zero is proto3's unset, and a divider at the very edge is not a thing anyone asks
-        // for, so the two are safely the same answer here.
-        ratio: (split.ratio > 0.0).then_some(split.ratio),
-        // Empty is the daemon's own rule rather than this process's directory, and for a
-        // split that rule is "wherever the pane you split was".
-        cwd: (!split.cwd.is_empty()).then(|| split.cwd.clone()),
-        run: (!split.run.is_empty()).then(|| split.run.clone()),
-        name: (!split.name.is_empty()).then(|| split.name.clone()),
-    })
+    // Empty is the daemon's own rule rather than this process's directory, and for a split
+    // that rule is "wherever the pane you split was".
+    let cwd = (!split.cwd.is_empty()).then(|| split.cwd.clone());
+    let run = (!split.run.is_empty()).then(|| split.run.clone());
+    let name = (!split.name.is_empty()).then(|| split.name.clone());
+
+    let (daemon, pane) = match target(&split.daemon_id, &split.pane_id) {
+        Ok(target) => target,
+        Err(refusal) => return *refusal,
+    };
+    // A machine showing nothing has nothing to split, and what was asked for is a pane on it.
+    // Refusing here would leave `--daemon` unable to reach the machine it is most needed for -
+    // the one holding no panes, which is every devenv on the day it is attached.
+    let Some(pane) = pane else {
+        return open_a_workspace(Some(daemon), keyboard, cwd, run, name);
+    };
+    submit(
+        &daemon,
+        &BackendIntent::SplitPane {
+            pane,
+            side,
+            // Zero is proto3's unset, and a divider at the very edge is not a thing anyone
+            // asks for, so the two are safely the same answer here.
+            ratio: (split.ratio > 0.0).then_some(split.ratio),
+            cwd,
+            run,
+            name,
+        },
+        keyboard,
+    )
 }
 
 /// Types text into a pane, named rather than focused.

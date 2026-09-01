@@ -2025,11 +2025,6 @@ pub(crate) fn focused_pane() -> Option<PaneId> {
     session.composition.focused_region()?.pane.clone()
 }
 
-/// The daemon this window's keyboard is on.
-///
-/// What a request naming no daemon means, for the same reason an empty pane id means the
-/// focused pane: a menu item is about what is in front of the user and has nothing else to
-/// say.
 /// Which daemon holds the pane Muster calls this, if any followed one does.
 ///
 /// What lets a caller name a pane and nothing else. A name is unique across every attached
@@ -2039,9 +2034,63 @@ pub(crate) fn daemon_holding(pane: &PaneId) -> Option<DaemonId> {
     locate(pane).map(|(daemon, ..)| daemon)
 }
 
+/// The daemon this window's keyboard is on.
+///
+/// What a request naming no daemon means, for the same reason an empty pane id means the
+/// focused pane: a menu item is about what is in front of the user and has nothing else to
+/// say.
 pub(crate) fn focused_daemon() -> Option<DaemonId> {
     let session = poison::lock(&SESSION, "session");
     session.composition.focused_region().map(|region| region.daemon.clone())
+}
+
+/// The pane this window's keyboard feeds on one named machine.
+///
+/// What a request that names a machine and no pane means. The focused region when the
+/// keyboard is already on that machine, and otherwise that machine's first region - so
+/// `--daemon` reaches the pane somebody would be typing into if they went there.
+///
+/// Read from the composition and never from the daemon's own focus cursor, which is one value
+/// shared with every other client: routing by it would let a herdr TUI in another window
+/// decide where this one's requests land (`architecture.md`, cursors are written, not read).
+pub(crate) fn focused_pane_on(daemon: &DaemonId) -> Option<PaneId> {
+    let session = poison::lock(&SESSION, "session");
+    session
+        .composition
+        .focused_region()
+        .filter(|region| &region.daemon == daemon)
+        .or_else(|| session.composition.regions().find(|region| &region.daemon == daemon))?
+        .pane
+        .clone()
+}
+
+/// Whether no region of this window is showing this machine.
+///
+/// The question that separates a machine there is nothing to act on from one whose tab this
+/// window has not been told the panes of yet. Both leave a request that named no pane without
+/// one, and only the first should be answered by making a workspace - a machine that has a
+/// region is a machine whose event is on its way.
+pub(crate) fn showing_nothing(daemon: &DaemonId) -> bool {
+    let session = poison::lock(&SESSION, "session");
+    !session.composition.regions().any(|region| &region.daemon == daemon)
+}
+
+/// Whether this window is following a daemon by this name.
+///
+/// What lets a name somebody typed be refused by name rather than reaching [`submit`], which
+/// answers for an unfollowed daemon with a message about a bug in the core.
+pub(crate) fn is_following(daemon: &DaemonId) -> bool {
+    let session = poison::lock(&SESSION, "session");
+    session.backends.contains_key(daemon)
+}
+
+/// Every daemon this window is following, in the order the window shows them.
+///
+/// For naming the machines there are when somebody has named one there is not. The window's
+/// order rather than the config file's, so the list reads the way `muster window` prints it.
+pub(crate) fn attached_daemons() -> Vec<DaemonId> {
+    let session = poison::lock(&SESSION, "session");
+    session.composition.daemons().map(|daemon| daemon.id.clone()).collect()
 }
 
 /// Everything about this window at one moment, for a caller that gets no events.

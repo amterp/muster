@@ -289,6 +289,33 @@ impl Daemon {
         path
     }
 
+    /// A config naming this daemon and others beside it, for a window showing two machines.
+    ///
+    /// [`Daemon::muster_config`] above calls its daemon `local`, because nearly every test
+    /// has one machine and `local` is what a person's own file says. Here the ids are the
+    /// test's to choose: a window showing two machines is exactly the case where telling them
+    /// apart by name is the thing under test.
+    ///
+    /// Every daemon named is `Local` - a block with a `socket` and no `host` - so this stages
+    /// the two-machine *shape* without needing ssh. What separates the machines in the code
+    /// under test is the id and the socket, and both are real here.
+    ///
+    /// Written into this daemon's root, and removed with it.
+    pub fn muster_config_naming(&self, id: &str, others: &[(&str, &Daemon)]) -> PathBuf {
+        let path = self.root.join("muster-machines.toml");
+        let block = |id: &str, socket: &Path| {
+            format!("[[daemon]]\nid = {id:?}\nsocket = {:?}\n\n", socket.to_string_lossy())
+        };
+        let mut contents = block(id, &self.socket_path);
+        for (id, daemon) in others {
+            contents.push_str(&block(id, &daemon.socket_path));
+        }
+        std::fs::write(&path, contents).unwrap_or_else(|error| {
+            panic!("could not write the harness's Muster config at {}: {error}", path.display())
+        });
+        path
+    }
+
     pub fn client(&self) -> HerdrClient {
         // Longer than the client's own default, which is tuned for the input path where a
         // wedged daemon must not take the keyboard with it. A test would rather wait than
