@@ -21,3 +21,4 @@ corrections get a superseding MIP, and the History section records the transitio
 | ID | Title | Kind | Status |
 |---|---|---|---|
 | [MIP-1](0001-portable-core.md) | A portable core, and the seam that reaches it | Architecture | Accepted |
+| [MIP-2](0002-muster-tabs.md) | A Muster tab, and the adapter that maps it to herdr's | Architecture | Draft |

@@ -695,17 +695,20 @@ extension SidebarView: NSTableViewDataSource, NSTableViewDelegate {
 @MainActor
 final class SidebarRowView: NSView {
   private let dot = CALayer()
+  private let showing = CALayer()
   private let name = NSTextField(labelWithString: "")
   private let subtitle = NSTextField(labelWithString: "")
   private let number = NSTextField(labelWithString: "")
   private let highlight = CALayer()
   private let indented: Bool
+  private let isTab: Bool
 
   init(row: SidebarModel.Row) {
     // Panes indent under their tab caption, and sit flush when there is none. The list is
     // 200pt wide, so a level of nesting that buys nothing is a level that costs a word off
     // every label.
     indented = row.isPane && row.tab != nil
+    isTab = row.isTab
     super.init(frame: .zero)
     wantsLayer = true
 
@@ -732,6 +735,20 @@ final class SidebarRowView: NSView {
       name.stringValue = row.label
       name.textColor = row.onScreen ? .labelColor : .secondaryLabelColor
       draw(number: reached, in: row)
+      // A mark rather than only the weight above, because the question a reader has is which
+      // captions are on screen *together*: the window shows one tab per machine at once, and
+      // ⌘2 onto a tab already showing moves the keyboard while ⌘2 onto another tab of the same
+      // machine swaps what that machine's column shows. Same chord, two acts, and the list
+      // gave no sign of which. A font weight is something you compare; a column of marks is
+      // something you see (kan a_2HtF52Itm).
+      //
+      // Quiet, and deliberately not the accent colour: this says where you are looking, and the
+      // accent highlight on a pane row already says where you are typing.
+      if row.onScreen {
+        showing.backgroundColor = NSColor.tertiaryLabelColor.cgColor
+        showing.cornerRadius = SidebarRowView.showingSize / 2
+        layer?.addSublayer(showing)
+      }
     case .pane(let reached):
       name.font = .systemFont(ofSize: 12, weight: .regular)
       name.stringValue = row.label
@@ -795,6 +812,9 @@ final class SidebarRowView: NSView {
   }
 
   static let dotSize: CGFloat = 7
+  /// Smaller than a state dot, and in the same column. A mark the size of a pane's dot would
+  /// read as a state on a row that has no agent to have one.
+  static let showingSize: CGFloat = 4
   static let inset: CGFloat = 8
   static let indent: CGFloat = 10
   static let numberWidth: CGFloat = 12
@@ -805,10 +825,11 @@ final class SidebarRowView: NSView {
       highlight.frame = bounds.insetBy(dx: 4, dy: 1)
     }
     let left = SidebarRowView.inset + (indented ? SidebarRowView.indent : 0)
-    // Number, then dot, then label. Both are laid out from a running left edge rather than
-    // each from `left`, because a pane row now carries both: the number says how to reach the
-    // row and the dot says why you would want to, and they used to be alternatives only
-    // because a row was either a caption or a pane.
+    // Number, then dot, then label, laid out from a running left edge rather than each from
+    // `left`, because a pane row carries both: the number says how to reach the row and the dot
+    // says why you would want to, and they used to be alternatives only because a row was
+    // either a caption or a pane. A caption now takes the dot's column too, for the mark saying
+    // a region is showing it.
     var textLeft = left
     if number.superview != nil {
       let height = min(bounds.height, number.fittingSize.height)
@@ -821,6 +842,15 @@ final class SidebarRowView: NSView {
       dot.frame = CGRect(
         x: textLeft, y: (bounds.height - SidebarRowView.dotSize) / 2,
         width: SidebarRowView.dotSize, height: SidebarRowView.dotSize)
+      textLeft += SidebarRowView.inset + SidebarRowView.dotSize
+    } else if isTab {
+      // The column is taken on every caption and filled on the ones on screen, so a tab that
+      // goes behind another does not slide its label fifteen points sideways as it happens.
+      // Centred on where a pane's dot sits, so the marks read down the list as one column.
+      let size = SidebarRowView.showingSize
+      showing.frame = CGRect(
+        x: textLeft + (SidebarRowView.dotSize - size) / 2, y: (bounds.height - size) / 2,
+        width: size, height: size)
       textLeft += SidebarRowView.inset + SidebarRowView.dotSize
     }
     // Sized to the text and then centred, rather than given the whole row. A label draws its
