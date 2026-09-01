@@ -6,19 +6,29 @@
     "shell",
     "backend"
   ],
-  "column": "uncommitted",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "## Decided: leave it. No code.\n\nMuster commits for now to panes it spawns itself, into local or remote sessions it fully owns\nand is aware of, and does that well. Following a hand-rolled ssh session, in the user's words,\n\"is just not going to be good, it's not going to work well\" - so a pane that ssh'd somewhere\nkeeps being listed where its PTY is, and Muster says nothing about where its attention went.\n\nThe card's own argument agrees, and is the reason this closes rather than waits. An ssh session\ninside a local pane and a real remote pane have different durability: one survives a dropped VPN\nand a quit app with nothing else involved, the other lives only as long as something on the far\nside holds it. Filing them together would make the weaker look like the stronger in the one\nplace somebody would look to tell them apart. Detecting it is cheap; saying it accurately is\nnot.\n\nWorth re-reading once `a_2HpkpfIfq` has landed, which it now has: making the first pane on a\nmachine is one `muster pane new --daemon \u003cid\u003e` away, and the window gives an attached machine a\npane on its own. Most of the reason to ssh by hand into a machine Muster already knows is gone,\nwhich is the outcome this card hoped for rather than a reason to revisit it.",
+      "created_at_millis": 1788223892254,
+      "id": "c_2I6fVJ2b8"
+    }
+  ],
   "created_at_millis": 1788184807953,
   "creator": "Alexander Terp",
   "description": "Noticed while attaching a devenv for the first time: `de` in a local pane opens an ssh session onto the box, and Muster goes on listing that pane under LOCAL - a pane's daemon is decided when it is made and never asked again. Wanting the sidebar to follow is the obvious reaction, and it may well be the wrong one.\n\nDetecting it is cheap. `herdr pane process-info` already returns a pane's foreground processes, and the one in front here was `ssh -t devbox ...`. Matching that destination against the `host` of a configured `[[daemon]]` is a string comparison.\n\nWhat Muster cannot do is move the pane. A PTY belongs to the machine that opened it, which is why `pane move` refuses across machines. So the honest options are a label saying where the pane's attention has gone, or an offer to open a real pane over there - not relocating the row.\n\nThe case against doing anything: the two are not the same thing, and a label would say they were. A real devenv pane is a PTY herdr holds on the box; it survives a dropped VPN and a quit app with nothing else involved, and the agent state on its row is the agent's. An ssh session inside a local pane survives only for as long as something on the far side holds it, and the state Muster reports for that row is an ssh client's. Filing it under the machine's heading makes the weaker arrangement look like the stronger one, in the one place somebody would look to tell them apart.\n\nThe case for: people will do this anyway, because it is what every other terminal has trained them to do, and a window that silently mis-files those panes is not neutral either.\n\nWorth deciding next to the first-pane gap (`a_2HpkpfIfq`). If making the first pane on a machine were one keystroke, most of the reason to ssh by hand goes away, and this question may answer itself.",
   "id": "a_2HqGk5nOr",
-  "position": "UUUUUUU",
+  "position": "!!!!!!!!!!!!!!!!!!!!!!6",
   "tags": [
     "shakedown-2026-08-31"
   ],
   "title": "🧭 A pane that ssh'd into a machine Muster knows - say so, or leave it?",
   "type": "chore",
-  "updated_at_millis": 1788200195481,
+  "updated_at_millis": 1788223933104,
   "history": [
-    {"field":"column","value":"uncommitted","at":1788184807953}
+    {"field":"column","value":"uncommitted","at":1788184807953},
+    {"field":"column","value":"in-progress","at":1788223880044},
+    {"field":"column","value":"done","at":1788223933104}
   ]
 }

@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "view-of-takes-four",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1788224953661,
+  "creator": "Alexander Terp",
+  "description": "`View::of` grew an eighth argument during a_2HrmSyRAQ and clippy refused it, which forced the per-pane four into one closure returning a ViewPane. That was the right shape and the reason is worth keeping: two of the four returned `Option\u003cString\u003e`, so a caller that swapped them compiled and pointed every pane's bridge at the wrong thing.\n\nThree positional closures remain - a mirror, a transport and a backend socket - and two of those two are per-daemon and differently typed, so the same hazard is not there. This is a note rather than a defect: if a fourth per-daemon answer ever arrives, group them the same way rather than adding a sixth argument.\n\nLow priority. Nothing is wrong today.",
+  "id": "a_2I777Cc1Z",
+  "position": "UUUUUUUU",
+  "title": "🧹 View::of takes four closures where a reader can check two",
+  "type": "chore",
+  "updated_at_millis": 1788224953661,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1788224953661}
+  ]
+}

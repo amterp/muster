@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "upstream-one-socket",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "uncommitted",
+  "created_at_millis": 1788222894091,
+  "creator": "Alexander Terp",
+  "description": "A herdr daemon reported tabs on its subscription's bootstrap that `session.snapshot` on the same socket, in the same second, denied holding. Muster believed the first, drew five tabs where one existed, and the agent list - the one place that answers \"what am I running and where\" - was four fifths fiction. Found as `a_2HvxMgXai`, which carries the full measurement.\n\n## What was measured\n\nWith both daemons attached and everything closed, `herdr api snapshot` answered with empty `workspaces` and empty `tabs` on both sockets, and `tab list` and `pane list` agreed. The window at that moment drew five tabs and two panes.\n\nThe phantoms are daemon-side rather than Muster-side, established by restarting each daemon in turn:\n\n- Killing the local daemon and letting Muster start a fresh one cleared every local phantom, and left the devenv's untouched.\n- Restarting the devenv daemon by hand cleared those in turn.\n- Restarting only the app, with `~/.muster/state/window.toml` and `panes.toml` both deleted, cleared neither. The same tab ids came back, renumbered.\n\nSo the daemon holds them, and it gives two different answers about them on one socket.\n\n## The ask\n\nA client should be able to take one answer. Either `session.snapshot` should report what the subscription's bootstrap carries, or the two should be documented as describing different things - and if they do, which one a client rendering a session is supposed to believe.\n\n## What Muster does meanwhile\n\nRefuses a tab that none of the snapshot's own panes are in, at bootstrap. Safe because a tab is never legitimately empty: on creation the pane arrives before the tab (`docs/observations/herdr-0.8.0.md` section 15), which is the same measurement Muster already relies on to drop a tab whose last pane goes.\n\nThat is a defence rather than a fix. It cannot help with a daemon holding tabs that *do* have panes the snapshot leaves out, and it decides for herdr which of its two answers is true.",
+  "id": "a_2I6FXLq23",
+  "position": "!6",
+  "title": "🔌 Upstream: one socket answers session.snapshot two different ways",
+  "type": "chore",
+  "updated_at_millis": 1788222902718,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1788222894091},
+    {"field":"column","value":"uncommitted","at":1788222902718}
+  ]
+}

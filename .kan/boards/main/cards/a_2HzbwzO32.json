@@ -6,19 +6,29 @@
     "backend",
     "shell"
   ],
-  "column": "backlog-hi",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Option 2 built - a surface belongs to its pane and is owned by the window, lent to whichever region shows it. Switching a tab away keeps its bridges running; switching back starts none. New Sources/MusterMac/PaneSurfaces.swift, with RegionView borrowing rather than owning.\n\nThe user chose this over the other three. Worth recording why the fourth is still open: one multiplexed frame stream per machine is the only option that removes the 400ms rather than moving it, and it is a bridge-protocol change - raised as its own card.\n\nNot measured, and both halves of the card's 'Validating a fix' need a machine this one is not. ./dev --perf is the tier that judges holding fifteen surfaces where three were held, and it refuses a loaded machine; this one is hosting live agent sessions. The 440ms needs a devenv, and ./dev --ssh recreates the container. Both worth running before this is trusted.",
+      "created_at_millis": 1788223371453,
+      "id": "c_2I6RxJfJW"
+    }
+  ],
   "created_at_millis": 1788207072709,
   "creator": "Alexander Terp",
   "description": "Switching to a devenv tab leaves the pane blank for about half a second before its text appears. Local panes appear immediately. Reported while driving a laptop and a devenv side by side, and measurable in the run log.\n\n## Where the time goes\n\nTime from `bridge.start` to `bridge.frame.first`, taken from one session's log:\n\n    local panes    29ms, 59ms\n    devenv panes   444-561ms, median ~490ms, 17 samples\n\nThe frame itself is not the cost. Those devenv frames ranged from 149KB to 420KB, and the largest took 561ms against 465ms for the smallest - a 2.8x increase in bytes for 20% more time. There is a fixed cost of roughly 440ms and a small per-byte one.\n\nThe fixed cost is the far machine opening a session. Timed against the ssh master Muster already holds open:\n\n    ssh -S \u003cmaster\u003e -O check \u003chost\u003e          20ms    (local client, no remote work)\n    ssh -S \u003cmaster\u003e \u003chost\u003e 'exec /bin/true'  410ms   (a channel and a process, no shell)\n    ssh -S \u003cmaster\u003e \u003chost\u003e 'herdr --version' 415ms   (so herdr's own startup is ~5ms)\n    ping \u003chost\u003e                              2.7ms   round trip\n\nSo it is not the network, not herdr, and not the local ssh client. It is the box taking ~400ms to spawn a session for a new channel - a shared devenv, load average 19-29, up ten days. Every bridge Muster starts pays it.\n\n## Why it is paid on every switch\n\nMuster starts a bridge per surface, and a surface exists for the pane a region is currently showing. Switch to a devenv tab and its pane gets a new surface, a new `muster-bridge`, a new `ssh` exec, and therefore a fresh 400ms session setup. The same session's log holds seventeen `bridge.start` records for three devenv panes: the cost is paid per switch, not per pane.\n\nThe same 400ms is paid for every remote pane at launch, and again on every relaunch. It is also what makes `a_2Ht74jTXV` expensive rather than merely wrong - a duplicated surface pays it twice.\n\n## Four ways out, in increasing order of how much they change\n\n- **Cache the last screen and paint it immediately**, then reconcile when frames arrive. This is what was asked for, and it makes the switch feel instant. The pane shows a screen that is up to a switch old, which for an agent mid-turn is a lie the size of the delay it replaces - though \"stale for 400ms\" reads better than \"blank for 400ms\".\n- **Keep the bridge alive for off-screen panes.** The cost moves from per-switch to once per pane, and switching becomes free. The price is one ssh channel, one `muster-bridge` and one herdr client per remote pane, held for as long as the pane exists - fifteen agents means fifteen of each.\n- **Pre-warm the likely next pane** - the tab a chord would reach, the row the pointer is over. Cheaper than holding everything, and only ever a guess.\n- **One frame stream per machine instead of one per pane.** Muster already reuses a single ssh master; what remains is one exec per pane. A single long-lived client on the far side, multiplexing every pane's frames over one channel, pays the 400ms once per machine and nothing per switch. This is the largest change - the bridge protocol is per-pane today - and the only one that removes the cost rather than moving it.\n\n## Reproducing it\n\n1. Attach a devenv with at least one pane and switch away from and back to its tab.\n2. Read the latency out of the run log rather than by feel:\n\n       L=$(ls -t ~/Library/Logs/muster/*.jsonl | grep -v latest | head -1)\n       rg '\"event\":\"(bridge.start|bridge.frame.first)\"' \"$L\"\n\n   Pair each `bridge.start` with the `bridge.frame.first` that follows it and subtract `mono_ns`.\n3. Separate the far machine's session setup from everything else with the three `ssh -S` timings above, against the master in `$TMPDIR/muster-\u003capp pid\u003e-\u003cdaemon\u003e.ctl`.\n\nA fast devenv will hide this. The number that matters is what `ssh -S \u003cmaster\u003e \u003chost\u003e 'exec /bin/true'` costs on the machine in question; anything much above a round trip lands on every pane switch.\n\n## Validating a fix\n\n- Time from `bridge.start` (or whatever replaces it) to first paint on a remote pane is within a few times the local figure, not ten.\n- Switching to a devenv tab and back does not start a new remote session each time - watch `bridge.start` counts, or `pgrep -f 'muster-bridge.*via-ssh'`.\n- Whatever is held open scales with panes rather than with switches, and is released when a pane closes.",
   "id": "a_2HzbwzO32",
-  "position": "!1U",
+  "position": "!!!!!!!!!!!!!!!!!!!!!0",
   "tags": [
     "shakedown-2026-08-31"
   ],
   "title": "🐢 Switching to a devenv pane waits half a second for a new ssh session",
   "type": "bug",
-  "updated_at_millis": 1788207072709,
+  "updated_at_millis": 1788223371453,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1788207072709}
+    {"field":"column","value":"backlog-hi","at":1788207072709},
+    {"field":"column","value":"in-progress","at":1788222366765},
+    {"field":"column","value":"done","at":1788223371357}
   ]
 }

@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "one-frame-stream-per",
+  "alias_explicit": false,
+  "area": [
+    "backend",
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1788224953437,
+  "creator": "Alexander Terp",
+  "description": "The fourth option on a_2HzbwzO32, and the only one that removes the cost rather than moving it. Raised because the card is closed and this is not.\n\nSwitching to a devenv pane used to wait about 440ms for the far machine to open an ssh session for a new channel. a_2HzbwzO32 fixed the symptom by holding a pane's surface, and its bridge, for as long as the pane exists: the cost moved from per switch to once per pane. It is still paid once per pane, at launch and after every relaunch, and it is still one `muster-bridge`, one ssh channel and one herdr client held per remote pane - fifteen agents means fifteen of each.\n\nWhat would remove it: one long-lived client on the far machine multiplexing every pane's frames over the single ssh master Muster already holds. The 400ms is paid once per machine and nothing per pane, and the per-pane processes go with it.\n\nThe bridge protocol is per-pane today, so this changes the seam rather than an implementation behind it - which puts it in MIP territory (docs/mip/) rather than in an ordinary card. Worth measuring first: what the fifteen-pane hold actually costs is unmeasured, because ./dev --perf could not be run on the machine this was built on.",
+  "id": "a_2I776rXVS",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "title": "🚀 One frame stream per machine, instead of one exec per pane",
+  "type": "feature",
+  "updated_at_millis": 1788224953437,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1788224953437}
+  ]
+}

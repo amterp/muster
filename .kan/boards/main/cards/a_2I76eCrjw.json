@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "upstream-a-herdr",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "uncommitted",
+  "created_at_millis": 1788224935662,
+  "creator": "Alexander Terp",
+  "description": "A herdr client whose stdout is a pipe to a dead sshd never notices and goes on holding the terminal it attached to. Measured on a devenv 53 minutes after the ssh carrying it had died:\n\n    1700890  53:08  /home/.muster/bin/herdr terminal session control w1:p1 --cols 185 --rows 51\n    1700895  53:08  /home/.muster/bin/herdr terminal session control w1:p2 --cols 164 --rows 43\n\nTwo orphans, for exactly the two panes that could not be re-attached afterwards. The third devenv pane in the same window had no orphan and came back normally.\n\nOnly one client may hold a terminal, so this turns one dropped connection into a pane that is permanently unusable by anything but a takeover. Muster's own side is fixed (kan a_2HrmSyRAQ): a replacement bridge re-attaches with --takeover. That works, and it is Muster papering over something the daemon could answer better - a client that finds its transport gone could exit and release the terminal, and then nobody would need the flag for this case at all.\n\nFound while fixing a_2HrmSyRAQ during the 2026-08-31 shakedown.",
+  "id": "a_2I76eCrjw",
+  "position": "UUUUUUUU",
+  "title": "🔌 Upstream: a herdr client whose transport is gone holds its terminal forever",
+  "type": "chore",
+  "updated_at_millis": 1788224935662,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1788224935662}
+  ]
+}

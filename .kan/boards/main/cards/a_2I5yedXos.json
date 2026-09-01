@@ -1,0 +1,22 @@
+{
+  "_v": 3,
+  "alias": "a-remote-whose-bin",
+  "alias_explicit": false,
+  "area": [
+    "testing",
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1788222245131,
+  "creator": "Alexander Terp",
+  "description": "`a_2HpkpQlZP` is fixed and the fix is proven at the level of the script: `crates/muster-herdr/tests/remote_start_script.rs` runs `start_script`'s output under bash, which forks, and asserts the pipes reach end of file. That test fails against the old script and passes against the new one.\n\nWhat is not proven is the attach end to end, and it cannot be with the devenv we have. The container's `/bin/sh` is dash, which execs the last command of a backgrounded list, so the subshell is replaced by the redirected process and the pipes close whatever the script says. `./dev --ssh` therefore passes on both the broken script and the fixed one.\n\nTwo ways to get a far shell that forks:\n\n- `ln -sf /bin/bash /bin/sh` in the existing image for the duration of one test, and put it back afterwards. The image already installs bash - `useradd --shell /bin/bash` - so nothing new is downloaded. Needs root inside the container, which the test's `dev` user may not have without sudo rules.\n- A second image whose `/bin/sh` is bash. More isolated, and a second artifact to keep in step with the first.\n\nThe first is smaller and the tier already recreates the container on every run, so a mutation that does not survive is cheap.\n\n## Validating it\n\n- Against the fixed `start_script`, `./dev --ssh` passes.\n- Against the old one - `\u0026` on the whole `\u0026\u0026` list rather than on the `nohup` - the new test fails rather than passing, which is the thing the existing tier cannot do.",
+  "id": "a_2I5yedXos",
+  "position": "!!U",
+  "title": "🐚 A remote whose /bin/sh forks, so the attach test can fail",
+  "type": "chore",
+  "updated_at_millis": 1788222253763,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1788222245131},
+    {"field":"column","value":"backlog-hi","at":1788222253763}
+  ]
+}

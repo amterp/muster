@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "is-refilling-a",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "uncommitted",
+  "created_at_millis": 1788223950434,
+  "creator": "Alexander Terp",
+  "description": "Closing the last pane on a machine now gets you a fresh shell on it, because the window asks any attached machine that says it holds nothing for a workspace (`a_2HpkpfIfq`). That closed a real hole: before it, a machine reaching zero panes dropped out of the window's reach entirely, and the only way back was `herdr workspace create` or editing the saved arrangement.\n\nThe question is whether the rule is too eager now that it runs per machine rather than per window.\n\n`open_a_workspace_if_the_window_is_empty` has always refilled a window with no panes at all, and nobody has objected to that: a window showing nothing is not a state anybody wants. Applied per machine, the same rule means closing the devenv's last pane spawns a devenv shell, over ssh, a moment later. Somebody who has finished with a machine for the afternoon cannot stop it holding a pane without taking its `[[daemon]]` block out of the config and relaunching.\n\nNot observed as a complaint - raised from reading the change rather than from using it, which is the honest provenance and also the reason to wait. What would settle it is driving a two-machine window for a day and noticing whether a devenv shell you did not ask for ever gets in the way.\n\nThings that might be true if it does:\n\n- **Ask once per attach rather than whenever a machine empties.** A machine gets its first pane and is then left alone; closing the last one leaves it empty and reachable through `muster pane new --daemon \u003cid\u003e`, which now exists. Cheapest, and it gives up the property that the window is never showing a machine you cannot use.\n- **Ask for the local machine and offer for a remote one.** A row in the agent list that opens a pane on an empty machine, rather than one appearing. That is the sidebar affordance `a_2HpkpfIfq` deliberately deferred, and it depends on the tab model `docs/mip/0002-muster-tabs.md` is about.\n- **A setting.** Last resort - this is a question about what Muster is for, and a key that lets both answers exist is how you avoid deciding.\n- **Leave it.** A machine you are not using is one you take out of the config, and a pane costs a shell.",
+  "id": "a_2I6h18OU6",
+  "position": "UUUUUUU",
+  "title": "🌱 Is refilling a machine that empties too eager?",
+  "type": "chore",
+  "updated_at_millis": 1788223950434,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1788223950434}
+  ]
+}
