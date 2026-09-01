@@ -6,10 +6,16 @@
 # person holding the certificate can produce the same artifact on their own
 # machine and find out it works before a tag exists.
 #
-# The gate does not run here. A tag points at a commit that has already been
-# through `gate.yml` on its way to main, and re-running it would mean a release
-# waits on a suite that has already answered - while a tag on a commit that
-# never passed is a mistake this workflow cannot fix anyway.
+# This workflow does not wait on the gate. A tag points at a commit that has
+# already been through `gate.yml` on its way to main, so blocking on a suite
+# that has already answered would only make a release slower - while a tag on a
+# commit that never passed is a mistake this workflow cannot fix anyway.
+#
+# `gate.yml` does still run on the tag, because its trigger is a bare `push:`
+# and that takes tags as well as branches. So a tag starts three runs and this
+# one races the other two rather than queueing behind them. Harmless, and worth
+# knowing before somebody reads that second green gate as a second opinion: it
+# is the same commit answering the same question twice.
 #
 # Apple Silicon only, which is a decision rather than an omission: building
 # universal would mean cross-building libghostty under Zig for x86_64, and the
