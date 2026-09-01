@@ -65,3 +65,44 @@ public func herdrPath(
   let beside = macOS.appendingPathComponent("herdr").path
   return FileManager.default.isExecutableFile(atPath: beside) ? beside : nil
 }
+
+/// The same daemon, as something a process can exec.
+///
+/// Two callers want different answers to "which herdr", and the difference is not cosmetic.
+/// The core wants what [`herdrPath`] returns, because it starts a bundle through Launch
+/// Services and a bare binary by spawning it, and reads the path to decide which. A bridge
+/// runs `herdr terminal session control` and can only exec a Mach-O, so it wants the binary
+/// inside.
+///
+/// Derived here rather than worked out by the bridge, which is the whole of kan a_2Hnh3g0Y5:
+/// the bridge used to look for a file called `herdr` beside its own executable, that rule was
+/// right until the daemon moved into the helper bundle, and nothing made the two answers move
+/// together. A released cask then rendered nothing in every pane, and the PATH fallback could
+/// not save it - an app opened by Launch Services gets launchd's
+/// `PATH=/usr/bin:/bin:/usr/sbin:/sbin`, every entry SIP-protected, so there is nowhere to put
+/// a herdr even deliberately.
+///
+/// A path ending in `.app` is read as a bundle, the same test `muster_herdr::daemon::launch`
+/// applies to the same value on the other side of the seam.
+public func herdrBinaryPath(
+  executable: String,
+  environment: [String: String] = ProcessInfo.processInfo.environment
+) -> String? {
+  guard let daemon = herdrPath(executable: executable, environment: environment) else {
+    return nil
+  }
+  let path = URL(fileURLWithPath: daemon)
+  guard path.pathExtension.lowercased() == "app" else {
+    return daemon
+  }
+  // `CFBundleExecutable` in the plist `./dev` writes for this bundle. Named rather than
+  // discovered because the plist is not there to be read on the one path that matters: a
+  // bridge is spawned per pane, and re-reading a bundle's metadata fifteen times to learn a
+  // name this repo writes itself is work nobody asked for.
+  return
+    path
+    .appendingPathComponent("Contents")
+    .appendingPathComponent("MacOS")
+    .appendingPathComponent("herdr")
+    .path
+}

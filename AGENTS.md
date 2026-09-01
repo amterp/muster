@@ -177,7 +177,10 @@ cross-building libghostty under Zig for a second architecture, and the Homebrew 
 
 `./dev --contract` is the exception that stays out of the gate. It launches the real app against a real herdr and
 reads its run log to see what connected, so it needs a daemon on PATH and a logged-in GUI session - neither of which
-the default suite is allowed to require.
+the default suite is allowed to require. It assembles a bundle on the way past and launches that too, with launchd's
+own `PATH=/usr/bin:/bin:/usr/sbin:/sbin`, because a bundle is a different layout from the one SwiftPM leaves behind -
+the daemon moves into `Contents/Library/` - and 0.3.0 shipped a cask where no pane rendered while every check here
+was green against the other layout.
 
 `./dev --ssh` is the remote tier, and sits out of the gate for the same reason: it needs docker rather than a GUI
 session. It recreates the devenv container, runs the remote tests against it while it holds no daemon at all - which

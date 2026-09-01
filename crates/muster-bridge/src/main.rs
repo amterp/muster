@@ -24,7 +24,7 @@ use muster_ssh::quoted;
 
 const USAGE: &str = "\
 usage: muster-bridge <pane-id> [--control-socket <path>] [--herdr-socket <path>]
-                     [--via-ssh <host> --ssh-control <path>]
+                     [--herdr-binary <path>] [--via-ssh <host> --ssh-control <path>]
 
 Runs `herdr terminal session control <pane-id>` and unwraps its frames onto stdout.
 Sized from the PTY on stdout, which is the surface's own geometry.
@@ -36,6 +36,11 @@ typed into.
 With --herdr-socket, asks that daemon for the frames rather than whichever one this
 process would find for itself. The app always says, because it runs a herdr of its own.
 With --via-ssh the path is the far machine's, since that is where the CLI runs.
+
+With --herdr-binary, runs that daemon rather than looking for one. The app always says,
+because only the app knows where this build put it. Without it this looks beside its own
+executable and then on PATH, which is right for a bridge run by hand and right for a dev
+build, and cannot work inside a shipped bundle.
 
 With --via-ssh, runs that command on another machine instead, over the ssh master the app
 already opened for the daemon's control plane. Frames are byte-identical either way. It
@@ -68,18 +73,36 @@ fn main() {
             "control_socket" => arguments.control_socket.clone().unwrap_or("(none)".into()),
             "host" => arguments.ssh.as_ref()
                 .map_or_else(|| "(this machine)".to_string(), |ssh| ssh.host.clone()),
+            // Which herdr renders this pane, which is the first question when a pane paints
+            // nothing and the one that cost a release to answer (kan a_2Hnh3g0Y5). Absent for
+            // a remote pane: that one is resolved by the script the far shell runs.
+            "herdr" => match &arguments.ssh {
+                Some(_) => "(the far machine's)".to_string(),
+                None => herdr_binary(arguments.herdr_binary.as_deref())
+                    .to_string_lossy()
+                    .into_owned(),
+            },
         },
     );
 
     let mut herdr = match spawn_herdr(&arguments, columns, rows) {
         Ok(child) => child,
         Err(error) => {
+            // The path is on the record because without it this failure names no file, and
+            // then a released bundle that renders nothing in every pane says only "No such
+            // file or directory" - which is what kan a_2Hnh3g0Y5 cost to work out by hand.
+            let tried = match &arguments.ssh {
+                Some(_) => "(the far machine's)".to_string(),
+                None => {
+                    herdr_binary(arguments.herdr_binary.as_deref()).to_string_lossy().into_owned()
+                }
+            };
             log::error(
                 "bridge.herdr.failed",
-                fields! { "pane" => arguments.pane, "error" => error },
+                fields! { "pane" => arguments.pane, "herdr" => tried.clone(), "error" => error },
             );
             eprint!(
-                "muster-bridge: could not start herdr: {error}\n\
+                "muster-bridge: could not start herdr at {tried}: {error}\n\
                  This pane will render nothing. Check that a herdr can be run on {} - \
                  Muster installs its own under ~/.muster - and that the daemon there owns \
                  pane {}.\n\n",
@@ -129,6 +152,17 @@ struct Arguments {
     /// Spelled the way the machine that will open it spells it, which is the far machine's
     /// path when this bridge is running its CLI over ssh.
     herdr_socket: Option<String>,
+    /// Which daemon binary to run, on this machine.
+    ///
+    /// Handed over for the same reason the socket is, one question further along: where a
+    /// build put its herdr is a packaging question, and the app is the only process that
+    /// knows the answer. A bridge that worked it out for itself was right for a dev build and
+    /// wrong for every shipped bundle, which is kan a_2Hnh3g0Y5 - the daemon moved into a
+    /// helper bundle, nothing beside the bridge, and no PATH a Launch Services app could use.
+    ///
+    /// `None` for a bridge somebody ran by hand, which is how this gets debugged, and for a
+    /// remote pane - that one runs its CLI over there and resolves it over there.
+    herdr_binary: Option<String>,
     ssh: Option<Ssh>,
 }
 
@@ -149,13 +183,20 @@ impl Arguments {
         if pane.starts_with('-') {
             return None;
         }
-        let mut parsed = Arguments { pane, control_socket: None, herdr_socket: None, ssh: None };
+        let mut parsed = Arguments {
+            pane,
+            control_socket: None,
+            herdr_socket: None,
+            herdr_binary: None,
+            ssh: None,
+        };
         let (mut host, mut control_path) = (None, None);
         while let Some(flag) = read.next() {
             let value = read.next()?.clone();
             match flag.as_str() {
                 "--control-socket" => parsed.control_socket = Some(value),
                 "--herdr-socket" => parsed.herdr_socket = Some(value),
+                "--herdr-binary" => parsed.herdr_binary = Some(value),
                 "--via-ssh" => host = Some(value),
                 "--ssh-control" => control_path = Some(value),
                 _ => return None,
@@ -186,7 +227,7 @@ impl Arguments {
 fn spawn_herdr(arguments: &Arguments, columns: u16, rows: u16) -> Result<Child, String> {
     let mut command = match &arguments.ssh {
         None => {
-            let mut command = Command::new(herdr_binary());
+            let mut command = Command::new(herdr_binary(arguments.herdr_binary.as_deref()));
             // The daemon the app is talking to, rather than whichever one this process would
             // find. Muster runs its own under a session of its own, so a CLI left to look for
             // itself reaches a different daemon, does not hold this pane, and closes its
@@ -253,13 +294,24 @@ fn far_side_command(arguments: &Arguments, columns: u16, rows: u16) -> String {
     )
 }
 
-/// The herdr this Muster ships, which sits beside this binary.
+/// The herdr this pane's frames should come from.
 ///
-/// The same rule the app uses to find this bridge, applied one step further along, and for
-/// the same reason: a PATH lookup finds whatever version somebody installed, and the frames
-/// on a pane's screen are then rendered by a daemon nobody pinned. Falls back to the name so
-/// that a bridge run by hand still works, which is how this gets debugged.
-fn herdr_binary() -> std::ffi::OsString {
+/// The app's answer where there is one, because only the app knows where this build put its
+/// daemon: a dev build stages it beside the binaries, and a shipped bundle carries it as a
+/// helper application in `Contents/Library/`. A bridge that decided for itself was right about
+/// the first and wrong about the second, and the released cask rendered nothing in every pane
+/// (kan a_2Hnh3g0Y5).
+///
+/// The two fallbacks are for a bridge somebody ran by hand, which is how this gets debugged.
+/// Beside this binary first, because that is where `./dev` stages the pinned daemon and a PATH
+/// lookup would find whatever version happens to be installed - the frames on a pane's screen
+/// should be rendered by a daemon somebody pinned. Nothing here rescues a bundle: an app
+/// opened by Launch Services is handed launchd's `PATH=/usr/bin:/bin:/usr/sbin:/sbin`, and
+/// every directory on it is SIP-protected.
+fn herdr_binary(told: Option<&str>) -> std::ffi::OsString {
+    if let Some(path) = told.filter(|path| !path.is_empty()) {
+        return path.into();
+    }
     let beside = std::env::current_exe()
         .ok()
         .and_then(|path| Some(path.parent()?.join("herdr")))
@@ -465,6 +517,8 @@ mod tests {
             pane: pane.to_string(),
             control_socket: None,
             herdr_socket: socket.map(ToString::to_string),
+            // Never sent for a remote pane: a path on this machine names nothing over there.
+            herdr_binary: None,
             ssh: Some(Ssh { host: "devenv".to_string(), control_path: "/tmp/c".to_string() }),
         };
         far_side_command(&arguments, 80, 24)

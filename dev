@@ -561,8 +561,53 @@ fn build_bundle():
     $`install_name_tool -add_rpath @executable_path/../Frameworks {contents}/MacOS/muster`
     $`install_name_tool -add_rpath @loader_path {contents}/Frameworks/libmuster.dylib`
 
+    // Before signing, which touches most of the same paths and would otherwise report a missing
+    // daemon as a codesign error naming a file - true, and several steps away from what to do
+    // about it.
+    check_bundle_is_whole(contents)
     sign_bundle(swift_bin, contents)
     print("assembled {BUNDLE} - open it, or drag it to the Dock")
+
+// Everything a launched bundle has to be able to reach, checked at the moment it is assembled.
+//
+// **This would not have caught `1d7ace3`, and saying so is the point.** That commit moved the
+// daemon into the helper bundle and dropped the copy that had been going into `Contents/MacOS/`,
+// and the bundle it produced was correct - what was wrong was the bridge, which went on looking
+// beside itself. A layout check cannot see that. `./dev --contract` launches an assembled bundle
+// now, and that is the check that would have (kan a_2Hnh3g0Y5).
+//
+// What this guards is the failure mode `1d7ace3` demonstrated is possible: a copy quietly leaving
+// `build_bundle`. Every path below was written a few lines above, so nothing here fails while the
+// script is intact - it fails when somebody deletes a line, which is what happened. Signing
+// catches the daemon's absence today as a side effect of signing that exact path; this says the
+// requirement outright, so a signing change cannot take the guard with it.
+fn check_bundle_is_whole(contents):
+    daemon = "{contents}/Library/{DAEMON_BUNDLE}/Contents/MacOS/herdr"
+    required = [
+        // The app, the CLI a pane finds on its PATH, and the bridge every pane's frames arrive
+        // through. PaneCommand.bridge resolves the last two beside the running executable.
+        "{contents}/MacOS/muster",
+        "{contents}/MacOS/muster-bridge",
+        "{contents}/MacOS/muster-cli",
+        // The daemon, where HerdrLocation.swift looks for it and where the app tells each
+        // bridge to find it. A bundle without this one opens a window in which no pane renders.
+        daemon,
+        "{contents}/Frameworks/libmuster.dylib",
+        "{contents}/Frameworks/libghostty-vt.dylib",
+        "{contents}/Info.plist",
+        "{contents}/Library/{DAEMON_BUNDLE}/Contents/Info.plist",
+    ]
+    missing = required.filter(fn(path) not get_path(path).exists)
+    if len(missing) > 0:
+        print_err(red("The assembled bundle is missing {len(missing)} file(s) it needs to run."))
+        for path in missing:
+            print_err("  {path}")
+        print_err("Impact: a launched Muster fails at whatever needs the missing file, and a")
+        print_err("missing daemon in particular opens a window where every pane renders nothing")
+        print_err("and says only `could not start herdr`.")
+        print_err("Usual cause: a step in build_bundle stopped copying something, or a path in")
+        print_err("it moved without the rule in Sources/MusterMac that resolves it moving too.")
+        exit(1)
 
 // The daemon, as a bundle Launch Services can start.
 //
@@ -1268,8 +1313,14 @@ fn build_deps():
 // The contract tier is opt-in and never part of the gate: it needs a real herdr on PATH
 // and a logged-in GUI session, and the default suite must stay offline and deterministic
 // (docs/testing.md). Asking for it alone should not also take the whole gate.
+//
+// It takes a bundle as well as a build, because one of its checks launches the app as it
+// ships rather than as SwiftPM leaves it. Those are different layouts - the daemon moves into
+// a helper bundle - and the difference cost a release (kan a_2Hnh3g0Y5). Skipping the check
+// when no bundle happened to be lying about is how a check quietly stops running.
 if contract:
     build = true
+    bundle = true
 
 // Same reasoning as the contract tier, a different missing thing: this one needs docker and
 // a container, which a contributor's machine cannot be assumed to have running.

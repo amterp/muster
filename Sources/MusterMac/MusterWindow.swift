@@ -16,6 +16,11 @@ public final class MusterWindow: NSObject {
   public let window: NSWindow
   private let renderer: Renderer
   private let executable: String
+  /// The daemon binary every bridge this window spawns is told to run.
+  ///
+  /// Resolved once rather than per pane, because it is a property of the build and a window of
+  /// fifteen panes would otherwise ask the filesystem the same question fifteen times.
+  private let herdrBinary: String?
   private let strip = RegionStrip(frame: NSRect(x: 0, y: 0, width: 960, height: 600))
   private let sidebar = SidebarView(frame: .zero)
   private let shortcuts = ShortcutsPanel()
@@ -131,6 +136,7 @@ public final class MusterWindow: NSObject {
   public init(renderer: Renderer, executable: String) {
     self.renderer = renderer
     self.executable = executable
+    self.herdrBinary = herdrBinaryPath(executable: executable)
     let keyboard = KeyboardWindow(
       contentRect: strip.frame,
       styleMask: [.titled, .closable, .resizable, .miniaturizable],
@@ -486,7 +492,7 @@ public final class MusterWindow: NSObject {
       chrome,
       command: PaneCommand.bridge(
         executable: executable, paneID: pane.backendPaneID, controlSocketPath: socketPath,
-        herdrSocketPath: backendSocket,
+        herdrSocketPath: backendSocket, herdrBinaryPath: herdrBinary,
         sshHost: transport?.sshHost, sshControlPath: transport?.sshControlPath),
       typeable: true)
   }

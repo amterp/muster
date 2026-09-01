@@ -51,6 +51,63 @@ func halfATargetIsIgnored() {
   #expect(!command.contains("--via-ssh"))
 }
 
+@Test("a local pane's bridge is told which herdr to run")
+func localPaneCarriesTheDaemon() {
+  // The whole of kan a_2Hnh3g0Y5. Left to find one for itself the bridge looks beside its own
+  // executable and then on PATH, and a shipped bundle has neither: the daemon lives in
+  // Contents/Library, and a Launch Services app is handed launchd's PATH, every entry of it
+  // SIP-protected. Every pane of the 0.3.0 cask rendered nothing.
+  let command = PaneCommand.bridge(
+    executable: "/Applications/Muster.app/Contents/MacOS/muster", paneID: "w1:p1",
+    controlSocketPath: "/tmp/s.sock",
+    herdrBinaryPath:
+      "/Applications/Muster.app/Contents/Library/MusterSessions.app/Contents/MacOS/herdr"
+  )
+
+  #expect(
+    command.contains(
+      "'--herdr-binary' "
+        + "'/Applications/Muster.app/Contents/Library/MusterSessions.app/Contents/MacOS/herdr'"))
+}
+
+@Test("a remote pane is not told a path from this machine")
+func remotePaneResolvesItsOwnDaemon() {
+  // A local path names nothing on a devenv, and the bridge's far-side script already prefers
+  // the herdr Muster installed over there. Sending one would either find nothing or, worse,
+  // find some unrelated binary of the same name.
+  let command = PaneCommand.bridge(
+    executable: "/build/debug/muster", paneID: "w1:p1", controlSocketPath: "/tmp/s.sock",
+    herdrBinaryPath: "/build/debug/herdr",
+    sshHost: "dev@localhost", sshControlPath: "/tmp/muster-1-devenv.ctl")
+
+  #expect(!command.contains("--herdr-binary"))
+}
+
+@Test("half an ssh target still gets the daemon, because it builds a local command")
+func halfATargetKeepsTheDaemon() {
+  // The two decisions read the same answer. Split apart, a host with no master would build a
+  // command that runs here and leaves the daemon out - a pane that renders nothing, by a
+  // second route to the same bug.
+  let command = PaneCommand.bridge(
+    executable: "/build/debug/muster", paneID: "w1:p1", controlSocketPath: "/tmp/s.sock",
+    herdrBinaryPath: "/build/debug/herdr",
+    sshHost: "dev@localhost", sshControlPath: nil)
+
+  #expect(!command.contains("--via-ssh"))
+  #expect(command.contains("'--herdr-binary' '/build/debug/herdr'"))
+}
+
+@Test("no daemon path means no argument, not an empty one")
+func absentDaemonIsOmitted() {
+  // A bridge run by hand is handed nothing and falls back to looking, which is how this gets
+  // debugged. An empty value would make it try to exec "".
+  let command = PaneCommand.bridge(
+    executable: "/build/debug/muster", paneID: "w1:p1", controlSocketPath: "/tmp/s.sock",
+    herdrBinaryPath: nil)
+
+  #expect(!command.contains("--herdr-binary"))
+}
+
 @Test("an argument with a space in it stays one argument")
 func spacesSurviveTheCommandLine() {
   // Everything here reaches libghostty as one string and is split on spaces on the way to a

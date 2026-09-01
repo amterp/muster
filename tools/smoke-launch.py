@@ -32,7 +32,18 @@ from herdrprobe.client import Client  # noqa: E402
 from herdrprobe.daemon import IsolatedDaemon  # noqa: E402
 
 APP = REPO / ".build/arm64-apple-macosx/debug/muster"
+
+# The same app as it ships, which is a different layout and not a cosmetic one: the daemon
+# moves into a helper bundle in Contents/Library, and nothing sits beside the bridge.
+BUNDLED_APP = REPO / ".build/muster.app/Contents/MacOS/muster"
 ROOT = Path("/private/tmp/muster-smoke")
+
+# What launchd gives a GUI process, which is what an app opened from the Dock, Finder or
+# Spotlight actually has. Every directory on it is SIP-protected, so a herdr cannot be put on it
+# even deliberately - which is why a bundle whose bridge has to *find* a daemon cannot work, and
+# why the bundle check below runs with this rather than with the developer's PATH. With a real
+# PATH the check would pass on any machine that happens to have a herdr installed.
+LAUNCHD_PATH = "/usr/bin:/bin:/usr/sbin:/sbin"
 
 # What the app is configured with for the one check here that starts a daemon of its own, on a
 # scratch home of its own.
@@ -105,14 +116,21 @@ def stop(app: subprocess.Popen) -> None:
             app.kill()
 
 
-def launch(env: dict, args: list[str], name: str, settle: float = 6.0) -> list[dict]:
-    """Runs the app until it reports readiness, then stops it and returns its log."""
+def launch(
+    env: dict, args: list[str], name: str, settle: float = 6.0, app_path: Path = APP
+) -> list[dict]:
+    """Runs the app until it reports readiness, then stops it and returns its log.
+
+    `app_path` is the SwiftPM binary for every check but one. The bundle is a different
+    layout - the daemon lives in a helper bundle rather than beside the bridge - and that
+    difference is a shipped bug rather than a detail (kan a_2Hnh3g0Y5).
+    """
     log_path = ROOT / f"{name}.jsonl"
     log_path.unlink(missing_ok=True)
     env = {**env, "MUSTER_LOG_FILE": str(log_path)}
 
     app = subprocess.Popen(
-        [str(APP), *args],
+        [str(app_path), *args],
         env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -285,6 +303,48 @@ def check_healthy_launch(daemon: IsolatedDaemon, pane: str) -> None:
     )
     if records[-1]["event"] == "app.ready":
         raise Failure("the app logged nothing after startup, so nothing was running")
+
+
+def check_the_bundle_paints_panes(daemon: IsolatedDaemon, pane: str) -> None:
+    """The app as it ships, which is a layout no other check here runs against.
+
+    kan a_2Hnh3g0Y5, and the reason it reached a release. `1d7ace3` moved the daemon into
+    Contents/Library/MusterSessions.app and dropped the copy that had been going into
+    Contents/MacOS, so a released bundle had no herdr beside its bridge - and the bridge
+    looked for one there. Every pane of the 0.3.0 cask rendered nothing. The whole suite was
+    green over it: `./dev` stages a daemon beside the SwiftPM binary, which is the one layout
+    the old rule was right about, and every check above launches that binary.
+
+    The PATH matters as much as the bundle. libghostty spawns the bridge, so a bridge inherits
+    the *app's* environment, and an app opened by Launch Services has launchd's four
+    SIP-protected directories and nothing else. Handing this check the developer's PATH would
+    let it pass by finding a herdr somebody installed, which is exactly the state no user is in.
+
+    Pointed at the daemon the other checks share, so nothing is started through Launch
+    Services: what is under test is the bridge finding a daemon binary, not the app starting
+    one.
+    """
+    if not BUNDLED_APP.exists():
+        raise Failure(
+            f"{BUNDLED_APP} is missing, so the one check that runs against a shipped layout "
+            "ran nothing. `./dev --contract` assembles a bundle first; if it did not, that "
+            "step is what broke."
+        )
+    environment = {**pointed_at(daemon), "PATH": LAUNCHD_PATH}
+    records = launch(
+        environment, [muster_name_of(daemon, pane)], "bundle", app_path=BUNDLED_APP
+    )
+    failed = [r for r in records if r["event"] == "bridge.herdr.failed"]
+    if failed:
+        raise Failure(
+            "a bridge in the assembled bundle could not start a daemon: "
+            f"{failed[0].get('herdr')!r} ({failed[0].get('error')}). Every pane of this bundle "
+            "renders nothing, which is what a `brew install` produces. Either the bundle no "
+            "longer carries a daemon where HerdrLocation.swift looks for it, or the app "
+            "stopped telling each bridge which one to run."
+        )
+    expect_nothing_wrong(records)
+    expect_every_pane_painted(records)
 
 
 def check_agent_state_reaches_the_app(daemon: IsolatedDaemon, pane: str) -> None:
@@ -790,6 +850,10 @@ def main() -> int:
         checks = [
             ("a named pane comes up and paints", lambda: check_healthy_launch(daemon, pane)),
             (
+                "the app as it ships paints every pane",
+                lambda: check_the_bundle_paints_panes(daemon, pane),
+            ),
+            (
                 "an agent's state reaches the window",
                 lambda: check_agent_state_reaches_the_app(daemon, pane),
             ),
@@ -832,8 +896,8 @@ def main() -> int:
     print(
         "\nsmoke: the app launches, connects, paints, renders a split tab as splits, shows "
         "what its agents are doing, lists the panes nothing is showing, comes up on a machine "
-        "with no daemon by starting one, and hands every pane a `muster` that answers for the "
-        "window it is drawn in."
+        "with no daemon by starting one, hands every pane a `muster` that answers for the "
+        "window it is drawn in, and does all of it assembled into a bundle with launchd's PATH."
     )
     return 0
 

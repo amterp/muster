@@ -125,6 +125,69 @@ func theOverrideBeatsTheBundle() throws {
   #expect(found == "/elsewhere/herdr")
 }
 
+// The bridge cannot exec a bundle, so the two callers need different answers to one question.
+// Getting that wrong is what shipped: kan a_2Hnh3g0Y5, where every pane of the released cask
+// rendered nothing because a rule the app had updated was duplicated somewhere that had not.
+
+@Test("a bridge is given the binary inside the helper bundle, not the bundle")
+func theBridgeGetsAnExecutable() throws {
+  // `Command::new` on a directory is ENOENT at best. The core wants the bundle, because only a
+  // process Launch Services started is its own for what macOS charges a pane's permission
+  // prompts to; a bridge wants the Mach-O inside it.
+  let contents = try scratchDirectory().appendingPathComponent("Contents", isDirectory: true)
+  let executables = contents.appendingPathComponent("MacOS", isDirectory: true)
+  let bundle =
+    contents
+    .appendingPathComponent("Library", isDirectory: true)
+    .appendingPathComponent("MusterSessions.app", isDirectory: true)
+  try FileManager.default.createDirectory(at: executables, withIntermediateDirectories: true)
+  try FileManager.default.createDirectory(at: bundle, withIntermediateDirectories: true)
+
+  let found = herdrBinaryPath(
+    executable: executables.appendingPathComponent("muster").path, environment: [:])
+
+  #expect(found == bundle.appendingPathComponent("Contents/MacOS/herdr").path)
+}
+
+@Test("a plain build hands over the binary it staged")
+func aPlainBuildIsAlreadyAnExecutable() throws {
+  // `./dev` stages the pinned daemon beside the binaries, which is the layout every test in
+  // this repo runs against. It must arrive unchanged.
+  let directory = try scratchDirectory()
+  let staged = directory.appendingPathComponent("herdr").path
+  FileManager.default.createFile(
+    atPath: staged, contents: Data(), attributes: [.posixPermissions: 0o755])
+
+  let found = herdrBinaryPath(
+    executable: directory.appendingPathComponent("muster").path, environment: [:])
+
+  #expect(found == staged)
+}
+
+@Test("MUSTER_HERDR reaches the bridge as it was written")
+func theOverrideReachesTheBridge() throws {
+  // The override names a binary, which is the point of it - somebody bisecting herdr has just
+  // built one. Rewriting it into a bundle's innards would name nothing.
+  let directory = try scratchDirectory()
+
+  let found = herdrBinaryPath(
+    executable: directory.appendingPathComponent("muster").path,
+    environment: ["MUSTER_HERDR": "/elsewhere/herdr"])
+
+  #expect(found == "/elsewhere/herdr")
+}
+
+@Test("a build that staged no daemon tells the bridge nothing")
+func noDaemonMeansNoArgument() throws {
+  // Nil becomes an absent argument rather than an empty one, and the bridge then falls back to
+  // looking - which is right for a bridge somebody ran by hand.
+  let directory = try scratchDirectory()
+
+  #expect(
+    herdrBinaryPath(
+      executable: directory.appendingPathComponent("muster").path, environment: [:]) == nil)
+}
+
 private func scratchDirectory() throws -> URL {
   let directory = FileManager.default.temporaryDirectory
     .appendingPathComponent("muster-herdr-location-\(UUID().uuidString)", isDirectory: true)

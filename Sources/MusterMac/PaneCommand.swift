@@ -23,9 +23,14 @@ public enum PaneCommand {
   ///   far machine rather than the near end of the tunnel. Absent means the bridge finds one
   ///   for itself, which reaches the right daemon only by luck: Muster's listens on a herdr
   ///   session of its own.
+  /// - Parameter herdrBinaryPath: the daemon binary to run, on this machine. Only for a local
+  ///   pane: a remote bridge runs its CLI on the far machine, where a path from here names
+  ///   nothing, and it prefers the herdr Muster installed over there. Absent means the bridge
+  ///   looks for one beside itself and then on PATH, which is right for a bridge somebody ran
+  ///   by hand and wrong for every shipped bundle (kan a_2Hnh3g0Y5).
   public static func bridge(
     executable: String, paneID: String, controlSocketPath: String?,
-    herdrSocketPath: String? = nil,
+    herdrSocketPath: String? = nil, herdrBinaryPath: String? = nil,
     sshHost: String? = nil, sshControlPath: String? = nil
   ) -> String {
     let bridge = URL(fileURLWithPath: executable)
@@ -42,8 +47,20 @@ public enum PaneCommand {
     }
     // Half a target would run the wrong machine's terminal, so both or neither. The bridge
     // refuses half as well; this is the side that can still say something useful about it.
-    if let sshHost, let sshControlPath, !sshHost.isEmpty, !sshControlPath.isEmpty {
-      arguments += ["--via-ssh", sshHost, "--ssh-control", sshControlPath]
+    let elsewhere: (host: String, control: String)? =
+      if let sshHost, let sshControlPath, !sshHost.isEmpty, !sshControlPath.isEmpty {
+        (sshHost, sshControlPath)
+      } else {
+        nil
+      }
+    // A path on this machine, so only for a pane on this machine - and read off the same
+    // answer the ssh arguments are, or half a target would build a local command with the
+    // daemon left out of it.
+    if let herdrBinaryPath, !herdrBinaryPath.isEmpty, elsewhere == nil {
+      arguments += ["--herdr-binary", herdrBinaryPath]
+    }
+    if let elsewhere {
+      arguments += ["--via-ssh", elsewhere.host, "--ssh-control", elsewhere.control]
     }
     return arguments.map(quoted).joined(separator: " ")
   }
