@@ -126,6 +126,15 @@ click, `Escape`. Nothing times out. And a tab holding a single pane does not sta
 `cmd+2` onto it lands on the only pane it has and stops there, because there is nothing inside
 to choose between.
 
+**A window holding one tab numbers panes, the way the default does.** Naming the only tab
+there is spends a press on nothing, so with one tab `cmd+2` reaches the second pane in one
+press. This is not a third scheme: with one tab, a pane's place down the window and its place
+inside that tab are the same number. The moment a second tab appears anywhere in the window -
+you make one, or you attach a machine that brings its own - `cmd+2` means the second tab
+again, and every number in the agent list moves onto the tab captions as it happens. That the
+chord changes meaning under you is the real cost of this, and it is why the numbers are drawn
+where they are: what `cmd+2` will do is something you read rather than remember.
+
 While it is on, the numbers in the agent list move. At rest they sit on the tab captions, and
 once a chord has named a tab they sit on that tab's panes and nowhere else - so what `cmd+2`
 will reach is something you read rather than something you remember, and only one thing in the

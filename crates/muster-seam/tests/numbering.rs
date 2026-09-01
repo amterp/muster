@@ -92,6 +92,56 @@ fn a_numbered_chord_lands_on_the_row_carrying_that_number() {
     );
 }
 
+/// A window of one tab under the prototype, where the first press would name that tab.
+///
+/// The collapse (kan a_2Hx68fXqr): ⌘1 naming the only tab there is spends a press on nothing,
+/// so a window holding one tab numbers panes instead. What only a running window can show is
+/// the second half of it - that the shell is not left holding a half-typed chord. `counting`
+/// is what the shell reads to decide whether to draw a number over every pane and whether
+/// releasing ⌘ ends a gesture, so a collapse spelled as "the panes in that tab" would leave
+/// those numbers drawn over a window nobody had pressed anything in.
+#[test]
+fn one_tab_under_the_prototype_numbers_panes_and_arms_nothing() {
+    let _turn = a_fresh_window();
+    let daemon = Daemon::start();
+    a_session_of_one_tab_holding_two(&daemon);
+
+    muster::ffi::muster_set_event_callback(Some(note));
+    assert_ok(&answer(request::Payload::Startup(Startup {
+        config_path: daemon
+            .muster_config_with("numbered_chords = \"tab_then_pane\"")
+            .to_string_lossy()
+            .into_owned(),
+        ..Startup::default()
+    })));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+
+    until(
+        "the roster to arrive with both panes in it",
+        || roster().is_some_and(|roster| rows(&roster).len() == 2),
+        || format!("the roster holds {:?}", roster().map(|held| places(&held))),
+    );
+
+    assert_eq!(numbered_panes(), vec![1, 2], "the chords should be naming panes, not the tab");
+    assert_eq!(numbered_tabs(), Vec::<u32>::new(), "the only tab there is carried a number");
+    assert_eq!(
+        counting(),
+        Counting::Panes,
+        "the window says a chord is half-typed with nothing pressed, so every pane is wearing \
+         a number and the next ⌘ release ends a gesture nobody started"
+    );
+
+    // One press, and it is the whole gesture. Under the uncollapsed prototype this would have
+    // named the tab and left the window waiting for a second press.
+    assert_ok(&answer(request::Payload::FocusPaneAt(FocusPaneAt { place: 2 })));
+    until(
+        "the second pane of the only tab to have the keyboard",
+        || showing(&named(INNER_SECOND)),
+        || format!("the view still shows {:?}", shown()),
+    );
+    assert_eq!(counting(), Counting::Panes, "landing on a pane left a chord armed behind it");
+}
+
 #[test]
 fn under_the_prototype_a_tab_is_named_first_and_a_pane_inside_it_second() {
     let _turn = a_fresh_window();
@@ -363,6 +413,24 @@ fn a_session_of_two_tabs_the_second_holding_two(daemon: &Daemon) {
     for (pane, given) in
         [(&first, VISIBLE), (&inner_first, INNER_FIRST), (&inner_second, INNER_SECOND)]
     {
+        daemon.call("pane.rename", &json!({ "pane_id": pane, "label": given }));
+    }
+}
+
+/// One tab holding two panes, which is the window a person opens Muster to.
+///
+/// Named with the same two words the second tab's panes carry above, because they are the same
+/// two rows to every assertion here: the second pane of the tab the keyboard is in.
+fn a_session_of_one_tab_holding_two(daemon: &Daemon) {
+    daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "numbering", "focus": true }));
+    let first = only_pane(daemon);
+    daemon.call("pane.split", &json!({ "target_pane_id": first, "direction": "right" }));
+    let second = panes(daemon)
+        .into_iter()
+        .find(|pane| pane != &first)
+        .expect("splitting makes a second pane in that tab");
+
+    for (pane, given) in [(&first, INNER_FIRST), (&second, INNER_SECOND)] {
         daemon.call("pane.rename", &json!({ "pane_id": pane, "label": given }));
     }
 }

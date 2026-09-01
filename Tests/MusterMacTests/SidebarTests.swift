@@ -286,12 +286,14 @@ struct SidebarTests {
     #expect(rows.filter(\.isTab).contains { $0.isSecondPress } == false)
   }
 
-  @Test("a window of one tab draws its caption when a chord names it")
+  @Test("a numbered tab is drawn even in a window that would hide its caption")
   func oneTabStillShowsACaptionWhenItIsNumbered() {
-    // The rule that a single tab needs no caption is right until a chord names the tab, and
-    // then it hides the only numbered row in the window - so ⌘1 would be a key with nothing
-    // on screen to say what it does. This is the whole reason that rule has an exception, and
-    // a window of one tab is the common case rather than an edge.
+    // A number nothing draws is a chord nobody can find, so the rule that a single tab needs
+    // no caption gives way to a tab that carries one. The core no longer numbers the tab in a
+    // window that holds only one - such a window numbers panes under either scheme, because
+    // with one tab the two numberings produce the same numbers - so this pins the guard rather
+    // than a state a running window reaches. Which rows carry numbers is the core's answer,
+    // and the list has to draw whatever it is handed.
     let roster = Roster(daemons: [
       Roster.Daemon(
         id: "local",

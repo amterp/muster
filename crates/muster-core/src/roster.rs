@@ -154,9 +154,30 @@ impl Numbering {
     /// stops mattering: a tab that closed while a press had named it is simply not in the
     /// roster, and the answer falls back to numbering tabs. Deciding this once, at the moment
     /// an input arrived, is the shape of a bug this codebase has shipped before.
+    ///
+    /// **A window holding one tab numbers panes under either scheme.** ⌘1 would otherwise be
+    /// spent naming the only tab there is, and reaching that tab's second pane would take ⌘1 ⌘2,
+    /// a first press carrying no information every time, for as long as the window holds one tab
+    /// (kan a_2Hx68fXqr). With one tab a pane's place down the whole window and its place inside
+    /// that tab are the same number, so this is not a third behaviour: it is the settled scheme,
+    /// which under these conditions the prototype agrees with.
+    ///
+    /// Said as `Panes` rather than as `PanesIn(the only tab)` for what follows from it. A
+    /// numbering that says panes-inside-a-tab also says a chord is half-typed: the shell draws a
+    /// number over every pane while one is, and ends the gesture when the modifier comes up. No
+    /// chord has been typed here at all, so `PanesIn` would leave those numbers drawn over every
+    /// pane forever.
+    ///
+    /// One tab in the *window*, not one tab on the machine the keyboard is on. Per machine the
+    /// same key would mean different things depending on which column the keyboard sat in, with
+    /// nothing on screen changing as it moved between them. Per window the meaning changes only
+    /// when a second tab appears, which at least moves every number in the sidebar as it
+    /// happens - and this function is handed the roster and knows nothing about the keyboard,
+    /// which is the shape the other reading would have to break.
     pub fn of(scheme: NumberedChords, named: Option<&TabKey>, roster: &Roster) -> Numbering {
         match scheme {
             NumberedChords::Panes => Numbering::Panes,
+            NumberedChords::TabThenPane if roster.tabs().count() == 1 => Numbering::Panes,
             NumberedChords::TabThenPane => match named {
                 Some(key) if roster.tabs().any(|tab| &tab.key == key) => {
                     Numbering::PanesIn(key.clone())

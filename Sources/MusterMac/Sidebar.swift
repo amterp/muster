@@ -261,9 +261,13 @@ public enum SidebarModel {
   /// window, every tab gets a caption, including the tabs on a daemon that only holds one:
   /// captions in patches would read as a boundary that comes and goes.
   ///
-  /// The exception is `numbered_chords = "tab_then_pane"`, where a tab is what ⌘1 names and a
-  /// window of one tab would otherwise hide the only numbered row in it. A number nothing
-  /// draws is a chord nobody can find.
+  /// The exception is a numbered tab, which is drawn whatever else this rule says: a number
+  /// nothing draws is a chord nobody can find. The core stopped producing one in a window of a
+  /// single tab - under `numbered_chords = "tab_then_pane"` such a window numbers panes,
+  /// because with one tab the two numberings are the same numbers - so the exception guards a
+  /// state rather than describing one. It stays because which rows carry numbers is the core's
+  /// answer and not this one's, and a list that hid one would be worse than a caption nobody
+  /// needed.
   ///
   /// **Which rows carry numbers is the core's answer, not this one's.** Every row arrives with
   /// the chord that reaches it or with none, so a caption numbered `2` and a ⌘2 that goes

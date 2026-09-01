@@ -2556,6 +2556,84 @@
       }
     },
     {
+      "name": "a window of one tab numbers panes under the prototype too",
+      "why": "With one tab the first press of `tab_then_pane` carries no information: ⌘1 names the only tab there is, and reaching its second pane costs ⌘1 ⌘2. So a window holding one tab numbers panes, which is not a third behaviour - a pane's place down the whole window and its place inside that tab are the same number here, so this is the settled scheme, which under these conditions the prototype agrees with.\n\nBoth presses are pinned, and that is the half worth pinning. Counting `panes` rather than `panes in local/w1:t1` is what says no chord is half-typed: the shell draws a number over every pane while one is and ends the gesture when the modifier comes up, so a numbering that said panes-inside-a-tab here would leave those numbers drawn forever with nothing having been pressed. Two presses in a row reaching the same pane is what that reads as.\n\nThe trigger is one tab in the window rather than one tab on the machine holding the keyboard. Per machine the same key would mean different things depending which column the keyboard sat in, with nothing on screen changing as it moved; per window the meaning changes only when a second tab appears, and that at least moves every number in the list as it happens. kan a_2Hx68fXqr.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/first"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/second"
+              },
+              {
+                "id": "w1:p3",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/third"
+              }
+            ],
+            "layouts": []
+          }
+        },
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          }
+        ],
+        "regions": [
+          {
+            "daemon": "local",
+            "workspace": "w1",
+            "tab": "w1:t1"
+          }
+        ],
+        "numbered": {
+          "scheme": "tab_then_pane",
+          "press": [
+            2,
+            2
+          ]
+        }
+      },
+      "expect": {
+        "pressed": [
+          "⌘2 of panes → pane local/w1:p2",
+          "⌘2 of panes → pane local/w1:p2"
+        ],
+        "tabs": [
+          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen"
+        ],
+        "panes": [
+          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
+          "local/w1:p2 place=2 tab=w1:t1 label=\"second\" hidden",
+          "local/w1:p3 place=3 tab=w1:t1 label=\"third\" hidden"
+        ]
+      }
+    },
+    {
       "name": "the first press picks a tab and the one after it picks a pane inside that tab",
       "why": "The prototype, in one line. Pressing ⌘2 twice reaches the second tab's second pane, which is the fourth pane of the window - so the second press is counting inside the tab the first one named rather than down the list. Both halves are needed to see it: after the first press the chords are counting panes in that tab, and that is what makes the same keystroke mean two things.",
       "given": {
