@@ -21,9 +21,9 @@ use std::sync::Mutex;
 
 use herdr_harness::{Daemon, until};
 use muster::proto::{
-    AttachPane, ClosePane, CreateTab, Event, FocusPane, Paste, Request, Response, RosterChanged,
-    SplitPane, Startup, ViewChanged, ViewNode, WindowFocus, ZoomPane, event, request, response,
-    view_node,
+    AttachPane, ClosePane, CreateTab, Event, FocusPane, OpenWindow, Paste, Request, Response,
+    RosterChanged, SplitPane, Startup, ViewChanged, ViewNode, WindowFocus, ZoomPane, event,
+    request, response, view_node,
 };
 use prost::Message;
 use serde_json::{Value, json};
@@ -206,6 +206,13 @@ fn an_emptied_window_refills_itself() {
     let _turn = muster::testing::fresh_session();
     let Open { daemon, .. } = a_window_onto_work_already_running();
     let daemon = &daemon;
+
+    // The rule that refills an emptied machine waits for the window to say what it is showing,
+    // and this is the only test here that needs it to have said so: the others assert about a
+    // window on its way up, which is a real state and the one the guard exists for. Sent here
+    // rather than in the shared helper for that reason - opening it there takes the pre-attach
+    // state away from the test that is about it.
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
 
     let before = panes(daemon);
     for pane in &before {
