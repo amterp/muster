@@ -36,6 +36,12 @@
       "body": "**The census this card asks for works, but not by the command the comment above gives.** Measured 2026-08-18, after a day of three agents in parallel worktrees.\n\n`lsof -p \u003cpid\u003e -U` does not filter. lsof ORs its selection options unless told otherwise, so that command returns every unix socket on the machine and each pid appears to hold whichever one grep reaches first. Run over twenty daemons it produced twenty identical rows - the same socket, the same pane, the same cwd - which reads as a finished inventory rather than as a broken one. It needs `lsof -a -p \u003cpid\u003e -U`. Second correction: what lsof shows is `herdr-client.sock`, and the API socket is `herdr.sock` beside it in the same directory, so a census has to derive the path rather than dial what it found.\n\nWith both fixed, the answer arrives in one screen exactly as the comment promised:\n\n    20 daemons alive\n    19 scratch, sockets under /tmp, panes whose cwd is also under /tmp\n     1 real: pid 11093, ~/.config/herdr/herdr.sock, 2d10h old, 2 panes in ~/src\n\nSo one process out of twenty held anybody's work, and it was the homebrew herdr rather than any Muster started. Sorting by age would have picked the wrong one again: the real daemon was neither the oldest (2d13h) nor the youngest.\n\n**None came from that day's three agents.** The youngest was 18 hours old and the oldest 2.5 days; every one traced to a smoke-launch fixture (/tmp/muster-smoke/...), a harness daemon (/tmp/muster-test/\u003cpid\u003e-0/), or an ad-hoc scratch dir (/tmp/hh, /tmp/mt, /tmp/msl, /tmp/mhy, /tmp/mhz). The test harness does tear its own down. What accumulates is what a person or a fixture started outside it.\n\n**They are not why a gate is slow, and that is worth stating.** Twenty of them together drew 0.1% CPU. A full `./dev` on the same machine took 12m35s warm-cache with them all running, against the 27.1 and 43.8 minutes recorded on a_29iw10a58. So this card's case is safety and legibility - knowing which process holds work before killing it - and not performance. Anybody reaching for a_29iw10a58's 'stray processes' framing to justify a lifecycle here would be arguing from a cost that does not exist.\n\nMeasured while chasing what looked like a slow gate and was neither the machine nor the daemons: the harness running `./dev` capped background commands at ten minutes and killed two runs mid-suite. Ruling out load, memory and these daemons is how the census got taken.",
       "created_at_millis": 1787041369120,
       "id": "c_2A6UfwLVP"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "herdr 0.8.0 has a clean shutdown after all, and this card says there is none.\n\n    herdr server stop        # \"Stop the running server\", takes no arguments\n                             # targets whatever HERDR_SOCKET_PATH names\n\nThe description says \"the only way to end one is to find it with pgrep and kill it\", and the second bullet records that \"a `server.shutdown` guess was already tried and refused as an unknown method\". That was the API method. The CLI subcommand is a different surface and it exists - checked against the herdr shipped inside Muster 0.4.0, which is the pinned 0.8.0.\n\nWorth checking before designing around it: whether it asks the panes' processes to end or just drops them, since the bullet about what \"close sessions\" means turns on exactly that. If it is graceful, the design question shrinks a lot - the hard half was assumed to be that herdr offered nothing.\n\nFound while answering \"if I kill the remaining panes, does the daemon shut off?\" - the answer being no, per this card, and the follow-up being that there is a better tool than pkill for saying so deliberately.",
+      "created_at_millis": 1788228862229,
+      "id": "c_2I8knOrSU"
     }
   ],
   "created_at_millis": 1786813036371,
@@ -45,7 +51,7 @@
   "position": "!2",
   "title": "🔌 Quitting Muster should decide what happens to its daemons",
   "type": "feature",
-  "updated_at_millis": 1787041369120,
+  "updated_at_millis": 1788228862229,
   "history": [
     {"field":"column","value":"backlog-lo","at":1786813036371},
     {"field":"column","value":"backlog-hi","at":1786813094493},
