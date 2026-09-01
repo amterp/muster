@@ -114,10 +114,13 @@ as Ghostty, to a terminal that was not there.
 
 **The daemon's config is derived, not borrowed, and it follows from the same fact.** A daemon of Muster's own that
 reads a stranger's config file is not a daemon of Muster's own: a `default_shell` somebody set for their own terminal
-decided what every Muster pane ran, and - the sharper half - `version_check` and `manifest_check` default to true, so
-a daemon pinned by version and checksum took its update policy from a file Muster does not own. Pinning it is what
-makes a green suite a claim about anything, and an update check is the one thing that moves it off the pin with
-nobody asking. So Muster derives a config from its own file and names it to the daemon with `HERDR_CONFIG_PATH`, the
+decided what every Muster pane ran, and - the sharper half - `version_check` defaults to true, so a daemon pinned by
+version and checksum took its update policy from a file Muster does not own. Pinning it is what makes a green suite a
+claim about anything, and a version check is the one thing that moves it off the pin with nobody asking. herdr's other
+update check, `manifest_check`, is left alone, and the difference is the subject rather than the mechanism: a version
+names the binary this project records a corpus against, while a manifest describes how a third-party agent looks on
+screen and goes stale when that agent changes (`configuration.md`, and kan a_2HxSqYtuA for what it cost). So Muster
+derives a config from its own file and names it to the daemon with `HERDR_CONFIG_PATH`, the
 same shape of answer the renderer already gets. What makes that variable the right lever rather than a private
 `XDG_CONFIG_HOME` is that it moves the config file and nothing else: the socket, the session state and the data
 directory stay where herdr's own rules put them, so the escape hatch above still works and a daemon holding somebody's

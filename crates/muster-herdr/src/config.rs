@@ -11,7 +11,7 @@
 //! differs from the renderer's. An unconfigured appearance produces no file at all, because
 //! every value in it is somebody's preference. An unconfigured Muster still has an opinion
 //! here: a daemon it pinned by checksum and shipped inside its own bundle does not go looking
-//! for its own updates.
+//! for a different version of itself.
 
 use muster_core::config::{Panes, ShellMode};
 
@@ -81,15 +81,29 @@ pub fn herdr_configuration(panes: &Panes) -> Vec<String> {
     }
 
     // Unconditional, and the reason this file is written even when nothing was asked for.
-    // Both default to true in herdr, so a daemon Muster pinned by version and checksum,
-    // downloaded and verified by `./dev` and staged inside the app bundle, would otherwise
-    // check for its own updates. Pinning it is what makes a green suite a statement about
-    // the daemon the corpus was recorded against, and an update check is the one thing that
-    // can move it off that pin without anybody asking.
+    // `version_check` defaults to true in herdr, so a daemon Muster pinned by version and
+    // checksum, downloaded and verified by `./dev` and staged inside the app bundle, would
+    // otherwise check for its own updates. Pinning it is what makes a green suite a statement
+    // about the daemon the corpus was recorded against, and an update check is the one thing
+    // that can move it off that pin without anybody asking.
+    //
+    // **`manifest_check` is deliberately not here, and that argument does not transfer to it.**
+    // A manifest is not the binary: it is data describing how a third-party agent looks on
+    // screen, and those agents change on their own schedule. Muster wrote `false` here for a
+    // year and it cost the feature the product is built around - Claude Code changed its busy
+    // spinner from Braille to a half-circle, the only rule in herdr's bundled claude manifest
+    // that can produce `working` matches Braille in the terminal title, and so `working` became
+    // unreachable. Upstream had published a fixed manifest two days before anybody noticed, and
+    // this line was what stopped it arriving. Eleven agent transitions over a full day of real
+    // use on two machines, and `working` was not among them (kan a_2HxSqYtuA).
+    //
+    // What that costs is real and smaller: detection rules can move under a build tested
+    // against different ones, and a daemon start reaches the network. The suite is unaffected -
+    // `herdr-harness` and the probe write their own config with both checks off, so a recorded
+    // corpus is still judged against frozen rules.
     lines.push(String::new());
     lines.push("[update]".to_string());
     lines.push("version_check = false".to_string());
-    lines.push("manifest_check = false".to_string());
 
     lines
 }

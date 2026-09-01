@@ -284,9 +284,26 @@ every Muster pane ran.
 `scrollback_bytes` is bytes because that is what the buffer is measured in; a line has no
 fixed size, so a count of them would be a number that did not mean what it said. Zero is a
 real answer - a pane that keeps only what is on screen. What is deliberately *not* offered is
-update checking: Muster ships one herdr, pinned by version and checksum, and turns its update
-checks off. A daemon that could be told to go and fetch a different version of itself would
+the daemon's version check: Muster ships one herdr, pinned by version and checksum, and turns
+that check off. A daemon that could be told to go and fetch a different version of itself would
 make "this was tested against the daemon it ships with" mean nothing.
+
+**herdr's other update check, the one for its agent-detection manifests, is left on**, and the
+difference between the two is worth stating because Muster used to turn both off together. A
+version names the binary this project records a corpus against. A manifest is data describing
+how somebody else's agent looks on screen, and those agents change on their own schedule -
+Claude Code moved its busy spinner from a Braille character to a half-circle, the one rule in
+herdr's bundled manifest that can produce `working` matches Braille, and so the dot could no
+longer say that an agent was working at all. Eleven agent transitions over a day of real use on
+two machines, and `working` was not among them. herdr had published a corrected manifest two
+days before anyone noticed, and Muster's config file was what stopped it arriving.
+
+So a daemon Muster starts fetches manifests the way herdr would on its own. The cost is that
+detection rules can move under a build that was tested against different ones, and that a
+daemon start reaches the network. The suite is unaffected: the daemons it runs are given their
+manifests up front and check for none, so a recorded corpus is still judged against frozen
+rules. A daemon that has already started keeps the manifests it loaded, so a machine picks a
+new set up when its daemon next restarts rather than immediately.
 
 **Both reach a devenv pane too, and so does the pinned daemon itself.** A `[[daemon]]` with a
 `host` used to attach whatever herdr somebody had installed over there, at whatever version and
@@ -379,10 +396,10 @@ launch, so editing it changes nothing - but reading it answers "what did Muster 
 the renderer", which is the first question when a colour does not take.
 
 `herdr.toml` is the same arrangement for the daemon: `[shell]` and `scrollback_bytes` in
-herdr's own format, plus the update checks Muster turns off, handed over by name so it moves
+herdr's own format, plus the version check Muster turns off, handed over by name so it moves
 which file that daemon reads without moving the socket it listens on. Reading it answers "what
 did Muster actually tell the daemon", which is the first question when a pane opens the wrong
-shell. It is written even when you have configured nothing, because the update checks are
+shell. It is written even when you have configured nothing, because the version check is
 Muster's answer rather than yours - and your own `~/.config/herdr/config.toml` is untouched,
 still read by your own herdr, and handed back to every pane Muster opens so that `herdr` typed
 inside one reads what it always did. A daemon on another machine gets the same file, written to

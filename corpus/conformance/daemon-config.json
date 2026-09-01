@@ -2,11 +2,11 @@
   "concept": "daemon.derivedConfig",
   "source": "authored",
   "citation": "herdr src/config/model.rs at the v0.8.0 tag: TerminalConfig (default_shell, shell_mode), AdvancedConfig (scrollback_limit_bytes, default 10000000), UpdateConfig (version_check and manifest_check, both defaulting to true). The file is read through config_path(), which HERDR_CONFIG_PATH names - verified against the pinned binary rather than only its source.",
-  "why": "Muster's daemon used to read the user's own herdr config, so a `default_shell` set for somebody's terminal decided what every Muster pane ran, scrollback depth was unreachable from Muster's file, and the daemon Muster pinned by checksum took its update policy from a file Muster does not own. It now reads a file Muster writes.\n\nThat makes this the backend's half of an arrangement the renderer already has: no dependency here takes a value except as a file, so Muster derives one and names it. These cases are the translation - Muster's two settings on the left, the daemon's words on the right - and they are the only place the mapping is pinned, because herdr exposes no way to read its config back. What a real daemon proves instead is the consequence: a pane runs the shell Muster named. That test lives beside this file; these cases are what it is a consequence of.\n\nTwo policies are pinned here rather than left to be rediscovered. Update checks are written off unconditionally and are not a setting anybody may change, so a file with nothing configured is still a file. And a default herdr already holds is never restated - `shell_mode = auto`, `new_cwd = follow` - because Muster restating a default it agrees with is how a daemon's changed mind becomes invisible.",
+  "why": "Muster's daemon used to read the user's own herdr config, so a `default_shell` set for somebody's terminal decided what every Muster pane ran, scrollback depth was unreachable from Muster's file, and the daemon Muster pinned by checksum took its update policy from a file Muster does not own. It now reads a file Muster writes.\n\nThat makes this the backend's half of an arrangement the renderer already has: no dependency here takes a value except as a file, so Muster derives one and names it. These cases are the translation - Muster's two settings on the left, the daemon's words on the right - and they are the only place the mapping is pinned, because herdr exposes no way to read its config back. What a real daemon proves instead is the consequence: a pane runs the shell Muster named. That test lives beside this file; these cases are what it is a consequence of.\n\nTwo policies are pinned here rather than left to be rediscovered. `version_check` is written off unconditionally and is not a setting anybody may change, so a file with nothing configured is still a file. And a default herdr already holds is never restated - `shell_mode = auto`, `new_cwd = follow` - because Muster restating a default it agrees with is how a daemon's changed mind becomes invisible.\n\n**`manifest_check` is the third policy, and it is the one that is absent.** Muster wrote it off for a year on the reasoning that pins its binary, and the two are not the same subject. A manifest is data describing how a third-party agent looks on screen, and those agents change on their own schedule: Claude Code moved its busy spinner from Braille to a half-circle, the only rule in herdr's bundled claude manifest that can produce `working` matches Braille in the terminal title, and `working` became unreachable on every machine. Eleven agent transitions across a full day of real use on two machines, and `working` was not among them - in a product whose founding desideratum is that the dot says what an agent is doing. Upstream had published a corrected manifest two days earlier and this file was what stopped it arriving (kan a_2HxSqYtuA). Nothing here says `manifest_check`, so herdr's own default stands and a daemon tracks the rules for the agents somebody is actually running. The suite is unaffected: `herdr-harness` and the probe write their own config with both checks off, so a recorded corpus is still judged against frozen rules.",
   "cases": [
     {
-      "name": "a person who configured nothing still gets a daemon that stays on its pin",
-      "why": "The case that says why this file exists at all, and the one difference from the renderer's derived config, which is skipped entirely when there is nothing to say. `version_check` and `manifest_check` both default to true in herdr, so a daemon Muster downloaded, verified against a checksum and staged inside its own bundle would go looking for its own updates. Pinning it is the whole reason a green suite is a statement about anything, and an update check is the one thing that moves it off the pin without anybody asking.",
+      "name": "a person who configured nothing still gets a daemon pinned to its version",
+      "why": "The case that says why this file exists at all, and the one difference from the renderer's derived config, which is skipped entirely when there is nothing to say. `version_check` defaults to true in herdr, so a daemon Muster downloaded, verified against a checksum and staged inside its own bundle would go looking for a different version of itself. Pinning it is the whole reason a green suite is a statement about anything, and an update check is the one thing that moves it off the pin without anybody asking.\n\n`manifest_check` is absent, and the absence is what this case pins: it defaults to true in herdr too, and Muster used to write it off beside `version_check` as though they were one subject. They are not. A version is the binary the corpus was recorded against; a manifest is data describing how a third-party agent looks on screen. Freezing the second bought nothing and cost `working` - see the file's `why` for the measurement.",
       "given": {
         "file": []
       },
@@ -16,8 +16,7 @@
           "# here is lost - the settings are `scrollback_bytes` and `[shell]` in ~/.muster/config.toml.",
           "",
           "[update]",
-          "version_check = false",
-          "manifest_check = false"
+          "version_check = false"
         ]
       }
     },
@@ -39,8 +38,7 @@
           "default_shell = \"/opt/homebrew/bin/fish\"",
           "",
           "[update]",
-          "version_check = false",
-          "manifest_check = false"
+          "version_check = false"
         ]
       }
     },
@@ -63,8 +61,7 @@
           "default_shell = \"/bin/sh\"",
           "",
           "[update]",
-          "version_check = false",
-          "manifest_check = false"
+          "version_check = false"
         ]
       }
     },
@@ -86,8 +83,7 @@
           "shell_mode = \"non_login\"",
           "",
           "[update]",
-          "version_check = false",
-          "manifest_check = false"
+          "version_check = false"
         ]
       }
     },
@@ -108,8 +104,7 @@
           "scrollback_limit_bytes = 50000000",
           "",
           "[update]",
-          "version_check = false",
-          "manifest_check = false"
+          "version_check = false"
         ]
       }
     },
@@ -130,8 +125,7 @@
           "scrollback_limit_bytes = 0",
           "",
           "[update]",
-          "version_check = false",
-          "manifest_check = false"
+          "version_check = false"
         ]
       }
     },
@@ -160,8 +154,7 @@
           "scrollback_limit_bytes = 12345678",
           "",
           "[update]",
-          "version_check = false",
-          "manifest_check = false"
+          "version_check = false"
         ]
       }
     },
@@ -183,8 +176,7 @@
           "default_shell = \"/opt/a b/say \\\"hi\\\"/sh\"",
           "",
           "[update]",
-          "version_check = false",
-          "manifest_check = false"
+          "version_check = false"
         ]
       }
     }

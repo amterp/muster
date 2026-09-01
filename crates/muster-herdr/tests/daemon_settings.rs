@@ -11,6 +11,7 @@
 //! did. Get the first without the second and every pane's own herdr silently reads Muster's.
 
 use std::collections::BTreeMap;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use herdr_harness::{binary, until_some};
@@ -58,6 +59,18 @@ fn a_pane_runs_the_shell_musters_own_config_names() {
     .expect("this is a config file Muster accepts");
     let derived = root.join("state/herdr.toml").display().to_string();
     muster_herdr::write_configuration(&derived, &parsed.panes).expect("the test root is writable");
+
+    // Appended, and the one line of this file the test writes itself. Muster deliberately no
+    // longer turns manifest checks off (a_2HxSqYtuA) - a frozen manifest is how `working`
+    // became unreachable - so a daemon started from the file above would fetch from herdr.dev,
+    // and the gate reaches no network. What this test asserts is which config file decides a
+    // pane's shell, and that is untouched by the line; what the file says about updates is
+    // pinned by corpus/conformance/daemon-config.json, where nothing has to run.
+    std::fs::OpenOptions::new()
+        .append(true)
+        .open(&derived)
+        .and_then(|mut file| file.write_all(b"manifest_check = false\n"))
+        .expect("the derived config was just written here");
 
     let mut environment = BTreeMap::new();
     environment.insert("PATH".to_string(), std::env::var("PATH").unwrap_or_default());
