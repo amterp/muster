@@ -43,6 +43,28 @@ it - see `muster docs limits`.
 `muster tab rename` without one means the tab the window's keyboard is in, which is what the
 menu item means.
 
+## Machine names
+
+A machine's name is the `id` of its `[[daemon]]` block, and `local` when your config names
+none. `muster window` prints it over that machine's tabs, and `--json` carries it on every pane
+as `daemon`.
+
+`pane new` and `tab new` take `--daemon ID`, which says *where* rather than what to grow from -
+so it cannot be given beside a `--pane`, and it ignores `$MUSTER_PANE` rather than sending the
+pane you are sitting in back to the machine you were leaving:
+
+    muster pane new --daemon devenv --run claude
+
+On a machine already showing panes this splits the one that machine's region has the keyboard
+on. On a machine showing nothing it opens the first pane there, which is the only reason the
+flag exists: a pane's name is already a complete address, so the machine is worth naming only
+when you have no pane on it.
+
+That is the state a devenv is in the day you name it in your config, and the state your own
+machine is in the moment you close its last pane. The window fills such a machine on its own
+as soon as it says it holds nothing, so most of the time there is nothing to do; `--daemon` is
+how a script says it outright, and how you ask again if a daemon refused.
+
 ## Which window
 
 `$MUSTER_SOCKET` names the window a pane is drawn in, and Muster sets it in every pane it

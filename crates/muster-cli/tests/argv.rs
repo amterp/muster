@@ -115,6 +115,7 @@ fn described(request: &Request) -> Value {
         request::Payload::SplitPane(split) => json!({
             "split_pane": fields([
                 ("pane_id", said(&split.pane_id)),
+                ("daemon_id", said(&split.daemon_id)),
                 ("side", Some(json!(split.side))),
                 ("cwd", said(&split.cwd)),
                 ("run", said(&split.run)),
@@ -156,6 +157,7 @@ fn described(request: &Request) -> Value {
         request::Payload::CreateTab(create) => json!({
             "create_tab": fields([
                 ("pane_id", said(&create.pane_id)),
+                ("daemon_id", said(&create.daemon_id)),
                 ("cwd", said(&create.cwd)),
                 ("run", said(&create.run)),
                 ("name", said(&create.name)),

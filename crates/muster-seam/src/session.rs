@@ -10,7 +10,7 @@
 //! means something on each - so a map keyed by pane alone would let one daemon's pane
 //! answer for another's.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 
@@ -836,6 +836,24 @@ pub(crate) struct Session {
     /// One per daemon, replaced rather than queued, because two splits in flight at once is
     /// somebody pressing the key twice and the second is the one they are looking at.
     wanted_panes: BTreeMap<DaemonId, (RegionId, PaneId)>,
+
+    /// Machines Muster has asked for a workspace and has not heard back about.
+    ///
+    /// The third of these and the one that guards the *asking* rather than what to do with the
+    /// answer. A machine holding nothing is asked for a workspace, and until that workspace
+    /// exists the machine still holds nothing - so an unguarded rule would ask again on every
+    /// event any *other* machine sent, and a laptop that chatters would give a devenv a dozen
+    /// workspaces before the first reply landed.
+    ///
+    /// Shared with the launch-time rule rather than kept beside it, which is the whole reason
+    /// it is here and not a local. Launch asks before any daemon has spoken; this asks once one
+    /// has spoken and said it holds nothing. Two sets would let a fresh window ask twice and
+    /// open with a workspace it never wanted.
+    ///
+    /// Emptied per machine once that machine holds a tab, and never otherwise: a daemon that
+    /// refuses is left in here deliberately, because a rule that retried a refusal would retry
+    /// it on every event forever.
+    workspaces_asked_of: BTreeSet<DaemonId>,
 
     /// Which agents have been seen, and so which are `done`.
     ///
@@ -2209,9 +2227,10 @@ pub(crate) enum AttachError {
 /// and the best answer Muster has to invent.
 ///
 /// Three steps, and each is the reason the next can be simple: be following something, give
-/// every daemon a region, and make a workspace if all of that still leaves nothing to show.
-/// The last is the one a fresh machine needs, where Muster has just started a daemon that
-/// holds no panes at all.
+/// every daemon a region and a workspace to put in it if it has none, and make a workspace at
+/// all costs if that still leaves nothing to show. The last is the one a fresh machine needs,
+/// where Muster has just started a daemon that has not answered anything yet - the step above it
+/// can only act on a machine that has spoken.
 pub(crate) fn open() -> Result<(), String> {
     follow_implicitly_if_nothing_else()?;
     restore_presentation();
@@ -2357,10 +2376,14 @@ fn follow_implicitly_if_nothing_else() -> Result<(), String> {
 
 /// Asks for one workspace when nothing else has produced anything to show.
 ///
-/// A daemon Muster started a moment ago holds nothing, so every rule above it produces an
-/// empty window - which is the state this whole path exists to avoid. One workspace, on the
-/// first daemon that is local, because a remote one is somebody else's machine and making
-/// things on it uninvited is a bigger claim than filling a window.
+/// The impatient rule, and that is what separates it from
+/// [`open_remaining_regions`] beside it. This one runs during launch, before any daemon has
+/// answered a subscription, so it can tell an empty window from a full one and cannot tell
+/// which machine is empty - and it has to fire anyway, because a daemon Muster started a moment
+/// ago holds nothing and every rule above it produces an empty window. So it picks, and it picks
+/// the first local machine: a remote one is somebody else's, and choosing it uninvited is a
+/// bigger claim than filling a window. Once a machine has spoken, `open_remaining_regions` asks
+/// each one that holds nothing, remote ones included, and no longer has to pick.
 ///
 /// Nothing is opened here. The daemon answers by publishing a workspace, a tab and a pane,
 /// and the region appears the way every other region does - through the reconcile that
@@ -2378,18 +2401,38 @@ fn open_a_workspace_if_the_window_is_empty() {
         log::warn(
             "window.empty",
             fields! {
-                "impact" => "this window shows nothing, because no attached daemon holds a \
+                "impact" => "this window shows nothing yet, because no attached daemon holds a \
                              tab and none of them is on this machine",
-                "check" => "whether the remote daemons in the config file have any sessions \
-                            open - Muster will not make one on somebody else's machine",
+                "check" => "nothing, if the remote daemons answer. Each one is asked for a \
+                            workspace of its own as soon as it says it holds nothing, which is \
+                            a moment after this; what this rule will not do is pick which of \
+                            them fills an empty window",
             },
         );
         return;
     };
 
+    // Recorded before the ask rather than after, and in the set the standing rule reads: the
+    // machine is asked here, holds nothing until it answers, and the standing rule runs on the
+    // very bootstrap that says so. Two records of "already asked" would make a fresh window
+    // open with a second workspace nobody wanted.
+    {
+        let mut session = poison::lock(&SESSION, "session");
+        if !session.workspaces_asked_of.insert(daemon.clone()) {
+            return;
+        }
+    }
+    ask_for_a_workspace(&daemon);
+}
+
+/// Asks one machine for a workspace, and says what a refusal costs.
+///
+/// One caller for the empty window and one for a machine holding nothing, so what happens when
+/// a daemon says no is written down once.
+fn ask_for_a_workspace(daemon: &DaemonId) {
     log::info("workspace.creating", fields! { "daemon" => daemon.to_string() });
     if let Err(refusal) = submit(
-        &daemon,
+        daemon,
         &BackendIntent::CreateWorkspace { cwd: None, run: None, name: None },
         Keyboard::Follows,
     ) {
@@ -2398,10 +2441,13 @@ fn open_a_workspace_if_the_window_is_empty() {
             fields! {
                 "daemon" => daemon.to_string(),
                 "detail" => refusal,
-                "impact" => "this window opens empty, and stays that way until something \
-                             makes a pane on that daemon",
+                "impact" => "this machine shows nothing in this window and stays that way \
+                             until something makes a pane on it. Nothing will ask again - a \
+                             rule that retried a refusal would retry it on every event that \
+                             arrives from anywhere",
                 "check" => "the daemon's own log - it answered its socket, so this is a \
-                            refusal rather than an absence",
+                            refusal rather than an absence. `muster pane new --daemon <id>` \
+                            asks once more by hand",
             },
         );
     }
@@ -2585,27 +2631,78 @@ fn locate(pane: &PaneId) -> Option<(DaemonId, WorkspaceId, TabId)> {
     found
 }
 
-/// Gives every daemon with nothing on screen a region of its own.
+/// Gives every daemon with nothing on screen a region of its own, and a workspace if it has
+/// nothing to put in one.
 ///
-/// On the daemon's own focused tab, because that is the one its user was last looking at and
-/// Muster has no better answer to invent. A daemon that has published no tabs yet gets
-/// nothing and is picked up by the next reconcile.
+/// The region goes on the daemon's own focused tab, because that is the one its user was last
+/// looking at and Muster has no better answer to invent.
+///
+/// **A machine holding no tabs at all is asked for a workspace.** Without it, such a machine
+/// attaches, appears in the agent list, and cannot be given a pane by anything in the window:
+/// every other route to a new pane goes through an existing one, so a machine that reaches zero
+/// panes drops out of reach until somebody makes a pane on it with herdr. That is the state a
+/// devenv is in the day it is attached, and the state the local machine is in the moment you
+/// close its last pane (kan a_2HpkpfIfq).
+///
+/// Only once the mirror is `Connected`, which is the whole of what separates "this machine says
+/// it holds nothing" from "this machine has not spoken yet". `Connected` is set by `bootstrap`
+/// and by nothing else, so a daemon still coming up is skipped and picked up by the reconcile
+/// behind its first snapshot. Asking one of those would put a workspace on a machine that is
+/// full.
+///
+/// This is the rule that makes a workspace on somebody else's machine, which
+/// [`open_a_workspace_if_the_window_is_empty`] deliberately will not do. The two are consistent
+/// rather than at odds: that rule *picks* a machine to fill an empty window with, and picking
+/// somebody else's is a claim Muster has no business making. This one is told which machine, by
+/// a `[[daemon]]` block a person wrote to see that machine's agents - and a machine you asked to
+/// see, showing nothing, that nothing can put a pane on, is the bug.
+///
+/// The ask blocks this thread on a round trip to that daemon, which for a devenv is a round trip
+/// over ssh, and this runs on whichever daemon's event thread called the reconcile. Affordable
+/// because it is once per machine: `workspaces_asked_of` holds the machine from the moment it is
+/// asked, and only a machine that comes back with a tab leaves it.
 fn open_remaining_regions() {
     let mut session = poison::lock(&SESSION, "session");
-    let wanted: Vec<(DaemonId, WorkspaceId, TabId)> = session
-        .backends
-        .iter()
-        .filter(|(id, _)| !session.composition.regions().any(|region| &&region.daemon == id))
-        .filter_map(|(id, backend)| {
-            let mirror = poison::lock(&backend.mirror, "mirror");
-            let tab = mirror.focus().tab.clone()?;
-            let held = mirror.tab(&tab)?;
-            Some((id.clone(), held.workspace.clone(), tab))
-        })
+    let showing: Vec<DaemonId> = session.composition.regions().map(|r| r.daemon.clone()).collect();
+
+    let mut wanted: Vec<(DaemonId, WorkspaceId, TabId)> = Vec::new();
+    let mut holding_nothing: Vec<DaemonId> = Vec::new();
+    let mut holding_something: Vec<DaemonId> = Vec::new();
+    for (id, backend) in &session.backends {
+        let mirror = poison::lock(&backend.mirror, "mirror");
+        if mirror.tabs().next().is_some() {
+            holding_something.push(id.clone());
+        } else if mirror.health() == Health::Connected {
+            holding_nothing.push(id.clone());
+        }
+        if showing.contains(id) {
+            continue;
+        }
+        if let Some(tab) = mirror.focus().tab.clone()
+            && let Some(held) = mirror.tab(&tab)
+        {
+            wanted.push((id.clone(), held.workspace.clone(), tab));
+        }
+    }
+    // Forgotten as soon as a machine has a tab, so a machine whose panes all close later is
+    // asked again rather than remembered as one Muster has already dealt with.
+    for id in holding_something {
+        session.workspaces_asked_of.remove(&id);
+    }
+    let asking: Vec<DaemonId> = holding_nothing
+        .into_iter()
+        .filter(|id| session.workspaces_asked_of.insert(id.clone()))
         .collect();
+
     for (daemon, workspace, tab) in wanted {
         session.composition.open_region(&daemon, workspace, tab);
         session.reconcile(&daemon);
+    }
+    // Outside the lock, because submitting is a round trip and `submit` takes the session for
+    // itself.
+    drop(session);
+    for daemon in asking {
+        ask_for_a_workspace(&daemon);
     }
 }
 

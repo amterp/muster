@@ -45,12 +45,36 @@ const ON_DEVENV: &str = "on-devenv";
 const SENT: &str = "muster-across-machines";
 
 fn a_window_showing_two_machines() -> TwoMachines {
-    let laptop = Daemon::start();
-    let devenv = Daemon::start();
-    a_workspace_holding_one_named_pane(&laptop, ON_LAPTOP);
-    a_workspace_holding_one_named_pane(&devenv, ON_DEVENV);
+    let machines = two_machines(Devenv::HoldingAPane);
+    until(
+        "the devenv to reach the list with its pane",
+        || pane_on("devenv").is_some(),
+        || format!("the list holds {:?}", rows()),
+    );
+    machines
+}
 
-    let config = laptop.muster_config_naming("laptop", &[("devenv", &devenv)]);
+/// The same window with a devenv that has never held anything, which is what a machine named
+/// in the config and never used looks like: attached, listed, and holding no workspace at all.
+fn a_window_and_an_untouched_devenv() -> TwoMachines {
+    two_machines(Devenv::HoldingNothing)
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Devenv {
+    HoldingAPane,
+    HoldingNothing,
+}
+
+fn two_machines(devenv: Devenv) -> TwoMachines {
+    let laptop = Daemon::start();
+    let second = Daemon::start();
+    a_workspace_holding_one_named_pane(&laptop, ON_LAPTOP);
+    if devenv == Devenv::HoldingAPane {
+        a_workspace_holding_one_named_pane(&second, ON_DEVENV);
+    }
+
+    let config = laptop.muster_config_naming("laptop", &[("devenv", &second)]);
     watch();
     assert_ok(&answer(request::Payload::Startup(Startup {
         config_path: config.to_string_lossy().into_owned(),
@@ -58,12 +82,14 @@ fn a_window_showing_two_machines() -> TwoMachines {
     })));
     assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
 
+    // Only the laptop, because whether the devenv ends up with a pane is what half the tests
+    // here are asking about.
     until(
-        "both machines to reach the list with a pane each",
-        || pane_on("laptop").is_some() && pane_on("devenv").is_some(),
+        "the laptop to reach the list with its pane",
+        || pane_on("laptop").is_some(),
         || format!("the list holds {:?}", rows()),
     );
-    TwoMachines { laptop, devenv }
+    TwoMachines { laptop, devenv: second }
 }
 
 /// One workspace holding one pane, named before Muster has heard of any of it.
@@ -319,6 +345,100 @@ fn a_tab_naming_no_pane_lands_where_the_keyboard_is() {
     );
 }
 
+/// A machine attached for the first time, and the pane it has no other way to get.
+///
+/// The window's own half of kan a_2HpkpfIfq. Before this, such a machine attached, appeared in
+/// the agent list saying `no tabs, so this daemon is holding nothing`, and stayed that way:
+/// every route to a new pane goes through an existing one, so there was nothing in Muster that
+/// could give it a first. `herdr workspace create` against the forwarded socket was the way
+/// through, which is not a way through for anybody who did not already know that.
+///
+/// Nothing is asked for here. The window asks on its own, the way it already did for a window
+/// showing nothing at all - which is what makes this a fix for the machine rather than for the
+/// window it happened to be alone in.
+#[test]
+fn a_machine_that_has_never_held_a_pane_is_given_one() {
+    let _turn = muster::testing::fresh_session();
+    let TwoMachines { laptop, devenv } = a_window_and_an_untouched_devenv();
+
+    until(
+        "the untouched machine to be given a pane of its own",
+        || panes(&devenv).len() == 1,
+        || format!("the devenv holds {:?}", panes(&devenv)),
+    );
+    until(
+        "the window to show the pane it gave that machine",
+        || panes_on("devenv").len() == 1,
+        || format!("the list holds {:?}", rows()),
+    );
+    assert_eq!(
+        panes(&devenv).len(),
+        1,
+        "the machine was given more than one workspace, so the rule that asks is asking again \
+         while its own answer is still in flight"
+    );
+    // The laptop is untouched by any of it: a rule that filled every machine it could reach
+    // would be a rule that opens panes nobody asked for on the machine you are working on.
+    assert_eq!(panes(&laptop).len(), 1, "the laptop was given a pane it did not need");
+}
+
+/// `muster pane new --daemon <id>`, which is the same reach from a script.
+///
+/// The machine is named and the keyboard is somewhere else, so the pane that gets split has to
+/// be the one *that machine's* region has the keyboard on. Taking the window's own keyboard
+/// pane and sending it to the named machine is the defect kan a_2Hwef7lQT was about, and
+/// `--daemon` is the one caller that produces that combination on purpose.
+#[test]
+fn a_split_asked_for_by_machine_lands_on_that_machine() {
+    let _turn = muster::testing::fresh_session();
+    let TwoMachines { laptop, devenv } = a_window_showing_two_machines();
+
+    let on_devenv = pane_on("devenv").expect("the fixture waited for it");
+    put_the_keyboard_back(&on_devenv);
+
+    let (before, elsewhere) = (panes(&laptop).len(), panes(&devenv).len());
+    assert_ok(&answer(request::Payload::SplitPane(SplitPane {
+        daemon_id: "laptop".to_string(),
+        side: "right".to_string(),
+        ..SplitPane::default()
+    })));
+    until(
+        "the laptop to hold one more pane than it did",
+        || panes(&laptop).len() == before + 1,
+        || format!("the laptop holds {:?}", panes(&laptop)),
+    );
+    assert_eq!(
+        panes(&devenv).len(),
+        elsewhere,
+        "naming the laptop split a pane on the devenv, which is where the keyboard was"
+    );
+}
+
+/// A machine name that reaches no machine, refused by name.
+///
+/// `--daemon` is the first field a person types a machine into, so a typo in one is a thing
+/// that will happen. Without this it reaches the backend and comes back as "which is a bug in
+/// the core rather than a state to recover from", which sends somebody looking for a bug in
+/// Muster instead of at what they typed.
+#[test]
+fn a_machine_this_window_is_not_following_is_refused_by_name() {
+    let _turn = muster::testing::fresh_session();
+    let TwoMachines { laptop: _laptop, devenv: _devenv } = a_window_showing_two_machines();
+
+    let reason = refusal(request::Payload::SplitPane(SplitPane {
+        daemon_id: "typo".to_string(),
+        side: "right".to_string(),
+        ..SplitPane::default()
+    }));
+    for expected in ["typo", "laptop", "devenv"] {
+        assert!(
+            reason.contains(expected),
+            "a refusal for a machine that is not there should name it and the ones that are, \
+             and did not mention {expected}: {reason}"
+        );
+    }
+}
+
 fn put_the_keyboard_back(on_devenv: &str) {
     assert_ok(&answer(request::Payload::FocusPane(FocusPane {
         daemon_id: String::new(),
@@ -497,5 +617,13 @@ fn assert_ok(response: &Response) {
         Some(response::Payload::Failure(failure)) => panic!("the core refused: {}", failure.reason),
         None => panic!("the core answered with no payload"),
         Some(_) => {}
+    }
+}
+
+/// The reason a request was refused, or a panic saying it was not.
+fn refusal(payload: request::Payload) -> String {
+    match answer(payload).payload {
+        Some(response::Payload::Failure(failure)) => failure.reason,
+        other => panic!("expected a refusal, got {other:?}"),
     }
 }

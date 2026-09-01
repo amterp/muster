@@ -185,44 +185,50 @@ fn attaching_places_a_pane_where_the_keyboard_can_find_it() {
     );
 }
 
-/// Closing the last pane, and getting one back.
+/// Closing the last pane, and getting one back without asking.
 ///
 /// A window with no panes was a window nobody could refill. Every request is about a pane -
 /// a split splits one, a close closes one, and a new tab used to need one to name the
 /// workspace to put it in - so the answer to all of them was the same refusal, and the way
 /// out of an empty window was to quit and relaunch.
 ///
+/// Nothing is asked for here, and that is the assertion. A machine that says it holds nothing
+/// is asked for a workspace by the window itself (kan a_2HpkpfIfq), so the empty state is one
+/// Muster passes through rather than one it can be left in. ⌘T is no longer the way out and no
+/// longer waited for; a version of this that sent one would pass whether or not the rule under
+/// test did anything.
+///
 /// Driven through the daemon rather than through the core's own close, because what is under
 /// test is what a window does once it is empty, and this reaches that state the way the
 /// commonest one does: the daemon lost the panes and said so.
 #[test]
-fn an_emptied_window_can_be_refilled() {
+fn an_emptied_window_refills_itself() {
     let _turn = muster::testing::fresh_session();
     let Open { daemon, .. } = a_window_onto_work_already_running();
     let daemon = &daemon;
 
-    for pane in panes(daemon) {
+    let before = panes(daemon);
+    for pane in &before {
         daemon.call("pane.close", &json!({ "pane_id": pane }));
     }
+    // Waited for on the daemon rather than on the view, and for a pane that is *not* one of the
+    // originals: every pane the window opened with is on screen when this starts, so a wait on
+    // the view showing something would be satisfied before a single close had landed.
     until(
-        "the window to notice it has nothing left to show",
-        || latest_view().is_some_and(|view| view.regions.is_empty()),
-        || format!("the last view the core published: {:?}", latest_view()),
+        "the emptied machine to be given a pane back",
+        || panes(daemon).iter().all(|pane| !before.contains(pane)) && !panes(daemon).is_empty(),
+        || format!("the daemon holds {:?}, and held {before:?}", panes(daemon)),
+    );
+    assert_eq!(
+        panes(daemon).len(),
+        1,
+        "an emptied machine was given more than one workspace, so the rule that asks is asking \
+         again while its own answer is still in flight"
     );
 
-    // What ⌘T sends: no daemon, no pane, no directory, and the keyboard following. There is no
-    // pane to read a workspace off, so a core that only knew how to make a tab beside one has
-    // nothing to do here.
-    assert_ok(&answer(request::Payload::CreateTab(CreateTab {
-        daemon_id: String::new(),
-        pane_id: String::new(),
-        cwd: String::new(),
-        run: String::new(),
-        name: String::new(),
-        take_focus: true,
-    })));
+    // And the window is showing it with the keyboard on it, which is the half a person sees.
     until(
-        "a pane to come back, and the keyboard with it",
+        "the window to show the pane it was given, with the keyboard on it",
         || {
             latest_view().is_some_and(|view| {
                 view.regions.first().is_some_and(|region| !region.pane_id.is_empty())

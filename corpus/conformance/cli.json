@@ -125,6 +125,49 @@
       }
     },
     {
+      "name": "a pane can be asked for on a machine rather than beside a pane",
+      "why": "The only way to reach a machine you have no pane on, which is every devenv on the day it is attached and any machine whose last pane you closed. Every other route to a new pane goes through an existing one - a split inherits its pane's machine, a tab takes the workspace from a pane - so without this a machine that reaches zero panes is one nothing in Muster can put a pane back on. The side still travels, because a machine already showing panes splits the one its region has the keyboard on.",
+      "given": {
+        "argv": [
+          "pane",
+          "new",
+          "--daemon",
+          "devenv"
+        ]
+      },
+      "expect": {
+        "request": {
+          "split_pane": {
+            "daemon_id": "devenv",
+            "side": "right"
+          }
+        }
+      }
+    },
+    {
+      "name": "a machine named from inside a pane does not carry that pane",
+      "why": "The case that would silently do the opposite of what was asked. $MUSTER_PANE is sent whenever nobody names a pane, and the window reads a named pane as the whole address - so a `--daemon` that let the environment through would send the request straight back to the machine it was trying to leave, and would look like it worked. clap refuses --pane beside --daemon; only this side can refuse the pane nobody typed.",
+      "given": {
+        "argv": [
+          "pane",
+          "new",
+          "--daemon",
+          "devenv"
+        ],
+        "env": {
+          "MUSTER_PANE": "p1w3r07bsd"
+        }
+      },
+      "expect": {
+        "request": {
+          "split_pane": {
+            "daemon_id": "devenv",
+            "side": "right"
+          }
+        }
+      }
+    },
+    {
       "name": "the keyboard moves only when asked",
       "why": "take_focus is absent from every other case here, and that is the point: an agent opening three panes would otherwise drag somebody's cursor through all three. Pressing a key means `I made this and I am looking at it`; a script means `make it and leave my cursor alone`.",
       "given": {
@@ -413,6 +456,23 @@
       }
     },
     {
+      "name": "a pane and a machine are two answers to one question",
+      "why": "A pane's name is already unique across every machine the window shows, so naming a machine beside one is either a restatement or a contradiction - and there is no way to tell which from out here. Refused rather than resolved, on the same terms as a pane and a direction for `focus`.",
+      "given": {
+        "argv": [
+          "pane",
+          "new",
+          "--pane",
+          "p1w3r07bsd",
+          "--daemon",
+          "devenv"
+        ]
+      },
+      "expect": {
+        "usage": "ArgumentConflict"
+      }
+    },
+    {
       "name": "a verb that does not exist is refused",
       "why": "Every word in this vocabulary is one somebody typed from memory. A misspelling has to come back as a refusal naming the verbs there are, rather than as nothing happening.",
       "given": {
@@ -627,6 +687,25 @@
       }
     },
     {
+      "name": "a tab can be made on a machine rather than beside a pane",
+      "why": "The same reach as `pane new --daemon`, and on a machine holding nothing the two mean the same thing: a tab lives in a workspace and a machine with no pane has none, so both become the one request that makes a workspace. Spelled on both verbs because a caller reaches for whichever noun they want, and a surface where only one of them could say `over there` would be a rule to remember rather than a rule.",
+      "given": {
+        "argv": [
+          "tab",
+          "new",
+          "--daemon",
+          "devenv"
+        ]
+      },
+      "expect": {
+        "request": {
+          "create_tab": {
+            "daemon_id": "devenv"
+          }
+        }
+      }
+    },
+    {
       "name": "a tab is stepped to rather than named",
       "why": "The other axis to stepping panes: `focus --next` reaches every pane the window is showing, and this reaches the tabs behind them. A script that has read one tab out of `muster window` can walk the rest without reading again.",
       "given": {
@@ -653,6 +732,23 @@
           "focus",
           "t1w3r07bsd",
           "--next"
+        ]
+      },
+      "expect": {
+        "usage": "ArgumentConflict"
+      }
+    },
+    {
+      "name": "a tab cannot be asked for both beside a pane and on a machine",
+      "why": "The same refusal on the other verb. Both are spelled the same way and both have to refuse the same way, or the rule is one people learn per command.",
+      "given": {
+        "argv": [
+          "tab",
+          "new",
+          "--pane",
+          "p1w3r07bsd",
+          "--daemon",
+          "devenv"
         ]
       },
       "expect": {

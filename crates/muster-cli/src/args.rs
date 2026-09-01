@@ -85,6 +85,13 @@ somebody's cursor through all three. Ask with --focus.
 `pane move` is one verb for two outcomes, because the window works out which from where the panes \
 are: onto a pane in the same tab the two trade places, onto a pane in another tab it joins that \
 tab. Both have to be on the same machine - a pane is a process, and it lives where it lives.
+
+`pane new` and `tab new` also take --daemon, which is a machine's own name as `muster window` \
+prints it beside every pane: local, or whatever a [[daemon]] block in your config calls the \
+machine. It says where rather than what to grow from, so it cannot be given beside a REF, and it \
+is the way to reach a machine you have no pane on at all - a devenv the day you attach it, or one \
+whose last pane you closed. A machine with nothing on screen gets a first pane rather than a \
+refusal.
 ";
 
 const EXAMPLES: &str = "\
@@ -94,6 +101,7 @@ Examples:
   muster pane send --pane p1w3r07bsd 'read AGENTS.md and wait' --enter
   muster pane move --pane p1w3r0ab2n --onto p1w3r07bsd
   muster tab new --run claude --name '🤖 reviewer'
+  muster pane new --daemon devenv --run claude
   muster focus --next
 
 Which window: $MUSTER_SOCKET names it, and Muster sets that in every pane it makes on this
@@ -274,8 +282,12 @@ enum Doing {
         down: bool,
 
         /// The pane to split, or the one this is running in
-        #[arg(long, value_name = "REF")]
+        #[arg(long, value_name = "REF", group = "somewhere")]
         pane: Option<String>,
+
+        /// The machine to put it on, instead of naming one of its panes
+        #[arg(long, value_name = "ID", group = "somewhere")]
+        daemon: Option<String>,
 
         /// Where it starts, or the directory the split came from
         #[arg(long, value_name = "DIR")]
@@ -398,8 +410,12 @@ enum WithTab {
     // next. The tab's own name is one `muster window` away, on the row of the pane below.
     New {
         /// The pane whose workspace the tab joins, or the one this is running in
-        #[arg(long, value_name = "REF")]
+        #[arg(long, value_name = "REF", group = "somewhere")]
         pane: Option<String>,
+
+        /// The machine to make it on, instead of naming a pane in it
+        #[arg(long, value_name = "ID", group = "somewhere")]
+        daemon: Option<String>,
 
         /// Where its pane starts, or that pane's own directory
         #[arg(long, value_name = "DIR")]
@@ -521,7 +537,7 @@ pub fn parse(
 
 fn pane(doing: &Doing, environment: &BTreeMap<String, String>) -> Asking {
     match doing {
-        Doing::New { left, right, up, down, pane, cwd, run, name, focus } => {
+        Doing::New { left, right, up, down, pane, daemon, cwd, run, name, focus } => {
             // The same four words the schema uses, and the same words a `muster window --json`
             // answer carries, rather than English ones like `below`: a caller that reads a side out
             // should be able to send it straight back. Saying nothing means right, because that is
@@ -530,8 +546,11 @@ fn pane(doing: &Doing, environment: &BTreeMap<String, String>) -> Asking {
             // once is refused before this is reached.
             let side = chosen(&[(*left, "left"), (*right, "right"), (*up, "up"), (*down, "down")])
                 .unwrap_or("right");
+            let (pane_id, daemon_id) =
+                pane_and_machine(pane.as_ref(), daemon.as_ref(), environment);
             send(request::Payload::SplitPane(SplitPane {
-                pane_id: pane_ref(pane.as_ref(), environment),
+                pane_id,
+                daemon_id,
                 side: side.to_string(),
                 cwd: cwd.clone().unwrap_or_default(),
                 run: run.clone().unwrap_or_default(),
@@ -596,14 +615,16 @@ fn pane(doing: &Doing, environment: &BTreeMap<String, String>) -> Asking {
 /// which the schema already reads as the tab the keyboard's pane is in.
 fn tab(doing: &WithTab, environment: &BTreeMap<String, String>) -> Asking {
     match doing {
-        WithTab::New { pane, cwd, run, name, focus } => {
+        WithTab::New { pane, daemon, cwd, run, name, focus } => {
+            let (pane_id, daemon_id) =
+                pane_and_machine(pane.as_ref(), daemon.as_ref(), environment);
             send(request::Payload::CreateTab(CreateTab {
-                pane_id: pane_ref(pane.as_ref(), environment),
+                pane_id,
+                daemon_id,
                 cwd: cwd.clone().unwrap_or_default(),
                 run: run.clone().unwrap_or_default(),
                 name: name.clone().unwrap_or_default(),
                 take_focus: *focus,
-                ..CreateTab::default()
             }))
         }
         WithTab::Focus { tab, next, previous } => {
@@ -646,6 +667,27 @@ fn chosen(among: &[(bool, &'static str)]) -> Option<&'static str> {
 /// still splits whatever somebody is looking at.
 fn pane_ref(named: Option<&String>, environment: &BTreeMap<String, String>) -> String {
     named.cloned().or_else(|| running_in(environment)).unwrap_or_default()
+}
+
+/// Which pane and which machine a command that may name either is about.
+///
+/// The two are alternatives and clap has already refused both at once, so the work here is what
+/// clap cannot see: a named machine takes the pane out of the request *including the one this
+/// command is running in*. Saying "on that machine" from inside a pane and then quietly sending
+/// `$MUSTER_PANE` would send the request straight back to the machine you were leaving, because
+/// the window reads a named pane as the whole address and never looks at the machine beside it.
+///
+/// Which is also why a machine is worth naming at all: a pane's name is a complete address and
+/// needs no machine, so the only thing `--daemon` can be for is a machine you have no pane on.
+fn pane_and_machine(
+    pane: Option<&String>,
+    daemon: Option<&String>,
+    environment: &BTreeMap<String, String>,
+) -> (String, String) {
+    match daemon {
+        Some(daemon) => (String::new(), daemon.clone()),
+        None => (pane_ref(pane, environment), String::new()),
+    }
 }
 
 fn running_in(environment: &BTreeMap<String, String>) -> Option<String> {
