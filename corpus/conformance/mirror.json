@@ -4267,6 +4267,47 @@
         "health": "connected",
         "changes": []
       }
+    },
+    {
+      "name": "a machine whose every tab is refused reads as one holding nothing",
+      "why": "kan a_2HvxMgXai and a_2HpkpfIfq, and the pair is what this is for. Refusing a tab no pane is in leaves a daemon whose tabs were all phantom holding nothing while it is `connected` - and that is the exact state the seam's rule for an empty machine acts on, asking it for a workspace. The two changes landed in one round, in different crates, and merge without touching a line of each other's, so nothing else fails if the pair stops holding.\n\nBoth halves are asserted here because both are load-bearing on the other side: `connected` is what separates 'this machine says it holds nothing' from 'this machine has not spoken yet', and a machine that has not spoken must not be given a workspace it may already have. Were the refusal to leave health anything but connected, or to keep the tab, the seam would stop reaching a case a person hits the day they attach a devenv.",
+      "given": {
+        "snapshot": {
+          "workspaces": [
+            {
+              "id": "w1",
+              "label": "tmp"
+            }
+          ],
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            },
+            {
+              "id": "w1:t2",
+              "workspace": "w1",
+              "label": "2"
+            }
+          ],
+          "panes": [],
+          "layouts": []
+        },
+        "events": []
+      },
+      "expect": {
+        "panes": [],
+        "tabs": [],
+        "workspaces": [
+          "w1"
+        ],
+        "agentStates": {},
+        "layouts": {},
+        "focus": {},
+        "health": "connected",
+        "changes": []
+      }
     }
   ]
 }
