@@ -137,11 +137,22 @@ static STATE: Mutex<Option<(String, String)>> = Mutex::new(None);
 
 /// Whether this window has worked out what it is showing.
 ///
+/// A window with nothing on screen means two different things either side of this flag, and
+/// both readers below turn on the difference. Before it, the composition is empty because
+/// nobody has decided yet and [`open`] is about to; after it, empty is an answer.
+///
 /// Nothing writes the arrangement before this is true. A composition nobody has opened yet is
 /// empty, and an empty one saved over the file is a window that comes back with no tabs at
 /// all - the exact loss the file exists to prevent. It is not hypothetical: the shell reports
 /// its frame as soon as the window has one, which is before it asks the core to open anything,
 /// so without this a launch would blank the arrangement it was about to restore.
+///
+/// Nothing opens a region before it either. The daemons are followed on one request and the
+/// window is opened on another, and the app builds a renderer, a menu and a window in between,
+/// so a daemon's first bootstrap lands in that gap - and the standing rule that a daemon with
+/// nothing on screen gets a region would answer it there, before the saved arrangement has
+/// been read. The restore then added its own region onto the same tab, which is a pane drawn
+/// twice and a bridge that cannot attach.
 ///
 /// It also keeps `--renderer-check` from overwriting somebody's arrangement with the empty
 /// window it deliberately opens.
@@ -150,6 +161,10 @@ static OPENED: AtomicBool = AtomicBool::new(false);
 /// Says the window now knows what it is showing, so the arrangement may be written.
 fn mark_opened() {
     OPENED.store(true, Ordering::Relaxed);
+}
+
+fn opened() -> bool {
+    OPENED.load(Ordering::Relaxed)
 }
 
 /// Where the name registries are written, and the text last written there.
@@ -2236,11 +2251,15 @@ pub(crate) fn open() -> Result<(), String> {
     restore_presentation();
     restore_font_sizes();
     reopen_what_was_left();
+    // After the file has been read and before anything writes over it. Everything above reads
+    // the arrangement; everything from here on is entitled to replace it - which is why this
+    // sits above the last two steps rather than below them, and it has to. Asking for a
+    // workspace is answered by the daemon on its own thread, and the region for it is opened
+    // by the standing rule when that answer lands; a window that had not yet said it was open
+    // would turn that rule off and wait forever for a region nothing else will make.
+    mark_opened();
     open_remaining_regions();
     open_a_workspace_if_the_window_is_empty();
-    // After the file has been read and before the first publish writes over it. Everything
-    // above reads the arrangement; everything from here on is entitled to replace it.
-    mark_opened();
     publish();
     Ok(())
 }
@@ -2333,30 +2352,48 @@ fn reopen_what_was_left() {
         return;
     }
 
-    let mut opened = Vec::new();
+    let mut restored = Vec::new();
+    let mut duplicates = 0usize;
     for region in &restorable.regions {
-        let Some(id) = session.composition.open_region(
-            &region.daemon,
-            region.workspace.clone(),
-            region.tab.clone(),
-        ) else {
+        // A tab already on screen is shown by the region showing it, and never by a second
+        // one beside it. Two regions on one tab render the same pane twice, and only one of
+        // the two surfaces can have the terminal - the other prints herdr's refusal and
+        // becomes a panel that cannot be closed, because closing it would close the pane the
+        // live one is using. A file holding the same region twice is the case that heals
+        // here; it is written by a Muster that had already done this once.
+        let showing = session.composition.region_showing(&region.daemon, &region.tab);
+        if showing.is_some() {
+            duplicates += 1;
+        }
+        let Some(id) = showing.or_else(|| {
+            session.composition.open_region(
+                &region.daemon,
+                region.workspace.clone(),
+                region.tab.clone(),
+            )
+        }) else {
             continue;
         };
         session.composition.set_weight(id, region.weight);
         if let Some(pane) = &region.pane {
             session.composition.focus_pane(id, pane.clone());
         }
-        opened.push(id);
+        restored.push(id);
     }
-    if let Some(place) = restorable.focused.and_then(|place| opened.get(place)) {
+    if let Some(place) = restorable.focused.and_then(|place| restored.get(place)) {
         session.composition.focus_region(*place);
     }
 
     log::info(
         "composition.restored",
         fields! {
-            "regions" => opened.len().to_string(),
+            "regions" => restored.len().to_string(),
             "dropped" => (saved.regions.len() - restorable.regions.len()).to_string(),
+            // Saved regions that named a tab another region was already showing. Anything but
+            // zero says the file on disk holds the same tab twice, which is worth knowing
+            // rather than healing silently: it is what a window that had drawn a pane twice
+            // wrote on its way out, and the count says how many copies it had.
+            "duplicates" => duplicates.to_string(),
         },
     );
 }
@@ -2718,7 +2755,7 @@ fn open_remaining_regions() {
 /// this was half-written would otherwise come back to a file that parses as far as the third
 /// region and stops.
 fn save(composition: &Composition, presentation: Presentation, font_sizes: &FontSizes) {
-    if !OPENED.load(Ordering::Relaxed) {
+    if !opened() {
         return;
     }
     let mut held = poison::lock(&STATE, "saved-arrangement");
@@ -2962,10 +2999,19 @@ fn reconcile(daemon: &DaemonId) {
     // and is waiting on, a daemon that came back after a restart with its tabs, a tab closed
     // from another client while its daemon still holds others.
     //
+    // Standing from the moment the window knows what it is showing, and not before. Following
+    // the daemons and opening the window are two requests with a renderer, a menu and a window
+    // built between them, and the first bootstrap arrives in that gap - so without the guard
+    // this answers a question `open` is still on its way to answering, and the saved
+    // arrangement then lands on top of the answer as a second region onto the same tab.
+    // `open` calls this itself, as its own second step, once the restore has had its say.
+    //
     // Safe only while nothing closes a region deliberately - the day a user can put one away,
     // this would reopen it on the next thing the daemon said, and the rule needs to learn the
     // difference between empty and dismissed.
-    open_remaining_regions();
+    if opened() {
+        open_remaining_regions();
+    }
     if showed {
         publish();
     }

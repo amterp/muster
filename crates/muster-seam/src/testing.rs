@@ -60,3 +60,23 @@ pub fn fresh_session() -> Turn {
 pub struct Turn {
     _turn: MutexGuard<'static, ()>,
 }
+
+impl Turn {
+    /// Quits this window and opens another one, inside the same test.
+    ///
+    /// The reset `fresh_session` does, without taking the turn again - the lock is not
+    /// reentrant, so a test that called `fresh_session` twice would hang rather than
+    /// relaunch.
+    ///
+    /// What it buys is the one behaviour a single launch structurally cannot show: what a
+    /// window does with the arrangement the launch before it wrote down. A file on disk is
+    /// all that carries between the two, which is exactly what carries between two
+    /// processes, so a test that relaunches is testing the same seam a second process would
+    /// come through.
+    ///
+    /// The event callback goes with everything else, so a caller that was watching events
+    /// has to set it again before driving the second launch.
+    pub fn relaunch(&self) {
+        session::reset();
+    }
+}

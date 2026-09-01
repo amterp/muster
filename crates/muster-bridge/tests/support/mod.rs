@@ -22,8 +22,8 @@ use std::time::{Duration, Instant};
 
 use herdr_harness::Daemon;
 use muster::proto::{
-    AttachPane, Attached, Event, KeyDown, KeyEvent, Request, Response, Startup, event, request,
-    response,
+    AttachPane, Attached, Event, KeyDown, KeyEvent, OpenWindow, Request, Response, Startup, event,
+    request, response,
 };
 use muster_vt::{Grid, Terminal};
 use prost::Message;
@@ -142,6 +142,13 @@ impl Typing {
         // Registered before the attach that binds the socket, because the bridge can dial
         // back before the next line runs.
         muster::ffi::muster_set_event_callback(Some(note_typeable));
+        // Then a window, which is what publishes a view. The name below is read out of one,
+        // and only the view carries it - the roster names every pane a daemon holds but says
+        // nothing in the daemon's own vocabulary, so it cannot answer "what does Muster call
+        // the pane herdr calls this". Asked for rather than waited for: following a daemon
+        // does not put anything on screen, and a window that has not been opened has no view
+        // to read a name out of.
+        assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
         // Attached by the name Muster minted for it, which is what every request in this
         // schema means by a pane. `pane` is the daemon's own id, read from `pane.list` above,
         // and it is what the raw calls below and the bridge's command line want - the two

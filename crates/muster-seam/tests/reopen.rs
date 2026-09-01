@@ -8,9 +8,12 @@
 //!
 //! Two processes cannot be had here, because the seam holds one session per process. So the
 //! file is the seam: this drives a window, reads what it wrote, and asserts on that - which is
-//! also the only part a second process would have to go on.
+//! also the only part a second process would have to go on. `Turn::relaunch` then takes the
+//! other half of the round trip, opening a second window onto the file the first one left, in
+//! the same test.
 
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use herdr_harness::{Daemon, until};
 use muster::proto::{
@@ -24,13 +27,11 @@ fn a_window_writes_down_what_it_is_showing() {
     let daemon = Daemon::start();
     let state = daemon.muster_config().with_file_name("window.toml");
 
-    muster::ffi::muster_set_event_callback(Some(note_view));
-    assert_ok(&answer(request::Payload::Startup(Startup {
-        config_path: daemon.muster_config().to_string_lossy().into_owned(),
-        state_path: state.to_string_lossy().into_owned(),
-        ..Startup::default()
-    })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    // The statics below outlive a test, so what the last one published is still there and
+    // would answer this one's first wait instantly.
+    forget_the_view();
+    muster::ffi::muster_set_event_callback(Some(note));
+    open_a_window(&daemon, &state);
 
     until(
         "the window to open onto a workspace",
@@ -92,6 +93,161 @@ fn a_window_writes_down_what_it_is_showing() {
     assert_eq!(restorable.regions[0].tab.as_str(), second);
 }
 
+/// A window opening onto a saved arrangement shows each of its tabs once.
+///
+/// The failure this pins produced a window drawing the same pane in two regions, which is
+/// two surfaces, two bridges, and a second one refused the terminal - a dead panel that
+/// cannot be closed from inside Muster, because closing it would close the pane the live
+/// region beside it is using.
+///
+/// It took two things at once, which is why it needs a relaunch and the order below. A
+/// window with no saved arrangement never showed it, and neither did a region opened during
+/// a session: the second region came from the restore path, on top of one the daemon's first
+/// bootstrap had already opened while the window was still being built.
+#[test]
+fn a_window_reopens_each_saved_tab_once() {
+    let turn = muster::testing::fresh_session();
+    let daemon = Daemon::start();
+    let state = daemon.muster_config().with_file_name("window.toml");
+
+    // The statics below outlive a test, so what the last one published is still there and
+    // would answer this one's first wait instantly.
+    forget_the_view();
+    muster::ffi::muster_set_event_callback(Some(note));
+    open_a_window(&daemon, &state);
+    until(
+        "the first window to open onto a workspace",
+        || tab_of_first_region().is_some(),
+        || format!("the last view the core published: {:?}", latest_view()),
+    );
+    let showing = tab_of_first_region().expect("just waited for it");
+    assert_eq!(regions_shown(), 1, "the first window opened more than one region");
+
+    // Everything the second launch gets, and everything a second process would get: the file
+    // the first one wrote on its way out.
+    turn.relaunch();
+    forget_the_view();
+    muster::ffi::muster_set_event_callback(Some(note));
+
+    // Following, and then a wait, and only then opening. That is the app's own order - it
+    // starts the core, builds a renderer, a menu and a window, and asks for the window to be
+    // opened last - and the gap is where this bug lived: the daemon's first bootstrap lands
+    // inside it and gives the daemon a region of its own. Dispatching both requests
+    // back to back would close the gap and test nothing.
+    assert_ok(&answer(request::Payload::Startup(startup(&daemon, &state))));
+    until("the daemon's first bootstrap to be taken", bootstrapped, || {
+        format!("the last view the core published: {:?}", latest_view())
+    });
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+
+    assert_eq!(
+        regions_shown(),
+        1,
+        "the second window drew {} regions for one saved arrangement, so at least one pane \
+         in it is shown twice",
+        regions_shown()
+    );
+    assert_eq!(tab_of_first_region().as_deref(), Some(showing.as_str()));
+
+    // And what it writes down says the same, which is what stops a window that has done this
+    // once from doing it worse every launch after.
+    let written = std::fs::read_to_string(&state)
+        .unwrap_or_else(|e| panic!("the second window wrote no arrangement: {e}"));
+    assert_eq!(
+        written.matches("[[region]]").count(),
+        1,
+        "the saved arrangement grew a region across a relaunch:\n{written}"
+    );
+}
+
+/// An arrangement naming one tab twice still opens it once.
+///
+/// The other half of the same bug, and the half that decides whether anybody gets their
+/// window back. A Muster that drew a pane twice wrote two regions for it on the way out, so
+/// there are files on real machines holding the same tab two and three times - and a fix that
+/// only stopped new ones being written would leave those windows broken every launch, with
+/// deleting the file the only way out.
+///
+/// The file here is one this build wrote, doubled, rather than one composed by hand: a
+/// fixture that guessed at the format would keep passing after the format moved.
+#[test]
+fn an_arrangement_naming_one_tab_twice_opens_it_once() {
+    let turn = muster::testing::fresh_session();
+    let daemon = Daemon::start();
+    let state = daemon.muster_config().with_file_name("window.toml");
+
+    // The statics below outlive a test, so what the last one published is still there and
+    // would answer this one's first wait instantly.
+    forget_the_view();
+    muster::ffi::muster_set_event_callback(Some(note));
+    open_a_window(&daemon, &state);
+    until(
+        "the first window to open onto a workspace",
+        || tab_of_first_region().is_some(),
+        || format!("the last view the core published: {:?}", latest_view()),
+    );
+    let showing = tab_of_first_region().expect("just waited for it");
+
+    turn.relaunch();
+    forget_the_view();
+    muster::ffi::muster_set_event_callback(Some(note));
+
+    let written = std::fs::read_to_string(&state).expect("the first window wrote an arrangement");
+    let (head, region) = written
+        .split_once("[[region]]")
+        .expect("the arrangement the first window wrote holds a region");
+    std::fs::write(&state, format!("{head}[[region]]{region}\n[[region]]{region}"))
+        .expect("the harness root is writable");
+
+    open_a_window(&daemon, &state);
+    until(
+        "the second window to open onto the tab it was left on",
+        || tab_of_first_region().is_some(),
+        || format!("the last view the core published: {:?}", latest_view()),
+    );
+
+    assert_eq!(
+        regions_shown(),
+        1,
+        "the window opened {} regions for a file naming one tab twice, so the pane in it is \
+         drawn twice and one of the two cannot attach",
+        regions_shown()
+    );
+    assert_eq!(tab_of_first_region().as_deref(), Some(showing.as_str()));
+
+    // And the file is left holding one, so the window heals rather than staying one launch
+    // away from doing this again.
+    let after = std::fs::read_to_string(&state).expect("the second window wrote an arrangement");
+    assert_eq!(
+        after.matches("[[region]]").count(),
+        1,
+        "the duplicate survived into what this window wrote:\n{after}"
+    );
+}
+
+/// Starts the core against this daemon, and opens the window - what a bare `muster` does.
+fn open_a_window(daemon: &Daemon, state: &std::path::Path) {
+    assert_ok(&answer(request::Payload::Startup(startup(daemon, state))));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+}
+
+fn startup(daemon: &Daemon, state: &std::path::Path) -> Startup {
+    Startup {
+        config_path: daemon.muster_config().to_string_lossy().into_owned(),
+        state_path: state.to_string_lossy().into_owned(),
+        // Named, because a saved region says which tab it was showing in Muster's own name for
+        // it. A relaunch that minted fresh names would fail every region's check and open as a
+        // first launch - which is the app's own behaviour without this file, and would leave a
+        // relaunch here testing nothing.
+        pane_names_path: daemon.root().join("panes.toml").to_string_lossy().into_owned(),
+        ..Startup::default()
+    }
+}
+
+fn regions_shown() -> usize {
+    latest_view().map_or(0, |view| view.regions.len())
+}
+
 fn tab_of_first_region() -> Option<String> {
     let view = latest_view()?;
     let region = view.regions.first()?;
@@ -103,18 +259,43 @@ fn tab_of_first_region() -> Option<String> {
 
 static VIEW: Mutex<Option<ViewChanged>> = Mutex::new(None);
 
-extern "C" fn note_view(bytes: *const u8, len: usize) {
+/// Whether a daemon has reported itself connected, which is the end of a bootstrap.
+///
+/// The one moment in a launch a test can wait for that is not about what is on screen. The
+/// subscription's first bootstrap reconciles, publishes, and only then says this - so a
+/// window that has seen it has had everything the daemon's arrival was going to do to it,
+/// including nothing.
+static CONNECTED: AtomicBool = AtomicBool::new(false);
+
+extern "C" fn note(bytes: *const u8, len: usize) {
     // SAFETY: the core guarantees `len` readable bytes for the duration of this call, which
     // is the contract in include/muster.h.
     let bytes = unsafe { std::slice::from_raw_parts(bytes, len) };
     let event = Event::decode(bytes).expect("the core emits events this build can decode");
-    if let Some(event::Payload::ViewChanged(view)) = event.payload {
-        *VIEW.lock().expect("a panicking test poisoned the view") = Some(view);
+    match event.payload {
+        Some(event::Payload::ViewChanged(view)) => {
+            *VIEW.lock().expect("a panicking test poisoned the view") = Some(view);
+        }
+        Some(event::Payload::BackendHealth(health)) if health.state == "connected" => {
+            CONNECTED.store(true, Ordering::Relaxed);
+        }
+        _ => {}
     }
 }
 
 fn latest_view() -> Option<ViewChanged> {
     VIEW.lock().expect("a panicking test poisoned the view").clone()
+}
+
+fn bootstrapped() -> bool {
+    CONNECTED.load(Ordering::Relaxed)
+}
+
+/// Throws away what the last launch said, so a wait on the next one cannot be answered by the
+/// window before it.
+fn forget_the_view() {
+    *VIEW.lock().expect("a panicking test poisoned the view") = None;
+    CONNECTED.store(false, Ordering::Relaxed);
 }
 
 fn answer(payload: request::Payload) -> Response {
