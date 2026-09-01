@@ -772,6 +772,17 @@ Every test for "connected" passes in both cases, and rendering an empty session 
 everything is the worst available answer. This is a distinct state with a distinct response - say what was there,
 offer to rebuild it - and it belongs to Muster because no daemon can know what a window was showing.
 
+**A connection dropping costs a pane its bridge, and the bridge is what has to come back.** The row below saying a
+dropped connection loses nothing is about the daemon, which keeps running with the agent in it; the near side gives
+up, because a bridge for a remote pane is an `ssh` exec and it dies with the route. So a bridge that ended is
+replaced while its daemon still holds its pane, and the interval between one ending and the next tells a connection
+that blinked from a pane nothing will fix - three replacements inside half a minute and Muster stops and says why
+(`crates/muster-core/src/respawn.rs`). Two things make that harder than it sounds. The exits arrive before the
+tunnel is reported down rather than after, so nothing may key on the reopen. And the far machine refuses the
+replacement: only one client may hold a herdr terminal, and the client from before the drop goes on holding one -
+measured still attached 53 minutes after its ssh was gone - so a replacement re-attaches with `--takeover`, which a
+first bridge never does, because the terminal it would take could be one another window is showing.
+
 **A success that means a refusal: the daemon considered a change, performed none of it, and named its reason beside
 an ordinary answer.** herdr does this for zoom, swap, move and resize, so a window reading only the envelope cannot
 tell it from a change that worked, and the one symptom is a window that does not move - which is what a bug in the

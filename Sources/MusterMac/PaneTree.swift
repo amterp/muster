@@ -212,9 +212,19 @@ public indirect enum PaneTree: Equatable {
     /// at the wrong size for as long as the two disagreed.
     public let fontSizeOffset: Int32
 
+    /// How many times this window has replaced this pane's bridge, counting from zero.
+    ///
+    /// Two answers off one number, both decided by the core. A number that changed means this
+    /// pane's bridge is gone and the surface running it has to be built again - a bridge is a
+    /// surface's command, so there is no other way to start one. A number that is not zero
+    /// means this window has had a bridge for this pane before, so its replacement takes the
+    /// terminal over rather than being refused by whatever is still holding it; a first bridge
+    /// never does, and so never takes one another window is legitimately showing.
+    public let bridgeRestarts: UInt32
+
     public init(
       paneID: String, controlSocketPath: String?, backendPaneID: String = "",
-      fontSizeOffset: Int32 = 0
+      fontSizeOffset: Int32 = 0, bridgeRestarts: UInt32 = 0
     ) {
       self.paneID = paneID
       self.controlSocketPath = controlSocketPath
@@ -222,6 +232,7 @@ public indirect enum PaneTree: Equatable {
       // Defaulted so that a test describing a window it is not about the text size of does not
       // have to say so, on the same terms as a region's weight.
       self.fontSizeOffset = fontSizeOffset
+      self.bridgeRestarts = bridgeRestarts
     }
   }
 
@@ -397,7 +408,8 @@ extension PaneTree {
           paneID: pane.paneID,
           controlSocketPath: pane.controlSocketPath.isEmpty ? nil : pane.controlSocketPath,
           backendPaneID: pane.backendPaneID,
-          fontSizeOffset: pane.fontSizeOffset))
+          fontSizeOffset: pane.fontSizeOffset,
+          bridgeRestarts: pane.bridgeRestarts))
     case .split(let split):
       self = .split(
         axis: SplitAxis(rawValue: split.axis) ?? .columns,

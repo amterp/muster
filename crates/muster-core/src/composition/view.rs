@@ -139,6 +139,15 @@ pub struct ViewPane {
     /// Zero is the ordinary answer and means the size the config file named, or the one the
     /// renderer chose when it named none.
     pub font_size_offset: i32,
+
+    /// How many times this window has replaced this pane's bridge, counting from zero.
+    ///
+    /// Two things the shell reads off one number. It builds a new surface whenever this
+    /// changes, because a bridge is a surface's command and there is no other way to start
+    /// one; and a number that is not zero says this window has had a bridge for this pane
+    /// before, which is when taking the terminal over is a re-attach rather than stealing it
+    /// from another window (`crate::respawn`).
+    pub bridge_restarts: u32,
 }
 
 impl View {
@@ -148,14 +157,23 @@ impl View {
     /// its own lock and the caller is the only thing that knows how to hold them. A region
     /// whose daemon answers `None` is dropped: it names a daemon nothing is following, so
     /// there is no tab to render and no honest thing to say about it.
+    ///
+    /// `pane` answers everything about one pane that the layout cannot: the socket its bridge
+    /// dials, the backend's own name for it, the size somebody chose, and how many times its
+    /// bridge has been replaced. One closure rather than one per field, because four of the
+    /// same shape in a row is a call site nobody can check - two of them return
+    /// `Option<String>`, and a caller that swapped those two would compile and render every
+    /// pane's bridge pointed at the wrong thing.
+    ///
+    /// It answers with the id it was handed. Not enforced here, because putting it back would
+    /// cost a clone per pane on a path with a budget against it (`perf/baseline.json`,
+    /// `view.build`) to guard a mistake that has to be made on purpose.
     pub fn of<'a>(
         composition: &Composition,
         mirror: impl Fn(&DaemonId) -> Option<&'a Mirror>,
-        socket: impl Fn(&DaemonId, &PaneId) -> Option<String>,
         transport: impl Fn(&DaemonId) -> Option<Transport>,
         backend_socket: impl Fn(&DaemonId) -> Option<String>,
-        backend_pane: impl Fn(&DaemonId, &PaneId) -> Option<String>,
-        font_size: impl Fn(&DaemonId, &PaneId) -> i32,
+        pane: impl Fn(&DaemonId, &PaneId) -> ViewPane,
     ) -> View {
         let regions = composition
             .regions()
@@ -194,13 +212,7 @@ impl View {
                             .then(|| region.pane.clone().or_else(|| layout.zoomed.clone()))
                             .flatten()
                             .map(LayoutNode::Pane);
-                        build(
-                            zoomed.as_ref().unwrap_or(&layout.root),
-                            &region.daemon,
-                            &socket,
-                            &backend_pane,
-                            &font_size,
-                        )
+                        build(zoomed.as_ref().unwrap_or(&layout.root), &region.daemon, &pane)
                     }),
                     zoomed: layout.is_some_and(|layout| layout.zoomed.is_some()),
                     transport: transport(&region.daemon),
@@ -551,22 +563,15 @@ fn arranges(mirror: &Mirror, region: &Region, layout: &Layout) -> bool {
 fn build(
     node: &LayoutNode,
     daemon: &DaemonId,
-    socket: &impl Fn(&DaemonId, &PaneId) -> Option<String>,
-    backend_pane: &impl Fn(&DaemonId, &PaneId) -> Option<String>,
-    font_size: &impl Fn(&DaemonId, &PaneId) -> i32,
+    pane: &impl Fn(&DaemonId, &PaneId) -> ViewPane,
 ) -> ViewNode {
     match node {
-        LayoutNode::Pane(id) => ViewNode::Pane(ViewPane {
-            id: id.clone(),
-            control_socket_path: socket(daemon, id),
-            backend_pane_id: backend_pane(daemon, id),
-            font_size_offset: font_size(daemon, id),
-        }),
+        LayoutNode::Pane(id) => ViewNode::Pane(pane(daemon, id)),
         LayoutNode::Split { axis, ratio, first, second } => ViewNode::Split {
             axis: *axis,
             ratio: *ratio,
-            first: Box::new(build(first, daemon, socket, backend_pane, font_size)),
-            second: Box::new(build(second, daemon, socket, backend_pane, font_size)),
+            first: Box::new(build(first, daemon, pane)),
+            second: Box::new(build(second, daemon, pane)),
         },
     }
 }

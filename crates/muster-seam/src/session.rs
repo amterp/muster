@@ -18,10 +18,10 @@ use muster_core::AgentState;
 use muster_core::attention::Attention;
 use muster_core::composition::{
     Composition, Daemon, DaemonId, Endpoint, FontSizeChange, FontSizes, Frame, PaneKey,
-    Presentation, RegionId, Saved, Step, TabKey, Transport, View, saved,
+    Presentation, RegionId, Saved, Step, TabKey, Transport, View, ViewPane, saved,
 };
 use muster_core::config::{Appearance, Config, Feel, Panes};
-use muster_core::diagnostics::{log, poison};
+use muster_core::diagnostics::{clock, log, poison};
 use muster_core::fields;
 use muster_core::find::{Found, Needle};
 use muster_core::input::{Bindings, PaneInput, PaneInputSettings, ScrollDirection};
@@ -30,6 +30,7 @@ use muster_core::mirror::backend::{PaneId, PaneText, Snapshot, TabId, WorkspaceI
 use muster_core::mirror::{Change, Health, Mirror};
 use muster_core::names::{self, Mint, Names, PaneNames, TabNames};
 use muster_core::problems::{Problem, Problems, Severity};
+use muster_core::respawn::{self, Decision, Respawns};
 use muster_core::roster::{Numbering, Roster, RosterTab, TabStep};
 use muster_herdr::subscription::{Notice, Subscription};
 use muster_herdr::{
@@ -886,6 +887,14 @@ pub(crate) struct Session {
     /// the chord that sizes one has no reason to care which machine it is on.
     font_sizes: FontSizes,
 
+    /// Which panes have had a bridge end, and how recently.
+    ///
+    /// Beside the sizes and spanning the daemons for the same reason: a laptop pane and a
+    /// devenv pane both have bridges, and the rule for replacing one is the same either way -
+    /// though it is a devenv the rule was written for, since it is an ssh that dies when a
+    /// laptop changes network.
+    respawns: Respawns,
+
     /// The search somebody has open, if anybody has.
     ///
     /// One at a time, because the find bar is one bar over the pane with the keyboard. Held
@@ -1099,6 +1108,16 @@ impl Session {
         self.font_sizes.retain(|pane| !gone.contains(pane));
     }
 
+    /// Whether the daemon still holds this pane.
+    ///
+    /// Asked of the mirror, which is a daemon's own answer as of the last thing it said, and
+    /// so the only place "did this pane close, or did its connection die" is written down.
+    fn holds(&self, pane: &PaneKey) -> bool {
+        self.backends.get(&pane.daemon).is_some_and(|backend| {
+            poison::lock(&backend.mirror, "mirror").pane(&pane.pane).is_some()
+        })
+    }
+
     /// Brings composition, and what this process holds open, in line with one daemon.
     fn reconcile(&mut self, daemon: &DaemonId) {
         self.prune(daemon);
@@ -1127,6 +1146,10 @@ impl Session {
             }
             held
         });
+        // What was tried for a pane goes with the pane. A pane closed from another client
+        // never reports a bridge exiting, so without this the map keeps a row for every pane
+        // the window has ever held.
+        self.respawns.retain(|pane| &pane.daemon != daemon || mirror.pane(&pane.pane).is_some());
     }
 
     /// Opens a channel for every pane this daemon has on screen and does not already have one.
@@ -1357,7 +1380,6 @@ impl Session {
         View::of(
             &self.composition,
             |daemon| mirrors.get(daemon).map(|held| &**held),
-            |daemon, pane| self.channel(daemon, pane).map(|held| held.control_socket_path.clone()),
             |daemon| {
                 let tunnel = self.backends.get(daemon)?.tunnel.as_ref()?;
                 Some(Transport {
@@ -1379,10 +1401,21 @@ impl Session {
                 }
             },
             |daemon, pane| {
-                let backend = self.backends.get(daemon)?;
-                Some(backend.names.backend_pane(pane).ok()?.as_str().to_string())
+                let key = PaneKey::new(daemon, pane);
+                ViewPane {
+                    id: pane.clone(),
+                    control_socket_path: self
+                        .channel(daemon, pane)
+                        .map(|held| held.control_socket_path.clone()),
+                    backend_pane_id: self
+                        .backends
+                        .get(daemon)
+                        .and_then(|backend| backend.names.backend_pane(pane).ok())
+                        .map(|named| named.as_str().to_string()),
+                    font_size_offset: self.font_sizes.offset(&key),
+                    bridge_restarts: self.respawns.count(&key),
+                }
             },
-            |daemon, pane| self.font_sizes.offset(&PaneKey::new(daemon, pane)),
         )
     }
 
@@ -1665,12 +1698,24 @@ pub(crate) fn submit(
     outcome.map(|_| created).map_err(|refusal| refusal.to_string())
 }
 
-/// Takes the shell's word that nothing is painting a pane, and checks what that means.
+/// Takes the shell's word that nothing is painting a pane, and starts another bridge if the
+/// pane is still there to paint.
 ///
 /// The shell knows one thing the core cannot see - its own subprocess ended - and the core
-/// knows the one place to look it up. A pane the daemon has dropped disappears from the
-/// window here; a pane it still holds stays, with a surface that has stopped painting, which
-/// is all anybody can honestly say about it.
+/// knows the one place to look it up. A pane the daemon has dropped disappears from the window
+/// here. A pane it still holds gets a replacement, which is what a laptop swapping ethernet for
+/// wifi needs: the ssh under every devenv pane dies with the route, and until this the panes
+/// stayed on screen showing a dead terminal until somebody relaunched Muster.
+///
+/// `process_alive` is what separates the two things a surface ending can mean. False is the
+/// bridge exiting on its own, which is the case worth replacing. True is Muster tearing the
+/// surface down - the pane left the window, or its surface is being rebuilt - and starting
+/// another bridge for that would be racing the one that is about to start.
+///
+/// It does *not* separate "the connection blinked" from "the pane is gone", which is what the
+/// card that asked for this expected of it: a bridge whose pane closed exits on its own too.
+/// The resnapshot below is what answers that, and the interval between exits is what answers
+/// the harder question of whether replacing it is going to help (`muster_core::respawn`).
 pub(crate) fn bridge_exited(daemon: &str, pane: &str, process_alive: bool) {
     let daemon = DaemonId::new(if daemon.is_empty() { LOCAL } else { daemon });
     log::info(
@@ -1681,12 +1726,62 @@ pub(crate) fn bridge_exited(daemon: &str, pane: &str, process_alive: bool) {
             "process_alive" => process_alive.to_string(),
         },
     );
+    let key = PaneKey::new(&daemon, &PaneId::new(pane));
     // The wait starts again. A pane keeps its channel while its surface is thrown away and
     // built again, so the replacement bridge has to dial too - and a replacement that never
     // arrives is the same deaf pane, which is the case `control_socket.rs` names as the reason
     // its accept loop runs more than once.
-    watchdog::opened(PaneKey::new(&daemon, &PaneId::new(pane)));
+    watchdog::opened(key.clone());
+    // Before deciding anything, because the decision turns on whether the daemon still holds
+    // this pane and the mirror is the only place that is written down.
     resnapshot(&daemon, &format!("nothing is painting {pane} any more"));
+    if process_alive {
+        return;
+    }
+    replace_bridge(&key);
+}
+
+/// Starts another bridge for a pane whose last one ended, or says why it will not.
+///
+/// Nothing is spawned here. The shell owns the surfaces and a bridge is a surface's command,
+/// so what this does is count the replacement and publish - and the view carrying a number the
+/// shell has not seen for this pane is what makes it build one.
+fn replace_bridge(pane: &PaneKey) {
+    let decision = {
+        let mut session = poison::lock(&SESSION, "session");
+        if !session.holds(pane) {
+            // The pane closed, which is the other reason a bridge exits on its own. The region
+            // showing it has already been reconciled away by the resnapshot; what is left is
+            // the record of what was tried, which belongs to a pane that no longer exists.
+            session.respawns.forget(pane);
+            return;
+        }
+        session.respawns.ended(pane, clock::monotonic_now())
+    };
+
+    match decision {
+        Decision::Start(count) => {
+            log::info(
+                "bridge.replacing",
+                fields! { "pane" => pane.to_string(), "attempt" => count.to_string() },
+            );
+            publish();
+        }
+        // Written down and not raised in the roster, although this is a pane nobody can type
+        // into. The typeable watch already reports exactly that, and reports it here: the wait
+        // restarted when the bridge exited, so five seconds after this a pane with nothing
+        // dialing its socket says so on its own row. A second problem beside it would be two
+        // rows about one pane, and this is the half that belongs in the log - what was tried,
+        // and the one remedy nobody guesses.
+        Decision::GiveUp(tried) => log::warn(
+            "bridge.replacing.stopped",
+            fields! {
+                "pane" => pane.to_string(),
+                "tried" => tried.to_string(),
+                "detail" => respawn::gave_up(pane, tried),
+            },
+        ),
+    }
 }
 
 /// Asks a daemon what it actually holds, and shows that instead.

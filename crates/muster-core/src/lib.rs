@@ -17,6 +17,7 @@ pub mod intent;
 pub mod mirror;
 pub mod names;
 pub mod problems;
+pub mod respawn;
 pub mod roster;
 pub mod typeable;
 
@@ -30,5 +31,6 @@ pub use intent::{BackendChannel, BackendIntent};
 pub use mirror::{BackendEvent, Change, Mirror};
 pub use names::{BackendPaneId, BackendTabId, Mint, Names, PaneNames, TabNames};
 pub use problems::{Problem, Problems, Severity};
+pub use respawn::Respawns;
 pub use roster::{Landing, Numbering, Roster, RosterPane};
 pub use typeable::Waiting;

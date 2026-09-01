@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use muster_core::AgentState;
-use muster_core::composition::{Composition, Daemon, DaemonId, Endpoint, View};
+use muster_core::composition::{Composition, Daemon, DaemonId, Endpoint, View, ViewPane};
 use muster_core::input::{
     Key, KeyEvent, Keymap, Modifiers, PaneInput, PaneInputSettings, Resolution, TerminalModeProfile,
 };
@@ -248,18 +248,23 @@ fn view_cost() -> Cost {
     measure("view.build", "ns/pane", BUDGETED_PANES * 200, 20, 5, || {
         for _ in 0..200 {
             // The transport closure answers local here: what this measures is building a
-            // view, not reaching a machine. The two pane closures answer without a lookup for
-            // the same reason - a registry behind a lock would put its cost in this number.
-            // Text size answers the configured one, which is what every pane in a window
-            // nobody has sized reports.
+            // view, not reaching a machine. The pane closure answers without a lookup for the
+            // same reason - a registry behind a lock would put its cost in this number. Text
+            // size answers the configured one, which is what every pane in a window nobody has
+            // sized reports, and so does the bridge count: a window measured mid-recovery is
+            // not the window this budget is about.
             let view = View::of(
                 &composition,
                 |named| (named == &daemon).then_some(&mirror),
-                |_, pane| Some(pane.to_string()),
                 |_| None,
                 |_| Some("/tmp/herdr.sock".to_string()),
-                |_, pane| Some(pane.to_string()),
-                |_, _| 0,
+                |_, pane| ViewPane {
+                    id: pane.clone(),
+                    control_socket_path: Some(pane.to_string()),
+                    backend_pane_id: Some(pane.to_string()),
+                    font_size_offset: 0,
+                    bridge_restarts: 0,
+                },
             );
             black_box(view.regions.len());
         }

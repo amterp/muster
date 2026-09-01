@@ -140,6 +140,7 @@ fn node(node: &ViewNode) -> proto::ViewNode {
             control_socket_path: pane.control_socket_path.clone().unwrap_or_default(),
             backend_pane_id: pane.backend_pane_id.clone().unwrap_or_default(),
             font_size_offset: pane.font_size_offset,
+            bridge_restarts: pane.bridge_restarts,
         }),
         ViewNode::Split { axis, ratio, first, second } => {
             proto::view_node::Node::Split(Box::new(proto::ViewSplit {

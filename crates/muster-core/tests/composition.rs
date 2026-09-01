@@ -12,7 +12,7 @@ use std::fmt::Write as _;
 use conformance::{CaseError, Conformance, fields};
 use muster_core::composition::{
     Composition, Daemon, DaemonId, Endpoint, FontSizeChange, FontSizes, PaneKey, Region, RegionId,
-    Step, Transport, View,
+    Step, Transport, View, ViewPane,
 };
 use muster_core::mirror::Mirror;
 use muster_core::mirror::backend::{PaneId, TabId, WorkspaceId};
@@ -266,9 +266,6 @@ fn view_of(
     View::of(
         composition,
         |daemon| worlds.get(current.get(daemon)?),
-        |daemon, pane| {
-            attached.contains(&pane.to_string()).then(|| format!("/tmp/{daemon}-{pane}.sock"))
-        },
         // How a daemon is reached is the runtime's answer, and a case has no runtime. What a
         // case does say is how a daemon was asked for, so this reads the endpoint back: a
         // region on an ssh daemon carries a transport, and one on a local daemon does not.
@@ -284,11 +281,21 @@ fn view_of(
             Some(Endpoint::Ssh { .. }) => None,
             _ => Some(format!("/tmp/{daemon}.sock")),
         },
-        // A case's panes are named the way the backend names them, so the two spellings agree
-        // and neither the cases nor this driver has to know the registry exists. What the
-        // translation does is `pane-names.json`'s subject.
-        |_, pane| Some(pane.to_string()),
-        |daemon, pane| sizes.offset(&PaneKey::new(daemon, pane)),
+        |daemon, pane| ViewPane {
+            id: pane.clone(),
+            control_socket_path: attached
+                .contains(&pane.to_string())
+                .then(|| format!("/tmp/{daemon}-{pane}.sock")),
+            // A case's panes are named the way the backend names them, so the two spellings
+            // agree and neither the cases nor this driver has to know the registry exists.
+            // What the translation does is `pane-names.json`'s subject.
+            backend_pane_id: Some(pane.to_string()),
+            font_size_offset: sizes.offset(&PaneKey::new(daemon, pane)),
+            // Zero, because no case here is about a bridge that had to be replaced - what a
+            // replacement does to a window is `respawn.json`'s subject, and a number in this
+            // driver would only ever restate its own input.
+            bridge_restarts: 0,
+        },
     )
 }
 

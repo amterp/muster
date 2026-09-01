@@ -120,3 +120,19 @@ func spacesSurviveTheCommandLine() {
   #expect(command.contains("'/Users/some one/build/muster-bridge'"))
   #expect(command.contains("'/tmp/a b.sock'"))
 }
+
+@Test("a replacement bridge takes the terminal over, and a first one does not")
+func onlyAReattachTakesOver() {
+  // Only one client may hold a herdr terminal, and a client whose transport died goes on
+  // holding one - measured at 53 minutes after its ssh was gone. So a pane whose connection
+  // was lost cannot be re-attached without this, and every network change locked another one.
+  // A first attach never takes over: that terminal could be one another window is showing.
+  let first = PaneCommand.bridge(
+    executable: "/build/debug/muster", paneID: "w1:p1", controlSocketPath: "/tmp/s.sock")
+  let again = PaneCommand.bridge(
+    executable: "/build/debug/muster", paneID: "w1:p1", controlSocketPath: "/tmp/s.sock",
+    reattaching: true)
+
+  #expect(!first.contains("--takeover"))
+  #expect(again.hasSuffix("'--takeover'"))
+}

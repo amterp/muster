@@ -45,6 +45,12 @@ public final class PaneSurfaces {
     /// new bridge, and a bridge is spawned by its surface's command - so it needs a new
     /// surface too.
     let controlSocketPath: String?
+
+    /// Which replacement its bridge was on when it was built. The core counts these, and a
+    /// number that has moved means the bridge behind this surface has ended - most often
+    /// because the connection carrying it died - so the surface has to be built again to
+    /// start another.
+    let bridgeRestarts: UInt32
   }
 
   private let startPane: StartPane
@@ -82,14 +88,19 @@ public final class PaneSurfaces {
   ) -> (chrome: PaneChrome, isNew: Bool) {
     let key = PaneKey(daemon: daemonID, pane: leaf.paneID)
     if let existing = held[key] {
-      if existing.controlSocketPath == leaf.controlSocketPath {
+      if existing.controlSocketPath == leaf.controlSocketPath,
+        existing.bridgeRestarts == leaf.bridgeRestarts
+      {
         return (existing.chrome, false)
       }
       Core.info(
         "pane.surface.rebuilt",
         [
           "pane": leaf.paneID,
-          "reason": "its control socket changed, so its bridge was dialing a closed listener",
+          "reason": existing.controlSocketPath == leaf.controlSocketPath
+            ? "the core replaced its bridge, which only a new surface can start"
+            : "its control socket changed, so its bridge was dialing a closed listener",
+          "bridge_restarts": String(leaf.bridgeRestarts),
         ])
       release(key)
     }
@@ -98,7 +109,9 @@ public final class PaneSurfaces {
     chrome.attach(paneID: leaf.paneID)
     chrome.onFocusRequested = focus
     chrome.onScrollRequested = scroll
-    held[key] = Held(chrome: chrome, controlSocketPath: leaf.controlSocketPath)
+    held[key] = Held(
+      chrome: chrome, controlSocketPath: leaf.controlSocketPath,
+      bridgeRestarts: leaf.bridgeRestarts)
     return (chrome, true)
   }
 

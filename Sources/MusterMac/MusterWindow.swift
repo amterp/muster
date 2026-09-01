@@ -520,7 +520,8 @@ public final class MusterWindow: NSObject {
       command: PaneCommand.bridge(
         executable: executable, paneID: pane.backendPaneID, controlSocketPath: socketPath,
         herdrSocketPath: backendSocket, herdrBinaryPath: herdrBinary,
-        sshHost: transport?.sshHost, sshControlPath: transport?.sshControlPath),
+        sshHost: transport?.sshHost, sshControlPath: transport?.sshControlPath,
+        reattaching: pane.bridgeRestarts > 0),
       typeable: true)
   }
 

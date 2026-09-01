@@ -25,6 +25,7 @@ use muster_ssh::quoted;
 const USAGE: &str = "\
 usage: muster-bridge <pane-id> [--control-socket <path>] [--herdr-socket <path>]
                      [--herdr-binary <path>] [--via-ssh <host> --ssh-control <path>]
+                     [--takeover]
 
 Runs `herdr terminal session control <pane-id>` and unwraps its frames onto stdout.
 Sized from the PTY on stdout, which is the surface's own geometry.
@@ -45,7 +46,12 @@ build, and cannot work inside a shipped bundle.
 With --via-ssh, runs that command on another machine instead, over the ssh master the app
 already opened for the daemon's control plane. Frames are byte-identical either way. It
 prefers the herdr Muster installed there, at ~/.muster/bin/herdr, and falls back to
-whatever is on PATH.";
+whatever is on PATH.
+
+With --takeover, takes the terminal from whatever client is already attached to it. Only
+one client may hold a herdr terminal, and one whose transport died goes on holding it -
+so a pane whose connection was lost cannot be re-attached without this. The app sends it
+only when re-attaching a pane it was already showing, never on a first attach.";
 
 /// herdr's stdin, which two threads write to: the resize watcher and the app's relay.
 type HerdrInput = Arc<Mutex<ChildStdin>>;
@@ -82,6 +88,7 @@ fn main() {
                     .to_string_lossy()
                     .into_owned(),
             },
+            "takeover" => arguments.takeover.to_string(),
         },
     );
 
@@ -164,6 +171,15 @@ struct Arguments {
     /// remote pane - that one runs its CLI over there and resolves it over there.
     herdr_binary: Option<String>,
     ssh: Option<Ssh>,
+
+    /// Whether to take the terminal from a client already holding it.
+    ///
+    /// Decided by the app rather than here, because the question is whose client that is and
+    /// nothing in this process can know: a bridge sees a refusal and cannot tell an orphan
+    /// left by its own window's dead connection from another window rendering the pane right
+    /// now. The app sends this only when replacing a bridge it had for this pane before
+    /// (`crates/muster-core/src/respawn.rs`).
+    takeover: bool,
 }
 
 /// The machine a pane lives on, when it is not this one.
@@ -189,9 +205,15 @@ impl Arguments {
             herdr_socket: None,
             herdr_binary: None,
             ssh: None,
+            takeover: false,
         };
         let (mut host, mut control_path) = (None, None);
         while let Some(flag) = read.next() {
+            // Taken before the value is read, because this is the one flag that has none.
+            if flag == "--takeover" {
+                parsed.takeover = true;
+                continue;
+            }
             let value = read.next()?.clone();
             match flag.as_str() {
                 "--control-socket" => parsed.control_socket = Some(value),
@@ -241,6 +263,9 @@ fn spawn_herdr(arguments: &Arguments, columns: u16, rows: u16) -> Result<Child, 
                 "--rows",
                 &rows.to_string(),
             ]);
+            if arguments.takeover {
+                command.arg("--takeover");
+            }
             command
         }
         Some(ssh) => {
@@ -287,9 +312,10 @@ fn far_side_command(arguments: &Arguments, columns: u16, rows: u16) -> String {
     let daemon = arguments.herdr_socket.as_ref().map_or_else(String::new, |socket| {
         format!("export HERDR_SOCKET_PATH={}; ", quoted(socket))
     });
+    let takeover = if arguments.takeover { " --takeover" } else { "" };
     format!(
         "H=\"$HOME/.muster/bin/herdr\"; [ -x \"$H\" ] || H=herdr; {daemon}exec \"$H\" \
-         terminal session control {} --cols {columns} --rows {rows}",
+         terminal session control {} --cols {columns} --rows {rows}{takeover}",
         quoted(&arguments.pane),
     )
 }
@@ -513,15 +539,19 @@ mod tests {
     use super::*;
 
     fn remotely(pane: &str, socket: Option<&str>) -> String {
-        let arguments = Arguments {
+        far_side_command(&remote_arguments(pane, socket, false), 80, 24)
+    }
+
+    fn remote_arguments(pane: &str, socket: Option<&str>, takeover: bool) -> Arguments {
+        Arguments {
             pane: pane.to_string(),
             control_socket: None,
             herdr_socket: socket.map(ToString::to_string),
             // Never sent for a remote pane: a path on this machine names nothing over there.
             herdr_binary: None,
             ssh: Some(Ssh { host: "devenv".to_string(), control_path: "/tmp/c".to_string() }),
-        };
-        far_side_command(&arguments, 80, 24)
+            takeover,
+        }
     }
 
     #[test]
@@ -548,6 +578,42 @@ mod tests {
             ),
             "and then run the pane's stream: {script}"
         );
+    }
+
+    #[test]
+    fn a_re_attach_takes_the_terminal_over_and_a_first_attach_does_not() {
+        // The pane a network change locked: the herdr client from before the change is still
+        // holding its terminal on the far machine, so every later attach is refused until
+        // somebody kills it by hand. Whose client that is cannot be worked out here, so the
+        // app decides and this only relays - and a first attach never takes over, because the
+        // terminal it would take could be one another window is showing right now.
+        let plain = far_side_command(&remote_arguments("p1w3r07bsd", None, false), 80, 24);
+        let again = far_side_command(&remote_arguments("p1w3r07bsd", None, true), 80, 24);
+
+        assert!(!plain.contains("--takeover"), "a first attach took a terminal over: {plain}");
+        assert!(
+            again.ends_with(
+                r#"exec "$H" terminal session control 'p1w3r07bsd' --cols 80 --rows 24 --takeover"#
+            ),
+            "a re-attach should ask herdr for the terminal: {again}"
+        );
+    }
+
+    #[test]
+    fn the_takeover_flag_takes_no_value() {
+        // Every other flag here is a pair, so a parser that read the next word for this one
+        // would swallow whichever flag followed it and refuse the whole command line - which
+        // reads as a pane that renders nothing, with the usage on stderr nobody sees.
+        let parsed = Arguments::parse(&[
+            "p1w3r07bsd".to_string(),
+            "--takeover".to_string(),
+            "--control-socket".to_string(),
+            "/tmp/a.sock".to_string(),
+        ])
+        .expect("the flags parse");
+
+        assert!(parsed.takeover);
+        assert_eq!(parsed.control_socket.as_deref(), Some("/tmp/a.sock"));
     }
 
     #[test]

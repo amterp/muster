@@ -68,9 +68,11 @@ private func show(
 }
 
 private func leaf(
-  _ id: String, socket: String? = "/tmp/\(0).sock", backend: String = ""
+  _ id: String, socket: String? = "/tmp/\(0).sock", backend: String = "", restarts: UInt32 = 0
 ) -> PaneTree {
-  .pane(.init(paneID: id, controlSocketPath: socket, backendPaneID: backend))
+  .pane(
+    .init(
+      paneID: id, controlSocketPath: socket, backendPaneID: backend, bridgeRestarts: restarts))
 }
 
 private func contents(
@@ -210,6 +212,23 @@ struct RegionViewTests {
     view.apply(contents(leaf("w1:p1", socket: "/tmp/opened.sock")), focused: true)
 
     #expect(started.panes == ["local:w1:p1@-", "local:w1:p1@/tmp/opened.sock"])
+  }
+
+  @MainActor
+  @Test("a pane whose bridge the core replaced gets a new surface")
+  func aReplacedBridgeRebuildsTheSurface() {
+    // The other half of kan a_2HrmSyRAQ. A bridge is a surface's command, so the core saying
+    // "this pane's bridge is gone" can only be acted on by building the surface again - and
+    // this pane's socket has not moved, so nothing else here would notice.
+    let (view, started, store) = regionAndStore()
+    show(view, contents(leaf("w1:p1", socket: "/tmp/a.sock")), in: store)
+    let before = view.chrome(for: "w1:p1")
+
+    show(view, contents(leaf("w1:p1", socket: "/tmp/a.sock", restarts: 1)), in: store)
+
+    #expect(started.panes == ["local:w1:p1@/tmp/a.sock", "local:w1:p1@/tmp/a.sock"])
+    #expect(view.chrome(for: "w1:p1") !== before)
+    #expect(store.count == 1, "the surface it replaced is still being held somewhere")
   }
 
   @MainActor

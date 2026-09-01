@@ -1578,6 +1578,22 @@ message ViewPane {
   // is harder to read with ragged cell sizes; the grid is fifteen agents doing different jobs,
   // and being able to say which one you are reading closely is worth the raggedness.
   int32 font_size_offset = 4;
+
+  // How many times this window has replaced this pane's bridge, counting from zero.
+  //
+  // Two rules for the shell, and they are the same fact read twice. A number that changed
+  // since the last view means the bridge behind this pane is gone and the surface running it
+  // has to be built again - a bridge is a surface's command, so there is no other way to start
+  // one. A number that is not zero means this window has had a bridge for this pane before,
+  // which is when herdr's `--takeover` is the right thing: the terminal it is taking is one
+  // this window was already showing, most often still held by a client on the far side of a
+  // connection that died. A first bridge never takes over, so a terminal another window is
+  // legitimately showing is never stolen.
+  //
+  // Counted by the core because only the core can tell a bridge that died from a surface Muster
+  // tore down, and only it knows whether the daemon still holds the pane
+  // (crates/muster-core/src/respawn.rs).
+  uint32 bridge_restarts = 5;
 }
 
 // What the agent in a pane is doing now.

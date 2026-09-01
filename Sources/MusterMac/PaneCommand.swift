@@ -28,10 +28,17 @@ public enum PaneCommand {
   ///   nothing, and it prefers the herdr Muster installed over there. Absent means the bridge
   ///   looks for one beside itself and then on PATH, which is right for a bridge somebody ran
   ///   by hand and wrong for every shipped bundle (kan a_2Hnh3g0Y5).
+  /// - Parameter reattaching: whether this window has had a bridge for this pane before, which
+  ///   is the one case where taking the terminal over is right. Only one client may hold a
+  ///   herdr terminal, and a client whose transport died goes on holding one - measured at 53
+  ///   minutes after the ssh carrying it was gone - so without this every pane a network change
+  ///   touched stays locked until somebody kills the far-side process by hand. A first bridge
+  ///   never takes over: the terminal it would take could be one another window is showing.
   public static func bridge(
     executable: String, paneID: String, controlSocketPath: String?,
     herdrSocketPath: String? = nil, herdrBinaryPath: String? = nil,
-    sshHost: String? = nil, sshControlPath: String? = nil
+    sshHost: String? = nil, sshControlPath: String? = nil,
+    reattaching: Bool = false
   ) -> String {
     let bridge = URL(fileURLWithPath: executable)
       .deletingLastPathComponent()
@@ -61,6 +68,9 @@ public enum PaneCommand {
     }
     if let elsewhere {
       arguments += ["--via-ssh", elsewhere.host, "--ssh-control", elsewhere.control]
+    }
+    if reattaching {
+      arguments += ["--takeover"]
     }
     return arguments.map(quoted).joined(separator: " ")
   }
