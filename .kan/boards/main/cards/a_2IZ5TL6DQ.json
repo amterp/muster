@@ -1,0 +1,32 @@
+{
+  "_v": 3,
+  "alias": "a-second-window",
+  "alias_explicit": false,
+  "area": [
+    "shell",
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "The direction this serves is now written down in `a_2IZPRaJvB`: a window is meant to be Muster's own unit, and two windows two independent workspaces rather than two views of one.\n\nThat makes the fix here more than a default worth changing. `statePath` being one global file is the clearest evidence in the repo that a window is not currently a unit at all - a second window has no identity of its own to remember anything under, which is why it borrows the first one's. Giving it one is the smallest real step toward the larger card, and it stands on its own whether or not that lands.",
+      "created_at_millis": 1788292411459,
+      "id": "c_2IZQ09zVB"
+    }
+  ],
+  "created_at_millis": 1788291622336,
+  "creator": "Alexander Terp",
+  "description": "`muster window new` opens a window onto the panes the first window is already rendering, every bridge is refused, and you get a dead copy of the layout you already had. Reported as *\"it seems to spawn copies of the existing window's panes and it's weird\"*.\n\nMeasured on 0.4.1, one window open with 6 panes across 2 tabs, then `muster window new`. From the new window's run log:\n\n    19:37:19.947  daemon.attached       panes=6\n    19:37:20.026  composition.restored  regions=1        \u003c- the other window's arrangement\n    19:37:20.132  bridge.start          w4:p1  takeover=false\n    19:37:20.141  bridge.start          w4:pA  takeover=false\n    19:37:20.143  bridge.start          w4:p3  takeover=false\n    19:37:20.233  bridge.start          w4:p2  takeover=false\n    19:37:20.596  bridge.attach.failed  w4:p3  already has an attached client\n    19:37:20.596  bridge.attach.failed  w4:pA  already has an attached client\n    19:37:20.596  bridge.attach.failed  w4:p1  already has an attached client\n    19:37:20.676  bridge.attach.failed  w4:p2  terminal target w4:p2 not found\n\nFour attempts, four failures. The far machine still had exactly six bridge clients afterwards, the same pids at the same ages, so the new window rendered nothing and the first window was unharmed. `muster window` on the new one lists every pane as `(hidden)` while its tab says `on screen`, which is the same fact from the other side.\n\n## Why it restores the other window's arrangement\n\n`statePath` (`Sources/MusterMac/StateLocation.swift:28`) is one fixed path, `~/.muster/state/window.toml`, with no pid in it. Its own doc comment reads \"Where **this window's** arrangement is remembered\", and that stops being true with two windows. Compare the command socket, which does carry a pid, for a reason `docs/architecture.md:586` states outright: *\"a single fixed path would mean the second window to open silently took the first one's callers.\"* The arrangement never got the same treatment.\n\nBoth windows also *write* it, from `publish`. So the arrangement remembered for the next launch is whichever window published last.\n\n`docs/cli/limits.md:70` already says a second window is not reopened for you and ends \"Open another window and go to the tabs you want\" - which describes a window that starts somewhere of its own. It does not.\n\n## The stale pane, which is a second bug in the same line\n\n`w4:p2` failed differently: `terminal target w4:p2 not found`. The daemon does not hold that pane any more, and the first window correctly does not list it. It is in `window.toml`, so the new window tried to bridge it anyway. Nothing checks a saved region against the mirror before starting a bridge for it.\n\n## Fix\n\nA new window should open the way a first launch with no saved arrangement does: ask a machine for a workspace and get its own tab and pane. `open_a_workspace_if_the_window_is_empty` is that path and already exists. Restoring `window.toml` belongs to the app starting up, not to a second window.\n\n`MUSTER_STATE` already expresses this - `StateLocation.swift:19` treats an empty value as \"remember nothing\", so the mechanism is there and `window new` does not reach it.\n\nTwo things to settle while doing it:\n\n- **Which machine a fresh window picks.** `open_a_workspace_if_the_window_is_empty` picks the first local one and refuses to pick a remote, on the grounds that choosing somebody else's machine is a claim Muster should not make. A window opened by hand may deserve a different rule, or a `--daemon` flag.\n- **Who writes `window.toml`.** If only the first window does, that is a rule to state. If each writes its own, the path needs the pid the socket already has.\n\n## Validating a fix\n\n- `muster window new` with a window already open gives a window with its own tab and its own pane, and no `bridge.attach.failed` in its log.\n- The first window is untouched: same panes, same bridges, same pids.\n- Quitting both and relaunching restores one window, the way it does today.\n- A saved region naming a pane the daemon no longer holds does not start a bridge for it.",
+  "id": "a_2IZ5TL6DQ",
+  "labels": [
+    "ai-lo"
+  ],
+  "position": "!!0",
+  "title": "🪟 A second window opens onto the first one's panes, and every bridge is refused",
+  "type": "bug",
+  "updated_at_millis": 1788292411459,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1788291622336}
+  ]
+}

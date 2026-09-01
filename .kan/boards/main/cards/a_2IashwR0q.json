@@ -1,0 +1,24 @@
+{
+  "_v": 3,
+  "alias": "bold-text-cannot-be",
+  "alias_explicit": false,
+  "area": [
+    "renderer",
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1788295898229,
+  "creator": "Alexander Terp",
+  "description": "Bold text cannot be given its own colour. In Ghostty it can, and somebody who moved a config across loses it:\n\n    # ~/.config/ghostty/config\n    # Make bold text stand out (Claude renders **bold** with no color, so the\n    # terminal picks it). Terminal-wide: affects bold in every app.\n    bold-color = #e5c07b\n\nThe reason it matters here more than in a plain terminal: an agent's output is full of `**bold**` and nothing else distinguishes it, so in Muster a Claude pane reads flat where the same session in Ghostty does not. Muster is a terminal for reading agent output, and this is one of the few settings that changes how readable that output is.\n\n`[colors]` already carries `background`, `foreground`, `cursor`, `cursor_text`, `selection_background`, `selection_foreground`, `divider` and the sixteen-entry `palette`. `divider` is the sibling of Ghostty's `split-divider-color`, which the same config file sets - so the neighbouring setting made it across and this one did not.\n\n## Adding one appearance setting\n\nFive places, and the shape is already set by every colour beside it:\n\n1. `crates/muster-core/src/config.rs` - a field on `Colors`, an entry in `COLOR_KEYS`, a line in `read_colors`.\n2. `proto/muster.proto` - a field on the appearance message the core publishes.\n3. `Sources/MusterRenderer/Appearance.swift` - a field on `Appearance`, in Muster's own words.\n4. `ghosttyConfiguration` in the same file - `set(\"bold-color\", appearance.boldColor)`. Its doc calls it \"the only function in Muster that knows what a ghostty config key is called\", which is exactly where the translation belongs.\n5. `Sources/MusterMac/Core.swift:317` - proto to `Appearance`.\n\n**Check before building**: whether the pinned libghostty has the key. `deps/ghostty.pin` is `9f9b8d1d`, and a key ghostty gained later would be accepted into the generated file and silently ignored. `~/.muster/state/libghostty.conf` is where to look when a colour does not take - which its own doc comment already says it is for.\n\n## The larger question this is one case of\n\nMuster exposes a chosen subset of Ghostty's appearance settings, and the config file people arrive with says `# Carried over from ~/.config/ghostty/config`. Everyone migrating will find a different missing one, and each costs the five-step change above.\n\nWorth deciding, though not necessarily now:\n\n- **Keep curating.** Add settings as they are asked for. Each is small, the vocabulary stays Muster's, and `ghosttyConfiguration` stays the single translation point. Cost is a trickle of cards like this one.\n- **Pass unknown keys through.** An escape hatch - a block whose contents go into `libghostty.conf` verbatim. Cheap and it makes every ghostty setting reachable at once, but it puts ghostty's own vocabulary into a file a person writes, which is the thing MIP-1 says not to do, and a key that stops existing becomes a silent no-op rather than a refusal.\n\nThe first fits the project as it is. Naming the second here so it is a decision rather than a default.\n\n## Validating a fix\n\n- `bold-color` in `[colors]` renders bold text in that colour, and its absence leaves bold looking as it does today.\n- A bad value is refused with the same message every other colour gets, at launch rather than silently.\n- The generated `~/.muster/state/libghostty.conf` carries the key, which is how to tell \"Muster did not send it\" from \"ghostty ignored it\".\n- `docs/configuration.md` lists it beside the other `[colors]` keys.",
+  "id": "a_2IashwR0q",
+  "labels": [
+    "ai-hi"
+  ],
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "title": "🎨 Bold text cannot be given its own colour, so agent output reads flat",
+  "type": "feature",
+  "updated_at_millis": 1788295898229,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1788295898229}
+  ]
+}

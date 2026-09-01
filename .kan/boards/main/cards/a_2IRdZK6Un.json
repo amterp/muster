@@ -1,0 +1,23 @@
+{
+  "_v": 3,
+  "alias": "plugging-back-in",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1788273866764,
+  "creator": "Alexander Terp",
+  "description": "Plugging a laptop back in puts the devenv tunnel into a down/reopened cycle every 1.26 seconds that never settles. Measured on 0.4.1, run 56662, from the moment the network came back until the app was quit:\n\n    97 tunnel.down / 97 tunnel.reopened over 118 seconds\n    median gap between downs 1.26s, min 0.32s, max 2.03s\n    first flap 14:28:47.533, still flapping at 14:30:46 when the log ends\n\n`tunnel.reopened` is logged as a success each time and the connection is gone again within about a second, so the reopen either is not succeeding or is succeeding onto something that immediately dies. Nothing in the log distinguishes the two, which is the first thing to fix about it: a hundred \"reopened\" lines that were not reopens make the log actively misleading about what is wrong.\n\nSeventeen seconds into the flapping, all three bridges gave up:\n\n    14:29:04.487  bridge.closed  w4:p3  herdr's stream ended without a closing frame  rendered=true\n    14:29:04.489  bridge.closed  w4:p2\n    14:29:04.491  bridge.closed  w4:p1\n\nThey did not come back, but that is `a_2IRcMjFs0` rather than this card. What belongs here is that a tunnel flapping once a second is not a state any bridge can survive, so the two together make a plugged-in laptop a relaunch.\n\n## Not the same as the startup blip\n\nEvery run opens with one down and one reopened inside about 60ms:\n\n    14:13:50.923  tunnel.open\n    14:13:51.178  tunnel.down\n    14:13:51.235  tunnel.reopened\n\nThat is normal and appears in every log, including the currently healthy run. The flapping is a hundred of them at a thousand times the interval, an hour into the session.\n\n## What to look at\n\n- **Whether the reopen is actually reopening.** `tunnel.reopened` should be able to say what it observed - a socket that accepted a connection, a daemon that answered - rather than that a reopen was attempted.\n- **Whether two masters are fighting.** A network change leaves the previous ssh master alive on the far side (`a_2I76eCrjw`), and `ExitOnForwardFailure=yes` with a forward the old master still holds would fail, retry and fail again at about this cadence. Not measured; it fits the interval and it is the cheapest thing to rule out.\n- **Backoff.** Whatever the cause, once a second forever is the wrong response. The reconnect wants the same shape as the bridge respawn policy: a few quick tries, then slower, then say so and stop.\n\n## Reproducing it\n\n1. Open remote panes over ssh and let them render.\n2. Unplug the network, wait long enough for the far side to keep its session (about a minute).\n3. Plug back in.\n4. Watch `~/Library/Logs/muster/latest.jsonl` for `tunnel.down` / `tunnel.reopened` pairs. They repeat about once a second and do not stop.\n\n## Validating a fix\n\n- After the network returns, the tunnel reaches a steady state and the log says so once rather than a hundred times.\n- A host that is genuinely unreachable backs off and reports it, rather than retrying at 1Hz indefinitely.\n- `tunnel.reopened` is only logged for a reopen that something confirmed.",
+  "id": "a_2IRdZK6Un",
+  "labels": [
+    "ai-lo"
+  ],
+  "position": "!!2",
+  "title": "🔁 Plugging back in flaps the tunnel once a second, forever",
+  "type": "bug",
+  "updated_at_millis": 1788273866764,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1788273866764}
+  ]
+}

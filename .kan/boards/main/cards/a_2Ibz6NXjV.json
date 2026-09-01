@@ -1,0 +1,23 @@
+{
+  "_v": 3,
+  "alias": "a-restored-window",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1788298527291,
+  "creator": "Alexander Terp",
+  "description": "After a window reopens onto a saved arrangement, `muster window` reports every pane in the visible tab as hidden except the one holding the keyboard. All of them are being drawn.\n\nMeasured on 0.4.1, a window restored from `window.toml` onto a tab holding four panes:\n\n    muster window --json\n      p20970gz3s  tab=t206y99cay  on_screen=False   investigations · claude\n      p206y9p61r  tab=t206y99cay  on_screen=True    chicago · claude       \u003c- has the keyboard\n      p2073ed9cw  tab=t206y99cay  on_screen=False   goat-dt · claude\n      p2090j2nvj  tab=t206y99cay  on_screen=False   goat-dt\n\nThe run log for the same launch, four bridges at four different sizes - a real four-way split, not one pane:\n\n    21:33:22  bridge.start   w4:p1  164x107\n    21:33:22  bridge.start   w4:p3   98x37\n    21:33:22  bridge.start   w4:pA   64x37\n    21:33:22  bridge.start   w4:pB  164x34\n    21:33:22  pane.typeable  p206y9p61r, p2073ed9cw, p20970gz3s, p2090j2nvj\n    21:33:23  bridge.frame.first  x4\n\nFour panes bridged, four painting frames, four typeable. Three of them reported hidden. Still wrong ten seconds later, so it is not a reconcile that has yet to arrive.\n\nThe single region names one pane:\n\n    [[region]]\n    daemon = \"devenv\"\n    pane = \"p206y9p61r\"\n    tab = \"t206y99cay\"\n\n`Region::pane` is documented as *\"the pane in this region Muster's keyboard feeds while the region is focused\"* - which pane takes keystrokes, not which panes are drawn. `on_screen` looks to be derived from it, and the two are only the same thing when a region shows exactly one pane.\n\nNot reproduced in a window that has been running a while: earlier in the same session, the same tab with three panes reported all three on screen. Whatever computes this appears to be right once something has reconciled and wrong on the restore path, which is worth pinning down before fixing - the bug may be that the restore never recomputes rather than that the derivation is wrong.\n\n## Why it matters beyond a wrong word\n\n`on_screen` is not cosmetic. It is what tells you an agent needs surfacing, and it is what an agent driving Muster reads to decide whether a pane needs bringing into view. A pane wrongly marked hidden invites something to go and surface a pane that is already in front of the user, and `muster window` is the surface with no other way to check.\n\nIt also undermines what 0.4.0 shipped. `e9398e6` added the sidebar mark for which tabs share the screen, built on this same flag - so that mark is wrong on the same path.\n\n## Reproducing it\n\n1. Open a window with a tab holding several panes in a split.\n2. Quit Muster and reopen it, so the arrangement is restored from `window.toml`.\n3. `muster window --json`. Every pane in the visible tab reads `on_screen: false` except the one with the keyboard, while all of them are visibly drawn.\n4. The run log for that launch shows a `bridge.start` and a `bridge.frame.first` for each of them, at different sizes.\n\n## Validating a fix\n\n- Every pane a region is drawing reports `on_screen: true`, immediately after a restore and not only once something else has reconciled.\n- A pane in a tab that is genuinely off screen still reports false - the flag has to keep meaning something.\n- The sidebar's shared-screen mark from `e9398e6` is correct on the restore path too.\n- A bridge with a first frame and a pane reporting `on_screen: false` is a contradiction worth a test, since it is exactly what this bug looks like from outside.",
+  "id": "a_2Ibz6NXjV",
+  "labels": [
+    "ai-lo"
+  ],
+  "position": "!!!6",
+  "title": "👻 A restored window reports every drawn pane as hidden but the keyboard's",
+  "type": "bug",
+  "updated_at_millis": 1788298527291,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1788298527291}
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "_v": 3,
+  "alias": "windows-tabs-and",
+  "alias_explicit": false,
+  "area": [
+    "shell",
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1788292390046,
+  "creator": "Alexander Terp",
+  "description": "A window, a tab and a pane are Muster's own units, and none of them takes its shape from herdr. Stated as the experience wanted rather than a design:\n\n\u003e windows/tabs/panes must be concepts that Muster itself has its own definitions of, completely un-dictated by herdr. They are simply organizational units. Muster should be able to have any permutation of these looking at different daemons/machines/whatever, and it will translate into herdr's domain and ultimately herdr shouldn't care or impose restrictions\n\nWhat that means in use:\n\n- **A tab holds whatever panes you put in it**, laptop and devenv side by side if that is what the work needs.\n- **A window holds whatever tabs you put in it**, and two windows are two independent workspaces rather than two views of one.\n- **A pane moves between tabs, and between windows**, by drag or by command, without ending what is running in it.\n- **A pane stays on its machine.** It is a process, and processes do not move between machines. This is the one limit that is not herdr's to lift, and it should stay stated so nobody builds on the opposite.\n- **Muster translates.** Whatever arrangement you ask for, the adapter works out what herdr has to be told. herdr's workspaces and tabs stop being anything a person using Muster has to know about.\n\n## How far today is from that\n\nEvery one of these traces back to the same root - Muster's organizational units are herdr's:\n\n- A tab belongs to a machine, so `cmd+1` and `cmd+2` cannot switch between a local tab and a devenv tab. The window is a column per machine. (`docs/mip/0002-muster-tabs.md`, `a_2HtF52Itm`)\n- A machine always gets a column whether you want it or not, and emptying one refills it. (`a_2I6h18OU6`)\n- A window is not a unit at all: every window shares one `window.toml`, so a second window opens onto the first one's arrangement. (`a_2IZ5TL6DQ`)\n- Two windows cannot show one pane, so a pane cannot be handed from one window to another. (`a_2IZ6Of6JP`)\n- `pane move` cannot name a tab that does not exist yet, because the CLI inherited the shape of a drag onto an existing row. (`a_2IXGSgZi7`)\n\n## Two piles, and they need different work\n\nWorth separating, because only one is ours alone.\n\n**The leak.** Muster's own records are built out of herdr's nouns - `Region` carries a daemon, a workspace and a tab; `window.toml` writes herdr ids to disk; the glossary defines \"tab\" as *\"daemon truth\"*. Nothing here needs herdr's cooperation. This is the refactor, and `docs/mip/0002-muster-tabs.md` is most of the argument for it already.\n\n**The restriction.** One client per terminal. No amount of Muster-side vocabulary fixes this, because it is a real byte stream off a real PTY, and it is in the least reachable part of herdr: the frame stream is not in the JSON-RPC API at all, it is `herdr terminal session control` over stdio with no published schema. Moving a pane between windows is exactly this problem - window B showing it means window A stops - so the handoff question in `a_2IZ6Of6JP` is the same question. Upstream, or a fan-out where one bridge feeds several surfaces.\n\n## The bill\n\nDurability, and it should be paid knowingly. herdr writing the shape down is why *\"quitting Muster costs nothing\"* is true today - a Muster that never comes back still leaves the tabs and their trees. A tab spanning two machines can only live in Muster's own file. MIP-2's answer is to degrade per tab: a tab whose panes are all on one machine keeps today's guarantee, and only a genuinely cross-machine one depends on us. That looks right, and it is the thing to confirm before building.\n\n## Next step\n\nMIP-2 is Draft and covers the tab alone. It says it is waiting on somebody driving a two-machine window for a day - that happened (2026-09-01), and it turned up the window findings above, which MIP-2 does not touch. Since it is Draft and nothing depends on it, revising it in place to cover the window and the pane as well is cheaper than superseding it, and its Context and Alternatives sections carry over.",
+  "id": "a_2IZPRaJvB",
+  "labels": [
+    "ai-lo"
+  ],
+  "position": "!!!U",
+  "title": "🧩 Windows, tabs and panes are Muster's own units, and a pane moves freely between them",
+  "type": "feature",
+  "updated_at_millis": 1788292390046,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1788292390046}
+  ]
+}

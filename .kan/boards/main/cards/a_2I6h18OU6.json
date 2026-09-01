@@ -6,6 +6,14 @@
     "shell"
   ],
   "column": "uncommitted",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Observed in use on 0.4.1, which is the evidence this card said it was waiting for.\n\nDriving a laptop and a devenv in one window, I wanted the local side gone for the day and to work on the devenv alone. Closing the local pane three times produced a fresh local tab and pane each time, with a new id every round:\n\n    t206zcc903 / p206zc68fg  -\u003e  closed\n    t206zpgpw6 / p206zpeagf  -\u003e  closed\n    t206zwkf92 / p206zwsnkx  -\u003e  and so on\n\nThe workaround the card predicted is the one I had to use: take the `[[daemon]]` block out of `~/.muster/config.toml`. `muster reload` does not apply it either - `daemons_differ` logs \"relaunch to pick up a `[[daemon]]` change\" - so it also costs a relaunch, and with it every pane in the window.\n\nTwo things the card did not anticipate.\n\nIt was the **local** machine I wanted empty, not the remote one. The card reasons about a devenv shell appearing over ssh, but wanting one machine off screen has nothing to do with which machine it is: I was working on the devenv and the laptop half was in the way.\n\nAnd **there is no way to ask for this short of the config**. `muster pane close` is the only verb that empties a machine, and it is the trigger for refilling it. So the answer to \"I am done with this machine for now\" is to edit a file and relaunch, which loses the state of the machine you are keeping.\n\nThat moves me to the card's first option - ask once per attach, and leave a machine empty once you empty it - now that `muster pane new --daemon \u003cid\u003e` exists as the way back. The property given up is that the window can show a machine holding nothing you cannot use, and the sidebar heading already says `no tabs, so this daemon is holding nothing`, so that state is visible rather than silent.",
+      "created_at_millis": 1788269269880,
+      "id": "c_2IPhz2q9A"
+    }
+  ],
   "created_at_millis": 1788223950434,
   "creator": "Alexander Terp",
   "description": "Closing the last pane on a machine now gets you a fresh shell on it, because the window asks any attached machine that says it holds nothing for a workspace (`a_2HpkpfIfq`). That closed a real hole: before it, a machine reaching zero panes dropped out of the window's reach entirely, and the only way back was `herdr workspace create` or editing the saved arrangement.\n\nThe question is whether the rule is too eager now that it runs per machine rather than per window.\n\n`open_a_workspace_if_the_window_is_empty` has always refilled a window with no panes at all, and nobody has objected to that: a window showing nothing is not a state anybody wants. Applied per machine, the same rule means closing the devenv's last pane spawns a devenv shell, over ssh, a moment later. Somebody who has finished with a machine for the afternoon cannot stop it holding a pane without taking its `[[daemon]]` block out of the config and relaunching.\n\nNot observed as a complaint - raised from reading the change rather than from using it, which is the honest provenance and also the reason to wait. What would settle it is driving a two-machine window for a day and noticing whether a devenv shell you did not ask for ever gets in the way.\n\nThings that might be true if it does:\n\n- **Ask once per attach rather than whenever a machine empties.** A machine gets its first pane and is then left alone; closing the last one leaves it empty and reachable through `muster pane new --daemon \u003cid\u003e`, which now exists. Cheapest, and it gives up the property that the window is never showing a machine you cannot use.\n- **Ask for the local machine and offer for a remote one.** A row in the agent list that opens a pane on an empty machine, rather than one appearing. That is the sidebar affordance `a_2HpkpfIfq` deliberately deferred, and it depends on the tab model `docs/mip/0002-muster-tabs.md` is about.\n- **A setting.** Last resort - this is a question about what Muster is for, and a key that lets both answers exist is how you avoid deciding.\n- **Leave it.** A machine you are not using is one you take out of the config, and a pane costs a shell.",
@@ -13,7 +21,7 @@
   "position": "UUUUUUU",
   "title": "🌱 Is refilling a machine that empties too eager?",
   "type": "chore",
-  "updated_at_millis": 1788223950434,
+  "updated_at_millis": 1788269269881,
   "history": [
     {"field":"column","value":"uncommitted","at":1788223950434}
   ]

@@ -1,0 +1,32 @@
+{
+  "_v": 3,
+  "alias": "a-focused-pane-and-a",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Configurability was asked for alongside this and is filed separately as `a_2Ibt8w4oi`.\n\nThey are separate on purpose. Letting somebody pick their own colours does not fix this one: the focus ring follows the macOS accent, which Muster does not choose, so any fixed state palette collides with some accent - green with `done`, orange with `blocked`. This card is about the two rings differing in kind rather than only in hue.",
+      "created_at_millis": 1788298298381,
+      "id": "c_2Ibt9C2Vv",
+      "updated_at_millis": 1788298312517
+    }
+  ],
+  "created_at_millis": 1788298267659,
+  "creator": "Alexander Terp",
+  "description": "A focused pane and a working pane are both edged in blue, so a focused working agent is four points of blue and neither ring means anything. Reported as *\"the focus border is blue but that's also the border color of an agent working, which looks a little confusing\"*.\n\n    PaneChrome.swift:31    working    -\u003e NSColor.systemBlue\n    PaneChrome.swift:249   focused    -\u003e NSColor.controlAccentColor   (blue by default)\n\nThe two rings are adjacent, inset by `borderWidth` (2pt), so they read as one thick edge.\n\nThe design already anticipated this and the comment on `PaneChrome` says so:\n\n\u003e Two edges, not one, and they mean different things. The outer is the agent's state, which is the whole point of the product; the inner says which pane a keystroke would go to. One edge carrying both would make a working pane and a focused pane indistinguishable, which is exactly the confusion these are for clearing up.\n\nSplitting them into two rings was right. Painting both blue puts the confusion back.\n\n## Why hue alone will not fix it\n\n`controlAccentColor` is the macOS accent, which the person using Muster chooses in System Settings. Muster does not pick it and cannot know it. So:\n\n- On the default accent it collides with `working`.\n- Set the accent to green and it collides with `done` instead.\n- Set it to orange and it collides with `blocked`.\n\nAny fixed state palette collides with *some* accent. Moving `working` off blue fixes the common case and leaves the same bug for anybody whose accent happens to match another state - and they will report it as a different bug.\n\nSo the rings should differ in **kind**, not only colour: thickness, an inset gap, a dash, or drawing focus on one edge rather than four. Then the accent can be anything and focus still reads as focus. What that should look like is a design call rather than something to settle in a ticket.\n\n## Changing the default is still worth doing\n\nWhatever the rings end up looking like, `working` being blue has a second, independent reason to move. From `a_2HPHq3Zck`, which set the legend:\n\n\u003e plain ANSI blue (34) is the least legible of the sixteen on a dark background, and `working` is the state a window spends most of its time in\n\nTwo arguments for the same change, arrived at separately.\n\nWhat it costs, because the legend is deliberately duplicated and pinned: `PaneChrome.swift:29`, `crates/muster-cli/src/render.rs` (`agent_style`), `docs/architecture.md`, `docs/cli/window.md`, and a tripwire test on each side that fails if its own row moves. `a_2HPHq3Zck` established that arrangement on purpose - nothing can check the two across the language line - so a colour change is a five-file change by design, not by accident.\n\n## Validating a fix\n\n- A focused working pane is distinguishable from an unfocused working pane at a glance, and from a focused idle one.\n- The same holds with the macOS accent set to green and to orange, not only the default.\n- Both surfaces still agree on the legend, and both tripwire tests still pass with their rows updated together.\n- `muster window` in a dark terminal still reads `working` legibly, which is the other half of the reason to move it.",
+  "id": "a_2IbsLb4ql",
+  "labels": [
+    "ai-lo"
+  ],
+  "position": "!!!E",
+  "title": "🟦 A focused pane and a working pane are the same blue, so neither ring reads",
+  "type": "bug",
+  "updated_at_millis": 1788298312517,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1788298267659}
+  ]
+}

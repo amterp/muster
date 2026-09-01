@@ -1,0 +1,29 @@
+{
+  "_v": 3,
+  "alias": "two-windows-cannot",
+  "alias_explicit": false,
+  "area": [
+    "shell",
+    "backend"
+  ],
+  "column": "uncommitted",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "This is the same question as \"can I move a pane into another window\", which is now asked for directly in `a_2IZPRaJvB`: a pane should move between tabs and between windows the way it moves between splits.\n\nThat collapses the three options here into a preference. \"One pane, one window at a time\" answers the question with no. Handoff answers it with yes and is the behaviour wanted - showing a pane in window B takes it from window A, which is exactly what moving it means. Fan-out is a third thing again: two windows showing one pane at once, which nobody has asked for.\n\nSo the thing to settle first is narrower than this card assumed. Not \"which of three\", but: when window B takes a pane, does window A find out? If a client that loses its terminal to a `--takeover` sees its stream end, handoff is nearly free and A can say the pane moved. If it sees nothing, A renders a lie until something else notices, and the move needs a channel of its own to announce it.\n\nWorth measuring directly rather than reasoning about - two clients, one terminal, take it over, watch what the first one's stdout does.",
+      "created_at_millis": 1788292411324,
+      "id": "c_2IZPzwNe5"
+    }
+  ],
+  "created_at_millis": 1788291657873,
+  "creator": "Alexander Terp",
+  "description": "Two windows cannot show one pane, so the multi-window model as documented does not hold. README:48 and `docs/cli/overview.md:83` both say:\n\n\u003e Panes are not a window's: two windows showing one machine show the same panes under the same names, so an agent named in one is the same agent, named the same way, in the other.\n\nThe naming half is true. The showing half is not, and cannot be with herdr 0.8.0: only one client may hold a terminal, so the second window to reach a pane is refused. Measured in `a_2IZ5TL6DQ` - four panes, four `already has an attached client`, four dead surfaces.\n\nMuster already knows this and chose politeness over theft. `corpus/conformance/respawn.json`:\n\n\u003e zero means this window has never had a bridge for this pane end, so its first one attaches plainly rather than taking a terminal some other window is legitimately showing\n\nSo the plain first attach exists precisely to protect a pane another window is showing. That guard is right, and its consequence is that the protected window's twin renders nothing. Politeness is the better failure, not a working feature.\n\n## What is actually available\n\nThree positions, and the project has not picked one:\n\n- **One pane, one window at a time.** Honest about herdr. A second window shows the panes it holds and says so about the rest, rather than opening dead surfaces onto them. Costs the documented model; the docs change.\n- **Handoff.** Showing a pane in window B takes it from window A, which learns it lost it and says so on the row. herdr's `--takeover` already does the taking; what does not exist is A finding out, since a client whose terminal was taken is not told (worth measuring - it may just see its stream end).\n- **Fan-out below the bridge.** One bridge per pane, whichever window opened it, relaying frames to every window showing it. Makes the documented model true and is the largest of the three: a bridge stops belonging to a window, and its lifetime stops matching a window's.\n\n## Why it is worth deciding rather than leaving\n\n`a_2IZ5TL6DQ` makes a new window open fresh, which stops anybody meeting this by accident. It does not remove it: navigating window B to a tab window A is showing walks straight into it, and that is an ordinary thing to do with two windows open.\n\nIt also decides what `a_2IQsToWVW` may do. That card wants a refused attach to retry with `--takeover`, and the only reason it cannot is the possibility that the holder is a live window rather than an orphan. Under \"one pane, one window\" that possibility is real and takeover stays gated. Under handoff it is the intended behaviour. The two cards cannot both be settled without this one.\n\n## What would settle it\n\nWhether a herdr client that loses its terminal to a takeover is told. If it is, handoff is cheap and the model becomes \"the pane follows you\". If it is not, handoff means a window rendering a lie until something else notices, and the honest option gets more attractive. `a_2I76eCrjw` is already asking herdr a related question about clients whose transport is gone, so this could go with it.",
+  "id": "a_2IZ6Of6JP",
+  "position": "!2",
+  "title": "🪞 Two windows cannot show one pane, so \"panes are not a window's\" is not true",
+  "type": "chore",
+  "updated_at_millis": 1788292411324,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1788291657873}
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "_v": 3,
+  "alias": "moving-a-pane-into-a",
+  "alias_explicit": false,
+  "area": [
+    "shell",
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1788287278201,
+  "creator": "Alexander Terp",
+  "description": "Moving a pane into a tab of its own takes three commands and spawns a shell nobody wanted. Asked for while pulling one busy agent out of a four-way split: *\"spawn a new tab with just a specific pane rather than needing this dance\"*.\n\nThe dance, run on 0.4.1:\n\n    muster tab new --pane p208qd8wn9 --json    # -\u003e p208r93k5w, a new tab with a new pane\n    muster pane move --pane p208qd8wn9 --onto p208r93k5w\n    muster pane close --pane p208r93k5w        # drop the pane the first command made\n\nIt works. What it costs:\n\n- **A real login shell on the far machine**, started and killed seconds later. On a devenv that is an ssh session at about 400ms plus whatever the user's rc files do - mine sources twenty files.\n- **The keyboard moves into that throwaway.** `tab new` says it does not move the keyboard without `--focus`, and it does not have to: the new tab comes on screen either way, the old one goes hidden, and the keyboard follows the only visible pane. Anyone mid-sentence types into a shell that is about to be closed.\n- **Three round trips, not atomic.** A failure between any two leaves a stray tab or a stray pane, and a script has to unwind that itself.\n\n## herdr can already do it in one request\n\n`pane.move`'s destination is a tagged union, and the second variant is exactly this. From the pinned schema, `corpus/herdr-0.8.0/api-schema.json`, `PaneMoveDestination`:\n\n    { \"type\": \"tab\",           \"tab_id\": str, \"split\": dir, \"target_pane_id\": str?, \"ratio\": f32? }\n    { \"type\": \"new_tab\",       \"workspace_id\": str?, \"label\": str? }\n    { \"type\": \"new_workspace\", \"label\": str?, \"tab_label\": str? }\n\nMuster only ever sends the first. `crates/muster-herdr/src/intent.rs:741` says so outright:\n\n\u003e `destination` is a tagged object rather than a bare id: herdr's `pane.move` can also make a tab or a workspace to move into, and the tag is how it tells those apart. Muster only ever names an existing tab, because a drop landed on a row in one.\n\nSo this needs no upstream work and no new round trip. It is one destination variant Muster never reaches, and `label` on it means the new tab's name, which the current dance cannot set at all.\n\n## Missing from all three surfaces\n\n- **CLI.** `pane move` requires `--onto \u003cREF\u003e`, and a tab that does not exist yet has no ref.\n- **Keymap.** The action list in `docs/configuration.md:63` has `new_tab` and `close_pane` and no way to say \"this pane, its own tab\".\n- **The window.** Dragging a row onto another row moves a pane between tabs. There is no gesture for popping one out.\n\n## Shape\n\n`pane move` is the verb that already owns putting a pane somewhere, so the destination belongs there:\n\n    muster pane move --pane \u003cREF\u003e --new-tab [--name \u003cNAME\u003e]\n\n`--new-tab` excludes `--onto`, the way the position flags on `kan add` exclude each other. `--name` fills herdr's `label`.\n\nThe core needs a way to say \"a tab of its own\" as a move destination. Whether that is a second `BackendIntent` variant beside `MovePane` or a destination enum inside it is the implementer's call - herdr's own shape is a tagged union, but MIP-1 says the core speaks Muster's vocabulary rather than copying herdr's, and \"an existing tab\" versus \"a tab of its own\" is Muster vocabulary either way.\n\nA keymap action wants to come with it. Unbound by default, which is what `split_left`, `split_up` and `rename_tab` already do.\n\nThe window gesture is a separate question and probably a separate card: dropping a row below the last tab, or onto the gap between two tab groups, both need a drop target that does not exist yet.\n\n## Validating a fix\n\n- One command moves a pane into a tab of its own, and `muster window` shows it alone there.\n- No pane is created and destroyed on the way - check the far machine, nothing new started.\n- The keyboard does not land anywhere the caller did not ask for.\n- `--name` names the new tab.\n- Moving the last pane out of a tab still closes the tab it left, as it does today.\n- The wire carries one `pane.move` with `type: new_tab`, which the conformance corpus can pin the way `backend-intent.json` already pins the `type: tab` case.",
+  "id": "a_2IXGSgZi7",
+  "labels": [
+    "ai-hi"
+  ],
+  "position": "!!4",
+  "title": "✂️ Moving a pane into a tab of its own takes three commands and a throwaway shell",
+  "type": "feature",
+  "updated_at_millis": 1788287278201,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1788287278201}
+  ]
+}

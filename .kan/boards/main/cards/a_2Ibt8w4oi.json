@@ -1,0 +1,23 @@
+{
+  "_v": 3,
+  "alias": "agent-state-and",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1788298298249,
+  "creator": "Alexander Terp",
+  "description": "The agent-state colours and the focus ring cannot be configured. `[colors]` carries `background`, `foreground`, `cursor`, `cursor_text`, `selection_background`, `selection_foreground`, `divider` and the sixteen-entry `palette` - everything about how a pane looks except the two things Muster invented, which are the colours its own product is built around.\n\nAsked for alongside `a_2IbsLb4ql`, where the default focus blue collides with the working blue. Configurability is not the fix for that collision - the rings need to differ in kind, since the focus colour follows the macOS accent - but it is the answer for anybody whose accent, theme or eyes disagree with the choices Muster ships.\n\n## The two halves are not the same problem\n\n**The focus ring is easy.** It exists only in the window, means one thing, and nothing else reads it. A `[colors]` key naming it is a small change of the same shape as `divider`.\n\nWorth stating in its docs: leaving it unset should keep following `controlAccentColor`, because that is the platform's own answer to \"which thing has focus\" and it already tracks a choice the person made in System Settings. A default that ignored that would be worse than the collision.\n\n**The agent-state colours are cross-surface, and that is the whole difficulty.** They are drawn twice, in two languages, in two colour spaces:\n\n    PaneChrome.swift:29                       NSColor, any hue\n    crates/muster-cli/src/render.rs           agent_style, the terminal's sixteen\n\n`a_2HPHq3Zck` set that up deliberately: the window is canonical because attention lives there, the CLI moves to match, `blocked` is yellow in the terminal because the sixteen have no orange, and `idle`/`unknown` stay bare. Both sites cite `docs/architecture.md` and each other, with a tripwire test per side.\n\nA hex colour in the config file cannot cross into the terminal's sixteen. So configuring the states means answering:\n\n- **Does the CLI follow, or not?** If it does, something has to map a hex value onto the nearest of sixteen, and \"nearest\" is a judgement that will be wrong for somebody. If it does not, the two surfaces disagree on purpose - which is exactly the bug `a_2HPHq3Zck` was raised for, only now self-inflicted and unfixable, since Muster no longer knows what the legend is.\n- **Where does the legend live once it is a person's to change?** Today it is a table in Swift with a documented twin. Configured, the documentation can no longer state it, and `docs/architecture.md` would have to describe a default rather than the legend.\n- **Does the core need to know?** `a_2HPHq3Zck` considered a hue table in `muster-core` and rejected it: a hue never crosses the seam, so Swift would keep its table and the core would gain a second. A configured colour does have to cross the seam - it arrives in the config file the core parses - so that reasoning may not survive, and it is worth re-reading rather than assuming either way.\n\nA middle option worth weighing: configure the window's colours only, leave the CLI on its fixed sixteen, and say plainly in the docs that the terminal paints the default legend regardless. Honest, cheap, and it keeps `muster window` meaning the same thing on anybody's machine - which for an agent reading it is arguably a feature.\n\n## Validating a fix\n\n- A colour set in `[colors]` is what the window paints, and an unset one is exactly what ships today.\n- The focus ring left unset still follows the macOS accent, and changing the accent still moves it.\n- Whatever is decided about the CLI, `docs/architecture.md` and `docs/cli/window.md` say which surface honours configuration and which does not.\n- The tripwire tests on both sides still mean something, or are replaced by something that does.",
+  "id": "a_2Ibt8w4oi",
+  "labels": [
+    "ai-lo"
+  ],
+  "position": "!!!M",
+  "title": "🎛️ Agent-state and focus-ring colours cannot be configured",
+  "type": "feature",
+  "updated_at_millis": 1788298298249,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1788298298249}
+  ]
+}
