@@ -132,10 +132,8 @@ fn link(remote: &Remote, home: &str, installed: &str) -> Result<(), String> {
 
 /// Starts the daemon over there and waits for the forwarded socket to answer.
 ///
-/// Detached with `nohup` and a redirect, because ssh waits for a command's output to end and a
-/// daemon's never does. `setsid` would be tidier and is not portable - a remote may be macOS,
-/// which ships no such command - and `nohup` is what the desideratum actually needs: the agents
-/// keep working when the connection goes.
+/// The script it sends is [`start_script`], which is where the detaching is explained: ssh
+/// waits for a command's output to end and a daemon's never does.
 ///
 /// The output file is the only place a daemon that never bound can say why. herdr opens a log
 /// of its own once it is running, so what lands here is what happens before that - a binary for
@@ -148,15 +146,7 @@ fn start(
     socket_path: &str,
 ) -> Result<(), String> {
     let output = format!("{home}/state/herdr.out");
-    let script = format!(
-        "mkdir -p {} && HERDR_SESSION={} HERDR_CONFIG_PATH={} nohup {} server >> {} 2>&1 < \
-         /dev/null &",
-        quoted(&format!("{home}/state")),
-        quoted(OWN_SESSION),
-        quoted(config_path),
-        quoted(binary),
-        quoted(&output),
-    );
+    let script = start_script(home, binary, config_path, &output);
     log::info(
         "daemon.remote.starting",
         fields! {
@@ -190,6 +180,41 @@ fn start(
         remote.host(),
         START_TIMEOUT.as_secs(),
     ))
+}
+
+/// The script that starts the daemon over there, as the far shell will read it.
+///
+/// Its own function because the shell grammar in it is the whole of kan a_2HpkpQlZP, and a
+/// string is something a test can run. It used to end `... nohup <binary> server >> <out> 2>&1
+/// < /dev/null &`, where `&` applies to the whole `&&` list rather than to `nohup` - so a far
+/// shell that forks runs the list in a subshell and waits on herdr inside it. The redirect
+/// covers herdr's descriptors and not the subshell's, so that subshell holds ssh's stdout and
+/// stderr for as long as the daemon lives, and [`Remote::shell`] is a `wait_with_output` that
+/// wants end of file on both. Measured against a RHEL-family box: four minutes in `start`, and
+/// a Quit that had been queued behind it fired the instant the block cleared.
+///
+/// Which shell is over there decides whether it happens. bash forks; dash execs the last
+/// command of a backgrounded list, so the subshell is replaced by the redirected process and
+/// the pipes close. The devenv container's `/bin/sh` is dash, which is why the daemon-backed
+/// remote tests cannot see this - `crates/muster-herdr/tests/remote_start_script.rs` runs the
+/// script under bash instead.
+///
+/// The brace group is what fixes it: `{ cmd & }` runs in the current shell, so the redirects
+/// land on the daemon and the shell ssh started exits as soon as it has forked one.
+///
+/// `nohup` rather than `setsid`, which would be tidier and is not portable - a remote may be
+/// macOS, which ships no such command - and `nohup` is what the desideratum actually needs: the
+/// agents keep working when the connection goes.
+pub fn start_script(home: &str, binary: &str, config_path: &str, output: &str) -> String {
+    format!(
+        "mkdir -p {} && {{ HERDR_SESSION={} HERDR_CONFIG_PATH={} nohup {} server >> {} 2>&1 < \
+         /dev/null & }}",
+        quoted(&format!("{home}/state")),
+        quoted(OWN_SESSION),
+        quoted(config_path),
+        quoted(binary),
+        quoted(output),
+    )
 }
 
 /// Whether a daemon of this version is already sitting over there.
