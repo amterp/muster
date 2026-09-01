@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "session-rs-carries",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1788261770565,
+  "creator": "Alexander Terp",
+  "description": "`crates/muster-seam/src/session.rs` is 3853 lines holding two responsibilities that have nothing to do with each other, and it grows in both directions at once.\n\nThe first is launch-time configuration the shell hands over once at startup: roughly fifteen process-wide `static Mutex\u003cOption\u003cT\u003e\u003e` cells with a getter and a setter each, in lines ~50-306 - `DAEMON_BINARY`, `PLATFORM_LOCALE`, `COMMANDS`, `CACHE`, `STATE`, `NAMES_FILE`, `SHARED_NAMES`, `BINDINGS`, `PANE_INPUT`, `PANES`, `DAEMON_CONFIG`, `FEEL`, `CONFIG_PATH`, `APPEARANCE`, `PROBLEMS`.\n\nThe second is the `Session` struct and the live machinery around it - reconcile, publish, attach, the respawn record, the daemons a workspace has been asked of.\n\nThey share a file because there has never been another obvious home, so every new cross-cutting concern lands here. That is the cost: somebody changing either half has to hold all 3853 lines to be sure the other half is untouched.\n\nMove the cells into a sibling module - `session/config.rs` or `startup.rs` - and leave `session.rs` as the struct plus its state machine.\n\n## Not urgent, and not v0.4's doing\n\nRaised by a maintainability review of the v0.4.0 diff (2026-09-01). The review found nothing else card-worthy in 5000 lines, and this predates v0.4: that release added `respawns` and `workspaces_asked_of` as `Session` fields, which is correctly scoped. v0.4 neither worsened this nor improved it.\n\n## What done looks like\n\n- The cells and their accessors live in their own module, with the file's own account of why launch config is a separate thing from a live session.\n- `session.rs` is meaningfully shorter and reads as one subject.\n- `./dev` green; no behaviour change, so no new cases.",
+  "id": "a_2IMYtLzLO",
+  "position": "UUUUUUUUU",
+  "title": "🧹 session.rs carries two unrelated things",
+  "type": "chore",
+  "updated_at_millis": 1788261770565,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1788261770565}
+  ]
+}
