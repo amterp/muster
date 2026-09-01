@@ -13,32 +13,12 @@ import AppKit
 /// apart is what makes a window resize cost arithmetic and no surfaces.
 @MainActor
 public final class RegionView: NSView {
-  /// Gives a pane's chrome a surface, and the bridge that feeds it.
-  ///
-  /// Injected because the real one needs a GPU, a libghostty runtime and a subprocess, and
-  /// what this class decides - which panes exist, where they go, which one has the keyboard -
-  /// is worth testing without any of the three.
-  ///
-  /// Called once the chrome is in the window and has been laid out, because libghostty is
-  /// handed a view and sizes its surface from it: a surface created against a zero-sized view
-  /// is a PTY told it has no columns.
-  public typealias StartPane =
-    @MainActor (
-      _ daemonID: String, _ transport: WindowContents.Region.Transport?,
-      _ backendSocket: String?, _ chrome: PaneChrome, _ pane: PaneTree.Leaf
-    ) -> Void
-
-  private struct Held {
-    let chrome: PaneChrome
-
-    /// What its bridge was pointed at when it was built. A pane whose socket changed needs a
-    /// new bridge, and a bridge is spawned by its surface's command - so it needs a new
-    /// surface too.
-    let controlSocketPath: String?
-  }
-
-  private let startPane: StartPane
-  private var held: [String: Held] = [:]
+  /// Where the panes come from. Borrowed for as long as this region shows them and handed
+  /// back when it stops, because a surface outlives the region that was showing it: switching
+  /// a tab away and back would otherwise cost a new bridge and, on a devenv, the 440ms its
+  /// machine takes to open a session for one.
+  private let surfaces: PaneSurfaces
+  private var showing: [String] = []
   private var dividers: [DividerView] = []
   private var tree: PaneTree?
 
@@ -66,8 +46,8 @@ public final class RegionView: NSView {
   /// Reachable so a test can wait for the round trip it started; the app never looks at it.
   public let dividerPositions = SplitRatioSender()
 
-  public init(frame: NSRect, startPane: @escaping StartPane) {
-    self.startPane = startPane
+  public init(frame: NSRect, surfaces: PaneSurfaces) {
+    self.surfaces = surfaces
     super.init(frame: frame)
     wantsLayer = true
   }
@@ -84,7 +64,16 @@ public final class RegionView: NSView {
   /// The panes this region is showing, in reading order.
   public var paneIDs: [String] { tree?.leaves.map(\.paneID) ?? [] }
 
-  public func chrome(for paneID: String) -> PaneChrome? { held[paneID]?.chrome }
+  /// The panes with a surface in this region right now, which is not always the same list.
+  /// A tree that named a pane the daemon had not described yet gets no chrome until it does.
+  public var onScreen: Set<PaneKey> {
+    Set(showing.map { PaneKey(daemon: daemonID, pane: $0) })
+  }
+
+  public func chrome(for paneID: String) -> PaneChrome? {
+    guard showing.contains(paneID) else { return nil }
+    return surfaces.chrome(for: PaneKey(daemon: daemonID, pane: paneID))
+  }
 
   /// Renders a region, keeping every surface the new tree still names.
   ///
@@ -92,6 +81,10 @@ public final class RegionView: NSView {
   /// arranged - it publishes the tree on its own event, which may follow the panes it names -
   /// and tearing surfaces down for a moment that resolves in milliseconds is a flicker on
   /// every split.
+  ///
+  /// Nothing is let go here. The window parks whatever the whole arrangement stops showing,
+  /// in one pass before any region applies, because a pane that moved between two regions is
+  /// named by one of them and neither region can see the other's answer.
   public func apply(_ region: WindowContents.Region, focused: Bool) {
     regionID = region.id
     daemonID = region.daemon
@@ -100,59 +93,41 @@ public final class RegionView: NSView {
     tab = region.tab
     guard let tree = region.tree else { return }
     self.tree = tree
-    let fresh = reconcilePanes(tree.leaves)
+    let fresh = takePanes(tree.leaves)
     // Laid out before the surfaces are made, so each one is handed a view that already has
     // the size it will keep.
     needsLayout = true
     layoutSubtreeIfNeeded()
     for leaf in fresh {
-      guard let chrome = held[leaf.paneID]?.chrome else { continue }
-      startPane(daemonID, transport, backendSocket, chrome, leaf)
+      guard let chrome = chrome(for: leaf.paneID) else { continue }
+      surfaces.start(
+        daemonID: daemonID, transport: transport, backendSocket: backendSocket, chrome: chrome,
+        leaf: leaf)
     }
     apply(keyboardPane: focused ? region.keyboardPane : nil)
   }
 
-  /// Builds what the tree names and lets go of what it does not.
+  /// Puts this region's panes in it, and says which of them still need a surface.
   ///
-  /// Returns the panes that need a surface: the ones that were not here, and the ones whose
-  /// old surface was just thrown away.
-  private func reconcilePanes(_ leaves: [PaneTree.Leaf]) -> [PaneTree.Leaf] {
+  /// A pane already here is left where it is: `addSubview` on a view that has this superview
+  /// already still reorders it, and a surface reordered every publish is a flicker on every
+  /// agent transition.
+  private func takePanes(_ leaves: [PaneTree.Leaf]) -> [PaneTree.Leaf] {
     var fresh: [PaneTree.Leaf] = []
+    showing = leaves.map(\.paneID)
     for leaf in leaves {
-      if let existing = held[leaf.paneID] {
-        guard existing.controlSocketPath != leaf.controlSocketPath else { continue }
-        // The socket moved, so this pane's bridge is dialing somewhere nothing is listening.
-        // Left alone the pane would keep painting and swallow every keystroke, which is the
-        // symptom that has cost this project the most time.
-        Core.info(
-          "pane.surface.rebuilt",
-          [
-            "pane": leaf.paneID,
-            "reason": "its control socket changed, so its bridge was dialing a closed listener",
-          ])
-        existing.chrome.removeFromSuperview()
+      let daemon = daemonID
+      let taken = surfaces.borrow(
+        daemonID: daemon, leaf: leaf,
+        focus: { paneID in Core.focus(daemonID: daemon, paneID: paneID) },
+        scroll: { paneID, direction, delta in
+          Core.scroll(daemonID: daemon, paneID: paneID, direction: direction, delta: delta)
+        })
+      if taken.chrome.superview !== self {
+        taken.chrome.frame = bounds
+        addSubview(taken.chrome)
       }
-      let chrome = PaneChrome(frame: bounds, surface: SurfaceView(frame: bounds))
-      chrome.attach(paneID: leaf.paneID)
-      chrome.onFocusRequested = { [weak self] paneID in
-        Core.focus(daemonID: self?.daemonID ?? "", paneID: paneID)
-      }
-      chrome.onScrollRequested = { [weak self] paneID, direction, delta in
-        Core.scroll(
-          daemonID: self?.daemonID ?? "", paneID: paneID, direction: direction, delta: delta)
-      }
-      addSubview(chrome)
-      held[leaf.paneID] = Held(chrome: chrome, controlSocketPath: leaf.controlSocketPath)
-      fresh.append(leaf)
-    }
-
-    let named = Set(leaves.map(\.paneID))
-    for (paneID, gone) in held where !named.contains(paneID) {
-      // Dropping the chrome drops its surface, which ends the command that surface spawned -
-      // so the pane's bridge exits here rather than being left dialing a window that has
-      // forgotten it.
-      gone.chrome.removeFromSuperview()
-      held.removeValue(forKey: paneID)
+      if taken.isNew { fresh.append(leaf) }
     }
     return fresh
   }
@@ -164,10 +139,10 @@ public final class RegionView: NSView {
   /// into". It follows the core's view rather than leading it: AppKit's own focus is a
   /// consequence here, never the source.
   private func apply(keyboardPane: String?) {
-    for (paneID, pane) in held {
-      pane.chrome.apply(focused: paneID == keyboardPane)
+    for paneID in showing {
+      chrome(for: paneID)?.apply(focused: paneID == keyboardPane)
     }
-    guard let keyboardPane, let chrome = held[keyboardPane]?.chrome, let window else { return }
+    guard let keyboardPane, let chrome = chrome(for: keyboardPane), let window else { return }
     if window.firstResponder !== chrome.surface {
       window.makeFirstResponder(chrome.surface)
     }
@@ -188,7 +163,7 @@ public final class RegionView: NSView {
     }
 
     for placement in frames.panes {
-      guard let chrome = held[placement.paneID]?.chrome else { continue }
+      guard let chrome = chrome(for: placement.paneID) else { continue }
       chrome.frame = placement.frame
       chrome.needsLayout = true
     }

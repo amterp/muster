@@ -83,6 +83,19 @@ extension RecordingDispatcher {
 }
 
 /// Points the seam at a fresh recorder.
+/// A window's worth of pane surfaces, parked nowhere in particular.
+///
+/// Here rather than in one suite because both the region suite and the pane-action suite build
+/// a region, and a region cannot be built without one. `startPane` defaults to doing nothing,
+/// which is what a suite about what a region decides wants: a real one needs a GPU, a
+/// libghostty runtime and a subprocess.
+@MainActor
+func paneSurfaces(
+  startPane: @escaping PaneSurfaces.StartPane = { _, _, _, _, _ in }
+) -> PaneSurfaces {
+  PaneSurfaces(parkedIn: NSView(frame: .zero), startPane: startPane)
+}
+
 @MainActor
 func recorder() -> RecordingDispatcher {
   let recorder = RecordingDispatcher()

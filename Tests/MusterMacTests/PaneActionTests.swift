@@ -47,8 +47,8 @@ struct PaneActionTests {
     // the moment the core refused - and then keystrokes would go somewhere else than the
     // ring says.
     let recorder = recorder()
-    let started = RegionView(frame: NSRect(x: 0, y: 0, width: 400, height: 300)) { _, _, _, _, _ in
-    }
+    let started = RegionView(
+      frame: NSRect(x: 0, y: 0, width: 400, height: 300), surfaces: paneSurfaces())
     started.apply(
       WindowContents.Region(
         id: "r0", daemon: "devenv", tab: "w1:t1", keyboardPane: "w1:p1",
@@ -74,7 +74,8 @@ struct PaneActionTests {
     // Tabs collide across daemons exactly as panes do, and a ratio applied to the wrong tab
     // resizes a split the user is not looking at.
     let recorder = recorder()
-    let region = RegionView(frame: NSRect(x: 0, y: 0, width: 400, height: 300)) { _, _, _, _, _ in }
+    let region = RegionView(
+      frame: NSRect(x: 0, y: 0, width: 400, height: 300), surfaces: paneSurfaces())
     region.apply(
       WindowContents.Region(
         id: "r0", daemon: "devenv", tab: "w1:t1", keyboardPane: "w1:p1",

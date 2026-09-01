@@ -28,6 +28,15 @@ public final class MusterWindow: NSObject {
   private let empty = EmptyWindowView(frame: .zero)
   private var regions: [String: RegionView] = [:]
 
+  /// Every pane's surface, held for as long as its daemon holds the pane rather than for as
+  /// long as a region is showing it.
+  ///
+  /// Implicitly unwrapped because it cannot be built any earlier: it parks panes inside the
+  /// content view and starts them through this window, so it needs both a view hierarchy and
+  /// a `self` to capture - and neither exists until `super.init` has run. Non-nil from the end
+  /// of `init` onwards, and every region is made through `make(regionID:)` after that.
+  private var surfaces: PaneSurfaces!
+
   /// Whether this window was opened with no daemon behind it on purpose.
   ///
   /// The one empty window that is not worth explaining a way out of, because there is none:
@@ -155,6 +164,14 @@ public final class MusterWindow: NSObject {
     chordModifiers = NumberedChord.modifiers(bindings)
     window.contentView = split
     window.delegate = self
+    // After the content view, because a parked pane waits inside the window rather than
+    // outside every hierarchy - a surface is handed to libghostty as a view, and keeping that
+    // view in a window for its whole life is the only state this has ever run in.
+    surfaces = PaneSurfaces(parkedIn: split) {
+      [weak self] daemonID, transport, socket, chrome, pane in
+      self?.start(
+        chrome, daemonID: daemonID, transport: transport, backendSocket: socket, pane: pane)
+    }
     // Named rather than left to the default, because `show` toggles into full-screen for a
     // window that quit from it and a default is a thing that can move.
     window.collectionBehavior.insert(.fullScreenPrimary)
@@ -231,8 +248,20 @@ public final class MusterWindow: NSObject {
   /// Renders what the core says this window is showing.
   ///
   /// Whole-view and idempotent, so applying the same one twice is applying it once. Regions
-  /// that survive keep their surfaces; the rest go, and their bridges go with them.
+  /// that survive keep their surfaces, and a region that goes hands its panes back rather than
+  /// tearing them down - a surface belongs to its pane, and outlives every region that shows
+  /// it (`architecture.md`, a surface belongs to its pane).
   public func apply(_ contents: WindowContents) {
+    // Before any region applies, and it has to be before: a pane that moved from one region
+    // to another is named by the second, and a pass that ran afterwards would take it back
+    // from whichever of the two happened to apply first. What is left over waits off screen
+    // with its bridge running, which is what makes returning to a tab free rather than the
+    // half-second its machine takes to open another ssh session.
+    surfaces.park(
+      everythingBut: contents.regions.reduce(into: Set<PaneKey>()) { claimed, described in
+        claimed.formUnion(described.panes ?? regions[described.id]?.onScreen ?? [])
+      })
+
     var order: [(id: String, weight: CGFloat, view: NSView)] = []
     for described in contents.regions {
       let region = regions[described.id] ?? make(regionID: described.id)
@@ -269,9 +298,10 @@ public final class MusterWindow: NSObject {
 
   public func apply(pane: PaneKey, state: String) {
     states[pane] = state
-    for region in regions.values where region.daemonID == pane.daemon {
-      region.chrome(for: pane.pane)?.apply(paneID: pane.pane, state: state)
-    }
+    // Whether or not a region is showing it. A pane parked off screen keeps its border
+    // painted, so the tab somebody switches back to is right on its first frame rather than
+    // on the agent's next transition.
+    surfaces.chrome(for: pane)?.apply(paneID: pane.pane, state: state)
     sidebar.apply(roster: roster, states: states, keyboard: keyboardKey)
   }
 
@@ -282,6 +312,10 @@ public final class MusterWindow: NSObject {
   /// finished while nobody was looking.
   public func apply(_ roster: Roster) {
     self.roster = roster
+    // The one message naming every pane on every attached daemon, which makes it the only
+    // thing that can say a parked pane has closed. Without this a window that visited fifteen
+    // tabs would hold fifteen tabs' worth of bridges until it quit.
+    surfaces.release(everythingBut: Set(roster.panes.map(\.key)))
     sidebar.apply(roster: roster, states: states, keyboard: keyboardKey)
     applyBadges()
   }
@@ -341,9 +375,7 @@ public final class MusterWindow: NSObject {
   private func drawBadges() {
     for tab in roster.tabs {
       for pane in tab.panes {
-        for region in regions.values where region.daemonID == pane.key.daemon {
-          region.chrome(for: pane.key.pane)?.apply(badge: badgesShown ? pane.number : 0)
-        }
+        surfaces.chrome(for: pane.key)?.apply(badge: badgesShown ? pane.number : 0)
       }
     }
   }
@@ -447,12 +479,7 @@ public final class MusterWindow: NSObject {
   }
 
   private func make(regionID: String) -> RegionView {
-    let region = RegionView(frame: strip.bounds) {
-      [weak self] daemonID, transport, backendSocket, chrome, pane in
-      self?.start(
-        chrome, daemonID: daemonID, transport: transport, backendSocket: backendSocket,
-        pane: pane)
-    }
+    let region = RegionView(frame: strip.bounds, surfaces: surfaces)
     strip.addSubview(region)
     regions[regionID] = region
     return region
@@ -736,7 +763,7 @@ extension MusterWindow {
   /// The chrome of the pane this window's keyboard feeds.
   func keyboardChrome() -> PaneChrome? {
     guard let key = keyboardKey else { return nil }
-    return regions.values.first { $0.daemonID == key.daemon }?.chrome(for: key.pane)
+    return surfaces.chrome(for: key)
   }
 
   /// Runs the sheet, and sends what came back.

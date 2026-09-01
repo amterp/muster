@@ -15,7 +15,12 @@ import Foundation
 /// descriptors rather than one, because herdr's `watch()` clones the stream so the watcher
 /// can shut itself down (`docs/observations/herdr-0.8.0.md`, section 11) - so fifteen panes on
 /// each of two daemons is 60 before the structure subscription per daemon, the control socket
-/// per visible pane, and the bridge behind each.
+/// per pane in a tab some region shows, and the bridge behind each.
+///
+/// A bridge now outlives the switch away from its tab, so the count follows the panes a window
+/// has shown rather than the panes on screen at one moment. It is bounded by the same number:
+/// a window cannot hold more panes than its daemons do, and that is what the arithmetic above
+/// already counts.
 public enum DescriptorLimit {
   /// What Muster asks for.
   ///

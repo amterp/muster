@@ -21,19 +21,50 @@ private final class Started {
   var backendPanes: [String] = []
 }
 
-/// A region whose surfaces are recorded rather than allocated.
+/// A window's worth of surfaces, recorded rather than allocated.
 @MainActor
-private func region(width: CGFloat = 800, height: CGFloat = 600) -> (RegionView, Started) {
-  let started = Started()
-  let view = RegionView(frame: NSRect(x: 0, y: 0, width: width, height: height)) {
-    daemon, transport, backendSocket, chrome, pane in
+private func surfaces(_ started: Started) -> PaneSurfaces {
+  paneSurfaces { daemon, transport, backendSocket, chrome, pane in
     let machine = transport.map { "@\($0.sshHost)" } ?? ""
     started.panes.append(
       "\(daemon)\(machine):\(chrome.paneID ?? "")@\(pane.controlSocketPath ?? "-")")
     started.daemonSockets.append(backendSocket)
     started.backendPanes.append(pane.backendPaneID)
   }
+}
+
+/// A region whose surfaces are recorded rather than allocated.
+@MainActor
+private func region(width: CGFloat = 800, height: CGFloat = 600) -> (RegionView, Started) {
+  let (view, started, _) = regionAndStore(width: width, height: height)
   return (view, started)
+}
+
+@MainActor
+private func regionAndStore(
+  width: CGFloat = 800, height: CGFloat = 600
+) -> (RegionView, Started, PaneSurfaces) {
+  let started = Started()
+  let store = surfaces(started)
+  return (
+    RegionView(frame: NSRect(x: 0, y: 0, width: width, height: height), surfaces: store),
+    started, store
+  )
+}
+
+/// One region, applied the way the window applies one.
+///
+/// The park is the window's step and not the region's, because a pane that moved between two
+/// regions is named by one of them and neither can see the other's answer - so it happens once
+/// for the whole arrangement, before any region takes anything. A test that skipped it would
+/// leave a departed pane's chrome sitting in the region that had it.
+@MainActor
+private func show(
+  _ view: RegionView, _ described: WindowContents.Region, focused: Bool = true,
+  in store: PaneSurfaces
+) {
+  store.park(everythingBut: described.panes ?? view.onScreen)
+  view.apply(described, focused: focused)
 }
 
 private func leaf(
@@ -74,20 +105,97 @@ struct RegionViewTests {
   }
 
   @MainActor
-  @Test("a pane the tree no longer names is let go")
-  func closedPanesAreRemoved() {
-    // Its surface goes with it, and so does the bridge that surface spawned. Left behind,
-    // each closed pane costs a process and a socket for as long as the window is open.
-    let (view, _) = region()
-    view.apply(
-      contents(.split(axis: .rows, ratio: 0.5, first: leaf("w1:p1"), second: leaf("w1:p2"))),
-      focused: true)
+  @Test("a pane the tree no longer names leaves the region, and keeps its bridge")
+  func departedPanesAreParked() {
+    // Parked rather than torn down, which is the whole of a_2HzbwzO32. A remote pane's bridge
+    // is an ssh exec, and the far machine takes about 440ms to open a session for one - so a
+    // surface thrown away on every tab switch is half a second of blank pane on every switch
+    // back. What replaces the teardown is the roster: a pane stops costing anything when its
+    // daemon stops holding it.
+    let (view, _, store) = regionAndStore()
+    show(
+      view, contents(.split(axis: .rows, ratio: 0.5, first: leaf("w1:p1"), second: leaf("w1:p2"))),
+      in: store)
 
-    view.apply(contents(leaf("w1:p1")), focused: true)
+    show(view, contents(leaf("w1:p1")), in: store)
 
     #expect(view.chrome(for: "w1:p2") == nil)
     #expect(view.paneIDs == ["w1:p1"])
     #expect(view.subviews.compactMap { ($0 as? PaneChrome)?.paneID } == ["w1:p1"])
+    #expect(store.parked == [PaneKey(daemon: "local", pane: "w1:p2")])
+  }
+
+  @MainActor
+  @Test("a pane that comes back on screen starts no second bridge")
+  func aParkedPaneIsReused() {
+    // The measurement the card asked for, at the level a test can reach it: switching to a
+    // tab and back used to spawn a bridge each time, and the log held seventeen bridge.start
+    // records for three devenv panes in one session.
+    let (view, started, store) = regionAndStore()
+    let both = PaneTree.split(
+      axis: .rows, ratio: 0.5, first: leaf("w1:p1"), second: leaf("w1:p2"))
+    show(view, contents(both), in: store)
+    let parked = store.chrome(for: PaneKey(daemon: "local", pane: "w1:p2"))
+
+    show(view, contents(leaf("w1:p1")), in: store)
+    show(view, contents(both), in: store)
+
+    #expect(started.panes.count == 2)
+    #expect(view.chrome(for: "w1:p2") === parked)
+  }
+
+  @MainActor
+  @Test("two regions showing one pane share its surface")
+  func onePanePerWindowHasOneSurface() {
+    // Only one client can hold a herdr terminal, so a pane drawn twice is one surface printing
+    // "already has an attached client" and a panel nobody can close (kan a_2Ht74jTXV). The core
+    // no longer opens two regions onto one tab; a store keyed by pane cannot draw one twice
+    // even if it does again.
+    let started = Started()
+    let store = surfaces(started)
+    let first = RegionView(frame: NSRect(x: 0, y: 0, width: 800, height: 600), surfaces: store)
+    let second = RegionView(frame: NSRect(x: 0, y: 0, width: 800, height: 600), surfaces: store)
+
+    first.apply(contents(leaf("w1:p1")), focused: true)
+    second.apply(contents(leaf("w1:p1")), focused: false)
+
+    #expect(started.panes == ["local:w1:p1@/tmp/0.sock"])
+    #expect(store.count == 1)
+    // And the second one is the one showing it, because it took it last.
+    #expect(
+      second.chrome(for: "w1:p1") === store.chrome(for: PaneKey(daemon: "local", pane: "w1:p1")))
+  }
+
+  @MainActor
+  @Test("a parked pane the daemons no longer hold is let go")
+  func closedPanesAreReleased() {
+    // What stops the held set growing with switches. A window that visited fifteen tabs would
+    // otherwise hold fifteen tabs' worth of bridges, sockets and herdr clients until it quit.
+    let (view, _, store) = regionAndStore()
+    show(
+      view, contents(.split(axis: .rows, ratio: 0.5, first: leaf("w1:p1"), second: leaf("w1:p2"))),
+      in: store)
+    show(view, contents(leaf("w1:p1")), in: store)
+
+    store.release(everythingBut: [PaneKey(daemon: "local", pane: "w1:p1")])
+
+    #expect(store.count == 1)
+    #expect(store.parked.isEmpty)
+  }
+
+  @MainActor
+  @Test("a pane a region is showing survives a roster that does not name it")
+  func onScreenPanesAreNeverReleased() {
+    // A roster arrives empty for reasons that are not "every pane closed" - a daemon
+    // mid-reconnect, a publish between arrangements - and tearing the window down for one
+    // would be the worst answer available to a transient.
+    let (view, _, store) = regionAndStore()
+    show(view, contents(leaf("w1:p1")), in: store)
+
+    store.release(everythingBut: [])
+
+    #expect(view.chrome(for: "w1:p1") != nil)
+    #expect(store.count == 1)
   }
 
   @MainActor

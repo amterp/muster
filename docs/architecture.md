@@ -714,6 +714,15 @@ header has no byte-feed API. The pane channel is therefore delivered by a bridge
 is a fact about current libghostty, not a choice - re-verify on upgrades, and revisit if upstream grows a direct
 feed.
 
+**A surface belongs to its pane, not to the region showing it.** One per pane per window, held by the shell for as
+long as the pane's daemon holds the pane, and lent to whichever region is showing it. It follows from the line
+above: a bridge is a surface's command, so a surface torn down when its tab went off screen took the bridge with
+it, and a remote bridge is an `ssh` exec whose machine spends about 400ms opening a session for it - paid again on
+every switch back, measured at 444-561ms against 29-59ms for a local pane. The rule also makes a pane drawn in two
+regions unable to become two bridges dialing one terminal, which herdr refuses and which leaves a panel nobody can
+close. What it costs is one bridge, one ssh channel and one herdr client per pane rather than per pane on screen;
+the roster is what says a pane has closed, and that is when its surface goes.
+
 **Appearance crosses this seam in Muster's words, and reads no file belonging to another application.** Muster
 called `ghostty_config_load_default_files` until 2026-08-16, so a Ghostty config on disk decided what a pane looked
 like - which left the renderer the one dependency not behind the contract, since a replacement would have had

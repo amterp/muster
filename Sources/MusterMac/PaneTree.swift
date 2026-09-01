@@ -74,6 +74,15 @@ public struct WindowContents: Equatable {
       self.zoomed = zoomed
       self.transport = transport
     }
+
+    /// The panes this region will be showing once it has applied.
+    ///
+    /// Nil when the daemon has not said how this tab is arranged, on the same terms as
+    /// `tree`: a window told nil leaves what it is showing alone, so nil here means "whatever
+    /// it already had" rather than "none".
+    public var panes: Set<PaneKey>? {
+      tree.map { Set($0.leaves.map { PaneKey(daemon: daemon, pane: $0.paneID) }) }
+    }
   }
 
   /// In the order they are laid out, side by side. Muster owns no split tree over regions.
