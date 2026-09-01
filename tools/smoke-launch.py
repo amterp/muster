@@ -744,6 +744,26 @@ def check_cold_start() -> None:
         )
 
 
+def saved_composition_version() -> int:
+    """The version the app writes into `window.toml`, read from the app's own constant.
+
+    Restated here once and derived rather than typed, because typing it is what broke this
+    check. The fixture below was written when the format was at 1, `284b505` moved it to 2 nine
+    commits later, and nothing connected the two - so from that day the app refused the fixture,
+    opened as a first launch, and this check staged nothing while looking like it staged
+    something (kan a_2HSZuuZp4).
+    """
+    source = REPO / "crates/muster-core/src/composition/saved.rs"
+    found = re.search(r"^const VERSION: i64 = (\d+);", source.read_text(), re.MULTILINE)
+    if not found:
+        raise Failure(
+            f"no `const VERSION` in {source}, so this check cannot write a saved arrangement the "
+            "app will read. Impact: the fixture below would be refused and the check would stage "
+            "nothing. If the constant moved or was renamed, point this at its new home."
+        )
+    return int(found.group(1))
+
+
 def check_a_broken_config_opens_the_roster() -> None:
     """A window that comes back with the roster closed still shows what is wrong with it.
 
@@ -779,11 +799,14 @@ def check_a_broken_config_opens_the_roster() -> None:
     # The other half: a window remembered with the roster put away. Without this the roster
     # is open anyway and the bug cannot show.
     #
-    # A version, because a saved arrangement without one is refused as unreadable and the
-    # window opens as a first launch - which comes up with the roster open and so quietly
-    # takes away the thing this check is staging.
+    # A version the app will accept, because a saved arrangement it refuses is one it ignores:
+    # the window then opens as a first launch, whose roster is open, and the half this check is
+    # staging is gone. It fails loudly when that happens - `composition.restore.failed` is not
+    # in the expected list below and must never be added, because a run that declares it is a
+    # run asserting nothing.
     (root / "home/.muster/state/window.toml").write_text(
-        "version = 1\nfocused = 0\n\n[window]\nsidebar = false\nfont_size_offset = 0\n"
+        f"version = {saved_composition_version()}\n"
+        "focused = 0\n\n[window]\nsidebar = false\nfont_size_offset = 0\n"
     )
 
     env = {
