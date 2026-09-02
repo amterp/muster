@@ -265,6 +265,16 @@ pub enum BackendIntent {
         to: MoveDestination,
     },
 
+    /// Closes a tab, and every pane in it with it.
+    ///
+    /// The one verb here that destroys more than it names. Muster sends it rather than closing
+    /// the panes one at a time because a backend closing its own tab is one act somebody can
+    /// undo nothing of, where N closes is N chances to be interrupted half way and left with a
+    /// tab holding one pane and no reason.
+    CloseTab {
+        tab: TabId,
+    },
+
     /// Moves one divider in a tab's tree.
     SetSplitRatio {
         tab: TabId,

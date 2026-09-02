@@ -47,11 +47,17 @@ pub enum Action {
     /// that request and never this.
     RenamePane,
     RenameTab,
+    /// Closes the tab the keyboard is in, and every pane in it.
+    ///
+    /// The tab half of `ClosePane`, and it ends more than it names. Unbound for that reason
+    /// among others: a chord that destroys several panes is one somebody reaches by accident.
+    CloseTab,
     /// Takes the pane the keyboard is on out of its split and gives it a tab of its own.
     ///
-    /// The other half of `MovePaneOntoAnother`, which has no chord at all because dragging a
-    /// row is how somebody says which pane to land beside. This one names nowhere, so a chord
-    /// and a menu item can carry it.
+    /// The only half of moving a pane that an action can carry. Moving one *beside* another
+    /// names two panes, and nothing about a chord says which second pane - that is why dragging
+    /// a row exists and why it is not in this list. This one names nowhere, so a chord and a
+    /// menu item can mean it.
     MovePaneToNewTab,
     ClosePane,
     NextPane,
@@ -105,12 +111,13 @@ impl Action {
     /// Deliberately not alphabetical: a menu is read top to bottom, and the order here is what
     /// somebody scanning it expects - making something, then arranging it, then moving around
     /// it. A shell that sorted these would produce a menu nobody can find anything in.
-    pub const ALL: [Action; 41] = [
+    pub const ALL: [Action; 42] = [
         Action::NewWindow,
         Action::NewTab,
         Action::NextTab,
         Action::PreviousTab,
         Action::RenameTab,
+        Action::CloseTab,
         Action::SplitRight,
         Action::SplitDown,
         Action::SplitLeft,
@@ -161,6 +168,7 @@ impl Action {
             Action::SplitUp => "split_up",
             Action::RenamePane => "rename_pane",
             Action::RenameTab => "rename_tab",
+            Action::CloseTab => "close_tab",
             Action::MovePaneToNewTab => "move_pane_to_new_tab",
             Action::ClosePane => "close_pane",
             Action::NextPane => "next_pane",
@@ -235,9 +243,11 @@ impl Action {
             // also the newest of the three - a chord invented for it would be one nobody
             // asked for. `[keymap]` is one line away for anybody who disagrees with any of
             // them.
-            Action::SplitLeft | Action::SplitUp | Action::RenameTab | Action::MovePaneToNewTab => {
-                None
-            }
+            Action::SplitLeft
+            | Action::SplitUp
+            | Action::RenameTab
+            | Action::MovePaneToNewTab
+            | Action::CloseTab => None,
             // Muster's own, since Ghostty has no equivalent. ⌘⇧N is free on this platform for
             // a terminal - a command chord never reaches a pane - and naming panes is what
             // somebody does in a window of fifteen agents, which is the size this was built

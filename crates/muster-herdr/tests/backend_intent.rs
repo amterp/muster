@@ -275,6 +275,7 @@ fn every_intent() -> Vec<BackendIntent> {
             pane: PaneId::new("p1"),
             to: MoveDestination::NewTab { name: None },
         },
+        BackendIntent::CloseTab { tab: TabId::new("t1") },
     ];
     for intent in &all {
         // Exhaustive on purpose. A variant added without a line above reaches herdr with its
@@ -292,7 +293,8 @@ fn every_intent() -> Vec<BackendIntent> {
             | BackendIntent::RenameTab { .. }
             | BackendIntent::SwapPanes { .. }
             | BackendIntent::SendText { .. }
-            | BackendIntent::MovePane { .. } => {}
+            | BackendIntent::MovePane { .. }
+            | BackendIntent::CloseTab { .. } => {}
         }
     }
     all
@@ -390,6 +392,7 @@ fn intent(given: &Value) -> Result<BackendIntent, CaseError> {
                 },
             },
         }),
+        "closeTab" => Ok(BackendIntent::CloseTab { tab: TabId::new(&text(given, "tab")?) }),
         "focus" => Ok(BackendIntent::FocusPane { pane: PaneId::new(&text(given, "pane")?) }),
         "tab" => Ok(BackendIntent::CreateTab {
             workspace: WorkspaceId::new(&text(given, "workspace")?),

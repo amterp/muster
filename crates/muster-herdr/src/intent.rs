@@ -780,6 +780,9 @@ pub fn request(
                 "focus": false,
             }),
         ),
+        BackendIntent::CloseTab { tab } => {
+            ("tab.close", json!({ "tab_id": names.backend_tab(tab)?.as_str() }))
+        }
         BackendIntent::SetSplitRatio { tab, path, ratio } => (
             "layout.set_split_ratio",
             json!({

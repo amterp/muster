@@ -19,9 +19,9 @@ use std::collections::BTreeMap;
 use clap::{ArgGroup, CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::Shell;
 use muster_proto::{
-    AdjustFontSize, ArrangePane, ClosePane, CreateTab, FocusPane, FocusPaneAt, FocusRelative,
-    FocusTab, FocusTabRelative, ReadPane, ReadWindow, ReloadConfig, RenamePane, RenameTab, Request,
-    ResizePane, SendToPane, SplitPane, ToggleSidebar, ZoomPane, request,
+    AdjustFontSize, ArrangePane, ClosePane, CloseTab, CreateTab, FocusPane, FocusPaneAt,
+    FocusRelative, FocusTab, FocusTabRelative, ReadPane, ReadWindow, ReloadConfig, RenamePane,
+    RenameTab, Request, ResizePane, SendToPane, SplitPane, ToggleSidebar, ZoomPane, request,
 };
 
 use crate::{docs, environment};
@@ -472,6 +472,16 @@ enum WithTab {
         previous: bool,
     },
 
+    /// Close a tab, and every pane in it
+    //
+    // The one verb here that ends more than it names. Beside `pane close` in `muster docs
+    // limits` rather than beside the tab's other verbs, because what it costs is the same.
+    Close {
+        /// The tab to close, or the one the window's keyboard is in
+        #[arg(long, value_name = "REF")]
+        tab: Option<String>,
+    },
+
     /// Call a tab something. An empty name takes the name away again
     Rename {
         /// The tab to rename, or the one the window's keyboard is in
@@ -665,6 +675,10 @@ fn tab(doing: &WithTab, environment: &BTreeMap<String, String>) -> Asking {
                 }))
             }
         }
+        WithTab::Close { tab } => send(request::Payload::CloseTab(CloseTab {
+            tab_id: tab.clone().unwrap_or_default(),
+            ..CloseTab::default()
+        })),
         WithTab::Rename { tab, name } => send(request::Payload::RenameTab(RenameTab {
             tab_id: tab.clone().unwrap_or_default(),
             name: name.join(" "),

@@ -617,6 +617,17 @@ public enum Core {
   /// Both ends are named because a drag names two panes by definition. Whether this becomes an
   /// exchange or a move into another tab is the core's to decide from where they are - the
   /// shell knows which rows were involved and nothing about the tree they sit in.
+  /// Closes the tab the window's keyboard is in, and every pane in it.
+  ///
+  /// Naming no tab means the keyboard's, which is what a menu item means. Unlike going to a tab,
+  /// closing one has a sensible "the one I am already in" - that is exactly what somebody
+  /// picking this is asking for.
+  public static func closeTab() {
+    var request = Muster_Request()
+    request.closeTab = Muster_CloseTab()
+    send(request)
+  }
+
   /// Takes the pane the window's keyboard is on into a tab of its own.
   ///
   /// The same request a drag sends, with the other destination set. Naming no pane means the
@@ -796,6 +807,7 @@ public enum Core {
     // their own work, and this line ends up in a file destined for a bug report.
     case .renamePane: return "rename_pane"
     case .renameTab: return "rename_tab"
+    case .closeTab: return "close_tab"
     // The kind, never the needle, for the reason above and more sharply: what somebody is
     // looking for in their own terminal is the most private thing this seam carries.
     case .find: return "find"

@@ -76,6 +76,10 @@ longer does. The arguments are the same on paper - both are facts about the tree
 are not: a split nobody is looking at costs a shell, and a close nobody is looking at costs
 whatever was running in it.
 
+`muster tab close` is the same verb one level up and follows the same rule. It ends every pane
+in the tab in one request, and it refuses a tab no region is showing. With no `--tab` it closes
+the tab the keyboard is in, which is what the menu item means.
+
 ## A second window is not reopened for you
 
 `muster window new` opens one and it behaves like any other, but nothing brings it back after a

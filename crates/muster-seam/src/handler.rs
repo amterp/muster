@@ -160,6 +160,7 @@ fn handle(request: Request) -> Response {
         request::Payload::Scroll(scroll) => scroll_pane(&scroll),
         request::Payload::RenamePane(rename) => rename_pane(&rename),
         request::Payload::RenameTab(rename) => rename_tab(&rename),
+        request::Payload::CloseTab(close) => close_tab(&close),
         request::Payload::Find(find) => find_in_pane(&find),
         request::Payload::FindStep(step) => step_find(&step.direction),
         request::Payload::EndFind(_) => {
@@ -332,6 +333,39 @@ fn rename_tab(rename: &proto::RenameTab) -> Response {
         ));
     };
     submit(&daemon, &BackendIntent::RenameTab { tab, name }, Keyboard::Follows)
+}
+
+/// Closes a tab and every pane in it.
+///
+/// The tab the keyboard is in when nobody names one, which is what the menu item means and is a
+/// fallback `focus_tab` deliberately does not have: going to a tab has no "the one I am already
+/// in", and closing one does.
+fn close_tab(close: &proto::CloseTab) -> Response {
+    if !close.tab_id.is_empty() {
+        let tab = TabId::new(&close.tab_id);
+        let Some(daemon) = holder_of(&tab, &close.daemon_id) else {
+            return no_such_tab(&tab, "closed");
+        };
+        return answer(session::close_tab(&daemon, &tab));
+    }
+
+    let daemon = match resolve_daemon(&close.daemon_id) {
+        Ok(daemon) => daemon,
+        Err(refusal) => return *refusal,
+    };
+    let Some(pane) = session::focused_pane() else {
+        return Response::failure(
+            "no pane has this window's keyboard, so there was no tab to close and nothing was \
+             changed. A request that names no tab means the one the keyboard is in.",
+        );
+    };
+    let Some(tab) = session::tab_of(&daemon, &pane) else {
+        return Response::failure(format!(
+            "the daemon {daemon} holds no pane called {pane}, so there is no tab to close and \
+             nothing was changed. Most likely it closed while this was in flight."
+        ));
+    };
+    answer(session::close_tab(&daemon, &tab))
 }
 
 /// What a rename was asking for: a name, or none at all.
