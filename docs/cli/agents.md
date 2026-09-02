@@ -41,13 +41,14 @@ is its output, and an agent that has stopped tells you it stopped rather than wh
     muster pane read --pane p1w3r0ab2n
 
 The pane's text, newest row last, as far back as the window will go. `--rows 40` asks for the last
-forty instead, which is what checking on somebody wants and what keeps a thousand rows off the
-wire. `--json` adds `rows` and `truncated` beside the text; `truncated` is how you learn there is
-history the read did not reach.
+forty rows it printed, which is what checking on somebody wants. It is a count and not a ceiling:
+a quiet pane sitting at a prompt still answers with its last forty rows, not with the blank space
+under them. `--json` adds `rows` and `truncated` beside the text; `truncated` is how you learn
+there is history the read did not reach, whether because you asked for fewer rows or because the
+pane holds more than a read can reach.
 
-Two things to expect. The rows come off the bottom of the pane's grid, so a small `--rows` on an
-idle pane can come back blank - the bottom of a terminal usually is. And how far back the window
-goes is the daemon's limit rather than a promise made here; see `muster docs limits`.
+How far back the window goes is the daemon's limit rather than a promise made here; see
+`muster docs limits`.
 
 ## Rearranging what you made
 

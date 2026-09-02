@@ -3867,7 +3867,10 @@ fn land(search: &Search) {
 pub(crate) fn read_pane(daemon: &DaemonId, pane: &PaneId, rows: u32) -> Result<PaneText, String> {
     let channel = channel(daemon)?;
     channel
-        .read(pane, rows)
+        .read(pane)
+        // Asked for whole and cut here, so `rows` is the count `docs/cli/agents.md` promises
+        // rather than a ceiling on grid rows that a quiet pane spends on blanks.
+        .map(|read| read.tail(rows))
         .map_err(|refusal| format!("the daemon {daemon} would not read pane {pane}: {refusal}"))
 }
 

@@ -193,8 +193,8 @@ impl BackendChannel for HerdrBackend {
     /// "nobody looked" are different things to hand back, and a pane that has gone away is
     /// `NotThere`, which is how the window learns it is showing something the daemon no
     /// longer holds.
-    fn read(&self, pane: &PaneId, rows: u32) -> Result<PaneText, Refusal> {
-        let (method, params) = read_request(&self.names.backend_pane(pane)?, rows);
+    fn read(&self, pane: &PaneId) -> Result<PaneText, Refusal> {
+        let (method, params) = read_request(&self.names.backend_pane(pane)?);
         let result = self.client.request(method, &params).map_err(|failure| refusal(&failure))?;
         Ok(PaneText {
             text: nested(&result, "text").and_then(Value::as_str).unwrap_or_default().to_string(),
@@ -213,7 +213,7 @@ impl BackendChannel for HerdrBackend {
     /// daemon-side search lands, this body becomes one request and `find::found_in` stops
     /// being called from here.
     fn find(&self, pane: &PaneId, needle: &Needle) -> Result<Found, Refusal> {
-        let read = self.read(pane, ROWS_READ)?;
+        let read = self.read(pane)?;
         Ok(found_in(&read.text, needle, read.truncated))
     }
 
@@ -270,18 +270,18 @@ const READY_WITHIN: Duration = Duration::from_secs(5);
 /// a hit nobody found. A caller reading a pane to show somebody wants the same rows for a
 /// duller reason: they are the rows the pane is drawing.
 ///
-/// `rows` is capped at [`ROWS_READ`] rather than passed on. herdr clamps anything larger to
-/// the same number and answers, so sending it as asked would make the request claim an
-/// expectation it does not have - and `truncated` in the answer is what actually tells a
-/// caller there was more.
-pub fn read_request(pane: &BackendPaneId, rows: u32) -> (&'static str, Value) {
-    let rows = if rows == 0 { ROWS_READ } else { rows.min(ROWS_READ) };
+/// Always [`ROWS_READ`], for both callers. `recent` counts grid rows up from the bottom of the
+/// pane, and the bottom of an idle pane is the blank remainder of its viewport - so a small
+/// number here buys blank rows that trim away to nothing, and `--rows 12` on a quiet pane
+/// answered with `""`. How many rows a caller wanted is decided after the answer arrives, in
+/// [`PaneText::tail`], where a row is a row of text.
+pub fn read_request(pane: &BackendPaneId) -> (&'static str, Value) {
     (
         "pane.read",
         json!({
             "pane_id": pane.as_str(),
             "source": "recent",
-            "lines": rows,
+            "lines": ROWS_READ,
             // herdr's own default, sent anyway: a caller matching this text does not want to
             // match escape codes, and a default that changed underneath would start doing so.
             "strip_ansi": true,

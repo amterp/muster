@@ -479,15 +479,17 @@ pub trait BackendChannel: Send + Sync + std::fmt::Debug {
 
     /// Reads a pane's history back, and changes nothing.
     ///
-    /// `rows` is a ceiling and zero means "as far as you will go". A backend is free to
-    /// answer with fewer either way, and [`PaneText::truncated`] is how a caller learns it
-    /// did not get everything. A pane's output never enters the core, so this is the only
-    /// way anything above the seam sees what a pane has printed.
+    /// As far back as the backend will go, always. How much of that a caller wanted is
+    /// [`PaneText::tail`] and happens after, because a backend counts rows in the grid it
+    /// draws - the blank remainder of an idle viewport is rows to it, and a small number
+    /// asked for here buys those and nothing else. [`PaneText::truncated`] is how a caller
+    /// learns there was more. A pane's output never enters the core, so this is the only way
+    /// anything above the seam sees what a pane has printed.
     ///
     /// A read rather than an intent because nothing changes: `BackendIntent` is what Muster
     /// asks a backend to *do*, and putting a question in it would make `Outcome` - a
     /// statement about a change just made - carry answers to things that changed nothing.
-    fn read(&self, pane: &PaneId, rows: u32) -> Result<PaneText, Refusal>;
+    fn read(&self, pane: &PaneId) -> Result<PaneText, Refusal>;
 
     /// Looks for text in a pane, and changes nothing.
     ///

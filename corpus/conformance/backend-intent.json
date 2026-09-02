@@ -560,8 +560,8 @@
       }
     },
     {
-      "name": "reading a pane asks for its rows, not its lines",
-      "why": "The one request here that changes nothing, and the choice of source is the whole of it. `recent` returns grid rows, so a match's place in the answer is already the offset to scroll to; `recent_unwrapped` returns whole logical lines and would leave every hit unlocatable. Both are valid values and herdr would accept either, so nothing but this pins which one a read is built on. A find and `muster pane read` are the same request - one matches the answer and one prints it - so the source has to be right for both. `strip_ansi` is herdr's default, sent anyway because a default that moved would start handing back escape codes.",
+      "name": "a read asks for as far back as herdr will go, whatever was wanted",
+      "why": "Two choices in one request, and both are the whole of it.\n\nThe source: `recent` returns grid rows, so a match's place in the answer is already the offset to scroll to; `recent_unwrapped` returns whole logical lines and would leave every hit unlocatable. Both are valid values and herdr would accept either, so nothing but this pins which one a read is built on. A find and `muster pane read` are the same request - one matches the answer and one prints it - so the source has to be right for both.\n\nThe count: always herdr's maximum, never what the caller asked for. `recent` counts grid rows up from the bottom of the pane, and the bottom of an idle pane is the blank remainder of its viewport - so `lines: 12` on a pane sitting at a prompt buys twelve blank rows, which trim away to nothing and answer `\"\"`. That is byte-identical to a pane that has printed nothing, and it is the pane you most often read to find out whether it is quiet. So `--rows` is counted after the answer arrives, where a row is a row of text (`PaneText::tail`). What it costs is the whole thousand on the wire per read, which is a person or an agent asking a question rather than anything on the render path.\n\n`strip_ansi` is herdr's default, sent anyway because a default that moved would start handing back escape codes.",
       "given": {
         "intent": "read",
         "pane": "p1"
@@ -702,42 +702,6 @@
       },
       "expect": {
         "refused": "no tab called t1w3r0a4a9 on local"
-      }
-    },
-    {
-      "name": "a read asks for as many rows as it was told to",
-      "why": "What `muster pane read --rows` is for: a caller that wants the last page of a pane should not pay for a thousand rows over the wire, and a daemon that can do less work should be told it may.",
-      "given": {
-        "intent": "read",
-        "pane": "p1",
-        "rows": 40
-      },
-      "expect": {
-        "method": "pane.read",
-        "params": {
-          "pane_id": "p1",
-          "source": "recent",
-          "lines": 40,
-          "strip_ansi": true
-        }
-      }
-    },
-    {
-      "name": "a read asking for more rows than herdr has is capped at what it will give",
-      "why": "herdr clamps `lines` above a thousand rather than refusing it, so a request passed through as asked would claim an expectation it does not have - and a caller reading the request back would believe more was looked at than was. The answer's own `truncated` is what says there was more, and it says so whatever this number is.",
-      "given": {
-        "intent": "read",
-        "pane": "p1",
-        "rows": 5000
-      },
-      "expect": {
-        "method": "pane.read",
-        "params": {
-          "pane_id": "p1",
-          "source": "recent",
-          "lines": 1000,
-          "strip_ansi": true
-        }
       }
     }
   ]

@@ -48,15 +48,16 @@ doing in the tab that is on screen.
 ## A read stops a thousand rows back
 
 `muster pane read` asks the daemon for a pane's recent rows, and herdr answers with at most a
-thousand of them however many are asked for. Asking for more is not refused and does not fail - it
-comes back with the same thousand - so `truncated` in the `--json` answer is the only thing that
+thousand of them however far back the pane goes. Asking for more is not refused and does not fail -
+it comes back with the same thousand - so `truncated` in the `--json` answer is the only thing that
 says there was more. A caller that reads the text and not that flag will conclude it has seen the
 whole pane.
 
-The rows come off the bottom of the pane's grid rather than out of a log, which has a second
-consequence: a small `--rows` on a pane sitting at a prompt can answer with nothing at all, because
-the bottom rows of an idle terminal are blank. That is an honest answer rather than a failure, and
-it is why `--rows` is a ceiling rather than a count.
+`--rows N` is a count of rows the pane printed, and it is answered by Muster rather than by the
+daemon: every read asks for the whole thousand and the last N are taken here. That costs a thousand
+rows on the wire per read, which is the price of the flag meaning what it says - herdr counts rows
+of the *grid*, so the blank space under a quiet pane is rows to it, and a small number sent over
+the wire used to buy those and answer with nothing at all.
 
 ## There is no search
 
