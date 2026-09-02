@@ -75,13 +75,22 @@ fn a_machine_with_nothing_on_it_ends_up_running_musters_own_daemon() {
         .expect("the container's environment should say where a herdr socket would go");
 
     let temporary = std::env::temp_dir();
-    let tunnel = Tunnel::open(Forward {
-        host: host.clone(),
-        options,
-        control_path: temporary.join("muster-devenv-install.ctl").to_string_lossy().into_owned(),
-        local_socket: temporary.join("muster-devenv-install.sock").to_string_lossy().into_owned(),
-        remote_socket: remote_socket.clone(),
-    })
+    let tunnel = Tunnel::open(
+        Forward {
+            host: host.clone(),
+            options,
+            control_path: temporary
+                .join("muster-devenv-install.ctl")
+                .to_string_lossy()
+                .into_owned(),
+            local_socket: temporary
+                .join("muster-devenv-install.sock")
+                .to_string_lossy()
+                .into_owned(),
+            remote_socket: remote_socket.clone(),
+        },
+        std::sync::Arc::new(|_| {}),
+    )
     .expect("the tunnel should open against a machine with no daemon on it");
     let far = tunnel.remote();
 

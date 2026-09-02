@@ -171,6 +171,18 @@ the forwarded path rather than through a second mechanism. Measured against the 
 it connects and reaches the far one per connection, so a remote socket that is not there yet costs nothing until
 something dials it.
 
+**Reopening it is a connection that answered, not a process that started**, and the difference is the whole of
+what made a plugged-in laptop unusable. Spawning ssh succeeds whenever ssh is on the PATH, so a host that is
+unreachable, a key that wants a passphrase, and a forward something else is holding all come back as success with a
+process about to die - and calling that a reopen produced 97 of them in two minutes while nothing reconnected
+(kan a_2IRdZK6Un). A reopen is announced when the forwarded socket is bound *and* a command has come back over the
+master's own control path, which is transport proving itself and needs no vocabulary from any daemon. The retry
+interval escalates on the same rule the bridge policy uses - a run of failures ends when a connection has held for
+half a minute, not when one came up - so nothing about a process existing can reset it
+(`crates/muster-core/src/reconnect.rs`). It reports and keeps trying rather than giving up, which is where it
+deliberately differs: a bridge that gives up costs one pane, and a tunnel that gave up costs every pane on that
+machine until the app is relaunched, which is the failure this whole arrangement exists to prevent.
+
 That bridge command needs two things it cannot work out, and both are answered rather than guessed. It is handed the
 daemon's socket as the *far* side spells it, because the near end of a tunnel names nothing over there and Muster's
 daemon listens on a session of its own on both machines. And it looks for its herdr at `~/.muster/bin/herdr` before

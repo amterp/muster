@@ -5,10 +5,33 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use muster_core::diagnostics::{log, poison};
+use muster_core::diagnostics::{clock, log, poison};
 use muster_core::fields;
+use muster_core::reconnect::{self, Attempts};
 
 use crate::remote::Remote;
+
+/// What a tunnel says about itself, to whoever is holding it.
+///
+/// Two states and not three, because they are the two a person can act on. Every drop and
+/// every retry in between goes to the run log, which is where a sequence belongs; what reaches
+/// the window is whether this machine is worth waiting for.
+#[derive(Debug, Clone)]
+pub enum State {
+    /// It has been down long enough to be worth telling somebody, and here is what to say.
+    Unreachable { detail: String },
+
+    /// It is up and has held long enough to count, so anything said about it can be taken
+    /// back.
+    Reachable,
+}
+
+/// How a tunnel reports itself. Runs on the supervising thread.
+///
+/// A callback rather than a problem raised from here, because this crate is transport and
+/// knows nothing about windows, rosters or daemons - and the sentence it hands over is about a
+/// host, which is the one thing it does know.
+pub type Report = Arc<dyn Fn(State) + Send + Sync>;
 
 /// What one master forwards, and how it is reached.
 #[derive(Debug, Clone)]
@@ -101,7 +124,7 @@ impl Tunnel {
     /// What is *not* verified here is that anything answers on the far end. That is the
     /// adapter's first request, and it already says what a silent daemon means - checking it
     /// here would put herdr's vocabulary in a crate that has none.
-    pub fn open(forward: Forward) -> Result<Tunnel, String> {
+    pub fn open(forward: Forward, report: Report) -> Result<Tunnel, String> {
         if forward.local_socket.len() > SUN_PATH_LIMIT {
             return Err(format!(
                 "the local end of this daemon's tunnel would be {} bytes of path, and a unix \
@@ -123,7 +146,7 @@ impl Tunnel {
             stopping: Arc::new(AtomicBool::new(false)),
         };
         tunnel.wait_for_socket()?;
-        tunnel.supervise();
+        tunnel.supervise(report);
         Ok(tunnel)
     }
 
@@ -198,30 +221,35 @@ impl Tunnel {
         ))
     }
 
-    /// Brings the connection back when it dies, without telling anyone above.
+    /// Brings the connection back when it dies, and says when it cannot.
     ///
     /// The local path is the same across a restart, so nothing that holds it needs to learn
     /// that ssh went away - the adapter's own reconnect finds the socket answering again and
     /// resyncs. That is the payoff of forwarding a socket rather than running a command per
     /// request: recovery is a mechanism that already exists.
     ///
-    /// Backoff rather than a tight loop, because the common reason a tunnel dies is a network
-    /// that is still gone, and a lid that has been shut overnight should not have spent the
-    /// night spawning processes.
-    fn supervise(&self) {
+    /// **A reopen is a connection that answered, not a process that started.** `spawn` only
+    /// reports whether ssh could be executed, so every real failure - a host that is not
+    /// reachable, a key that needs a passphrase, a forward refused because something else
+    /// holds it - comes back as `Ok` with a process about to die. Announcing that as a reopen
+    /// is how 97 of them were logged in two minutes while nothing reconnected, which made the
+    /// log worse than silent (kan a_2IRdZK6Un). So a reopen is announced when the forwarded
+    /// socket exists and a command has come back over the master.
+    ///
+    /// **And the backoff escalates, because that one is what stopped it.** The old loop reset
+    /// its attempt count whenever the child was alive at a poll, and an ssh that lives a
+    /// quarter of a second before losing its forward is alive at a poll - so a laptop plugged
+    /// back in retried at 1.25s forever. A run of failures now ends when the connection has
+    /// *held*, which `muster_core::reconnect` decides and which nothing about a process
+    /// existing can satisfy.
+    fn supervise(&self, report: Report) {
         let forward = self.forward.clone();
         let child = Arc::clone(&self.child);
         let stopping = Arc::clone(&self.stopping);
         std::thread::spawn(move || {
-            const BACKOFF: [Duration; 4] = [
-                Duration::from_millis(50),
-                Duration::from_millis(200),
-                Duration::from_millis(500),
-                Duration::from_secs(1),
-            ];
-            let mut attempt = 0;
+            let mut attempts = Attempts::new();
             while !stopping.load(Ordering::Relaxed) {
-                std::thread::sleep(Duration::from_millis(250));
+                std::thread::sleep(POLL);
                 if stopping.load(Ordering::Relaxed) {
                     return;
                 }
@@ -229,13 +257,25 @@ impl Tunnel {
                     .try_wait()
                     .is_ok_and(|exited| exited.is_none());
                 if alive {
-                    attempt = 0;
+                    // Cheap, and asked every time: `ExitOnForwardFailure` means a master that
+                    // is still running is one whose forward stood up, so aliveness is the
+                    // honest reading of "up" once a reopen has been confirmed once. What it
+                    // cannot say is that the connection has *worked*, which is what ends a run
+                    // of failures and is the only thing time can answer.
+                    if attempts.holding(clock::monotonic_now()) {
+                        log::info("tunnel.settled", fields! { "host" => forward.host.clone() });
+                        report(State::Reachable);
+                    }
                     continue;
                 }
+
+                let retry = attempts.failed();
                 log::warn(
                     "tunnel.down",
                     fields! {
                         "host" => forward.host.clone(),
+                        "attempt" => retry.attempt.to_string(),
+                        "retry_in_ms" => (retry.after / 1_000_000).to_string(),
                         "impact" => "every pane on this daemon is rendering what it last \
                                      showed, and its agent states are a guess about the \
                                      present",
@@ -243,16 +283,47 @@ impl Tunnel {
                                     retried and recovers on its own once it is",
                     },
                 );
-                std::thread::sleep(BACKOFF[attempt.min(BACKOFF.len() - 1)]);
-                attempt += 1;
-                if stopping.load(Ordering::Relaxed) {
+                if retry.report {
+                    report(State::Unreachable {
+                        detail: reconnect::unreachable(&forward.host, retry.attempt),
+                    });
+                }
+
+                if !sleep_unless_stopping(Duration::from_nanos(retry.after), &stopping) {
                     return;
                 }
+
+                // Both paths, and the control path is the one that was missing. ssh will not
+                // replace either: a stale local socket refuses every connection, and `-M -S`
+                // onto a path that exists disables multiplexing with a warning instead of
+                // failing - which leaves every bridge riding `-S` dialing a master that is
+                // gone, and is the shape the card's "two masters fighting" hypothesis has.
+                // Safe because both names carry this process's id.
                 let _ = std::fs::remove_file(&forward.local_socket);
+                let _ = std::fs::remove_file(&forward.control_path);
                 match spawn(&forward) {
                     Ok(fresh) => {
                         *poison::lock(&child, "ssh-child") = fresh;
-                        log::info("tunnel.reopened", fields! { "host" => forward.host.clone() });
+                        match confirm(&forward, &child, &stopping) {
+                            Ok(()) => log::info(
+                                "tunnel.reopened",
+                                fields! {
+                                    "host" => forward.host.clone(),
+                                    "confirmed" => "the forwarded socket is bound and a \
+                                                    command came back over the master",
+                                },
+                            ),
+                            Err(detail) => log::warn(
+                                "tunnel.reopen_failed",
+                                fields! {
+                                    "host" => forward.host.clone(),
+                                    "detail" => detail,
+                                    "impact" => "this daemon stays unreachable and its panes \
+                                                 stay as they were; the window is otherwise \
+                                                 unaffected",
+                                },
+                            ),
+                        }
                     }
                     Err(refusal) => log::warn(
                         "tunnel.reopen_failed",
@@ -267,6 +338,69 @@ impl Tunnel {
             }
         });
     }
+}
+
+/// How often the supervisor looks at its child.
+const POLL: Duration = Duration::from_millis(250);
+
+/// How long a reopened master gets to bind its socket and answer, before the attempt counts as
+/// having failed.
+///
+/// Shorter than the timeout a first connection gets, because this one is inside a retry loop
+/// that will come round again: waiting twenty seconds here would make a machine that is simply
+/// away take twenty seconds per attempt to say so.
+const CONFIRM_WITHIN: Duration = Duration::from_secs(5);
+
+/// Sleeps, unless the tunnel is being taken down. Answers whether it is worth going on.
+///
+/// In slices, so that dropping a tunnel does not wait out a thirty-second backoff before the
+/// thread notices - which on quit is a window that will not close.
+fn sleep_unless_stopping(wait: Duration, stopping: &Arc<AtomicBool>) -> bool {
+    let deadline = Instant::now() + wait;
+    while Instant::now() < deadline {
+        if stopping.load(Ordering::Relaxed) {
+            return false;
+        }
+        std::thread::sleep(POLL.min(deadline - Instant::now()));
+    }
+    !stopping.load(Ordering::Relaxed)
+}
+
+/// Whether a master that was just started is actually carrying anything.
+///
+/// Two questions, because the first alone is the check `daemon::answers` already argues
+/// against: a socket path is a file, and one being there says nothing about what is behind it.
+/// The second rides the master's own control path, so it proves the multiplexing every pane's
+/// bridge depends on, and it needs no vocabulary from any daemon.
+fn confirm(
+    forward: &Forward,
+    child: &Arc<Mutex<Child>>,
+    stopping: &Arc<AtomicBool>,
+) -> Result<(), String> {
+    let deadline = Instant::now() + CONFIRM_WITHIN;
+    while !Path::new(&forward.local_socket).exists() {
+        if stopping.load(Ordering::Relaxed) {
+            return Err("the tunnel was taken down while it was being checked".to_string());
+        }
+        if let Ok(Some(status)) = poison::lock(child, "ssh-child").try_wait() {
+            return Err(format!(
+                "ssh ended before it forwarded anything ({status}); its own message is on this \
+                 run's error output"
+            ));
+        }
+        if Instant::now() >= deadline {
+            return Err(format!(
+                "no socket appeared at {} within {}s",
+                forward.local_socket,
+                CONFIRM_WITHIN.as_secs()
+            ));
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    Remote::over(&forward.host, &forward.control_path)
+        .run(&["true"])
+        .map(|_| ())
+        .map_err(|error| format!("the master would not carry a command ({error})"))
 }
 
 impl Drop for Tunnel {

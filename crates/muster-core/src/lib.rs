@@ -17,6 +17,7 @@ pub mod intent;
 pub mod mirror;
 pub mod names;
 pub mod problems;
+pub mod reconnect;
 pub mod respawn;
 pub mod roster;
 pub mod typeable;

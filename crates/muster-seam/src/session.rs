@@ -30,6 +30,7 @@ use muster_core::mirror::backend::{PaneId, PaneText, Snapshot, TabId};
 use muster_core::mirror::{Change, Health, Mirror};
 use muster_core::names::{self, Mint, Names, PaneNames, TabNames};
 use muster_core::problems::{Problem, Problems, Severity};
+use muster_core::reconnect;
 use muster_core::respawn::{self, Decision, Ended, Ending, Respawns};
 use muster_core::roster::{Numbering, Roster, RosterTab, TabStep};
 use muster_herdr::subscription::{Notice, Subscription};
@@ -37,7 +38,7 @@ use muster_herdr::{
     HerdrBackend, HerdrClient, HerdrPaneChannel, PaneControlChannel, PaneEnvironment, Reports,
     daemon, fetch_snapshot, own_socket_path, remote,
 };
-use muster_ssh::{Forward, Remote, Tunnel, remote_environment};
+use muster_ssh::{Forward, Remote, State as TunnelState, Tunnel, remote_environment};
 use muster_vt::KeyEncoder;
 
 use crate::proto::{
@@ -758,13 +759,39 @@ fn open_tunnel(
     options: &[String],
     remote_socket: String,
 ) -> Result<Tunnel, String> {
-    Tunnel::open(Forward {
-        host: host.to_string(),
-        options: options.to_vec(),
-        control_path: tunnel_path(daemon, "ctl"),
-        local_socket: tunnel_path(daemon, "sock"),
-        remote_socket,
-    })
+    let reported = daemon.clone();
+    Tunnel::open(
+        Forward {
+            host: host.to_string(),
+            options: options.to_vec(),
+            control_path: tunnel_path(daemon, "ctl"),
+            local_socket: tunnel_path(daemon, "sock"),
+            remote_socket,
+        },
+        // The transport says a host is away and for how long; naming which machine that is in
+        // this window, and putting the sentence where somebody sees it, is this side's.
+        Arc::new(move |state| tunnel_state(&reported, &state)),
+    )
+}
+
+/// Turns what a tunnel says about itself into something the person can see.
+///
+/// A problem rather than a log line, because the run log already carries every drop and every
+/// retry and that is where a sequence belongs. What reaches the window is the one thing worth
+/// interrupting for: this machine has been away long enough that its panes are lying, and it
+/// is not something Muster can fix by trying harder.
+///
+/// A warning rather than an error. Severity here decides interruption and nothing else, and
+/// this is the case the level was written for - Muster is coping, the work on the far machine
+/// is untouched, and it may well clear by itself.
+fn tunnel_state(daemon: &DaemonId, state: &TunnelState) {
+    match state {
+        TunnelState::Unreachable { detail } => {
+            health(daemon, "stale", detail);
+            raise_problem(&reconnect::key(daemon.as_str()), Severity::Warning, detail);
+        }
+        TunnelState::Reachable => clear_problem(&reconnect::key(daemon.as_str())),
+    }
 }
 
 fn tunnel_path(daemon: &DaemonId, extension: &str) -> String {
