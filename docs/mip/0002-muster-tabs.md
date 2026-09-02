@@ -113,6 +113,10 @@ cannot be brought back at all.
 This is the MIP's first job, and the answer is: through the composition record, and from there
 onto disk.
 
+Written in the present tense as it was on 2026-08-31, and two of the three ways in are closed
+since: `Region` and the saved arrangement no longer carry a workspace, and `BackendIntent`
+no longer names one. The tab is the way in that remains, and the one the rest of this is about.
+
 **The glossary says it outright.** `docs/glossary.md`: *"**tab** - the unit that owns
 one pane tree, inside a workspace; daemon truth."* Muster's own vocabulary defines its own
 noun as somebody else's.
@@ -181,10 +185,17 @@ keep their present meaning inside a tab.
 
 ### A Muster window
 
-**A window is a unit with a name of its own, from the same registry.** What that buys is the
-thing a window cannot do today: remember anything. Arrangements move from one
-`~/.muster/state/window.toml` to a file per window, so two windows have two arrangements rather
-than one they overwrite in turn, and a window that was closed has a record to be reopened from.
+**A window is a unit with an arrangement of its own.** What that buys is the thing a window
+cannot do today: remember anything. Arrangements move from one `~/.muster/state/window.toml` to a
+file per window, so two windows have two arrangements rather than one they overwrite in turn, and
+a window that was closed has a record to be reopened from. Built 2026-09-02.
+
+The records are numbered rather than named from the registry that mints pane and tab names, and
+that is a limit worth stating rather than a choice: the registry is the core's, and which file to
+hand the core is asked before the core is running. A window therefore has an arrangement of its
+own and no name of its own, which is why nothing lists the windows you have closed - only the
+most recent comes back. Giving one a name means minting it somewhere the shell can reach before
+startup, and nobody has asked for that yet.
 
 **A window somebody asked for is a different launch from the window Muster comes back to**, and
 the launch says which. That rule is built (2026-09-02) and stands whether or not the rest of
@@ -355,11 +366,11 @@ else's cooperation and no behaviour change at all.
 
 1. **The core stops naming a workspace.** `Region`, `SavedRegion` and `BackendIntent::CreateTab`
    drop `WorkspaceId`; the adapter resolves which of herdr's workspaces a tab means. The saved
-   file's version goes up. Nothing a person can see moves.
+   file's version goes up. Nothing a person can see moves. Built 2026-09-02.
 
-2. **A window gets a name and an arrangement of its own.** Per-window records under
+2. **A window gets an arrangement of its own.** Per-window records under
    `~/.muster/state/windows/`, and with them a window that was closed can be reopened - the other
-   arrangement gap in `a_2Ic6mB36E`.
+   arrangement gap in `a_2Ic6mB36E`. Built 2026-09-02.
 
 3. **A window holds an ordered list of Muster tabs, one on screen.** Regions become the parts of
    that tab. `cmd+1` and `cmd+2` switch between a local tab and a devenv tab. The sidebar
@@ -367,6 +378,12 @@ else's cooperation and no behaviour change at all.
 
 4. **A Muster tab holds member tabs on several machines.** The only stage that turns a daemon
    guarantee into a Muster one, and the last to land for that reason.
+
+**Three and four land together or not at all**, and that is the one sequencing constraint here.
+Today a window shows every machine at once, side by side. Stage 3 alone would replace that with
+one tab filling the window, and grouping - the thing that puts a laptop pane beside a devenv pane
+again - is stage 4. Landing 3 on its own would take away an arrangement people are using and give
+back nothing until 4 arrived.
 
 ## Open Questions
 
