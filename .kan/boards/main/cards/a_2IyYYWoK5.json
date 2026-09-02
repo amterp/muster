@@ -1,0 +1,22 @@
+{
+  "_v": 3,
+  "alias": "shake-down-0-5-0",
+  "alias_explicit": false,
+  "area": [
+    "shell",
+    "backend",
+    "testing"
+  ],
+  "column": "next",
+  "created_at_millis": 1788352322303,
+  "creator": "Alexander Terp",
+  "description": "0.5.0 landed three parallel workstreams in one afternoon and nobody has driven the result for a day. The 0.4.x pattern held: a day of ordinary use produced more real bugs than any amount of suite-writing, and most cards in this round trace to one. Do it again.\n\nThe suite is green, the contract tier is green, the remote tier is green with zero corpus differences. None of that is the same as using it.\n\n## What changed that a person will notice\n\n- **An agent that blocks or finishes unseen now interrupts you.** `blocked` and `done` both notify by default; `[notifications]` has `blocked`, `done` and `muted`. Activating one lands you on the pane, including a pane no split is showing.\n- **The rings mean different things now.** Agent state keeps the full-weight ring on all four edges; focus is a thinner inner ring with a gap. `working` moved off blue to cyan.\n- **A pane follows the window that asked for it most recently.** A second window reaching a pane the first is rendering takes it, and the first says so on the row rather than going quiet (`a_2IZ6Of6JP`).\n- **`muster window new` opens onto tabs of its own** rather than the other window's arrangement, and each window remembers its own.\n- **Quitting offers to end the sessions**, unbound and behind a confirmation naming every machine and directory.\n- **A dead pane says which of four things happened**, with the remedy, instead of the bridge's stderr.\n\n## The thing to check first, because it is the one with no undo\n\n**The saved arrangement migrates on first launch.** The format went to version 3 and moved from `~/.muster/state/window.toml` to `~/.muster/state/windows/window-1.toml`. Nobody has watched a real, long-lived arrangement go through it - the tests use fixtures. If it goes wrong the recovery is deleting `~/.muster/state/windows/`, which costs the arrangement and nothing else.\n\nCheck this before anything else, with a window worth losing.\n\n## Where the untested seams are\n\nEach of these was verified on one side of a boundary and never across it.\n\n- **The notification banner itself has never appeared.** The core side is verified end to end - `attention.changed` fires for a hidden blocked pane - but macOS refuses a notification permission to an ad-hoc signature outright, so no build short of a Developer ID release has ever shown one. The banner appearing, the click landing, and the withdrawal when an agent moves on are all unexercised (`a_2IneJXhwU`).\n- **The rings were checked by rendering the layer tree offscreen**, at two pane sizes, light and dark, against blue, green and orange accents. Arguably a better oracle than a screenshot, and not the same as looking at one.\n- **Handoff has never been driven by a person.** Two windows, navigate the second to a tab the first is showing, and read what the first says about the pane it lost. The yield rule is right in the corpus; what nobody has judged is whether the message means anything mid-task.\n- **The tunnel backoff was fixed against a container**, not against a laptop whose network actually went away. Unplug and replug, and watch for the 1.26s flap in `~/Library/Logs/muster/latest.jsonl`.\n- **The respawn policy has never given up in the field.** Kill a daemon a pane depends on and check it stops after `LIMIT` rather than spawning forever.\n\n## How to tell it worked\n\nThe measure `a_2Ic6mB36E` sets: a day where nothing needed a shell, a script, or somebody who has read the source - and the failures that did happen said what to do about them.",
+  "id": "a_2IyYYWoK5",
+  "position": "!E",
+  "title": "🧪 Shake down 0.5.0: notifications, handoff, and a window that is its own workspace",
+  "type": "chore",
+  "updated_at_millis": 1788352339942,
+  "history": [
+    {"field":"column","value":"next","at":1788352322303}
+  ]
+}

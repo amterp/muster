@@ -444,12 +444,14 @@ of that is a problem naming the pane and where to look, so you are told rather t
 discover it by typing into something that stopped listening. It clears itself if the bridge
 turns up late, and it goes with the pane if you close it.
 
-`~/.muster/state/` is Muster's to write, and holds three files nobody should edit. `window.toml`
-is rewritten whenever the window settles: which tabs it was showing, in what order, at what
-widths, under `[window]` whether the agent list was open and how big the window itself was, and
-one `[[pane]]` row for each pane whose text somebody sized. Delete it and the next launch opens
-fresh. Nothing about a session is in it - what a tab holds is the daemon's answer, asked again on
-every launch.
+`~/.muster/state/` is Muster's to write, and nothing in it should be edited by hand. Arrangements
+live under `windows/`, one file per window rather than one for the machine, and each is rewritten
+whenever that window settles: which tabs it was showing, in what order, at what widths, under
+`[window]` whether the agent list was open and how big the window itself was, and one `[[pane]]`
+row for each pane whose text somebody sized. A running window writes its pid beside the file it
+took, which is how a launch tells an arrangement nobody is holding from one in use. Delete the
+directory and the next launch opens fresh. Nothing about a session is in any of them - what a tab
+holds is the daemon's answer, asked again on every launch.
 
 **A window opens at the size and position it was left, and full-screen if that is how you left
 it.** The rectangle is written down as the window settles rather than at quit, because quitting

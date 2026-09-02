@@ -5,24 +5,31 @@
   "area": [
     "testing"
   ],
-  "column": "backlog-hi",
+  "column": "next",
   "comments": [
     {
       "author": "Alexander Terp",
       "body": "**Doctor found the app's daemon this time, which points at the first of the two causes this card asks between.** Measured 2026-09-01 while cutting 0.4.1.\n\n    ./dev --doctor\n      herdr daemons\n        9 alive\n        20747  09:12:22  /Users/amterp/.config/herdr/sessions/muster/herdr.sock  kept  6 pane(s) in ~/src/finances, ~/src, ~/src/spool, ...\n\nSo doctor does know where to look: `~/.config/herdr/sessions/muster/` is in the set it enumerates, and it marks the daemon `kept` rather than `scratch`. The second hypothesis - that it has never seen the app's daemon at all - is ruled out.\n\nWhat is left is the first: the miss on 2026-08-31 was a daemon whose binary the upgrade had deleted out from under it. That is still the bug, and still the moment somebody reaches for pkill, but it is narrower than \"doctor cannot see the app's daemon\" - which is how the description currently reads. Worth rewording before anybody works on it.\n\nThe validation bullet about a replaced binary is the one that matters, and it is untested here: this daemon has been running 9h from a bundle nothing has touched since.\n\n**Also: the contract tier's two daemons end cleanly, and by hand.** This run left `driving` and `problems` under /private/tmp/muster-smoke as usual (a_2I7ASgulK). Both ended with\n\n    HERDR_SOCKET_PATH=\u003cits socket\u003e herdr server stop\n\nwhich is the subcommand a_28YghIUw2 records as existing after all. No pkill, and the real daemon beside them was untouched - so whatever fixes a_2I7ASgulK has a graceful call available rather than needing to hunt pids.",
       "created_at_millis": 1788262151459,
       "id": "c_2IMinh4HY"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "**Still wrong at 0.5.0, and the shape of the miss has changed.** Measured 2026-09-02 during the parallel-round integration, against a running app holding live agents.\n\n    ./dev --doctor\n      herdr daemons\n        9 alive\n        2911   08:24:51     no API socket - a client rather than a daemon\n        8208   08:23:19     no API socket - a client rather than a daemon\n        20914  01-10:07:19  no API socket - a client rather than a daemon\n        ... 6 more, every one of them the same line\n\nNine processes, every one reported as a client rather than a daemon, and the daemon holding this session's own panes is not among them. So the list is not merely missing one - it names nothing at all, and a person reading it would conclude this machine has no daemon worth caring about.\n\n**What changed since the 2026-09-01 comment**, which found the daemon correctly at `~/.config/herdr/sessions/muster/herdr.sock`: the app now starts its daemon as a helper application inside the bundle, `Muster.app/Contents/Library/MusterSessions.app`, launched through Launch Services so macOS charges permission prompts to the daemon rather than to a Muster that will quit. `ps` confirms it running from that path. Doctor's socket enumeration has not followed it there.\n\nThat is a third possibility beside the two the description asks between, and it fits better than either: doctor is looking where the daemon used to live. Worth checking where `MusterSessions.app` puts its socket before assuming the census logic is at fault.\n\nEvery validation bullet on this card still stands. The first - \"with an app running and agents in its panes, doctor names that daemon and says how many panes it holds\" - is the one that fails today.",
+      "created_at_millis": 1788352229499,
+      "id": "c_2IyW8ryRi"
     }
   ],
   "created_at_millis": 1788228657309,
   "creator": "Alexander Terp",
   "description": "`./dev --doctor` reported 11 herdr daemons and the app's own was not among them - the one process on the machine holding live agent sessions. That is the failure the tier exists to prevent: its own line says it \"is what makes ending a stray daemon safe, since the process holding somebody's live agent looks exactly like the nineteen that hold nothing.\" Somebody reading that list would conclude every daemon on the machine was scratch and safe to end.\n\nMeasured 2026-08-31, immediately after upgrading the installed app to 0.4.0.\n\n    ./dev --doctor\n      herdr daemons\n        11 alive\n        14866  01:04  no API socket - a client rather than a daemon\n        47952  ...    /private/tmp/muster-smoke/driving/config/herdr/sessions/muster/herdr.sock  scratch\n        ... 9 more, all under /private/tmp/muster-smoke/\n\nThe missing one, found by asking who holds the socket instead:\n\n    lsof ~/.config/herdr/sessions/muster/herdr.sock\n    herdr  69388  ...  /Users/amterp/.config/herdr/sessions/muster/herdr.sock\n\n    ps: 69388  Sun 30 Aug 17:42  /Applications/Muster.app/Contents/MacOS/herdr server\n\nIt held three panes with agents in them, including the session that ran the command.\n\nWorth working out which of two it is before fixing, because the shape of the miss decides the fix. Either doctor matches on something that stopped being true when the app was replaced - the daemon had been running since the day before, from a path the upgrade deleted - or it enumerates from a set of known socket locations that has never included `~/.config/herdr/sessions/muster/`, in which case it has never seen the app's daemon at all and the scratch ones are all it has ever reported.\n\nThe second is worse and is cheap to tell apart: run it against a freshly started app on a machine with no scratch daemons and see whether the list comes back empty.\n\n## A second thing the same run turned up\n\nTen of the eleven were left by `./dev --contract`, two per run (`driving` and `problems`), each holding one pane under `/private/tmp/muster-smoke/`. Doctor's own note says \"the test harness tears its own daemons down; what accumulates is what a person or a fixture started outside it\" - so the contract tier's app-launched daemons fall outside that teardown. Five runs in one session left ten behind. Harmless on their own (twenty together drew 0.1% CPU, a_28YghIUw2), and they are what made the real daemon hard to pick out.\n\n## Validating a fix\n\n- With an app running and agents in its panes, `./dev --doctor` names that daemon and says how many panes it holds.\n- A daemon whose binary has been replaced on disk is still listed. That is the state a `brew upgrade` leaves behind, and it is exactly when somebody reaches for pkill.\n- `./dev --contract` leaves no daemon behind, or doctor marks the ones it does as the contract tier's.",
   "id": "a_2I8fSrotB",
-  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "position": "E",
   "title": "🩺 doctor lists every daemon but the one holding live agents",
   "type": "bug",
-  "updated_at_millis": 1788262151459,
+  "updated_at_millis": 1788352340143,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1788228657309}
+    {"field":"column","value":"backlog-hi","at":1788228657309},
+    {"field":"column","value":"next","at":1788352327037}
   ]
 }
