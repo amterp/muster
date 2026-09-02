@@ -14,6 +14,7 @@ use muster_core::config::{self, CursorStyle};
 use muster_core::find::Needle;
 use muster_core::font::{self, FontReport};
 use muster_core::input::{CompositionOutcome, Modifiers, ScrollDirection, composition_outcome};
+use muster_core::intent::Refusal;
 use muster_core::intent::{BackendIntent, Branch, Side};
 use muster_core::mirror::backend::{PaneId, TabId};
 use muster_core::problems::Severity;
@@ -142,8 +143,12 @@ fn handle(request: Request) -> Response {
         ),
         // The pane is never absent here, because an empty id was refused by the arm above.
         request::Payload::FocusPane(focus) => match target(&focus.daemon_id, &focus.pane_id) {
-            Ok((daemon, Some(pane))) => answer(session::focus(&daemon, &pane)),
-            Ok((daemon, None)) => nothing_to_act_on(&daemon),
+            Ok(target) => match &target.pane {
+                Some(pane) => {
+                    placed(session::focus(&target.daemon, pane).map(|()| Response::ok()), &target)
+                }
+                None => nothing_to_act_on(&target.daemon),
+            },
             Err(refusal) => *refusal,
         },
         request::Payload::WindowFocus(focus) => {
@@ -244,14 +249,14 @@ fn read_pane(read: &proto::ReadPane) -> Response {
 /// Named like every other pane request: an empty pane means the one the keyboard is on,
 /// which is the pane a find bar is drawn over and so the only case a chord produces.
 fn find_in_pane(find: &proto::Find) -> Response {
-    let (daemon, pane) = match target(&find.daemon_id, &find.pane_id) {
+    let target = match target(&find.daemon_id, &find.pane_id) {
         Ok(target) => target,
         Err(refusal) => return *refusal,
     };
-    let Some(pane) = pane else {
-        return nothing_to_act_on(&daemon);
+    let Some(pane) = &target.pane else {
+        return nothing_to_act_on(&target.daemon);
     };
-    found(session::find(&daemon, &pane, &Needle::new(&find.needle)))
+    found(session::find(&target.daemon, pane, &Needle::new(&find.needle)))
 }
 
 /// Walks the matches of the search already open.
@@ -312,7 +317,11 @@ fn rename_tab(rename: &proto::RenameTab) -> Response {
         let Some(daemon) = holder_of(&tab, &rename.daemon_id) else {
             return no_such_tab(&tab, "renamed");
         };
-        return submit(&daemon, &BackendIntent::RenameTab { tab, name }, Keyboard::Follows);
+        return relayed(submit(
+            &daemon,
+            &BackendIntent::RenameTab { tab, name },
+            Keyboard::Follows,
+        ));
     }
 
     let daemon = match resolve_daemon(&rename.daemon_id) {
@@ -332,7 +341,7 @@ fn rename_tab(rename: &proto::RenameTab) -> Response {
              nothing was changed. Most likely it closed while this was in flight."
         ));
     };
-    submit(&daemon, &BackendIntent::RenameTab { tab, name }, Keyboard::Follows)
+    relayed(submit(&daemon, &BackendIntent::RenameTab { tab, name }, Keyboard::Follows))
 }
 
 /// Closes a tab and every pane in it.
@@ -346,7 +355,7 @@ fn close_tab(close: &proto::CloseTab) -> Response {
         let Some(daemon) = holder_of(&tab, &close.daemon_id) else {
             return no_such_tab(&tab, "closed");
         };
-        return answer(session::close_tab(&daemon, &tab));
+        return relayed(session::close_tab(&daemon, &tab).map(|()| Response::ok()));
     }
 
     let daemon = match resolve_daemon(&close.daemon_id) {
@@ -365,7 +374,7 @@ fn close_tab(close: &proto::CloseTab) -> Response {
              nothing was changed. Most likely it closed while this was in flight."
         ));
     };
-    answer(session::close_tab(&daemon, &tab))
+    relayed(session::close_tab(&daemon, &tab).map(|()| Response::ok()))
 }
 
 /// What a rename was asking for: a name, or none at all.
@@ -408,7 +417,7 @@ fn set_split_ratio(set: proto::SetSplitRatio) -> Response {
     let Some(daemon) = holder_of(&tab, &set.daemon_id) else {
         return no_such_tab(&tab, "resized");
     };
-    submit(
+    relayed(submit(
         &daemon,
         &BackendIntent::SetSplitRatio {
             tab,
@@ -420,7 +429,7 @@ fn set_split_ratio(set: proto::SetSplitRatio) -> Response {
             ratio: set.ratio,
         },
         Keyboard::Follows,
-    )
+    ))
 }
 
 /// One wheel notch or trackpad gesture, scaled by what the config file asked for.
@@ -525,14 +534,14 @@ fn act(
     keyboard: Keyboard,
     build: impl FnOnce(PaneId) -> BackendIntent,
 ) -> Response {
-    let (daemon, pane) = match target(daemon_id, pane_id) {
+    let target = match target(daemon_id, pane_id) {
         Ok(target) => target,
         Err(refusal) => return *refusal,
     };
-    let Some(pane) = pane else {
-        return nothing_to_act_on(&daemon);
+    let Some(pane) = target.pane.clone() else {
+        return nothing_to_act_on(&target.daemon);
     };
-    submit(&daemon, &build(pane), keyboard)
+    placed(submit(&target.daemon, &build(pane), keyboard), &target)
 }
 
 /// Which machine a request is about, and which of its panes.
@@ -559,20 +568,23 @@ fn act(
 /// The pane is optional, because a machine can have nothing on screen. What that means is the
 /// caller's to say: `tab new` and `pane new` turn it into a workspace, and the verbs that need
 /// something to act on refuse.
-fn target(daemon_id: &str, pane_id: &str) -> Result<(DaemonId, Option<PaneId>), Box<Response>> {
+fn target(daemon_id: &str, pane_id: &str) -> Result<Target, Box<Response>> {
     if !pane_id.is_empty() {
         let pane = PaneId::new(pane_id);
-        let daemon = match session::daemon_holding(&pane) {
-            Some(holder) if daemon_id.is_empty() => holder,
+        let (daemon, held) = match session::daemon_holding(&pane) {
+            Some(holder) if daemon_id.is_empty() => (holder, true),
             Some(holder) if holder.as_str() != daemon_id => {
                 return Err(Box::new(held_elsewhere(&pane, &holder, daemon_id)));
             }
-            // Either the two agree, or no mirror has heard of this pane yet - which is a pane
-            // the backend has only just made, and refusing that would refuse a request that is
-            // about to be right.
-            _ => resolve_daemon(daemon_id)?,
+            Some(_) => (resolve_daemon(daemon_id)?, true),
+            // No mirror has heard of this pane. Usually a name read off a window state that
+            // has moved on, and sometimes a pane the backend has only just made - so the
+            // request goes anyway, because refusing here would refuse one that is about to be
+            // right. What it must not do is take the resulting refusal at face value: it comes
+            // from whichever machine has the keyboard, about a pane that machine never held.
+            None => (resolve_daemon(daemon_id)?, false),
         };
-        return Ok((daemon, Some(pane)));
+        return Ok(Target { daemon, pane: Some(pane), held });
     }
     let daemon = resolve_daemon(daemon_id)?;
     // Checked here rather than inside `resolve_daemon`, which is also on the scroll path and
@@ -582,7 +594,69 @@ fn target(daemon_id: &str, pane_id: &str) -> Result<(DaemonId, Option<PaneId>), 
         return Err(Box::new(no_such_daemon(&daemon)));
     }
     let pane = session::focused_pane_on(&daemon);
-    Ok((daemon, pane))
+    Ok(Target { daemon, pane, held: true })
+}
+
+/// What a request turned out to be about.
+struct Target {
+    daemon: DaemonId,
+    pane: Option<PaneId>,
+
+    /// Whether any mirror in this window holds that pane.
+    ///
+    /// False is the case `placed` exists for, and it is not the same thing as the pane not
+    /// existing: a pane the backend made a moment ago is unknown to every mirror too. The two
+    /// are only told apart by what the daemon answers.
+    held: bool,
+}
+
+/// Answers about a pane no machine holds, instead of relaying what one machine said about it.
+///
+/// A request naming a pane no mirror has heard of is sent to whichever machine has the
+/// keyboard, because it may be a pane that machine has only just made. When it is not, that
+/// machine answers - correctly, on its own terms - that it does not hold the pane, and naming
+/// one machine while two are attached reads as "it exists on the other one, and this went to
+/// the wrong machine". The far commoner cause is a name read off a window state that has moved
+/// on, and the relayed answer rules that out by blaming a race.
+///
+/// So the reply is replaced, with the sentence `read_pane` already uses: no machine, both
+/// causes, and the command that resolves it. Only for `Refusal::NotThere`, which is the daemon
+/// saying it does not hold what was named - anything else is a real failure of this request and
+/// is worth relaying as it stands.
+fn placed(answer: Result<Response, Refusal>, target: &Target) -> Response {
+    match answer {
+        Ok(response) => response,
+        Err(Refusal::NotThere(detail)) if !target.held && target.pane.is_some() => {
+            let pane = target.pane.as_ref().expect("the guard above checked for one");
+            log::info(
+                "pane.unknown_everywhere",
+                fields! {
+                    "pane" => pane.to_string(),
+                    "asked" => target.daemon.to_string(),
+                    "said" => detail,
+                },
+            );
+            Response::failure(format!(
+                "no daemon this window is following holds a pane called {pane}, so nothing \
+                 happened. Either it closed while this was in flight, or the name came from an \
+                 older window - `muster window` lists the panes this one has."
+            ))
+        }
+        Err(refusal) => refused(refusal.detail()),
+    }
+}
+
+/// A submitted request whose refusal is relayed as it stands.
+///
+/// The twin of [`placed`], for the verbs that worked out what they were about before asking: a
+/// tab resolved by `holder_of`, a workspace on a machine somebody named. Those cannot have been
+/// sent to a machine that never held what they named, so the daemon's own answer is about the
+/// request rather than about the routing.
+fn relayed(answer: Result<Response, Refusal>) -> Response {
+    match answer {
+        Ok(response) => response,
+        Err(refusal) => refused(refusal.detail()),
+    }
 }
 
 /// Why a request that named no pane found none.
@@ -673,10 +747,11 @@ fn create_tab(create: &proto::CreateTab) -> Response {
         return open_a_workspace(None, keyboard, cwd, run, name);
     }
 
-    let (daemon, pane) = match target(&create.daemon_id, &create.pane_id) {
+    let target = match target(&create.daemon_id, &create.pane_id) {
         Ok(target) => target,
         Err(refusal) => return *refusal,
     };
+    let (daemon, pane) = (target.daemon.clone(), target.pane.clone());
     // A tab lives in a workspace and a machine showing nothing has none to put one in, so what
     // was asked for becomes the request that makes both.
     let Some(pane) = pane else {
@@ -684,11 +759,11 @@ fn create_tab(create: &proto::CreateTab) -> Response {
     };
 
     let inherited = session::cwd_of(&daemon, &pane);
-    submit(
+    relayed(submit(
         &daemon,
         &BackendIntent::CreateTab { beside: pane, cwd: cwd.or(inherited), run, name },
         keyboard,
-    )
+    ))
 }
 
 /// Makes a workspace, when there is no pane to make one beside.
@@ -739,7 +814,7 @@ fn open_a_workspace(
     }
     let nowhere_else = session::focused_daemon().is_none();
     let keyboard = if nowhere_else { Keyboard::Follows } else { keyboard };
-    submit(&daemon, &BackendIntent::CreateWorkspace { cwd, run, name }, keyboard)
+    relayed(submit(&daemon, &BackendIntent::CreateWorkspace { cwd, run, name }, keyboard))
 }
 
 /// The daemon a request means, given what it named.
@@ -934,15 +1009,18 @@ fn arrange_pane(arrange: &proto::ArrangePane) -> Response {
         // here and cannot below, and the difference is the destination rather than the verb:
         // this names one pane, so there is a "the focused one" to fall back to and a chord
         // and a menu item both mean exactly that.
-        let (daemon, pane) = match target(&arrange.daemon_id, &arrange.pane_id) {
+        let target = match target(&arrange.daemon_id, &arrange.pane_id) {
             Ok(found) => found,
             Err(refusal) => return *refusal,
         };
-        let Some(pane) = pane else {
-            return nothing_to_act_on(&daemon);
+        let Some(pane) = target.pane.clone() else {
+            return nothing_to_act_on(&target.daemon);
         };
         let name = (!arrange.tab_name.is_empty()).then(|| arrange.tab_name.clone());
-        return answer(session::move_pane_to_new_tab(&daemon, &pane, name));
+        return placed(
+            session::move_pane_to_new_tab(&target.daemon, &pane, name).map(|()| Response::ok()),
+            &target,
+        );
     }
     if arrange.pane_id.is_empty() || arrange.onto_pane_id.is_empty() {
         return Response::failure(
@@ -964,7 +1042,10 @@ fn arrange_pane(arrange: &proto::ArrangePane) -> Response {
     let Some(daemon) = pane_holder(&pane, &arrange.daemon_id) else {
         return no_pane_to_rearrange(&pane);
     };
-    answer(session::arrange_pane(&daemon, &pane, &PaneId::new(&arrange.onto_pane_id)))
+    match session::arrange_pane(&daemon, &pane, &PaneId::new(&arrange.onto_pane_id)) {
+        Ok(()) => Response::ok(),
+        Err(refusal) => refused(refusal.detail()),
+    }
 }
 
 /// One wording for both destinations, since a name that resolves to nothing costs the same
@@ -1085,14 +1166,18 @@ fn region_id(named: &str) -> Option<RegionId> {
 /// A request that made a pane answers with which, because that is the one fact about what just
 /// happened that a caller cannot get any other way: a script's next line names that pane, and
 /// its name was minted inside this call. Everything else about the change arrives as a view.
-fn submit(daemon: &DaemonId, intent: &BackendIntent, keyboard: Keyboard) -> Response {
-    match session::submit(daemon, intent, keyboard) {
-        Ok(Some(pane)) => Response {
+/// Asks, and shapes the answer - leaving the refusal's kind intact for [`placed`].
+fn submit(
+    daemon: &DaemonId,
+    intent: &BackendIntent,
+    keyboard: Keyboard,
+) -> Result<Response, Refusal> {
+    session::submit(daemon, intent, keyboard).map(|made| match made {
+        Some(pane) => Response {
             payload: Some(response::Payload::Made(proto::Made { pane_id: pane.to_string() })),
         },
-        Ok(None) => Response::ok(),
-        Err(refusal) => refused(&refusal),
-    }
+        None => Response::ok(),
+    })
 }
 
 fn answer(outcome: Result<(), String>) -> Response {
@@ -1231,29 +1316,33 @@ fn split_pane(split: &proto::SplitPane) -> Response {
     let run = (!split.run.is_empty()).then(|| split.run.clone());
     let name = (!split.name.is_empty()).then(|| split.name.clone());
 
-    let (daemon, pane) = match target(&split.daemon_id, &split.pane_id) {
+    let target = match target(&split.daemon_id, &split.pane_id) {
         Ok(target) => target,
         Err(refusal) => return *refusal,
     };
+    let (daemon, pane) = (target.daemon.clone(), target.pane.clone());
     // A machine showing nothing has nothing to split, and what was asked for is a pane on it.
     // Refusing here would leave `--daemon` unable to reach the machine it is most needed for -
     // the one holding no panes, which is every devenv on the day it is attached.
     let Some(pane) = pane else {
         return open_a_workspace(Some(daemon), keyboard, cwd, run, name);
     };
-    submit(
-        &daemon,
-        &BackendIntent::SplitPane {
-            pane,
-            side,
-            // Zero is proto3's unset, and a divider at the very edge is not a thing anyone
-            // asks for, so the two are safely the same answer here.
-            ratio: (split.ratio > 0.0).then_some(split.ratio),
-            cwd,
-            run,
-            name,
-        },
-        keyboard,
+    placed(
+        submit(
+            &daemon,
+            &BackendIntent::SplitPane {
+                pane,
+                side,
+                // Zero is proto3's unset, and a divider at the very edge is not a thing anyone
+                // asks for, so the two are safely the same answer here.
+                ratio: (split.ratio > 0.0).then_some(split.ratio),
+                cwd,
+                run,
+                name,
+            },
+            keyboard,
+        ),
+        &target,
     )
 }
 

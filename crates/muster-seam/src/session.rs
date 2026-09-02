@@ -1317,7 +1317,7 @@ impl Session {
                     fields! {
                         "daemon" => daemon.to_string(),
                         "pane" => pane.to_string(),
-                        "detail" => refusal,
+                        "detail" => refusal.clone(),
                         "impact" => "this pane renders and ignores the keyboard; every other \
                                      pane in the window is unaffected",
                     },
@@ -1471,29 +1471,34 @@ impl Session {
     /// Refuses by name rather than silently doing nothing. A pane the daemon has never heard
     /// of and a pane that closed while a click was in flight look identical from a sidebar
     /// row, and both leave the keyboard where it was.
-    fn surface(&mut self, daemon: &DaemonId, pane: &PaneId) -> Result<RegionId, String> {
+    /// The refusal carries its kind, and one of the three is `NotThere` on purpose: a mirror
+    /// with no such pane is the same fact a daemon would answer with, reached without a round
+    /// trip. Saying so is what lets the caller reword it - a request naming a pane no machine
+    /// holds is answered about no machine (`handler::placed`), rather than blaming whichever
+    /// one happened to have the keyboard.
+    fn surface(&mut self, daemon: &DaemonId, pane: &PaneId) -> Result<RegionId, Refusal> {
         let tab = {
             let backend = self.backends.get(daemon).ok_or_else(|| {
-                format!(
+                Refusal::Declined(format!(
                     "this window is not following a daemon called {daemon}, so there is \
                      nothing to show {pane} in and the keyboard stayed where it was."
-                )
+                ))
             })?;
             let mirror = poison::lock(&backend.mirror, "mirror");
             let held = mirror.pane(pane).ok_or_else(|| {
-                format!(
+                Refusal::NotThere(format!(
                     "{daemon} holds no pane called {pane}, so the keyboard stayed where it \
                      was. Most likely it closed while this was in flight, which an entry in a \
                      list outlives by a moment."
-                )
+                ))
             })?;
             held.tab.clone()
         };
         self.composition.surface(daemon, tab).ok_or_else(|| {
-            format!(
+            Refusal::Declined(format!(
                 "{daemon} is followed but not attached to this window's composition, so no \
                  region could be opened onto {pane}."
-            )
+            ))
         })
     }
 
@@ -1671,7 +1676,7 @@ pub(crate) fn submit(
     daemon: &DaemonId,
     intent: &BackendIntent,
     keyboard: Keyboard,
-) -> Result<Option<PaneId>, String> {
+) -> Result<Option<PaneId>, Refusal> {
     let (region, source, channel) = {
         let session = poison::lock(&SESSION, "session");
         // Which pane this request came from, for a pane it may be about to make. A split names
@@ -1723,9 +1728,11 @@ pub(crate) fn submit(
             BackendIntent::ClosePane { pane }
             | BackendIntent::ResizePane { pane, .. }
             | BackendIntent::ZoomPane { pane }
-            | BackendIntent::FocusPane { pane } => {
-                Some(session.region_holding(daemon, pane).ok_or_else(|| not_showing(daemon))?)
-            }
+            | BackendIntent::FocusPane { pane } => Some(
+                session
+                    .region_holding(daemon, pane)
+                    .ok_or_else(|| Refusal::Declined(not_showing(daemon)))?,
+            ),
             // Closing a tab keeps the region requirement for the reason closing a pane does:
             // it destroys every pane in the tab, and destroying what nobody is looking at is a
             // different risk from arranging it. Dragging a divider needs the region for a
@@ -1734,14 +1741,14 @@ pub(crate) fn submit(
                 session
                     .composition
                     .region_showing(daemon, tab)
-                    .ok_or_else(|| not_showing(daemon))?,
+                    .ok_or_else(|| Refusal::Declined(not_showing(daemon)))?,
             ),
         };
         let channel = session.channel_of(daemon).ok_or_else(|| {
-            format!(
+            Refusal::Declined(format!(
                 "the daemon {daemon} is in this window's composition and is not being \
                      followed, which is a bug in the core rather than a state to recover from"
-            )
+            ))
         })?;
         (region, source, channel)
     };
@@ -1850,7 +1857,11 @@ pub(crate) fn submit(
     // not have learned some other way: the arrangement reaches it as a view, and this reaches it
     // nowhere else - herdr's own id for the pane is not Muster's name for it, and the name was
     // minted inside this call.
-    outcome.map(|_| created).map_err(|refusal| refusal.to_string())
+    // The refusal's kind survives rather than being flattened to its sentence. A daemon
+    // saying it does not hold what was named is the one a caller may have to reword: asked
+    // about a pane no machine holds, its answer is correct on its own terms and misleading
+    // where it lands (`handler::placed`).
+    outcome.map(|_| created)
 }
 
 /// Takes the shell's word that nothing is painting a pane, and starts another bridge if the
@@ -2057,7 +2068,7 @@ fn not_showing(daemon: &DaemonId) -> String {
 /// the keyboard moves whatever the daemon says, because it is Muster's own cursor, and the
 /// daemon is told as a courtesy it may refuse. A refused write is worth a log line and not
 /// worth undoing a focus move the user can see happened.
-pub(crate) fn focus(daemon: &DaemonId, pane: &PaneId) -> Result<(), String> {
+pub(crate) fn focus(daemon: &DaemonId, pane: &PaneId) -> Result<(), Refusal> {
     {
         let mut session = poison::lock(&SESSION, "session");
         let region = match session.region_holding(daemon, pane) {
@@ -2105,7 +2116,7 @@ pub(crate) fn step(direction: Step) -> Result<(), String> {
          all closed."
             .to_string()
     })?;
-    focus(&daemon, &pane)
+    focus(&daemon, &pane).map_err(|refusal| refusal.to_string())
 }
 
 /// Moves the keyboard one tab along, in the order the roster lists them.
@@ -2132,7 +2143,7 @@ pub(crate) fn step_tab(direction: TabStep) -> Result<(), String> {
          does one whose tabs all closed."
             .to_string()
     })??;
-    focus(&daemon, &pane)
+    focus(&daemon, &pane).map_err(|refusal| refusal.to_string())
 }
 
 /// Puts one pane where another one is, which is what dropping a row on a row means.
@@ -2146,26 +2157,26 @@ pub(crate) fn step_tab(direction: TabStep) -> Result<(), String> {
 /// it gets here and a CLI caller does not, so for that caller this is the first line rather
 /// than the second - and it has to be, because a pane id is only unique within its daemon and
 /// resolving one against the wrong mirror would find a different pane and move it.
-pub(crate) fn arrange_pane(daemon: &DaemonId, pane: &PaneId, onto: &PaneId) -> Result<(), String> {
+pub(crate) fn arrange_pane(daemon: &DaemonId, pane: &PaneId, onto: &PaneId) -> Result<(), Refusal> {
     let intent = {
         let session = poison::lock(&SESSION, "session");
         let backend = session.backends.get(daemon).ok_or_else(|| {
-            format!(
+            Refusal::Declined(format!(
                 "this window is not following a daemon called {daemon}, so nothing was \
                  rearranged. Either it detached while this was in flight, or the request \
                  named a daemon this window does not have."
-            )
+            ))
         })?;
         let mirror = poison::lock(&backend.mirror, "mirror");
         let holding = |pane: &PaneId| {
             mirror.pane(pane).map(|held| held.tab.clone()).ok_or_else(|| {
-                format!(
+                Refusal::Declined(format!(
                     "{daemon} holds no pane called {pane}, so nothing was rearranged. Either \
                          it closed while this was in flight, or the two panes are on different \
                          machines - a pane is a PTY its daemon owns, so there is no move that \
                          would carry one to the other. `muster window` says which daemon holds \
                          each."
-                )
+                ))
             })
         };
         let (from, to) = (holding(pane)?, holding(onto)?);
@@ -2186,7 +2197,7 @@ pub(crate) fn arrange_pane(daemon: &DaemonId, pane: &PaneId, onto: &PaneId) -> R
 /// The only verb here that ends more than it names, which is why it stays beside closing a pane
 /// rather than beside renaming one: a tab this window is not showing is a tab whose panes nobody
 /// can see, and there is no undo for what was running in them.
-pub(crate) fn close_tab(daemon: &DaemonId, tab: &TabId) -> Result<(), String> {
+pub(crate) fn close_tab(daemon: &DaemonId, tab: &TabId) -> Result<(), Refusal> {
     submit(daemon, &BackendIntent::CloseTab { tab: tab.clone() }, Keyboard::StaysPut).map(drop)
 }
 
@@ -2205,7 +2216,7 @@ pub(crate) fn move_pane_to_new_tab(
     daemon: &DaemonId,
     pane: &PaneId,
     name: Option<String>,
-) -> Result<(), String> {
+) -> Result<(), Refusal> {
     let intent =
         BackendIntent::MovePane { pane: pane.clone(), to: MoveDestination::NewTab { name } };
     submit(daemon, &intent, Keyboard::StaysPut).map(drop)
@@ -2228,7 +2239,7 @@ pub(crate) fn focus_tab(daemon: &DaemonId, tab: &TabId) -> Result<(), String> {
         }
     };
     let (daemon, pane) = found?;
-    focus(&daemon, &pane)
+    focus(&daemon, &pane).map_err(|refusal| refusal.to_string())
 }
 
 /// Puts the keyboard on whatever the numbered chord for `place` names.
@@ -2270,7 +2281,7 @@ pub(crate) fn focus_pane_at(place: usize) -> Result<(), String> {
         }
     };
     let (daemon, pane) = found?;
-    focus(&daemon, &pane)
+    focus(&daemon, &pane).map_err(|refusal| refusal.to_string())
 }
 
 /// Why a numbered chord reached nothing, said in the terms of whatever it was counting.
@@ -2856,7 +2867,7 @@ fn ask_for_a_workspace(daemon: &DaemonId) {
             "workspace.refused",
             fields! {
                 "daemon" => daemon.to_string(),
-                "detail" => refusal,
+                "detail" => refusal.to_string(),
                 "impact" => "this machine shows nothing in this window and stays that way \
                              until something makes a pane on it. Nothing will ask again - a \
                              rule that retried a refusal would retry it on every event that \

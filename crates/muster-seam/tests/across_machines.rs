@@ -640,6 +640,105 @@ fn screen(daemon: &Daemon, pane: &str) -> String {
         .to_string()
 }
 
+/// A pane name no machine holds, in a window showing two.
+///
+/// The request still goes - to whichever machine has the keyboard, because a pane the backend
+/// made a moment ago is unknown to every mirror too and refusing here would refuse one that is
+/// about to be right. What must not survive is that machine's answer. It is correct on its own
+/// terms and wrong where it lands: naming one machine while two are attached reads as "it
+/// exists on the other one, and this went to the wrong machine", and blaming a race rules out
+/// the far commoner cause, which is a name read off a window state that has moved on.
+///
+/// Its reporter spent a while proving a routing bug that does not exist (kan a_2IPgSY9mo). The
+/// routing was fixed in a_2Hwef7lQT and is what the sweep above covers.
+#[test]
+fn a_pane_no_machine_holds_is_blamed_on_no_machine() {
+    let _turn = muster::testing::fresh_session();
+    let _machines = a_window_showing_two_machines();
+
+    let on_devenv = pane_on("devenv").expect("the fixture waited for it");
+    put_the_keyboard_back(&on_devenv);
+
+    let refused = refusal(request::Payload::FocusPane(FocusPane {
+        daemon_id: String::new(),
+        pane_id: "p000000000".to_string(),
+    }));
+
+    assert!(
+        !refused.contains("devenv") && !refused.contains("laptop"),
+        "the refusal names a machine, which reads as `it is on the other one`: {refused}"
+    );
+    assert!(
+        refused.contains("no daemon this window is following holds a pane called p000000000"),
+        "the refusal does not say that no machine holds it: {refused}"
+    );
+    assert!(
+        refused.contains("older window"),
+        "the refusal does not offer a stale name as a cause, which is the commoner one and the \
+         reading the old message ruled out: {refused}"
+    );
+    assert!(
+        refused.contains("muster window"),
+        "the refusal does not say how to find out what this window has: {refused}"
+    );
+}
+
+/// The other half, and the reason such a request is sent rather than refused outright.
+///
+/// A pane the backend has only just made is unknown to every mirror, exactly like a stale name:
+/// the two are told apart by what the daemon answers, and nothing above the seam can tell them
+/// apart beforehand. So the unknown case has to go, and a rule that refused it would refuse a
+/// request that is about to be right.
+///
+/// Typing into it is the sharpest version - what `pane send` is *for* is reaching a pane no
+/// region shows, so it asks nothing about what is on screen and the daemon's answer is the
+/// whole of it.
+#[test]
+fn a_pane_the_daemon_has_only_just_made_can_still_be_typed_into() {
+    let _turn = muster::testing::fresh_session();
+    let machines = a_window_showing_two_machines();
+    let laptop = &machines.laptop;
+
+    let on_laptop = pane_on("laptop").expect("the fixture waited for it");
+    // The keyboard on the machine being split, so that the pane made below - unknown to every
+    // mirror until its event lands - resolves to the daemon that made it.
+    assert_ok(&answer(request::Payload::FocusPane(FocusPane {
+        daemon_id: String::new(),
+        pane_id: on_laptop.clone(),
+    })));
+    until(
+        "the keyboard to be on the laptop",
+        || keyboard() == Some(("laptop".to_string(), on_laptop.clone())),
+        || format!("the keyboard is on {:?}", keyboard()),
+    );
+
+    let made = match answer(request::Payload::SplitPane(SplitPane {
+        daemon_id: String::new(),
+        pane_id: on_laptop.clone(),
+        side: "right".to_string(),
+        ..SplitPane::default()
+    }))
+    .payload
+    {
+        Some(response::Payload::Made(made)) => made.pane_id,
+        other => panic!("expected the new pane's name, got {other:?}"),
+    };
+
+    // Immediately, before waiting for anything: if a pane no mirror knows were refused, this
+    // would come back with the sentence the test above asserts.
+    assert_ok(&answer(request::Payload::SendToPane(SendToPane {
+        daemon_id: String::new(),
+        pane_id: made,
+        text: SENT.to_string(),
+        enter: false,
+    })));
+    until(
+        "the text to reach the pane that was just made",
+        || panes(laptop).iter().any(|pane| screen(laptop, pane).contains(SENT)),
+        || format!("the laptop holds {:?}", panes(laptop)),
+    );
+}
+
 // --- driving the seam ------------------------------------------------------------------
 
 fn answer(payload: request::Payload) -> Response {
