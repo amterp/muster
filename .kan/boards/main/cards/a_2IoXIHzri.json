@@ -1,0 +1,28 @@
+{
+  "_v": 3,
+  "alias": "a-muster-tab-that",
+  "alias_explicit": false,
+  "area": [
+    "shell",
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Stages three and four of MIP-2, which is now Accepted and carries the whole design. The first two landed on `main3` (slot 3 of the 2026-09-02 parallel round); these did not, and this says what is left and why they were not started rather than half-started.\n\n## What is left\n\n**A window holds an ordered list of Muster tabs, one on screen.** Regions become the parts of that tab rather than one column per machine, `cmd+1` and `cmd+2` switch between a local tab and a devenv tab, and the sidebar flattens to tabs with their panes under them. This is the change `a_2HtF52Itm` asked for by name.\n\n**A Muster tab holds member tabs on several machines**, so one tab can hold a laptop pane beside a devenv pane. This is the only part that turns a daemon guarantee into a Muster one: a tab spanning two machines can only live in Muster's file, and the durability answer is to degrade per tab - every tab that exists today is single-machine and keeps the guarantee it has.\n\n## Why they were not started\n\n**They land together or not at all.** A window shows every machine at once today, side by side. Stage three on its own replaces that with one tab filling the window, and grouping - stage four - is what puts the two side by side again. Landing three alone would take away an arrangement people are using and give back nothing until four arrived.\n\nTogether they are a change to the composition record, the roster's wire shape, the sidebar, the numbered chords, the saved format and the durability table. That is more than could be finished and made green in the round this was raised in, and a half-landed model change is worse than none - especially with three branches to fold together.\n\n## What is already in place for it\n\n- `Region` and the saved arrangement no longer carry a workspace, so the record this change rewrites is one noun smaller (MIP-2 stage one).\n- Each window has its own arrangement file, so \"which tabs is this window showing\" is a per-window question with a per-window answer (stage two).\n- `View::showing()` is derived from \"a region shows a tab, and a tab on screen has its panes on screen unless a zoom covers them\", which is stated in terms this change does not move, and pinned in all 51 composition cases.\n- The durability answer is confirmed and written into MIP-2 rather than left as the thing the Draft was waiting on.\n\n## What it answers when it lands\n\n`a_2I6h18OU6` - closing a machine's last pane stops refilling it, because `open_remaining_regions` stops existing in its present form and nothing is owed a column.",
+      "created_at_millis": 1788328460788,
+      "id": "c_2IoXoEXtu"
+    }
+  ],
+  "created_at_millis": 1788328440994,
+  "creator": "Alexander Terp",
+  "id": "a_2IoXIHzri",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "title": "🧩 A Muster tab that spans machines, and one on screen at a time",
+  "type": "feature",
+  "updated_at_millis": 1788328460852,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1788328440994}
+  ]
+}
