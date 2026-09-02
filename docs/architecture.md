@@ -239,12 +239,27 @@ is seeing for the first time, and the agent channel owns it from then on.
 What this cannot answer, stated rather than hidden: ours is the only focus we can observe, so `done` means "nobody
 *we know of* saw it". A second Muster window, or a herdr TUI open beside us, is outside it.
 
-**One legend, and the window holds it.** working blue, blocked orange, done green, idle grey, and unknown a fainter
+**One legend, and the window holds it.** working cyan, blocked orange, done green, idle grey, and unknown a fainter
 grey rather than a hue of its own. The window's palette is canonical because that is where attention lives: a person
 reads borders and dots all day and reads `muster window` when something has already gone strangely, so the surface
 with the smaller audience is the one that moves. The two did disagree once, working and done inverted between them,
 and what it cost was not a wrong pixel - it was somebody learning that the colours could not be trusted, in the one
 vocabulary this product is about.
+
+**Working is cyan because two separate arguments landed on moving it off blue.** It collided with the focus ring,
+which follows the macOS accent and is blue on the default one; and plain ANSI blue is the least legible of the sixteen
+on a dark background, which costs more on this row than any other because working is the state a window spends most of
+its time in. Cyan is legible in both mediums, distinct from green and orange at a glance, and calm - which is what the
+busy-but-not-waiting state should be while blocked is the loud one.
+
+**The two rings differ in kind, not only in hue.** The outer ring is the agent's state, at full weight on all four
+edges; the focus ring is thinner and sits inside it with a gap. That is not a decoration: the focus ring follows
+`controlAccentColor`, which a person chooses in System Settings and Muster cannot know, so *any* fixed state palette
+collides with somebody's accent - green with done, orange with blocked. Painting the two different colours fixes
+whichever collision you happen to have and leaves the same bug for the next person, who reports it as a different one.
+Weight and a gap read whatever the accent turns out to be. The state ring is the one that keeps its full weight,
+because it is what this product is about; the focus ring says one small thing about the window and is the one that
+gives way.
 
 **Alignment is hue for hue where both surfaces paint a hue, and no further.** The ANSI sixteen have no orange, so the
 CLI spells blocked yellow - the medium's limit rather than a second opinion, and what it names is a slot, so a user

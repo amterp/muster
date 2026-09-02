@@ -40,11 +40,25 @@ struct PaneChromeTests {
     // exists to make changing the canon a decision that fails a build and hands you the other
     // two places it has to change: `crates/muster-cli/src/render.rs` and
     // `docs/architecture.md`.
-    #expect(PaneAppearance.borderColor(state: "working") == NSColor.systemBlue)
+    #expect(PaneAppearance.borderColor(state: "working") == NSColor.systemCyan)
     #expect(PaneAppearance.borderColor(state: "blocked") == NSColor.systemOrange)
     #expect(PaneAppearance.borderColor(state: "done") == NSColor.systemGreen)
     #expect(PaneAppearance.borderColor(state: "idle") == NSColor.systemGray)
     #expect(PaneAppearance.borderColor(state: "unknown") == NSColor.tertiaryLabelColor)
+  }
+
+  @Test("the focus ring is a different kind of edge, not a different colour")
+  func theRingsDifferInKind() {
+    // The bug this replaced: two 2pt rings touching, the outer following the agent's state
+    // and the inner following `controlAccentColor`. On the default accent both were blue and
+    // the pair read as one thick edge. Colour cannot fix it - the accent is chosen in System
+    // Settings, so a fixed state palette collides with green for somebody and orange for
+    // somebody else - so what has to hold is that they differ in weight and do not touch.
+    #expect(PaneAppearance.focusWidth < PaneAppearance.stateWidth)
+    #expect(PaneAppearance.focusGap > 0)
+    // And the surface starts outside both, so neither ring is drawn over terminal text.
+    let rings = PaneAppearance.stateWidth + PaneAppearance.focusGap + PaneAppearance.focusWidth
+    #expect(PaneAppearance.inset == rings)
   }
 
   @Test("a stale backend is admitted in the title")

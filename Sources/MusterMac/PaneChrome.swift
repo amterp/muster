@@ -19,6 +19,14 @@ public enum PaneAppearance {
   /// do. Faint rather than colorful because `unknown` is an absence of information, and a
   /// hue of its own would read as a fifth thing an agent can be doing.
   ///
+  /// `working` is cyan rather than the blue it was, for two reasons that arrived separately.
+  /// It collided with the focus ring, which follows the macOS accent and is blue on the
+  /// default one - four points of blue saying two different things. And plain ANSI blue is the
+  /// least legible of the sixteen on a dark background, which matters more for this row than
+  /// any other because `working` is the state a window spends most of its time in. Cyan is
+  /// legible in both mediums, distinct from green and from orange at a glance, and calm, which
+  /// is what the resting-but-busy state should be while `blocked` is the loud one.
+  ///
   /// This table is the legend, and `muster window` paints the same one in the terminal's own
   /// sixteen (`crates/muster-cli/src/render.rs`, `agent_style`) - the window is canonical
   /// because that is where attention lives, and the surface with the smaller audience is the
@@ -28,13 +36,34 @@ public enum PaneAppearance {
   /// and in `docs/architecture.md` too.
   public static func borderColor(state: String) -> NSColor {
     switch state {
-    case "working": return NSColor.systemBlue
+    case "working": return NSColor.systemCyan
     case "blocked": return NSColor.systemOrange
     case "done": return NSColor.systemGreen
     case "idle": return NSColor.systemGray
     default: return NSColor.tertiaryLabelColor
     }
   }
+
+  /// **How thick each ring is, and how far apart.** Here rather than on the view for the
+  /// reason the colours are: this is the decision the two rings rest on, and a number inside
+  /// `layout` is a number no test can reach.
+  ///
+  /// The two used to be equal weights side by side, which read as one four-point edge
+  /// whatever colours they carried. They differ in kind now because they have to: the focus
+  /// ring follows `controlAccentColor`, the accent a person picks in System Settings, so any
+  /// fixed state palette collides with somebody's - green with `done`, orange with `blocked`.
+  /// Weight and a gap are legible whatever the accent turns out to be.
+  ///
+  /// The state ring keeps the whole of what it had, because it is what the product is about.
+  /// The focus ring is the one that gives way: it says one small thing about the window rather
+  /// than anything about an agent.
+  public static let stateWidth: CGFloat = 2
+  public static let focusGap: CGFloat = 2
+  public static let focusWidth: CGFloat = 1
+
+  /// How much of a pane's edge is chrome rather than terminal - the sum, so a surface cannot
+  /// end up under a ring by arithmetic that drifted.
+  public static let inset: CGFloat = stateWidth + focusGap + focusWidth
 
   /// Whether a state deserves a visible border at all.
   ///
@@ -139,6 +168,14 @@ public enum PaneAppearance {
 /// is the whole point of the product; the inner says which pane a keystroke would go to. One
 /// edge carrying both would make a working pane and a focused pane indistinguishable, which
 /// is exactly the confusion these are for clearing up.
+///
+/// **They differ in kind, not only in hue, and they have to.** The focus ring follows
+/// `controlAccentColor` - the accent a person chooses in System Settings, which Muster does
+/// not pick and cannot know. So any fixed state palette collides with *some* accent: green
+/// with `done`, orange with `blocked`, blue with `working` on the default. Painting the two
+/// different colours fixes whichever collision you happen to have and leaves the same bug for
+/// the next person. A thick outer ring, a gap, and a thin inner one is legible whatever the
+/// accent turns out to be.
 @MainActor
 public final class PaneChrome: NSView {
   /// The pane this view is showing, or nil for the renderer check.
@@ -190,11 +227,6 @@ public final class PaneChrome: NSView {
     fatalError("muster builds its views in code")
   }
 
-  public static let borderWidth: CGFloat = 2
-
-  /// How much of a pane's edge is chrome rather than terminal.
-  public static let inset: CGFloat = borderWidth * 2
-
   public func attach(paneID: String?) {
     self.paneID = paneID
     applyAppearance()
@@ -235,16 +267,20 @@ public final class PaneChrome: NSView {
 
   public override func layout() {
     super.layout()
-    surface.frame = bounds.insetBy(dx: PaneChrome.inset, dy: PaneChrome.inset)
-    focusRing.frame = bounds.insetBy(dx: PaneChrome.borderWidth, dy: PaneChrome.borderWidth)
+    surface.frame = bounds.insetBy(dx: PaneAppearance.inset, dy: PaneAppearance.inset)
+    // Inside the state ring and the gap, so the two never touch. A layer's border is drawn
+    // inward from its frame, which is why this is the outer edge of the focus ring rather
+    // than its inner one.
+    let focusInset = PaneAppearance.stateWidth + PaneAppearance.focusGap
+    focusRing.frame = bounds.insetBy(dx: focusInset, dy: focusInset)
     badge.frame = bounds
   }
 
   private func applyAppearance() {
     let highlighted = PaneAppearance.isHighlighted(state: state)
-    layer?.borderWidth = highlighted ? PaneChrome.borderWidth : 0
+    layer?.borderWidth = highlighted ? PaneAppearance.stateWidth : 0
     layer?.borderColor = PaneAppearance.borderColor(state: state).cgColor
-    focusRing.borderWidth = PaneChrome.borderWidth
+    focusRing.borderWidth = PaneAppearance.focusWidth
     focusRing.borderColor =
       isFocused ? NSColor.controlAccentColor.cgColor : NSColor.clear.cgColor
     needsLayout = true
