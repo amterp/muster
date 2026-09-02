@@ -1479,7 +1479,7 @@ impl Session {
         Roster::of(
             &self.composition,
             |daemon| mirrors.get(daemon).map(|held| &**held),
-            &view.showing(),
+            view.showing(),
         )
     }
 
@@ -3117,7 +3117,7 @@ fn publish() {
         let view = session.view();
         let roster = session.roster(&view);
         let numbering = session.numbering(&roster);
-        let settled = session.attention.showing(view.showing());
+        let settled = session.attention.showing(view.showing().clone());
         // Here because this is the moment composition is settled, and because everything that
         // changes it ends up here - so nothing has to remember to save.
         save(&session.composition, session.presentation, &session.font_sizes);

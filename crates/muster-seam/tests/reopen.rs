@@ -21,8 +21,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use herdr_harness::{Daemon, until};
 use muster::proto::{
-    CreateTab, Event, OpenWindow, Request, Response, SplitPane, Startup, ViewChanged, ViewNode,
-    ViewRegion, event, request, response, view_node,
+    CreateTab, Event, OpenWindow, ReadWindow, Request, Response, SplitPane, Startup, ViewChanged,
+    ViewNode, ViewRegion, event, request, response, view_node,
 };
 use prost::Message;
 
@@ -398,6 +398,89 @@ fn a_saved_region_naming_a_dropped_pane_puts_the_keyboard_on_one_that_is_there()
          to a pane that is not there",
         region.pane_id
     );
+}
+
+/// A restored window says which panes it is drawing.
+///
+/// `on_screen` is what an agent driving Muster reads to decide whether a pane needs surfacing,
+/// and what the sidebar's shared-screen mark is built on - so a pane wrongly marked hidden
+/// invites something to go and surface a pane already in front of the user. Reported on 0.4.1
+/// against a restored four-pane tab, where three of the four read hidden while all four were
+/// being drawn (kan `a_2Ibz6NXjV`).
+///
+/// Asked through `ReadWindow`, which is the surface the report came from, rather than off the
+/// view events: what went wrong is a disagreement between the two halves of one answer, and
+/// only the answer holds both.
+#[test]
+fn a_restored_window_says_which_panes_it_is_drawing() {
+    let turn = muster::testing::fresh_session();
+    let daemon = Daemon::start();
+    let state = daemon.muster_config().with_file_name("window.toml");
+
+    forget_the_view();
+    muster::ffi::muster_set_event_callback(Some(note));
+    open_a_window(&daemon, &state);
+    until(
+        "the first window to open onto a workspace",
+        || tab_of_first_region().is_some(),
+        || format!("the last view the core published: {:?}", latest_view()),
+    );
+
+    // Four panes in one tab, in a real split rather than a stack: the derivation only goes
+    // wrong where a region shows more than one pane, so three panes would already be enough
+    // and a fourth costs nothing and matches what was reported.
+    for side in ["down", "right", "down"] {
+        assert_ok(&answer(request::Payload::SplitPane(SplitPane {
+            side: side.to_string(),
+            ..SplitPane::default()
+        })));
+    }
+    until(
+        "the window to draw all four panes",
+        || panes_on_screen() == 4,
+        || format!("the last view the core published: {:?}", latest_view()),
+    );
+
+    turn.relaunch();
+    forget_the_view();
+    muster::ffi::muster_set_event_callback(Some(note));
+    open_a_window(&daemon, &state);
+    until(
+        "the window to come back onto its four panes",
+        || panes_on_screen() == 4,
+        || format!("the last view the core published: {:?}", latest_view()),
+    );
+
+    let window = read_window();
+    let drawn = window
+        .view
+        .as_ref()
+        .map(|view| view.regions.iter().flat_map(panes_of_region).collect::<Vec<_>>())
+        .unwrap_or_default();
+    let hidden: Vec<String> = window
+        .roster
+        .iter()
+        .flat_map(|roster| roster.daemons.iter())
+        .flat_map(|held| held.tabs.iter())
+        .flat_map(|tab| tab.panes.iter())
+        .filter(|pane| !pane.on_screen && drawn.contains(&pane.pane_id))
+        .map(|pane| pane.pane_id.clone())
+        .collect();
+
+    assert!(
+        hidden.is_empty(),
+        "the window is drawing {drawn:?} and reports {hidden:?} as hidden. Anything reading \
+         this to decide whether a pane needs surfacing will go and surface a pane that is \
+         already in front of the user."
+    );
+}
+
+/// What `muster window` would print at this moment.
+fn read_window() -> muster::proto::Window {
+    match answer(request::Payload::ReadWindow(ReadWindow {})).payload {
+        Some(response::Payload::Window(window)) => window,
+        other => panic!("asking what the window is showing answered {other:?}"),
+    }
 }
 
 /// Starts the core against this daemon, and opens the window - what a bare `muster` does.

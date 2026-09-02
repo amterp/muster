@@ -52,6 +52,21 @@ fn composition_conformance() {
             ),
             ("focusedPane", composition.focused_pane().map(|pane| json!(pane.as_str()))),
             ("view", Some(json!(describe_view(&composition, given, &worlds, &current, &sizes)))),
+            // Beside the view rather than read off it, because they answer different
+            // questions and reading one off the other is the bug this pins: the view says
+            // how each region's panes are arranged, and this says which panes the window has
+            // on screen. They part company exactly where a tree is withheld or a tab is
+            // zoomed, which is where `on_screen` was wrong.
+            (
+                "showing",
+                Some(json!(
+                    view_of(&composition, given, &worlds, &current, &sizes)
+                        .showing()
+                        .iter()
+                        .map(ToString::to_string)
+                        .collect::<Vec<String>>()
+                )),
+            ),
         ]))
     });
 
