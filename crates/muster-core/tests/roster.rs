@@ -9,7 +9,7 @@ use conformance::{CaseError, Conformance, fields};
 use muster_core::composition::{Composition, Daemon, DaemonId, Endpoint, PaneKey, TabKey};
 use muster_core::input::NumberedChords;
 use muster_core::mirror::Mirror;
-use muster_core::mirror::backend::{PaneId, TabId, WorkspaceId};
+use muster_core::mirror::backend::{PaneId, TabId};
 use muster_core::roster::{Landing, Numbering, Roster, RosterPane, RosterTab, TabStep};
 use serde_json::{Value, json};
 use support::backend::{read_snapshot, text};
@@ -43,7 +43,6 @@ fn roster_conformance() {
         for region in given.get("regions").and_then(Value::as_array).into_iter().flatten() {
             composition.open_region(
                 &DaemonId::new(text(region, "daemon")),
-                WorkspaceId::new(text(region, "workspace")),
                 TabId::new(text(region, "tab")),
             );
         }

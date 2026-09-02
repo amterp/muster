@@ -22,7 +22,7 @@ use crate::composition::presentation::{FontSizes, Frame, Presentation};
 use crate::composition::record::{Composition, Daemon, DaemonId, Endpoint, PaneKey};
 use crate::diagnostics::log;
 use crate::fields;
-use crate::mirror::backend::{PaneId, TabId, WorkspaceId};
+use crate::mirror::backend::{PaneId, TabId};
 
 /// One region, as much of it as outlives the process.
 ///
@@ -32,7 +32,6 @@ use crate::mirror::backend::{PaneId, TabId, WorkspaceId};
 #[derive(Debug, Clone, PartialEq)]
 pub struct SavedRegion {
     pub daemon: DaemonId,
-    pub workspace: WorkspaceId,
     pub tab: TabId,
     pub weight: f32,
     /// The pane this region's keyboard was on. A wish like the rest: the pane may be gone,
@@ -94,7 +93,6 @@ impl Saved {
                 .regions()
                 .map(|region| SavedRegion {
                     daemon: region.daemon.clone(),
-                    workspace: region.workspace.clone(),
                     tab: region.tab.clone(),
                     weight: region.weight,
                     pane: region.pane.clone(),
@@ -144,7 +142,13 @@ impl Saved {
 /// still parses and every region silently fails its check, so the arrangement vanishes with
 /// nothing said; refused by version, the log names what it found and why the window opened
 /// fresh. One lost arrangement either way - this is the one that explains itself.
-const VERSION: i64 = 2;
+///
+/// **3 because a region stopped naming a workspace.** A version 2 file carries one and nothing
+/// reads it any more: a workspace is the backend's unit for a whole project, and a tab already
+/// says which one it is in (MIP-2). A version 2 file would parse and restore correctly with the
+/// key ignored, so this bump buys less than the last one - what it buys is that the file on
+/// disk and the format this reads never differ silently, which is the property a version is for.
+const VERSION: i64 = 3;
 
 /// The arrangement as the text that gets written to disk.
 ///
@@ -247,7 +251,6 @@ fn pane_table((pane, offset): (&PaneKey, i32)) -> toml::Value {
 fn region_table(region: &SavedRegion) -> toml::Value {
     let mut table = toml::Table::new();
     table.insert("daemon".to_string(), toml::Value::String(region.daemon.to_string()));
-    table.insert("workspace".to_string(), toml::Value::String(region.workspace.to_string()));
     table.insert("tab".to_string(), toml::Value::String(region.tab.to_string()));
     table.insert("weight".to_string(), toml::Value::Float(f64::from(region.weight)));
     if let Some(pane) = &region.pane {
@@ -390,7 +393,6 @@ fn read_region(value: &toml::Value) -> Option<SavedRegion> {
     let table = value.as_table()?;
     Some(SavedRegion {
         daemon: DaemonId::new(text(table, "daemon")?),
-        workspace: WorkspaceId::new(text(table, "workspace")?),
         tab: TabId::new(text(table, "tab")?),
         // A region with no readable weight takes an equal share rather than none: zero would
         // be a region the window renders at no width, which nobody can see or grab.

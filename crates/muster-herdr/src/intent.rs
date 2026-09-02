@@ -45,6 +45,39 @@ impl HerdrBackend {
     }
 }
 
+impl HerdrBackend {
+    /// Which of this daemon's workspaces a request has to name, when one of them does.
+    ///
+    /// One arm needs it: `tab.create` takes a workspace and nothing else, so the tab a person
+    /// asked for beside a pane has to arrive as an id. The pane's own answer is the right one
+    /// and only the daemon has it - the core stopped carrying a workspace (MIP-2), and this
+    /// adapter holds no picture of the session to read one out of.
+    ///
+    /// A round trip, on a request somebody makes a few times an hour. The alternative is
+    /// sending no workspace at all, and herdr then puts the tab in whichever one that daemon
+    /// last had focused (`observations/herdr-0.8.0.md` section 6) - a tab that lands somewhere
+    /// else, silently, on a session with more than one workspace in it.
+    fn workspace_for(&self, intent: &BackendIntent) -> Result<Option<String>, Refusal> {
+        let BackendIntent::CreateTab { beside, .. } = intent else { return Ok(None) };
+        let params = json!({ "pane_id": self.names.backend_pane(beside)?.as_str() });
+        let held = self.client.request("pane.get", &params).map_err(|failure| refusal(&failure))?;
+        // A daemon that answered and named no workspace is one whose pane is gone or whose
+        // shape this build does not know, and both mean the same thing to the caller: the tab
+        // it asked for has nowhere to go.
+        nested(&held, "pane")
+            .and_then(|pane| pane.get("workspace_id"))
+            .or_else(|| held.get("workspace_id"))
+            .and_then(Value::as_str)
+            .map(|workspace| Some(workspace.to_string()))
+            .ok_or_else(|| {
+                Refusal::NotThere(format!(
+                    "the daemon does not say which workspace holds {beside}, so there is \
+                     nowhere to put a tab beside it and nothing was made."
+                ))
+            })
+    }
+}
+
 impl BackendChannel for HerdrBackend {
     fn submit(&self, intent: &BackendIntent) -> Result<Outcome, Refusal> {
         // Minted before the request rather than read off the answer, because it has to travel
@@ -57,7 +90,12 @@ impl BackendChannel for HerdrBackend {
             None => self.panes.clone(),
         };
 
-        let (method, params) = request(intent, &panes, &self.names)?;
+        // The one thing a request needs and only the daemon can answer. Asked here rather than
+        // carried in the intent, because a workspace is herdr's unit and the core stopped naming
+        // one (MIP-2) - and asked only for the intent that needs it, so ⌘T costs a round trip
+        // and nothing else does.
+        let workspace = self.workspace_for(intent)?;
+        let (method, params) = request(intent, &panes, &self.names, workspace.as_deref())?;
         let result = match self.client.request(method, &params) {
             Ok(result) => result,
             Err(failure) => {
@@ -631,6 +669,7 @@ pub fn request(
     intent: &BackendIntent,
     panes: &PaneEnvironment,
     names: &Names,
+    workspace: Option<&str>,
 ) -> Result<(&'static str, Value), Refusal> {
     Ok(match intent {
         // `run` and `name` are deliberately absent from these params: herdr's `pane.split`
@@ -665,11 +704,21 @@ pub fn request(
             }
             ("pane.split", params)
         }
-        BackendIntent::CreateTab { workspace, cwd, .. } => {
+        BackendIntent::CreateTab { cwd, .. } => {
             // `workspace_id`, and nothing else names where this goes. herdr ignores a key it
             // does not know, so a `pane_id` sent hopefully would be dropped in silence and
-            // the tab would land in whichever workspace that daemon had focused.
-            let mut params = json!({ "workspace_id": workspace.as_str(), "focus": true });
+            // the tab would land in whichever workspace that daemon had focused. Which
+            // workspace the pane the intent named is in is what [`HerdrBackend::workspace_of`]
+            // asks the daemon, on the one arm that needs it.
+            let workspace = workspace.ok_or_else(|| {
+                Refusal::Declined(
+                    "a tab was asked for with no workspace resolved to put it in, which is a \
+                     bug in this adapter rather than anything the daemon said: only \
+                     `tab.create` needs one, and only `submit` looks it up."
+                        .to_string(),
+                )
+            })?;
+            let mut params = json!({ "workspace_id": workspace, "focus": true });
             if let Some(cwd) = cwd {
                 params["cwd"] = json!(cwd);
             }

@@ -15,7 +15,7 @@ use muster_core::composition::{
     Step, Transport, View, ViewPane,
 };
 use muster_core::mirror::Mirror;
-use muster_core::mirror::backend::{PaneId, TabId, WorkspaceId};
+use muster_core::mirror::backend::{PaneId, TabId};
 use serde_json::{Value, json};
 use support::backend::{describe_daemon, optional, ratio, read_snapshot, text};
 
@@ -117,11 +117,7 @@ fn act(
         }
         "detachDaemon" => composition.detach_daemon(&daemon(step)),
         "openRegion" => {
-            composition.open_region(
-                &daemon(step),
-                WorkspaceId::new(text(step, "workspace")),
-                TabId::new(text(step, "tab")),
-            );
+            composition.open_region(&daemon(step), TabId::new(text(step, "tab")));
         }
         "closeRegion" => composition.close_region(region(step)?),
         // The one drag Muster settles for itself: no daemon knows the other one exists, so
@@ -130,11 +126,7 @@ fn act(
         // What following a notification does before it moves the keyboard: the pane that
         // asked may be in a tab no region is showing, and surfacing it is the core's job.
         "surface" => {
-            composition.surface(
-                &daemon(step),
-                WorkspaceId::new(text(step, "workspace")),
-                TabId::new(text(step, "tab")),
-            );
+            composition.surface(&daemon(step), TabId::new(text(step, "tab")));
         }
         "focusRegion" => composition.focus_region(region(step)?),
         "focusPane" => composition.focus_pane(region(step)?, PaneId::new(text(step, "pane"))),
@@ -356,10 +348,8 @@ fn describe_regions(composition: &Composition) -> Vec<String> {
     composition
         .regions()
         .map(|region: &Region| {
-            let mut described = format!(
-                "{} daemon={} workspace={} tab={}",
-                region.id, region.daemon, region.workspace, region.tab
-            );
+            let mut described =
+                format!("{} daemon={} tab={}", region.id, region.daemon, region.tab);
             // Only when it has moved, so that the great majority of cases - which are not
             // about widths - stay readable. Rounded, because a share is arrived at by
             // division and a case should not pin the last bit of a float.

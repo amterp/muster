@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 
 use crate::mirror::Mirror;
-use crate::mirror::backend::{PaneId, TabId, WorkspaceId};
+use crate::mirror::backend::{PaneId, TabId};
 
 /// Muster's name for one attached daemon.
 ///
@@ -158,7 +158,6 @@ impl std::fmt::Display for TabKey {
 pub struct Region {
     pub id: RegionId,
     pub daemon: DaemonId,
-    pub workspace: WorkspaceId,
     pub tab: TabId,
 
     /// How much of the window's width this region gets, relative to the others.
@@ -238,12 +237,7 @@ impl Composition {
     /// The new region takes focus only if nothing had it. Opening a region is not by itself
     /// a claim on the keyboard, and a window that moves focus every time a daemon publishes
     /// something is a window that types into the wrong pane.
-    pub fn open_region(
-        &mut self,
-        daemon: &DaemonId,
-        workspace: WorkspaceId,
-        tab: TabId,
-    ) -> Option<RegionId> {
+    pub fn open_region(&mut self, daemon: &DaemonId, tab: TabId) -> Option<RegionId> {
         if !self.daemons.contains_key(daemon) {
             return None;
         }
@@ -252,7 +246,6 @@ impl Composition {
         self.regions.push(Region {
             id,
             daemon: daemon.clone(),
-            workspace,
             tab,
             // Filled by the first reconcile that can see the tab's panes. The caller
             // usually knows which pane it wants and says so; this stays the answer for a
@@ -310,12 +303,7 @@ impl Composition {
     ///
     /// `None` only when the daemon is not attached, which is the one case where there is
     /// nothing honest to show.
-    pub fn surface(
-        &mut self,
-        daemon: &DaemonId,
-        workspace: WorkspaceId,
-        tab: TabId,
-    ) -> Option<RegionId> {
+    pub fn surface(&mut self, daemon: &DaemonId, tab: TabId) -> Option<RegionId> {
         if let Some(showing) = self.region_showing(daemon, &tab) {
             return Some(showing);
         }
@@ -328,10 +316,9 @@ impl Composition {
                 self.regions.iter().find(|region| &region.daemon == daemon).map(|region| region.id)
             });
         let Some(id) = retarget else {
-            return self.open_region(daemon, workspace, tab);
+            return self.open_region(daemon, tab);
         };
         let region = self.regions.iter_mut().find(|region| region.id == id)?;
-        region.workspace = workspace;
         region.tab = tab;
         // Cleared rather than kept: the pane it held is in the tab this region just stopped
         // showing, and leaving it would point the keyboard at something off screen. The

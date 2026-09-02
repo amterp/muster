@@ -11,7 +11,7 @@
 //! side, because that is the question a person answered when they pressed the key.
 
 use crate::find::{Found, Needle};
-use crate::mirror::backend::{Layout, PaneId, PaneText, TabId, Viewport, WorkspaceId};
+use crate::mirror::backend::{Layout, PaneId, PaneText, TabId, Viewport};
 
 /// A direction on screen, as a person means it.
 ///
@@ -162,19 +162,19 @@ pub enum BackendIntent {
         /// and not the other is the common case.
         enter: bool,
     },
-    /// Makes a tab in a workspace, with one pane in it.
+    /// Makes a tab beside a pane, with one pane of its own in it.
     ///
-    /// A tab rather than a workspace, because a workspace is herdr's unit for a whole project
-    /// and a tab is the unit somebody reaches for several times an hour.
+    /// A tab rather than a workspace, because a workspace is a backend's unit for a whole
+    /// project and a tab is the unit somebody reaches for several times an hour.
     ///
-    /// The workspace is named outright, unlike every other verb here, which names a pane. It
-    /// has to be: herdr's `tab.create` takes a workspace and nothing else, and it ignores
-    /// keys it does not know - so a pane id sent hopefully would be dropped in silence and
-    /// the tab would appear in whichever workspace that daemon happened to have focused
-    /// (`observations/herdr-0.8.0.md` section 6). Which workspace a pane is in is the
-    /// mirror's answer, and it is given before this is built.
+    /// `beside` says where in Muster's terms: the new tab goes wherever that pane already is.
+    /// A backend that groups tabs into something larger works out which group that means, from
+    /// the pane, in its own adapter - herdr's `tab.create` takes a workspace and ignores keys
+    /// it does not know, so naming the pane to it directly would put the tab wherever that
+    /// daemon last had focus (`observations/herdr-0.8.0.md` section 6). That defence is one
+    /// backend's behaviour and belongs where that backend does (MIP-2).
     CreateTab {
-        workspace: WorkspaceId,
+        beside: PaneId,
         /// Where its pane starts. Unlike a split, this is resolved before it is sent - a new
         /// tab has nothing to inherit from, and the backend's own answer is a home directory
         /// nobody asked for.

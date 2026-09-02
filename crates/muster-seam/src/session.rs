@@ -26,7 +26,7 @@ use muster_core::fields;
 use muster_core::find::{Found, Needle};
 use muster_core::input::{Bindings, PaneInput, PaneInputSettings, ScrollDirection};
 use muster_core::intent::{BackendChannel, BackendIntent, MoveDestination, Refusal};
-use muster_core::mirror::backend::{PaneId, PaneText, Snapshot, TabId, WorkspaceId};
+use muster_core::mirror::backend::{PaneId, PaneText, Snapshot, TabId};
 use muster_core::mirror::{Change, Health, Mirror};
 use muster_core::names::{self, Mint, Names, PaneNames, TabNames};
 use muster_core::problems::{Problem, Problems, Severity};
@@ -1363,16 +1363,17 @@ impl Session {
 
     fn show_wanted_tab(&mut self, daemon: &DaemonId) -> bool {
         let Some(tab) = self.wanted_tabs.get(daemon).cloned() else { return false };
-        let workspace = {
+        {
             let Some(backend) = self.backends.get(daemon) else { return false };
             let mirror = poison::lock(&backend.mirror, "mirror");
             // Not yet described. Left in place rather than dropped: the event is on its way,
             // and forgetting it here is a new tab nothing ever shows.
-            let Some(held) = mirror.tab(&tab) else { return false };
-            held.workspace.clone()
-        };
+            if mirror.tab(&tab).is_none() {
+                return false;
+            }
+        }
         self.wanted_tabs.remove(daemon);
-        self.composition.surface(daemon, workspace, tab).is_some()
+        self.composition.surface(daemon, tab).is_some()
     }
 
     /// Puts a region onto the tab holding this pane, so that something can show it.
@@ -1384,7 +1385,7 @@ impl Session {
     /// of and a pane that closed while a click was in flight look identical from a sidebar
     /// row, and both leave the keyboard where it was.
     fn surface(&mut self, daemon: &DaemonId, pane: &PaneId) -> Result<RegionId, String> {
-        let (workspace, tab) = {
+        let tab = {
             let backend = self.backends.get(daemon).ok_or_else(|| {
                 format!(
                     "this window is not following a daemon called {daemon}, so there is \
@@ -1399,9 +1400,9 @@ impl Session {
                      list outlives by a moment."
                 )
             })?;
-            (held.workspace.clone(), held.tab.clone())
+            held.tab.clone()
         };
-        self.composition.surface(daemon, workspace, tab).ok_or_else(|| {
+        self.composition.surface(daemon, tab).ok_or_else(|| {
             format!(
                 "{daemon} is followed but not attached to this window's composition, so no \
                  region could be opened onto {pane}."
@@ -2560,13 +2561,9 @@ fn reopen_what_was_left() {
         if showing.is_some() {
             duplicates += 1;
         }
-        let Some(id) = showing.or_else(|| {
-            session.composition.open_region(
-                &region.daemon,
-                region.workspace.clone(),
-                region.tab.clone(),
-            )
-        }) else {
+        let Some(id) =
+            showing.or_else(|| session.composition.open_region(&region.daemon, region.tab.clone()))
+        else {
             continue;
         };
         session.composition.set_weight(id, region.weight);
@@ -2740,7 +2737,7 @@ pub(crate) fn attach(pane_id: &str) -> Result<Arc<AttachedPane>, AttachError> {
     let pane = PaneId::new(pane_id);
     follow_implicitly_if_nothing_else().map_err(AttachError::Unreachable)?;
 
-    let (daemon, workspace, tab) = locate(&pane).ok_or_else(|| AttachError::NoSuchPane {
+    let (daemon, tab) = locate(&pane).ok_or_else(|| AttachError::NoSuchPane {
         pane: pane_id.to_string(),
         held: panes_followed(),
         dropped: 0,
@@ -2761,7 +2758,7 @@ pub(crate) fn attach(pane_id: &str) -> Result<Arc<AttachedPane>, AttachError> {
             Some(region) => region,
             None => session
                 .composition
-                .open_region(&daemon, workspace, tab)
+                .open_region(&daemon, tab)
                 .expect("the daemon holding this pane is one being followed"),
         };
         session.composition.focus_pane(region, pane.clone());
@@ -2800,24 +2797,22 @@ fn panes_followed() -> usize {
         .sum()
 }
 
-/// Which workspace a pane is in, and the directory it is sitting in.
+/// The directory a pane is sitting in.
 ///
-/// Both together because both come from the same mirror entry and the caller needs both to
-/// make a tab: the workspace is where it goes, and the directory is what it starts in.
+/// What a new tab beside it starts in. Read here rather than left to the daemon because a new
+/// tab has nothing to inherit from, so herdr would start it in a home directory - and what
+/// somebody pressing the key means is "where I already am".
 ///
-/// `None` when the daemon does not hold the pane, which is a pane that closed while a
-/// keystroke was in flight rather than a state to recover from.
-pub(crate) fn workspace_of(
-    daemon: &DaemonId,
-    pane: &PaneId,
-) -> Option<(WorkspaceId, Option<String>)> {
+/// `None` when the daemon does not hold the pane, or holds it and does not know the directory.
+/// The two are one answer on purpose: both mean the request carries no directory and the daemon
+/// decides, and a caller that told them apart would have nothing different to do about it.
+pub(crate) fn cwd_of(daemon: &DaemonId, pane: &PaneId) -> Option<String> {
     let session = poison::lock(&SESSION, "session");
     let mirror = poison::lock(&session.backends.get(daemon)?.mirror, "mirror");
     let held = mirror.pane(pane)?;
     // An empty directory is the daemon saying it does not know, which is different from a
     // directory somebody chose - and a tab started in "" would be started in `/`.
-    let cwd = (!held.cwd.is_empty()).then(|| held.cwd.clone());
-    Some((held.workspace.clone(), cwd))
+    (!held.cwd.is_empty()).then(|| held.cwd.clone())
 }
 
 /// Which tab a daemon holds this pane in.
@@ -2855,9 +2850,9 @@ pub(crate) fn daemon_holding_tab(tab: &TabId) -> Option<DaemonId> {
 /// hold it. Two would mean the registry handed one name to two panes, which is a bug in the
 /// mint rather than something a caller could have said more precisely - hence the warning
 /// rather than a refusal, and the first answer rather than none.
-fn locate(pane: &PaneId) -> Option<(DaemonId, WorkspaceId, TabId)> {
+fn locate(pane: &PaneId) -> Option<(DaemonId, TabId)> {
     let session = poison::lock(&SESSION, "session");
-    let mut found: Option<(DaemonId, WorkspaceId, TabId)> = None;
+    let mut found: Option<(DaemonId, TabId)> = None;
     for (id, backend) in &session.backends {
         let mirror = poison::lock(&backend.mirror, "mirror");
         let Some(held) = mirror.pane(pane) else { continue };
@@ -2876,7 +2871,7 @@ fn locate(pane: &PaneId) -> Option<(DaemonId, WorkspaceId, TabId)> {
             );
             break;
         }
-        found = Some((id.clone(), held.workspace.clone(), held.tab.clone()));
+        found = Some((id.clone(), held.tab.clone()));
     }
     found
 }
@@ -2914,7 +2909,7 @@ fn locate(pane: &PaneId) -> Option<(DaemonId, WorkspaceId, TabId)> {
 fn open_remaining_regions() {
     let mut session = poison::lock(&SESSION, "session");
     let showing: Vec<DaemonId> = session.composition.regions().map(|r| r.daemon.clone()).collect();
-    let mut wanted: Vec<(DaemonId, WorkspaceId, TabId)> = Vec::new();
+    let mut wanted: Vec<(DaemonId, TabId)> = Vec::new();
     let mut wants_one: Vec<DaemonId> = Vec::new();
     let mut leave_alone: Vec<DaemonId> = Vec::new();
     let mut inherited: Vec<(DaemonId, BTreeSet<TabId>)> = Vec::new();
@@ -2955,10 +2950,12 @@ fn open_remaining_regions() {
             Some(theirs) => tab_that_is_ours(&mirror, theirs),
             None => mirror.focus().tab.clone(),
         };
+        // The mirror has to hold the tab, not only name it: a cursor pointing at a tab this
+        // window has not been told the shape of is a region that would render nothing.
         if let Some(tab) = opening
-            && let Some(held) = mirror.tab(&tab)
+            && mirror.tab(&tab).is_some()
         {
-            wanted.push((id.clone(), held.workspace.clone(), tab));
+            wanted.push((id.clone(), tab));
         }
     }
     // Forgotten as soon as a machine has a tab, so a machine whose panes all close later is
@@ -2975,8 +2972,8 @@ fn open_remaining_regions() {
         session.claimed.insert(id, theirs);
     }
 
-    for (daemon, workspace, tab) in wanted {
-        session.composition.open_region(&daemon, workspace, tab);
+    for (daemon, tab) in wanted {
+        session.composition.open_region(&daemon, tab);
         session.reconcile(&daemon);
     }
     // Outside the lock, because submitting is a round trip and `submit` takes the session for

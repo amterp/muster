@@ -150,15 +150,16 @@
       }
     },
     {
-      "name": "a tab names the workspace it goes in, because nothing else can",
-      "why": "tab.create takes a workspace and nothing else - there is no pane_id it would accept - so the workspace is resolved from the mirror before the intent is built. A hopeful pane_id would be ignored and the tab would land wherever that daemon was focused.",
+      "name": "a tab names a workspace the intent never carried",
+      "why": "`tab.create` takes a workspace and nothing else - there is no `pane_id` it would accept - and a hopeful one would be ignored, putting the tab wherever that daemon was focused.\n\nThe intent names the pane the tab goes beside and no workspace at all (MIP-2): a workspace is herdr's unit for a whole project, and the core stopped carrying one. Which workspace that pane is in is a question only the daemon can answer, so `HerdrBackend::workspace_for` asks it with `pane.get` before this is built, and the answer arrives here as `workspace`. That is one extra round trip on a request somebody makes a few times an hour, and it is what stops the tab landing in whichever workspace the daemon last had focused.",
       "given": {
         "intent": "tab",
         "workspace": "w1",
         "cwd": "/src/muster",
         "env": {
           "HOME": "/home/a"
-        }
+        },
+        "pane": "p1"
       },
       "expect": {
         "method": "tab.create",
@@ -174,13 +175,14 @@
     },
     {
       "name": "a tab with nowhere named falls back to the daemon's own rule",
-      "why": "Reachable when the pane the keyboard is on has no directory yet. A home directory is a worse answer than the one somebody wanted, and a better one than refusing to make the tab.",
+      "why": "Reachable when the pane the tab goes beside has no directory yet. A home directory is a worse answer than the one somebody wanted, and a better one than refusing to make the tab. The workspace is still named, because it is not the caller's to leave out - see the case above.",
       "given": {
         "intent": "tab",
         "workspace": "w1",
         "env": {
           "HOME": "/home/a"
-        }
+        },
+        "pane": "p1"
       },
       "expect": {
         "method": "tab.create",

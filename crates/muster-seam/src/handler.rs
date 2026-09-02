@@ -652,9 +652,11 @@ fn held_elsewhere(pane: &PaneId, holder: &DaemonId, named: &str) -> Response {
 /// inherit from, so herdr would start it in a home directory - and the answer somebody
 /// pressing the key means is "where I already am", which the mirror already knows.
 ///
-/// Which workspace, too, and that one is not a nicety: `tab.create` takes a workspace and
-/// ignores keys it does not know, so a request that named the pane instead would be accepted
-/// and put the tab wherever that daemon last had focus.
+/// Which workspace it goes in is not decided here and is not this layer's to decide: the request
+/// names the pane, and the adapter asks the daemon which of its workspaces that means. That
+/// matters rather than being tidiness - `tab.create` takes a workspace and ignores keys it does
+/// not know, so a request that named the pane to herdr would be accepted and put the tab
+/// wherever that daemon last had focus (MIP-2).
 fn create_tab(create: &proto::CreateTab) -> Response {
     let cwd = (!create.cwd.is_empty()).then(|| create.cwd.clone());
     let run = (!create.run.is_empty()).then(|| create.run.clone());
@@ -681,15 +683,10 @@ fn create_tab(create: &proto::CreateTab) -> Response {
         return open_a_workspace(Some(daemon), keyboard, cwd, run, name);
     };
 
-    let Some((workspace, inherited)) = session::workspace_of(&daemon, &pane) else {
-        return Response::failure(format!(
-            "the daemon {daemon} holds no pane called {pane}, so there is no workspace to put \
-             a tab in and nothing was made. Most likely it closed while this was in flight."
-        ));
-    };
+    let inherited = session::cwd_of(&daemon, &pane);
     submit(
         &daemon,
-        &BackendIntent::CreateTab { workspace, cwd: cwd.or(inherited), run, name },
+        &BackendIntent::CreateTab { beside: pane, cwd: cwd.or(inherited), run, name },
         keyboard,
     )
 }

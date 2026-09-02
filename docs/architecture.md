@@ -327,8 +327,10 @@ codegen - a surface that cannot express an action is a missing message, visible 
   everything it broadcasts and for most answers, its own exported tree for a divider position. Muster reads both
   and tells them apart by which keys a payload has rather than by which verb answered, so a daemon that starts
   answering with either needs no change.
-- **The core owns composition**: which daemons are attached, and which (daemon, workspace, tab) shows in which
-  window region. Mixing is at tab granularity: a region displays one tab's pane tree, rendered from daemon truth;
+- **The core owns composition**: which daemons are attached, and which (daemon, tab) shows in which window
+  region. A workspace is the backend's unit for a whole project and is not one of Muster's own, so it is not in
+  this record and not in the file it is written to - the adapter works out which of a backend's workspaces a
+  request means, from the pane it names (MIP-2). Mixing is at tab granularity: a region displays one tab's pane tree, rendered from daemon truth;
   regions from different daemons sit side by side. Muster does not own an outer split tree over panes - that would
   make it a multiplexer (non-goal) - and a pane can never move between daemons: the process lives where it lives.
 - **Composition is resolved against the mirror, never patched by events.** It names daemon things - a tab, a
@@ -841,7 +843,7 @@ the one action path, which makes it scriptable, agent-drivable, and testable wit
 is the primitive, and it is additive rather than reconciling, so whatever calls it must apply into something fresh.
 
 **Muster's own durable state is composition, plus what the window looks like.** Composition is which daemons are
-attached, and which (daemon, workspace, tab) shows in which window region. Beside it, in the same file and under a
+attached, and which (daemon, tab) shows in which window region. Beside it, in the same file and under a
 table of its own, is the window's own chrome: whether the roster is open, how far the text is sized from what the
 config asked for, how big the window is, and whether it is full-screen. Everything else Muster holds is derived.
 That is a few hundred bytes, and its smallness is the point: the shell owns nothing, so there is nearly nothing to

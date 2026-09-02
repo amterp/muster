@@ -28,7 +28,6 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           }
         ],
@@ -56,7 +55,6 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           }
         ],
@@ -69,7 +67,7 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [
-          "r0 daemon=local workspace=w1 tab=w1:t1"
+          "r0 daemon=local tab=w1:t1"
         ],
         "focusedRegion": "r0",
         "view": [],
@@ -145,7 +143,6 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
@@ -163,7 +160,7 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [
-          "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p1"
+          "r0 daemon=local tab=w1:t1 pane=w1:p1"
         ],
         "focusedRegion": "r0",
         "focusedPane": "w1:p1",
@@ -246,7 +243,6 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
@@ -264,7 +260,7 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [
-          "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p3"
+          "r0 daemon=local tab=w1:t1 pane=w1:p3"
         ],
         "focusedRegion": "r0",
         "focusedPane": "w1:p3",
@@ -325,7 +321,6 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
@@ -343,7 +338,7 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [
-          "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p1"
+          "r0 daemon=local tab=w1:t1 pane=w1:p1"
         ],
         "focusedRegion": "r0",
         "focusedPane": "w1:p1",
@@ -406,7 +401,6 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
@@ -424,7 +418,7 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [
-          "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p2"
+          "r0 daemon=local tab=w1:t1 pane=w1:p2"
         ],
         "focusedRegion": "r0",
         "focusedPane": "w1:p2",
@@ -505,7 +499,6 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
@@ -533,7 +526,7 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [
-          "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p2"
+          "r0 daemon=local tab=w1:t1 pane=w1:p2"
         ],
         "focusedRegion": "r0",
         "focusedPane": "w1:p2",
@@ -658,7 +651,6 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
@@ -681,7 +673,7 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [
-          "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p1"
+          "r0 daemon=local tab=w1:t1 pane=w1:p1"
         ],
         "focusedRegion": "r0",
         "focusedPane": "w1:p1",
@@ -774,7 +766,6 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
@@ -886,13 +877,11 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
             "do": "openRegion",
             "daemon": "devenv",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
@@ -921,7 +910,7 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [
-          "r1 daemon=devenv workspace=w1 tab=w1:t1 pane=w1:p1"
+          "r1 daemon=devenv tab=w1:t1 pane=w1:p1"
         ],
         "focusedRegion": "r1",
         "focusedPane": "w1:p1",
@@ -1009,13 +998,11 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
             "do": "openRegion",
             "daemon": "devenv",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
@@ -1042,7 +1029,7 @@
           "devenv local=/tmp/herdr-devenv.sock"
         ],
         "regions": [
-          "r1 daemon=devenv workspace=w1 tab=w1:t1 pane=w1:p1"
+          "r1 daemon=devenv tab=w1:t1 pane=w1:p1"
         ],
         "focusedRegion": "r1",
         "focusedPane": "w1:p1",
@@ -1125,13 +1112,11 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
@@ -1157,7 +1142,7 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [
-          "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p1"
+          "r0 daemon=local tab=w1:t1 pane=w1:p1"
         ],
         "focusedRegion": "r0",
         "focusedPane": "w1:p1",
@@ -1240,13 +1225,11 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
@@ -1272,7 +1255,7 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [
-          "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p1"
+          "r0 daemon=local tab=w1:t1 pane=w1:p1"
         ],
         "focusedRegion": "r0",
         "focusedPane": "w1:p1",
@@ -1355,7 +1338,6 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
@@ -1365,7 +1347,6 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
@@ -1383,7 +1364,7 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [
-          "r1 daemon=local workspace=w1 tab=w1:t1 pane=w1:p1"
+          "r1 daemon=local tab=w1:t1 pane=w1:p1"
         ],
         "focusedRegion": "r1",
         "focusedPane": "w1:p1",
@@ -1466,7 +1447,6 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
@@ -1489,7 +1469,7 @@
           "local local=/tmp/herdr-restarted.sock"
         ],
         "regions": [
-          "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p1"
+          "r0 daemon=local tab=w1:t1 pane=w1:p1"
         ],
         "focusedRegion": "r0",
         "focusedPane": "w1:p1",
@@ -1612,7 +1592,6 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
@@ -1637,7 +1616,7 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [
-          "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p2"
+          "r0 daemon=local tab=w1:t1 pane=w1:p2"
         ],
         "focusedRegion": "r0",
         "focusedPane": "w1:p2",
@@ -1724,7 +1703,6 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
@@ -1739,7 +1717,7 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [
-          "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p1"
+          "r0 daemon=local tab=w1:t1 pane=w1:p1"
         ],
         "focusedRegion": "r0",
         "focusedPane": "w1:p1",
@@ -1812,7 +1790,6 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
@@ -1840,7 +1817,7 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [
-          "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p2"
+          "r0 daemon=local tab=w1:t1 pane=w1:p2"
         ],
         "focusedRegion": "r0",
         "focusedPane": "w1:p2",
@@ -1914,7 +1891,6 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
@@ -1946,7 +1922,7 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [
-          "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p2"
+          "r0 daemon=local tab=w1:t1 pane=w1:p2"
         ],
         "focusedRegion": "r0",
         "focusedPane": "w1:p2",
@@ -2034,7 +2010,6 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
@@ -2054,7 +2029,7 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [
-          "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p3"
+          "r0 daemon=local tab=w1:t1 pane=w1:p3"
         ],
         "focusedRegion": "r0",
         "focusedPane": "w1:p3",
@@ -2143,13 +2118,11 @@
           {
             "do": "openRegion",
             "daemon": "devenv",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
@@ -2170,8 +2143,8 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [
-          "r0 daemon=devenv workspace=w1 tab=w1:t1 pane=w1:p1",
-          "r1 daemon=local workspace=w1 tab=w1:t1 pane=w1:p1"
+          "r0 daemon=devenv tab=w1:t1 pane=w1:p1",
+          "r1 daemon=local tab=w1:t1 pane=w1:p1"
         ],
         "focusedRegion": "r0",
         "focusedPane": "w1:p1",
@@ -2261,7 +2234,6 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
@@ -2280,7 +2252,7 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [
-          "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p2"
+          "r0 daemon=local tab=w1:t1 pane=w1:p2"
         ],
         "focusedRegion": "r0",
         "focusedPane": "w1:p2",
@@ -2366,7 +2338,6 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
@@ -2390,7 +2361,7 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [
-          "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p1"
+          "r0 daemon=local tab=w1:t1 pane=w1:p1"
         ],
         "focusedRegion": "r0",
         "focusedPane": "w1:p1",
@@ -2476,7 +2447,6 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
@@ -2495,7 +2465,7 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [
-          "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p3"
+          "r0 daemon=local tab=w1:t1 pane=w1:p3"
         ],
         "focusedRegion": "r0",
         "focusedPane": "w1:p3",
@@ -2586,13 +2556,11 @@
           {
             "do": "openRegion",
             "daemon": "devenv",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
@@ -2622,8 +2590,8 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [
-          "r0 daemon=devenv workspace=w1 tab=w1:t1 pane=w1:p3",
-          "r1 daemon=local workspace=w1 tab=w1:t1 pane=w1:p1"
+          "r0 daemon=devenv tab=w1:t1 pane=w1:p3",
+          "r1 daemon=local tab=w1:t1 pane=w1:p1"
         ],
         "focusedRegion": "r1",
         "focusedPane": "w1:p1",
@@ -2784,7 +2752,6 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
@@ -2804,7 +2771,7 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [
-          "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p1"
+          "r0 daemon=local tab=w1:t1 pane=w1:p1"
         ],
         "focusedRegion": "r0",
         "focusedPane": "w1:p1",
@@ -2937,7 +2904,6 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
@@ -2957,7 +2923,7 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [
-          "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p1"
+          "r0 daemon=local tab=w1:t1 pane=w1:p1"
         ],
         "focusedRegion": "r0",
         "focusedPane": "w1:p1",
@@ -3091,13 +3057,11 @@
           {
             "do": "openRegion",
             "daemon": "devenv",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
@@ -3122,8 +3086,8 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [
-          "r0 daemon=devenv workspace=w1 tab=w1:t1 pane=w1:p1",
-          "r1 daemon=local workspace=w1 tab=w1:t1 pane=w1:p1"
+          "r0 daemon=devenv tab=w1:t1 pane=w1:p1",
+          "r1 daemon=local tab=w1:t1 pane=w1:p1"
         ],
         "focusedRegion": "r1",
         "focusedPane": "w1:p1",
@@ -3206,13 +3170,11 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
             "do": "openRegion",
             "daemon": "devenv",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
@@ -3245,8 +3207,8 @@
           "local local"
         ],
         "regions": [
-          "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p1",
-          "r1 daemon=devenv workspace=w1 tab=w1:t1 pane=w1:p2"
+          "r0 daemon=local tab=w1:t1 pane=w1:p1",
+          "r1 daemon=devenv tab=w1:t1 pane=w1:p2"
         ],
         "focusedRegion": "r1",
         "focusedPane": "w1:p2",
@@ -3275,13 +3237,11 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
             "do": "surface",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t2"
           }
         ],
@@ -3292,7 +3252,7 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [
-          "r0 daemon=local workspace=w1 tab=w1:t2"
+          "r0 daemon=local tab=w1:t2"
         ],
         "focusedRegion": "r0",
         "view": [],
@@ -3312,13 +3272,11 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
             "do": "surface",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           }
         ],
@@ -3329,7 +3287,7 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [
-          "r0 daemon=local workspace=w1 tab=w1:t1"
+          "r0 daemon=local tab=w1:t1"
         ],
         "focusedRegion": "r0",
         "view": [],
@@ -3354,13 +3312,11 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
             "do": "openRegion",
             "daemon": "devenv",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
@@ -3370,7 +3326,6 @@
           {
             "do": "surface",
             "daemon": "devenv",
-            "workspace": "w1",
             "tab": "w1:t9"
           }
         ],
@@ -3382,8 +3337,8 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [
-          "r0 daemon=local workspace=w1 tab=w1:t1",
-          "r1 daemon=devenv workspace=w1 tab=w1:t9"
+          "r0 daemon=local tab=w1:t1",
+          "r1 daemon=devenv tab=w1:t9"
         ],
         "focusedRegion": "r0",
         "view": [],
@@ -3408,13 +3363,11 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
             "do": "surface",
             "daemon": "devenv",
-            "workspace": "w1",
             "tab": "w1:t1"
           }
         ],
@@ -3426,8 +3379,8 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [
-          "r0 daemon=local workspace=w1 tab=w1:t1",
-          "r1 daemon=devenv workspace=w1 tab=w1:t1"
+          "r0 daemon=local tab=w1:t1",
+          "r1 daemon=devenv tab=w1:t1"
         ],
         "focusedRegion": "r0",
         "view": [],
@@ -3447,13 +3400,11 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t2"
           },
           {
@@ -3463,7 +3414,6 @@
           {
             "do": "surface",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t3"
           }
         ],
@@ -3474,8 +3424,8 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [
-          "r0 daemon=local workspace=w1 tab=w1:t1",
-          "r1 daemon=local workspace=w1 tab=w1:t3"
+          "r0 daemon=local tab=w1:t1",
+          "r1 daemon=local tab=w1:t3"
         ],
         "focusedRegion": "r1",
         "view": [],
@@ -3543,7 +3493,6 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
@@ -3554,7 +3503,6 @@
           {
             "do": "surface",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t2"
           }
         ],
@@ -3565,7 +3513,7 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [
-          "r0 daemon=local workspace=w1 tab=w1:t2"
+          "r0 daemon=local tab=w1:t2"
         ],
         "focusedRegion": "r0",
         "view": [
@@ -3594,13 +3542,11 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
             "do": "openRegion",
             "daemon": "devenv",
-            "workspace": "w1",
             "tab": "w1:t1"
           }
         ],
@@ -3612,8 +3558,8 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [
-          "r0 daemon=local workspace=w1 tab=w1:t1",
-          "r1 daemon=devenv workspace=w1 tab=w1:t1"
+          "r0 daemon=local tab=w1:t1",
+          "r1 daemon=devenv tab=w1:t1"
         ],
         "focusedRegion": "r0",
         "view": [],
@@ -3638,13 +3584,11 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
             "do": "openRegion",
             "daemon": "devenv",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
@@ -3661,8 +3605,8 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [
-          "r0 daemon=local workspace=w1 tab=w1:t1 weight=1.500",
-          "r1 daemon=devenv workspace=w1 tab=w1:t1 weight=0.500"
+          "r0 daemon=local tab=w1:t1 weight=1.500",
+          "r1 daemon=devenv tab=w1:t1 weight=0.500"
         ],
         "focusedRegion": "r0",
         "view": [],
@@ -3682,19 +3626,16 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t2"
           },
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t3"
           },
           {
@@ -3710,9 +3651,9 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [
-          "r0 daemon=local workspace=w1 tab=w1:t1 weight=0.500",
-          "r1 daemon=local workspace=w1 tab=w1:t2 weight=1.500",
-          "r2 daemon=local workspace=w1 tab=w1:t3"
+          "r0 daemon=local tab=w1:t1 weight=0.500",
+          "r1 daemon=local tab=w1:t2 weight=1.500",
+          "r2 daemon=local tab=w1:t3"
         ],
         "focusedRegion": "r0",
         "view": [],
@@ -3737,13 +3678,11 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
             "do": "openRegion",
             "daemon": "devenv",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
@@ -3760,8 +3699,8 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [
-          "r0 daemon=local workspace=w1 tab=w1:t1 weight=0.200",
-          "r1 daemon=devenv workspace=w1 tab=w1:t1 weight=1.800"
+          "r0 daemon=local tab=w1:t1 weight=0.200",
+          "r1 daemon=devenv tab=w1:t1 weight=1.800"
         ],
         "focusedRegion": "r0",
         "view": [],
@@ -3786,13 +3725,11 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
             "do": "openRegion",
             "daemon": "devenv",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
@@ -3809,8 +3746,8 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [
-          "r0 daemon=local workspace=w1 tab=w1:t1 weight=1.800",
-          "r1 daemon=devenv workspace=w1 tab=w1:t1 weight=0.200"
+          "r0 daemon=local tab=w1:t1 weight=1.800",
+          "r1 daemon=devenv tab=w1:t1 weight=0.200"
         ],
         "focusedRegion": "r0",
         "view": [],
@@ -3835,13 +3772,11 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
             "do": "openRegion",
             "daemon": "devenv",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
@@ -3858,8 +3793,8 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [
-          "r0 daemon=local workspace=w1 tab=w1:t1",
-          "r1 daemon=devenv workspace=w1 tab=w1:t1"
+          "r0 daemon=local tab=w1:t1",
+          "r1 daemon=devenv tab=w1:t1"
         ],
         "focusedRegion": "r0",
         "view": [],
@@ -3884,13 +3819,11 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
             "do": "openRegion",
             "daemon": "devenv",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
@@ -3911,7 +3844,7 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [
-          "r1 daemon=devenv workspace=w1 tab=w1:t1"
+          "r1 daemon=devenv tab=w1:t1"
         ],
         "focusedRegion": "r1",
         "view": [],
@@ -3999,7 +3932,6 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
@@ -4024,7 +3956,7 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [
-          "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p2"
+          "r0 daemon=local tab=w1:t1 pane=w1:p2"
         ],
         "focusedRegion": "r0",
         "focusedPane": "w1:p2",
@@ -4120,7 +4052,6 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
@@ -4145,7 +4076,7 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [
-          "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p1"
+          "r0 daemon=local tab=w1:t1 pane=w1:p1"
         ],
         "focusedRegion": "r0",
         "focusedPane": "w1:p1",
@@ -4241,7 +4172,6 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
@@ -4266,7 +4196,7 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [
-          "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p3"
+          "r0 daemon=local tab=w1:t1 pane=w1:p3"
         ],
         "focusedRegion": "r0",
         "focusedPane": "w1:p3",
@@ -4362,7 +4292,6 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
@@ -4387,7 +4316,7 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [
-          "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p1"
+          "r0 daemon=local tab=w1:t1 pane=w1:p1"
         ],
         "focusedRegion": "r0",
         "focusedPane": "w1:p1",
@@ -4483,7 +4412,6 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
@@ -4508,7 +4436,7 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [
-          "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p1"
+          "r0 daemon=local tab=w1:t1 pane=w1:p1"
         ],
         "focusedRegion": "r0",
         "focusedPane": "w1:p1",
@@ -4604,7 +4532,6 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
@@ -4629,7 +4556,7 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [
-          "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p4"
+          "r0 daemon=local tab=w1:t1 pane=w1:p4"
         ],
         "focusedRegion": "r0",
         "focusedPane": "w1:p4",
@@ -4725,7 +4652,6 @@
           {
             "do": "openRegion",
             "daemon": "local",
-            "workspace": "w1",
             "tab": "w1:t1"
           },
           {
@@ -4750,7 +4676,7 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [
-          "r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p2"
+          "r0 daemon=local tab=w1:t1 pane=w1:p2"
         ],
         "focusedRegion": "r0",
         "focusedPane": "w1:p2",
