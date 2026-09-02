@@ -855,9 +855,14 @@ extension MusterWindow {
   @objc public func newWindow(_ sender: Any?) {
     let configuration = NSWorkspace.OpenConfiguration()
     configuration.createsNewApplicationInstance = true
+    // Somebody asked for this one, so it starts on tabs of its own rather than on the ones this
+    // window is showing - which it could not render anyway, because herdr allows one client per
+    // terminal.
+    var arguments = [freshFlag]
     if let home = ProcessInfo.processInfo.environment["MUSTER_HOME"], !home.isEmpty {
-      configuration.arguments = ["--home", home]
+      arguments += ["--home", home]
     }
+    configuration.arguments = arguments
     NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: configuration) {
       _, error in
       guard let error else { return }

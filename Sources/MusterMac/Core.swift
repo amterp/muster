@@ -27,7 +27,7 @@ public enum Core {
     logPath: String?, configPath: String? = nil, daemonPath: String? = nil,
     statePath: String? = nil, daemonConfigPath: String? = nil, paneNamesPath: String? = nil,
     commandSocketPath: String? = nil, commandsPath: String? = nil, cachePath: String? = nil,
-    process: String = "app"
+    fresh: Bool = false, process: String = "app"
   ) {
     muster_set_event_callback(coreEventArrived)
 
@@ -41,6 +41,7 @@ public enum Core {
     startup.commandSocketPath = commandSocketPath ?? ""
     startup.commandsPath = commandsPath ?? ""
     startup.cachePath = cachePath ?? ""
+    startup.fresh = fresh
     startup.locale = platformLocale() ?? ""
     startup.logLevel = ProcessInfo.processInfo.environment["MUSTER_LOG_LEVEL"] ?? ""
     startup.process = process

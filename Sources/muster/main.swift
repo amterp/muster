@@ -67,10 +67,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // holding a link that cannot run.
     let commands = refreshMusterCommand(
       executable: CommandLine.arguments[0], commands: commandsPath())
+    // A window somebody asked for remembers nothing and starts on tabs of its own. The two
+    // halves are answered by different layers on purpose: where the arrangement lives is an OS
+    // question, so the shell answers it by naming nowhere, and where the window starts is the
+    // core's, so the core is told which kind of launch this is.
+    let fresh = launchIsFresh(arguments: Array(CommandLine.arguments.dropFirst()))
     Core.start(
-      logPath: logPath, configPath: config, daemonPath: daemon, statePath: statePath(),
+      logPath: logPath, configPath: config, daemonPath: daemon,
+      statePath: fresh ? nil : statePath(),
       daemonConfigPath: daemonConfigPath(), paneNamesPath: paneNamesPath(),
-      commandSocketPath: commandSocketPath(), commandsPath: commands, cachePath: cachePath())
+      commandSocketPath: commandSocketPath(), commandsPath: commands, cachePath: cachePath(),
+      fresh: fresh)
     Core.info(
       "app.launch",
       [

@@ -1305,6 +1305,9 @@ fn start(startup: &proto::Startup) -> Response {
     // attaching publishes, and a publish before this is one that would write the arrangement
     // out to nowhere - or worse, read it back after it had been replaced.
     session::set_state_path(&startup.state_path);
+    // Beside the arrangement, and before the config for the same reason: applying one attaches
+    // daemons, and the first machine to answer is the first one this decides where to start.
+    session::set_fresh(startup.fresh);
     // Before the config, and for the sharpest version of the same reason: applying one attaches
     // daemons, and the first snapshot from each mints a name for every pane it describes. Read
     // afterwards, every pane already open would be named a second time, and a program running

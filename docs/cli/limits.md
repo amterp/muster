@@ -70,9 +70,24 @@ command whose default destroys something.
 ## A second window is not reopened for you
 
 `muster window new` opens one and it behaves like any other, but nothing brings it back after a
-quit: Muster reopens the window it was last in, and the others are gone. Their panes are not -
-those belong to the daemon and outlive every window - so what is lost is the arrangement, not
-the work. Open another window and go to the tabs you want.
+quit: only the window Muster comes back to remembers what it was showing, and the others are
+gone. Their panes are not - those belong to the daemon and outlive every window - so what is
+lost is the arrangement, not the work. Open another window and go to the tabs you want.
+
+That one window owns the arrangement deliberately, and it is why a second window remembers
+nothing rather than remembering badly: two windows writing one file meant whichever published
+last decided what came back.
+
+## A second window opens on tabs of its own
+
+A window you asked for asks each machine for a workspace and opens onto that, rather than onto
+whatever that machine last had focused. It has to: the focused tab is usually the one another
+window is showing, only one client may hold a terminal, and a second window opened there paints
+nothing at all.
+
+So `muster window new` is not a way to look at the same agents twice. To reach a pane another
+window is showing, go to it in that window - `muster --socket "$W" tab focus <TAB>` - rather
+than opening a second one onto it.
 
 ## A name somebody typed does not cross windows straight away
 
