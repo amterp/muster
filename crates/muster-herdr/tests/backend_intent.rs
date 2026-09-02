@@ -30,10 +30,9 @@ fn backend_intent_conformance() {
         // valid values that herdr accepts, and only one of them can be scrolled to.
         let names = names(given);
         let built = match text(given, "intent")?.as_str() {
-            "read" => names.backend_pane(&PaneId::new(&text(given, "pane")?)).map(|pane| {
-                let rows = given.get("rows").and_then(Value::as_u64).unwrap_or_default();
-                read_request(&pane, u32::try_from(rows).unwrap_or(u32::MAX))
-            }),
+            "read" => names
+                .backend_pane(&PaneId::new(&text(given, "pane")?))
+                .map(|pane| read_request(&pane)),
             // The workspace a new tab goes in comes from the daemon rather than from the intent
             // (MIP-2), so a case that describes a tab says which workspace the pane it names is
             // in - the answer `HerdrBackend::workspace_for` would have fetched.
@@ -200,7 +199,7 @@ fn every_request() -> Vec<(&'static str, Value)> {
             request(intent, &panes, &backend_names(), Some("w1")).expect("every id is its own name")
         })
         .collect();
-    all.push(read_request(&BackendPaneId::new("p1"), 0));
+    all.push(read_request(&BackendPaneId::new("p1")));
     all
 }
 
