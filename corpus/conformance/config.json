@@ -878,7 +878,7 @@
         ]
       },
       "expect": {
-        "refused": "the config file's [colors] has a key called \"backgrnd\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: background, foreground, cursor, cursor_text, selection_background, selection_foreground, divider, focus_ring, agent_working, agent_blocked, agent_done, agent_idle, agent_unknown, palette."
+        "refused": "the config file's [colors] has a key called \"backgrnd\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: background, foreground, cursor, cursor_text, selection_background, selection_foreground, bold, divider, focus_ring, agent_working, agent_blocked, agent_done, agent_idle, agent_unknown, palette."
       }
     },
     {
@@ -973,7 +973,7 @@
         ]
       },
       "expect": {
-        "refused": "`colors` in the config file is a string, and it has to be a block - `[colors]` with its settings under it. None of the file was applied. Known keys there: background, foreground, cursor, cursor_text, selection_background, selection_foreground, divider, focus_ring, agent_working, agent_blocked, agent_done, agent_idle, agent_unknown, palette."
+        "refused": "`colors` in the config file is a string, and it has to be a block - `[colors]` with its settings under it. None of the file was applied. Known keys there: background, foreground, cursor, cursor_text, selection_background, selection_foreground, bold, divider, focus_ring, agent_working, agent_blocked, agent_done, agent_idle, agent_unknown, palette."
       }
     },
     {
@@ -1279,6 +1279,25 @@
       },
       "expect": {
         "refused": "`agent_working` in the config file's [colors]: `cyan` is not a colour Muster can read. Write six hex digits, with or without a leading hash - `#4a4a4a`. None of the file was applied."
+      }
+    },
+    {
+      "name": "bold text can be given a colour of its own",
+      "why": "Muster is a terminal for reading agent output, agent output is full of `**bold**`, and nothing else distinguishes it - so a Claude pane reads flat here where the same session in another terminal does not. It sits with the other pane colours because it is one: the renderer paints it, and Muster only hands it on.",
+      "given": {
+        "file": [
+          "[colors]",
+          "bold = \"#e5c07b\""
+        ]
+      },
+      "expect": {
+        "daemons": [],
+        "keymap": [],
+        "option_as_alt": "never",
+        "text": [],
+        "appearance": [
+          "colors.bold=#e5c07b"
+        ]
       }
     }
   ]

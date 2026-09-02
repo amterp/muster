@@ -58,6 +58,7 @@ fn appearance(appearance: &config::Appearance) -> Vec<String> {
         ("cursor_text", colors.cursor_text),
         ("selection_background", colors.selection_background),
         ("selection_foreground", colors.selection_foreground),
+        ("bold", colors.bold),
         ("divider", colors.divider),
         ("focus_ring", colors.focus_ring),
         ("agent_working", colors.agents.working),
