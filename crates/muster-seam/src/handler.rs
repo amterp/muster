@@ -858,6 +858,7 @@ fn appearance_message() -> proto::Appearance {
         cursor_text: color(appearance.colors.cursor_text),
         selection_background: color(appearance.colors.selection_background),
         selection_foreground: color(appearance.colors.selection_foreground),
+        bold: color(appearance.colors.bold),
         palette: appearance
             .colors
             .palette

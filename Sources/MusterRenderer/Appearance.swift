@@ -25,6 +25,11 @@ public struct Appearance: Equatable, Sendable {
   public var selectionBackground: String?
   public var selectionForeground: String?
 
+  /// What bold text is painted in. Absent leaves bold whatever colour the text already had,
+  /// which is what a terminal does - and why an agent's output, which is full of `**bold**`,
+  /// reads flat without this.
+  public var bold: String?
+
   /// The sixteen ANSI colours, or none of them. Never a partial list - the core refuses one.
   public var palette: [String]
 
@@ -40,6 +45,7 @@ public struct Appearance: Equatable, Sendable {
     background: String? = nil, foreground: String? = nil,
     cursor: String? = nil, cursorText: String? = nil,
     selectionBackground: String? = nil, selectionForeground: String? = nil,
+    bold: String? = nil,
     palette: [String] = [],
     cursorStyle: CursorStyle? = nil, cursorBlink: Bool? = nil,
     panePadding: UInt32? = nil
@@ -52,6 +58,7 @@ public struct Appearance: Equatable, Sendable {
     self.cursorText = cursorText
     self.selectionBackground = selectionBackground
     self.selectionForeground = selectionForeground
+    self.bold = bold
     self.palette = palette
     self.cursorStyle = cursorStyle
     self.cursorBlink = cursorBlink
@@ -99,6 +106,10 @@ public func ghosttyConfiguration(_ appearance: Appearance) -> [String] {
   set("cursor-text", appearance.cursorText)
   set("selection-background", appearance.selectionBackground)
   set("selection-foreground", appearance.selectionForeground)
+  // ghostty spells this one `bold-color` and also takes `bright` there, which Muster does not
+  // offer: every other key in `[colors]` is a colour, and a second spelling meaning "the bright
+  // slot of whatever hue this already was" is a different setting wearing the same name.
+  set("bold-color", appearance.bold)
 
   // One line per colour, which is how a repeatable key accumulates. Indexed from zero, matching
   // the order the core publishes them in: black through bright white.

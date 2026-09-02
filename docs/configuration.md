@@ -46,6 +46,7 @@ cursor = "#f5e0dc"
 cursor_text = "#1e1e2e"        # the character under the cursor
 selection_background = "#414868"
 selection_foreground = "#c0caf5"
+bold = "#e5c07b"              # bold text; omit and it keeps whatever colour it already had
 divider = "#4a4a4a"            # the line between two regions; omit for the platform's
 focus_ring = "#bb9af7"         # which pane has the keyboard; omit to follow the macOS accent
 agent_working = "#7aa2f7"      # the five agent states, on a pane's edge and its row's dot
@@ -304,6 +305,11 @@ designed. `divider`, `focus_ring` and the five `agent_*`
 sit with the pane colours even though Muster rather than the renderer paints them, because you
 pick colours all at once and which piece of code holds the brush is not something you should
 have to know.
+
+**`bold` is the one appearance setting that changes how readable an agent is.** A terminal
+paints bold text in whatever colour the text already had, and a harness writes `**bold**` with
+nothing else distinguishing it - so a Claude pane reads flat until you give bold a colour of its
+own. Omitting it is the behaviour every terminal has by default.
 
 **The colours Muster invented are yours too, and only in the window.** `agent_working` and its
 four siblings are what a pane's edge and its row's dot are painted in; `focus_ring` is the thin

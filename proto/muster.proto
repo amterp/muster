@@ -349,6 +349,10 @@ message Appearance {
   string selection_background = 7;
   string selection_foreground = 8;
 
+  // What bold text is painted in. Empty leaves it whatever colour the text already had, which
+  // is what a terminal does and why a harness writing `**bold**` reads flat.
+  string bold = 16;
+
   // The sixteen ANSI colours, black through bright white, or none of them. Never a partial
   // list: the core refuses one, because a few entries of somebody's theme over the rest of the
   // renderer's is a scheme nobody designed.

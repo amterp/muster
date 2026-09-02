@@ -95,7 +95,7 @@ pub struct Font {
 
 /// `[colors]`.
 ///
-/// Six that decide what a pane looks like, seven that decide what Muster's own chrome looks
+/// Seven that decide what a pane looks like, seven that decide what Muster's own chrome looks
 /// like, and the ANSI palette a program in a pane addresses by number.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Colors {
@@ -108,6 +108,14 @@ pub struct Colors {
 
     pub selection_background: Option<Rgb>,
     pub selection_foreground: Option<Rgb>,
+
+    /// What bold text is painted in.
+    ///
+    /// Absent leaves bold to whatever colour the text already had, which is what a terminal
+    /// does by default and why an agent's output reads flat here: a harness writes `**bold**`
+    /// and nothing else distinguishes it. The one appearance setting that changes how readable
+    /// the thing Muster exists to show actually is.
+    pub bold: Option<Rgb>,
 
     /// The line between two regions.
     ///
@@ -477,13 +485,14 @@ const ROOT_KEYS: [&str; 14] = [
 const FONT_KEYS: [&str; 2] = ["family", "size"];
 
 /// The keys `[colors]` may carry.
-const COLOR_KEYS: [&str; 14] = [
+const COLOR_KEYS: [&str; 15] = [
     "background",
     "foreground",
     "cursor",
     "cursor_text",
     "selection_background",
     "selection_foreground",
+    "bold",
     "divider",
     "focus_ring",
     "agent_working",
@@ -788,6 +797,7 @@ fn read_colors(block: Option<&toml::Table>) -> Result<Colors, String> {
         cursor_text: color(block, "cursor_text")?,
         selection_background: color(block, "selection_background")?,
         selection_foreground: color(block, "selection_foreground")?,
+        bold: color(block, "bold")?,
         divider: color(block, "divider")?,
         focus_ring: color(block, "focus_ring")?,
         agents: AgentColors {

@@ -85,6 +85,7 @@ import Testing
           background: "#282c34", foreground: "#ffffff",
           cursor: "#f5e0dc", cursorText: "#1e1e2e",
           selectionBackground: "#414868", selectionForeground: "#c0caf5",
+          bold: "#e5c07b",
           palette: (0..<16).map { String(format: "#%02x0000", $0) },
           cursorStyle: .bar, cursorBlink: false,
           panePadding: 4)))
@@ -105,9 +106,26 @@ import Testing
     // The other five are write-only through this API and the count above is what covers them:
     // `font-family` is a RepeatableString, and `cursor-color`, `cursor-text` and both selection
     // colours are `?TerminalColor` - a union, which has no C representation.
-    for unreadable in ["font-family", "cursor-color", "cursor-text", "selection-background"] {
+    for unreadable in [
+      "font-family", "cursor-color", "cursor-text", "selection-background", "bold-color",
+    ] {
       #expect(color(config, unreadable) == nil, "\(unreadable) became readable")
     }
+  }
+
+  @Test func theLibraryOnThisPinKnowsWhatBoldColorIs() throws {
+    // The check the card asked for before building this: a key ghostty gained after
+    // deps/ghostty.pin would land in the generated file and be silently ignored, and there is
+    // nothing in a window that would say so. A non-zero count here is that, caught at the pin
+    // rather than by somebody wondering why their bold text is the same colour it was.
+    //
+    // `bold-color` is a union like the selection colours, so it cannot be read back and the
+    // count is the whole oracle - which is exactly the case it was designed for.
+    let config = try loaded(ghosttyConfiguration(Appearance(bold: "#e5c07b")))
+    defer { ghostty_config_free(config) }
+
+    #expect(ghostty_config_diagnostics_count(config) == 0)
+    #expect(ghosttyConfiguration(Appearance(bold: "#e5c07b")) == ["bold-color = #e5c07b"])
   }
 
   @Test func hollowIsMustersWordAndBlockHollowIsGhosttys() throws {

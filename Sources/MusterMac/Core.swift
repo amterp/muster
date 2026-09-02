@@ -424,6 +424,7 @@ public enum Core {
         cursorText: named(answer.cursorText),
         selectionBackground: named(answer.selectionBackground),
         selectionForeground: named(answer.selectionForeground),
+        bold: named(answer.bold),
         palette: answer.palette,
         cursorStyle: MusterRenderer.Appearance.CursorStyle(rawValue: answer.cursorStyle),
         cursorBlink: answer.hasCursorBlink ? answer.cursorBlink : nil,
