@@ -32,7 +32,7 @@ use std::sync::{Arc, Mutex};
 
 use muster_core::diagnostics::{log, poison};
 use muster_core::fields;
-use muster_core::respawn::Ending;
+use muster_core::respawn::Ended;
 
 use crate::bridge_report::Exiting;
 use crate::control_stream::ControlStreamMessage;
@@ -55,28 +55,6 @@ impl std::fmt::Display for Failure {
 }
 
 impl std::error::Error for Failure {}
-
-/// A bridge that has stopped, and what it managed to say first.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Ended {
-    pub ending: Ending,
-    /// herdr's own sentence about it, when the bridge lived long enough to pass one on.
-    pub reason: Option<String>,
-    /// Whether it ever painted anything.
-    pub rendered: bool,
-}
-
-impl Ended {
-    /// What a bridge that said nothing is taken to have meant.
-    ///
-    /// `Lost` because that is the ending whose answer is to look again and start another, and
-    /// a bridge that was killed - by a signal, by the machine going away - has said nothing
-    /// and is exactly that case. A bridge refused its terminal, or told its terminal had gone
-    /// to somebody else, has a moment to say so and does.
-    pub fn unsaid() -> Ended {
-        Ended { ending: Ending::Lost, reason: None, rendered: false }
-    }
-}
 
 /// What a channel tells its owner about the bridge on the other end.
 ///

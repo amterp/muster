@@ -21,6 +21,7 @@ use muster_core::PaneKey;
 use muster_core::diagnostics::{clock, log, poison};
 use muster_core::fields;
 use muster_core::problems::Severity;
+use muster_core::respawn::Ended;
 use muster_core::typeable::Waiting;
 
 use crate::session;
@@ -78,10 +79,18 @@ static KNOCK: Condvar = Condvar::new();
 static WATCHING: AtomicBool = AtomicBool::new(false);
 
 /// A pane's socket is bound, so its bridge is expected from now.
-///
-/// Also how a wait restarts, for a pane whose surface was thrown away and built again.
 pub(crate) fn opened(pane: PaneKey) {
     poison::lock(&WAITING, "typeable").opened(pane, clock::monotonic_now());
+    start();
+}
+
+/// A pane's bridge ended, so the wait restarts - and this time it knows why.
+///
+/// The whole difference between "look in the run log" and a sentence naming what happened and
+/// what releases it. A pane that stays dark after this says so on its own row five seconds
+/// later, which is the one surface a person actually sees.
+pub(crate) fn ended(pane: PaneKey, ended: Ended) {
+    poison::lock(&WAITING, "typeable").ended(pane, clock::monotonic_now(), ended);
     start();
 }
 

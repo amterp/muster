@@ -17,6 +17,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::composition::PaneKey;
+use crate::respawn::{self, Ended, Ending};
 
 /// What the problem list should be told, having compared the waiting panes against the clock.
 ///
@@ -34,11 +35,24 @@ pub struct Reported {
     pub clear: Vec<String>,
 }
 
+/// One pane's wait, and what is known about why it is waiting.
+#[derive(Debug, Clone)]
+struct Wait {
+    /// When this wait started, on whatever monotonic scale the caller counts in.
+    since: u64,
+
+    /// How the last bridge for this pane ended, when there was one.
+    ///
+    /// The difference between a sentence somebody can act on and a sentence pointing at a log
+    /// file. `None` is a pane whose first bridge has not arrived, which is the launch case and
+    /// has nothing to explain beyond the wait itself.
+    last: Option<Ended>,
+}
+
 /// Every pane whose socket is bound and whose bridge has not dialed.
 #[derive(Debug, Default)]
 pub struct Waiting {
-    /// When each pane's wait started, on whatever monotonic scale the caller counts in.
-    waiting: BTreeMap<PaneKey, u64>,
+    waiting: BTreeMap<PaneKey, Wait>,
 
     /// Which panes have already been reported, so that clearing knows what to take back.
     ///
@@ -60,7 +74,18 @@ impl Waiting {
     /// too - and that second wait is the one `control_socket.rs` calls out as the exact
     /// failure the accept loop exists to prevent.
     pub fn opened(&mut self, pane: PaneKey, at: u64) {
-        self.waiting.insert(pane, at);
+        self.waiting.insert(pane, Wait { since: at, last: None });
+    }
+
+    /// A bridge for this pane has ended, so the wait starts again knowing why.
+    ///
+    /// Separate from [`Waiting::opened`] only in what it carries. A pane keeps its channel
+    /// while its surface is thrown away and built again, so the wait restarting is the same
+    /// wait either way - what is different is that this one can say what happened to the last
+    /// bridge, and a pane that stays dark for five seconds after a refused attach has a remedy
+    /// where a pane at launch has only a deadline.
+    pub fn ended(&mut self, pane: PaneKey, at: u64, ended: Ended) {
+        self.waiting.insert(pane, Wait { since: at, last: Some(ended) });
     }
 
     /// A bridge dialed in, so this pane can be typed into.
@@ -87,7 +112,7 @@ impl Waiting {
         } else {
             self.waiting
                 .iter()
-                .filter(|(_, started)| now.saturating_sub(**started) >= deadline)
+                .filter(|(_, wait)| now.saturating_sub(wait.since) >= deadline)
                 .map(|(pane, _)| pane.clone())
                 .collect()
         };
@@ -95,7 +120,10 @@ impl Waiting {
         let reported = Reported {
             raise: overdue
                 .difference(&self.reported)
-                .map(|pane| (key(pane), detail(pane, deadline)))
+                .map(|pane| {
+                    let last = self.waiting.get(pane).and_then(|wait| wait.last.as_ref());
+                    (key(pane), detail(pane, deadline, last))
+                })
                 .collect(),
             clear: self.reported.difference(&overdue).map(key).collect(),
         };
@@ -120,8 +148,8 @@ impl Waiting {
         }
         self.waiting
             .iter()
-            .filter_map(|(pane, started)| {
-                let waited = now.saturating_sub(*started);
+            .filter_map(|(pane, wait)| {
+                let waited = now.saturating_sub(wait.since);
                 if waited < deadline {
                     Some(deadline - waited)
                 } else {
@@ -151,17 +179,56 @@ pub fn key(pane: &PaneKey) -> String {
 /// every reading, every reading would count as news to `Problems::raise`, and the roster
 /// would republish and reopen itself for as long as the pane stayed quiet - which is exactly
 /// the nagging that keying a problem by its condition was meant to end.
-fn detail(pane: &PaneKey, deadline: u64) -> String {
-    format!(
-        "The pane {pane} has had a socket open for over {}, and nothing has dialed it - the \
-         bridge carrying this pane's keystrokes either never started or cannot reach the \
-         socket. Everything typed into this pane is discarded and it goes on rendering, so it \
-         looks frozen rather than broken; every other pane in the window is unaffected. The \
-         run log has the cause: look for `channel.accept.failed`, `bridge.exited.reported` \
-         and `pane.channel.unavailable`. Closing this pane and opening it again starts a new \
-         bridge.",
-        describe(deadline),
-    )
+///
+/// Four sentences rather than one, because the pane looks identical in all four cases and the
+/// thing to do differs in every one. Until this, every one of them read as "look in the run
+/// log", which is a file nobody has open at the moment their pane stops answering - and the
+/// run log itself had the impact and the remedy on the same line all along.
+fn detail(pane: &PaneKey, deadline: u64, last: Option<&Ended>) -> String {
+    let waited = describe(deadline);
+    match last.map(|ended| ended.ending) {
+        // Never had a bridge. The launch case, and the three bugs this watch was written for:
+        // the bridge failed to dial, the socket path had moved, the channel could not be
+        // opened. Nothing has said anything about this pane, so the log is the only lead.
+        None => format!(
+            "The pane {pane} has had a socket open for over {waited}, and nothing has dialed \
+             it - the bridge carrying this pane's keystrokes either never started or cannot \
+             reach the socket. Everything typed into this pane is discarded and it goes on \
+             rendering, so it looks frozen rather than broken; every other pane in the window \
+             is unaffected. The run log has the cause: look for `channel.accept.failed`, \
+             `bridge.exited.reported` and `pane.channel.unavailable`. Closing this pane and \
+             opening it again starts a new bridge."
+        ),
+
+        // Somebody else has it, and Muster left it to them on purpose.
+        Some(Ending::TakenOver) => respawn::yielded(pane),
+
+        // The one nobody guesses, and the one that cost a working day: a herdr client whose
+        // transport died goes on holding the terminal, and every attach after that is refused
+        // by a machine that is otherwise perfectly healthy.
+        Some(Ending::Refused) => format!(
+            "The pane {pane} has been dark for over {waited}: something else is holding its \
+             terminal, and every bridge Muster started for it was refused. Only one client may \
+             hold a herdr terminal, and one whose connection died goes on holding it without \
+             noticing - most often a previous Muster's client, still on the far machine. The \
+             agent behind this pane is untouched and every other pane in the window is \
+             unaffected. {} releases it, and closing this pane and opening it again then starts \
+             a bridge that attaches.",
+            respawn::release_command(pane),
+        ),
+
+        // The connection went, Muster started another bridge, and that one has not dialed
+        // either. Naming the host is the remedy: this is what a dropped VPN looks like from a
+        // pane, and it recovers on its own the moment the machine is reachable again.
+        Some(Ending::Lost) => format!(
+            "The pane {pane} lost the connection carrying it and has not got one back within \
+             {waited}. It shows what it last painted and takes no keystrokes; the agent behind \
+             it is untouched, and panes on other machines in this window are unaffected. Check \
+             that the machine holding it is reachable - the run log says `tunnel.down` when the \
+             connection is the reason, and Muster keeps trying. Closing this pane and opening \
+             it again starts a fresh bridge."
+        ),
+    }
 }
 
 /// A duration in nanoseconds, as somebody reading a sentence would say it.

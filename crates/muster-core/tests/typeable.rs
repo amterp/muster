@@ -9,6 +9,7 @@ use conformance::{CaseError, Conformance, fields};
 use muster_core::PaneKey;
 use muster_core::composition::DaemonId;
 use muster_core::mirror::backend::PaneId;
+use muster_core::respawn::{Ended, Ending};
 use muster_core::typeable::Waiting;
 use serde_json::{Value, json};
 
@@ -25,6 +26,8 @@ fn typeable_conformance() {
         for step in given.get("steps").and_then(Value::as_array).into_iter().flatten() {
             if let Some(pane) = step.get("opened").and_then(Value::as_str) {
                 waiting.opened(pane_key(pane)?, number(step, "at")?);
+            } else if let Some(pane) = step.get("ended").and_then(Value::as_str) {
+                waiting.ended(pane_key(pane)?, number(step, "at")?, ended(step)?);
             } else if let Some(pane) = step.get("typeable").and_then(Value::as_str) {
                 waiting.typeable(&pane_key(pane)?);
             } else if let Some(pane) = step.get("closed").and_then(Value::as_str) {
@@ -58,6 +61,21 @@ fn typeable_conformance() {
 
     assert_eq!(ran, corpus.cases.len());
     assert!(ran > 0);
+}
+
+/// How the bridge ended, which every `ended` step says: the sentence a person reads turns on
+/// it, and a default here would let a case be silent about the field it is really about.
+fn ended(step: &Value) -> Result<Ended, CaseError> {
+    let ending = step
+        .get("ending")
+        .and_then(Value::as_str)
+        .and_then(Ending::parse)
+        .ok_or_else(|| CaseError::new(format!("the step names no known `ending`: {step}")))?;
+    Ok(Ended {
+        ending,
+        reason: step.get("reason").and_then(Value::as_str).map(str::to_string),
+        rendered: step.get("rendered").and_then(Value::as_bool).unwrap_or(false),
+    })
 }
 
 fn number(value: &Value, key: &str) -> Result<u64, CaseError> {

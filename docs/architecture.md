@@ -685,6 +685,14 @@ misconfigured anything, because severity is about interruption and a warning wai
 old way - by typing into a pane that had stopped listening. The decision is a fold in `typeable.rs` and the clock is
 a single parked thread in the seam, so an idle window costs no wakeups and the rules are answerable by a case.
 
+**And it says which of those it is, because the pane looks the same in all of them and the remedy does not.** A
+pane whose bridge lost its connection recovers on its own once the machine is reachable; one whose attach was
+refused wants a client killed on the far machine; one whose terminal was taken is being shown in another window and
+wants nothing done at all. Until the bridge reported how it ended, all three raised one sentence pointing at a log
+file - true, useless, and asking the person to open the one surface this list exists to replace. The endings arrive
+on the pane's own control socket, and the sentence for each is a case in `corpus/conformance/typeable.json`, where
+prose somebody reads under pressure can be reviewed as prose.
+
 Nothing renders an intent optimistically. A split, a close, a focus and a divider drag are all requests, and what
 came of them arrives as the next published view - so a window can never show an arrangement no daemon agreed to. The
 one thing an intent may settle locally is where Muster's own keyboard lands, because that is Muster's state and not

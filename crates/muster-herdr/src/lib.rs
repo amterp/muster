@@ -26,7 +26,7 @@ pub mod subscription;
 pub use bridge_report::Exiting;
 pub use client::HerdrClient;
 pub use config::{configuration_text, herdr_configuration, write_configuration};
-pub use control_socket::{Ended, PaneControlChannel, Reports, silence_sigpipe};
+pub use control_socket::{PaneControlChannel, Reports, silence_sigpipe};
 pub use control_stream::ControlStreamMessage;
 pub use discovery::{discover_socket_path, own_socket_path};
 pub use env::PaneEnvironment;

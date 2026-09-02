@@ -92,9 +92,11 @@ fn dial_a_bridge(pane: &Pane) -> UnixStream {
     let path = socket_of(pane).expect("the core publishes a control socket for every pane");
     let before = typeable_count();
     let stream = UnixStream::connect(&path).expect("the core is listening on the pane's socket");
-    until("the core to notice the bridge dial in", || typeable_count() > before, || {
-        format!("nothing was announced typeable after connecting to {path}")
-    });
+    until(
+        "the core to notice the bridge dial in",
+        || typeable_count() > before,
+        || format!("nothing was announced typeable after connecting to {path}"),
+    );
     stream
 }
 
