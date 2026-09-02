@@ -1417,6 +1417,12 @@ message RosterPane {
   // Whether a region is showing it right now. Resolved here rather than left to a shell
   // comparing this against the view: the two arrive separately, and a shell joining them
   // would render a pane as hidden for as long as they disagreed.
+  //
+  // A region shows a tab, so a tab on screen has its panes on screen. The tree in the view
+  // says how they are arranged and is not what decides this - it goes absent while a daemon
+  // has not published one and while one it published disagrees with the tab's pane list, and
+  // neither of those puts a pane away. The one thing that does is a zoom, which covers every
+  // pane in the tab but the one filling the region.
   bool on_screen = 4;
 
   // What this pane's agent is working on, empty when there is nothing worth a second line.

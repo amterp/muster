@@ -16,7 +16,8 @@
       "expect": {
         "daemons": [],
         "regions": [],
-        "view": []
+        "view": [],
+        "showing": []
       }
     },
     {
@@ -38,7 +39,8 @@
       "expect": {
         "daemons": [],
         "regions": [],
-        "view": []
+        "view": [],
+        "showing": []
       }
     },
     {
@@ -70,7 +72,8 @@
           "r0 daemon=local workspace=w1 tab=w1:t1"
         ],
         "focusedRegion": "r0",
-        "view": []
+        "view": [],
+        "showing": []
       }
     },
     {
@@ -166,6 +169,11 @@
         "focusedPane": "w1:p1",
         "view": [
           "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
+        ],
+        "showing": [
+          "local/w1:p1",
+          "local/w1:p2",
+          "local/w1:p3"
         ]
       }
     },
@@ -262,12 +270,17 @@
         "focusedPane": "w1:p3",
         "view": [
           "r0 tab=w1:t1 columns(w1:p3, columns(w1:p1*, w1:p2@0.5)@0.5)"
+        ],
+        "showing": [
+          "local/w1:p1",
+          "local/w1:p2",
+          "local/w1:p3"
         ]
       }
     },
     {
       "name": "a tab whose tree has not arrived still gets a pane",
-      "why": "herdr publishes a tab's tree on its own event, which may follow the panes it names, so a tab with panes and no tree is an ordinary moment rather than a broken one. A region that waited for the tree would be untypeable for as long as it lasted, and on a quiet tab that is until something else happens.",
+      "why": "herdr publishes a tab's tree on its own event, which may follow the panes it names, so a tab with panes and no tree is an ordinary moment rather than a broken one. A region that waited for the tree would be untypeable for as long as it lasted, and on a quiet tab that is until something else happens. And both panes are on screen while that tree is missing. A region shows a tab and a tab on screen has its panes on screen; the tree says how they are arranged, so a tree that has not arrived yet hides nothing.",
       "given": {
         "worlds": {
           "no tree yet": {
@@ -336,12 +349,16 @@
         "focusedPane": "w1:p1",
         "view": [
           "r0 tab=w1:t1 (no tree)"
+        ],
+        "showing": [
+          "local/w1:p1",
+          "local/w1:p2"
         ]
       }
     },
     {
       "name": "a tree naming a pane the mirror has not got skips it",
-      "why": "The tree and the pane list arrive on separate events, so a tree can name a pane the mirror has not been told about yet. Pointing the keyboard at one would give the window a focused pane that nothing can render and nothing can type into, which looks exactly like a hung terminal. The view withholds that tree rather than rendering it without the missing pane: an arrangement that disagrees with the tab's pane list is one no daemon published, and rendering it would tear down the surfaces it omits.",
+      "why": "The tree and the pane list arrive on separate events, so a tree can name a pane the mirror has not been told about yet. Pointing the keyboard at one would give the window a focused pane that nothing can render and nothing can type into, which looks exactly like a hung terminal. The view withholds that tree rather than rendering it without the missing pane: an arrangement that disagrees with the tab's pane list is one no daemon published, and rendering it would tear down the surfaces it omits. On screen is the pane the tab holds, and only that one: a pane the mirror has not been told about is not one the window can be drawing.",
       "given": {
         "worlds": {
           "tree ran ahead": {
@@ -413,6 +430,9 @@
         "focusedPane": "w1:p2",
         "view": [
           "r0 tab=w1:t1 (no tree)"
+        ],
+        "showing": [
+          "local/w1:p2"
         ]
       }
     },
@@ -519,6 +539,11 @@
         "focusedPane": "w1:p2",
         "view": [
           "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
+        ],
+        "showing": [
+          "local/w1:p1",
+          "local/w1:p2",
+          "local/w1:p3"
         ]
       }
     },
@@ -662,6 +687,10 @@
         "focusedPane": "w1:p1",
         "view": [
           "r0 tab=w1:t1 columns(w1:p1*, w1:p3@0.5)"
+        ],
+        "showing": [
+          "local/w1:p1",
+          "local/w1:p3"
         ]
       }
     },
@@ -768,7 +797,8 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [],
-        "view": []
+        "view": [],
+        "showing": []
       }
     },
     {
@@ -897,6 +927,11 @@
         "focusedPane": "w1:p1",
         "view": [
           "r1 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
+        ],
+        "showing": [
+          "devenv/w1:p1",
+          "devenv/w1:p2",
+          "devenv/w1:p3"
         ]
       }
     },
@@ -1013,6 +1048,11 @@
         "focusedPane": "w1:p1",
         "view": [
           "r1 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
+        ],
+        "showing": [
+          "devenv/w1:p1",
+          "devenv/w1:p2",
+          "devenv/w1:p3"
         ]
       }
     },
@@ -1123,6 +1163,11 @@
         "focusedPane": "w1:p1",
         "view": [
           "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
+        ],
+        "showing": [
+          "local/w1:p1",
+          "local/w1:p2",
+          "local/w1:p3"
         ]
       }
     },
@@ -1233,6 +1278,11 @@
         "focusedPane": "w1:p1",
         "view": [
           "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
+        ],
+        "showing": [
+          "local/w1:p1",
+          "local/w1:p2",
+          "local/w1:p3"
         ]
       }
     },
@@ -1339,6 +1389,11 @@
         "focusedPane": "w1:p1",
         "view": [
           "r1 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
+        ],
+        "showing": [
+          "local/w1:p1",
+          "local/w1:p2",
+          "local/w1:p3"
         ]
       }
     },
@@ -1440,12 +1495,17 @@
         "focusedPane": "w1:p1",
         "view": [
           "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
+        ],
+        "showing": [
+          "local/w1:p1",
+          "local/w1:p2",
+          "local/w1:p3"
         ]
       }
     },
     {
       "name": "a tree that has not caught up does not move the keyboard",
-      "why": "The pane list and the tree are published separately, so a tab that is mid-split briefly has a tree naming fewer panes than it holds. Reading the tree as evidence that a pane is gone hands the keyboard to another pane and keeps it there, because the tree that arrives a moment later makes the wrong answer valid. It cost an afternoon as a test that passed alone and failed in the suite; the real symptom is a keyboard that jumps to the first pane when you split, sometimes.",
+      "why": "The pane list and the tree are published separately, so a tab that is mid-split briefly has a tree naming fewer panes than it holds. Reading the tree as evidence that a pane is gone hands the keyboard to another pane and keeps it there, because the tree that arrives a moment later makes the wrong answer valid. It cost an afternoon as a test that passed alone and failed in the suite; the real symptom is a keyboard that jumps to the first pane when you split, sometimes. Both panes the tab still holds are on screen throughout. The tree going backwards is the daemon describing an arrangement, not withdrawing panes, and a window that reported them hidden here would be telling an agent to go and surface what is already in front of somebody.",
       "given": {
         "attached": [
           "w1:p1"
@@ -1583,6 +1643,10 @@
         "focusedPane": "w1:p2",
         "view": [
           "r0 tab=w1:t1 (no tree)"
+        ],
+        "showing": [
+          "local/w1:p1",
+          "local/w1:p2"
         ]
       }
     },
@@ -1681,6 +1745,9 @@
         "focusedPane": "w1:p1",
         "view": [
           "r0 tab=w1:t1 w1:p1* zoomed"
+        ],
+        "showing": [
+          "local/w1:p1"
         ]
       }
     },
@@ -1779,6 +1846,10 @@
         "focusedPane": "w1:p2",
         "view": [
           "r0 tab=w1:t1 columns(w1:p1*, w1:p2*+2@0.5)"
+        ],
+        "showing": [
+          "local/w1:p1",
+          "local/w1:p2"
         ]
       }
     },
@@ -1881,6 +1952,10 @@
         "focusedPane": "w1:p2",
         "view": [
           "r0 tab=w1:t1 columns(w1:p1*-1, w1:p2*@0.5)"
+        ],
+        "showing": [
+          "local/w1:p1",
+          "local/w1:p2"
         ]
       }
     },
@@ -1985,6 +2060,9 @@
         "focusedPane": "w1:p3",
         "view": [
           "r0 tab=w1:t1 w1:p3* zoomed"
+        ],
+        "showing": [
+          "local/w1:p3"
         ]
       }
     },
@@ -2100,6 +2178,14 @@
         "view": [
           "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)",
           "r1 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
+        ],
+        "showing": [
+          "devenv/w1:p1",
+          "devenv/w1:p2",
+          "devenv/w1:p3",
+          "local/w1:p1",
+          "local/w1:p2",
+          "local/w1:p3"
         ]
       }
     },
@@ -2200,6 +2286,11 @@
         "focusedPane": "w1:p2",
         "view": [
           "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
+        ],
+        "showing": [
+          "local/w1:p1",
+          "local/w1:p2",
+          "local/w1:p3"
         ]
       }
     },
@@ -2305,6 +2396,11 @@
         "focusedPane": "w1:p1",
         "view": [
           "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
+        ],
+        "showing": [
+          "local/w1:p1",
+          "local/w1:p2",
+          "local/w1:p3"
         ]
       }
     },
@@ -2405,6 +2501,11 @@
         "focusedPane": "w1:p3",
         "view": [
           "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
+        ],
+        "showing": [
+          "local/w1:p1",
+          "local/w1:p2",
+          "local/w1:p3"
         ]
       }
     },
@@ -2529,6 +2630,14 @@
         "view": [
           "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)",
           "r1 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
+        ],
+        "showing": [
+          "devenv/w1:p1",
+          "devenv/w1:p2",
+          "devenv/w1:p3",
+          "local/w1:p1",
+          "local/w1:p2",
+          "local/w1:p3"
         ]
       }
     },
@@ -2555,12 +2664,13 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "regions": [],
-        "view": []
+        "view": [],
+        "showing": []
       }
     },
     {
       "name": "a tree that disagrees with the tab's panes is not published",
-      "why": "A backend publishes a tab's pane list and its arrangement as separate events, and nothing orders them against each other - a tab mid-split briefly has a tree naming fewer panes than it holds, and a subscription that has just bootstrapped replays layout events and walks a tab backwards through arrangements it had minutes ago. Both were measured against herdr 0.8.0. Rendering the stale tree drops every pane it omits, and a dropped pane costs its surface and the bridge feeding it - which then cannot reconnect, so the pane comes back rendering and swallowing every keystroke. Withholding is a state the shell already answers correctly by leaving what it shows alone.",
+      "why": "A backend publishes a tab's pane list and its arrangement as separate events, and nothing orders them against each other - a tab mid-split briefly has a tree naming fewer panes than it holds, and a subscription that has just bootstrapped replays layout events and walks a tab backwards through arrangements it had minutes ago. Both were measured against herdr 0.8.0. Rendering the stale tree drops every pane it omits, and a dropped pane costs its surface and the bridge feeding it - which then cannot reconnect, so the pane comes back rendering and swallowing every keystroke. Withholding is a state the shell already answers correctly by leaving what it shows alone. All three stay on screen. Withholding the tree leaves the shell drawing what it had, so the answer that says nothing is on screen is the one that would be false.",
       "given": {
         "attached": [
           "w1:p1"
@@ -2700,12 +2810,17 @@
         "focusedPane": "w1:p1",
         "view": [
           "r0 tab=w1:t1 (no tree)"
+        ],
+        "showing": [
+          "local/w1:p1",
+          "local/w1:p2",
+          "local/w1:p3"
         ]
       }
     },
     {
       "name": "a tree naming a pane the tab does not hold is not published either",
-      "why": "The other direction, and it arrives the same way: a pane closes, and the tree still naming it is published before or after the pane list drops it. Rendering that tree builds a surface for a pane that is gone, which spawns a bridge that attaches to nothing and a rectangle that will never paint. One rule covers both directions because there is only one question - does this arrangement describe this tab.",
+      "why": "The other direction, and it arrives the same way: a pane closes, and the tree still naming it is published before or after the pane list drops it. Rendering that tree builds a surface for a pane that is gone, which spawns a bridge that attaches to nothing and a rectangle that will never paint. One rule covers both directions because there is only one question - does this arrangement describe this tab. The two panes the tab still holds are on screen, and the one it does not is in neither answer.",
       "given": {
         "attached": [
           "w1:p1"
@@ -2848,12 +2963,16 @@
         "focusedPane": "w1:p1",
         "view": [
           "r0 tab=w1:t1 (no tree)"
+        ],
+        "showing": [
+          "local/w1:p1",
+          "local/w1:p2"
         ]
       }
     },
     {
       "name": "a step out of a region with no arrangement lands in one that has it",
-      "why": "While a region's tree is withheld there is nothing in it to step through, and the keyboard is standing somewhere the window's reading order does not contain. Refusing would make the key look dead for as long as that lasts, which is unpredictable; going to the first pane the window does know about is an answer that is always available and always somewhere the user can see.",
+      "why": "While a region's tree is withheld there is nothing in it to step through, and the keyboard is standing somewhere the window's reading order does not contain. Refusing would make the key look dead for as long as that lasts, which is unpredictable; going to the first pane the window does know about is an answer that is always available and always somewhere the user can see. Every pane in both regions is on screen, the withheld tree included: what is missing there is the order to step through, not the panes themselves.",
       "given": {
         "attached": [
           "w1:p1"
@@ -3011,6 +3130,14 @@
         "view": [
           "r0 tab=w1:t1 (no tree)",
           "r1 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
+        ],
+        "showing": [
+          "devenv/w1:p1",
+          "devenv/w1:p2",
+          "devenv/w1:p3",
+          "local/w1:p1",
+          "local/w1:p2",
+          "local/w1:p3"
         ]
       }
     },
@@ -3126,6 +3253,12 @@
         "view": [
           "r0 tab=w1:t1 columns(w1:p1*, w1:p2*@0.5)",
           "r1 tab=w1:t1 columns(w1:p1*, w1:p2*@0.5)"
+        ],
+        "showing": [
+          "devenv/w1:p1",
+          "devenv/w1:p2",
+          "local/w1:p1",
+          "local/w1:p2"
         ]
       }
     },
@@ -3162,7 +3295,8 @@
           "r0 daemon=local workspace=w1 tab=w1:t2"
         ],
         "focusedRegion": "r0",
-        "view": []
+        "view": [],
+        "showing": []
       }
     },
     {
@@ -3198,7 +3332,8 @@
           "r0 daemon=local workspace=w1 tab=w1:t1"
         ],
         "focusedRegion": "r0",
-        "view": []
+        "view": [],
+        "showing": []
       }
     },
     {
@@ -3251,7 +3386,8 @@
           "r1 daemon=devenv workspace=w1 tab=w1:t9"
         ],
         "focusedRegion": "r0",
-        "view": []
+        "view": [],
+        "showing": []
       }
     },
     {
@@ -3294,7 +3430,8 @@
           "r1 daemon=devenv workspace=w1 tab=w1:t1"
         ],
         "focusedRegion": "r0",
-        "view": []
+        "view": [],
+        "showing": []
       }
     },
     {
@@ -3341,7 +3478,8 @@
           "r1 daemon=local workspace=w1 tab=w1:t3"
         ],
         "focusedRegion": "r1",
-        "view": []
+        "view": [],
+        "showing": []
       }
     },
     {
@@ -3432,6 +3570,9 @@
         "focusedRegion": "r0",
         "view": [
           "r0 tab=w1:t2 w1:p9"
+        ],
+        "showing": [
+          "local/w1:p9"
         ]
       }
     },
@@ -3475,7 +3616,8 @@
           "r1 daemon=devenv workspace=w1 tab=w1:t1"
         ],
         "focusedRegion": "r0",
-        "view": []
+        "view": [],
+        "showing": []
       }
     },
     {
@@ -3523,7 +3665,8 @@
           "r1 daemon=devenv workspace=w1 tab=w1:t1 weight=0.500"
         ],
         "focusedRegion": "r0",
-        "view": []
+        "view": [],
+        "showing": []
       }
     },
     {
@@ -3572,7 +3715,8 @@
           "r2 daemon=local workspace=w1 tab=w1:t3"
         ],
         "focusedRegion": "r0",
-        "view": []
+        "view": [],
+        "showing": []
       }
     },
     {
@@ -3620,7 +3764,8 @@
           "r1 daemon=devenv workspace=w1 tab=w1:t1 weight=1.800"
         ],
         "focusedRegion": "r0",
-        "view": []
+        "view": [],
+        "showing": []
       }
     },
     {
@@ -3668,7 +3813,8 @@
           "r1 daemon=devenv workspace=w1 tab=w1:t1 weight=0.200"
         ],
         "focusedRegion": "r0",
-        "view": []
+        "view": [],
+        "showing": []
       }
     },
     {
@@ -3716,7 +3862,8 @@
           "r1 daemon=devenv workspace=w1 tab=w1:t1"
         ],
         "focusedRegion": "r0",
-        "view": []
+        "view": [],
+        "showing": []
       }
     },
     {
@@ -3767,7 +3914,8 @@
           "r1 daemon=devenv workspace=w1 tab=w1:t1"
         ],
         "focusedRegion": "r1",
-        "view": []
+        "view": [],
+        "showing": []
       }
     },
     {
@@ -3882,6 +4030,12 @@
         "focusedPane": "w1:p2",
         "view": [
           "r0 tab=w1:t1 columns(rows(w1:p1, w1:p3@0.5), rows(w1:p2, w1:p4@0.5)@0.5)"
+        ],
+        "showing": [
+          "local/w1:p1",
+          "local/w1:p2",
+          "local/w1:p3",
+          "local/w1:p4"
         ]
       }
     },
@@ -3997,6 +4151,12 @@
         "focusedPane": "w1:p1",
         "view": [
           "r0 tab=w1:t1 columns(rows(w1:p1, w1:p3@0.5), rows(w1:p2, w1:p4@0.5)@0.5)"
+        ],
+        "showing": [
+          "local/w1:p1",
+          "local/w1:p2",
+          "local/w1:p3",
+          "local/w1:p4"
         ]
       }
     },
@@ -4112,6 +4272,12 @@
         "focusedPane": "w1:p3",
         "view": [
           "r0 tab=w1:t1 columns(rows(w1:p1, w1:p3@0.5), rows(w1:p2, w1:p4@0.5)@0.5)"
+        ],
+        "showing": [
+          "local/w1:p1",
+          "local/w1:p2",
+          "local/w1:p3",
+          "local/w1:p4"
         ]
       }
     },
@@ -4227,6 +4393,12 @@
         "focusedPane": "w1:p1",
         "view": [
           "r0 tab=w1:t1 columns(rows(w1:p1, w1:p3@0.5), rows(w1:p2, w1:p4@0.5)@0.5)"
+        ],
+        "showing": [
+          "local/w1:p1",
+          "local/w1:p2",
+          "local/w1:p3",
+          "local/w1:p4"
         ]
       }
     },
@@ -4342,6 +4514,12 @@
         "focusedPane": "w1:p1",
         "view": [
           "r0 tab=w1:t1 columns(rows(w1:p1, w1:p3@0.5), rows(w1:p2, w1:p4@0.5)@0.5)"
+        ],
+        "showing": [
+          "local/w1:p1",
+          "local/w1:p2",
+          "local/w1:p3",
+          "local/w1:p4"
         ]
       }
     },
@@ -4457,6 +4635,12 @@
         "focusedPane": "w1:p4",
         "view": [
           "r0 tab=w1:t1 columns(rows(w1:p1, w1:p4@0.2), rows(w1:p2, w1:p3@0.8)@0.5)"
+        ],
+        "showing": [
+          "local/w1:p1",
+          "local/w1:p2",
+          "local/w1:p3",
+          "local/w1:p4"
         ]
       }
     },
@@ -4572,6 +4756,12 @@
         "focusedPane": "w1:p2",
         "view": [
           "r0 tab=w1:t1 columns(rows(w1:p1, w1:p4@0.2), rows(w1:p2, w1:p3@0.8)@0.5)"
+        ],
+        "showing": [
+          "local/w1:p1",
+          "local/w1:p2",
+          "local/w1:p3",
+          "local/w1:p4"
         ]
       }
     }

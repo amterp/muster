@@ -25,6 +25,18 @@ pub struct View {
     pub regions: Vec<ViewRegion>,
     /// The region whose pane the keyboard feeds.
     pub focused: Option<RegionId>,
+    /// Every pane this window has on screen, named by its daemon.
+    ///
+    /// Held rather than derived from `regions`, because it is not the same question as the
+    /// trees below and reading it off them got it wrong. A region shows a tab, and a tab on
+    /// screen has its panes on screen; the tree says how they are arranged, and a tree the
+    /// daemon has not published or has just contradicted does not put those panes away. A
+    /// derivation that walked the trees answered "nothing at all" for a region the window was
+    /// still drawing, which is how a pane painting frames came to report itself hidden.
+    ///
+    /// A zoom is the one thing that hides a pane without closing its tab, so a zoomed region
+    /// contributes the one pane filling it.
+    showing: BTreeSet<PaneKey>,
 }
 
 /// One region, and the tab it is showing.
@@ -175,12 +187,27 @@ impl View {
         backend_socket: impl Fn(&DaemonId) -> Option<String>,
         pane: impl Fn(&DaemonId, &PaneId) -> ViewPane,
     ) -> View {
+        let mut showing = BTreeSet::new();
         let regions = composition
             .regions()
             .filter_map(|region| {
                 let held = mirror(&region.daemon)?;
                 let layout =
                     held.layout(&region.tab).filter(|layout| arranges(held, region, layout));
+                // What this region has on screen, which is the tab it shows rather than the
+                // tree it was last told about. The tree decides the arrangement and a zoom
+                // decides what is covered; neither absence puts a pane away, and reading this
+                // off the tree is what once made four panes painting frames report themselves
+                // hidden.
+                match zoom_filling(region, layout) {
+                    Some(pane) => {
+                        showing.insert(PaneKey::new(&region.daemon, &pane));
+                    }
+                    None => showing.extend(
+                        held.panes_in_tab(&region.tab)
+                            .map(|pane| PaneKey::new(&region.daemon, &pane.id)),
+                    ),
+                }
                 Some(ViewRegion {
                     id: region.id,
                     daemon: region.daemon.clone(),
@@ -206,12 +233,7 @@ impl View {
                         // or goes and never for a focus change (`observations/herdr-0.8.0.md`
                         // section 10), so the flag's companion cursor goes stale the moment
                         // ⌘2 moves the keyboard inside a zoomed tab.
-                        let zoomed = layout
-                            .zoomed
-                            .is_some()
-                            .then(|| region.pane.clone().or_else(|| layout.zoomed.clone()))
-                            .flatten()
-                            .map(LayoutNode::Pane);
+                        let zoomed = zoom_filling(region, Some(layout)).map(LayoutNode::Pane);
                         build(zoomed.as_ref().unwrap_or(&layout.root), &region.daemon, &pane)
                     }),
                     zoomed: layout.is_some_and(|layout| layout.zoomed.is_some()),
@@ -220,7 +242,7 @@ impl View {
                 })
             })
             .collect();
-        View { regions, focused: composition.focused_region().map(|region| region.id) }
+        View { regions, focused: composition.focused_region().map(|region| region.id), showing }
     }
 
     pub fn region(&self, id: RegionId) -> Option<&ViewRegion> {
@@ -229,25 +251,18 @@ impl View {
 
     /// Every pane this window has on screen, named by its daemon.
     ///
-    /// What seen-ness is answered against: a pane nobody is showing cannot have been seen,
-    /// however focused the window is. A tab's zoom needs no special case, because a zoomed
-    /// region publishes only the zoomed pane - the tree here already is what is visible.
+    /// Two things read it and they are the same question: what a row in the agent list says
+    /// about a pane, and what seen-ness is answered against - a pane nobody is showing cannot
+    /// have been seen, however focused the window is.
     ///
-    /// A region whose tree has not arrived contributes nothing, which is the honest answer.
-    /// Its panes may well be on screen from the last published tree, but this window has not
-    /// been told they are, and guessing would mark agents seen on the strength of a
-    /// arrangement the daemon has stopped describing.
-    pub fn showing(&self) -> BTreeSet<PaneKey> {
-        self.regions
-            .iter()
-            .flat_map(|region| {
-                region
-                    .root
-                    .iter()
-                    .flat_map(ViewNode::panes)
-                    .map(|pane| PaneKey::new(&region.daemon, &pane.id))
-            })
-            .collect()
+    /// This used to be read off the published trees, and that is the bug it is written down for.
+    /// A tree is how a tab's panes are arranged; it is not which panes exist, and it goes absent
+    /// for reasons that have nothing to do with what is drawn - a tab whose arrangement has not
+    /// arrived, and a tree the daemon has contradicted since. A window in either state is still
+    /// drawing the panes it had, and reported every one of them hidden, which is a pane painting
+    /// frames and telling an agent that it needs surfacing.
+    pub fn showing(&self) -> &BTreeSet<PaneKey> {
+        &self.showing
     }
 
     /// Where the keyboard lands after stepping one pane.
@@ -552,6 +567,29 @@ impl ViewNode {
 /// that feed them. Withholding is a state the shell already understands and already has the
 /// right answer to: it leaves what it is showing alone, and the real tree arrives on its own
 /// event a moment later.
+/// The one pane filling a region, when its tab is zoomed.
+///
+/// Which pane that is is this window's own answer, not the daemon's. The backend spells zoom as
+/// a bare flag beside the tab's focused pane, and daemon focus is one value shared with every
+/// client - so reading it here would let another client decide what this window renders, against
+/// the rule that cursors are written and not read (`architecture.md`). It is also the only
+/// answer that keeps the window honest: the keyboard feeds `region.pane`, and a zoom showing
+/// anything else is somebody typing into a pane they cannot see.
+///
+/// Not hypothetical. herdr emits `layout_updated` when a pane appears or goes and never for a
+/// focus change (`observations/herdr-0.8.0.md` section 10), so the flag's companion cursor goes
+/// stale the moment ⌘2 moves the keyboard inside a zoomed tab.
+///
+/// `None` for a region that is not zoomed and for one whose tree the daemon has not published -
+/// which is the same answer for a different reason, and the right one for both: a zoom is the
+/// only thing that covers a pane without closing its tab, and a tree nobody has published covers
+/// nothing at all.
+fn zoom_filling(region: &Region, layout: Option<&Layout>) -> Option<PaneId> {
+    let layout = layout?;
+    layout.zoomed.as_ref()?;
+    region.pane.clone().or_else(|| layout.zoomed.clone())
+}
+
 fn arranges(mirror: &Mirror, region: &Region, layout: &Layout) -> bool {
     let mut arranged: Vec<&PaneId> = layout.root.panes();
     arranged.sort_unstable();
