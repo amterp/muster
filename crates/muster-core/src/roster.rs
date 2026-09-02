@@ -547,7 +547,10 @@ fn ordered_panes<'a>(mirror: &'a Mirror, tab: &'a TabId) -> Vec<&'a Pane> {
 ///
 /// The id is the last resort rather than the first, and it is better than an empty row: a
 /// pane with no directory is still a pane somebody has to be able to point at.
-fn pane_label(pane: &Pane) -> String {
+///
+/// Public because a notification names a pane too, and it has to be the same name. Building
+/// a whole roster to read one row would lock every attached daemon for a banner.
+pub fn pane_label(pane: &Pane) -> String {
     if let Some(name) = pane.name.as_deref().map(str::trim).filter(|name| !name.is_empty()) {
         return name.to_string();
     }
@@ -586,7 +589,9 @@ fn harness_suffix(pane: &Pane) -> String {
 /// double the height.
 /// `label` is what the row's first line ended up saying, passed in rather than composed again:
 /// this runs once per pane on every roster, which is once per title change across the window.
-fn pane_subtitle(pane: &Pane, label: &str) -> Option<String> {
+///
+/// Public on the same terms as [`pane_label`], and for the same caller.
+pub fn pane_subtitle(pane: &Pane, label: &str) -> Option<String> {
     let agent = pane.agent.as_deref().filter(|agent| !agent.is_empty())?;
     let title = pane.title.as_deref().map(str::trim).filter(|title| !title.is_empty())?;
 

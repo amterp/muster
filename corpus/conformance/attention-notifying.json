@@ -1,0 +1,497 @@
+{
+  "concept": "attention.notifying",
+  "source": "authored",
+  "citation": "README.md desiderata (attention routing: when an agent needs you, the notification says why) and docs/architecture.md, attention routing - the core owns the unread set and the shell only delivers. The rules here are Muster's own policy; there is no oracle above them.",
+  "why": "Glanceable states are the floor rather than the ceiling. A border says an agent needs you only to somebody looking at it, and the pane most likely to be waiting is the one no region is showing - so something has to interrupt, and what it chooses to interrupt for is the whole difference between a feature people keep and one they turn off. Everything notifying is the same as nothing notifying.\n\nSeparate from attention.json, which is seen-ness. That decides what a pane *is*, and is not a person's to configure; this decides what Muster does about it, and is. Keeping them in one file would make every seen-ness case state an assertion about banners it was never written to make, and would let a preference about interruptions quietly change the state vocabulary the whole product is built on - a muted window still paints `done` and still lists it.\n\nThe expectations are a sequence rather than a final state, because a notification is an event. What has to be right is which moments produce one, and a final state cannot tell being interrupted once from being interrupted three times on the way there. `asking` beside it is the set left standing, which is what a shell would have on screen.\n\nWithdrawal is here for the same reason raising is. A banner for an agent that has moved on, been looked at, or closed lands a person on a pane that does not want them - which is the exact failure the notification exists to prevent, arriving one step later.",
+  "cases": [
+    {
+      "name": "an agent that blocks while nobody is looking asks for somebody",
+      "why": "The case the feature is for. `blocked` is the one state that means a person is being waited on, and the window is not showing this pane - so nothing on screen would ever say so.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "pane": "local/w1:p2",
+            "from": "working",
+            "to": "blocked"
+          }
+        ]
+      },
+      "expect": {
+        "notified": [
+          "local/w1:p2 blocked"
+        ],
+        "asking": [
+          "local/w1:p2 blocked"
+        ]
+      }
+    },
+    {
+      "name": "an agent that blocks in front of you does not",
+      "why": "That is what the border is for. A banner about a pane somebody is already looking at is the fastest way to teach them that banners are noise, and the rule costs nothing extra - seen-ness is already computed for exactly this pane.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "pane": "local/w1:p1",
+            "from": "working",
+            "to": "blocked"
+          }
+        ]
+      },
+      "expect": {
+        "notified": [],
+        "asking": []
+      }
+    },
+    {
+      "name": "a window nobody is looking at is not a window showing anything",
+      "why": "Focus and visibility are two conditions and both are needed. A pane drawn in a window behind three others is a pane nobody has seen, which is the same case as one no region shows at all.",
+      "given": {
+        "focused": false,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "pane": "local/w1:p1",
+            "from": "working",
+            "to": "blocked"
+          }
+        ]
+      },
+      "expect": {
+        "notified": [
+          "local/w1:p1 blocked"
+        ],
+        "asking": [
+          "local/w1:p1 blocked"
+        ]
+      }
+    },
+    {
+      "name": "an agent that finishes unseen asks, on the same moment `done` is decided",
+      "why": "Muster's `done` already means nobody saw it finish, so the state and the notification are asking the same question - which is why the rule is the same rule rather than a second one beside it. A `done` that is decided and never announced is attention routing stopping one step short.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "pane": "local/w1:p2",
+            "from": "working",
+            "to": "idle"
+          }
+        ]
+      },
+      "expect": {
+        "notified": [
+          "local/w1:p2 done"
+        ],
+        "asking": [
+          "local/w1:p2 done"
+        ]
+      }
+    },
+    {
+      "name": "an agent that finishes in front of you does not",
+      "why": "The twin of the blocked case, and it falls out of seen-ness rather than being decided again: a completion somebody watched never joins the unseen set, so there is nothing to announce.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "pane": "local/w1:p1",
+            "from": "working",
+            "to": "idle"
+          }
+        ]
+      },
+      "expect": {
+        "notified": [],
+        "asking": []
+      }
+    },
+    {
+      "name": "an agent that goes back to work takes its request back",
+      "why": "A `blocked` banner outlives the block. The agent timed out, or somebody answered it in the pane, or another client did - and a notification still sitting there lands a person on a pane that stopped waiting for them, which is the failure this whole feature exists to prevent arriving one step later.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "pane": "local/w1:p2",
+            "from": "working",
+            "to": "blocked"
+          },
+          {
+            "pane": "local/w1:p2",
+            "from": "blocked",
+            "to": "working"
+          }
+        ]
+      },
+      "expect": {
+        "notified": [
+          "local/w1:p2 blocked",
+          "local/w1:p2 withdrawn"
+        ],
+        "asking": []
+      }
+    },
+    {
+      "name": "looking at a pane takes its request back, whatever it was asking",
+      "why": "Two different clearings and one rule. A `done` pane looked at stops being `done`, which the border already handles; a `blocked` pane looked at has exactly the state it had a moment ago and a notification that has stopped being true. Both are the person having answered the question the banner was asking.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "pane": "local/w1:p2",
+            "from": "working",
+            "to": "blocked"
+          },
+          {
+            "visible": [
+              "local/w1:p1",
+              "local/w1:p2"
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "notified": [
+          "local/w1:p2 blocked",
+          "local/w1:p2 withdrawn"
+        ],
+        "asking": []
+      }
+    },
+    {
+      "name": "coming back to the window takes back what you can now see",
+      "why": "The other half of looking: the panes did not move, the person did. Anything on screen when a window regains focus has been seen, and a banner about it is a banner about something the person is looking at.",
+      "given": {
+        "focused": false,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "pane": "local/w1:p1",
+            "from": "working",
+            "to": "blocked"
+          },
+          {
+            "focused": true
+          }
+        ]
+      },
+      "expect": {
+        "notified": [
+          "local/w1:p1 blocked",
+          "local/w1:p1 withdrawn"
+        ],
+        "asking": []
+      }
+    },
+    {
+      "name": "a pane that closes takes its request with it",
+      "why": "Activating a notification focuses the pane that raised it, and a pane that is gone cannot be focused - so this one would answer a click with a refusal. Ids are reused too, so an entry left behind would hand the next pane to be called `w1:p2` somebody else's outstanding question.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "pane": "local/w1:p2",
+            "from": "working",
+            "to": "blocked"
+          },
+          {
+            "closed": "local/w1:p2"
+          }
+        ]
+      },
+      "expect": {
+        "notified": [
+          "local/w1:p2 blocked",
+          "local/w1:p2 withdrawn"
+        ],
+        "asking": []
+      }
+    },
+    {
+      "name": "the same answer twice interrupts somebody once",
+      "why": "A daemon re-reporting a state is not an agent asking again. Muster subscribes per pane and reconnects, so a repeated `blocked` is an ordinary thing to see, and a banner per repeat is how a person learns to dismiss them without reading.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "pane": "local/w1:p2",
+            "from": "working",
+            "to": "blocked"
+          },
+          {
+            "pane": "local/w1:p2",
+            "from": "blocked",
+            "to": "blocked"
+          }
+        ]
+      },
+      "expect": {
+        "notified": [
+          "local/w1:p2 blocked"
+        ],
+        "asking": [
+          "local/w1:p2 blocked"
+        ]
+      }
+    },
+    {
+      "name": "a pane that was already finished when the window arrived says nothing",
+      "why": "The one place a daemon's own `done` is taken, and it is history rather than news. A pane that finished before Muster attached produced no transition to observe, and quitting and coming back is the ordinary case - so notifying here would mean every launch after a break opens with a stack of banners about work that finished yesterday. The roster and the border still say it, which is what they are for.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "appeared": "local/w1:p2",
+            "state": "done"
+          }
+        ]
+      },
+      "expect": {
+        "notified": [],
+        "asking": []
+      }
+    },
+    {
+      "name": "one state can be switched off without switching off the other",
+      "why": "The two are different questions. `blocked` is somebody being waited on right now; `done` is somebody having been waited on at some point - and a person who wants one and not the other has to be able to say so, or they turn both off.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "notifications": {
+          "done": false
+        },
+        "events": [
+          {
+            "pane": "local/w1:p2",
+            "from": "working",
+            "to": "idle"
+          },
+          {
+            "pane": "local/w1:p3",
+            "from": "working",
+            "to": "blocked"
+          }
+        ]
+      },
+      "expect": {
+        "notified": [
+          "local/w1:p3 blocked"
+        ],
+        "asking": [
+          "local/w1:p3 blocked"
+        ]
+      }
+    },
+    {
+      "name": "a state switched off still decides what a pane is",
+      "why": "The reason the unread set and the seen set are two sets. Muting a state is a preference about interruptions, and a preference about interruptions must not quietly change the state vocabulary this product is built on - the pane is still `done`, its border still says so, and `muster window` still prints it.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "notifications": {
+          "done": false
+        },
+        "events": [
+          {
+            "pane": "local/w1:p2",
+            "from": "working",
+            "to": "idle"
+          }
+        ]
+      },
+      "expect": {
+        "notified": [],
+        "asking": []
+      }
+    },
+    {
+      "name": "the mute silences both",
+      "why": "The quiet path, and it has to exist in the first version rather than a later one. Somebody running fifteen agents gets fifteen banners, and a feature that cannot be turned off in one line is one people turn off by uninstalling it.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "notifications": {
+          "muted": true
+        },
+        "events": [
+          {
+            "pane": "local/w1:p2",
+            "from": "working",
+            "to": "blocked"
+          },
+          {
+            "pane": "local/w1:p3",
+            "from": "working",
+            "to": "idle"
+          }
+        ]
+      },
+      "expect": {
+        "notified": [],
+        "asking": []
+      }
+    },
+    {
+      "name": "muting takes down what is already asking",
+      "why": "Otherwise a mute means 'no new ones', which is not what somebody typing it at four in the afternoon means. The file is read again on save, so the moment they write it is the moment the noise should stop.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "pane": "local/w1:p2",
+            "from": "working",
+            "to": "blocked"
+          },
+          {
+            "notifications": {
+              "muted": true
+            }
+          }
+        ]
+      },
+      "expect": {
+        "notified": [
+          "local/w1:p2 blocked",
+          "local/w1:p2 withdrawn"
+        ],
+        "asking": []
+      }
+    },
+    {
+      "name": "un-muting does not bring back what it silenced",
+      "why": "The asymmetry is deliberate. A notification is about the moment a pane started asking, and an agent that has been waiting ten minutes is already on its own border and in the roster - so answering a save with a banner about it would be the config file shouting about itself.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "notifications": {
+          "muted": true
+        },
+        "events": [
+          {
+            "pane": "local/w1:p2",
+            "from": "working",
+            "to": "blocked"
+          },
+          {
+            "notifications": {
+              "muted": false
+            }
+          }
+        ]
+      },
+      "expect": {
+        "notified": [],
+        "asking": []
+      }
+    },
+    {
+      "name": "the one being waited on comes first",
+      "why": "The urgency ordering the core owns. `blocked` is somebody held up right now and `done` is somebody who was held up at some point, so a reader working down this list works down it in the order that costs least - and the order is stated here rather than left to whatever a map iterates in.",
+      "given": {
+        "focused": true,
+        "visible": [],
+        "events": [
+          {
+            "pane": "local/w1:p1",
+            "from": "working",
+            "to": "idle"
+          },
+          {
+            "pane": "local/w1:p2",
+            "from": "working",
+            "to": "blocked"
+          }
+        ]
+      },
+      "expect": {
+        "notified": [
+          "local/w1:p1 done",
+          "local/w1:p2 blocked"
+        ],
+        "asking": [
+          "local/w1:p2 blocked",
+          "local/w1:p1 done"
+        ]
+      }
+    },
+    {
+      "name": "two machines' panes are two panes",
+      "why": "A window shows a laptop and a devenv, and both daemons hand out `w1:p1`. Keyed by pane alone, one machine's agent going quiet would take down the other machine's banner - a class of bug that only appears on the setup this product is for.",
+      "given": {
+        "focused": true,
+        "visible": [],
+        "events": [
+          {
+            "pane": "local/w1:p1",
+            "from": "working",
+            "to": "blocked"
+          },
+          {
+            "pane": "devenv/w1:p1",
+            "from": "working",
+            "to": "blocked"
+          },
+          {
+            "pane": "local/w1:p1",
+            "from": "blocked",
+            "to": "working"
+          }
+        ]
+      },
+      "expect": {
+        "notified": [
+          "local/w1:p1 blocked",
+          "devenv/w1:p1 blocked",
+          "local/w1:p1 withdrawn"
+        ],
+        "asking": [
+          "devenv/w1:p1 blocked"
+        ]
+      }
+    }
+  ]
+}

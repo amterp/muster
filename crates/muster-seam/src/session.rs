@@ -15,7 +15,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 
 use muster_core::AgentState;
-use muster_core::attention::Attention;
+use muster_core::attention::{Attend, Attention, Notifications};
 use muster_core::composition::{
     Composition, Daemon, DaemonId, Endpoint, FontSizeChange, FontSizes, Frame, PaneKey,
     Presentation, RegionId, Saved, Step, TabKey, Transport, View, ViewPane, saved,
@@ -42,7 +42,7 @@ use muster_ssh::{Forward, Remote, State as TunnelState, Tunnel, remote_environme
 use muster_vt::KeyEncoder;
 
 use crate::proto::{
-    BackendHealth, Event, PaneStateChanged, PaneTypeable, PresentationChanged,
+    AttentionChanged, BackendHealth, Event, PaneStateChanged, PaneTypeable, PresentationChanged,
     Problem as ProblemMessage, ProblemsChanged, event,
 };
 use crate::shared_names::NamesFile;
@@ -296,6 +296,23 @@ pub(crate) fn set_appearance(appearance: Appearance) {
 /// paints what it would have painted anyway.
 pub(crate) fn appearance() -> Appearance {
     poison::lock(&APPEARANCE, "settings").clone().unwrap_or_default()
+}
+
+/// Takes the file's answer about which agent states are worth interrupting somebody for.
+///
+/// Held on `Attention` rather than beside the other settings, because it is not a value
+/// anything reads back - it decides what joins the unread set, and the unread set is there.
+///
+/// Anything the new answer silences is taken down, which is what makes a mute mean quiet
+/// rather than "no new ones". Nothing is raised the other way: see `Attention::notifying`.
+pub(crate) fn set_notifications(notifications: Notifications) {
+    let stale = {
+        let mut session = poison::lock(&SESSION, "session");
+        session.attention.notifying(notifications)
+    };
+    for pane in &stale {
+        announce_attention(pane, Attend::Withdrawn);
+    }
 }
 
 /// What is wrong with this window, and whether Muster opened the roster to say so.
@@ -3296,10 +3313,10 @@ pub(crate) fn set_window_frame(frame: Option<Frame>, full_screen: bool) {
 /// past about fifteen panes.
 fn publish() {
     // What the window is showing is also the answer to which agents have been seen, so the
-    // two are settled together rather than left to drift. `settled` is the panes that were
+    // two are settled together rather than left to drift. `noticed` is the panes that were
     // waiting to be noticed and have now been - re-announced below, after the shell has been
     // handed the arrangement they appear in.
-    let (view, roster, numbering, settled) = {
+    let (view, roster, numbering, noticed) = {
         let mut session = poison::lock(&SESSION, "session");
         // Before the view is built, and over every daemon rather than whichever one prompted
         // this. Several paths change what is on screen without going near a reconcile:
@@ -3323,13 +3340,13 @@ fn publish() {
         let view = session.view();
         let roster = session.roster(&view);
         let numbering = session.numbering(&roster);
-        let settled = session.attention.showing(view.showing().clone());
+        let noticed = session.attention.showing(view.showing().clone());
         // Here because this is the moment composition is settled, and because everything that
         // changes it ends up here - so nothing has to remember to save.
         save(&session.composition, session.presentation, &session.font_sizes);
         session.forget_what_closed();
         save_names(&session.names, &session.tab_names);
-        (view, roster, numbering, settled)
+        (view, roster, numbering, noticed)
     };
 
     // The shape, not the fact. "the view changed" is useless in a bug report and what it
@@ -3368,8 +3385,13 @@ fn publish() {
 
     // After the view, so that a pane surfaced by this very publish has somewhere to be
     // painted before it is told it is no longer waiting on anyone.
-    for pane in &settled {
+    for pane in &noticed.settled {
         announce_state(pane);
+    }
+    // A pane this publish put on screen is a pane somebody can now see, so whatever it was
+    // asking for it is asking no longer.
+    for pane in &noticed.withdrawn {
+        announce_attention(pane, Attend::Withdrawn);
     }
 }
 
@@ -3553,33 +3575,96 @@ fn report(daemon: &DaemonId, change: &Change) {
     // Recorded before anything is announced, because it is what the announcement depends on:
     // whether this transition finished on a pane somebody was looking at is the difference
     // between `idle` and `done`.
-    match change {
+    //
+    // The lock is let go before anything is emitted, on the same terms as `announce_state`
+    // below: emitting reaches the shell, the shell reacts by dispatching, and a dispatch
+    // arriving while this held the session would deadlock against it on the same thread.
+    let attended = match change {
         Change::AgentStateChanged { pane, from, to } => {
-            let mut session = poison::lock(&SESSION, "session");
-            session.attention.observed(&PaneKey::new(daemon, pane), *from, *to);
+            let key = PaneKey::new(daemon, pane);
+            let attended = poison::lock(&SESSION, "session").attention.observed(&key, *from, *to);
+            attended.map(|attend| (key, attend))
         }
         // A pane that was already finished when this window arrived. Muster saw no transition
         // for it and the daemon did, so first sight takes the daemon's answer; everything
         // after it is Muster's own (`muster_core::attention`).
+        //
+        // No notification for one, and that is deliberate: this is a pane that finished before
+        // the window existed, so a banner would be Muster announcing history at launch. The
+        // roster and the border say it, which is what they are for.
         Change::PaneAdded(pane) => {
             let key = PaneKey::new(daemon, pane);
             let mut session = poison::lock(&SESSION, "session");
             if let Some(backend) = session.agent_state(&key) {
                 session.attention.first_seen(&key, backend);
             }
+            None
         }
         // Both spellings of removal, because both mean the pane is gone: one is a client
         // closing it and the other is its program ending (`architecture.md`, event model).
         Change::PaneRemoved { pane, .. } => {
             let key = PaneKey::new(daemon, pane);
-            poison::lock(&SESSION, "session").attention.forget(&key);
+            let attended = poison::lock(&SESSION, "session").attention.forget(&key);
+            attended.map(|attend| (key, attend))
         }
-        _ => {}
+        _ => None,
+    };
+    if let Some((pane, attend)) = attended {
+        announce_attention(&pane, attend);
     }
 
     if let Some(pane) = change.announces_agent_state() {
         announce_state(&PaneKey::new(daemon, pane));
     }
+}
+
+/// Tells the shell that a pane has started asking for somebody, or stopped.
+///
+/// The label travels with it rather than being looked up by the shell, because naming a pane
+/// is the core's decision (`roster`) and a banner naming an agent differently from the row it
+/// appears on is two names for one thing.
+fn announce_attention(pane: &PaneKey, attend: Attend) {
+    let (state, label, subtitle) = match attend {
+        Attend::Raised(alert) => {
+            let (label, subtitle) = describe_pane(pane).unwrap_or_default();
+            (alert.as_str().to_string(), label, subtitle)
+        }
+        // Nothing to describe for a withdrawal, and often nothing left to describe it from -
+        // the commonest one is a pane that closed.
+        Attend::Withdrawn => (String::new(), String::new(), String::new()),
+    };
+    log::info(
+        "attention.changed",
+        fields! {
+            "daemon" => pane.daemon.to_string(),
+            "pane" => pane.pane.to_string(),
+            "state" => if state.is_empty() { "(withdrawn)".to_string() } else { state.clone() },
+        },
+    );
+    ffi::emit(&Event {
+        payload: Some(event::Payload::AttentionChanged(AttentionChanged {
+            daemon_id: pane.daemon.to_string(),
+            pane_id: pane.pane.to_string(),
+            state,
+            label,
+            subtitle,
+        })),
+    });
+}
+
+/// What to call one pane, and what its agent says it is doing.
+///
+/// One mirror rather than a whole roster. `Roster::of` locks every attached daemon and walks
+/// every pane in the window, which is right for a list and far more than a single banner
+/// needs - but it is the same two decisions, taken from the same two functions, so the name
+/// on a notification and the name on its row cannot come apart.
+fn describe_pane(pane: &PaneKey) -> Option<(String, String)> {
+    let session = poison::lock(&SESSION, "session");
+    let mirror = poison::lock(&session.backends.get(&pane.daemon)?.mirror, "mirror");
+    let held = mirror.pane(&pane.pane)?;
+    let label = muster_core::roster::pane_label(held);
+    let subtitle = muster_core::roster::pane_subtitle(held, &label).unwrap_or_default();
+    Some((label, subtitle))
 }
 
 /// Tells the shell what to paint for one pane's agent.
@@ -4172,12 +4257,18 @@ fn announce_presentation(presentation: Presentation) {
 
 pub(crate) fn window_focused(focused: bool) {
     log::info("window.focus", fields! { "focused" => focused });
-    let settled = {
+    let noticed = {
         let mut session = poison::lock(&SESSION, "session");
         session.attention.window_focused(focused)
     };
-    for pane in &settled {
+    for pane in &noticed.settled {
         announce_state(pane);
+    }
+    // A pane somebody has just looked at is not asking any more, whatever its state. That is
+    // the same rule the border already follows and the reason a focused window showing a pane
+    // never raised one in the first place.
+    for pane in &noticed.withdrawn {
+        announce_attention(pane, Attend::Withdrawn);
     }
 }
 

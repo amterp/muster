@@ -7,6 +7,7 @@
 mod support;
 
 use conformance::Conformance;
+use muster_core::attention::Notifications;
 use muster_core::config;
 use muster_core::input::{Action, Bindings, Chord, Modifiers};
 use serde_json::{Value, json};
@@ -82,6 +83,25 @@ fn appearance(appearance: &config::Appearance) -> Vec<String> {
     set
 }
 
+/// Which agent states a file said were worth interrupting somebody for.
+///
+/// Only what the file moved, on the same terms as [`appearance`]: every key here defaults to
+/// on except the mute, so a case that names none is a case about something else.
+fn notifications(notifications: Notifications) -> Vec<String> {
+    let shipped = Notifications::default();
+    let mut set = Vec::new();
+    for (name, said, default) in [
+        ("blocked", notifications.blocked, shipped.blocked),
+        ("done", notifications.done, shipped.done),
+        ("muted", notifications.muted, shipped.muted),
+    ] {
+        if said != default {
+            set.push(format!("{name}={said}"));
+        }
+    }
+    set
+}
+
 /// What a file said a pane should be, on the same terms as [`appearance`].
 ///
 /// Written back out rather than echoed, so a case pins what Muster understood: `non_login`
@@ -144,6 +164,11 @@ fn config_conformance() {
                     Some(json!(appearance(&parsed.appearance))).filter(|set| set != &json!([])),
                 ),
                 ("panes", Some(json!(panes(&parsed.panes))).filter(|set| set != &json!([]))),
+                (
+                    "notifications",
+                    Some(json!(notifications(parsed.notifications)))
+                        .filter(|set| set != &json!([])),
+                ),
             ]),
             // The refusal itself, not a code. Whether the sentence names the key somebody
             // mistyped is the whole of what this file is protecting, and a taxonomy of error

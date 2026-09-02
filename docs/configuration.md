@@ -4,7 +4,8 @@ Everything Muster owns lives in `~/.muster`, and `MUSTER_HOME` moves the lot. Tw
 it, both optional, both TOML. `~/.muster/config.toml` is yours to write, and it is the only
 file Muster reads: `[[daemon]]` blocks name the machines a window attaches to, `[keymap]`
 rebinds any of Muster's own actions, `[font]`, `[colors]` and `[cursor]` decide what the
-window looks like, and the rest decides what a keystroke becomes on its way to a pane.
+window looks like, `[notifications]` decides which agents interrupt you, and the rest decides
+what a keystroke becomes on its way to a pane.
 
 One directory rather than a file in each of the XDG trees, because Muster's surface is meant
 to be discovered rather than taught - an agent that can list one directory needs no
@@ -56,6 +57,11 @@ palette = [                    # the ANSI sixteen, all of them or none
 [cursor]
 style = "block"                # block | bar | underline | hollow
 blink = true                   # omit to let the program in the pane decide
+
+[notifications]
+blocked = true                 # an agent waiting on you
+done = true                    # an agent that finished while nobody was looking
+muted = false                  # silences both, without forgetting which you wanted
 ```
 
 `[keymap]` is partial, so a file that names one action rebinds one action. Chords are
@@ -307,6 +313,26 @@ from a Ghostty config if you had one, which is why the whole of `[colors]` is ne
 a rename. If you configured Muster's appearance through Ghostty, that stops working and this
 is where it moves to. `docs/architecture.md` says what the loan cost and why it went.
 
+**`[notifications]` is what interrupts you, and both states are on.** `blocked` is an agent
+waiting on you; `done` is an agent that finished while nobody was looking, which is what
+Muster's `done` already means - the state and the notification are asking the same question.
+Activating one takes you to the pane that raised it, including a pane no split is showing.
+
+A pane you are already looking at never notifies. That is what its border is for, and a
+banner about something on your screen is the fastest way to learn that banners are noise.
+
+`muted = true` is the quiet path for somebody running fifteen agents, and it is a third key
+rather than setting the other two to `false` so that going quiet for an afternoon does not
+cost you the two answers underneath it. Saving the file is enough: what a mute silences comes
+off your screen at the moment you write it. Switching one back on does not bring back what it
+silenced, which is deliberate - a notification is about the moment an agent started waiting,
+and one that has been waiting ten minutes is already on its row.
+
+Muster asks for permission once, on the launch after you first install it, and macOS
+remembers the answer - System Settings > Notifications > Muster is where to change it. A
+Muster run as a bare binary out of `.build` has no bundle identifier to be granted permission
+against and notifies nothing; it says so in the run log, and `./dev --bundle` is the fix.
+
 `[shell]` and `scrollback_bytes` are the two Muster does not act on at all. What a pane runs
 and how much of it you can scroll back through belong to the daemon that makes the pane - so
 Muster translates them into a file of its own and hands that to the daemon, exactly as it does
@@ -357,8 +383,8 @@ you ask for somebody else's daemon on purpose.
 **Saving the file is enough.** Muster watches it and reads it again, and `cmd+shift+,` or
 Reload Configuration asks for the same thing when you would rather say so yourself - the
 watcher dispatches that action rather than being a second way in. Colours, fonts, the cursor,
-the keymap, `[text]`, `option_as_alt`, `resize_step`, `scroll_multiplier` and `numbered_chords`
-all take effect where they are, including in panes that were already open; `pane_padding`
+the keymap, `[text]`, `option_as_alt`, `resize_step`, `scroll_multiplier`, `numbered_chords`
+and `[notifications]` all take effect where they are, including in panes that were already open; `pane_padding`
 reaches panes opened afterwards, because that is as far as the renderer takes it. `[shell]` and `scrollback_bytes`
 reach panes opened afterwards too, and for the same shape of reason: the daemon takes both when
 it builds a pane, so a pane you are already typing in keeps what it was made with.

@@ -23,7 +23,7 @@ pub mod roster;
 pub mod typeable;
 
 pub use agent_state::AgentState;
-pub use attention::Attention;
+pub use attention::{Alert, Attend, Attention, Noticed, Notifications};
 pub use composition::{Composition, PaneKey};
 pub use config::Config;
 pub use find::{Found, Hit, Needle, found_in};

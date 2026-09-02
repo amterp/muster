@@ -39,6 +39,11 @@ says what it would end before it ends it.
 **A number on every agent.** `cmd+1` to `cmd+9` reach the first nine rows of the list, counting past
 every tab and every machine, so an agent is one keystroke away whether or not a split is showing it.
 
+**A notification when an agent needs you, and one click back to it.** An agent that starts waiting
+on you, or that finishes while nobody is looking, says so - and activating the notification takes
+you to that pane, including one no split is showing. A pane you are already looking at stays quiet;
+that is what its border is for. Both are switchable, and one line in your config mutes the lot.
+
 **Names you write, and titles you don't.** Name a pane and the name sticks, emoji and all, because
 the daemon writes it down rather than the app. An agent that sets a terminal title gets a second
 line under that, so a row reads `payments spike` over `chasing a flaky test`. Drag one row onto
@@ -81,6 +86,9 @@ One file, `~/.muster/config.toml`, every line of it optional:
 ```toml
 option_as_alt = "left"         # so opt+t reaches an agent instead of typing †
 
+[notifications]
+done = false                   # tell me about agents waiting on me, not ones that finished
+
 [keymap]
 split_right = "cmd+d"          # the default; Ghostty's, wherever Ghostty has one
 close_pane = ""                # unbound - the action stays, the shortcut goes
@@ -99,7 +107,6 @@ write instead. `docs/configuration.md` is every key.
 Muster is young, and these are the gaps worth knowing about before you install rather than
 after:
 
-- An agent that needs you shows it on its row, but does not notify you.
 - Mouse buttons and motion do not reach a pane.
 - A pane on an SSH machine cannot drive the window it is drawn in.
 - Find only reaches the last thousand rows of a pane, and says nothing about the rest - so a match

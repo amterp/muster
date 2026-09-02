@@ -1323,7 +1323,44 @@ message Event {
     AppearanceChanged appearance_changed = 7;
     BindingsChanged bindings_changed = 8;
     ProblemsChanged problems_changed = 9;
+    AttentionChanged attention_changed = 10;
   }
+}
+
+// One pane started asking for a person, or stopped.
+//
+// The delivery half of attention routing. The core decides *whether* - it holds the unread
+// set, it knows which panes the window is showing and whether anybody is looking at it, and
+// it holds the config file's answer about which states are worth an interruption. What is
+// left for a shell is posting the thing and, when somebody activates it, dispatching an
+// ordinary focus request back through the same path a chord uses.
+//
+// Separate from PaneStateChanged, which every pane sends on every transition. Most states
+// ask for nobody, most transitions are between two of those, and a shell filtering this out
+// of the state stream would be re-deriving a decision the core already made - including the
+// two halves it has no way to make, which are the config file and the unread set.
+//
+// Sent only when what this pane is asking actually changed, so a pane re-reported as blocked
+// interrupts somebody once.
+message AttentionChanged {
+  string daemon_id = 1;
+  string pane_id = 2;
+
+  // `blocked` or `done` - what this pane is asking, which is what a banner has to say. Empty
+  // means it has stopped asking: the agent moved on, somebody looked at it, the pane closed,
+  // or the file stopped asking for that state. Anything already delivered for this pane is
+  // then stale and should be taken down, because activating it would land a person on a pane
+  // that no longer wants them.
+  string state = 3;
+
+  // What to call this pane to somebody who did not open it - the same label its row in the
+  // roster carries, decided in the core for the same reason. A notification naming an agent
+  // differently from the list it appears in is two names for one thing.
+  string label = 4;
+
+  // What the agent says it is working on, empty when there is nothing worth adding. The same
+  // second line the roster draws, on the same rule.
+  string subtitle = 5;
 }
 
 // What is wrong with this window, whole.
