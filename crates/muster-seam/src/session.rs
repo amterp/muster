@@ -312,7 +312,8 @@ static PROBLEMS: Mutex<Option<ProblemState>> = Mutex::new(None);
 /// bound for the pane, which is the one that reliably does, and the renderer reporting that a
 /// surface's command exited. The second arrival is not a second death.
 ///
-/// A leaf lock: nothing is called while it is held.
+/// A leaf lock: nothing is called while it is held, so it can be taken from a call site that
+/// already holds `SESSION` and from one that holds nothing without an ordering to remember.
 static DARK: Mutex<BTreeSet<PaneKey>> = Mutex::new(BTreeSet::new());
 
 #[derive(Default)]
@@ -1245,7 +1246,11 @@ impl Session {
                 // Before the channel is dropped, so that an error about a pane that never
                 // became typeable goes with the pane rather than outliving it in the roster,
                 // naming something nobody can look at any more.
-                watchdog::closed(&PaneKey::new(daemon, pane));
+                let key = PaneKey::new(daemon, pane);
+                watchdog::closed(&key);
+                // And nothing is owed about its bridge either. A window whose panes come and
+                // go all day would otherwise accumulate one entry per pane it ever held.
+                poison::lock(&DARK, "dark-panes").remove(&key);
             }
             held
         });
@@ -1882,7 +1887,13 @@ pub(crate) fn bridge_exited(daemon: &str, pane: &str, process_alive: bool) {
 pub(crate) fn bridge_ended(pane: &PaneKey, ended: &Ended) {
     // One death, however many things noticed it. Both watches can fire for one bridge, and
     // counting the second would spend a pane's replacements twice as fast as it earned them.
-    if !poison::lock(&DARK, "dark-panes").insert(pane.clone()) {
+    //
+    // Scoped rather than left to the temporary's lifetime, because everything below this takes
+    // `SESSION` and a guard living to the end of the `if` statement would make this the one
+    // place that holds `DARK` across a call - which is the whole of what the leaf-lock rule on
+    // it is for.
+    let news = { poison::lock(&DARK, "dark-panes").insert(pane.clone()) };
+    if !news {
         return;
     }
     log::info(
