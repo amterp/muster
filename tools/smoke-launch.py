@@ -159,6 +159,21 @@ def expect(records: list[dict], event: str, why: str) -> dict:
     raise Failure(f"no `{event}` record - {why}\n    the app logged: {seen}")
 
 
+# The two warnings this tier cannot avoid, and must not be declared per scenario.
+#
+# Both are about how the tier launches Muster rather than about anything a check is doing.
+# A notification permission is granted against a bundle identifier signed by a Developer ID:
+# a binary out of `.build` has no identifier at all, and the ad-hoc signature `--bundle`
+# applies is refused outright by macOS (`docs/observations/macos-26.4.1.md`). So every check
+# raises one or the other, whichever way it launches, and no check here can ever raise
+# neither.
+#
+# Listed once because the cause is one thing. Naming them in each scenario's `expected` would
+# read as seven separate decisions and would quietly stop a scenario that genuinely wanted to
+# assert notifications work - which none can, and `a_2IneJXhwU` is where that gap is tracked.
+UNGRANTABLE_NOTIFICATIONS = ("notifications.unbundled", "notifications.refused")
+
+
 def expect_nothing_wrong(records: list[dict], expected: tuple[str, ...] = ()) -> None:
     """Every warning and error the app raised, unless this scenario declared it.
 
@@ -171,7 +186,8 @@ def expect_nothing_wrong(records: list[dict], expected: tuple[str, ...] = ()) ->
     Declared rather than filtered by level, so that a scenario about a refusal says which
     refusal it is about and a second unrelated one still fails the run.
     """
-    wrong = [r for r in records if r["level"] in ("warn", "error") and r["event"] not in expected]
+    allowed = (*expected, *UNGRANTABLE_NOTIFICATIONS)
+    wrong = [r for r in records if r["level"] in ("warn", "error") and r["event"] not in allowed]
     if wrong:
         detail = "\n".join(f"      {r['level']}: {r['event']}: {r}" for r in wrong[:5])
         more = f"\n      ... and {len(wrong) - 5} more" if len(wrong) > 5 else ""
