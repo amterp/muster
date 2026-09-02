@@ -878,7 +878,7 @@
         ]
       },
       "expect": {
-        "refused": "the config file's [colors] has a key called \"backgrnd\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: background, foreground, cursor, cursor_text, selection_background, selection_foreground, divider, palette."
+        "refused": "the config file's [colors] has a key called \"backgrnd\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: background, foreground, cursor, cursor_text, selection_background, selection_foreground, divider, focus_ring, agent_working, agent_blocked, agent_done, agent_idle, agent_unknown, palette."
       }
     },
     {
@@ -973,7 +973,7 @@
         ]
       },
       "expect": {
-        "refused": "`colors` in the config file is a string, and it has to be a block - `[colors]` with its settings under it. None of the file was applied. Known keys there: background, foreground, cursor, cursor_text, selection_background, selection_foreground, divider, palette."
+        "refused": "`colors` in the config file is a string, and it has to be a block - `[colors]` with its settings under it. None of the file was applied. Known keys there: background, foreground, cursor, cursor_text, selection_background, selection_foreground, divider, focus_ring, agent_working, agent_blocked, agent_done, agent_idle, agent_unknown, palette."
       }
     },
     {
@@ -1218,6 +1218,67 @@
       },
       "expect": {
         "refused": "the config file's [notifications] has a key called \"mute\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: blocked, done, muted."
+      }
+    },
+    {
+      "name": "the colours Muster invented can be repainted, and only in the window",
+      "why": "The agent-state colours and the focus ring are the two things `[colors]` did not carry, and they are the ones this product is built around. What crosses the seam is a value somebody wrote, never a legend: the core parses these and hands them on, and holds no table saying which state means what. `muster window` honours none of them and keeps the terminal's fixed sixteen, so nothing here has to be mapped onto the nearest slot - which is a judgement that would have been wrong for somebody.",
+      "given": {
+        "file": [
+          "[colors]",
+          "agent_working = \"#7aa2f7\"",
+          "agent_blocked = \"#ff9e64\"",
+          "agent_done = \"#9ece6a\"",
+          "agent_idle = \"#565f89\"",
+          "agent_unknown = \"#3b4261\"",
+          "focus_ring = \"#bb9af7\""
+        ]
+      },
+      "expect": {
+        "daemons": [],
+        "keymap": [],
+        "option_as_alt": "never",
+        "text": [],
+        "appearance": [
+          "colors.focus_ring=#bb9af7",
+          "colors.agent_working=#7aa2f7",
+          "colors.agent_blocked=#ff9e64",
+          "colors.agent_done=#9ece6a",
+          "colors.agent_idle=#565f89",
+          "colors.agent_unknown=#3b4261"
+        ]
+      }
+    },
+    {
+      "name": "repainting one state leaves the other four alone",
+      "why": "Partial the way `[keymap]` is, and for the same reason: somebody who finds one row hard to see is fixing that row, not adopting a theme. Requiring all five would be the palette rule, and the palette rule exists because a scheme is a set - five independent answers to five independent questions is not.",
+      "given": {
+        "file": [
+          "[colors]",
+          "agent_blocked = \"#ff0000\""
+        ]
+      },
+      "expect": {
+        "daemons": [],
+        "keymap": [],
+        "option_as_alt": "never",
+        "text": [],
+        "appearance": [
+          "colors.agent_blocked=#ff0000"
+        ]
+      }
+    },
+    {
+      "name": "a state colour that is not six hex digits is refused where it was written",
+      "why": "The same refusal every other colour gets, naming the key rather than the block. `agent_working = \"cyan\"` is what somebody writes who has read a terminal's config file, and a key silently ignored is a pane that keeps its old border with nothing saying why.",
+      "given": {
+        "file": [
+          "[colors]",
+          "agent_working = \"cyan\""
+        ]
+      },
+      "expect": {
+        "refused": "`agent_working` in the config file's [colors]: `cyan` is not a colour Muster can read. Write six hex digits, with or without a leading hash - `#4a4a4a`. None of the file was applied."
       }
     }
   ]

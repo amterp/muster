@@ -47,6 +47,12 @@ cursor_text = "#1e1e2e"        # the character under the cursor
 selection_background = "#414868"
 selection_foreground = "#c0caf5"
 divider = "#4a4a4a"            # the line between two regions; omit for the platform's
+focus_ring = "#bb9af7"         # which pane has the keyboard; omit to follow the macOS accent
+agent_working = "#7aa2f7"      # the five agent states, on a pane's edge and its row's dot
+agent_blocked = "#ff9e64"      # each optional on its own; omit for the one Muster ships
+agent_done = "#9ece6a"
+agent_idle = "#565f89"
+agent_unknown = "#3b4261"
 palette = [                    # the ANSI sixteen, all of them or none
   "#000000", "#cc0000", "#4e9a06", "#c4a000",
   "#3465a4", "#75507b", "#06989a", "#d3d7cf",
@@ -294,9 +300,26 @@ invented** - the vocabulary names what you may change and nothing else, because 
 opinion about which monospace font your machine has and a default palette written into Muster
 would be a transcription of somebody else's. `palette` is the sixteen ANSI colours, all of
 them or none: a partial one leaves the rest as the renderer's and produces a scheme nobody
-designed. `divider` sits with the pane colours even though Muster rather than the renderer
-paints it, because you pick colours all at once and which piece of code holds the brush is
-not something you should have to know.
+designed. `divider`, `focus_ring` and the five `agent_*`
+sit with the pane colours even though Muster rather than the renderer paints them, because you
+pick colours all at once and which piece of code holds the brush is not something you should
+have to know.
+
+**The colours Muster invented are yours too, and only in the window.** `agent_working` and its
+four siblings are what a pane's edge and its row's dot are painted in; `focus_ring` is the thin
+inner ring saying which pane the keyboard feeds. Each is optional on its own - fixing the one row
+you cannot see is not adopting a theme - and leaving one out gives you the colour Muster ships.
+
+Leaving `focus_ring` out follows the macOS accent, which is a decision rather than a shortfall:
+the accent is the platform's own answer to which thing has focus, and it already tracks a choice
+you made in System Settings. The two rings are told apart by weight and a gap rather than by
+hue, so whatever your accent is, focus still reads as focus.
+
+**`muster window` keeps its own sixteen and honours none of this.** A terminal has sixteen
+colours and a hex triple is not one of them, so the alternative was mapping your colour onto the
+nearest slot - a judgement that would be wrong for somebody, and Muster would no longer know what
+the legend was. Instead the CLI paints the default legend on everybody's machine, which for an
+agent reading it is a feature. `docs/cli/window.md` says the same thing from the other side.
 
 **A `family` this machine does not have is reported rather than ignored.** Leaving `family` out
 asks for the renderer's own font and is the design; naming one that is not installed is a

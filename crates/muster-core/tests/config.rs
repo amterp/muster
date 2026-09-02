@@ -59,6 +59,12 @@ fn appearance(appearance: &config::Appearance) -> Vec<String> {
         ("selection_background", colors.selection_background),
         ("selection_foreground", colors.selection_foreground),
         ("divider", colors.divider),
+        ("focus_ring", colors.focus_ring),
+        ("agent_working", colors.agents.working),
+        ("agent_blocked", colors.agents.blocked),
+        ("agent_done", colors.agents.done),
+        ("agent_idle", colors.agents.idle),
+        ("agent_unknown", colors.agents.unknown),
     ] {
         if let Some(color) = color {
             set.push(format!("colors.{name}={color}"));

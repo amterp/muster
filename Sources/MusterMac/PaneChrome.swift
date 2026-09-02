@@ -27,14 +27,27 @@ public enum PaneAppearance {
   /// legible in both mediums, distinct from green and from orange at a glance, and calm, which
   /// is what the resting-but-busy state should be while `blocked` is the loud one.
   ///
-  /// This table is the legend, and `muster window` paints the same one in the terminal's own
-  /// sixteen (`crates/muster-cli/src/render.rs`, `agent_style`) - the window is canonical
-  /// because that is where attention lives, and the surface with the smaller audience is the
-  /// one that moves. That medium has no orange, so blocked is yellow there, and it leaves idle
-  /// and unknown bare because no color is what resting looks like in a list of words. Nothing
-  /// can check the two across the language line, so a row changed here is changed in that file
-  /// and in `docs/architecture.md` too.
+  /// This table is the legend *by default*, and `muster window` paints the same one in the
+  /// terminal's own sixteen (`crates/muster-cli/src/render.rs`, `agent_style`) - the window is
+  /// canonical because that is where attention lives, and the surface with the smaller audience
+  /// is the one that moves. That medium has no orange, so blocked is yellow there, and it
+  /// leaves idle and unknown bare because no color is what resting looks like in a list of
+  /// words. Nothing can check the two across the language line, so a row changed here is
+  /// changed in that file and in `docs/architecture.md` too.
+  ///
+  /// A person may repaint these (`[colors] agent_*`), and only here: the CLI keeps its fixed
+  /// sixteen so that `muster window` reads the same on anybody's machine. So this is the
+  /// default rather than the whole answer, and it stays the canonical *default* - the file
+  /// overrides a row, it does not move the row the CLI is pinned against.
+  @MainActor
   public static func borderColor(state: String) -> NSColor {
+    if let chosen = chosen(state: state) { return chosen }
+    return defaultBorderColor(state: state)
+  }
+
+  /// The legend Muster ships, with nothing configured. What the tripwire pins, and what
+  /// `docs/architecture.md` states.
+  public static func defaultBorderColor(state: String) -> NSColor {
     switch state {
     case "working": return NSColor.systemCyan
     case "blocked": return NSColor.systemOrange
@@ -42,6 +55,51 @@ public enum PaneAppearance {
     case "idle": return NSColor.systemGray
     default: return NSColor.tertiaryLabelColor
     }
+  }
+
+  /// Which pane a keystroke would reach.
+  ///
+  /// Unset follows `controlAccentColor`, and that is a decision rather than a fallback: the
+  /// accent is the platform's own answer to "which thing has focus", and it already tracks a
+  /// choice the person made in System Settings. Ignoring that would be worse than the collision
+  /// this ring was redrawn for.
+  @MainActor
+  public static var focusColor: NSColor {
+    configured.focusRing.flatMap(NSColor.init(hex:)) ?? NSColor.controlAccentColor
+  }
+
+  /// What the config file said about Muster's own chrome, or nothing.
+  ///
+  /// Held rather than asked for per paint, the way `DividerView.color` is: a border is applied
+  /// on every state change on every pane, and a round trip to the core per repaint would put
+  /// the config file on the render path. Set from the one event that carries it, which is also
+  /// what makes a saved file take effect without a relaunch.
+  @MainActor private(set) static var configured: Core.Chrome = .none
+
+  /// Takes a new answer. The caller repaints; nothing here reaches a view.
+  @MainActor
+  public static func adopt(chrome: Core.Chrome) {
+    configured = chrome
+  }
+
+  /// Parsed rather than trusted blindly, on the same terms as the divider: the core already
+  /// refused anything malformed when it read the file, so a value that fails here means the two
+  /// sides disagree about the format - and the shipped colour is a better answer than black.
+  @MainActor
+  private static func chosen(state: String) -> NSColor? {
+    let named: String?
+    switch state {
+    case "working": named = configured.agents.working
+    case "blocked": named = configured.agents.blocked
+    case "done": named = configured.agents.done
+    case "idle": named = configured.agents.idle
+    case "unknown": named = configured.agents.unknown
+    // Every other spelling is a state herdr invented since this was written, and it is drawn
+    // as unknown rather than as itself - the same rule the default table follows, and for the
+    // same reason: a state we could not read is not a fifth thing an agent can be doing.
+    default: named = configured.agents.unknown
+    }
+    return named.flatMap(NSColor.init(hex:))
   }
 
   /// **How thick each ring is, and how far apart.** Here rather than on the view for the
@@ -243,6 +301,14 @@ public final class PaneChrome: NSView {
     applyAppearance()
   }
 
+  /// Takes the colours in force again, for a pane that was already drawn when they changed.
+  ///
+  /// The state has not moved, so nothing else here would repaint: a border is applied when a
+  /// transition arrives, and saving a config file is not one.
+  public func recolor() {
+    applyAppearance()
+  }
+
   public func apply(focused: Bool) {
     guard focused != isFocused else { return }
     isFocused = focused
@@ -282,7 +348,7 @@ public final class PaneChrome: NSView {
     layer?.borderColor = PaneAppearance.borderColor(state: state).cgColor
     focusRing.borderWidth = PaneAppearance.focusWidth
     focusRing.borderColor =
-      isFocused ? NSColor.controlAccentColor.cgColor : NSColor.clear.cgColor
+      isFocused ? PaneAppearance.focusColor.cgColor : NSColor.clear.cgColor
     needsLayout = true
   }
 }

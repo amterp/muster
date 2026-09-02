@@ -363,11 +363,39 @@ message Appearance {
   // none was named, because zero is a real answer - it is what fits the most rows.
   optional uint32 pane_padding = 12;
 
-  // The line between two regions. The one colour here no renderer paints: everything else is
-  // inside a pane, and this is Muster's own chrome. Empty means the shell's own platform
+  // The line between two regions. One of the colours here no renderer paints: everything else
+  // is inside a pane, and this is Muster's own chrome. Empty means the shell's own platform
   // default, which only the shell knows and which a colour invented in the core would be one
   // more thing to keep in step with a system theme.
   string divider_color = 13;
+
+  // Which pane a keystroke would reach. Empty follows the platform's own accent, which is its
+  // answer to "which thing has focus" and already tracks a choice the person made - a default
+  // invented here would ignore it.
+  string focus_ring_color = 14;
+
+  // What each agent state is painted in, where the window paints it. Empty means the legend
+  // Muster ships, which lives in the shell because the window is the canonical surface.
+  AgentColors agent_colors = 15;
+}
+
+// The five agent states, as a person coloured them.
+//
+// What crosses the seam is a value somebody wrote, never a legend. The core parses this out of
+// the config file and hands it on; it paints nothing, holds no table mapping a state to a hue,
+// and would not know which of these was the default. That distinction is the whole of the
+// answer to whether a hue belongs in the core: it does not, and a colour a person chose is not
+// a hue in that sense - it is a setting, and settings are the core's.
+//
+// The window honours these and `muster window` does not: the CLI keeps the terminal's fixed
+// sixteen so that it reads the same on anybody's machine, which for an agent parsing it is a
+// feature (docs/cli/window.md). Nothing therefore has to map a hex value onto the nearest slot.
+message AgentColors {
+  string working = 1;
+  string blocked = 2;
+  string done = 3;
+  string idle = 4;
+  string unknown = 5;
 }
 
 // Grows a pane against its neighbour, by a step.

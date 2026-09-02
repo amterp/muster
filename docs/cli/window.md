@@ -107,6 +107,12 @@ The state column is coloured: `working` cyan, `blocked` yellow, `done` green. `i
 word. It is the same legend the window itself paints, where `blocked` is orange - the sixteen
 colours a terminal has hold no orange, and yellow is the nearest slot.
 
+**These five are fixed, and the window's are not.** `[colors] agent_*` repaints the window; this
+answer keeps the terminal's sixteen whatever that file says, so `muster window` reads the same on
+anybody's machine. What it names is a slot rather than a pixel, so repainting `[colors] palette`
+does move what you see here - that is your terminal's own vocabulary, which every program in it
+shares.
+
 ## daemons[]
 
 One entry per machine this window is attached to.

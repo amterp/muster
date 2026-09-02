@@ -28,5 +28,10 @@ fn main() {
     // palette - and is read exactly once, at launch. Boxing puts the cost where it belongs.
     // The Swift side needs no equivalent: swift-protobuf's messages are already references.
     config.boxed("Response.payload.appearance");
+    // The same argument on the other side of the seam, and it bites harder there. Every event
+    // is built by value, most of them are one pane's state change, and an agent transition is
+    // supposed to cost that transition (`architecture.md`, fast is a feature). Appearance is
+    // the largest variant by several times over and is sent when somebody saves a file.
+    config.boxed("Event.payload.appearance_changed");
     config.compile_fds(descriptors).expect("the schema generates");
 }

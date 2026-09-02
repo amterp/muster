@@ -418,15 +418,23 @@ public final class MusterWindow: NSObject {
 
   /// Repaints the window after the config file was read again.
   ///
-  /// The panes are libghostty's to repaint and the dividers are Muster's, which is the same
-  /// split the launch path makes - the core sends one answer and the shell hands each half to
-  /// whoever draws it.
+  /// The panes are libghostty's to repaint and the chrome is Muster's, which is the same split
+  /// the launch path makes - the core sends one answer and the shell hands each half to whoever
+  /// draws it. `adoptChrome` is that launch path's own call, used here rather than repeated, so
+  /// the two cannot end up applying different subsets of it.
   public func apply(appearance: Core.Appearance) {
     renderer.apply(appearance: appearance.pane)
-    DividerView.repaint(with: appearance.dividerColor)
+    adoptChrome(appearance)
     for divider in dividers() {
       divider.recolor()
     }
+    // The rings and the roster's dots are drawn from the same table, so both have to be told.
+    // Nothing else repaints them: a border is applied when a state changes, and a saved file
+    // changes no state.
+    for chrome in surfaces.chromes {
+      chrome.recolor()
+    }
+    sidebar.reloadColors()
   }
 
   /// Rebuilds the menu after the config file was read again.
