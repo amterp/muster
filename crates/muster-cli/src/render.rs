@@ -381,13 +381,17 @@ fn pane_line(
 /// And what is named is a slot rather than a pixel, so a user who repaints `[colors] palette`
 /// repaints the legend, which is theirs to do.
 ///
+/// Working is cyan rather than the blue it was, and the argument for moving it is partly this
+/// file's own: plain ANSI blue is the least legible of the sixteen on a dark background, and
+/// working is the state a window spends most of its time in.
+///
 /// Only the states worth a colour get one. `unknown` is the ordinary answer for a pane running a
 /// shell rather than an agent, and colouring it would put a signal on almost every row; `idle` goes
 /// bare for the reason the window draws it no border, that no colour is what resting looks like in
 /// a list of words and the row already prints the word.
 fn agent_style(state: &str) -> Style {
     match state {
-        "working" => Style::new().fg_color(Some(anstyle::Color::Ansi(AnsiColor::Blue))),
+        "working" => Style::new().fg_color(Some(anstyle::Color::Ansi(AnsiColor::Cyan))),
         "blocked" => Style::new().fg_color(Some(anstyle::Color::Ansi(AnsiColor::Yellow))),
         "done" => Style::new().fg_color(Some(anstyle::Color::Ansi(AnsiColor::Green))),
         _ => QUIET,
@@ -591,7 +595,7 @@ mod tests {
     /// `docs/architecture.md` with it, or move it back.
     #[test]
     fn the_legend_matches_the_window() {
-        assert_eq!(agent_style("working"), hue(AnsiColor::Blue), "the window paints working blue");
+        assert_eq!(agent_style("working"), hue(AnsiColor::Cyan), "the window paints working cyan");
         assert_eq!(
             agent_style("blocked"),
             hue(AnsiColor::Yellow),
