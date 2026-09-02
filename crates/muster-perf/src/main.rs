@@ -488,7 +488,7 @@ fn full_window(panes: usize) -> (Composition, Mirror) {
         id: daemon.clone(),
         endpoint: Endpoint::Local { socket_path: Some("/tmp/herdr-perf.sock".to_string()) },
     });
-    composition.open_region(&daemon, workspace, tab);
+    composition.open_region(&daemon, tab);
     composition.reconcile(&daemon, &mirror);
     (composition, mirror)
 }

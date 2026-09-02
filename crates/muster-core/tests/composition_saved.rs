@@ -10,7 +10,7 @@ use conformance::{CaseError, Conformance, fields};
 use muster_core::composition::presentation::{FontSizes, Frame, Presentation};
 use muster_core::composition::record::{Composition, Daemon, DaemonId, Endpoint, PaneKey};
 use muster_core::composition::saved::{Saved, SavedRegion, from_toml, to_toml};
-use muster_core::mirror::backend::{PaneId, TabId, WorkspaceId};
+use muster_core::mirror::backend::{PaneId, TabId};
 use serde_json::{Value, json};
 
 #[test]
@@ -65,11 +65,11 @@ fn what_is_written_is_what_comes_back() {
         },
     });
     let region = composition
-        .open_region(&DaemonId::new("local"), WorkspaceId::new("w1"), TabId::new("w1:t1"))
+        .open_region(&DaemonId::new("local"), TabId::new("w1:t1"))
         .expect("the daemon was just attached");
     composition.focus_pane(region, PaneId::new("w1:p1"));
     composition
-        .open_region(&DaemonId::new("devenv"), WorkspaceId::new("w1"), TabId::new("w1:t2"))
+        .open_region(&DaemonId::new("devenv"), TabId::new("w1:t2"))
         .expect("the daemon was just attached");
 
     // Nothing at its default, so a round trip that quietly dropped any of it would still fail.
@@ -221,7 +221,6 @@ fn saved(given: &Value) -> Result<Saved, CaseError> {
             .iter()
             .map(|region| SavedRegion {
                 daemon: DaemonId::new(region["daemon"].as_str().unwrap_or_default()),
-                workspace: WorkspaceId::new("w1"),
                 tab: TabId::new(region["tab"].as_str().unwrap_or_default()),
                 weight: serde_json::from_value(region["weight"].clone()).unwrap_or(1.0),
                 pane: None,

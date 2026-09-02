@@ -14,7 +14,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use conformance::{CaseError, Conformance, fields, repo_root};
 use muster_core::intent::{BackendIntent, Branch, MoveDestination, Side};
-use muster_core::mirror::backend::{PaneId, TabId, WorkspaceId};
+use muster_core::mirror::backend::{PaneId, TabId};
 use muster_core::names::{BackendPaneId, Mint, Names};
 use muster_herdr::{PaneEnvironment, read_request, request};
 use serde_json::{Value, json};
@@ -34,7 +34,15 @@ fn backend_intent_conformance() {
                 let rows = given.get("rows").and_then(Value::as_u64).unwrap_or_default();
                 read_request(&pane, u32::try_from(rows).unwrap_or(u32::MAX))
             }),
-            _ => request(&intent(given)?, &pane_environment(given), &names),
+            // The workspace a new tab goes in comes from the daemon rather than from the intent
+            // (MIP-2), so a case that describes a tab says which workspace the pane it names is
+            // in - the answer `HerdrBackend::workspace_for` would have fetched.
+            _ => request(
+                &intent(given)?,
+                &pane_environment(given),
+                &names,
+                given.get("workspace").and_then(Value::as_str),
+            ),
         };
         match built {
             Ok((method, params)) => {
@@ -68,8 +76,8 @@ fn every_pane_a_daemon_makes_is_handed_the_users_own_config() {
 
     let mut covered = BTreeSet::new();
     for intent in every_intent() {
-        let (method, params) =
-            request(&intent, &restoring, &backend_names()).expect("every id is its own name");
+        let (method, params) = request(&intent, &restoring, &backend_names(), Some("w1"))
+            .expect("every id is its own name");
         let sent = params.get("env");
         let makes_a_pane = muster_herdr::makes_a_pane(&intent);
         if declared_parameters(&schema, method).is_some_and(|declared| declared.contains("env")) {
@@ -188,7 +196,9 @@ fn every_request() -> Vec<(&'static str, Value)> {
     let panes = PaneEnvironment::restoring(&environment([("HOME", "/home/a")]));
     let mut all: Vec<(&'static str, Value)> = every_intent()
         .iter()
-        .map(|intent| request(intent, &panes, &backend_names()).expect("every id is its own name"))
+        .map(|intent| {
+            request(intent, &panes, &backend_names(), Some("w1")).expect("every id is its own name")
+        })
         .collect();
     all.push(read_request(&BackendPaneId::new("p1"), 0));
     all
@@ -244,7 +254,7 @@ fn every_intent() -> Vec<BackendIntent> {
         BackendIntent::ZoomPane { pane: PaneId::new("p1") },
         BackendIntent::FocusPane { pane: PaneId::new("p1") },
         BackendIntent::CreateTab {
-            workspace: WorkspaceId::new("w1"),
+            beside: PaneId::new("p1"),
             cwd: Some("/src/muster".into()),
             run: None,
             name: None,
@@ -395,7 +405,7 @@ fn intent(given: &Value) -> Result<BackendIntent, CaseError> {
         "closeTab" => Ok(BackendIntent::CloseTab { tab: TabId::new(&text(given, "tab")?) }),
         "focus" => Ok(BackendIntent::FocusPane { pane: PaneId::new(&text(given, "pane")?) }),
         "tab" => Ok(BackendIntent::CreateTab {
-            workspace: WorkspaceId::new(&text(given, "workspace")?),
+            beside: PaneId::new(&text(given, "pane")?),
             cwd,
             run: given.get("run").and_then(Value::as_str).map(str::to_string),
             name: given.get("name").and_then(Value::as_str).map(str::to_string),
