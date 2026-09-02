@@ -1620,8 +1620,19 @@ pub(crate) fn submit(
             | BackendIntent::SwapPanes { .. }
             | BackendIntent::SendText { .. }
             | BackendIntent::MovePane { .. } => None,
-            BackendIntent::SplitPane { pane, .. }
-            | BackendIntent::ClosePane { pane }
+            // Where a new pane goes is a fact about the tab's tree, on the same terms as
+            // moving one, so this asks the window rather than requiring it: the keyboard
+            // follows the new pane when a region is showing the tab it landed in, and stays
+            // where it is when none is. Requiring a region refused the case the feature is
+            // most needed for - an agent told to make panes, whose own pane is in a tab
+            // somebody moved off screen - and the way through was taking the keyboard off
+            // whatever a person was doing in the tab that is on screen.
+            //
+            // Closing deliberately stays below. Its argument is the same on paper and its
+            // risk is not: it destroys something, and `muster docs limits` already singles
+            // it out as the one command whose default destroys the pane it runs in.
+            BackendIntent::SplitPane { pane, .. } => session.region_holding(daemon, pane),
+            BackendIntent::ClosePane { pane }
             | BackendIntent::ResizePane { pane, .. }
             | BackendIntent::ZoomPane { pane }
             | BackendIntent::FocusPane { pane } => {

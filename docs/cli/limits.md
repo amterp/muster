@@ -31,15 +31,19 @@ out of the window rather than out of its environment:
 `muster tab rename` with no `--tab` is not that. It means the tab the window's keyboard is in,
 which is what a chord means and is a different tab whenever the keyboard is somewhere else.
 
-## A pane in a tab nothing is showing cannot be split
+## A pane in a tab nothing is showing cannot be focused, zoomed or resized
 
-`muster pane new` refuses with "the daemon local is not showing that pane or tab in this window"
-when the pane it would split is in a tab no region has on screen. Splitting, focusing, zooming and
-resizing all ask the window which region holds the pane, and a pane in a background tab has none.
+`muster focus`, `muster zoom` and `muster pane resize` refuse with "the daemon local is not
+showing that pane or tab in this window" when the pane they name is in a tab no region has on
+screen. Each of them is genuinely about a visible region - a keyboard, a filled region, a
+dragged divider - and there is none to act on.
 
-Renaming, sending, moving and making a tab do not ask, so those reach a pane wherever it is. The
-way through is `muster focus` on the pane first, which brings its tab on screen - at the cost of
-taking the keyboard away from whatever somebody was doing.
+Everything else reaches a pane wherever it is: renaming, sending, moving, making a tab, and
+splitting. A split in a background tab makes the pane and leaves the keyboard where it was,
+because there is no region to move it into and moving it would take somebody off what they were
+doing in the tab that is on screen.
+
+`muster pane close` is the exception among those, and it is deliberate: see below.
 
 ## A read stops a thousand rows back
 
@@ -66,6 +70,11 @@ currently keep.
 `muster pane close` acts on the pane it is running in unless told otherwise, like every other
 command here - which kills the shell that ran it. It is listed here because it is the one
 command whose default destroys something.
+
+For the same reason it also refuses a pane in a tab nothing is showing, where splitting one no
+longer does. The arguments are the same on paper - both are facts about the tree - and the risks
+are not: a split nobody is looking at costs a shell, and a close nobody is looking at costs
+whatever was running in it.
 
 ## A second window is not reopened for you
 
