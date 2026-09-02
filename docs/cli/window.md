@@ -5,6 +5,8 @@ panes, and what the agent in each pane is doing. An agent has no eyes, so this i
 out what it did.
 
     local  connected
+      this machine · started by Muster · 3 panes in ~/src/muster
+      /Users/you/.config/herdr/sessions/muster/herdr.sock
       tab 1  t1w3r07bsd  ~/src/muster  on screen
       ▸ 1  p1w3r07bsd  unknown  ~/src/muster
         2  p1w3r0ab2n  working  🤖 A · reading AGENTS.md
@@ -107,8 +109,24 @@ colours a terminal has hold no orange, and yellow is the nearest slot.
 
 ## daemons[]
 
-`daemon`, `state`, and `detail`. State is `connected`, `stale` or `disconnected`, and `detail`
-says why for the two that are not `connected`.
+One entry per machine this window is attached to.
 
-Read this before acting on the rest. Everything above comes from Muster's picture of each
-daemon, and an hour-old picture looks exactly like a current one without it.
+- `state` is `connected`, `stale` or `disconnected`, and `detail` says why for the two that are
+  not `connected`. Read this before acting on the rest: everything above comes from Muster's
+  picture of each daemon, and an hour-old picture looks exactly like a current one without it.
+- `host` is where it runs, empty for this machine.
+- `socket` is the path this window reaches it on. Over SSH that is the near end of the forward
+  rather than the path over there, because it is the one you could dial from here.
+  `HERDR_SOCKET_PATH=<socket> herdr server stop` ends that daemon and not the one beside it.
+- `started_by_muster` says whether this window started the daemon or attached to one that was
+  already answering. The second is ordinary and is the one worth knowing: a Muster launched
+  today adopts a daemon started yesterday if it is still answering, so what is in it may
+  predate the window.
+- `panes` and `directories` say how much it holds and where.
+
+Muster is the only thing that can answer the last three. You can ask a socket what it holds,
+and you can ask the OS which process holds a socket, and nothing gets from one to the other -
+herdr has no method that answers "which process are you". So pairing a herdr process with the
+work inside it is Muster's to keep, because Muster either started the daemon or chose to attach
+to it. Without it the choice is made on age, and age picks the wrong process: of twenty daemons
+on one machine, the one holding somebody's live agent was neither the oldest nor the youngest.

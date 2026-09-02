@@ -915,6 +915,32 @@ extension MusterWindow {
     shortcuts.show(bindings: Core.bindings())
   }
 
+  /// Quits, ending the sessions this window is attached to rather than leaving them running.
+  ///
+  /// Asks first, and the asking is the feature. Leaving sessions running is the default, the
+  /// promise, and what every other way out of Muster does; this is the one action in the app
+  /// that ends processes holding somebody's work, and until now the only way to do it was
+  /// `pgrep` and a signal - which cost a working agent once, because the daemon holding it
+  /// looked exactly like the scratch ones beside it.
+  ///
+  /// What the sheet is told comes from the core rather than from anything accumulated here, so
+  /// the machines it names are the ones `muster window` would name.
+  @objc public func quitAndCloseSessions(_ sender: Any?) {
+    let machines = Core.machines()
+    ConfirmSheet.ask(
+      on: window,
+      question: QuitSummary.question(machines: machines),
+      body: QuitSummary.body(machines: machines),
+      confirm: "Quit and Close Sessions"
+    ) {
+      // Set, then quit through the one path out. The core does the stopping while this
+      // window's bridges are still alive, which is the same reason quitting is synchronous
+      // at all.
+      Core.closeSessionsOnQuit()
+      NSApp.terminate(nil)
+    }
+  }
+
   @objc public func focusNextTab(_ sender: Any?) {
     Core.focus(tabStep: "next")
   }

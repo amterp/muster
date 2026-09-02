@@ -98,7 +98,7 @@ fn quitting_puts_a_pane_back(daemon: &Daemon, panes: &[String]) {
     let mut controllers: Vec<Child> = panes.iter().map(|pane| take(daemon, pane)).collect();
     let wanted: Vec<(u16, u16)> = panes.iter().map(|pane| laid_out(daemon, pane)).collect();
 
-    assert_ok(&answer(request::Payload::Quitting(Quitting {})));
+    assert_ok(&answer(request::Payload::Quitting(Quitting { close_sessions: false })));
 
     // Read before the controllers are killed, so nothing here can be explained by them going.
     let after: Vec<(u16, u16)> = panes.iter().map(|pane| size(daemon, pane)).collect();

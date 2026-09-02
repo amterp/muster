@@ -170,8 +170,8 @@ fn handle(request: Request) -> Response {
         // Answered when the panes have been handed back, not when the message was read. The
         // shell is holding its own termination open on this reply, which is the whole point:
         // everything here has to happen while its bridges are still alive to relay it.
-        request::Payload::Quitting(_) => {
-            session::quitting();
+        request::Payload::Quitting(quitting) => {
+            session::quitting(quitting.close_sessions);
             Response::ok()
         }
         // The rule at the top has already done this, since this is not a read. Said again
@@ -1144,10 +1144,15 @@ fn read_window() -> Response {
             daemons: now
                 .daemons
                 .iter()
-                .map(|(daemon, health, detail)| proto::BackendHealth {
-                    daemon_id: daemon.to_string(),
-                    state: health.as_str().to_string(),
-                    detail: detail.clone(),
+                .map(|machine| proto::Machine {
+                    daemon_id: machine.daemon.to_string(),
+                    host: machine.host.clone().unwrap_or_default(),
+                    socket: machine.socket_path.clone(),
+                    started_by_muster: machine.started,
+                    panes: u32::try_from(machine.panes).unwrap_or(u32::MAX),
+                    directories: machine.directories.clone(),
+                    state: machine.health.as_str().to_string(),
+                    detail: machine.detail.clone(),
                 })
                 .collect(),
         })),
