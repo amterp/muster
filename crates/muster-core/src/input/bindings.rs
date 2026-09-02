@@ -47,6 +47,12 @@ pub enum Action {
     /// that request and never this.
     RenamePane,
     RenameTab,
+    /// Takes the pane the keyboard is on out of its split and gives it a tab of its own.
+    ///
+    /// The other half of `MovePaneOntoAnother`, which has no chord at all because dragging a
+    /// row is how somebody says which pane to land beside. This one names nowhere, so a chord
+    /// and a menu item can carry it.
+    MovePaneToNewTab,
     ClosePane,
     NextPane,
     PreviousPane,
@@ -99,7 +105,7 @@ impl Action {
     /// Deliberately not alphabetical: a menu is read top to bottom, and the order here is what
     /// somebody scanning it expects - making something, then arranging it, then moving around
     /// it. A shell that sorted these would produce a menu nobody can find anything in.
-    pub const ALL: [Action; 40] = [
+    pub const ALL: [Action; 41] = [
         Action::NewWindow,
         Action::NewTab,
         Action::NextTab,
@@ -110,6 +116,7 @@ impl Action {
         Action::SplitLeft,
         Action::SplitUp,
         Action::RenamePane,
+        Action::MovePaneToNewTab,
         Action::ClosePane,
         Action::NextPane,
         Action::PreviousPane,
@@ -154,6 +161,7 @@ impl Action {
             Action::SplitUp => "split_up",
             Action::RenamePane => "rename_pane",
             Action::RenameTab => "rename_tab",
+            Action::MovePaneToNewTab => "move_pane_to_new_tab",
             Action::ClosePane => "close_pane",
             Action::NextPane => "next_pane",
             Action::PreviousPane => "previous_pane",
@@ -222,9 +230,14 @@ impl Action {
             // `new_split:left` and `new_split:up` with no chord, so Muster invents none
             // either. Renaming a tab has no Ghostty equivalent at all, and is something done
             // once per tab where renaming a pane is done several times an hour: the chord
-            // goes to the common one and the menu carries this. `[keymap]` is one line away
-            // for anybody who disagrees with either.
-            Action::SplitLeft | Action::SplitUp | Action::RenameTab => None,
+            // goes to the common one and the menu carries this. Pulling a pane into a tab of
+            // its own is the same shape as renaming a tab and has the same answer, and it is
+            // also the newest of the three - a chord invented for it would be one nobody
+            // asked for. `[keymap]` is one line away for anybody who disagrees with any of
+            // them.
+            Action::SplitLeft | Action::SplitUp | Action::RenameTab | Action::MovePaneToNewTab => {
+                None
+            }
             // Muster's own, since Ghostty has no equivalent. ⌘⇧N is free on this platform for
             // a terminal - a command chord never reaches a pane - and naming panes is what
             // somebody does in a window of fifteen agents, which is the size this was built

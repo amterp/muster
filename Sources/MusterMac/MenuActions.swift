@@ -80,6 +80,12 @@ public enum MenuActions {
       title: "Split Up", selector: #selector(MusterWindow.splitUp(_:)), group: .pane),
     "rename_pane": Described(
       title: "Rename Pane…", selector: #selector(MusterWindow.renamePane(_:)), group: .pane),
+    // No ellipsis: it asks nothing before doing it. The name a tab could be given belongs to
+    // the CLI's `--name`, because a chord means "get this out of the split" and a sheet in the
+    // way of that is a sheet nobody wanted.
+    "move_pane_to_new_tab": Described(
+      title: "Move Pane to New Tab", selector: #selector(MusterWindow.movePaneToNewTab(_:)),
+      group: .pane),
     "close_pane": Described(
       title: "Close Pane", selector: #selector(MusterWindow.closePane(_:)), group: .pane),
     "next_pane": Described(

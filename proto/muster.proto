@@ -725,12 +725,31 @@ message ArrangePane {
   string daemon_id = 1;
 
   // The pane being moved. Unlike every other pane request an empty id has no meaning here:
-  // a move names two panes by definition, so there is no "the focused one" to fall back to.
+  // a move names the pane it is about by definition, so there is no "the focused one" to fall
+  // back to.
   string pane_id = 2;
 
-  // Where it goes. In the same tab the two exchange places; in another tab the moved pane
-  // joins that tab immediately after this one.
+  // Where it goes, when it goes beside something. In the same tab the two exchange places; in
+  // another tab the moved pane joins that tab immediately after this one.
+  //
+  // Exclusive with `new_tab` below, and one of the two has to be said. Both together is a
+  // request that means two things, and neither is a request that means nothing - so both are
+  // refused by name rather than resolved by precedence.
   string onto_pane_id = 3;
+
+  // Put it in a tab of its own instead, which this makes.
+  //
+  // One request rather than three. Making a tab and then moving into it starts a pane nobody
+  // asked for - a login shell, and on another machine an ssh session with it - moves the
+  // keyboard into that pane for as long as it lives, and leaves a stray tab behind if anything
+  // fails between the two.
+  bool new_tab = 4;
+
+  // What to call the tab `new_tab` makes, or empty to leave it unnamed.
+  //
+  // Only read with `new_tab`. Naming it is something the three-command dance could not do at
+  // all, because the tab was made before anybody knew what was going into it.
+  string tab_name = 5;
 }
 
 // Brings a named tab on screen, and puts the keyboard in it.

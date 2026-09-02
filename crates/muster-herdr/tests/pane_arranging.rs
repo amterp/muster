@@ -14,7 +14,7 @@
 use std::sync::{Arc, Mutex};
 
 use herdr_harness::{Daemon, until};
-use muster_core::intent::{BackendChannel, BackendIntent, Refusal};
+use muster_core::intent::{BackendChannel, BackendIntent, MoveDestination, Refusal};
 use muster_core::mirror::Mirror;
 use muster_core::mirror::backend::{PaneId, TabId};
 use muster_herdr::snapshot::read_snapshot;
@@ -98,8 +98,7 @@ fn a_move_takes_a_pane_into_another_tab_and_lands_it_behind_the_row_it_was_dropp
         .backend()
         .submit(&BackendIntent::MovePane {
             pane: first.clone(),
-            tab: far.clone(),
-            after: elsewhere.clone(),
+            to: MoveDestination::Beside { tab: far.clone(), after: elsewhere.clone() },
         })
         .expect("herdr accepts a move into another tab");
 
@@ -117,6 +116,71 @@ fn a_move_takes_a_pane_into_another_tab_and_lands_it_behind_the_row_it_was_dropp
         !in_tab(&mirror, &tab_of(&mirror, &second)).contains(&first),
         "the pane is still in the tab it came from, so it was copied rather than moved"
     );
+}
+
+/// A pane pulled into a tab of its own lands in the workspace it came from, not the focused one.
+///
+/// The measurement the `new_tab` corpus case cites, and the reason Muster sends no
+/// `workspace_id`. herdr's other tab-making request, `tab.create`, takes one and drops the tab
+/// into whichever workspace the daemon last had focused when it is missing - so a request that
+/// named nothing here could as easily have put the tab on the other side of the session, and a
+/// one-workspace daemon would never show it.
+///
+/// Two workspaces, and the pane's own is not the focused one. That is what makes the answer
+/// mean something: if herdr read the daemon's cursor, the tab would land in `elsewhere`.
+#[test]
+fn a_pane_moved_into_a_tab_of_its_own_stays_in_its_own_workspace() {
+    let (daemon, mirror, _tab, first, second) = a_tab_of_two();
+    let ours = workspace_of(&mirror, &first);
+
+    // A second workspace, focused, so the daemon's own cursor points away from the pane.
+    daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "elsewhere", "focus": true }));
+    resnapshot(&daemon, &mirror);
+
+    daemon
+        .backend()
+        .submit(&BackendIntent::MovePane {
+            pane: first.clone(),
+            to: MoveDestination::NewTab { name: Some("pulled out".to_string()) },
+        })
+        .expect("herdr accepts a move into a tab of its own");
+
+    resnapshot(&daemon, &mirror);
+
+    let landed = tab_of(&mirror, &first);
+    assert_eq!(
+        in_tab(&mirror, &landed),
+        vec![first.clone()],
+        "the pane is not alone in the tab the move made"
+    );
+    assert_eq!(
+        workspace_of(&mirror, &first),
+        ours,
+        "the tab landed in the workspace the daemon had focused rather than the pane's own, so \
+         Muster has to name a workspace on this request after all"
+    );
+    assert!(
+        !in_tab(&mirror, &tab_of(&mirror, &second)).contains(&first),
+        "the pane is still in the tab it came from, so it was copied rather than moved"
+    );
+    // The name the dance this replaces could not set, because it made the tab before anything
+    // knew what was going into it.
+    assert_eq!(
+        label_of(&mirror, &landed),
+        Some("pulled out".to_string()),
+        "the new tab did not take the name the move gave it"
+    );
+}
+
+/// What a tab is called, or nothing when the daemon has not said.
+fn label_of(mirror: &Arc<Mutex<Mirror>>, tab: &TabId) -> Option<String> {
+    let held = mirror.lock().expect("a panicking test poisoned the mirror");
+    held.tab(tab).map(|tab| tab.label.clone())
+}
+
+fn workspace_of(mirror: &Arc<Mutex<Mirror>>, pane: &PaneId) -> String {
+    let held = mirror.lock().expect("a panicking test poisoned the mirror");
+    held.pane(pane).expect("the mirror holds this pane").workspace.to_string()
 }
 
 /// A swap across tabs is refused rather than reported as done.
@@ -269,8 +333,7 @@ fn a_move_reaches_a_window_that_is_only_listening() {
         .backend()
         .submit(&BackendIntent::MovePane {
             pane: first.clone(),
-            tab: far.clone(),
-            after: elsewhere.clone(),
+            to: MoveDestination::Beside { tab: far.clone(), after: elsewhere.clone() },
         })
         .expect("herdr accepts a move into another tab");
 

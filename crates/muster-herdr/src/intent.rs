@@ -16,7 +16,7 @@ use muster_core::diagnostics::log;
 use muster_core::fields;
 use muster_core::find::{Found, Needle, found_in};
 use muster_core::intent::{
-    BackendChannel, BackendIntent, Branch, Outcome, Refusal, SettledLayout, Side,
+    BackendChannel, BackendIntent, Branch, MoveDestination, Outcome, Refusal, SettledLayout, Side,
 };
 use muster_core::mirror::backend::{PaneId, PaneText, TabId, Viewport};
 use muster_core::names::{BackendPaneId, Names};
@@ -738,27 +738,44 @@ pub fn request(
                 "target_pane_id": names.backend_pane(with)?.as_str(),
             }),
         ),
-        // `destination` is a tagged object rather than a bare id: herdr's `pane.move` can also
-        // make a tab or a workspace to move into, and the tag is how it tells those apart.
-        // Muster only ever names an existing tab, because a drop landed on a row in one.
+        // `destination` is a tagged object rather than a bare id, and the tag is how herdr
+        // tells apart moving into a tab, into a tab it makes, and into a workspace it makes.
+        // Muster reaches the first two; the third is herdr's unit for a whole project and is
+        // deliberately not a thing a window makes several times an hour.
         //
         // "after" becomes a rightward split of the pane it lands behind. herdr puts a new pane
         // on the `second` side and reads a split first-then-second, so `right` is exactly one
         // place later in the order the agent list shows - the ordering the intent asked for,
         // spelled in the only geometry herdr's `split` accepts (it takes right and down alone).
         //
-        // `focus` is left false. Moving a pane is arranging the window rather than going
-        // somewhere, and a drag that also took the keyboard would interrupt whatever is being
-        // typed into the pane that had it.
-        BackendIntent::MovePane { pane, tab, after } => (
+        // `focus` is left false on both. Moving a pane is arranging the window rather than
+        // going somewhere, and a move that also took the keyboard would interrupt whatever is
+        // being typed into the pane that had it - which is exactly what the three-command
+        // dance this replaces did, by way of the throwaway pane it opened on the way.
+        //
+        // The new tab is left for herdr to place. `workspace_id` is optional on this arm,
+        // unlike `tab.create` where omitting it drops the tab into whichever workspace the
+        // daemon last had focused - here herdr has the pane, and a pane names its workspace.
+        // Measured rather than assumed: `pane_arranging.rs` moves a pane into a tab of its own
+        // while another workspace is focused, and the tab lands beside the pane it came from.
+        BackendIntent::MovePane { pane, to } => (
             "pane.move",
             json!({
                 "pane_id": names.backend_pane(pane)?.as_str(),
-                "destination": {
-                    "type": "tab",
-                    "tab_id": names.backend_tab(tab)?.as_str(),
-                    "target_pane_id": names.backend_pane(after)?.as_str(),
-                    "split": "right",
+                "destination": match to {
+                    MoveDestination::Beside { tab, after } => json!({
+                        "type": "tab",
+                        "tab_id": names.backend_tab(tab)?.as_str(),
+                        "target_pane_id": names.backend_pane(after)?.as_str(),
+                        "split": "right",
+                    }),
+                    // A name only when there is one. herdr labels an unnamed tab by its place,
+                    // and an empty label is a name somebody typed rather than the absence of
+                    // one - the same distinction `tab.rename` already draws.
+                    MoveDestination::NewTab { name: None } => json!({ "type": "new_tab" }),
+                    MoveDestination::NewTab { name: Some(name) } => {
+                        json!({ "type": "new_tab", "label": name })
+                    }
                 },
                 "focus": false,
             }),

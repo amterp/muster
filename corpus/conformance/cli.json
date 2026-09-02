@@ -816,6 +816,108 @@
       }
     },
     {
+      "name": "a pane is moved into a tab of its own",
+      "why": "The other destination, and the reason the verb needed one: pulling a pane out of a split used to take `tab new`, this move, and `pane close` to throw away the shell the first command started - three round trips, not atomic, and the keyboard landing in the throwaway on the way past.",
+      "given": {
+        "argv": [
+          "pane",
+          "move",
+          "--pane",
+          "p1w3r0ab2n",
+          "--new-tab"
+        ]
+      },
+      "expect": {
+        "request": {
+          "arrange_pane": {
+            "pane_id": "p1w3r0ab2n",
+            "new_tab": true
+          }
+        }
+      }
+    },
+    {
+      "name": "a tab a move makes can be named",
+      "why": "`--name` fills the label on the request. The dance this replaces could not set it at all: it made the tab before anything knew what was going into it, so the name would have had to be a fourth command.",
+      "given": {
+        "argv": [
+          "pane",
+          "move",
+          "--pane",
+          "p1w3r0ab2n",
+          "--new-tab",
+          "--name",
+          "the build"
+        ]
+      },
+      "expect": {
+        "request": {
+          "arrange_pane": {
+            "pane_id": "p1w3r0ab2n",
+            "new_tab": true,
+            "tab_name": "the build"
+          }
+        }
+      }
+    },
+    {
+      "name": "moving with --new-tab and no --pane moves the pane this is running in",
+      "why": "The same fallback the rest of the verb has, and it reaches further here: this destination names one pane rather than two, so an agent asking to be pulled out of a split says nothing at all beyond the flag.",
+      "given": {
+        "argv": [
+          "pane",
+          "move",
+          "--new-tab"
+        ],
+        "env": {
+          "MUSTER_PANE": "p1w3r0ab2n"
+        }
+      },
+      "expect": {
+        "request": {
+          "arrange_pane": {
+            "pane_id": "p1w3r0ab2n",
+            "new_tab": true
+          }
+        }
+      }
+    },
+    {
+      "name": "a move goes to one place or the other, never both",
+      "why": "Two destinations in one command line is a caller that means two things, and picking one by precedence would carry out a request nobody wrote. Refused where the position flags on other verbs are refused - by the parser, before anything is sent.",
+      "given": {
+        "argv": [
+          "pane",
+          "move",
+          "--pane",
+          "p1w3r0ab2n",
+          "--onto",
+          "p1w3r07bsd",
+          "--new-tab"
+        ]
+      },
+      "expect": {
+        "usage": "ArgumentConflict"
+      }
+    },
+    {
+      "name": "naming a tab without asking for one is refused",
+      "why": "`--name` only means anything with `--new-tab`, and a name silently dropped is a tab that comes back unnamed with nothing saying why. Refused against `--onto` rather than made to require `--new-tab`: a bool flag is present in clap's sense whether or not it was typed, so a requirement on one is a requirement nothing can fail, and the required destination group leaves refusing the other half saying exactly the same thing.",
+      "given": {
+        "argv": [
+          "pane",
+          "move",
+          "--onto",
+          "p1w3r07bsd",
+          "--name",
+          "the build"
+        ]
+      },
+      "expect": {
+        "usage": "ArgumentConflict"
+      }
+    },
+    {
       "name": "a pane is grown by the window's own step",
       "why": "What a resize chord means, said from a script. No amount travels, because zero is what the window reads as `your own step` - so a caller with nothing particular in mind gets what the keyboard gets rather than a distance this CLI invented.",
       "given": {

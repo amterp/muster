@@ -876,13 +876,40 @@ fn step_tab(direction: &str) -> Response {
     }
 }
 
-/// Puts one pane where another one is, which is what dropping a row on a row means.
+/// Puts a pane somewhere else: beside another one, or in a tab of its own.
+///
+/// The two destinations are refused against each other here rather than resolved by precedence.
+/// A request carrying both means two things and a request carrying neither means nothing, and a
+/// rule that quietly picked one would make a caller's mistake look like a working command that
+/// put the pane somewhere else.
 fn arrange_pane(arrange: &proto::ArrangePane) -> Response {
+    if arrange.new_tab && !arrange.onto_pane_id.is_empty() {
+        return Response::failure(
+            "a pane was asked to move onto another pane and into a tab of its own at once, so \
+             nothing was rearranged. Those are two different places; ask for one of them.",
+        );
+    }
+    if arrange.new_tab {
+        // Empty means the pane the keyboard is on, the way it does everywhere else. It can
+        // here and cannot below, and the difference is the destination rather than the verb:
+        // this names one pane, so there is a "the focused one" to fall back to and a chord
+        // and a menu item both mean exactly that.
+        let (daemon, pane) = match target(&arrange.daemon_id, &arrange.pane_id) {
+            Ok(found) => found,
+            Err(refusal) => return *refusal,
+        };
+        let Some(pane) = pane else {
+            return nothing_to_act_on(&daemon);
+        };
+        let name = (!arrange.tab_name.is_empty()).then(|| arrange.tab_name.clone());
+        return answer(session::move_pane_to_new_tab(&daemon, &pane, name));
+    }
     if arrange.pane_id.is_empty() || arrange.onto_pane_id.is_empty() {
         return Response::failure(
             "a pane was asked to move without naming both ends of the move, so nothing was \
              rearranged. Unlike most verbs here there is no 'the focused one' to fall back to: \
-             a move names two panes by definition, and whatever built this request dropped one.",
+             a move onto another pane names two panes by definition, and whatever built this \
+             request dropped one. `--new-tab` is the destination that names only the pane.",
         );
     }
     if arrange.pane_id == arrange.onto_pane_id {
@@ -895,13 +922,19 @@ fn arrange_pane(arrange: &proto::ArrangePane) -> Response {
     // drag always says, because the row it started on knows; a CLI has only the two names, and
     // a name is meant to be a complete address.
     let Some(daemon) = pane_holder(&pane, &arrange.daemon_id) else {
-        return Response::failure(format!(
-            "no daemon this window is following holds a pane called {pane}, so nothing was \
-             rearranged. Either it closed while this was in flight, or the name came from an \
-             older window - `muster window` lists the panes this one has."
-        ));
+        return no_pane_to_rearrange(&pane);
     };
     answer(session::arrange_pane(&daemon, &pane, &PaneId::new(&arrange.onto_pane_id)))
+}
+
+/// One wording for both destinations, since a name that resolves to nothing costs the same
+/// either way.
+fn no_pane_to_rearrange(pane: &PaneId) -> Response {
+    Response::failure(format!(
+        "no daemon this window is following holds a pane called {pane}, so nothing was \
+         rearranged. Either it closed while this was in flight, or the name came from an older \
+         window - `muster window` lists the panes this one has."
+    ))
 }
 
 /// Brings a named tab on screen, which is what clicking its caption means.

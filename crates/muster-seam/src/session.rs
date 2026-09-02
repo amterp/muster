@@ -25,7 +25,7 @@ use muster_core::diagnostics::{clock, log, poison};
 use muster_core::fields;
 use muster_core::find::{Found, Needle};
 use muster_core::input::{Bindings, PaneInput, PaneInputSettings, ScrollDirection};
-use muster_core::intent::{BackendChannel, BackendIntent, Refusal};
+use muster_core::intent::{BackendChannel, BackendIntent, MoveDestination, Refusal};
 use muster_core::mirror::backend::{PaneId, PaneText, Snapshot, TabId, WorkspaceId};
 use muster_core::mirror::{Change, Health, Mirror};
 use muster_core::names::{self, Mint, Names, PaneNames, TabNames};
@@ -1682,7 +1682,16 @@ pub(crate) fn submit(
     // A tab this request made is remembered rather than shown: the mirror has not heard of
     // it yet, and a region pointed at a tab the mirror does not know is dropped by the next
     // reconcile. The reconcile behind the daemon's own event is where it becomes visible.
-    if let Some(tab) = outcome.as_ref().ok().and_then(|outcome| outcome.created_tab.clone()) {
+    //
+    // Not for a move, which is the one request here that makes a tab without being about one:
+    // it makes a place to put a pane. Bringing that tab on screen would put the tab somebody
+    // was working in behind it, so "pull that pane out of the split" would answer by moving
+    // them somewhere they did not ask to go - and an agent pulling another agent's pane out
+    // would lose its own place doing it. The tab is listed and named, and `muster tab focus`
+    // is how anybody who does want to go there says so.
+    if !matches!(intent, BackendIntent::MovePane { .. })
+        && let Some(tab) = outcome.as_ref().ok().and_then(|outcome| outcome.created_tab.clone())
+    {
         let mut session = poison::lock(&SESSION, "session");
         session.wanted_tabs.insert(daemon.clone(), tab);
     }
@@ -2028,10 +2037,34 @@ pub(crate) fn arrange_pane(daemon: &DaemonId, pane: &PaneId, onto: &PaneId) -> R
         if from == to {
             BackendIntent::SwapPanes { pane: pane.clone(), with: onto.clone() }
         } else {
-            BackendIntent::MovePane { pane: pane.clone(), tab: to, after: onto.clone() }
+            BackendIntent::MovePane {
+                pane: pane.clone(),
+                to: MoveDestination::Beside { tab: to, after: onto.clone() },
+            }
         }
     };
     submit(daemon, &intent, Keyboard::Follows).map(drop)
+}
+
+/// Takes a pane out of whatever tab it is in and gives it one of its own.
+///
+/// Beside [`arrange_pane`] rather than inside it, because the two take different arguments and
+/// mean different things to whoever asked: one names where the pane is going and one says it is
+/// going nowhere in particular. What they share is the intent, and the adapter is where the two
+/// destinations become one request.
+///
+/// No region and no keyboard move. The tab it makes comes on screen through the ordinary path -
+/// the daemon says it exists, and `show_wanted_tab` puts a region on it - and the keyboard stays
+/// where it is, because pulling a pane out of a split is arranging the window rather than going
+/// somewhere.
+pub(crate) fn move_pane_to_new_tab(
+    daemon: &DaemonId,
+    pane: &PaneId,
+    name: Option<String>,
+) -> Result<(), String> {
+    let intent =
+        BackendIntent::MovePane { pane: pane.clone(), to: MoveDestination::NewTab { name } };
+    submit(daemon, &intent, Keyboard::StaysPut).map(drop)
 }
 
 /// Brings a named tab on screen, landing the keyboard on its first pane.

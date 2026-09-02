@@ -13,7 +13,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use conformance::{CaseError, Conformance, fields, repo_root};
-use muster_core::intent::{BackendIntent, Branch, Side};
+use muster_core::intent::{BackendIntent, Branch, MoveDestination, Side};
 use muster_core::mirror::backend::{PaneId, TabId, WorkspaceId};
 use muster_core::names::{BackendPaneId, Mint, Names};
 use muster_herdr::{PaneEnvironment, read_request, request};
@@ -265,8 +265,15 @@ fn every_intent() -> Vec<BackendIntent> {
         BackendIntent::SwapPanes { pane: PaneId::new("p1"), with: PaneId::new("p2") },
         BackendIntent::MovePane {
             pane: PaneId::new("p1"),
-            tab: TabId::new("t2"),
-            after: PaneId::new("p2"),
+            to: MoveDestination::Beside { tab: TabId::new("t2"), after: PaneId::new("p2") },
+        },
+        BackendIntent::MovePane {
+            pane: PaneId::new("p1"),
+            to: MoveDestination::NewTab { name: Some("release".into()) },
+        },
+        BackendIntent::MovePane {
+            pane: PaneId::new("p1"),
+            to: MoveDestination::NewTab { name: None },
         },
     ];
     for intent in &all {
@@ -369,10 +376,19 @@ fn intent(given: &Value) -> Result<BackendIntent, CaseError> {
             pane: PaneId::new(&text(given, "pane")?),
             with: PaneId::new(&text(given, "with")?),
         }),
+        // Two destinations under one word, told apart by whether the case names a tab to land
+        // in - which is how a caller says the same two things.
         "move" => Ok(BackendIntent::MovePane {
             pane: PaneId::new(&text(given, "pane")?),
-            tab: TabId::new(&text(given, "tab")?),
-            after: PaneId::new(&text(given, "after")?),
+            to: match given.get("tab").and_then(Value::as_str) {
+                Some(tab) => MoveDestination::Beside {
+                    tab: TabId::new(tab),
+                    after: PaneId::new(&text(given, "after")?),
+                },
+                None => MoveDestination::NewTab {
+                    name: given.get("name").and_then(Value::as_str).map(str::to_string),
+                },
+            },
         }),
         "focus" => Ok(BackendIntent::FocusPane { pane: PaneId::new(&text(given, "pane")?) }),
         "tab" => Ok(BackendIntent::CreateTab {

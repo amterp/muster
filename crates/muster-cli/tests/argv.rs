@@ -168,6 +168,8 @@ fn described(request: &Request) -> Value {
             "arrange_pane": fields([
                 ("pane_id", said(&arrange.pane_id)),
                 ("onto_pane_id", said(&arrange.onto_pane_id)),
+                ("new_tab", arrange.new_tab.then_some(json!(true))),
+                ("tab_name", said(&arrange.tab_name)),
             ])
         }),
         // `direction` is always here for the reason `side` is: every resize has one, and the

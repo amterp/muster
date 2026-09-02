@@ -48,6 +48,38 @@ impl Side {
     }
 }
 
+/// Where a pane being moved is going.
+///
+/// Muster's own two answers rather than a backend's list of them. herdr's `pane.move` takes a
+/// tagged union with three arms and Muster reaches two; a backend offering one arm would build
+/// the second out of two requests in its own adapter, which is where that belongs (MIP-1: the
+/// core speaks Muster's vocabulary).
+///
+/// Two rather than one because a person means two different things. "Put this beside that" is
+/// what dragging a row onto another row is, and it needs somewhere that already exists to land.
+/// "Give this a tab of its own" names nowhere, and used to cost three commands and a login shell
+/// started and killed on the way (kan `a_2IXGSgZi7`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MoveDestination {
+    /// Into a tab that exists, landing behind one of its panes.
+    ///
+    /// `after` is the pane it lands behind in the order the tab lays its panes out - which is
+    /// the order the agent list reads. An ordering rather than a side, because that is what
+    /// dragging a row down a list means; the adapter spells it in whatever geometry its backend
+    /// has.
+    Beside { tab: TabId, after: PaneId },
+
+    /// Into a tab of its own, which the move makes.
+    ///
+    /// One request rather than three, and that is the whole of why it exists: making a tab and
+    /// then moving into it starts a pane nobody wanted, moves the keyboard into it for as long
+    /// as it lives, and leaves a stray tab behind if anything fails in between.
+    ///
+    /// `name` is what to call the new tab, or nothing to leave it unnamed. The dance this
+    /// replaces could not name it at all.
+    NewTab { name: Option<String> },
+}
+
 /// Which child a step down a tree takes.
 ///
 /// A tree is addressed by the turns taken to reach a node, because the nodes have no names -
@@ -222,12 +254,7 @@ pub enum BackendIntent {
         with: PaneId,
     },
 
-    /// Moves a pane out of its tab and into another one on the same daemon.
-    ///
-    /// `after` is the pane in the destination it lands behind, in the order the tab lays its
-    /// panes out - which is the order the agent list reads. An ordering rather than a side,
-    /// because that is what dragging a row down a list means; the adapter spells it in whatever
-    /// geometry its backend has.
+    /// Moves a pane out of its tab and puts it somewhere else on the same daemon.
     ///
     /// Same daemon only, and that is not a limitation worth working around: a pane is a PTY the
     /// daemon owns, so "move it to the other machine" would mean killing a process on one host
@@ -235,8 +262,7 @@ pub enum BackendIntent {
     /// drop rather than sending this.
     MovePane {
         pane: PaneId,
-        tab: TabId,
-        after: PaneId,
+        to: MoveDestination,
     },
 
     /// Moves one divider in a tab's tree.
