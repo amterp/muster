@@ -24,7 +24,9 @@ use muster_core::mirror::backend::{
 use muster_core::mirror::{BackendEvent, Mirror};
 use muster_core::names::{Mint, Names};
 use muster_core::roster::Roster;
-use muster_herdr::{EventDecoder, FrameDecoder, PaneControlChannel, PaneFrame, PaneStreamEvent};
+use muster_herdr::{
+    EventDecoder, FrameDecoder, PaneControlChannel, PaneFrame, PaneStreamEvent, Reports,
+};
 use muster_perf::{Baseline, Cost, Load, compare, context, measure, pending, table, verdict};
 use muster_vt::{KeyEncoder, Terminal};
 use prost::Message;
@@ -502,7 +504,13 @@ fn bind_pane_socket(index: usize) -> Option<(Arc<PaneControlChannel>, PaneInput)
         .join(format!("muster-perf-{}-{index}.sock", std::process::id()))
         .to_string_lossy()
         .into_owned();
-    let control = Arc::new(PaneControlChannel::bind(path, || {}).ok()?);
+    let control = Arc::new(
+        PaneControlChannel::bind(
+            path,
+            Reports { connected: Box::new(|| {}), exited: Box::new(|_| {}) },
+        )
+        .ok()?,
+    );
     let encoder = Arc::new(KeyEncoder::new(TerminalModeProfile::UNKNOWN_PANE).ok()?);
     let input = PaneInput::new(
         Arc::clone(&control) as Arc<_>,

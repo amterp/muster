@@ -9,7 +9,9 @@
 //! told - `bridge_restarts` on a pane is what makes it build a new surface, and building one is
 //! the only way a bridge is ever started - so a view carrying the number is the seam under test.
 
+use std::os::unix::net::UnixStream;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use herdr_harness::{Daemon, until};
 use muster::proto::{
@@ -67,12 +69,33 @@ fn a_bridge_that_keeps_dying_is_given_up_on() {
     let pane = open_a_window(&daemon);
 
     for _ in 0..5 {
+        // A bridge, then its death, five times over. The dial is not decoration: the core
+        // takes one death per bridge, because two things watch a bridge die and the second
+        // arrival is not a second death - so five reports with nothing in between are one
+        // bridge reported five times, which is not what this is about.
+        let dialed = dial_a_bridge(&pane);
         report_exited(&pane, false);
+        drop(dialed);
     }
 
     // Three, not five. Every exit here lands within milliseconds of the last, so none of the
     // bridges counted as having worked.
     assert_eq!(restarts(&pane), Some(3));
+}
+
+/// Connects to the pane's control socket the way a bridge starting would, and waits for the
+/// core to notice.
+///
+/// The connection is what the app treats as a bridge existing, so this is how a test that
+/// starts no processes says one arrived.
+fn dial_a_bridge(pane: &Pane) -> UnixStream {
+    let path = socket_of(pane).expect("the core publishes a control socket for every pane");
+    let before = typeable_count();
+    let stream = UnixStream::connect(&path).expect("the core is listening on the pane's socket");
+    until("the core to notice the bridge dial in", || typeable_count() > before, || {
+        format!("nothing was announced typeable after connecting to {path}")
+    });
+    stream
 }
 
 /// Starts the core against this daemon, opens the window, and names the pane it came up on.
@@ -105,6 +128,29 @@ fn report_exited(pane: &Pane, process_alive: bool) {
         pane_id: pane.pane.clone(),
         process_alive,
     })));
+}
+
+/// Where the last published view puts this pane's control socket, which is what a bridge dials.
+fn socket_of(pane: &Pane) -> Option<String> {
+    let view = latest_view()?;
+    view.regions
+        .iter()
+        .filter(|region| region.daemon_id == pane.daemon)
+        .filter_map(|region| region.root.as_ref())
+        .find_map(|root| find_socket(root, &pane.pane))
+}
+
+fn find_socket(node: &ViewNode, pane: &str) -> Option<String> {
+    match node.node.as_ref() {
+        Some(view_node::Node::Pane(found)) if found.pane_id == pane => {
+            Some(found.control_socket_path.clone()).filter(|path| !path.is_empty())
+        }
+        Some(view_node::Node::Split(split)) => [split.first.as_deref(), split.second.as_deref()]
+            .into_iter()
+            .flatten()
+            .find_map(|child| find_socket(child, pane)),
+        _ => None,
+    }
 }
 
 /// How many times the last published view says this pane's bridge has been replaced.
@@ -150,13 +196,26 @@ fn collect(node: &ViewNode, into: &mut Vec<(String, u32)>) {
 
 static VIEW: Mutex<Option<ViewChanged>> = Mutex::new(None);
 
+/// How many panes the core has announced typeable, which is how a test knows a dial landed.
+static TYPEABLE: AtomicUsize = AtomicUsize::new(0);
+
+fn typeable_count() -> usize {
+    TYPEABLE.load(Ordering::Acquire)
+}
+
 extern "C" fn note(bytes: *const u8, len: usize) {
     // SAFETY: the core guarantees `len` readable bytes for the duration of this call, which
     // is the contract in include/muster.h.
     let bytes = unsafe { std::slice::from_raw_parts(bytes, len) };
     let event = Event::decode(bytes).expect("the core emits events this build can decode");
-    if let Some(event::Payload::ViewChanged(view)) = event.payload {
-        *VIEW.lock().expect("a panicking test poisoned the view") = Some(view);
+    match event.payload {
+        Some(event::Payload::ViewChanged(view)) => {
+            *VIEW.lock().expect("a panicking test poisoned the view") = Some(view);
+        }
+        Some(event::Payload::PaneTypeable(_)) => {
+            TYPEABLE.fetch_add(1, Ordering::Release);
+        }
+        _ => {}
     }
 }
 

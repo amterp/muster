@@ -9,7 +9,7 @@ use conformance::{CaseError, Conformance, fields};
 use muster_core::PaneKey;
 use muster_core::composition::DaemonId;
 use muster_core::mirror::backend::PaneId;
-use muster_core::respawn::{Decision, Respawns};
+use muster_core::respawn::{Decision, Ending, Respawns};
 use serde_json::{Value, json};
 
 #[test]
@@ -24,7 +24,8 @@ fn respawn_conformance() {
         for step in given.get("steps").and_then(Value::as_array).into_iter().flatten() {
             if let Some(pane) = step.get("ended").and_then(Value::as_str) {
                 let pane = pane_key(pane)?;
-                decisions.push(json!(spell(respawns.ended(&pane, number(step, "at")?))));
+                let ending = ending(step)?;
+                decisions.push(json!(spell(respawns.ended(&pane, number(step, "at")?, ending))));
                 last = Some(pane);
             } else if let Some(pane) = step.get("forgot").and_then(Value::as_str) {
                 let pane = pane_key(pane)?;
@@ -57,7 +58,17 @@ fn spell(decision: Decision) -> String {
     match decision {
         Decision::Start(count) => format!("start:{count}"),
         Decision::GiveUp(tried) => format!("give_up:{tried}"),
+        Decision::Yield => "yield".to_string(),
     }
+}
+
+/// How the bridge ended, which every step says: the answer turns on it, and a default here
+/// would let a case be silent about the one field it is really about.
+fn ending(step: &Value) -> Result<Ending, CaseError> {
+    step.get("ending")
+        .and_then(Value::as_str)
+        .and_then(Ending::parse)
+        .ok_or_else(|| CaseError::new(format!("the step names no known `ending`: {step}")))
 }
 
 fn number(value: &Value, key: &str) -> Result<u64, CaseError> {

@@ -1,0 +1,39 @@
+{
+  "concept": "bridgeReport.ending",
+  "source": "recorded",
+  "regenerate": "see corpus/herdr-0.8.0/closing-reasons/, recorded by hand against a scratch daemon with three `herdr terminal session control` clients: one holding the terminal, one refused a plain attach, one taking it with --takeover",
+  "citation": "docs/observations/herdr-0.8.0.md section 23",
+  "why": "A bridge that stopped is one event to the app and several things to the person, and herdr says which only in prose - a `reason` string with no code beside it. Muster reads that prose in exactly one place, and this is the oracle for it: a herdr re-pin that rewords a closing reason silently turns a takeover into a lost connection, and two windows would then trade one terminal until both gave up. The endings are Muster's own words; the reasons are herdr's, quoted from the recording.",
+  "cases": [
+    {
+      "name": "a terminal that already has a client is a refusal",
+      "why": "The ordinary case after a relaunch: a herdr client whose transport died goes on holding the terminal, so a fresh app's first attach is refused by a machine that is otherwise healthy. The answer is to attach again and take it, which is the opposite of the answer below.",
+      "given": { "reason": "terminal attach failed: terminal term_65a7828a5ca4f1 already has an attached client; retry with --takeover" },
+      "expect": { "ending": "refused" }
+    },
+    {
+      "name": "a terminal handed to somebody else is a takeover",
+      "why": "The one ending that must not be answered by attaching again. Another window asked for this pane and got it; taking it back would be answered the same way by the window on the other side.",
+      "given": { "reason": "terminal attach taken over" },
+      "expect": { "ending": "taken_over" }
+    },
+    {
+      "name": "a client letting go is not a refusal of anything",
+      "why": "herdr's word for a stream whose stdin reached EOF. Nothing Muster runs releases a terminal deliberately, so this arriving means the bridge's own channel closed under it - which is a connection that went, and is answered by starting another bridge.",
+      "given": { "reason": "detached" },
+      "expect": { "ending": "lost" }
+    },
+    {
+      "name": "a stream that ended with no closing frame is a lost connection",
+      "why": "What a dropped network looks like from inside the bridge: herdr's stdout simply ends. There is no reason to read, because there was no closing frame, and this is the case the whole replacement policy was written for.",
+      "given": { "reason": null },
+      "expect": { "ending": "lost" }
+    },
+    {
+      "name": "a reason nothing recognises is treated as a lost connection",
+      "why": "Prose matching stops matching when the prose changes, and the safe way to be wrong is to start another bridge: a wrong `lost` costs one extra attach, where a wrong `taken_over` leaves a pane dark on a healthy daemon and says nothing.",
+      "given": { "reason": "the pane went to the shops" },
+      "expect": { "ending": "lost" }
+    }
+  ]
+}

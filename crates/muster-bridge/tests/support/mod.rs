@@ -60,10 +60,24 @@ extern "C" fn note_typeable(bytes: *const u8, len: usize) {
 /// answerable here at the same moment it leaves the window.
 static NAMED: Mutex<BTreeMap<String, String>> = Mutex::new(BTreeMap::new());
 
+/// How many replacements each pane's bridge has had, by the daemon's own id for the pane.
+///
+/// Beside the names because it comes off the same message and answers the other half of the
+/// same question: which pane, and what the core has decided about it. It is the whole of what
+/// the shell is told about a bridge that died - a number that moved is what makes a window
+/// build a new surface, and building one is the only way a bridge is ever started.
+static RESTARTS: Mutex<BTreeMap<String, u32>> = Mutex::new(BTreeMap::new());
+
+/// How many times the last published view says this pane's bridge has been replaced.
+pub(crate) fn restarts(backend: &str) -> Option<u32> {
+    poison_free(&RESTARTS).get(backend).copied()
+}
+
 fn record_names(view: &muster::proto::ViewChanged) {
     fn walk(node: &muster::proto::ViewNode, into: &mut BTreeMap<String, String>) {
         match node.node.as_ref() {
             Some(muster::proto::view_node::Node::Pane(pane)) => {
+                poison_free(&RESTARTS).insert(pane.backend_pane_id.clone(), pane.bridge_restarts);
                 into.insert(pane.backend_pane_id.clone(), pane.pane_id.clone());
             }
             Some(muster::proto::view_node::Node::Split(split)) => {
@@ -393,6 +407,21 @@ impl Bridge {
     /// The screen as text, one string per row, trailing blanks cut.
     pub(crate) fn lines(&self) -> Vec<String> {
         self.grid().rows.iter().map(|row| row.text().trim_end().to_string()).collect()
+    }
+
+    /// Whether this bridge has stopped on its own.
+    pub(crate) fn has_exited(&mut self) -> bool {
+        self.process.try_wait().is_ok_and(|exited| exited.is_some())
+    }
+
+    /// Ends this bridge the way a machine going away would, and waits for it to be gone.
+    ///
+    /// A signal rather than a clean exit, deliberately: what is being proven is that the app
+    /// notices a bridge that is simply not there any more, and a process that was shot has no
+    /// chance to say anything on its way out.
+    pub(crate) fn kill(&mut self) {
+        self.process.kill().expect("the bridge is still running");
+        self.process.wait().expect("and it can be reaped");
     }
 
     pub(crate) fn diagnosis(&self, impact: &str) -> String {

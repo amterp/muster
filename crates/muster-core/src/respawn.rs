@@ -41,6 +41,52 @@ pub const LIMIT: u32 = 3;
 /// interval a person would call "it was fine and then it broke".
 pub const SETTLED_NS: u64 = 30_000_000_000;
 
+/// Why a bridge stopped, in Muster's words rather than the daemon's.
+///
+/// Three, because they are the three the app has to answer differently. The daemon says only
+/// what happened, in prose; `muster_herdr::bridge_report` is where that becomes one of these.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Ending {
+    /// The stream carrying it ended. A route that changed, a daemon that restarted, a pane
+    /// that closed - and from here they are one thing, because the answer to all three is to
+    /// look again and start another bridge if the pane is still there.
+    Lost,
+
+    /// The attach was refused: something else already holds this pane's terminal.
+    ///
+    /// Ordinary after a relaunch. A herdr client whose transport died goes on holding the
+    /// terminal, so the first attach of a fresh app is refused by a machine that is otherwise
+    /// perfectly healthy (kan a_2I76eCrjw).
+    Refused,
+
+    /// Another client attached and herdr handed the terminal over.
+    ///
+    /// The one ending that must not be answered by attaching again. Somebody asked for this
+    /// pane somewhere else and got it; taking it back would be answered the same way, and two
+    /// windows would trade one terminal until both gave up.
+    TakenOver,
+}
+
+impl Ending {
+    /// The word for the wire and the log.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Ending::Lost => "lost",
+            Ending::Refused => "refused",
+            Ending::TakenOver => "taken_over",
+        }
+    }
+
+    pub fn parse(word: &str) -> Option<Ending> {
+        match word {
+            "lost" => Some(Ending::Lost),
+            "refused" => Some(Ending::Refused),
+            "taken_over" => Some(Ending::TakenOver),
+            _ => None,
+        }
+    }
+}
+
 /// What to do about a bridge that has ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Decision {
@@ -50,6 +96,13 @@ pub enum Decision {
 
     /// Stop. Carries how many were tried, for the sentence the run log carries.
     GiveUp(u32),
+
+    /// Leave this pane's terminal to whoever now has it.
+    ///
+    /// Carries nothing and changes nothing, deliberately. The count is what the view
+    /// publishes and a count that moved is what makes the shell build a new surface, so a
+    /// yield that touched it would start the bridge it is refusing to start.
+    Yield,
 }
 
 /// Every pane whose bridge Muster has replaced, and how recently.
@@ -81,7 +134,18 @@ impl Respawns {
     /// start the run of failures over from one - there is no later exit while nothing is
     /// running, and if something does start one it is a fresh bridge that has to earn its own
     /// place.
-    pub fn ended(&mut self, pane: &PaneKey, now: u64) -> Decision {
+    ///
+    /// `ending` decides one thing and only one: whether attaching again is the right answer at
+    /// all. For two of the three it is - a connection that went and a terminal held by a client
+    /// that has not noticed its transport died are both recovered by attaching again, and the
+    /// second needs the `--takeover` a replacement carries. For the third it is not. A terminal
+    /// handed to another client was handed to somebody who asked for it, and taking it back
+    /// would be answered the same way from the other side: two windows trading one terminal
+    /// at the speed a bridge starts, until both of them ran out of tries.
+    pub fn ended(&mut self, pane: &PaneKey, now: u64, ending: Ending) -> Decision {
+        if ending == Ending::TakenOver {
+            return Decision::Yield;
+        }
         let settled = self
             .started
             .get(pane)
@@ -113,6 +177,25 @@ impl Respawns {
     pub fn retain(&mut self, keep: impl Fn(&PaneKey) -> bool) {
         self.started.retain(|pane, _| keep(pane));
     }
+}
+
+/// What to say about a pane whose terminal is now somebody else's.
+///
+/// Not a failure, and worded so nobody reads it as one: everything is working, the pane is
+/// being shown, and it is being shown somewhere else. What it has to carry is the way back,
+/// because there is one and it is not obvious - closing the pane here and opening it again
+/// starts a bridge that does take the terminal, which is the same action that recovers every
+/// other stuck pane.
+pub fn yielded(pane: &PaneKey) -> String {
+    format!(
+        "Another client attached to the pane {pane} and took its terminal, so this window has \
+         stopped drawing it - most often a second Muster window that was opened onto the same \
+         machine. Only one client may hold a herdr terminal, so nothing here can show it while \
+         that one does; the agent itself is untouched and every other pane in this window is \
+         unaffected. Whichever window is showing it now is the one to type into. To bring it \
+         back here instead, close this pane and open it again - the fresh bridge takes the \
+         terminal the way that one did.",
+    )
 }
 
 /// What the run log should say about a pane Muster has stopped rebuilding.

@@ -5,6 +5,7 @@
 //! a JSON key leaked (architecture.md, the backend seam). The core above speaks Muster's
 //! own vocabulary and does not know this crate exists.
 
+pub mod bridge_report;
 pub mod client;
 pub mod config;
 pub mod control_socket;
@@ -22,9 +23,10 @@ pub mod remote;
 pub mod snapshot;
 pub mod subscription;
 
+pub use bridge_report::Exiting;
 pub use client::HerdrClient;
 pub use config::{configuration_text, herdr_configuration, write_configuration};
-pub use control_socket::PaneControlChannel;
+pub use control_socket::{Ended, PaneControlChannel, Reports, silence_sigpipe};
 pub use control_stream::ControlStreamMessage;
 pub use discovery::{discover_socket_path, own_socket_path};
 pub use env::PaneEnvironment;
