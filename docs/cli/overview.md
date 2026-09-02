@@ -68,13 +68,15 @@ how a script says it outright, and how you ask again if a daemon refused.
 ## Which window
 
 `$MUSTER_SOCKET` names the window a pane is drawn in, and Muster sets it in every pane it
-creates on this machine. Without it, `muster` looks for a listening window under
-`~/.muster/state`, and refuses rather than guessing if more than one answers. `--socket PATH`
-names one outright.
+creates on this machine. Without it, `muster` looks for listening windows under `~/.muster/state`.
+Anything that changes something refuses rather than guessing if more than one answers; a question
+answers for all of them, headed by which window each answer is about. `--socket PATH` names one
+outright.
 
-`muster window list` says which windows are listening, marking the one this command is running
-in. `muster window new` opens another and prints the socket that reaches it, so the next line of
-a script is `muster --socket "$W" pane new --run claude`.
+`muster window list` says which windows are listening under this `MUSTER_HOME`, marking the one
+this command is running in. A window launched with a home of its own is not in that list and is
+reached by spelling out its socket. `muster window new` opens another and prints the socket that
+reaches it, so the next line of a script is `muster --socket "$W" pane new --run claude`.
 
 A window is a process. That is why each one has its own socket named after its pid, and why
 making one starts an app rather than asking a running one for it - the case `window new` exists

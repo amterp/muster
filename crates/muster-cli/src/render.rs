@@ -17,7 +17,7 @@ use muster_proto::{Response, Window, response};
 use serde_json::{Value, json};
 use unicode_width::UnicodeWidthStr;
 
-use crate::Trouble;
+use crate::{Trouble, dial};
 
 /// How a refusal is marked, here so that `report` and this file agree on it.
 pub const ERROR: Style = Style::new().fg_color(Some(anstyle::Color::Ansi(AnsiColor::Red))).bold();
@@ -134,6 +134,77 @@ pub fn windows(
         })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+/// Every window's whole answer, one after another, when the caller narrowed to none of them.
+///
+/// Distinct from [`windows`] above, which is `window list` and is a summary: this is what
+/// `muster window` prints, asked of each window that answered. So the two surfaces stay what they
+/// were - one says which windows there are, the other says what they are showing - and neither
+/// grew the other's job.
+///
+/// Headed by the pid, because a window has no name a person chose and a socket path is a
+/// temporary directory with a pid at the end of it. The path is beside it in both shapes, since
+/// that is what `--socket` takes and what the next command needs.
+pub fn answers(answers: &[(String, Result<Response, Trouble>)], json: bool) -> String {
+    if json {
+        let listed: Vec<Value> = answers
+            .iter()
+            .map(|(path, answer)| {
+                let mut row = json!({ "socket": path, "window": dial::named_window(path) });
+                match answer {
+                    Ok(response) => match &response.payload {
+                        Some(response::Payload::Window(window)) => {
+                            // Flattened into the row rather than nested under a key, so that one
+                            // window's answer is the same object here as it is on its own and a
+                            // filter written for one reads across all of them:
+                            // `.windows[].panes[] | select(.state == "blocked")`.
+                            if let Value::Object(fields) = window_json(window) {
+                                for (key, value) in fields {
+                                    row[key] = value;
+                                }
+                            }
+                        }
+                        _ => row["unreadable"] = json!(named_or_empty(response)),
+                    },
+                    Err(trouble) => row["unreadable"] = json!(trouble.detail()),
+                }
+                row
+            })
+            .collect();
+        return json!({ "windows": listed }).to_string();
+    }
+
+    answers
+        .iter()
+        .map(|(path, answer)| {
+            let heading = format!(
+                "{} {}",
+                styled(&format!("window {}", dial::named_window(path).unwrap_or(path)), NAME),
+                styled(path, QUIET)
+            );
+            let body = match answer {
+                Ok(response) => match &response.payload {
+                    Some(response::Payload::Window(window)) => window_text(window),
+                    _ => styled(named_or_empty(response), QUIET),
+                },
+                Err(trouble) => styled(trouble.detail(), QUIET),
+            };
+            format!("{heading}\n{}", body.trim_end())
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
+/// What a window answered with, when it was not what was asked for.
+///
+/// Listed rather than dropped, on the same terms as `window list`: a window that is there and
+/// answers something else is exactly what somebody running this is trying to find out about.
+fn named_or_empty(response: &Response) -> &'static str {
+    match response.payload.as_ref() {
+        Some(payload) => named(payload),
+        None => "an empty message",
+    }
 }
 
 fn counted_panes(window: &Window) -> usize {
@@ -445,6 +516,12 @@ fn regions(window: &Window) -> Vec<Value> {
                 // 1, 1, 1 rather than as three thirds that have to add up.
                 "weight": region.weight,
                 "keyboard": region.region_id == view.focused_region,
+                // Whether this region is filled by one pane rather than by its tab's whole
+                // tree. Reported because it is the difference between a tab holding one pane
+                // and a tab whose others are hidden, and nothing else in this answer implies
+                // it: every pane in the tab still lists, and the ones a zoom is covering read
+                // as `on_screen: false` exactly like the panes of a tab in the background.
+                "zoomed": region.zoomed,
             })
         })
         .collect()

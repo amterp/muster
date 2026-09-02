@@ -2602,9 +2602,9 @@ fn open_a_workspace_if_the_window_is_empty() {
 
 /// Which of a machine's tabs a window somebody asked for may open onto.
 ///
-/// The tab that appeared since it claimed one, and `workspace.create` leaves that tab focused
-/// - so the daemon's own cursor is the answer almost always, and the scan behind it is for the
-/// case where somebody has moved that cursor since.
+/// The tab that appeared since it claimed one. `workspace.create` leaves that tab focused, so
+/// the daemon's own cursor is the answer almost always, and the scan behind it is for the case
+/// where somebody has moved that cursor since.
 ///
 /// Falls back to the cursor when every tab the machine holds is one it already held. That is a
 /// claim that was refused, or one whose panes have all been closed since, and showing the
@@ -2909,10 +2909,8 @@ fn open_remaining_regions() {
     for id in leave_alone {
         session.workspaces_asked_of.remove(&id);
     }
-    let asking: Vec<DaemonId> = wants_one
-        .into_iter()
-        .filter(|id| session.workspaces_asked_of.insert(id.clone()))
-        .collect();
+    let asking: Vec<DaemonId> =
+        wants_one.into_iter().filter(|id| session.workspaces_asked_of.insert(id.clone())).collect();
     // Recorded before the ask goes out, and never removed. A machine is inherited once per
     // window: after the first fill this only says which of its tabs were somebody else's, and
     // preferring the others is what a person opening a window by hand meant either way.
