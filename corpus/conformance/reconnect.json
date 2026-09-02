@@ -1,0 +1,130 @@
+{
+  "concept": "reconnect",
+  "source": "authored",
+  "citation": "crates/muster-core/src/reconnect.rs and kan card a_2IRdZK6Un, which carries the measurement: plugging a laptop back in produced 97 tunnel.down / tunnel.reopened pairs in 118 seconds, median gap 1.26s, still going when the app was quit. The 1.26s is arithmetic rather than coincidence - a 250ms poll plus a backoff capped at 1s - and the reason it never escalated is the reset this file is mostly about. How long to wait and when to speak up are Muster's calls, and these cases are where they are written down.",
+  "why": "A connection that keeps failing has to be retried at a rate that reflects how likely it is to work, and the old loop reset its backoff whenever the process it had just spawned was still alive at the next poll. An ssh that lives a quarter of a second before losing its forward is alive at the next poll, so the table never advanced past its first step and a laptop plugged back in flapped once a second forever - while logging a hundred successful reopens that were not reopens.\n\nSo a run of failures ends when the connection has *held*, not when it came up. Anything shorter than the settling time is the same run continuing, whatever it looked like in between, which is what makes a flap a single unresolved condition rather than a hundred recoveries.\n\nTimes are nanoseconds, matching the monotonic clock the seam counts in. `answers` accumulates one entry per `failed` step, spelled `attempt:after` with the wait in milliseconds. `reported_at` is the attempt at which the person is told rather than only the log, which happens once per run. `recovered` accumulates one boolean per `holding` step: whether that reading ended a run, which is what decides whether a problem is taken back.",
+  "cases": [
+    {
+      "name": "the first failure is retried almost immediately",
+      "why": "The overwhelmingly common drop is a route changing under a laptop and coming straight back. A window that took even a second to notice would be a window people relaunch out of habit, and relaunching costs every pane on every other machine.",
+      "given": { "steps": [{ "failed": true }] },
+      "expect": { "answers": ["1:50ms"], "reported_at": null, "recovered": [] }
+    },
+    {
+      "name": "a run of failures walks the table and stops at its ceiling",
+      "why": "The behaviour the flap never reached. Eight failures in a row is a machine that is not coming back this minute, and retrying it every second all afternoon is three thousand processes and a log nobody can read. The last step stays in force rather than the table running out.",
+      "given": {
+        "steps": [
+          { "failed": true }, { "failed": true }, { "failed": true }, { "failed": true },
+          { "failed": true }, { "failed": true }, { "failed": true }, { "failed": true }
+        ]
+      },
+      "expect": {
+        "answers": ["1:50ms", "2:200ms", "3:500ms", "4:1000ms", "5:5000ms", "6:15000ms", "7:30000ms", "8:30000ms"],
+        "reported_at": 5,
+        "recovered": []
+      }
+    },
+    {
+      "name": "the person is told once, not on every attempt after",
+      "why": "A condition that stays true has nothing new to say, which is the rule the whole problem list is built on. Telling somebody on every attempt would republish the roster every thirty seconds for as long as a machine stayed away, and reopen one they had closed.",
+      "given": {
+        "steps": [
+          { "failed": true }, { "failed": true }, { "failed": true }, { "failed": true },
+          { "failed": true }, { "failed": true }, { "failed": true }
+        ]
+      },
+      "expect": {
+        "answers": ["1:50ms", "2:200ms", "3:500ms", "4:1000ms", "5:5000ms", "6:15000ms", "7:30000ms"],
+        "reported_at": 5,
+        "recovered": []
+      }
+    },
+    {
+      "name": "a healthy connection saying so again is not news",
+      "why": "This is asked on every poll of a connection that is up, so almost every call is this one. Answering true would republish the roster on a window where nothing has happened, which is the nagging that keying a problem by its condition was meant to end.",
+      "given": {
+        "steps": [
+          { "holding": 0 },
+          { "holding": 40000000000 },
+          { "holding": 80000000000 }
+        ]
+      },
+      "expect": { "answers": [], "reported_at": null, "recovered": [false, false, false] }
+    },
+    {
+      "name": "coming back and staying back is news, once",
+      "why": "The other half of a condition: it is raised while it is true and taken back when it stops being. The disappearance is the only acknowledgement a recovery ever gets. Once, because the readings after it are a connection that is merely still fine.",
+      "given": {
+        "steps": [
+          { "failed": true }, { "failed": true }, { "failed": true }, { "failed": true },
+          { "failed": true },
+          { "holding": 0 },
+          { "holding": 30000000000 },
+          { "holding": 60000000000 }
+        ]
+      },
+      "expect": {
+        "answers": ["1:50ms", "2:200ms", "3:500ms", "4:1000ms", "5:5000ms"],
+        "reported_at": 5,
+        "recovered": [false, true, false]
+      }
+    },
+    {
+      "name": "a connection that came up and fell over does not start the count over",
+      "why": "The exact bug. The old loop treated a process that existed as a success, so an ssh that came up and lost its forward a fraction of a second later reset the backoff - and the pair repeated at the same interval for two minutes. Coming up is not working, so this run keeps escalating through two of them.",
+      "given": {
+        "steps": [
+          { "failed": true },
+          { "holding": 300000000 },
+          { "failed": true },
+          { "holding": 900000000 },
+          { "failed": true },
+          { "failed": true }
+        ]
+      },
+      "expect": {
+        "answers": ["1:50ms", "2:200ms", "3:500ms", "4:1000ms"],
+        "reported_at": null,
+        "recovered": [false, false]
+      }
+    },
+    {
+      "name": "a connection that held starts the count over when it later dies",
+      "why": "The case the settling time is for, and the one that must not be sacrificed to the case above. A laptop that changes network twice in an afternoon gets its quick retries both times, because a tunnel that carried frames for half an hour has proved that reopening it works.",
+      "given": {
+        "steps": [
+          { "failed": true }, { "failed": true },
+          { "holding": 0 },
+          { "holding": 1800000000000 },
+          { "failed": true }, { "failed": true }
+        ]
+      },
+      "expect": {
+        "answers": ["1:50ms", "2:200ms", "1:50ms", "2:200ms"],
+        "reported_at": null,
+        "recovered": [false, false]
+      }
+    },
+    {
+      "name": "a connection that held for exactly the settling time counts as having worked",
+      "why": "The boundary, stated rather than left to whichever comparison got written, and inclusive on the near side for the same reason `respawn` is: thirty seconds of a window rendering is a window that was working.",
+      "given": {
+        "steps": [
+          { "failed": true }, { "failed": true },
+          { "holding": 0 },
+          { "holding": 29999999999 },
+          { "failed": true },
+          { "holding": 0 },
+          { "holding": 30000000000 },
+          { "failed": true }
+        ]
+      },
+      "expect": {
+        "answers": ["1:50ms", "2:200ms", "3:500ms", "1:50ms"],
+        "reported_at": null,
+        "recovered": [false, false, false, false]
+      }
+    }
+  ]
+}

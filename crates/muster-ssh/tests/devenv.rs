@@ -12,7 +12,9 @@
 //!
 //! These write only under `/tmp` on the far machine, so they can run beside that one.
 
-use std::time::Duration;
+use std::process::Command;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use muster_ssh::{Forward, Tunnel};
 
@@ -42,13 +44,22 @@ fn devenv() -> (String, Vec<String>) {
 fn master(name: &str) -> Tunnel {
     let (host, options) = devenv();
     let temporary = std::env::temp_dir();
-    Tunnel::open(Forward {
-        host,
-        options,
-        control_path: temporary.join(format!("muster-devenv-{name}.ctl")).to_string_lossy().into(),
-        local_socket: temporary.join(format!("muster-devenv-{name}.sock")).to_string_lossy().into(),
-        remote_socket: format!("/tmp/muster-devenv-{name}-nothing.sock"),
-    })
+    Tunnel::open(
+        Forward {
+            host,
+            options,
+            control_path: temporary
+                .join(format!("muster-devenv-{name}.ctl"))
+                .to_string_lossy()
+                .into(),
+            local_socket: temporary
+                .join(format!("muster-devenv-{name}.sock"))
+                .to_string_lossy()
+                .into(),
+            remote_socket: format!("/tmp/muster-devenv-{name}-nothing.sock"),
+        },
+        Arc::new(|_| {}),
+    )
     .expect("the tunnel should open")
 }
 
@@ -68,6 +79,63 @@ fn a_master_forwards_a_socket_before_anything_is_listening_on_it() {
     // if a missing far-end socket counted as a failed forward.
     std::thread::sleep(Duration::from_millis(200));
     assert!(tunnel.remote().run(&["true"]).is_ok(), "the master should still be carrying commands");
+}
+
+#[test]
+#[ignore = "needs the devenv container; run through ./dev --ssh"]
+fn a_master_that_was_killed_comes_back_still_carrying_commands() {
+    // Plugging a laptop back in flapped this connection 97 times in two minutes, and one
+    // reason it could never settle is here: the control path is a file, ssh will not replace
+    // one, and `-M -S <existing path>` disables multiplexing with a warning rather than
+    // failing. So a master that was killed rather than asked to leave came back without its
+    // multiplexing, and every pane's bridge - which rides `-S` - was then dialing a master
+    // that no longer existed (kan a_2IRdZK6Un).
+    //
+    // Killed rather than asked to exit, deliberately: `ssh -O exit` removes the control path
+    // on its way out, which is the one case that never had the bug.
+    let tunnel = master("reopen");
+    let pid = master_pid(&tunnel);
+    assert!(tunnel.remote().run(&["true"]).is_ok(), "it should carry a command to begin with");
+
+    assert!(
+        Command::new("kill").args(["-9", &pid]).status().expect("kill runs").success(),
+        "the master should have been killable"
+    );
+
+    // Carrying a command, not merely existing. A reopened master whose multiplexing was
+    // disabled looks perfectly healthy from outside and answers nothing on `-S`.
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while Instant::now() < deadline {
+        if tunnel.remote().run(&["true"]).is_ok() {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    panic!(
+        "the tunnel to {} did not carry a command again within 20s of its master being \
+         killed.\n  Impact: every pane on that machine stays dark until the app is \
+         relaunched, which is what this whole path exists to avoid.\n  Check the run log for \
+         `tunnel.reopen_failed`, and whether {} was left behind by the master that died - \
+         `-M -S` onto a path that exists disables multiplexing instead of failing.",
+        tunnel.host(),
+        tunnel.control_path(),
+    );
+}
+
+/// The pid of the master behind this tunnel, out of ssh's own answer.
+///
+/// `ssh -O check` prints `Master running (pid=NNN)` on standard error, which is the only place
+/// the pid is available: the `Tunnel` owns its child and does not hand it out, deliberately.
+fn master_pid(tunnel: &Tunnel) -> String {
+    let checked = Command::new("ssh")
+        .args(["-O", "check", "-S", tunnel.control_path(), tunnel.host()])
+        .output()
+        .expect("ssh runs");
+    let said = String::from_utf8_lossy(&checked.stderr).into_owned();
+    let Some(pid) = said.split_once("pid=").and_then(|(_, rest)| rest.split(')').next()) else {
+        panic!("ssh -O check did not name a master pid, it said: {said}")
+    };
+    pid.to_string()
 }
 
 #[test]
