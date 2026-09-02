@@ -30,12 +30,12 @@ use muster_core::mirror::backend::{PaneId, PaneText, Snapshot, TabId};
 use muster_core::mirror::{Change, Health, Mirror};
 use muster_core::names::{self, Mint, Names, PaneNames, TabNames};
 use muster_core::problems::{Problem, Problems, Severity};
-use muster_core::respawn::{self, Decision, Ending, Respawns};
+use muster_core::respawn::{self, Decision, Ended, Ending, Respawns};
 use muster_core::roster::{Numbering, Roster, RosterTab, TabStep};
 use muster_herdr::subscription::{Notice, Subscription};
 use muster_herdr::{
-    Ended, HerdrBackend, HerdrClient, HerdrPaneChannel, PaneControlChannel, PaneEnvironment,
-    Reports, daemon, fetch_snapshot, own_socket_path, remote,
+    HerdrBackend, HerdrClient, HerdrPaneChannel, PaneControlChannel, PaneEnvironment, Reports,
+    daemon, fetch_snapshot, own_socket_path, remote,
 };
 use muster_ssh::{Forward, Remote, Tunnel, remote_environment};
 use muster_vt::KeyEncoder;
@@ -1844,7 +1844,10 @@ pub(crate) fn bridge_ended(pane: &PaneKey, ended: &Ended) {
             "rendered" => ended.rendered.to_string(),
         },
     );
-    watchdog::opened(pane.clone());
+    // The wait starts again, carrying what this bridge said: a pane that stays dark after a
+    // refused attach can then name the client holding its terminal rather than pointing at a
+    // log file.
+    watchdog::ended(pane.clone(), ended.clone());
     // Before deciding anything, because the decision turns on whether the daemon still holds
     // this pane and the mirror is the only place that is written down.
     resnapshot(&pane.daemon, &format!("nothing is painting {} any more", pane.pane));

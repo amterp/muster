@@ -87,6 +87,37 @@ impl Ending {
     }
 }
 
+/// A bridge that has stopped, and what it managed to say first.
+///
+/// Here rather than beside the socket it arrives on, because two things read it and neither is
+/// that socket: this module decides whether to start another bridge, and `typeable` turns it
+/// into the sentence the person reads when nothing does.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Ended {
+    pub ending: Ending,
+
+    /// The daemon's own sentence about it, when the bridge lived long enough to pass one on.
+    ///
+    /// Kept whole and untranslated, because it names the terminal and the machine and Muster
+    /// cannot compose either.
+    pub reason: Option<String>,
+
+    /// Whether that bridge ever painted anything.
+    pub rendered: bool,
+}
+
+impl Ended {
+    /// What a bridge that said nothing is taken to have meant.
+    ///
+    /// `Lost`, because that is the ending whose answer is to look again and start another, and
+    /// a bridge that was killed - by a signal, by the machine going away - has said nothing and
+    /// is exactly that case. A bridge refused its terminal, or told its terminal has gone to
+    /// somebody else, has a moment to say so and does.
+    pub fn unsaid() -> Ended {
+        Ended { ending: Ending::Lost, reason: None, rendered: false }
+    }
+}
+
 /// What to do about a bridge that has ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Decision {
@@ -206,8 +237,9 @@ pub fn yielded(pane: &PaneKey) -> String {
 /// client whose ssh died goes on holding its terminal, so every later attach is refused by a
 /// machine that looks perfectly healthy.
 ///
-/// The roster is not told, and does not need to be. The typeable watch restarts whenever a
-/// bridge exits, so a pane nothing is dialing says so on its own row five seconds later.
+/// The roster is not told here, and does not need to be. The typeable watch restarts whenever a
+/// bridge exits, so a pane nothing is dialing says so on its own row five seconds later - and
+/// since it is told how the last bridge ended, it says this much there too.
 pub fn gave_up(pane: &PaneKey, tried: u32) -> String {
     format!(
         "Muster started {tried} bridges for the pane {pane} and each one ended within \
@@ -215,9 +247,18 @@ pub fn gave_up(pane: &PaneKey, tried: u32) -> String {
          keystrokes; every other pane in the window is unaffected. The run log says why each \
          one ended - a `bridge.attach.failed` there means the pane's terminal is still held by \
          a client from before, most often one on the far machine whose ssh died with the \
-         network, and `ssh <host> 'pkill -f \"terminal session control {}\"'` releases it. \
+         network, and {} releases it. \
          Closing this pane and opening it again starts a fresh bridge.",
         SETTLED_NS / 1_000_000_000,
-        pane.pane,
+        release_command(pane),
     )
+}
+
+/// How to free a terminal a client from before is still holding, over ssh.
+///
+/// One home, because two sentences carry it - the run log's and the roster's - and a command
+/// somebody is going to paste has to be right in both. `pkill -f` matches the client and not
+/// its own ssh session, since the pattern names the pane and the ssh command line does not.
+pub fn release_command(pane: &PaneKey) -> String {
+    format!("`ssh <host> 'pkill -f \"terminal session control {}\"'`", pane.pane)
 }

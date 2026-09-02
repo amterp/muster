@@ -12,10 +12,10 @@ use std::os::unix::net::UnixStream;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-use muster_core::respawn::Ending;
+use muster_core::respawn::{Ended, Ending};
 use muster_herdr::bridge_report::Exiting;
 use muster_herdr::control_stream::ControlStreamMessage;
-use muster_herdr::{Ended, PaneControlChannel, Reports};
+use muster_herdr::{PaneControlChannel, Reports};
 
 #[test]
 fn a_replacement_bridge_can_still_connect() {

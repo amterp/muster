@@ -551,19 +551,46 @@ impl Pump {
             std::process::exit(0);
         }
 
+        // Held, and a client whose transport died holds one forever. Worth telling apart from
+        // every other reason an attach fails, because it is the one with a remedy and the one
+        // Muster is about to try itself.
+        let held = ending == Ending::Refused;
         log::error(
             "bridge.attach.failed",
             fields! {
                 "pane" => pane,
                 "reason" => why,
-                "impact" => "this window stays empty for as long as it is open",
+                "ending" => ending.as_str(),
+                "impact" => "this pane stays empty until something does attach; every other \
+                             pane in the window is unaffected",
+                "check" => if held {
+                    "which client holds this pane's terminal - most often one from a Muster \
+                     that has gone, whose ssh died with the network and which goes on holding \
+                     it. The app starts a replacement that takes the terminal over; if that is \
+                     refused too, `pkill -f \"terminal session control <pane>\"` on the machine \
+                     holding it releases the terminal"
+                } else {
+                    "whether the pane id is right and its workspace still exists - \
+                     `herdr pane list` names the panes that exist right now"
+                },
             },
         );
-        eprint!(
-            "muster-bridge: could not attach to pane {pane}: {why}\n\
-             This window will stay empty. Most often the pane id is wrong or its workspace \
-             is gone; `herdr pane list` names the panes that exist right now.\n\n"
-        );
+        if held {
+            eprint!(
+                "muster-bridge: pane {pane}'s terminal is already held by another client.\n\
+                 Muster is starting another bridge that takes it over. If this pane is still \
+                 empty in a few seconds, the holder is most likely a previous Muster's client \
+                 on the machine this pane runs on, and\n    \
+                 pkill -f \"terminal session control {pane}\"\n\
+                 there releases it. The agent behind this pane is untouched.\n\n"
+            );
+        } else {
+            eprint!(
+                "muster-bridge: could not attach to pane {pane}: {why}\n\
+                 This window will stay empty. Most often the pane id is wrong or its workspace \
+                 is gone; `herdr pane list` names the panes that exist right now.\n\n"
+            );
+        }
         // Nothing ever painted, so the attach itself failed. Non-zero because this is not a
         // session ending - it is a session that never started.
         std::process::exit(1);

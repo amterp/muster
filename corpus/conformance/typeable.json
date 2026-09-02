@@ -2,7 +2,7 @@
   "concept": "typeable",
   "source": "authored",
   "citation": "crates/muster-core/src/typeable.rs, crates/muster-herdr/src/control_socket.rs, and kan card a_27Y4QtzyK. There is no oracle above these: how long a pane may render before Muster accuses its bridge is Muster's call, and these cases are where it is written down. The five seconds the seam actually uses is argued from tools/smoke-launch.py, which waits 2.0s after `app.ready` for a healthy bridge to start, dial back and paint.",
-  "why": "A pane becomes typeable when its bridge dials the socket Muster bound for it, and until then it renders, paints and discards every keystroke. Three separate bugs in this repo all ended in exactly that state - the bridge failed to dial, the socket path had moved, the channel could not be opened - and none of them said anything until somebody typed. Both ends of the wait are already known to the core, so the only thing missing was a deadline between them, which is what these cases pin.\n\nEvery case answers with the diff rather than the current set, because raising and clearing are the two things the caller can do, and getting the second one wrong is how a stale error outlives the pane it was about. `next_wake` is answered by every case too, because a loop around this has exactly two ways to go wrong: spinning on a pane it has already reported, and sleeping through one that fell overdue while it was busy elsewhere.\n\nTimes are nanoseconds, matching the monotonic clock the seam counts in. `raised` and `cleared` accumulate over every `reconcile` a case performs, so a case with two readings shows whether the second one had anything new to say. `next_wake` is asked once, at the case's `now` or at its last reading.",
+  "why": "A pane becomes typeable when its bridge dials the socket Muster bound for it, and until then it renders, paints and discards every keystroke. Three separate bugs in this repo all ended in exactly that state - the bridge failed to dial, the socket path had moved, the channel could not be opened - and none of them said anything until somebody typed. Both ends of the wait are already known to the core, so the only thing missing was a deadline between them, which is what these cases pin.\n\nEvery case answers with the diff rather than the current set, because raising and clearing are the two things the caller can do, and getting the second one wrong is how a stale error outlives the pane it was about. `next_wake` is answered by every case too, because a loop around this has exactly two ways to go wrong: spinning on a pane it has already reported, and sleeping through one that fell overdue while it was busy elsewhere.\n\nTimes are nanoseconds, matching the monotonic clock the seam counts in. `raised` and `cleared` accumulate over every `reconcile` a case performs, so a case with two readings shows whether the second one had anything new to say. `next_wake` is asked once, at the case's `now` or at its last reading.\n\nA wait starts either way a pane can be waiting: `opened` is a socket bound with no bridge yet, and `ended` is the same wait restarting after one stopped, carrying how it stopped. The second is why the sentence differs at all - a pane looks identical in every one of these cases and the thing to do differs in all of them, and until they were told apart every one of them read as `look in the run log`.",
   "cases": [
     {
       "name": "a pane whose bridge never dials is reported once the deadline passes",
@@ -20,6 +20,60 @@
         "cleared": [],
         "next_wake": null,
         "detail": "The pane local/w1:p1 has had a socket open for over 5s, and nothing has dialed it - the bridge carrying this pane's keystrokes either never started or cannot reach the socket. Everything typed into this pane is discarded and it goes on rendering, so it looks frozen rather than broken; every other pane in the window is unaffected. The run log has the cause: look for `channel.accept.failed`, `bridge.exited.reported` and `pane.channel.unavailable`. Closing this pane and opening it again starts a new bridge."
+      }
+    },
+    {
+      "name": "a pane whose terminal was taken says which window has it",
+      "why": "Nothing is broken here and the sentence must not read as though something is: another window asked for this pane and herdr gave it to them, which is the arrangement herdr allows. What the person needs is where their pane went and how to get it back, and neither is derivable from a blank pane.",
+      "given": {
+        "deadline": 5000000000,
+        "detail": true,
+        "steps": [
+          { "ended": "local/w1:p1", "at": 0, "ending": "taken_over", "reason": "terminal attach taken over", "rendered": true },
+          { "reconcile": 5000000000 }
+        ]
+      },
+      "expect": {
+        "raised": ["pane:local/w1:p1"],
+        "cleared": [],
+        "next_wake": null,
+        "detail": "Another client attached to the pane local/w1:p1 and took its terminal, so this window has stopped drawing it - most often a second Muster window that was opened onto the same machine. Only one client may hold a herdr terminal, so nothing here can show it while that one does; the agent itself is untouched and every other pane in this window is unaffected. Whichever window is showing it now is the one to type into. To bring it back here instead, close this pane and open it again - the fresh bridge takes the terminal the way that one did."
+      }
+    },
+    {
+      "name": "a pane whose attach was refused names the client holding it",
+      "why": "The failure that cost a working day, and the one nobody guesses: a herdr client whose transport died goes on holding the terminal, so every attach after a relaunch is refused by a machine that is otherwise perfectly healthy. The pane read `Process exited. Press any key to close the terminal.` and the way out - kill three processes over ssh - was not derivable from anything on screen.",
+      "given": {
+        "deadline": 5000000000,
+        "detail": true,
+        "steps": [
+          { "ended": "devenv/w4:p2", "at": 0, "ending": "refused", "reason": "terminal attach failed: terminal term_65a6bff3dab3da already has an attached client; retry with --takeover" },
+          { "reconcile": 5000000000 }
+        ]
+      },
+      "expect": {
+        "raised": ["pane:devenv/w4:p2"],
+        "cleared": [],
+        "next_wake": null,
+        "detail": "The pane devenv/w4:p2 has been dark for over 5s: something else is holding its terminal, and every bridge Muster started for it was refused. Only one client may hold a herdr terminal, and one whose connection died goes on holding it without noticing - most often a previous Muster's client, still on the far machine. The agent behind this pane is untouched and every other pane in the window is unaffected. `ssh <host> 'pkill -f \"terminal session control w4:p2\"'` releases it, and closing this pane and opening it again then starts a bridge that attaches."
+      }
+    },
+    {
+      "name": "a pane whose connection went says which machine to check",
+      "why": "A dropped VPN, and the case that recovers on its own once the machine is reachable - so the sentence has to say that rather than send somebody looking for a fault. It also has to say the agent is untouched, because a pane frozen on its last frame reads as work lost.",
+      "given": {
+        "deadline": 5000000000,
+        "detail": true,
+        "steps": [
+          { "ended": "devenv/w4:p1", "at": 0, "ending": "lost", "reason": "herdr's stream ended without a closing frame", "rendered": true },
+          { "reconcile": 5000000000 }
+        ]
+      },
+      "expect": {
+        "raised": ["pane:devenv/w4:p1"],
+        "cleared": [],
+        "next_wake": null,
+        "detail": "The pane devenv/w4:p1 lost the connection carrying it and has not got one back within 5s. It shows what it last painted and takes no keystrokes; the agent behind it is untouched, and panes on other machines in this window are unaffected. Check that the machine holding it is reachable - the run log says `tunnel.down` when the connection is the reason, and Muster keeps trying. Closing this pane and opening it again starts a fresh bridge."
       }
     },
     {
