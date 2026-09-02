@@ -45,8 +45,9 @@ there.
 
 **More than one window, and `cmd+n` to make one.** Each is its own process, so quitting one leaves
 the others alone, and each has its own address for the CLI - `muster window list` says which are
-open. Panes are not a window's: two windows showing one machine show the same panes under the same
-names, so an agent named in one is the same agent, named the same way, in the other.
+open. A window you ask for opens on tabs of its own: names are shared, so an agent named in one is
+the same agent, named the same way, in the other, but only one window at a time can *show* a given
+pane.
 
 **Local and remote in one window.** Name an SSH host in your config and its agents appear in the
 same list as the ones on your laptop. You install nothing over there: Muster copies across the
@@ -102,11 +103,12 @@ after:
 - Find only reaches the last thousand rows of a pane, and says nothing about the rest - so a match
   further back reads as no match at all.
 - A second window is not reopened after you quit. Its panes are not lost - those belong to the
-  daemon - but its arrangement is.
+  daemon - but its arrangement is: only the window Muster comes back to remembers one.
+- Two windows cannot show the same pane. The session daemon allows one client per terminal, so a
+  window you open starts on tabs of its own rather than onto what another one is drawing.
 - A name you give a pane reaches another window the next time that window asks the daemon what it
   holds, rather than at the moment you type it. Muster's own names are the same in every window.
 - Selecting text and then scrolling leaves the highlight where it was on screen, over other text.
-- A pane in a tab you are not looking at cannot be split.
 
 Muster is not a multiplexer, an agent framework, or a workflow: it gives you panes, states, sessions
 and a scriptable surface, and has no opinion about how you run your agents. `AGENTS.md` is the
