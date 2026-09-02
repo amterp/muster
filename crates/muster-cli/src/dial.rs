@@ -146,6 +146,19 @@ fn dial(path: &str) -> std::io::Result<UnixStream> {
 ///
 /// Sorted so that a refusal naming several of them reads the same twice in a row - a directory
 /// hands them back in whatever order it likes.
+/// The window a socket path names, as a person would say it.
+///
+/// The pid, because that is what the name carries and it is the only handle a window has that is
+/// shorter than a path. Not a name somebody chose - nothing gives a window one - so this is the
+/// most readable true thing there is to head an answer with.
+///
+/// Beside [`candidates`] because the two read the same convention, and a heading that disagreed
+/// with what `--socket` takes would be worse than no heading.
+pub fn named_window(path: &str) -> Option<&str> {
+    let file = path.rsplit('/').next()?;
+    file.strip_prefix("command-")?.strip_suffix(".sock")
+}
+
 pub fn candidates(environment: &BTreeMap<String, String>) -> Vec<String> {
     let Some(state) = state_directory(environment) else { return Vec::new() };
     let Ok(entries) = std::fs::read_dir(&state) else { return Vec::new() };

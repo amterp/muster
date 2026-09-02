@@ -20,6 +20,36 @@ pub mod frame;
 
 include!(concat!(env!("OUT_DIR"), "/muster.rs"));
 
+/// Whether a request only asks a question.
+///
+/// Here rather than beside either reader, because two things decide on it and they are separate
+/// programs. The window uses it to leave an armed numbered chord alone: a question does not spend
+/// what the first press armed, and anything that changes something does. The CLI uses it to decide
+/// whether a command may be asked of every window at once: naming no window is a real problem for
+/// a write and no problem at all for a read. Two copies of the list would be two chances for
+/// "this only reads" to mean two things.
+///
+/// Deliberately a short allowlist with everything else falling through, so a request added later
+/// defaults to being a change - which is the safe direction on both sides: an over-eager disarm
+/// costs a chord and a stuck one is a window whose numbers lie, and a write sent to every window
+/// is a pane made in one nobody meant.
+///
+/// One entry is here for a reason neither reader would guess: the shell logs through the core,
+/// often, so a run log that counted as a change would disarm a numbered chord in every build
+/// anybody was watching.
+pub fn only_reads(payload: &request::Payload) -> bool {
+    matches!(
+        payload,
+        request::Payload::LogRecord(_)
+            | request::Payload::ReadBindings(_)
+            | request::Payload::ReadWindow(_)
+            | request::Payload::ReadAppearance(_)
+            | request::Payload::ReadWindowFrame(_)
+            | request::Payload::ReportFontFamily(_)
+            | request::Payload::ReadPane(_)
+    )
+}
+
 impl Response {
     /// Nothing to report, which is what most requests answer.
     ///

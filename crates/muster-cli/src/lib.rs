@@ -78,6 +78,9 @@ pub fn run(
         }
     };
     let json = invocation.json;
+    // Read before the match takes the request out of it, so that "did the caller name a window"
+    // is still answerable below.
+    let named = invocation.socket.clone();
 
     let request = match invocation.asking {
         args::Asking::Print(text) => {
@@ -114,7 +117,36 @@ pub fn run(
         args::Asking::Send(request) => request,
     };
 
-    let rendered = dial::ask(&request, invocation.socket.as_deref(), environment)
+    // A question nobody narrowed, with more than one window listening. Naming no window is a
+    // real problem for a write - `pane new` has to know which window it makes a pane in - and no
+    // problem at all for a read, where "what is everything doing" wants all of them. Writes go
+    // on refusing, and the refusal names the sockets.
+    //
+    // Only when several answer. One window prints exactly what it printed before this existed,
+    // which is what keeps every script that reads `muster window --json` working; none falls
+    // through to `ask`, so the message about there being no window to talk to stays the one that
+    // command already wrote.
+    if asks_around(&request, named.as_deref(), environment) {
+        let answers = dial::survey(environment, &request);
+        if answers.len() > 1 {
+            let text = render::answers(&answers, json);
+            let _ = writeln!(out, "{}", text.trim_end());
+            return 0;
+        }
+        if let Some((_, answer)) = answers.into_iter().next() {
+            return match answer.and_then(|response| render::answer(&response, json)) {
+                Ok(text) => {
+                    if !text.is_empty() {
+                        let _ = writeln!(out, "{}", text.trim_end());
+                    }
+                    0
+                }
+                Err(trouble) => report(&trouble, json, errors),
+            };
+        }
+    }
+
+    let rendered = dial::ask(&request, named.as_deref(), environment)
         .and_then(|response| render::answer(&response, json));
     match rendered {
         Ok(text) => {
@@ -145,6 +177,27 @@ fn report(trouble: &Trouble, json: bool, errors: &mut impl Write) -> i32 {
         );
     }
     trouble.code()
+}
+
+/// Whether this command may be asked of every window rather than of one.
+///
+/// Two conditions, and both are about what the caller said rather than about how many windows
+/// there are. It has to be a question, which `muster_proto::only_reads` decides and the window
+/// itself reads for a different purpose. And the caller has to have named no window: `--socket`
+/// and `$MUSTER_SOCKET` each mean one, and the second is set in every pane Muster makes - so a
+/// command run where somebody is working already knows which window it is about, and this
+/// reaches only a caller standing outside every pane.
+fn asks_around(
+    request: &muster_proto::Request,
+    named: Option<&str>,
+    environment: &BTreeMap<String, String>,
+) -> bool {
+    if named.is_some()
+        || environment.get(environment::WINDOW_SOCKET).is_some_and(|path| !path.is_empty())
+    {
+        return false;
+    }
+    request.payload.as_ref().is_some_and(muster_proto::only_reads)
 }
 
 /// The request that asks a window what it is showing.

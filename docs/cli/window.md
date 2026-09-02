@@ -18,6 +18,21 @@ are still running.
 
     muster window --json | jq -r '.panes[] | select(.state == "blocked") | .pane'
 
+## More than one window
+
+Inside a pane this always answers about that pane's own window, because `$MUSTER_SOCKET` says
+which one that is. Outside every pane, with several windows listening, it answers for all of
+them - naming none is what "what is everything doing" means, and a question has nothing to be
+ambiguous about.
+
+Each answer is then headed by the window it is about: `window 39103`, the pid the socket is
+named after, with the socket path beside it for `--socket`. Under `--json` the answer becomes
+`{"windows": [...]}`, each entry carrying its `socket`, its `window`, and the ordinary fields
+below - so `.windows[].panes[] | select(.state == "blocked")` reads across every window.
+
+With one window listening, both shapes are exactly what they are above. `--socket PATH` narrows
+to one at any time.
+
 ## panes[]
 
 One entry per pane every followed daemon holds, on screen or not.
@@ -69,6 +84,9 @@ where.
   a fraction, so three untouched columns read as `1, 1, 1` rather than as three thirds. Divide by
   the sum to get a width.
 - `keyboard` - whether this is the region the window's keyboard is in.
+- `zoomed` - whether one pane is filling it rather than the tab's whole tree. Nothing else in the
+  answer says so: a zoom's hidden panes read `on_screen: false` exactly like the panes of a tab
+  in the background, and `pane` above is the one still drawn.
 
 This is the one part of the arrangement Muster owns outright rather than mirrors from a daemon: no
 daemon knows the other one exists, so nothing else in this answer implies it.

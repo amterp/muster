@@ -82,7 +82,7 @@ fn handle(request: Request) -> Response {
     // affordable next to the protobuf decode two lines above it - which allocates, on the same
     // path, for every one of them. Skipping it when nothing can be armed would mean reading
     // whether anything is, which is the same lock.
-    if !only_reads(&payload) {
+    if !leaves_the_chord_armed(&payload) {
         session::disarm();
     }
 
@@ -183,25 +183,16 @@ fn handle(request: Request) -> Response {
     }
 }
 
-/// Whether a request only asks a question, and so leaves an armed numbered chord alone.
+/// Whether a request leaves an armed numbered chord alone.
 ///
-/// Deliberately a short allowlist with everything else falling through: see the rule at the
-/// top of [`handle`]. Two of these matter more than they look. The shell logs through the core,
-/// often, and a run log that disarmed the chords would make the prototype work only in a build
-/// nobody was watching. And `FocusPaneAt` is the second press itself - the one request whose
-/// whole job is to spend what the first one armed.
-fn only_reads(payload: &request::Payload) -> bool {
-    matches!(
-        payload,
-        request::Payload::LogRecord(_)
-            | request::Payload::ReadBindings(_)
-            | request::Payload::ReadWindow(_)
-            | request::Payload::ReadAppearance(_)
-            | request::Payload::ReadWindowFrame(_)
-            | request::Payload::ReportFontFamily(_)
-            | request::Payload::ReadPane(_)
-            | request::Payload::FocusPaneAt(_)
-    )
+/// A question does, which is `muster_proto::only_reads` and is shared with the CLI, where the
+/// same distinction decides whether a command may be asked of every window at once. One entry
+/// here is not a question and still leaves the chord alone: `FocusPaneAt` is the second press
+/// itself, the one request whose whole job is to spend what the first one armed. It is stated
+/// here rather than folded into the shared list because it is a fact about this rule - a CLI
+/// that fanned it out would move the keyboard in every window somebody had open.
+fn leaves_the_chord_armed(payload: &request::Payload) -> bool {
+    muster_proto::only_reads(payload) || matches!(payload, request::Payload::FocusPaneAt(_))
 }
 
 /// Hands back what a pane has printed.

@@ -232,7 +232,12 @@ enum What {
 /// the plural, which is a different question and the only one `--socket` cannot narrow.
 #[derive(Debug, Subcommand)]
 enum AboutWindows {
-    /// List every Muster window on this machine
+    /// List the windows under this MUSTER_HOME, and how many panes and tabs each holds
+    //
+    // "Under this MUSTER_HOME" rather than "on this machine", which is what this said and did not
+    // keep: the sockets are looked for in one state directory, so a window launched with a home of
+    // its own is invisible here and cannot be reached without spelling out its socket. That a
+    // separate home is separate is deliberate; claiming otherwise in the help was not.
     List,
 
     /// Open another window, and print the socket that reaches it

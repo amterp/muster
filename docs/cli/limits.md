@@ -96,12 +96,18 @@ to arrive. The daemon announces a rename to nobody, so a second window learns it
 asks the daemon what it holds rather than at the moment it happens. Muster's own names are not
 affected: those are written down where every window reads them.
 
-## Outside a pane, two open windows are ambiguous
+## Outside a pane, two open windows are ambiguous for anything that changes something
 
 Each window listens on its own socket, named after its process. A caller inside a pane reaches
 the right one because `$MUSTER_SOCKET` says which. A caller outside every pane has nothing to go
-on, so with two windows open `muster` refuses and names the sockets that answered. Pass
-`--socket` to pick one.
+on, so with two windows open anything that changes something - `pane new`, `focus`, `zoom` -
+refuses and names the sockets that answered. Pass `--socket` to pick one.
+
+Questions do not refuse. `muster window` and `muster pane read` answer for every window that is
+listening, because naming none of them is what "what is everything doing" means. Their output
+grows a heading per window when more than one answers, and `--json` becomes `{"windows": [...]}`
+with each window's ordinary answer inside - so `.windows[].panes[]` reads across all of them.
+With one window open, both are exactly what they were.
 
 ## A zoom with nothing to zoom still succeeds
 
