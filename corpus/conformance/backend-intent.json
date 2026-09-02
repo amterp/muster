@@ -451,6 +451,44 @@
       }
     },
     {
+      "name": "a pane pulled into a tab of its own is one move, and names the tab",
+      "why": "The other destination `pane.move` offers, and the reason this exists at all: making a tab and then moving into it starts a login shell nobody asked for - an ssh session too, on another machine - takes the keyboard into it, and leaves a stray tab behind if anything fails between the two requests.\n\n`workspace_id` is deliberately absent. On `tab.create` omitting it drops the tab into whichever workspace the daemon last had focused, which is why that request names one; here herdr already has the pane and a pane names its workspace. Measured against a real daemon in `pane_arranging.rs`, with another workspace focused, and the tab lands beside the pane it came from.\n\n`label` is what to call the new tab, which the three-command dance could not set at all: it made the tab before anything knew what was going into it.\n\n`focus: false` on the same terms as the case above - pulling a pane out of a split is arranging the window rather than going somewhere.",
+      "given": {
+        "intent": "move",
+        "pane": "p1",
+        "name": "release"
+      },
+      "expect": {
+        "method": "pane.move",
+        "params": {
+          "pane_id": "p1",
+          "destination": {
+            "type": "new_tab",
+            "label": "release"
+          },
+          "focus": false
+        }
+      }
+    },
+    {
+      "name": "a tab of its own with no name carries no label at all",
+      "why": "Absent rather than empty, the same distinction `tab.rename` draws in the other direction: herdr labels an unnamed tab by its place in the workspace, and an empty string is a name somebody typed. Sending one would give the tab a name nobody chose and no way to tell it from one they did.",
+      "given": {
+        "intent": "move",
+        "pane": "p1"
+      },
+      "expect": {
+        "method": "pane.move",
+        "params": {
+          "pane_id": "p1",
+          "destination": {
+            "type": "new_tab"
+          },
+          "focus": false
+        }
+      }
+    },
+    {
       "name": "a daemon Muster did not point anywhere is sent nothing to restore",
       "why": "A daemon named by `socket` in the config file is somebody else's, and a daemon on another machine was reached rather than started - neither had its config redirected, so a pane on either already reads the file it always did. Sending a path anyway would be worse than useless on the remote one: it names a file on this machine, and the pane is on that one.",
       "given": {

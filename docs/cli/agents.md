@@ -67,6 +67,16 @@ that carries one from a laptop to a devenv - `muster window` says which daemon h
 `--pane` is the pane the command is running in when you leave it out, like everywhere else, so an
 agent can ask to be put beside another one without looking up its own name.
 
+The other destination is a tab of its own, which is what pulling one busy agent out of a four-way
+split means:
+
+    muster pane move --pane p1w3r0ab2n --new-tab --name "the build"
+
+One request, and nothing is created and destroyed on the way. `--new-tab` excludes `--onto`, and
+`--name` only goes with `--new-tab`; the tab is unnamed without it and the window numbers it. The
+keyboard stays where it is, because pulling a pane out of a split is arranging the window rather
+than going somewhere.
+
 Panes are not the only unit. A tab is the other way to make one, and the way to put work somewhere
 that does not belong in this tab at all:
 

@@ -617,6 +617,19 @@ public enum Core {
   /// Both ends are named because a drag names two panes by definition. Whether this becomes an
   /// exchange or a move into another tab is the core's to decide from where they are - the
   /// shell knows which rows were involved and nothing about the tree they sit in.
+  /// Takes the pane the window's keyboard is on into a tab of its own.
+  ///
+  /// The same request a drag sends, with the other destination set. Naming no pane means the
+  /// keyboard's, which is what a menu item means and what the core reads an empty id as - a drag
+  /// says which pane because the row it started on knows, and a menu item has no row.
+  public static func movePaneToNewTab() {
+    var arrange = Muster_ArrangePane()
+    arrange.newTab = true
+    var request = Muster_Request()
+    request.arrangePane = arrange
+    send(request)
+  }
+
   public static func arrange(pane: PaneKey, onto: PaneKey) {
     var arrange = Muster_ArrangePane()
     arrange.daemonID = pane.daemon

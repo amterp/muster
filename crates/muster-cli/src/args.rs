@@ -366,14 +366,28 @@ enum Doing {
     // be a second place that rule lives. Named `move` rather than `arrange` because moving is
     // what somebody wants; the exchange is what they get when both panes are in one tab, and
     // the help and `muster docs agents` say so.
+    #[command(group = ArgGroup::new("somewhere").required(true))]
     Move {
         /// The pane to move, or the one this is running in
         #[arg(long, value_name = "REF")]
         pane: Option<String>,
 
         /// Where to put it: in the same tab the two swap, in another it lands after this one
-        #[arg(long, required = true, value_name = "REF")]
-        onto: String,
+        #[arg(long, group = "somewhere", value_name = "REF")]
+        onto: Option<String>,
+
+        /// Give it a tab of its own instead, made by the move
+        #[arg(long, group = "somewhere")]
+        new_tab: bool,
+
+        /// What to call that tab, with --new-tab
+        //
+        // Refused against `--onto` rather than made to require `--new-tab`, which reads the
+        // same way and is not: a bool flag is present in clap's sense whether or not it was
+        // typed, so a requirement on one is a requirement nothing can fail. The group above
+        // is required, so refusing the other destination leaves exactly this one.
+        #[arg(long, conflicts_with = "onto", value_name = "NAME")]
+        name: Option<String>,
     },
 
     /// Move the divider beside a pane, making it bigger in that direction
@@ -587,11 +601,16 @@ fn pane(doing: &Doing, environment: &BTreeMap<String, String>) -> Asking {
             pane_id: pane_ref(pane.as_ref(), environment),
             ..ClosePane::default()
         })),
-        Doing::Move { pane, onto } => send(request::Payload::ArrangePane(ArrangePane {
-            pane_id: pane_ref(pane.as_ref(), environment),
-            onto_pane_id: onto.clone(),
-            ..ArrangePane::default()
-        })),
+        // clap holds the two destinations in one required group, so exactly one is set here.
+        Doing::Move { pane, onto, new_tab, name } => {
+            send(request::Payload::ArrangePane(ArrangePane {
+                pane_id: pane_ref(pane.as_ref(), environment),
+                onto_pane_id: onto.clone().unwrap_or_default(),
+                new_tab: *new_tab,
+                tab_name: name.clone().unwrap_or_default(),
+                ..ArrangePane::default()
+            }))
+        }
         Doing::Resize { left, right, up, down, pane, by } => {
             // clap holds the four in one required group, so exactly one is true here.
             let direction =

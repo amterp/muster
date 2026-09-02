@@ -683,6 +683,14 @@ extension MusterWindow {
     Core.createTab()
   }
 
+  /// Pulls the pane the keyboard is on out of its split and into a tab of its own.
+  ///
+  /// Which pane that is is the core's, like every other item here. The pane keeps running - this
+  /// is one `pane.move`, not a tab made and a pane started and one of them thrown away.
+  @objc public func movePaneToNewTab(_ sender: Any?) {
+    Core.movePaneToNewTab()
+  }
+
   /// Names the pane the keyboard is on, having asked what to call it.
   ///
   /// The core decides which pane that is, as it does for every other item here - the roster is

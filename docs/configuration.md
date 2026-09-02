@@ -63,13 +63,14 @@ modifiers and a key, in any order and any case, spelled the way you would say th
 `opt`, `ctrl`, `shift`, and `left`, `return`, `f5`, `[`. The actions are `new_window`, `new_tab`,
 `next_tab`, `previous_tab`, `split_*` for each direction, `close_pane`, `next_pane`,
 `previous_pane`, `focus_*` and `resize_*` for each direction, `focus_pane_1` to
-`focus_pane_9`, `rename_pane`, `rename_tab`, `find`, `find_next`, `find_previous`, `zoom`,
+`focus_pane_9`, `rename_pane`, `rename_tab`, `move_pane_to_new_tab`, `find`, `find_next`,
+`find_previous`, `zoom`,
 `increase_font_size`, `decrease_font_size`, `reset_font_size`, `toggle_sidebar`,
 `reload_config`, and `show_shortcuts`. On macOS these become menu items, which is where the
 platform dispatches a key equivalent from - so a rebound action moves in the menu too, and
 System Settings can move it again.
 
-Three of them ship with no chord at all. Ghostty has `split_left` and `split_up` as actions and
+Four of them ship with no chord at all. Ghostty has `split_left` and `split_up` as actions and
 binds neither, so Muster does the same rather than inventing a shortcut for them - they are in
 the menu, one click away and one `[keymap]` line from a chord. Which of the four sides costs
 herdr one request and which costs two is not something you can tell from here, and that is the
@@ -80,6 +81,12 @@ pane move.
 `rename_tab` is the third, and that one is Muster's own call rather than Ghostty's: you name a
 tab once and a pane several times an hour, so the chord goes to `rename_pane` (`cmd+shift+n`)
 and the tab keeps a menu item.
+
+`move_pane_to_new_tab` is the fourth, on the same reasoning and one more of its own: it is the
+newest of them, and a chord invented for an action nobody has asked to reach by keyboard is a
+chord taken away from whatever wants it later. It takes the pane the keyboard is on out of its
+split and gives it a tab of its own, in one request - the CLI's `pane move --new-tab` is the
+same act with a name for the tab.
 
 **`cmd+1` to `cmd+9` go to a numbered agent.** The number is drawn on its row in the agent
 list, counting down the whole list across every machine, so `cmd+3` is the third row whichever
