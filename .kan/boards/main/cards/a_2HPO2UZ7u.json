@@ -5,16 +5,26 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "**The suspicion was right, and the test settled it in one run.** Written first, as the card asks: restart the daemon, drive a transition on a pane that existed before it, and assert the change arrives. It timed out after 20 seconds with the mirror holding `Unknown` and `Health::Connected` throughout - which is exactly the shape the card describes, and exactly the \"shows working forever on a connection that looks healthy\" failure.\n\nThe mechanism is as read. `follow()` treats a map entry as a live watcher; `mark_stale` leaves the panes alone and the bootstrap upserts them, so `wanted` still names every pane, `contains_key` is true, and `watch` is never called again. New panes are watched normally, which is why `a_pane_created_later_is_watched_too` passes - it creates its pane after the subscription is up.\n\n**The fix is the smaller of the two the card offered.** A `Watcher` now carries a flag its thread sets on the way out, and `follow` drops the stopped ones before deciding what is missing. Dropping every watcher when the mirror goes stale was the other candidate and is worse: it throws away watchers that are still alive whenever a connection blinks, and it makes staleness carry a meaning it does not have. The flag is set by a drop guard rather than by a store before each `return`, because the thread has three ways out and the one that gets forgotten is the one that reproduces this.\n\n**The test is worth keeping either way, and the card was right about why.** The existing restart test asserts pane count and name survive, which they always did. The new one asserts a transition is *reported*, not merely that the mirror holds the right value - a bootstrap replaying what is already true satisfies the weaker assertion while the watcher stays dead, which is how this would have shipped green a second time.\n\n**One residual, not fixed and not worth a card on its own.** A watcher is only ever rebuilt by `follow`, which runs on a reconnect and on a pane being added or removed. A single watcher socket dying while the structure stream survives leaves that one pane frozen until the next structural change. The per-pane threads deliberately have no retry of their own, and the comment's reasoning still holds - a watcher's connection almost always dies with the daemon, and the structure stream dies with it - so this is a narrow case that now has a name rather than a hazard.\n\nFixed in `efd10b7`.",
+      "created_at_millis": 1788324072992,
+      "id": "c_2Imhf9yKt"
+    }
+  ],
   "created_at_millis": 1788120739873,
   "creator": "Alexander Terp",
   "description": "Suspected from reading, not yet reproduced.\n\n`AgentWatchers` is built once outside the reconnect loop (`crates/muster-herdr/src/subscription.rs:212`). Per-pane watcher threads deliberately have no retry of their own (:543-548), on the stated grounds that `follow()` rebuilds every watcher when the structure subscription reconnects.\n\nBut `follow()` (:513-525) only spawns for panes absent from `watching`, and `mark_stale` (`crates/muster-core/src/mirror/state.rs:650`) leaves the mirror's panes in place. herdr also reuses pane ids across a restart. So on reconnect the map still holds handles whose threads exited when the socket died, `contains_key` is true, and nothing respawns them.\n\nIf that is right: after a daemon restart or a dropped socket, pre-existing panes get their state corrected once by the bootstrap snapshot and then freeze forever, on a connection that looks healthy. That is the 'shows working forever' shape, and it is the failure the whole product is about.\n\nThe existing reconnect test (`subscription.rs:664`, a_mirror_survives_the_daemon_going_away_and_coming_back) asserts pane count and pane name survive a restart. It does not assert that agent state still flows afterwards, so this ships green.\n\nFirst move is a test: restart the daemon, then drive a transition on a pane that existed before, and assert it arrives. That either kills the suspicion or turns this into a small fix - a liveness check in `follow`, or dropping the watchers when the mirror goes stale.",
   "id": "a_2HPO2UZ7u",
-  "position": "!U",
+  "position": "!!!!!!!!!!!!!!!!!!!!!!!!2",
   "title": "🧟 Agent watchers may never respawn after a daemon reconnect",
   "type": "bug",
-  "updated_at_millis": 1788120739873,
+  "updated_at_millis": 1788324072992,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1788120739873}
+    {"field":"column","value":"backlog-hi","at":1788120739873},
+    {"field":"column","value":"in-progress","at":1788323718481},
+    {"field":"column","value":"done","at":1788324056046}
   ]
 }

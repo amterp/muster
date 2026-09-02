@@ -5,7 +5,7 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -18,17 +18,25 @@
       "body": "## Confirmed today, from the CLI rather than the GUI\n\nReproduced live during the 2026-08-31 parallel round: the integrating agent's own pane had been\nmoved to a background tab by the person at the keyboard, and `muster pane new` refused until it\nfocused its own tab first. So this is not only a chord that fails in a window somebody is\nlooking at - it is the failure an agent hits while building the grid it was asked for, which is\nthe case the card's first paragraph describes and the one that costs the most.\n\nThe refusal it gives is still \"the daemon local is not showing that pane or tab in this window\".\n\n## The third bullet is already done\n\n`docs/cli/limits.md` grew \"A pane in a tab nothing is showing cannot be split\" since this card\nwas written, so the reference is no longer silent about the rule. It names splitting, focusing,\nzooming and resizing as the four that ask the window which region holds the pane, and `muster\nfocus` as the way through. Only the first two bullets are left to decide.",
       "created_at_millis": 1788223933224,
       "id": "c_2I6gZO9Yh"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Done on `main3` (slot 3 of the 2026-09-02 parallel round), in two commits: the failing test, then `fix: splitting a pane asks the window rather than requiring it`.\n\nBoth remaining bullets settled, the way the 2026-08-31 comment decided.\n\n## Whether `SplitPane` simply moves groups\n\nNot quite - it asks for a region instead of requiring one, and that is what the card told me to check. The code after `submit` moves the keyboard into the region that was split, so a split that dropped the region outright would have stopped ⌘D moving the keyboard in a visible tab. Asking keeps both: a region there means the keyboard follows the new pane, and no region means it stays put. Which is also the right answer on its own terms - moving it would drag somebody out of the tab they are looking at.\n\nThe reply assumes nothing else. The new pane's name comes from the daemon's answer and is remembered in `wanted_panes` rather than pointed at, and that path already tolerates having no region.\n\n## Whether `ClosePane` moves with it\n\nNo, as decided. `docs/cli/limits.md` now names the three verbs that genuinely ask about a visible region - focus, zoom, resize - and says why close is beside them rather than with split: a split nobody is looking at costs a shell, and a close nobody is looking at costs whatever was running.\n\n## The third bullet\n\n`docs/cli/limits.md`'s section was rewritten rather than deleted: the rule is now narrower and still stated, and the entry on `pane close` says what it is doing on the other side of the line.\n\nTested in `crates/muster-seam/tests/background_tab.rs` against a real daemon - a named pane in a background tab splits and the keyboard does not move - with a second test keeping the refusal that has to survive, since \"no daemon holds that pane\" and \"no region is showing it\" read identically from a script.",
+      "created_at_millis": 1788323807463,
+      "id": "c_2Imaksqu4"
     }
   ],
   "created_at_millis": 1787048491526,
   "creator": "Alexander Terp",
   "description": "An agent told to \"split two panes below you\" cannot do it from a tab nobody is looking at. `muster pane new` refuses with \"the daemon local is not showing that pane or tab in this window\", and the refusal is deliberate: `session.rs` groups `SplitPane` with `FocusPane`, `ZoomPane` and `ResizePane` as intents needing `region_holding`, while `CreateTab`, `MovePane`, `RenamePane` and `SendText` are in the group that needs no region at all.\n\nHit while setting up a parallel round: the integrator's own pane had been moved to a background tab by the person at the keyboard, so building a 2x2 grid \"in this tab\" failed twice before the cause was clear. The only way through was `muster focus` on its own pane - taking the keyboard away from what somebody was doing in another tab, to perform an act that has nothing to do with what is on screen.\n\nThe comment sitting directly above that grouping already makes the argument against it: typing into a pane is \"about the pane, not about what is on screen ... an agent told to instruct two others has to be able to reach them wherever they are\". Splitting is the same shape. Where a new pane goes is a fact about the tree, which is why `MovePane` and `CreateTab` need no region; the other three in `SplitPane`'s group are each genuinely about a visible region - a keyboard, a filled region, a dragged divider.\n\nWorth deciding rather than defaulting:\n\n- **Whether `SplitPane` simply moves groups.** Probably, but check what a split's reply assumes: the surrounding code takes the arrangement from the daemon's own answer, and a region that is not on screen may have no surface to hand the new pane.\n- **Whether `ClosePane` moves with it.** Same argument on paper - closing is about the tree - but it destroys something, and `muster docs limits` already singles it out as the one command whose default destroys the pane it runs in.\n- **What `muster docs limits` should say meanwhile.** It documents five limits and not this one, so today the failure reads as a bug rather than a rule. Whichever way the above goes, the reference should stop being silent about it.",
   "id": "a_2A9TxffR8",
-  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "position": "!!!!!!!!!!!!!!!!!!!!!!!!6",
   "title": "🪟 A pane in a background tab cannot be split",
   "type": "chore",
-  "updated_at_millis": 1788223933224,
+  "updated_at_millis": 1788323807547,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1787048491526}
+    {"field":"column","value":"backlog-hi","at":1787048491526},
+    {"field":"column","value":"in-progress","at":1788323565540},
+    {"field":"column","value":"done","at":1788323807547}
   ]
 }

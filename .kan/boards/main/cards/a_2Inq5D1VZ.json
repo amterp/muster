@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-problem-can",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1788326779970,
+  "creator": "Alexander Terp",
+  "description": "A `Problem` is a key, a severity and a detail, and the detail is prose. So every remedy Muster offers is a sentence somebody has to carry out by hand, in another window, from memory.\n\nThat is better than the silence it replaced and it is not the standard `a_2Ic6mB36E` sets. The sentences written for it read:\n\n\u003e `ssh \u003chost\u003e 'pkill -f \"terminal session control w4:p2\"'` releases it, and closing this pane and opening it again then starts a bridge that attaches.\n\nEvery part of that is something Muster could do. It knows the host, it knows the pane, and closing and reopening a pane is an action it already has. What it cannot do is offer it: `ProblemsView` draws the worst problem's detail into a wrapping label and has exactly two affordances, dismiss and reveal.\n\nWhat it would take:\n\n- A fourth field on `Problem` naming an action rather than describing one - and the hard part is that the actions worth offering are parameterized (`close_pane` on *this* pane), where `Action` is deliberately not. The `RenamePane` precedent is the shape: an action that means \"ask me\", answered by an ordinary request afterwards.\n- A button in the roster's problem box, which is the smaller half.\n- A rule about which problems get one. A remedy that is one click away and wrong is worse than a sentence: taking a terminal over, in particular, is a decision somebody should make deliberately (`a_2IQsToWVW`).\n\nWorth doing after a few more problems exist, so the shape is drawn from several rather than from the first one that wanted it.",
+  "id": "a_2Inq5D1VZ",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "title": "🔘 A problem can describe its remedy and cannot offer it",
+  "type": "feature",
+  "updated_at_millis": 1788326779970,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1788326779970}
+  ]
+}

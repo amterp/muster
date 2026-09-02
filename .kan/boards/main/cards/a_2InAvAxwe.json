@@ -1,0 +1,27 @@
+{
+  "_v": 3,
+  "alias": "no-gesture-pops-a",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "`muster pane move --new-tab` and a `move_pane_to_new_tab` menu item both exist now (`a_2IXGSgZi7`, done on `main3`). The window's own gesture does not.\n\nDragging a row onto another row moves a pane between tabs and is the only pane arrangement the sidebar can express. There is no gesture for popping one out, and the reason it was deferred rather than built is that it needs a drop target that does not exist: dropping below the last tab, or into the gap between two tab groups, are both places `outlineView`/`tableView` currently has nothing to hit. `SidebarModel.canArrange` decides drops today and takes a target row, so a \"nowhere\" destination is a change to that shape rather than a new branch inside it.\n\nThe verb behind it is already there, so this is a gesture and a drop target rather than any new plumbing: it sends the same `ArrangePane` with `new_tab` set.\n\nWorth doing when the sidebar's drop handling is next open. Not urgent - the menu item reaches it, and the CLI reaches it with a name for the tab, which the gesture could not offer anyway.",
+      "created_at_millis": 1788325218938,
+      "id": "c_2InBTRRj6"
+    }
+  ],
+  "created_at_millis": 1788325197704,
+  "creator": "Alexander Terp",
+  "id": "a_2InAvAxwe",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "title": "🖱️ No gesture pops a pane out into a tab of its own",
+  "type": "feature",
+  "updated_at_millis": 1788325219001,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1788325197704}
+  ]
+}

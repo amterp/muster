@@ -5,7 +5,7 @@
   "area": [
     "backend"
   ],
-  "column": "next",
+  "column": "done",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -42,19 +42,27 @@
       "body": "herdr 0.8.0 has a clean shutdown after all, and this card says there is none.\n\n    herdr server stop        # \"Stop the running server\", takes no arguments\n                             # targets whatever HERDR_SOCKET_PATH names\n\nThe description says \"the only way to end one is to find it with pgrep and kill it\", and the second bullet records that \"a `server.shutdown` guess was already tried and refused as an unknown method\". That was the API method. The CLI subcommand is a different surface and it exists - checked against the herdr shipped inside Muster 0.4.0, which is the pinned 0.8.0.\n\nWorth checking before designing around it: whether it asks the panes' processes to end or just drops them, since the bullet about what \"close sessions\" means turns on exactly that. If it is graceful, the design question shrinks a lot - the hard half was assumed to be that herdr offered nothing.\n\nFound while answering \"if I kill the remaining panes, does the daemon shut off?\" - the answer being no, per this card, and the follow-up being that there is a better tool than pkill for saying so deliberately.",
       "created_at_millis": 1788228862229,
       "id": "c_2I8knOrSU"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Built in `845c2a1`. Both halves, and one measurement the card asked for.\n\n**Claude Code's behaviour on SIGHUP, measured 2026-09-01.** Method: an interactive `claude` at its prompt under a pty, nothing typed, then `kill -HUP`. Result: it exits about 300ms later, and its last output is a full terminal restore - leaves the alternate screen, shows the cursor, mouse tracking and bracketed paste off. That is an orderly shutdown, not a process being shot; a killed one leaves the terminal in raw mode.\n\nSo the honest sentence is neither of the two the card offered. \"Your agents will be killed\" is wrong - they are asked, they handle it, and they tidy up. \"Your agents will be asked to stop\" alone is also misleading, because 300ms is not finishing an in-flight tool call. The sheet says both halves: *asked to stop and given a moment to finish - it is a hangup rather than a kill, and a harness that handles one gets to act on it. Anything mid-task does not finish.*\n\n**The inventory.** `muster window` now carries, per machine: the socket it is reached on, how many panes and in which directories, where it runs, and whether Muster started that daemon or attached to one that was already answering. That last one is the distinction nothing recorded and the one this card's hazard turns on - `ensure_running` attaches to whatever answers, so a Muster launched today adopts a daemon from yesterday holding somebody's working agent. `Reached::Started` vs `Adopted` existed at attach time and was thrown away; it is now kept on the backend.\n\nDeliberately bounded to the daemons *this window is attached to*. A record of every daemon Muster has ever started, across launches, is a different thing - it needs a file format and a story about what happens when one disappears - and it has its own card now rather than a guess.\n\n**The choice.** The app menu carries both, named for what they leave behind:\n\n    Quit muster, Leaving Sessions Running    ⌘Q\n    Quit muster and Close Sessions…\n\nThe second is an ordinary `Action`, so it is published, rebindable and in the shortcuts panel like everything else, and unbound by default - the only action in the table unbound for safety rather than for Ghostty parity. It confirms through a sheet naming every machine, its directories, and any session that was already running when the window opened. A list of what would end is a different thing from \"are you sure\", which is a dialog people learn to dismiss.\n\nRenaming the standard Quit item is my call and worth flagging: it costs a little platform convention, and it is the only way the default is visible to somebody who never picks the other one.\n\n**No CLI verb, deliberately.** Every other action reaches the CLI, and this is the one whose entire point is that it is deliberate. This card's own third comment notes that `herdr server stop` typed in a Muster pane is the least guarded path in the product; a `muster quit --close-sessions` reachable by any agent in any pane would be a second one. Worth revisiting if somebody actually wants to end a day from a script.\n\n**No automatic reaping**, per the card and the brief.\n\n**What is still open.** `server.live_handoff` is in the schema and untouched - the second comment flags it as possibly a better answer for \"leave them running\" than never stopping one, and nothing here investigated it.",
+      "created_at_millis": 1788326739662,
+      "id": "c_2Inp2Ecm2"
     }
   ],
   "created_at_millis": 1786813036371,
   "creator": "Alexander Terp",
   "description": "There is no lifecycle at all today. `daemon.rs` says \"Started, never stopped\" and puts the daemon in its own process group so quitting Muster cannot touch it; the shell's only quit handling is `applicationShouldTerminateAfterLastWindowClosed: true`. So the daemon leaks forward forever, and the only way to end one is to find it with `pgrep` and kill it - which also destroys whatever is running in its panes, as happened once already this week.\n\n**The default is right and should stay.** Sessions outliving the app is a founding desideratum: quit Muster, come back, and every pane is where you left it. Nothing here proposes changing that.\n\nWhat is missing is that it is the *only* behaviour, and it is invisible. Somebody who is finished for the day has no way to say so. Somebody who has accumulated daemons from a week of launches has no way to know, and no way to tidy up that does not risk killing live work.\n\nWorth deciding rather than defaulting:\n\n- **What quit offers, and where.** A menu item (\"Quit and leave sessions running\" beside \"Quit and close sessions\") is discoverable; a modifier on ⌘Q is not. Consider that the destructive one is the one that needs confirming, and that a person with three agents mid-task must not be able to end them by reflex.\n- **What \"close sessions\" even means.** Ending the daemon kills processes that have no way to save; ending it *cleanly* means asking herdr, which may or may not have an answer worth relying on. Check what herdr offers before designing around it - a `server.shutdown` guess was already tried and refused as an unknown method.\n- **How you find out what is still running.** Nothing today lists Muster's daemons or what they hold. That is the piece that makes tidying up safe rather than a `pgrep` gamble, and it is probably the first half to build.\n- **Whether a daemon nobody has attached to in weeks should say so**, rather than being reaped automatically. Automatic reaping of a process holding somebody's work is the wrong default in a tool built on the promise that it will not.\n\nRelated: the isolation card - a daemon that outlives the app is exactly why the environment it was started with matters so much.",
   "id": "a_28YghIUw2",
-  "position": "!2",
+  "position": "!!!!!!!!!!!!!!!!!!!!!!!!!!U",
   "title": "🔌 Quitting Muster should decide what happens to its daemons",
   "type": "feature",
-  "updated_at_millis": 1788228862229,
+  "updated_at_millis": 1788326739742,
   "history": [
     {"field":"column","value":"backlog-lo","at":1786813036371},
     {"field":"column","value":"backlog-hi","at":1786813094493},
-    {"field":"column","value":"next","at":1786819407958}
+    {"field":"column","value":"next","at":1786819407958},
+    {"field":"column","value":"in-progress","at":1788324987409},
+    {"field":"column","value":"done","at":1788326739742}
   ]
 }

@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "muster-knows-the",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1788326765207,
+  "creator": "Alexander Terp",
+  "description": "`muster window` now names every daemon this window is attached to, with its socket, what it holds, and whether Muster started it or adopted one that was answering (`a_28YghIUw2`). That is the half that makes ending a session deliberate. It cannot answer the other half of the same question: **which daemons are on this machine that no window is attached to.**\n\nThose are the ones that accumulate. Measured on 2026-08-18: twenty herdr daemons alive, nineteen holding nothing, one holding somebody's work - and the live one was neither the oldest nor the youngest, so sorting by age picks wrong. `./dev --doctor` answers it for this repo's own tooling by walking pids to sockets with `lsof -a -p \u003cpid\u003e -U` and dialing each one back, which works and is a build script rather than something a person running Muster has.\n\nWhat would make it Muster's: a record of the daemons Muster has started - the socket, when, and when it was last attached to - written where a later launch can read it. `daemon.starting` already logs the socket and the config, so the run log is most of the data; what it is not is a file with a shape somebody can rely on across launches.\n\nWorth deciding before building:\n\n- **Where it lives, and what happens when it is wrong.** A daemon in the record that is not answering is either gone or unreachable, and the file cannot tell those apart - so the record has to be a hint that is checked, never an answer.\n- **Whether a person or an agent reads it.** `muster daemons` as a verb, or a section of `muster window`, or only the quit sheet. The census only pays for itself where somebody is about to end something.\n- **What it must not become.** Automatic reaping is refused on `a_28YghIUw2` and stays refused: a process holding somebody's work is the wrong thing to reap on a schedule, in a tool built on the promise that it will not.\n\nNot urgent. The hazard it addresses is real and rare, and the deliberate half - knowing what *this* window would end - is done.",
+  "id": "a_2InphPbdQ",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "title": "🗂️ Muster knows the daemons it started, but only the ones this window is using",
+  "type": "feature",
+  "updated_at_millis": 1788326765207,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1788326765207}
+  ]
+}

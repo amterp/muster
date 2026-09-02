@@ -6,7 +6,15 @@
     "backend",
     "shell"
   ],
-  "column": "backlog-hi",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Fixed by the first of the three: ask for the maximum and take the last N in Muster, so `--rows` is the count agents.md already sold it as.\n\nWhy that one. Keeping the behaviour and documenting it (the third) leaves the surface honest and still useless to an agent, and an agent driving Muster is a stated desideratum - the card's own author is the evidence that a human cannot act on it either. `recent_unwrapped` (the second) rests on an unmeasured guess about whether herdr pads that too, and splits two callers that share one request pinned in the corpus. The cost of the first is the whole thousand rows on the wire per read, which is a person or an agent asking a question rather than anything on the render path.\n\n`--rows` also drops out of `read_request` and out of `BackendChannel::read` entirely. Both callers wanted the maximum - `find` already passed ROWS_READ - so the parameter was threading a constant through two layers. The count is now `PaneText::tail`, which splits rows the way a search splits them so there is still one idea of what a row is.\n\n`truncated` keeps its meaning: there is history this read did not reach. It is now true when Muster dropped rows above as well as when herdr did.\n\n## Measured, not assumed\n\nNew `crates/muster-herdr/tests/pane_read.rs`, against the real pinned daemon: a 60-row pane holding 20 printed lines. Four tests - the reported shape (`--rows 5` comes back with the last five printed rows, not blank), that the rows are the newest ones, that no count still gives everything, and one that asks herdr directly for `lines: 5` and asserts it answers with nothing. That last one is the premise; without it, a later herdr that counted rows of text would leave the other three passing while the fix solved a problem the daemon had fixed, and the failure message says so.\n\n## The two doc pages\n\nagents.md keeps \"the last forty\" and now says plainly that it is a count and not a ceiling. limits.md loses the correction and keeps the thousand-row cap, which is a different and still-true limit, plus a line on what the fix costs on the wire.",
+      "created_at_millis": 1788325557205,
+      "id": "c_2InKH2CIl"
+    }
+  ],
   "created_at_millis": 1788269232815,
   "creator": "Alexander Terp",
   "description": "`muster pane read --rows N` returns nothing, with exit 0, for any `N` below the pane's viewport height. Measured against a local shell holding 24 lines of output in a 79-row pane:\n\n    --rows 50   -\u003e  {\"rows\":0,\"text\":\"\",\"truncated\":true}\n    --rows 79   -\u003e  {\"rows\":0,\"text\":\"\",\"truncated\":true}\n    --rows 80   -\u003e  {\"rows\":1,...}\n    --rows 103  -\u003e  {\"rows\":24,...}    the whole pane\n    no --rows   -\u003e  {\"rows\":24,...}    the whole pane\n\nThe count returned is `N - 79` exactly. Against a devenv pane whose viewport was full of agent output the same flag returned `N` rows and behaved as advertised, so this shows up only on a pane that is quiet - which is the pane you most often read to find out whether it is quiet.\n\n## Why it does that\n\n`read_request` (`crates/muster-herdr/src/intent.rs:239`) sends `{\"source\": \"recent\", \"lines\": rows}`. herdr's `recent` counts grid rows up from the bottom of the pane, and the bottom of an idle pane is the blank remainder of its viewport, so a small `N` buys blank rows and they trim away to nothing.\n\n`recent` is right for `find`, and the doc comment above `read_request` says why: grid rows make a match's place in the answer the offset to scroll to. `find` and `pane read` share the request and only `find` needs that.\n\n## It is documented, and the documentation does not hold\n\n`docs/cli/limits.md:52`:\n\n\u003e a small `--rows` on a pane sitting at a prompt can answer with nothing at all, because the bottom rows of an idle terminal are blank. That is an honest answer rather than a failure, and it is why `--rows` is a ceiling rather than a count.\n\nHonest requires a reader who can act on it, and an agent cannot. `docs/cli/agents.md:38` introduces `pane read` as how you find out what an agent that has stopped was doing, and calls `--rows 40` \"the last forty ... which is what checking on somebody wants\". A caller that does exactly that gets `\"\"`, which is byte-identical to a pane that has printed nothing. `truncated: true` is the only difference, and it is set on nearly every read, so it separates nothing.\n\nThe two files also disagree: `agents.md` sells `--rows N` as a count, `limits.md` corrects it to a ceiling.\n\n## What it cost\n\nReading a pane at `--rows 12` and `--rows 40`, both empty, I concluded the local shell had printed nothing and came close to closing it on that basis. It had 24 lines on it, which the same command showed with the flag left off.\n\n## Ways out, none obviously right\n\n- **Ask for the maximum and take the last N non-blank rows in Muster.** `--rows` becomes the count `agents.md` already claims. Costs a thousand rows on the wire per read, which is what `--rows` exists to avoid.\n- **Send `recent_unwrapped` for `pane read` and leave `find` on `recent`.** Logical lines rather than grid rows, so blank viewport stops being counted. Splits two callers the doc comment already describes as wanting different things. Unmeasured: whether herdr's `recent_unwrapped` also pads to the viewport.\n- **Keep the behavior, fix the answer.** Say in `--json` that the read landed entirely in blank rows, so a caller can tell that from silence, and stop `agents.md` calling `--rows 40` \"the last forty\".\n\nWhichever wins, the two doc pages should end up saying the same thing about what `--rows` means.",
@@ -14,11 +22,13 @@
   "labels": [
     "ai-lo"
   ],
-  "position": "!!6",
+  "position": "!!!!!!!!!!!!!!!!!!!!!!!!!2",
   "title": "📖 pane read --rows answers blank on a quiet pane, and blank means nothing printed",
   "type": "bug",
-  "updated_at_millis": 1788269232815,
+  "updated_at_millis": 1788325557291,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1788269232815}
+    {"field":"column","value":"backlog-hi","at":1788269232815},
+    {"field":"column","value":"in-progress","at":1788324984451},
+    {"field":"column","value":"done","at":1788325557291}
   ]
 }

@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "notifications-cannot",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1788326327567,
+  "creator": "Alexander Terp",
+  "description": "A contributor cannot see the notification feature they are working on. `./dev --bundle` signs ad hoc, and macOS refuses to grant a notification permission to an ad-hoc signature at all: `requestAuthorization` answers `UNErrorDomain` code 1, \"Notifications are not allowed for this application\", and no prompt is ever shown.\n\nMeasured 2026-09-02 on two bundles differing only in their identifier, which rules out a collision with the Developer ID Muster registered under `dev.amterp.muster`. `corpus/macos-26.4.1/notification-authorization.txt` is the transcript, and `docs/observations/macos-26.4.1.md` section 6 reads it.\n\nThis is not a user's problem - a release is Developer ID signed - and `notifications.refused` in the run log names both causes rather than sending somebody to System Settings to look for a switch that is already on. What it costs is that everything below the seam is testable and the last inch is not, so a change to the wording, the sound, the activation path or the withdrawal cannot be seen without a signing identity.\n\n## Worth deciding\n\n- **Leave it.** The core side is covered by `corpus/conformance/attention-notifying.json` and the wording by `NotificationsTests`, so what is unreachable is the framework call and the click. Cheapest, and the honest answer if nobody is changing this often.\n- **Say it in AGENTS.md.** One line under `MUSTER_SIGN_IDENTITY`, which already exists and already does the job - a contributor with a Developer ID sets it and gets the whole path. Nearly free, and probably right whatever else is decided.\n- **A dev identifier.** `./dev --bundle` could take a `dev.amterp.muster.dev` when signing ad hoc, which would at least stop a local build sharing TCC state with the installed app (see section 5) - but it does not help here, because the refusal is about the signature rather than the identifier.\n\nNot blocking anything. Raised because the next person to touch `Sources/MusterMac/Notifications.swift` will spend the same half hour working out why nothing appears.",
+  "id": "a_2IneJXhwU",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "title": "Notifications cannot be seen from an ad-hoc dev build",
+  "type": "chore",
+  "updated_at_millis": 1788326327567,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1788326327567}
+  ]
+}

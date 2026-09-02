@@ -5,7 +5,7 @@
   "area": [
     "shell"
   ],
-  "column": "in-progress",
+  "column": "done",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -13,6 +13,12 @@
       "created_at_millis": 1788298298381,
       "id": "c_2Ibt9C2Vv",
       "updated_at_millis": 1788298312517
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Working is now cyan: NSColor.systemCyan in the window, AnsiColor::Cyan in the CLI.\n\nWhich colour it became was left open, so the reasoning. Cyan is legible on a dark background where plain ANSI blue is the least legible of the sixteen, which is the half of the argument a_2HPHq3Zck made and the reason this row matters more than the others - working is the state a window spends most of its time in. It reads distinctly against orange (blocked) and green (done) at a glance, in both mediums. And it is calm: the state a window sits in most of the time should be the quiet one, with blocked the loud one.\n\nThe rings differ in kind rather than hue: state keeps 2pt on all four edges, then a 2pt gap, then a 1pt focus ring. Checked by rendering the real PaneChrome layer tree offscreen at 520x300 and 240x170, light and dark, with the focus ring standing in for a blue, a green and an orange accent. The two same-hue cases - blocked under an orange accent, done under a green one - still read as two rings, which is what the gap and the weight difference are for.\n\nA geometry test in PaneChromeTests now pins that the focus ring is thinner, that the gap is non-zero, and that the surface starts outside both, so the two cannot merge back into one edge unnoticed.",
+      "created_at_millis": 1788323683509,
+      "id": "c_2ImXWwNMl"
     }
   ],
   "created_at_millis": 1788298267659,
@@ -22,12 +28,13 @@
   "labels": [
     "ai-lo"
   ],
-  "position": "!U",
+  "position": "!!!!!!!!!!!!!!!!!!!!!!!!E",
   "title": "🟦 A focused pane and a working pane are the same blue, so neither ring reads",
   "type": "bug",
-  "updated_at_millis": 1788322666743,
+  "updated_at_millis": 1788323683509,
   "history": [
     {"field":"column","value":"backlog-hi","at":1788298267659},
-    {"field":"column","value":"in-progress","at":1788322666743}
+    {"field":"column","value":"in-progress","at":1788322666743},
+    {"field":"column","value":"done","at":1788323665744}
   ]
 }

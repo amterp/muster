@@ -5,7 +5,15 @@
   "area": [
     "shell"
   ],
-  "column": "next",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Fixed. A pane name no machine holds now refuses without naming a machine, offers a stale name as a cause, and points at `muster window` - the sentence `read_pane` already used.\n\nOne thing the card's diagnosis got half right, and it matters. The `target` helper is where the routing decision is, but the misleading sentence the card quotes verbatim is not the daemon's: it comes from `Session::surface`, reached from `focus` before any daemon is asked. So relaying-versus-rewording at the submit path alone would have left `muster focus` - the card's own repro - unchanged. The fix classifies that miss as `Refusal::NotThere`, which is honest: a mirror with no such pane is the same fact a daemon would answer with, reached without a round trip.\n\nThat meant carrying the refusal's kind up rather than flattening it to a sentence at the seam's edge. `session::submit`, `focus` and `arrange_pane` now return `Refusal`, and `handler::placed` is the one place that decides whether to reword. Everything else relays untouched, via `relayed` beside it: a daemon that is down or a tab that moved is a real failure of the request rather than a routing story, and the verbs that resolved a tab or a machine themselves cannot have been sent somewhere that never held it.\n\nThe `_` arm stays, for the reason its comment gives. Two new tests in across_machines.rs: a name no machine holds refuses without naming one, and a pane the daemon has only just made can still be typed into - `pane send` because it asks nothing about what is on screen, so the daemon's answer is the whole of it. The existing eight-verb sweep still covers a_2Hwef7lQT's routing guarantee.",
+      "created_at_millis": 1788326301423,
+      "id": "c_2InddOq9U"
+    }
+  ],
   "created_at_millis": 1788269211320,
   "creator": "Alexander Terp",
   "description": "`muster focus p206zc68fg` named a pane that had already been recreated under a new name, so no attached machine held it. The refusal:\n\n    muster: the daemon did not make that change: devenv holds no pane called\n    p206zc68fg, so the keyboard stayed where it was. Most likely it closed while\n    this was in flight, which an entry in a list outlives by a moment.\n\nBoth halves mislead. `devenv` did not hold that pane, but neither did `local`, and naming one machine while two are attached reads as \"it exists on the other one, and this went to the wrong machine\". \"Most likely it closed while this was in flight\" then rules out the real cause, which is a name read off a window state that has since moved on.\n\nWorking from that sentence I concluded `muster` could not address a pane across machines, and spent a while proving a routing bug that does not exist. `a_2Hwef7lQT` fixed the routing. This is only the message.\n\n## Where the machine comes from\n\n`target` (`crates/muster-seam/src/handler.rs:537`):\n\n```rust\nlet daemon = match session::daemon_holding(\u0026pane) {\n    Some(holder) if daemon_id.is_empty() =\u003e holder,\n    Some(holder) if holder.as_str() != daemon_id =\u003e {\n        return Err(Box::new(held_elsewhere(\u0026pane, \u0026holder, daemon_id)));\n    }\n    // Either the two agree, or no mirror has heard of this pane yet - which is a pane\n    // the backend has only just made, and refusing that would refuse a request that is\n    // about to be right.\n    _ =\u003e resolve_daemon(daemon_id)?,\n};\n```\n\n`daemon_holding` returns `None` when no mirror has heard of the pane, and the CLI leaves `daemon_id` empty, so the `_` arm calls `resolve_daemon(\"\")` and gets whichever machine has the keyboard. That machine is asked about a pane it never held, and its own refusal - correct on its own terms - is what reaches the caller.\n\nThe `_` arm should stay. Its comment is right that a pane the backend has only just made is unknown to every mirror, and refusing that would refuse a request about to be right. What is missing is that a pane unknown to every mirror is far more often a stale name, and the refusal never offers that reading.\n\n`read_pane`, in the same file, already has the sentence this wants:\n\n    no daemon this window is following holds a pane called {pane}, so there was\n    nothing to read. Either it closed while this was in flight, or the name came\n    from an older window - `muster window` lists the panes this one has.\n\nIt names no machine, gives both causes, and points at the command that resolves it.\n\n## Fix\n\nWhen the machine a request was routed to says it does not hold the pane, and `daemon_holding` found no machine that does, answer the way `read_pane` does instead of relaying that machine's reply. `pane_holder` is the helper that already makes the distinction.\n\n## Reproducing it\n\n1. Attach two machines with a pane on each.\n2. `muster focus p000000000`, or any name no machine holds.\n3. The refusal names whichever machine has the keyboard, and blames a race.\n4. `muster focus \u003ca real pane on the machine without the keyboard\u003e` succeeds, which is the routing working correctly.\n\n## Validating a fix\n\n- A name no machine holds refuses without naming a machine, and offers a stale name as a cause.\n- A pane the backend has just made still goes through. That is the `_` arm's reason to exist, and it rules out refusing whenever `daemon_holding` returns `None`.\n- Cross-machine addressing still works for `focus`, `pane read`, `pane rename` and `tab new`. That is `a_2Hwef7lQT`'s guarantee, and a regression here would look exactly like the bug this card describes.",
@@ -13,11 +21,13 @@
   "labels": [
     "ai-hi"
   ],
-  "position": "UUUUUUUUUUUUUUUUUUUU",
+  "position": "!!!!!!!!!!!!!!!!!!!!!!!!!0",
   "title": "🎯 A pane no machine holds is blamed on whichever one has the keyboard",
   "type": "bug",
-  "updated_at_millis": 1788269211320,
+  "updated_at_millis": 1788326301503,
   "history": [
-    {"field":"column","value":"next","at":1788269211320}
+    {"field":"column","value":"next","at":1788269211320},
+    {"field":"column","value":"in-progress","at":1788325557376},
+    {"field":"column","value":"done","at":1788326301503}
   ]
 }
