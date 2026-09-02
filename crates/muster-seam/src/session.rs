@@ -460,6 +460,15 @@ pub(crate) fn set_state_path(path: &str) {
     *held = if path.is_empty() { None } else { Some((path.to_string(), String::new())) };
 }
 
+/// Says that somebody asked for this window, rather than it being the one Muster comes back to.
+///
+/// On the session rather than in a static beside the paths above, because it is not a setting:
+/// it describes this launch, and a test that reset the statics and not this one would open its
+/// window under the last test's answer.
+pub(crate) fn set_fresh(fresh: bool) {
+    poison::lock(&SESSION, "session").fresh = fresh;
+}
+
 /// Says where names are remembered, and reads back the ones already there.
 ///
 /// Read here rather than lazily, because it has to happen before any daemon is attached: the
@@ -869,7 +878,41 @@ pub(crate) struct Session {
     /// Emptied per machine once that machine holds a tab, and never otherwise: a daemon that
     /// refuses is left in here deliberately, because a rule that retried a refusal would retry
     /// it on every event forever.
+    ///
+    /// Not emptied for a machine a window somebody asked for has claimed and not yet been given
+    /// a tab on. That window is waiting for a tab of its own on a machine that already holds
+    /// somebody else's, so "this machine holds a tab" is true throughout and would let the rule
+    /// ask again on every event until the machine had a workspace per event.
     workspaces_asked_of: BTreeSet<DaemonId>,
+
+    /// Whether somebody asked for this window, rather than it being the one Muster comes back
+    /// to.
+    ///
+    /// One rule turns on it, and it is about where the window starts rather than about how it
+    /// behaves: a window somebody asked for takes a tab of its own on every machine instead of
+    /// the tab that machine last had focused. That tab is very often the one another window is
+    /// showing, and herdr allows one client per terminal - so the alternative is a window of
+    /// surfaces that paint nothing (kan `a_2IZ5TL6DQ`).
+    ///
+    /// Said by the shell rather than worked out here, because the two launches differ in
+    /// nothing this layer can see. It stops mattering once every machine has been claimed
+    /// below, which is what makes this a rule about where a window starts rather than about
+    /// how it behaves.
+    fresh: bool,
+
+    /// What each machine was already holding when a window somebody asked for claimed a
+    /// workspace on it.
+    ///
+    /// A record rather than a guard, and it is the difference between the two that matters:
+    /// this window may open onto any tab that is not in here, and every tab that is belongs to
+    /// whatever was using that machine before. So the entry both suppresses the wrong answer
+    /// and identifies the right one, without needing the claim's reply to arrive while
+    /// something is still waiting for it.
+    ///
+    /// One entry per machine for the life of the window, never removed. After the first fill
+    /// all it says is which tabs this window inherited, and preferring the others is what
+    /// somebody opening a window by hand meant anyway.
+    claimed: BTreeMap<DaemonId, BTreeSet<TabId>>,
 
     /// Which agents have been seen, and so which are `done`.
     ///
@@ -2557,6 +2600,24 @@ fn open_a_workspace_if_the_window_is_empty() {
     ask_for_a_workspace(&daemon);
 }
 
+/// Which of a machine's tabs a window somebody asked for may open onto.
+///
+/// The tab that appeared since it claimed one, and `workspace.create` leaves that tab focused
+/// - so the daemon's own cursor is the answer almost always, and the scan behind it is for the
+/// case where somebody has moved that cursor since.
+///
+/// Falls back to the cursor when every tab the machine holds is one it already held. That is a
+/// claim that was refused, or one whose panes have all been closed since, and showing the
+/// machine nothing at all is worse than showing what is there.
+fn tab_that_is_ours(mirror: &Mirror, theirs: &BTreeSet<TabId>) -> Option<TabId> {
+    let cursor = mirror.focus().tab.clone();
+    cursor
+        .clone()
+        .filter(|tab| !theirs.contains(tab))
+        .or_else(|| mirror.tabs().map(|tab| &tab.id).find(|tab| !theirs.contains(tab)).cloned())
+        .or(cursor)
+}
+
 /// Asks one machine for a workspace, and says what a refusal costs.
 ///
 /// One caller for the empty window and one for a machine holding nothing, so what happens when
@@ -2796,21 +2857,48 @@ fn locate(pane: &PaneId) -> Option<(DaemonId, WorkspaceId, TabId)> {
 fn open_remaining_regions() {
     let mut session = poison::lock(&SESSION, "session");
     let showing: Vec<DaemonId> = session.composition.regions().map(|r| r.daemon.clone()).collect();
-
     let mut wanted: Vec<(DaemonId, WorkspaceId, TabId)> = Vec::new();
-    let mut holding_nothing: Vec<DaemonId> = Vec::new();
-    let mut holding_something: Vec<DaemonId> = Vec::new();
+    let mut wants_one: Vec<DaemonId> = Vec::new();
+    let mut leave_alone: Vec<DaemonId> = Vec::new();
+    let mut inherited: Vec<(DaemonId, BTreeSet<TabId>)> = Vec::new();
     for (id, backend) in &session.backends {
         let mirror = poison::lock(&backend.mirror, "mirror");
+        let connected = mirror.health() == Health::Connected;
+
+        // A window somebody asked for, on a machine that has not answered it yet. Whatever
+        // that machine last had focused is what the window before this one is showing, and
+        // one client may hold a herdr terminal - so none of what it holds is this window's to
+        // open onto. What it holds is written down instead, so that the tab this window is
+        // about to ask for can be told from the rest, and the ask goes out below.
+        if session.fresh && !session.claimed.contains_key(id) && !showing.contains(id) {
+            if connected {
+                inherited.push((id.clone(), mirror.tabs().map(|tab| tab.id.clone()).collect()));
+                wants_one.push(id.clone());
+            }
+            continue;
+        }
+
         if mirror.tabs().next().is_some() {
-            holding_something.push(id.clone());
-        } else if mirror.health() == Health::Connected {
-            holding_nothing.push(id.clone());
+            // Left in `workspaces_asked_of` while a claim is outstanding: the machine holds
+            // somebody's tabs throughout, so forgetting here would ask it for a workspace
+            // again on every event that arrived from anywhere.
+            if !session.claimed.contains_key(id) || showing.contains(id) {
+                leave_alone.push(id.clone());
+            }
+        } else if connected {
+            wants_one.push(id.clone());
         }
         if showing.contains(id) {
             continue;
         }
-        if let Some(tab) = mirror.focus().tab.clone()
+        // A claimed machine opens onto the tab that appeared after the claim rather than onto
+        // the one it had focused, which is usually the same tab and is not when the claim's
+        // answer arrived before anything was waiting for it.
+        let opening = match session.claimed.get(id) {
+            Some(theirs) => tab_that_is_ours(&mirror, theirs),
+            None => mirror.focus().tab.clone(),
+        };
+        if let Some(tab) = opening
             && let Some(held) = mirror.tab(&tab)
         {
             wanted.push((id.clone(), held.workspace.clone(), tab));
@@ -2818,13 +2906,19 @@ fn open_remaining_regions() {
     }
     // Forgotten as soon as a machine has a tab, so a machine whose panes all close later is
     // asked again rather than remembered as one Muster has already dealt with.
-    for id in holding_something {
+    for id in leave_alone {
         session.workspaces_asked_of.remove(&id);
     }
-    let asking: Vec<DaemonId> = holding_nothing
+    let asking: Vec<DaemonId> = wants_one
         .into_iter()
         .filter(|id| session.workspaces_asked_of.insert(id.clone()))
         .collect();
+    // Recorded before the ask goes out, and never removed. A machine is inherited once per
+    // window: after the first fill this only says which of its tabs were somebody else's, and
+    // preferring the others is what a person opening a window by hand meant either way.
+    for (id, theirs) in inherited {
+        session.claimed.insert(id, theirs);
+    }
 
     for (daemon, workspace, tab) in wanted {
         session.composition.open_region(&daemon, workspace, tab);

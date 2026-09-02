@@ -32,6 +32,13 @@ const INTERVAL: Duration = Duration::from_millis(100);
 /// Where to look for a window override, for a test that must not launch the developer's app.
 pub const APP_PATH: &str = "MUSTER_APP";
 
+/// What tells the new window that somebody asked for it.
+///
+/// Read on the other side by `launchIsFresh`. A flag rather than an environment variable for the
+/// same reason `--home` is one: `open` hands the app its own environment, and the app is started
+/// through Launch Services, which hands over launchd's.
+pub const FRESH: &str = "--fresh";
+
 /// Starts another Muster and hands back the socket its window binds.
 ///
 /// The socket rather than a pid, because the socket is what every other command takes: the next
@@ -66,8 +73,13 @@ pub fn another_window(environment: &BTreeMap<String, String>) -> Result<String, 
     // as an argument.
     let mut opening = Command::new("/usr/bin/open");
     opening.env_clear().arg("-n").arg("-a").arg(&app);
+    // `--fresh` because somebody asked for this window. A window Muster comes back to opens onto
+    // the tabs the last one was left on; this one has to open onto tabs of its own, since the
+    // tabs the window it was asked from is showing are terminals herdr will not hand over twice.
+    // It also remembers nothing, so that two windows do not write one arrangement between them.
+    opening.arg("--args").arg(FRESH);
     if let Some(home) = environment::muster_home(environment) {
-        opening.arg("--args").arg("--home").arg(home);
+        opening.arg("--home").arg(home);
     }
     let started = opening.status();
     match started {

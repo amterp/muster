@@ -27,12 +27,27 @@ public enum LaunchRequest: Equatable {
 
 /// Reads the arguments after the program name.
 public func launchRequest(arguments: [String]) -> LaunchRequest {
-  let arguments = withoutHome(arguments)
+  let arguments = withoutLaunchOptions(arguments)
   guard let first = arguments.first else { return .open }
   if first == "--renderer-check" { return .rendererCheck }
   // Anything else beginning with a dash is a flag, and Muster has two.
   if first.hasPrefix("-") { return .unknown(first) }
   return .pane(first)
+}
+
+/// Whether somebody asked for this window, rather than it being the one Muster comes back to.
+///
+/// `muster window new` and the New Window menu item both pass this; a launch from the Dock, from
+/// Spotlight, or by opening the bundle does not. What turns on it is where the window starts: a
+/// window Muster comes back to opens onto the tabs it was left on, and a window somebody asked
+/// for opens onto tabs of its own, because herdr allows one client per terminal and the tabs the
+/// other window is showing are tabs this one would render as dead surfaces.
+///
+/// An argument for the same reason `--home` is one: this window is started through Launch
+/// Services, which hands a new app launchd's environment rather than the asking process's, so
+/// nothing set here would survive.
+public func launchIsFresh(arguments: [String]) -> Bool {
+  arguments.contains(freshFlag)
 }
 
 /// Where a launch was told to keep Muster's own files, if it was told.
@@ -58,10 +73,19 @@ public func launchHome(arguments: [String]) -> String? {
   return home.isEmpty ? nil : home
 }
 
-/// The arguments with `--home <path>` taken out, so the rest reads as it did before it existed.
-private func withoutHome(_ arguments: [String]) -> [String] {
-  guard let at = arguments.firstIndex(of: "--home") else { return arguments }
-  var rest = arguments
+/// What `launchIsFresh` looks for, here so that the reader and the stripper cannot disagree.
+public let freshFlag = "--fresh"
+
+/// The arguments with the options above taken out, so the rest reads as it did before they
+/// existed.
+///
+/// Both are about how this launch was arranged rather than about what it should do, which is
+/// why neither can reach `launchRequest`: a window opened by `muster window new` still means
+/// "show whatever the daemons hold", and a bare `--fresh` left in would read as a flag Muster
+/// does not know.
+private func withoutLaunchOptions(_ arguments: [String]) -> [String] {
+  var rest = arguments.filter { $0 != freshFlag }
+  guard let at = rest.firstIndex(of: "--home") else { return rest }
   // The flag and its value, or just the flag when nothing followed it - which then falls
   // through to `.unknown` and is reported, rather than being silently dropped.
   rest.removeSubrange(at..<min(at + 2, rest.count))
