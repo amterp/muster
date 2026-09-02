@@ -149,6 +149,20 @@ What it does not fix is section 2. Panes whose Muster has quit are charged to th
 Muster is signed with, so a stable identity makes the good case stay good and leaves the common
 case untouched. Section 8 is what fixes that half.
 
+**Notifications are the one thing an ad-hoc signature cannot ask for at all.** Everywhere else
+ad-hoc costs you a re-prompt per build; here `UNUserNotificationCenter.requestAuthorization`
+answers `UNErrorDomain` code 1, "Notifications are not allowed for this application", and no
+prompt is ever shown. Measured 2026-09-02 on two bundles that differed only in their identifier -
+`corpus/macos-26.4.1/notification-authorization.txt` - which is what rules out a collision with
+the Developer ID build already registered under `dev.amterp.muster` and leaves the signature as
+the difference. The positive half is not measured here: a machine with a Developer ID and
+somebody to answer the prompt is what that needs.
+
+What it costs is a contributor's, not a user's. A release is signed, and the refusal a person who
+said no would get is word-for-word the one an ad-hoc build gets - so `notifications.refused` in
+the run log names both causes rather than sending somebody to System Settings to find a switch
+that is already on.
+
 ## 7. The measurement's own traps, worth knowing before re-running
 
 `responsibility_get_pid_responsible_for_pid` is the call TCC consults, and unentitled it

@@ -1,0 +1,46 @@
+# whether an ad-hoc signed Muster may ask for notification permission
+#
+# recorded 2026-09-02T04:24Z on macOS 26.4.1 arm64
+# read in docs/observations/macos-26.4.1.md section 6
+#
+# Two bundles, differing only in their identifier, both ad-hoc signed by
+# `./dev --bundle` with no MUSTER_SIGN_IDENTITY set. Both launched into the
+# Aqua session by `open`, against a herdr of their own. Each calls
+# UNUserNotificationCenter.requestAuthorization once at launch; the lines below
+# are its completion, out of the run log.
+#
+# The second arm is the control. dev.amterp.muster is already registered in
+# Launch Services by a Developer ID build in /Applications, so the first arm
+# alone would not tell a refusal-for-this-app from a collision with that
+# registration. A fresh identifier that nothing has ever seen is refused the
+# same way, which leaves the signature as the difference.
+#
+# What is *not* measured here: a Developer ID build being granted. That needs an
+# identity this machine's agent session does not have, and a person to answer the
+# prompt. So the claim is that ad-hoc is refused, not that Developer ID succeeds.
+
+  arm 1  identifier=dev.amterp.muster      signature=adhoc  TeamIdentifier=not set
+         registered in Launch Services by /Applications/Muster.app (teamID CV4835A2BN)
+         launched: open -n -a .build/muster.app
+         requestAuthorization ->
+           Error Domain=UNErrorDomain Code=1 "Notifications are not allowed for
+           this application"
+
+  arm 2  identifier=dev.amterp.musterlook  signature=adhoc  TeamIdentifier=not set
+         never registered before this run; a copy of arm 1's bundle with its
+         CFBundleIdentifier and CFBundleName changed, re-signed ad hoc
+         launched: open -n -a /tmp/m2look/MusterLook.app
+         requestAuthorization ->
+           Error Domain=UNErrorDomain Code=1 "Notifications are not allowed for
+           this application"
+
+  session   launchctl managername = Aqua, in both arms
+  window    both arms drew panes against a real daemon, so WindowServer access
+            was not the missing piece
+
+  the app's own account, both arms:
+    {"level":"warn","event":"notifications.refused",
+     "error":"Error Domain=UNErrorDomain Code=1 \"Notifications are not allowed
+              for this application\"",
+     "impact":"no agent will interrupt you; the roster and the borders still say
+               who needs you"}

@@ -60,7 +60,11 @@ public enum PaneNotification {
 /// wants a bundle identifier to attach a permission grant to, and raises rather than returning
 /// nil for a process with none - which is every `swift build` binary out of `.build`. So the
 /// whole path is behind one check, and a bare binary keeps working with its notifications off.
-/// `./dev --bundle` is what turns them on.
+///
+/// A bundle is necessary and not sufficient: macOS refuses to grant the permission to an
+/// ad-hoc signature, which is what `./dev --bundle` produces unless `MUSTER_SIGN_IDENTITY`
+/// names a Developer ID (`docs/observations/macos-26.4.1.md`). So a contributor sees the same
+/// refusal a person who said no would, which is why the log line names both causes.
 @MainActor
 public final class PaneNotifier: NSObject, UNUserNotificationCenterDelegate {
   public static let shared = PaneNotifier()
@@ -104,7 +108,14 @@ public final class PaneNotifier: NSObject, UNUserNotificationCenterDelegate {
               "error": "\(error)",
               "impact": "no agent will interrupt you; the roster and the borders still say "
                 + "who needs you",
-              "check": "System Settings > Notifications > Muster",
+              // Two very different causes and one message from the OS, so both are named.
+              // A local `./dev --bundle` is ad-hoc signed, and macOS refuses to grant a
+              // notification permission to an ad-hoc signature at all - measured, and the
+              // whole of it is in docs/observations/macos-26.4.1.md. That is the one a
+              // contributor hits, and it looks exactly like a person having said no.
+              "check": "System Settings > Notifications > Muster, if this build was signed "
+                + "with a Developer ID. An ad-hoc `./dev --bundle` cannot be granted this at "
+                + "all, whatever the settings say - set MUSTER_SIGN_IDENTITY to try it",
             ])
           return
         }
