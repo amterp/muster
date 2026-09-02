@@ -1050,6 +1050,23 @@ message Startup {
   // install - slow rather than broken.
   string cache_path = 12;
 
+  // Whether somebody asked for this window, rather than it being the window Muster comes back
+  // to.
+  //
+  // `muster window new` and the New Window menu item both set it; a launch from the Dock does
+  // not. What follows from it is where the window starts: the window Muster comes back to opens
+  // onto the tabs it was left on, and a window somebody asked for opens onto tabs of its own.
+  //
+  // It has to be said rather than worked out, because the two launches are otherwise
+  // identical, and getting it wrong is not a cosmetic difference: herdr allows one client per
+  // terminal, so a second window that opened onto the tabs the first one is showing renders
+  // nothing and leaves every surface in it dead.
+  //
+  // Only where the window starts. Everything after the first tab is the same in both, and
+  // `state_path` is where "remember nothing" is said - the shell sends it empty for a window
+  // like this, because two windows writing one file is the other half of the same bug.
+  bool fresh = 13;
+
   // trace, debug, info, warn, error. Empty means debug.
   string log_level = 2;
 
