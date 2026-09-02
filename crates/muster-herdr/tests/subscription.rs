@@ -45,6 +45,20 @@ impl Log {
     fn bootstraps(&self) -> usize {
         self.notices().iter().filter(|n| matches!(n, Notice::Bootstrapped { .. })).count()
     }
+
+    /// How many agent transitions into this state have been reported.
+    ///
+    /// A count rather than a presence, because a test about a reconnect is asking whether one
+    /// arrived *after* something - and a bootstrap replays what was already true, so "the
+    /// mirror holds it" and "a watcher delivered it" are different answers.
+    fn transitions_to(&self, state: AgentState) -> usize {
+        self.notices()
+            .iter()
+            .filter(|notice| {
+                matches!(notice, Notice::Changed(Change::AgentStateChanged { to, .. }) if *to == state)
+            })
+            .count()
+    }
 }
 
 fn mirror_and_log(daemon: &Daemon) -> (Arc<Mutex<Mirror>>, Arc<Log>, Subscription) {
@@ -776,6 +790,79 @@ fn a_mirror_survives_the_daemon_going_away_and_coming_back() {
          down by the daemon precisely so it survives one, and the replay putting an older \
          answer back over a newer one is how it goes missing"
     );
+}
+
+#[test]
+fn agent_state_still_flows_on_a_pane_that_outlived_a_daemon_restart() {
+    // "Shows working forever on a connection that looks healthy" is the failure the whole
+    // product is about, and it is what a dead watcher produces: the pane is corrected once by
+    // the bootstrap snapshot and then freezes, with the mirror reporting Connected throughout.
+    //
+    // The test beside this one asserts a pane's count and its name survive a restart, which
+    // they do, so this shipped green. What it never asked was whether anything still arrives
+    // for a pane that was already there - and a pane created afterwards is watched normally,
+    // which is why `a_pane_created_later_is_watched_too` did not catch it either.
+    let mut daemon = Daemon::start();
+    daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "one", "focus": true }));
+    let pane = panes_of(&daemon).first().cloned().expect("a workspace comes with a pane");
+
+    let (mirror, log, _subscription) = mirror_and_log(&daemon);
+    until("the first bootstrap", || log.bootstraps() > 0, ());
+
+    // Before the restart, so the watcher this is about is one that existed and then lost its
+    // socket - rather than one that was never built.
+    daemon.call(
+        "pane.report_agent",
+        &json!({ "pane_id": pane, "agent": "probe", "source": "probe", "state": "working" }),
+    );
+    until(
+        "the pane's first state to arrive",
+        || state_of(&mirror, &pane) == Some(AgentState::Working),
+        (),
+    );
+
+    daemon.restart();
+    until(
+        "the subscription to report it reconnected",
+        || log.notices().iter().any(|notice| matches!(notice, Notice::Reconnected)),
+        (),
+    );
+    until(
+        "the mirror to be connected again",
+        || mirror.lock().unwrap().health() == Health::Connected,
+        (),
+    );
+
+    let before = log.transitions_to(AgentState::Blocked);
+    daemon.call(
+        "pane.report_agent",
+        &json!({ "pane_id": pane, "agent": "probe", "source": "probe", "state": "blocked" }),
+    );
+
+    // The notice as well as the mirror, because they answer different questions. The mirror
+    // holding `blocked` could be a later bootstrap correcting it; a transition reported is a
+    // watcher delivering it, which is the thing that has to still be alive.
+    until(
+        "the transition to arrive on a pane that existed before the restart",
+        || log.transitions_to(AgentState::Blocked) > before,
+        || {
+            format!(
+                "  Impact: this pane's agent state is frozen at whatever the reconnect's \
+                 snapshot said, on a connection reporting itself healthy - which is a window \
+                 showing `working` for an agent that finished an hour ago.\n  Check whether \
+                 `AgentWatchers::follow` rebuilt this pane's watcher: it skips any pane already \
+                 in its map, and a watcher whose thread died with the old socket is still in \
+                 it. The mirror now says: {:?}",
+                state_of(&mirror, &pane)
+            )
+        },
+    );
+    assert_eq!(state_of(&mirror, &pane), Some(AgentState::Blocked));
+}
+
+/// What one pane's agent is doing, according to the mirror.
+fn state_of(mirror: &Arc<Mutex<Mirror>>, pane: &str) -> Option<AgentState> {
+    mirror.lock().expect("a panicking test poisoned the mirror").agent_state(&PaneId::new(pane))
 }
 
 /// Every pane id a daemon holds, asked directly rather than through a mirror.
