@@ -591,7 +591,7 @@ chord.
 **Arranging the list is arranging the window, and Muster stores no order of its own.** Dragging a row is an ordinary
 intent through the one action path: the daemon rearranges its own tree and the list is a view of that, so
 `view = f(daemon state)` holds and the order survives a restart the way the panes do. The alternative - a
-presentation order in `window.toml` beside tab order and widths - buys free-form insertion at the price of a list
+presentation order in a window's saved arrangement beside tab order and widths - buys free-form insertion at the price of a list
 that no longer says where a pane is on screen, and of Muster owning an ordering the daemon has never heard of.
 
 One gesture, two requests, and the choice is the core's. Two panes in one tab exchange places; a pane dropped on a
@@ -821,8 +821,8 @@ How the values get there is a fact about libghostty rather than a choice, and th
 API has no setter, so the shell writes a derived config file and hands over its path
 (`docs/observations/libghostty-9f9b8d1d.md` section 9). A synthesized argv works too and needs nothing on disk, but
 `ghostty_init` assigns process-global state and so can only be done once - a file serves both the first launch and
-every reload after it, and one mechanism cannot disagree with itself. The derived file is state, lives beside
-`window.toml`, and is rewritten every launch; it is also the answer to "what did Muster actually tell the
+every reload after it, and one mechanism cannot disagree with itself. The derived file is state, lives in
+`~/.muster/state/` beside the saved arrangements, and is rewritten every launch; it is also the answer to "what did Muster actually tell the
 renderer", which is the first question when a colour does not take.
 
 The backend seam does the same thing for the same shape of reason - herdr takes a value only as a file too - with one

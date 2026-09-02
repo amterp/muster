@@ -6,7 +6,7 @@
     "shell",
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "next",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -18,11 +18,12 @@
   "created_at_millis": 1788328440994,
   "creator": "Alexander Terp",
   "id": "a_2IoXIHzri",
-  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "position": "!S",
   "title": "🧩 A Muster tab that spans machines, and one on screen at a time",
   "type": "feature",
-  "updated_at_millis": 1788328460852,
+  "updated_at_millis": 1788352340094,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1788328440994}
+    {"field":"column","value":"backlog-hi","at":1788328440994},
+    {"field":"column","value":"next","at":1788352326928}
   ]
 }
