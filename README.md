@@ -31,6 +31,8 @@ No prefix key, so nothing you type has to get past Muster before the agent sees 
 
 Your agents do not live in the app. A session daemon owns the terminals, so quitting Muster, closing
 the lid or dropping the VPN costs you nothing: the agents keep working and every pane comes back.
+When you are finished for the day and want them to stop too, the app menu has a second way out that
+says what it would end before it ends it.
 
 ## What you get
 

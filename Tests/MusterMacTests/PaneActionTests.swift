@@ -288,6 +288,40 @@ struct AppMenuTests {
   }
 
   @MainActor
+  @Test("the two ways out of Muster sit together, and only one of them has a chord")
+  func quittingIsAPair() {
+    // The choice the card asked to be made visible. Leaving sessions running has always been
+    // the behaviour and was never said anywhere, so nobody could rely on it and nobody could
+    // ask for the other thing.
+    let menu = AppMenu.build(
+      target: MusterWindow.self,
+      bindings: AppMenuTests.published + [
+        Core.Binding(action: "quit_and_close_sessions", key: "", modifiers: [])
+      ])
+    let app = menu.items.first?.submenu
+    let titles = app?.items.map(\.title) ?? []
+
+    #expect(titles == ["Quit muster, Leaving Sessions Running", "Quit muster and Close Sessions…"])
+    // ⌘Q stays on the one that costs nothing. The destructive item ships unbound, because the
+    // reflex it exists to interrupt is a keystroke.
+    #expect(app?.items.first?.keyEquivalent == "q")
+    #expect(app?.items.last?.keyEquivalent == "")
+    // And the ellipsis is a promise: it asks before it does anything.
+    #expect(app?.items.last?.title.hasSuffix("…") == true)
+  }
+
+  @MainActor
+  @Test("the item that ends sessions is not filed under a menu about windows")
+  func quittingIsNotInTheWindowMenu() {
+    let items = AppMenu.paneItems([
+      Core.Binding(action: "quit_and_close_sessions", key: "", modifiers: [])
+    ])
+    #expect(items.count == 1)
+    #expect(items[0].group == .app)
+    #expect(MusterWindow.instancesRespond(to: items[0].action))
+  }
+
+  @MainActor
   @Test("a rebound chord moves the menu item, which is what rebinding means on macOS")
   func rebindingMovesTheItem() {
     // The whole point of the menu being built from the core: a config file that moves an
@@ -350,7 +384,7 @@ struct AppMenuTests {
     let menu = AppMenu.build(target: NSApp, bindings: AppMenuTests.published)
 
     let titles = menu.items.compactMap { $0.submenu?.items.map(\.title) }.flatMap { $0 }
-    #expect(titles.contains("Quit muster"))
+    #expect(titles.contains("Quit muster, Leaving Sessions Running"))
     #expect(titles.contains("Paste"))
     #expect(titles.contains("Split Right"))
     // Copy went missing for as long as a pane's selection was believed to live in the

@@ -68,9 +68,71 @@ public enum Core {
     NotificationCenter.default.addObserver(
       forName: NSApplication.willTerminateNotification, object: nil, queue: .main
     ) { _ in
-      var request = Muster_Request()
-      request.quitting = Muster_Quitting()
-      send(request)
+      quitting(closeSessions: closingSessions)
+    }
+  }
+
+  /// Whether this quit is the one that ends the sessions too.
+  ///
+  /// Set by the menu item that asks, and read by the observer above, because between the two
+  /// is `NSApp.terminate` and there is nothing to carry a value through it. It is not a second
+  /// way to quit: there is one path out and this says which of two things it does on the way.
+  nonisolated(unsafe) private static var closingSessions = false
+
+  /// Ends the sessions this window is attached to as part of quitting, rather than leaving
+  /// them running.
+  ///
+  /// Answered when the daemons have stopped, which is why it is worth setting a flag rather
+  /// than sending a second message: the shell is holding its own termination open on the reply
+  /// either way, and one path out is what stops a quit that half-happened.
+  public static func closeSessionsOnQuit() {
+    closingSessions = true
+  }
+
+  static func quitting(closeSessions: Bool) {
+    var quitting = Muster_Quitting()
+    quitting.closeSessions = closeSessions
+    var request = Muster_Request()
+    request.quitting = quitting
+    send(request)
+  }
+
+  /// Every machine this window is attached to, and what each is holding.
+  ///
+  /// Asked rather than accumulated from events, because it is read once at the moment somebody
+  /// is deciding whether to end them - and a picture assembled from four event streams would be
+  /// a second answer that can disagree with `muster window`.
+  public static func machines() -> [Machine] {
+    var request = Muster_Request()
+    request.readWindow = Muster_ReadWindow()
+    guard case .window(let answer) = send(request) else { return [] }
+    return answer.daemons.map {
+      Machine(
+        daemon: $0.daemonID, host: $0.host, socket: $0.socket,
+        startedByMuster: $0.startedByMuster, panes: Int($0.panes), directories: $0.directories)
+    }
+  }
+
+  /// One machine this window is attached to.
+  public struct Machine: Equatable, Sendable {
+    public let daemon: String
+    /// Where it runs, or empty for this machine.
+    public let host: String
+    public let socket: String
+    public let startedByMuster: Bool
+    public let panes: Int
+    public let directories: [String]
+
+    public init(
+      daemon: String, host: String, socket: String, startedByMuster: Bool, panes: Int,
+      directories: [String]
+    ) {
+      self.daemon = daemon
+      self.host = host
+      self.socket = socket
+      self.startedByMuster = startedByMuster
+      self.panes = panes
+      self.directories = directories
     }
   }
 

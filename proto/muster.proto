@@ -91,7 +91,22 @@ message Request {
 //
 // Nothing is published in reply. The window is closing; a view it would repaint has nowhere to
 // go, and a shell waiting on this is waiting to exit.
-message Quitting {}
+message Quitting {
+  // Whether to end the sessions this window is attached to, rather than leave them running.
+  //
+  // False is the default and the promise: quitting Muster costs a session nothing, and
+  // somebody who quits at the end of a thought comes back to every pane where they left it.
+  // The other answer exists because it was the only behaviour and it was invisible - somebody
+  // finished for the day had no way to say so, and the only way to end a daemon was to find it
+  // with `pgrep` and kill it, which is how somebody's working agent was lost once already
+  // (kan a_28YghIUw2).
+  //
+  // A clean stop, measured rather than assumed: `server.stop` gives a pane's process a
+  // catchable SIGHUP and a moment to act, not a SIGKILL. What each harness does with that is
+  // its own business - Claude Code exits within about 300ms and restores the terminal on its
+  // way out, so it is asked and it goes rather than being shot.
+  bool close_sessions = 1;
+}
 
 // What this machine had to say about the font family the config named.
 //
@@ -908,12 +923,50 @@ message Window {
   // because a daemon cannot see which window somebody has looked at.
   repeated PaneStateChanged panes = 3;
 
-  // How much of each daemon's truth Muster currently has.
+  // Which machines this window is attached to, how healthy each is, and what each holds.
   //
-  // Here because the rest of this answer is a mirror, and a mirror nobody has heard from in an
-  // hour looks exactly like a current one. A caller told a window's shape and not told that is
-  // a caller acting on a picture Muster itself does not vouch for.
-  repeated BackendHealth daemons = 4;
+  // Health is here because the rest of this answer is a mirror, and a mirror nobody has heard
+  // from in an hour looks exactly like a current one. A caller told a window's shape and not
+  // told that is a caller acting on a picture Muster itself does not vouch for.
+  //
+  // The rest is here because Muster is the only thing that knows it. A daemon's socket can be
+  // asked what it holds, and the OS can be asked which process holds a socket, and nothing
+  // gets from one to the other - herdr's schema has no method that answers "which process are
+  // you". So a person with eight herdr processes cannot pair one with the work it is holding,
+  // and the one that mattered was neither the oldest nor the youngest (kan a_28YghIUw2).
+  // Muster started the daemon, or chose to attach to it, so Muster can say.
+  repeated Machine daemons = 4;
+}
+
+// One machine this window is attached to.
+message Machine {
+  string daemon_id = 1;
+
+  // Where it runs, as the config file spells it. Empty for this machine.
+  string host = 2;
+
+  // The socket this window reaches it on. For a remote daemon this is the near end of the ssh
+  // forward rather than the path over there, because it is the one a caller here could dial.
+  string socket = 3;
+
+  // Whether Muster started this daemon, as against attaching to one that was already
+  // answering.
+  //
+  // The distinction that makes ending one safe. `ensure_running` attaches to whatever answers,
+  // so a Muster launched today can adopt a daemon started yesterday that is holding somebody's
+  // working agent - and nothing in `ps` tells that one from a scratch daemon beside it.
+  bool started_by_muster = 4;
+
+  // How many panes it holds, on screen or not, and the directories they are in.
+  //
+  // The directories rather than a count alone, because that is what makes a process
+  // recognisable: `~/src/nook` names the work somebody would lose, where "2 panes" does not.
+  uint32 panes = 5;
+  repeated string directories = 6;
+
+  // `connected`, `stale` or `disconnected`.
+  string state = 7;
+  string detail = 8;
 }
 
 // What a search found, which is everything a find bar draws.

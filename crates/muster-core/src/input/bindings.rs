@@ -39,6 +39,22 @@ pub enum Action {
     /// difference - a window somebody asked for takes an arrangement nothing has ever held, and
     /// this takes the most recent one no live window is holding.
     ReopenWindow,
+
+    /// Quits, and ends the sessions this window is attached to on the way out.
+    ///
+    /// The destructive half of a choice that until now had only one side and made it silently.
+    /// Quitting leaves every daemon running, forever, which is the founding promise and stays
+    /// the default; what was missing is that somebody finished for the day had no way to say so
+    /// (kan a_28YghIUw2).
+    ///
+    /// Answered by the shell, like `new_window` and for the same reason: ending the app is an
+    /// OS act. What the shell cannot do alone is end the daemons - only the core knows which
+    /// sockets they are on - so it asks the core before it goes.
+    ///
+    /// Unbound by default, deliberately. Every other action here is recoverable by doing it
+    /// again; this one ends processes holding somebody's work, and a chord it shipped on is a
+    /// chord somebody presses by accident.
+    QuitAndCloseSessions,
     NewTab,
     NextTab,
     PreviousTab,
@@ -118,7 +134,7 @@ impl Action {
     /// Deliberately not alphabetical: a menu is read top to bottom, and the order here is what
     /// somebody scanning it expects - making something, then arranging it, then moving around
     /// it. A shell that sorted these would produce a menu nobody can find anything in.
-    pub const ALL: [Action; 43] = [
+    pub const ALL: [Action; 44] = [
         Action::NewWindow,
         Action::ReopenWindow,
         Action::NewTab,
@@ -162,6 +178,7 @@ impl Action {
         Action::ToggleSidebar,
         Action::ReloadConfig,
         Action::ShowShortcuts,
+        Action::QuitAndCloseSessions,
     ];
 
     /// The name a config file, a log line and the seam all spell it with.
@@ -208,6 +225,7 @@ impl Action {
             Action::ReloadConfig => "reload_config",
             Action::NewWindow => "new_window",
             Action::ShowShortcuts => "show_shortcuts",
+            Action::QuitAndCloseSessions => "quit_and_close_sessions",
         }
     }
 
@@ -250,14 +268,17 @@ impl Action {
             // goes to the common one and the menu carries this. Pulling a pane into a tab of
             // its own is the same shape as renaming a tab and has the same answer, and it is
             // also the newest of the three - a chord invented for it would be one nobody
-            // asked for. `[keymap]` is one line away for anybody who disagrees with any of
-            // them.
+            // asked for. Ending the sessions is the odd one out and is unbound for safety
+            // rather than for parity: every other action here is undone by doing it again,
+            // and that one ends processes holding somebody's work. `[keymap]` is one line
+            // away for anybody who disagrees with any of them.
             Action::SplitLeft
             | Action::SplitUp
             | Action::RenameTab
             | Action::MovePaneToNewTab
             | Action::CloseTab
-            | Action::ReopenWindow => None,
+            | Action::ReopenWindow
+            | Action::QuitAndCloseSessions => None,
             // Muster's own, since Ghostty has no equivalent. ⌘⇧N is free on this platform for
             // a terminal - a command chord never reaches a pane - and naming panes is what
             // somebody does in a window of fifteen agents, which is the size this was built

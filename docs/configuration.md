@@ -66,11 +66,11 @@ modifiers and a key, in any order and any case, spelled the way you would say th
 `focus_pane_9`, `rename_pane`, `rename_tab`, `close_tab`, `move_pane_to_new_tab`, `find`,
 `find_next`, `find_previous`, `zoom`,
 `increase_font_size`, `decrease_font_size`, `reset_font_size`, `toggle_sidebar`,
-`reload_config`, and `show_shortcuts`. On macOS these become menu items, which is where the
+`reload_config`, `show_shortcuts`, and `quit_and_close_sessions`. On macOS these become menu items, which is where the
 platform dispatches a key equivalent from - so a rebound action moves in the menu too, and
 System Settings can move it again.
 
-Six of them ship with no chord at all. Ghostty has `split_left` and `split_up` as actions and
+Seven of them ship with no chord at all. Ghostty has `split_left` and `split_up` as actions and
 binds neither, so Muster does the same rather than inventing a shortcut for them - they are in
 the menu, one click away and one `[keymap]` line from a chord. Which of the four sides costs
 herdr one request and which costs two is not something you can tell from here, and that is the
@@ -97,6 +97,13 @@ pane and the muscle memory is everybody's.
 Muster's tabs belong to the daemon and were never gone - so binding it to a window would make
 one keystroke mean two things across two apps. The menu carries it, and `muster window reopen`
 is the same act from a script.
+
+`quit_and_close_sessions` is the seventh, and it is the only one unbound for safety rather
+than for parity. Quitting Muster leaves every session running - that is the whole promise, and `cmd+q`
+does it - and this is the other answer, for when you are finished for the day and want the
+agents to stop too. It asks first, naming every machine and the directories its panes are in,
+because it is the one thing in Muster that ends somebody's work. Bind it if you want to, and
+know that everything else here is undone by doing it again and this is not.
 
 **`cmd+1` to `cmd+9` go to a numbered agent.** The number is drawn on its row in the agent
 list, counting down the whole list across every machine, so `cmd+3` is the third row whichever

@@ -545,6 +545,15 @@ struct Reached {
     /// sent again before that daemon is asked to read it - and this is the only record of
     /// where to send it.
     remote_config: Option<String>,
+    /// Whether Muster started this daemon, as against attaching to one that was answering.
+    ///
+    /// The distinction nothing recorded, and the one that makes a lifecycle decision safe.
+    /// `daemon::ensure_running` attaches to whatever answers on the socket, so a Muster
+    /// launched today can adopt a daemon started eighteen hours ago holding somebody's working
+    /// agent - which happened, and which reads in `ps` exactly like the scratch daemons beside
+    /// it (kan a_28YghIUw2). "The daemons Muster started" and "the daemons Muster is using" are
+    /// different sets, and only the second is knowable without this.
+    started: bool,
 }
 
 /// Writes the config Muster's daemon reads, and says where it went and whether it moved.
@@ -639,6 +648,9 @@ fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, String> {
             panes: reachable(PaneEnvironment::none()),
             owns_config: false,
             remote_config: None,
+            // Somebody named this socket, so whatever is behind it was somebody else's to
+            // start and stays somebody else's to end.
+            started: false,
         }),
         Endpoint::Local { socket_path: None } => {
             let environment = daemon::environment();
@@ -681,6 +693,7 @@ fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, String> {
                 panes,
                 owns_config: config.is_some(),
                 remote_config: None,
+                started: adopted == daemon::Reached::Started,
             })
         }
         // A socket somebody named is somebody's own daemon on either machine, and gets the same
@@ -694,6 +707,7 @@ fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, String> {
                 panes: PaneEnvironment::none(),
                 owns_config: false,
                 remote_config: None,
+                started: false,
             })
         }
         // The arrangement the local arm has, one machine further away. What used to stop it was
@@ -742,6 +756,7 @@ fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, String> {
                 panes: PaneEnvironment::restoring(&environment),
                 owns_config: true,
                 remote_config: remote::configuration_path(&environment),
+                started: adopted == daemon::Reached::Started,
             })
         }
     }
@@ -826,6 +841,13 @@ struct Backend {
     /// needs the same master to run its frame stream through. Absent for a daemon on this
     /// machine, which is the difference the rest of this file never has to notice.
     tunnel: Option<Tunnel>,
+    /// Whether Muster started this daemon rather than attaching to one already answering.
+    ///
+    /// Kept because ending a daemon is a decision somebody has to make about a process holding
+    /// work, and "did we start it" is the one thing about it nothing else can reconstruct
+    /// afterwards - `ps` cannot tell the daemon Muster launched a minute ago from the one it
+    /// adopted that has been holding somebody's agent since yesterday.
+    started: bool,
     /// Where this daemon was actually found, as opposed to how it was asked for.
     ///
     /// The resolution rather than the wish, which is why it lives here and not in the
@@ -1133,6 +1155,7 @@ impl Session {
                 )),
                 owns_config: reached.owns_config,
                 remote_config: reached.remote_config,
+                started: reached.started,
                 socket_path: reached.socket_path,
                 names,
                 _subscription: subscription,
@@ -2416,8 +2439,32 @@ pub(crate) struct WindowNow {
     /// the daemon reported: `done` is this window's answer rather than the daemon's, because a
     /// daemon cannot see which window has been looked at.
     pub agents: Vec<(PaneKey, AgentState)>,
-    /// Each followed daemon, and how much of its truth Muster has.
-    pub daemons: Vec<(DaemonId, Health, String)>,
+    /// Each followed daemon: how much of its truth Muster has, and enough about it to decide
+    /// deliberately what happens to it.
+    pub daemons: Vec<Machine>,
+}
+
+/// One machine this window is attached to, as anything outside the core reads it.
+///
+/// Muster is the only thing that can answer this. A socket can be asked what it holds and the
+/// OS can be asked which process holds a socket, and nothing gets from one to the other - so
+/// the pairing is Muster's to keep, because Muster either started the daemon or chose to
+/// attach to it (kan a_28YghIUw2).
+#[derive(Debug, Clone)]
+pub(crate) struct Machine {
+    pub daemon: DaemonId,
+    /// Where it runs, or `None` for this machine.
+    pub host: Option<String>,
+    pub socket_path: String,
+    pub started: bool,
+    pub health: Health,
+    pub detail: String,
+    /// Every directory its panes are in, deduplicated and in order.
+    ///
+    /// What makes a process recognisable at the moment somebody is deciding whether to end it.
+    /// A count says how much would be lost; a directory says what.
+    pub directories: Vec<String>,
+    pub panes: usize,
 }
 
 pub(crate) fn window() -> WindowNow {
@@ -2433,12 +2480,27 @@ pub(crate) fn window() -> WindowNow {
     let mut daemons = Vec::new();
     for (id, backend) in &session.backends {
         let mirror = poison::lock(&backend.mirror, "mirror");
-        daemons.push((id.clone(), mirror.health(), mirror.health_detail().to_string()));
+        let mut directories: Vec<String> = Vec::new();
+        let mut panes = 0usize;
         for pane in mirror.panes() {
             let key = PaneKey::new(id, &pane.id);
             let presented = session.attention.presented(&key, pane.agent_state);
             agents.push((key, presented));
+            panes += 1;
+            if !pane.cwd.is_empty() && !directories.contains(&pane.cwd) {
+                directories.push(pane.cwd.clone());
+            }
         }
+        daemons.push(Machine {
+            daemon: id.clone(),
+            host: backend.tunnel.as_ref().map(|tunnel| tunnel.host().to_string()),
+            socket_path: backend.socket_path.clone(),
+            started: backend.started,
+            health: mirror.health(),
+            detail: mirror.health_detail().to_string(),
+            directories,
+            panes,
+        });
     }
 
     WindowNow { view, roster, numbering, agents, daemons }
@@ -3912,7 +3974,11 @@ fn no_pane_to_size() -> String {
 /// moment later; without the wait, quitting races the thing it is trying to do. `viewport_rows`
 /// is what the daemon will say back - the one dimension it reports - so that is what is
 /// watched.
-pub(crate) fn quitting() {
+///
+/// Or ends them, if that is what was asked. Handing a pane back at a tidy size is care taken
+/// over a session somebody is coming back to, and there is no session to come back to here -
+/// so that half is skipped rather than done and then undone.
+pub(crate) fn quitting(close_sessions: bool) {
     let daemons: Vec<(DaemonId, String, Names)> = {
         let session = poison::lock(&SESSION, "session");
         session
@@ -3921,6 +3987,11 @@ pub(crate) fn quitting() {
             .map(|(id, backend)| (id.clone(), backend.socket_path.clone(), backend.names.clone()))
             .collect()
     };
+
+    if close_sessions {
+        close_daemons(&daemons);
+        return;
+    }
 
     let mut unreachable = 0usize;
     let mut wanted: Vec<(DaemonId, PaneId, u16)> = Vec::new();
@@ -3987,6 +4058,54 @@ pub(crate) fn quitting() {
                      on them renders into a grid the wrong shape until something resizes it"
                 )
             },
+        },
+    );
+}
+
+/// Asks every daemon this window is attached to stop, and says what came of it.
+///
+/// `server.stop` rather than a signal, because a signal is not available: Muster puts a daemon
+/// it starts in a process group of its own so that quitting cannot take the agents with it, and
+/// a daemon opened through Launch Services has no pid here at all. The socket is the only
+/// handle, and it is the better one - measured, it gives a pane's process a catchable SIGHUP
+/// and a window to act in rather than a SIGKILL (kan a_28YghIUw2).
+///
+/// A longer timeout than an ordinary request. This is a daemon tearing down every pane it
+/// holds, and the alternative to waiting is reporting a failure for a stop that worked.
+///
+/// A daemon that will not answer is reported and left. It is still running, its agents are
+/// still going, and the honest thing is to say which one rather than to insist - `muster
+/// window` names every daemon and its socket, which is what makes ending one by hand safe.
+fn close_daemons(daemons: &[(DaemonId, String, Names)]) {
+    const PATIENCE: std::time::Duration = std::time::Duration::from_secs(5);
+    let (mut stopped, mut refused) = (0usize, Vec::new());
+    for (daemon, socket_path, _) in daemons {
+        match daemon::stop(socket_path, PATIENCE) {
+            Ok(()) => stopped += 1,
+            Err(failure) => {
+                refused.push(daemon.to_string());
+                log::warn(
+                    "quit.session.kept",
+                    fields! {
+                        "daemon" => daemon.to_string(),
+                        "socket" => socket_path.clone(),
+                        "detail" => failure,
+                        "impact" => "this machine's session is still running with its agents \
+                                     in it, although quitting was asked to end it",
+                        "check" => "whether that daemon is answering at all - `muster window` \
+                                    names its socket, and `HERDR_SOCKET_PATH=<socket> herdr \
+                                    server stop` ends it by hand",
+                    },
+                );
+            }
+        }
+    }
+    log::info(
+        "quit.sessions.closed",
+        fields! {
+            "stopped" => stopped.to_string(),
+            "kept" => refused.len().to_string(),
+            "refused" => refused.join(","),
         },
     );
 }

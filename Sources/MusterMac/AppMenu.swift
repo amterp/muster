@@ -70,10 +70,24 @@ public enum AppMenu {
   public static func build(target: AnyObject, bindings: [Core.Binding]) -> NSMenu {
     let menu = NSMenu()
 
+    let items = paneItems(bindings)
+
     let appItem = NSMenuItem()
     let appMenu = NSMenu()
+    // Named for what it leaves behind rather than just "Quit muster". Quitting has always left
+    // every session running, which is the founding promise and stays the default - and it was
+    // invisible, so nobody could rely on it and nobody could ask for the other thing. The pair
+    // is what makes the choice a choice (kan a_28YghIUw2).
     appMenu.addItem(
-      withTitle: "Quit muster", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+      withTitle: "Quit muster, Leaving Sessions Running",
+      action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+    for item in items where item.group == .app {
+      let entry = NSMenuItem(title: item.title, action: item.action, keyEquivalent: item.key)
+      entry.keyEquivalentModifierMask = item.modifiers
+      entry.tag = item.tag
+      entry.target = target
+      appMenu.addItem(entry)
+    }
     appItem.submenu = appMenu
     menu.addItem(appItem)
 
@@ -88,8 +102,7 @@ public enum AppMenu {
     // One menu per group, in the order the groups are declared, and none for a group nothing
     // landed in. Splitting a pane and opening a list of shortcuts are not the same kind of
     // thing, and a single menu holding both is one nobody can scan.
-    let items = paneItems(bindings)
-    for group in MenuActions.Group.allCases {
+    for group in MenuActions.Group.allCases where group != .app {
       let inGroup = items.filter { $0.group == group }
       if inGroup.isEmpty { continue }
       let groupItem = NSMenuItem()

@@ -7,9 +7,12 @@
 //! versions it was not recorded from. So Muster runs its own under a herdr session of its own
 //! ([`crate::discovery::OWN_SESSION`]) and never meets a stranger.
 //!
-//! Started, never stopped. Sessions outliving the app is a founding desideratum, so the
-//! daemon is put in its own process group and quitting Muster costs it nothing - the whole
-//! point is that the agents keep working.
+//! Started, and stopped only when somebody says so. Sessions outliving the app is a founding
+//! desideratum, so the daemon is put in its own process group and quitting Muster costs it
+//! nothing - the whole point is that the agents keep working. `stop` is the deliberate way out
+//! of that, and nothing calls it unless a person asked: until it existed, the only way to end
+//! a daemon was to find it with `pgrep` and kill it, which cost somebody a working agent
+//! (kan a_28YghIUw2).
 
 use std::collections::BTreeMap;
 use std::os::unix::process::CommandExt;
@@ -362,6 +365,30 @@ pub enum Reached {
 /// afterwards and no others. The update checks are the exception and are the reason to call
 /// this on a daemon Muster adopted: those are cancelled the moment the config is applied.
 ///
+/// Ends a daemon, and the session in it.
+///
+/// The other half of a lifecycle that had only one, and the module comment above says why it
+/// had only one: sessions outliving the app is a founding desideratum, so a daemon Muster
+/// starts goes into a process group of its own and quitting cannot touch it. That stays the
+/// default. What this is for is somebody saying outright that they are finished.
+///
+/// `server.stop` and not a signal, and not only because there is no pid to signal a daemon
+/// opened through Launch Services. It is a *clean* stop, measured: a pane's process gets a
+/// catchable SIGHUP and a window to act in, and the shell exits rather than being shot
+/// (kan a_28YghIUw2).
+///
+/// The timeout is the caller's, because this is a daemon tearing down every pane it holds and
+/// what counts as too long depends on whether somebody is waiting for a window to close.
+///
+/// Returned rather than reported, unlike the reload below: whether a session somebody asked to
+/// end is still running is something the caller has to be able to say out loud.
+pub fn stop(socket_path: &str, patience: Duration) -> Result<(), String> {
+    HerdrClient::with_timeout(socket_path, patience)
+        .request("server.stop", &json!({}))
+        .map(|_| ())
+        .map_err(|failure| failure.to_string())
+}
+
 /// A failure here is Muster's own file being refused, so it is reported rather than returned:
 /// there is nothing the caller can do about it and nothing about the window is wrong yet.
 pub fn reload_configuration(socket_path: &str) {

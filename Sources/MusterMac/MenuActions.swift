@@ -17,6 +17,13 @@ public enum MenuActions {
   /// where a menu bar puts it, and a menu bar is one platform's answer. So the grouping is
   /// here, and a shell without a menu bar ignores it.
   public enum Group: String, CaseIterable {
+    /// The app menu, beside Quit, rather than a menu of its own.
+    ///
+    /// One group is drawn somewhere other than into a menu named after it, and this is why:
+    /// quitting lives in the app menu on this platform, and an item about quitting that sat
+    /// under "Window" would be somewhere nobody looks. It is still an action, published and
+    /// rebindable like every other, rather than a second hard-wired item beside the first.
+    case app = "muster"
     case window = "Window"
     case tab = "Tab"
     case pane = "Pane"
@@ -146,6 +153,12 @@ public enum MenuActions {
     "show_shortcuts": Described(
       title: "muster Shortcuts", selector: #selector(MusterWindow.showShortcuts(_:)),
       group: .help),
+    // The ellipsis is the platform's promise that this asks before it does anything, which
+    // matters more here than on the two rename items: it is the only thing in this menu that
+    // ends somebody's work.
+    "quit_and_close_sessions": Described(
+      title: "Quit muster and Close Sessions…",
+      selector: #selector(MusterWindow.quitAndCloseSessions(_:)), group: .app),
   ]
 }
 

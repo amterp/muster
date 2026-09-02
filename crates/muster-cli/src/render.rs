@@ -231,9 +231,9 @@ fn window_text(window: &Window) -> String {
     let states = states(window);
     let widths = Widths::across(window, &states);
 
-    let mut health: BTreeMap<&str, (&str, &str)> = BTreeMap::new();
+    let mut machines: BTreeMap<&str, &muster_proto::Machine> = BTreeMap::new();
     for daemon in &window.daemons {
-        health.insert(&daemon.daemon_id, (&daemon.state, &daemon.detail));
+        machines.insert(&daemon.daemon_id, daemon);
     }
 
     let mut lines: Vec<String> = Vec::new();
@@ -242,8 +242,10 @@ fn window_text(window: &Window) -> String {
         if !lines.is_empty() {
             lines.push(String::new());
         }
-        let (state, detail) = health.remove(daemon.daemon_id.as_str()).unwrap_or(("unknown", ""));
-        lines.push(daemon_line(&daemon.daemon_id, state, detail));
+        match machines.remove(daemon.daemon_id.as_str()) {
+            Some(machine) => lines.extend(daemon_lines(machine)),
+            None => lines.push(daemon_line(&daemon.daemon_id, "unknown", "")),
+        }
 
         if daemon.tabs.is_empty() {
             lines.push(styled("  no tabs, so this daemon is holding nothing", QUIET));
@@ -264,11 +266,11 @@ fn window_text(window: &Window) -> String {
     // A daemon Muster is following that the roster does not mention. Reported rather than dropped:
     // a window with a daemon it cannot describe is worth seeing, and a caller told nothing would
     // read it as a window with one fewer machine in it.
-    for (daemon, (state, detail)) in health {
+    for machine in machines.into_values() {
         if !lines.is_empty() {
             lines.push(String::new());
         }
-        lines.push(daemon_line(daemon, state, detail));
+        lines.extend(daemon_lines(machine));
         lines.push(styled("  nothing described yet", QUIET));
     }
 
@@ -276,6 +278,31 @@ fn window_text(window: &Window) -> String {
         return "no daemon is attached, so this window is showing nothing".to_string();
     }
     lines.join("\n")
+}
+
+/// A machine's heading, and beneath it what would end with the daemon behind it.
+///
+/// Two lines rather than one, and the second is the one this was missing. A person deciding
+/// whether a herdr process is safe to end could not pair a pid with the work it holds - herdr
+/// answers no question that gets from one to the other - so the choice was made on age, and
+/// age picks the wrong process (kan a_28YghIUw2). Muster started the daemon or chose to attach
+/// to it, so it can simply say.
+fn daemon_lines(machine: &muster_proto::Machine) -> Vec<String> {
+    let mut lines = vec![daemon_line(&machine.daemon_id, &machine.state, &machine.detail)];
+    let where_it_runs =
+        if machine.host.is_empty() { "this machine".to_string() } else { machine.host.clone() };
+    // Whether Muster started it, because that is the difference between ending something this
+    // window made and ending something it found somebody else's agents already inside.
+    let whose = if machine.started_by_muster { "started by Muster" } else { "already running" };
+    let holding = match (machine.panes, machine.directories.as_slice()) {
+        (0, _) => "no panes".to_string(),
+        (1, [only]) => format!("1 pane in {only}"),
+        (count, []) => format!("{count} panes"),
+        (count, directories) => format!("{count} panes in {}", directories.join(", ")),
+    };
+    lines.push(styled(&format!("  {where_it_runs} · {whose} · {holding}"), QUIET));
+    lines.push(styled(&format!("  {}", machine.socket), QUIET));
+    lines
 }
 
 fn daemon_line(daemon: &str, state: &str, detail: &str) -> String {
@@ -478,6 +505,11 @@ fn window_json(window: &Window) -> Value {
                 "daemon": daemon.daemon_id,
                 "state": daemon.state,
                 "detail": daemon.detail,
+                "host": daemon.host,
+                "socket": daemon.socket,
+                "started_by_muster": daemon.started_by_muster,
+                "panes": daemon.panes,
+                "directories": daemon.directories,
             })
         })
         .collect();
