@@ -11,13 +11,18 @@
 //! also the only part a second process would have to go on. `Turn::relaunch` then takes the
 //! other half of the round trip, opening a second window onto the file the first one left, in
 //! the same test.
+//!
+//! The window somebody asks for is here too, because it is the same subject from the other
+//! side: what a launch does about the arrangement the one before it left. A window Muster comes
+//! back to takes it; a window somebody asked for takes none of it.
 
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use herdr_harness::{Daemon, until};
 use muster::proto::{
-    CreateTab, Event, OpenWindow, Request, Response, Startup, ViewChanged, event, request, response,
+    CreateTab, Event, OpenWindow, Request, Response, SplitPane, Startup, ViewChanged, ViewNode,
+    ViewRegion, event, request, response, view_node,
 };
 use prost::Message;
 
@@ -225,6 +230,176 @@ fn an_arrangement_naming_one_tab_twice_opens_it_once() {
     );
 }
 
+/// A window somebody asked for opens onto a tab of its own.
+///
+/// Two windows on one machine is the arrangement this is about, and the daemon between them is
+/// what makes it sharp: herdr allows one client per terminal, so a second window that opened
+/// onto the tab the first one is showing gets every attach refused and renders four dead
+/// surfaces. Measured that way on 0.4.1 (kan `a_2IZ5TL6DQ`) - six panes, four bridges, four
+/// `already has an attached client`.
+///
+/// Nothing here can see the first window's bridges, because a process holds one session. What
+/// it can see is the thing that decides the outcome: which tab the second window opens onto.
+/// A tab the first window was not on is a tab whose terminals are free.
+///
+/// The daemon holding a tab already is the whole of the setup. A launch with no saved
+/// arrangement is not enough on its own - the standing rule gives every machine a region on
+/// whatever tab that machine last had focused, and that is exactly the tab the window before it
+/// was showing.
+#[test]
+fn a_window_somebody_asked_for_opens_onto_a_tab_of_its_own() {
+    let turn = muster::testing::fresh_session();
+    let daemon = Daemon::start();
+    let state = daemon.muster_config().with_file_name("window.toml");
+
+    // The statics below outlive a test, so what the last one published is still there and
+    // would answer this one's first wait instantly.
+    forget_the_view();
+    muster::ffi::muster_set_event_callback(Some(note));
+    open_a_window(&daemon, &state);
+    until(
+        "the first window to open onto a workspace",
+        || tab_of_first_region().is_some(),
+        || format!("the last view the core published: {:?}", latest_view()),
+    );
+    let theirs = tab_of_first_region().expect("just waited for it");
+
+    turn.relaunch();
+    forget_the_view();
+    muster::ffi::muster_set_event_callback(Some(note));
+
+    // What `muster window new` sends: no arrangement to remember, and a launch that says
+    // somebody asked for it. The daemon is the same one, still holding the tab above, which is
+    // what the first window would still be showing.
+    assert_ok(&answer(request::Payload::Startup(Startup {
+        fresh: true,
+        state_path: String::new(),
+        ..startup(&daemon, &state)
+    })));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+
+    until(
+        "the window somebody asked for to open onto something",
+        || tab_of_first_region().is_some(),
+        || format!("the last view the core published: {:?}", latest_view()),
+    );
+    let ours = tab_of_first_region().expect("just waited for it");
+    assert_ne!(
+        ours, theirs,
+        "the window opened onto the tab the last one was showing ({theirs}), so on a machine \
+         where that window is still open every pane in it is a surface herdr will refuse"
+    );
+
+    // And it remembers nothing, which is the other half: two windows writing one file means the
+    // arrangement that comes back is whichever of them published last.
+    let written = std::fs::read_to_string(&state).expect("the first window wrote an arrangement");
+    assert!(
+        written.contains(&theirs) && !written.contains(&ours),
+        "the window somebody asked for wrote over the arrangement the other one left:\n{written}"
+    );
+}
+
+/// A window Muster comes back to still takes the tabs it was left on.
+///
+/// The other side of the rule above, and the reason it is a flag rather than a change of
+/// behaviour: everything about a Dock launch stays as it was, including the case that matters
+/// most - coming back to a session full of agents that were running before Muster quit.
+#[test]
+fn a_window_muster_comes_back_to_still_takes_what_it_was_left() {
+    let turn = muster::testing::fresh_session();
+    let daemon = Daemon::start();
+    let state = daemon.muster_config().with_file_name("window.toml");
+
+    forget_the_view();
+    muster::ffi::muster_set_event_callback(Some(note));
+    open_a_window(&daemon, &state);
+    until(
+        "the first window to open onto a workspace",
+        || tab_of_first_region().is_some(),
+        || format!("the last view the core published: {:?}", latest_view()),
+    );
+    let showing = tab_of_first_region().expect("just waited for it");
+
+    turn.relaunch();
+    forget_the_view();
+    muster::ffi::muster_set_event_callback(Some(note));
+    open_a_window(&daemon, &state);
+    until(
+        "the window to come back onto the tab it was left on",
+        || tab_of_first_region().is_some(),
+        || format!("the last view the core published: {:?}", latest_view()),
+    );
+
+    assert_eq!(
+        tab_of_first_region().as_deref(),
+        Some(showing.as_str()),
+        "a launch with an arrangement to come back to opened somewhere else"
+    );
+}
+
+/// A saved region naming a pane the daemon has dropped puts the keyboard on one it holds.
+///
+/// Pinning what is already true rather than fixing anything, and it is worth pinning because
+/// the obvious reading of the failure in `a_2IZ5TL6DQ` was that a saved pane reached a bridge.
+/// It cannot: a bridge follows the tab's published tree and every pane in it is one the mirror
+/// holds, so what a saved region names is only ever the keyboard's place. This says the
+/// keyboard lands somewhere real, which is the part that would be a window ignoring keystrokes
+/// with nothing on screen to say why.
+#[test]
+fn a_saved_region_naming_a_dropped_pane_puts_the_keyboard_on_one_that_is_there() {
+    let turn = muster::testing::fresh_session();
+    let daemon = Daemon::start();
+    let state = daemon.muster_config().with_file_name("window.toml");
+
+    forget_the_view();
+    muster::ffi::muster_set_event_callback(Some(note));
+    open_a_window(&daemon, &state);
+    until(
+        "the first window to open onto a workspace",
+        || tab_of_first_region().is_some(),
+        || format!("the last view the core published: {:?}", latest_view()),
+    );
+
+    // A second pane, so the tab survives losing one - the window's own split, so the keyboard
+    // follows it and the arrangement written down names it.
+    assert_ok(&answer(request::Payload::SplitPane(SplitPane {
+        side: "down".to_string(),
+        ..SplitPane::default()
+    })));
+    until(
+        "the split to reach the window",
+        || panes_on_screen() == 2,
+        || format!("the last view the core published: {:?}", latest_view()),
+    );
+
+    turn.relaunch();
+    forget_the_view();
+    muster::ffi::muster_set_event_callback(Some(note));
+
+    // The pane the arrangement names is gone before the window opens, which is the state a
+    // relaunch meets whenever something finished while Muster was not running.
+    let held = daemon_panes(&daemon);
+    let dropped = held.last().expect("the daemon holds the panes this window made");
+    daemon.call("pane.close", &serde_json::json!({ "pane_id": dropped }));
+
+    open_a_window(&daemon, &state);
+    until(
+        "the window to come back onto what is left",
+        || tab_of_first_region().is_some(),
+        || format!("the last view the core published: {:?}", latest_view()),
+    );
+
+    let view = latest_view().expect("just waited for it");
+    let region = view.regions.first().expect("the window opened a region");
+    let drawn = panes_of_region(region);
+    assert!(
+        drawn.contains(&region.pane_id),
+        "the keyboard is on {} and the region is drawing {drawn:?}, so every keystroke goes \
+         to a pane that is not there",
+        region.pane_id
+    );
+}
+
 /// Starts the core against this daemon, and opens the window - what a bare `muster` does.
 fn open_a_window(daemon: &Daemon, state: &std::path::Path) {
     assert_ok(&answer(request::Payload::Startup(startup(daemon, state))));
@@ -246,6 +421,44 @@ fn startup(daemon: &Daemon, state: &std::path::Path) -> Startup {
 
 fn regions_shown() -> usize {
     latest_view().map_or(0, |view| view.regions.len())
+}
+
+/// Every pane one region is drawing, in no particular order.
+fn panes_of_region(region: &ViewRegion) -> Vec<String> {
+    let mut found = Vec::new();
+    if let Some(root) = &region.root {
+        collect(root, &mut found);
+    }
+    found
+}
+
+fn collect(node: &ViewNode, found: &mut Vec<String>) {
+    match &node.node {
+        Some(view_node::Node::Pane(pane)) => found.push(pane.pane_id.clone()),
+        Some(view_node::Node::Split(split)) => {
+            for child in [split.first.as_deref(), split.second.as_deref()].into_iter().flatten() {
+                collect(child, found);
+            }
+        }
+        None => {}
+    }
+}
+
+fn panes_on_screen() -> usize {
+    latest_view()
+        .map(|view| view.regions.iter().map(|region| panes_of_region(region).len()).sum())
+        .unwrap_or_default()
+}
+
+/// Every pane the daemon holds, in the order it lists them.
+fn daemon_panes(daemon: &Daemon) -> Vec<String> {
+    let snapshot = daemon.call("session.snapshot", &serde_json::json!({}));
+    snapshot["snapshot"]["panes"]
+        .as_array()
+        .map(|panes| {
+            panes.iter().filter_map(|pane| pane["pane_id"].as_str().map(str::to_string)).collect()
+        })
+        .unwrap_or_default()
 }
 
 fn tab_of_first_region() -> Option<String> {
