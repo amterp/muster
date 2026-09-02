@@ -5,7 +5,7 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-hi",
+  "column": "in-progress",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -22,11 +22,12 @@
   "labels": [
     "ai-lo"
   ],
-  "position": "!!!E",
+  "position": "!U",
   "title": "🟦 A focused pane and a working pane are the same blue, so neither ring reads",
   "type": "bug",
-  "updated_at_millis": 1788298312517,
+  "updated_at_millis": 1788322666743,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1788298267659}
+    {"field":"column","value":"backlog-hi","at":1788298267659},
+    {"field":"column","value":"in-progress","at":1788322666743}
   ]
 }

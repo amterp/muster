@@ -6,13 +6,19 @@
     "shell",
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "comments": [
     {
       "author": "Alexander Terp",
       "body": "The direction this serves is now written down in `a_2IZPRaJvB`: a window is meant to be Muster's own unit, and two windows two independent workspaces rather than two views of one.\n\nThat makes the fix here more than a default worth changing. `statePath` being one global file is the clearest evidence in the repo that a window is not currently a unit at all - a second window has no identity of its own to remember anything under, which is why it borrows the first one's. Giving it one is the smallest real step toward the larger card, and it stands on its own whether or not that lands.",
       "created_at_millis": 1788292411459,
       "id": "c_2IZQ09zVB"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Fixed on `main3` (slot 3 of the 2026-09-02 parallel round), in two commits: the tests, then `fix: a window somebody asked for opens onto tabs of its own`.\n\n## What the fix is\n\nA launch now says whether somebody asked for this window. `muster window new` and cmd+n both pass `--fresh`; a launch from the Dock does not. A window somebody asked for remembers nothing - the shell names no state path, which is the mechanism an empty `MUSTER_STATE` already had - and it claims a workspace on each attached machine rather than adopting a tab that machine already holds.\n\n## The card underestimated it by one step\n\nOpening \"the way a first launch with no saved arrangement does\" is not enough on its own, and this is the part worth carrying into anything built on top. `open_remaining_regions` gives every daemon with no region a region on `mirror.focus().tab`, and that is the tab the *other* window is showing - so a window that restored nothing still walks into `already has an attached client`, one step later. herdr 0.8.0 has no way to ask whether a terminal has a client (checked against `corpus/herdr-0.8.0/api-schema.json`), so nothing can detect the collision; the window has to ask for a tab it knows is its own.\n\nThe window therefore writes down which tabs each machine already held when it claimed one, and opens onto whichever tab was not in that set. That record does a second job: the claim is a round trip, and the events describing its new tab can be applied before the request returns - so a rule that only waited to be told about its tab hangs with an empty window. Reproduced as a flaky test before the record went in.\n\n## Both questions the card asked to settle\n\n**Who writes `window.toml`.** One window, and it is the one Muster comes back to. Stated in `docs/architecture.md` (durability) and in `muster docs limits`.\n\n**Which machine a fresh window picks.** Every attached machine, as each one answers, rather than only the first local one. `open_a_workspace_if_the_window_is_empty`'s \"choosing somebody else's machine is a claim Muster should not make\" is about filling an empty window uninvited; a person who typed `muster window new` invited it. No `--daemon` flag was added.\n\n## The stale pane was not a second bug\n\n`w4:p2` did not get a bridge because a saved region named it. A bridge follows the tab's published tree (`open_channels` filters on `mirror.pane(...).is_some()`), and a saved region's `pane` is only ever where the keyboard lands. So the mirror was holding p2 while herdr's terminal for it was gone - a mirror stale about one pane, which is the `bridge.attach.failed` half rather than the restore half. Left alone here because it sits beside `a_2IRcMjFs0` and `a_2IQsToWVW`; what went in instead is a test pinning that a saved region naming a dropped pane puts the keyboard on one that is there.\n\nNot exercised here: `./dev --contract`, which is the tier that would show two real windows side by side.",
+      "created_at_millis": 1788322251987,
+      "id": "c_2IlwI2q33"
     }
   ],
   "created_at_millis": 1788291622336,
@@ -22,11 +28,13 @@
   "labels": [
     "ai-lo"
   ],
-  "position": "!!0",
+  "position": "!!!!!!!!!!!!!!!!!!!!!!!U",
   "title": "🪟 A second window opens onto the first one's panes, and every bridge is refused",
   "type": "bug",
-  "updated_at_millis": 1788292411459,
+  "updated_at_millis": 1788322258444,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1788291622336}
+    {"field":"column","value":"backlog-hi","at":1788291622336},
+    {"field":"column","value":"in-progress","at":1788321164695},
+    {"field":"column","value":"done","at":1788322258444}
   ]
 }

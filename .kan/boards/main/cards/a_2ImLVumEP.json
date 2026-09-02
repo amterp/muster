@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "pane-send-silently-truncates",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "uncommitted",
+  "created_at_millis": 1788323221645,
+  "creator": "Alexander Terp",
+  "description": "`muster pane send` delivers at most 1024 bytes and drops the rest with no error. The command exits 0, so the sender believes the whole message landed and the receiving agent acts on a fragment.\n\nMeasured 2026-09-01 while driving three worker agents in a 2x2 grid. A pane running `cat` was sent a 2200-byte single-line payload of position-marked tokens; the pane received exactly 1024. Repeated with a 1496-byte payload: cut at the identical byte. The boundary is exact, not approximate.\n\nWhat makes this expensive rather than annoying is that the failure is silent on both ends. An agent receiving a truncated instruction has no way to know it was truncated - it reads a coherent-looking fragment and acts on it. In the session that found this, an instruction to a worker arrived as its last four words, \"ll reconsider. Otherwise carry on.\", the tail of \"...say so and I will reconsider.\" The worker reasonably replied asking what it should reconsider. Three separate messages in that session were cut mid-word, in both directions.\n\nA second failure mode compounds it, and may be the same bug or a different one: newlines in the payload appear to submit early, so a multi-line message to a TUI becomes several submissions and only the last is seen as the prompt. Worth checking whether that is the 1024 cap interacting with line-buffered input or something separate.\n\nTwo workarounds found, worth documenting even if the cap is lifted. Send text and Return separately - `pane send` with the text, pause, then a second `pane send` with an empty string and `--enter` - because `--enter` on a long paste races and the Return can arrive mid-paste. And for anything genuinely long, write it to a file and send a one-line `read \u003cpath\u003e`; three briefs of 140-160 lines delivered that way arrived intact first time.\n\nWhatever the fix, the silence is the part that matters: refusing oversized input with an error would be better than delivering half of it.",
+  "id": "a_2ImLVumEP",
+  "position": "UUUUUUUUUUU",
+  "title": "pane send silently truncates at 1024 bytes",
+  "type": "bug",
+  "updated_at_millis": 1788323221645,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1788323221645}
+  ]
+}

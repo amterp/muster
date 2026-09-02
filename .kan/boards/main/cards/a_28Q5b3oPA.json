@@ -5,17 +5,19 @@
   "area": [
     "shell"
   ],
-  "column": "next",
+  "column": "done",
   "created_at_millis": 1786792543978,
   "creator": "Alexander Terp",
   "description": "The desideratum reads: \"when an agent needs you, the notification says why, and one keystroke lands you on the pane that asked.\" Two of those three exist now and the middle one has never been carded.\n\nWhat is already here. The core sees every transition, so it knows the moment an agent goes `blocked` or finishes unseen. And as of the attention arc, \"one keystroke lands you on the pane that asked\" is done - a focus request naming a pane no region shows retargets a region onto it, so there is somewhere for a notification to send you. That is what makes this worth doing now rather than earlier: a notification you could not act on would have been an alert with no destination.\n\nWhat is missing is the delivery, and the decision about what deserves one. architecture.md already splits those: the core owns the unread and urgency ordering, the shell only delivers and renders, and activating one dispatches an ordinary focus intent through the one action path.\n\nBlocked on a_28PEDcNg9. `UNUserNotificationCenter` wants a bundle identifier, and a bare binary out of `.build` has no identity to request permission against or to post as. So the bundle comes first, which it does anyway.\n\nThe interesting question is which transitions earn one, and it is easy to get wrong in the direction that makes people turn them off. `blocked` is the obvious yes - it is the state that means a person is being waited on. `done` is less obvious and possibly also yes, because Muster's `done` already means nobody saw it finish, so the state and the notification are asking the same question. Everything notifying is the same as nothing notifying.\n\nOpen, and worth deciding rather than defaulting: whether a window that is focused and already showing the pane should notify at all (probably not - that is what the border is for), and what the quiet path is for somebody running fifteen agents who does not want fifteen banners.",
   "id": "a_28Q5b3oPA",
-  "position": "6",
+  "position": "!!!!!!!!!!!!!!!!!!!!!!!E",
   "title": "🔔 Tell me when an agent needs me, not just show me",
   "type": "feature",
-  "updated_at_millis": 1786805513272,
+  "updated_at_millis": 1788322666432,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786792543978},
-    {"field":"column","value":"next","at":1786805513272}
+    {"field":"column","value":"next","at":1786805513272},
+    {"field":"column","value":"in-progress","at":1788321159147},
+    {"field":"column","value":"done","at":1788322666432}
   ]
 }
