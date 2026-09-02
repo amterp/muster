@@ -348,6 +348,7 @@ public enum SidebarModel {
   /// a border, the dot is drawn for every state including idle: a border exists to be
   /// noticed against a resting default, where a list with gaps in a column reads as missing
   /// data rather than as calm.
+  @MainActor
   public static func dotColor(state: String) -> NSColor {
     PaneAppearance.borderColor(state: state)
   }
@@ -574,6 +575,15 @@ public final class SidebarView: NSView {
   ///
   /// Instantly rather than animated: a note animates by default, and a row growing under
   /// somebody reading the list is the movement the two heights exist to avoid.
+  /// Redraws every row against the colours in force, after the config file was read again.
+  ///
+  /// Whole rather than diffed, unlike everything else here: the rows have not changed, only
+  /// what they are painted in, so the diff that keeps a fifteen-row list from flickering on
+  /// every agent transition would correctly decide there was nothing to do.
+  public func reloadColors() {
+    table.reloadData()
+  }
+
   public func apply(roster: Roster, states: [PaneKey: String], keyboard: PaneKey? = nil) {
     let fresh = SidebarModel.rows(roster: roster, states: states, keyboard: keyboard)
     let previous = rows

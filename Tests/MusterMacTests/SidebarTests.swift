@@ -123,15 +123,27 @@ struct SidebarTests {
     let rows = SidebarModel.rows(roster: roster, states: [:])
 
     #expect(rows.last?.state == "unknown")
-    #expect(SidebarModel.dotColor(state: "unknown") != SidebarModel.dotColor(state: "idle"))
+    #expect(
+      PaneAppearance.defaultBorderColor(state: "unknown")
+        != PaneAppearance.defaultBorderColor(state: "idle"))
   }
 
+  @MainActor
   @Test("the dot agrees with the border the same state draws on a pane")
   func theListAgreesWithTheWindow() {
     // Two places show one state. A sidebar that picked its own palette would make a user
-    // check both and trust neither.
-    for state in ["working", "blocked", "done", "idle", "unknown"] {
-      #expect(SidebarModel.dotColor(state: state) == PaneAppearance.borderColor(state: state))
+    // check both and trust neither. That now has to survive a repainted state too: the
+    // colours are a person's to change, and a file that moved the border and not the dot
+    // would be the same failure arriving by a new route.
+    defer { PaneAppearance.adopt(chrome: .none) }
+    let repainted = Core.Chrome(
+      divider: nil, focusRing: nil,
+      agents: Core.AgentColors(working: "#7aa2f7", blocked: "#ff9e64"))
+    for chrome in [Core.Chrome.none, repainted] {
+      PaneAppearance.adopt(chrome: chrome)
+      for state in ["working", "blocked", "done", "idle", "unknown"] {
+        #expect(SidebarModel.dotColor(state: state) == PaneAppearance.borderColor(state: state))
+      }
     }
   }
 

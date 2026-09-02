@@ -353,8 +353,44 @@ public enum Core {
   public struct Appearance: Sendable {
     /// What a pane looks like, in the renderer seam's vocabulary.
     public let pane: MusterRenderer.Appearance
-    /// The line between two regions, as `#rrggbb`, or nil for the platform's own separator.
-    public let dividerColor: String?
+    /// What Muster paints around a pane rather than inside it.
+    public let chrome: Chrome
+  }
+
+  /// The colours no renderer paints: the line between two regions, the ring saying which pane
+  /// has the keyboard, and the five agent states.
+  ///
+  /// Grouped rather than seven fields on `Appearance`, because they go to one place - the
+  /// window's own chrome - and arrive together on one event. Every one is nil for "the file
+  /// said nothing", and every one has a different answer to what that means: the platform's
+  /// separator, the platform's accent, and the legend `PaneAppearance` holds.
+  public struct Chrome: Sendable {
+    public let divider: String?
+    public let focusRing: String?
+    public let agents: AgentColors
+
+    public static let none = Chrome(divider: nil, focusRing: nil, agents: AgentColors())
+  }
+
+  /// The five agent states as `#rrggbb`, or nil each for the one Muster ships.
+  public struct AgentColors: Sendable {
+    public var working: String?
+    public var blocked: String?
+    public var done: String?
+    public var idle: String?
+    public var unknown: String?
+
+    /// Which states a person repainted, for the run log. The states rather than the values,
+    /// because what a reader is asking when a colour looks wrong is whether the file reached
+    /// Muster at all - and six hex triples on a log line answers that no better than five
+    /// words do.
+    var described: String {
+      let named = [
+        ("working", working), ("blocked", blocked), ("done", done), ("idle", idle),
+        ("unknown", unknown),
+      ].filter { $0.1 != nil }.map(\.0)
+      return named.isEmpty ? "(default)" : named.joined(separator: " ")
+    }
   }
 
   /// What Muster paints itself with.
@@ -366,7 +402,7 @@ public enum Core {
     var request = Muster_Request()
     request.readAppearance = Muster_ReadAppearance()
     guard case .appearance(let answer) = send(request) else {
-      return Appearance(pane: MusterRenderer.Appearance(), dividerColor: nil)
+      return Appearance(pane: MusterRenderer.Appearance(), chrome: .none)
     }
     return read(answer)
   }
@@ -393,7 +429,15 @@ public enum Core {
         cursorBlink: answer.hasCursorBlink ? answer.cursorBlink : nil,
         panePadding: answer.hasPanePadding ? answer.panePadding : nil
       ),
-      dividerColor: named(answer.dividerColor))
+      chrome: Chrome(
+        divider: named(answer.dividerColor),
+        focusRing: named(answer.focusRingColor),
+        agents: AgentColors(
+          working: named(answer.agentColors.working),
+          blocked: named(answer.agentColors.blocked),
+          done: named(answer.agentColors.done),
+          idle: named(answer.agentColors.idle),
+          unknown: named(answer.agentColors.unknown))))
   }
 
   /// How big the window should be, and whether it should be full-screen.
@@ -916,7 +960,13 @@ public enum Core {
       window?.apply(contents)
     case .appearanceChanged(let changed):
       let appearance = read(changed.appearance)
-      info("appearance.received", ["divider": appearance.dividerColor ?? "(platform)"])
+      info(
+        "appearance.received",
+        [
+          "divider": appearance.chrome.divider ?? "(platform)",
+          "focus_ring": appearance.chrome.focusRing ?? "(accent)",
+          "agents": appearance.chrome.agents.described,
+        ])
       window?.apply(appearance: appearance)
       // The family may have changed with everything else, and the answer to whether this
       // machine has it can only be looked up here.

@@ -267,9 +267,27 @@ who repaints their palette repaints the legend. Idle and unknown it leaves uncol
 resting rendering of a list of words, the row already prints the state, and the sidebar needs two greys only because
 a dot has to be some colour in order to exist.
 
+**The legend is a default, and the window's half of it is a person's to change.** `[colors]`
+carries the five agent states and the focus ring (`configuration.md`), and only the window
+honours them: the CLI keeps the terminal's fixed sixteen. That answers the question a
+configurable legend raises, which is what "one legend" can still mean once anybody can repaint
+it. `muster window` reads the same on every machine - which for an agent parsing it is a feature
+- and nothing has to map a hex triple onto the nearest of sixteen, a judgement that would be
+wrong for somebody and would leave Muster no longer knowing what the legend was.
+
+**What crosses the seam is a value somebody wrote, never a legend.** `a_2HPHq3Zck` rejected a hue
+table in `muster-core` on the grounds that a hue never crosses, and half of that survives. A
+configured colour does cross - it arrives in the file the core parses, and rides the same
+`Appearance` message `divider` already does - but the core gains six optional strings and no
+opinion: it paints nothing, holds no table mapping a state to a hue, and could not say which of
+them is the default. The defaults stay in the shell because the window is the canonical surface.
+So the core learns what a person chose and still never learns what a state means.
+
 **The values live in two files, and nothing checks one against the other.** `PaneAppearance.borderColor` in
 `Sources/MusterMac/PaneChrome.swift` and `agent_style` in `crates/muster-cli/src/render.rs`, each citing this section
-and the other, each with a test that fails if its own row moves. A tripwire rather than a mechanism: five rows that
+and the other, each with a test that fails if its own row moves. The Swift side pins its
+*defaults*, which is exactly what the CLI is fixed against, so configurability costs the tripwire
+nothing. A tripwire rather than a mechanism: five rows that
 change almost never do not earn a generator, and a lint reading both files across the language line is a regex worth
 reaching for the first time a tripwire fails to fire.
 

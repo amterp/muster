@@ -116,12 +116,18 @@ extension NSColor {
   }
 }
 
-/// Takes the chrome half of an appearance - the line between two regions, and nothing else.
+/// Takes the chrome half of an appearance: the line between two regions, the focus ring, and
+/// the agent-state colours.
+///
+/// One function rather than each holder reaching for its own, so the launch path and the
+/// reload path cannot end up applying different subsets - which is what happens the day a
+/// fourth chrome colour is added and only one of the two callers hears about it.
 ///
 /// Public because the launch path reads the appearance before there is a window to hand it to:
 /// the renderer is built from the other half, and building it is what the window needs. After
 /// launch the window applies both halves itself, from the event the core sends.
 @MainActor
 public func adoptChrome(_ appearance: Core.Appearance) {
-  DividerView.repaint(with: appearance.dividerColor)
+  DividerView.repaint(with: appearance.chrome.divider)
+  PaneAppearance.adopt(chrome: appearance.chrome)
 }

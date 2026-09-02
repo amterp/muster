@@ -17,10 +17,11 @@ struct PaneChromeTests {
     // agent that finished. A user who learns the colors lie stops reading them.
     #expect(PaneAppearance.isHighlighted(state: "compacting") == false)
     #expect(
-      PaneAppearance.borderColor(state: "compacting")
-        == PaneAppearance.borderColor(state: "unknown"))
+      PaneAppearance.defaultBorderColor(state: "compacting")
+        == PaneAppearance.defaultBorderColor(state: "unknown"))
     #expect(
-      PaneAppearance.borderColor(state: "compacting") != PaneAppearance.borderColor(state: "done"))
+      PaneAppearance.defaultBorderColor(state: "compacting")
+        != PaneAppearance.defaultBorderColor(state: "done"))
   }
 
   @Test("only the states worth noticing get a border")
@@ -33,18 +34,54 @@ struct PaneChromeTests {
     #expect(PaneAppearance.isHighlighted(state: "unknown") == false)
   }
 
-  @Test("the window's palette is the canonical legend")
+  @Test("the window's palette is the canonical default legend")
   func theLegendIsCanonical() {
     // A change-detector on purpose. `muster window` paints these same five rows in the
     // terminal's own sixteen, and nothing checks the two across the language line - so this
     // exists to make changing the canon a decision that fails a build and hands you the other
     // two places it has to change: `crates/muster-cli/src/render.rs` and
     // `docs/architecture.md`.
-    #expect(PaneAppearance.borderColor(state: "working") == NSColor.systemCyan)
-    #expect(PaneAppearance.borderColor(state: "blocked") == NSColor.systemOrange)
-    #expect(PaneAppearance.borderColor(state: "done") == NSColor.systemGreen)
-    #expect(PaneAppearance.borderColor(state: "idle") == NSColor.systemGray)
-    #expect(PaneAppearance.borderColor(state: "unknown") == NSColor.tertiaryLabelColor)
+    //
+    // The *default* legend, since a person may repaint these. That does not weaken what this
+    // pins: the CLI is fixed at the sixteen and honours no configuration, so what the two
+    // surfaces have to agree on is exactly this table.
+    #expect(PaneAppearance.defaultBorderColor(state: "working") == NSColor.systemCyan)
+    #expect(PaneAppearance.defaultBorderColor(state: "blocked") == NSColor.systemOrange)
+    #expect(PaneAppearance.defaultBorderColor(state: "done") == NSColor.systemGreen)
+    #expect(PaneAppearance.defaultBorderColor(state: "idle") == NSColor.systemGray)
+    #expect(PaneAppearance.defaultBorderColor(state: "unknown") == NSColor.tertiaryLabelColor)
+  }
+
+  @MainActor
+  @Test("a colour the file names is what the window paints, and one it leaves out is not")
+  func configuredColoursWin() {
+    defer { PaneAppearance.adopt(chrome: .none) }
+    PaneAppearance.adopt(
+      chrome: Core.Chrome(
+        divider: nil, focusRing: nil,
+        agents: Core.AgentColors(blocked: "#ff0000")))
+
+    #expect(PaneAppearance.borderColor(state: "blocked") == NSColor(hex: "#ff0000"))
+    // Partial the way `[keymap]` is: somebody fixing one row they cannot see is not adopting
+    // a theme, and the four they said nothing about are exactly what ships.
+    #expect(
+      PaneAppearance.borderColor(state: "working")
+        == PaneAppearance.defaultBorderColor(state: "working"))
+  }
+
+  @MainActor
+  @Test("an unset focus ring follows the platform's accent")
+  func theFocusRingFollowsTheAccent() {
+    // Not a fallback but the design. The accent is the platform's own answer to which thing
+    // has focus and already tracks a choice made in System Settings, so a colour of Muster's
+    // own here would ignore it - which is worse than the collision the ring was redrawn for.
+    PaneAppearance.adopt(chrome: .none)
+    #expect(PaneAppearance.focusColor == NSColor.controlAccentColor)
+
+    defer { PaneAppearance.adopt(chrome: .none) }
+    PaneAppearance.adopt(
+      chrome: Core.Chrome(divider: nil, focusRing: "#bb9af7", agents: Core.AgentColors()))
+    #expect(PaneAppearance.focusColor == NSColor(hex: "#bb9af7"))
   }
 
   @Test("the focus ring is a different kind of edge, not a different colour")

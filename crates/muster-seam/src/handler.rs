@@ -869,6 +869,14 @@ fn appearance_message() -> proto::Appearance {
         pane_padding: appearance.pane_padding.map(u32::from),
 
         divider_color: color(appearance.colors.divider),
+        focus_ring_color: color(appearance.colors.focus_ring),
+        agent_colors: Some(proto::AgentColors {
+            working: color(appearance.colors.agents.working),
+            blocked: color(appearance.colors.agents.blocked),
+            done: color(appearance.colors.agents.done),
+            idle: color(appearance.colors.agents.idle),
+            unknown: color(appearance.colors.agents.unknown),
+        }),
     }
 }
 
@@ -1199,9 +1207,9 @@ fn announce_bindings() {
 /// Tells the shell what the window should look like now.
 fn announce_appearance() {
     crate::ffi::emit(&proto::Event {
-        payload: Some(event::Payload::AppearanceChanged(proto::AppearanceChanged {
+        payload: Some(event::Payload::AppearanceChanged(Box::new(proto::AppearanceChanged {
             appearance: Some(appearance_message()),
-        })),
+        }))),
     });
 }
 

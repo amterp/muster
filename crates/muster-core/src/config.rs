@@ -95,7 +95,7 @@ pub struct Font {
 
 /// `[colors]`.
 ///
-/// Six that decide what a pane looks like, one that decides what Muster's own chrome looks
+/// Six that decide what a pane looks like, seven that decide what Muster's own chrome looks
 /// like, and the ANSI palette a program in a pane addresses by number.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Colors {
@@ -111,11 +111,28 @@ pub struct Colors {
 
     /// The line between two regions.
     ///
-    /// The one colour here that no renderer paints: everything else is inside a pane, and this
-    /// is Muster's own chrome. It sits with the others anyway, because a person picking colours
-    /// is picking all of them at once and its being drawn by a different piece of code is not
-    /// something they should have to know.
+    /// One of the colours here that no renderer paints: everything else is inside a pane, and
+    /// this is Muster's own chrome. It sits with the others anyway, because a person picking
+    /// colours is picking all of them at once and its being drawn by a different piece of code
+    /// is not something they should have to know.
     pub divider: Option<Rgb>,
+
+    /// Which pane a keystroke would reach.
+    ///
+    /// Absent follows `controlAccentColor` - the accent a person chose in System Settings,
+    /// which is the platform's own answer to "which thing has focus" and already tracks a
+    /// decision they made. A default of Muster's own here would ignore that, and be worse than
+    /// the collision it was raised for.
+    pub focus_ring: Option<Rgb>,
+
+    /// What each agent state is painted in, where the window paints it: a pane's outer edge
+    /// and the dot on its row.
+    ///
+    /// Absent is the legend Muster ships, which `docs/architecture.md` states. The core learns
+    /// what a person chose and never learns what a state means - it paints nothing, and it has
+    /// no table mapping a state to a hue. `muster window` keeps the terminal's fixed sixteen
+    /// and honours none of this, which is why nothing here has to be mapped onto them.
+    pub agents: AgentColors,
 
     /// The sixteen ANSI colours, black through bright white, or none of them.
     ///
@@ -124,6 +141,22 @@ pub struct Colors {
     /// designed, and it would be indistinguishable from a file somebody stopped editing
     /// halfway.
     pub palette: Option<[Rgb; 16]>,
+}
+
+/// The five agent states, as `[colors] agent_*`.
+///
+/// Prefixed rather than given a block of their own, because `[colors]` is already the table
+/// for this subject and its keys are already compound - `selection_background`, `cursor_text`.
+/// A nested table would be this file's first, to group five keys that read as grouped already.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct AgentColors {
+    pub working: Option<Rgb>,
+    pub blocked: Option<Rgb>,
+    pub done: Option<Rgb>,
+    pub idle: Option<Rgb>,
+    /// A pane whose harness could not be read. Not a sixth thing an agent can be doing, which
+    /// is why what ships for it is fainter rather than another hue.
+    pub unknown: Option<Rgb>,
 }
 
 /// `[cursor]`.
@@ -444,7 +477,7 @@ const ROOT_KEYS: [&str; 14] = [
 const FONT_KEYS: [&str; 2] = ["family", "size"];
 
 /// The keys `[colors]` may carry.
-const COLOR_KEYS: [&str; 8] = [
+const COLOR_KEYS: [&str; 14] = [
     "background",
     "foreground",
     "cursor",
@@ -452,6 +485,12 @@ const COLOR_KEYS: [&str; 8] = [
     "selection_background",
     "selection_foreground",
     "divider",
+    "focus_ring",
+    "agent_working",
+    "agent_blocked",
+    "agent_done",
+    "agent_idle",
+    "agent_unknown",
     "palette",
 ];
 
@@ -750,6 +789,14 @@ fn read_colors(block: Option<&toml::Table>) -> Result<Colors, String> {
         selection_background: color(block, "selection_background")?,
         selection_foreground: color(block, "selection_foreground")?,
         divider: color(block, "divider")?,
+        focus_ring: color(block, "focus_ring")?,
+        agents: AgentColors {
+            working: color(block, "agent_working")?,
+            blocked: color(block, "agent_blocked")?,
+            done: color(block, "agent_done")?,
+            idle: color(block, "agent_idle")?,
+            unknown: color(block, "agent_unknown")?,
+        },
         palette: read_palette(block)?,
     })
 }
