@@ -78,6 +78,11 @@ this command is running in. A window launched with a home of its own is not in t
 reached by spelling out its socket. `muster window new` opens another and prints the socket that
 reaches it, so the next line of a script is `muster --socket "$W" pane new --run claude`.
 
+`muster window reopen` brings back the window you closed, and prints its socket the same way.
+The two differ in one thing: a window you ask for starts on tabs of its own and remembers them
+under an arrangement nothing has ever held, and this one takes the most recent arrangement no
+live window is holding.
+
 A window is a process. That is why each one has its own socket named after its pid, and why
 making one starts an app rather than asking a running one for it - the case `window new` exists
 for includes there being no window to ask.

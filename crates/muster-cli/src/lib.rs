@@ -87,8 +87,16 @@ pub fn run(
             let _ = writeln!(out, "{}", text.trim_end());
             return 0;
         }
-        args::Asking::MakeWindow => {
-            return match opening::another_window(environment) {
+        args::Asking::MakeWindow | args::Asking::ReopenWindow => {
+            // Two verbs and one act. Which arrangement the new window takes is the whole
+            // difference, and the window itself works that out from the flag it is launched
+            // with - so this picks the launch and nothing here decides anything else.
+            let opened = if matches!(invocation.asking, args::Asking::MakeWindow) {
+                opening::another_window(environment)
+            } else {
+                opening::the_closed_window(environment)
+            };
+            return match opened {
                 Ok(socket) => {
                     // The socket alone, with nothing around it, for the reason `pane new` prints
                     // a bare pane name: the next line is

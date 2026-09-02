@@ -102,8 +102,9 @@ after:
 - A pane on an SSH machine cannot drive the window it is drawn in.
 - Find only reaches the last thousand rows of a pane, and says nothing about the rest - so a match
   further back reads as no match at all.
-- A second window is not reopened after you quit. Its panes are not lost - those belong to the
-  daemon - but its arrangement is: only the window Muster comes back to remembers one.
+- Only the last window you closed comes back. Every window keeps its own arrangement, so
+  `cmd+n`'s twin - Reopen Closed Window - brings one back; nothing lists the older ones or names
+  which is which.
 - Two windows cannot show the same pane. The session daemon allows one client per terminal, so a
   window you open starts on tabs of its own rather than onto what another one is drawing.
 - A name you give a pane reaches another window the next time that window asks the daemon what it

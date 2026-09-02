@@ -67,17 +67,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // holding a link that cannot run.
     let commands = refreshMusterCommand(
       executable: CommandLine.arguments[0], commands: commandsPath())
-    // A window somebody asked for remembers nothing and starts on tabs of its own. The two
-    // halves are answered by different layers on purpose: where the arrangement lives is an OS
-    // question, so the shell answers it by naming nowhere, and where the window starts is the
-    // core's, so the core is told which kind of launch this is.
+    // A window somebody asked for starts on tabs of its own and remembers them under a record
+    // of its own. The two halves are answered by different layers: which file this window's
+    // arrangement lives in is an OS question, so the shell picks it and claims it for as long
+    // as this process runs, and where the window starts is the core's, so the core is told
+    // which kind of launch this is.
     let fresh = launchIsFresh(arguments: Array(CommandLine.arguments.dropFirst()))
+    let arrangement = Arrangements.open(fresh: fresh)
     Core.start(
-      logPath: logPath, configPath: config, daemonPath: daemon,
-      statePath: fresh ? nil : statePath(),
+      logPath: logPath, configPath: config, daemonPath: daemon, statePath: arrangement,
       daemonConfigPath: daemonConfigPath(), paneNamesPath: paneNamesPath(),
       commandSocketPath: commandSocketPath(), commandsPath: commands, cachePath: cachePath(),
       fresh: fresh)
+    // Given up on the way out so that a window closed and reopened in the same second finds its
+    // own record rather than the one before it. Not relied on: a window that is killed never
+    // gets here, and the claim carries a pid for exactly that.
+    if let arrangement {
+      NotificationCenter.default.addObserver(
+        forName: NSApplication.willTerminateNotification, object: nil, queue: .main
+      ) { _ in Arrangements.release(arrangement) }
+    }
     Core.info(
       "app.launch",
       [

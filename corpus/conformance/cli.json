@@ -1233,6 +1233,19 @@
           "read_window": {}
         }
       }
+    },
+    {
+      "name": "a window that was closed is brought back",
+      "why": "The gap this closes: New Window made a fresh one and nothing reopened the last, so the only way back to a window you had closed was to rebuild it by hand. Not a request, for the same reason `window new` is not one - a window is a process, so this starts an app rather than asking a running one.\n\nThe two differ in what the launched window is told, and the window works that out from the flag it was started with. Which arrangement it takes is not this CLI's decision to make twice.",
+      "given": {
+        "argv": [
+          "window",
+          "reopen"
+        ]
+      },
+      "expect": {
+        "answers_here": "starting the Muster whose window was closed"
+      }
     }
   ]
 }

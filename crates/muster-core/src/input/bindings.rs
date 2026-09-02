@@ -32,6 +32,13 @@ pub enum Action {
     /// rebound and unbound like everything else, on the same terms as `show_shortcuts`, which
     /// the shell also answers alone.
     NewWindow,
+    /// Brings back the window that was closed, which is the same act with one flag off.
+    ///
+    /// The other action the core does not carry out, on the same terms as `NewWindow`: a window
+    /// is a process, so this is the shell starting an app. What it starts it with is the
+    /// difference - a window somebody asked for takes an arrangement nothing has ever held, and
+    /// this takes the most recent one no live window is holding.
+    ReopenWindow,
     NewTab,
     NextTab,
     PreviousTab,
@@ -111,8 +118,9 @@ impl Action {
     /// Deliberately not alphabetical: a menu is read top to bottom, and the order here is what
     /// somebody scanning it expects - making something, then arranging it, then moving around
     /// it. A shell that sorted these would produce a menu nobody can find anything in.
-    pub const ALL: [Action; 42] = [
+    pub const ALL: [Action; 43] = [
         Action::NewWindow,
+        Action::ReopenWindow,
         Action::NewTab,
         Action::NextTab,
         Action::PreviousTab,
@@ -159,6 +167,7 @@ impl Action {
     /// The name a config file, a log line and the seam all spell it with.
     pub fn as_str(self) -> &'static str {
         match self {
+            Action::ReopenWindow => "reopen_window",
             Action::NewTab => "new_tab",
             Action::NextTab => "next_tab",
             Action::PreviousTab => "previous_tab",
@@ -247,7 +256,8 @@ impl Action {
             | Action::SplitUp
             | Action::RenameTab
             | Action::MovePaneToNewTab
-            | Action::CloseTab => None,
+            | Action::CloseTab
+            | Action::ReopenWindow => None,
             // Muster's own, since Ghostty has no equivalent. ⌘⇧N is free on this platform for
             // a terminal - a command chord never reaches a pane - and naming panes is what
             // somebody does in a window of fifteen agents, which is the size this was built

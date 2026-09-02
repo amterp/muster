@@ -80,16 +80,16 @@ whatever was running in it.
 in the tab in one request, and it refuses a tab no region is showing. With no `--tab` it closes
 the tab the keyboard is in, which is what the menu item means.
 
-## A second window is not reopened for you
+## Only the last window you closed comes back
 
-`muster window new` opens one and it behaves like any other, but nothing brings it back after a
-quit: only the window Muster comes back to remembers what it was showing, and the others are
-gone. Their panes are not - those belong to the daemon and outlive every window - so what is
-lost is the arrangement, not the work. Open another window and go to the tabs you want.
+`muster window reopen`, and Reopen Closed Window in the menu, bring back the most recent window
+no live window is holding. Every window keeps its own arrangement under
+`~/.muster/state/windows/`, so closing one leaves something to come back to, and reopening it
+twice in a row gets you the one before it.
 
-That one window owns the arrangement deliberately, and it is why a second window remembers
-nothing rather than remembering badly: two windows writing one file meant whichever published
-last decided what came back.
+What there is no way to say is *which* one, past that. The records are kept for the last twenty
+windows and nothing lists them or names them; a script that wants a particular arrangement back
+can point a launch at it with `MUSTER_STATE`.
 
 ## A second window opens on tabs of its own
 

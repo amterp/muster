@@ -54,6 +54,9 @@ fn cli_conformance() {
                         Asking::Print(_) => Some(json!("printing something this binary holds")),
                         Asking::Survey => Some(json!("asking every window on this machine")),
                         Asking::MakeWindow => Some(json!("starting another Muster")),
+                        Asking::ReopenWindow => {
+                            Some(json!("starting the Muster whose window was closed"))
+                        }
                     },
                 ),
                 ("json", invocation.json.then_some(json!(true))),

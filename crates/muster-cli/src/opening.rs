@@ -46,6 +46,21 @@ pub const FRESH: &str = "--fresh";
 /// immediately is the difference between a command a script can use and one it has to poll
 /// after.
 pub fn another_window(environment: &BTreeMap<String, String>) -> Result<String, Trouble> {
+    open_a_window(environment, true)
+}
+
+/// Brings back the window that was closed, and hands back the socket it binds.
+///
+/// The same launch without `--fresh`, which is the whole difference: a window somebody asked for
+/// takes an arrangement nothing has ever held, and this takes the most recent one no live window
+/// is holding. While another window is running that is the one that was closed, and while none is
+/// it is the window Muster comes back to - which is also what double-clicking the app does, so
+/// this is the way to say it from a script or from inside a pane.
+pub fn the_closed_window(environment: &BTreeMap<String, String>) -> Result<String, Trouble> {
+    open_a_window(environment, false)
+}
+
+fn open_a_window(environment: &BTreeMap<String, String>, fresh: bool) -> Result<String, Trouble> {
     let app = bundle(environment)?;
 
     // Read before launching, so that the new one is the one that was not here. Comparing paths
@@ -73,11 +88,15 @@ pub fn another_window(environment: &BTreeMap<String, String>) -> Result<String, 
     // as an argument.
     let mut opening = Command::new("/usr/bin/open");
     opening.env_clear().arg("-n").arg("-a").arg(&app);
-    // `--fresh` because somebody asked for this window. A window Muster comes back to opens onto
-    // the tabs the last one was left on; this one has to open onto tabs of its own, since the
-    // tabs the window it was asked from is showing are terminals herdr will not hand over twice.
-    // It also remembers nothing, so that two windows do not write one arrangement between them.
-    opening.arg("--args").arg(FRESH);
+    opening.arg("--args");
+    // `--fresh` when somebody asked for a window rather than for the one they closed. A window
+    // Muster comes back to opens onto the tabs it was left on; a new one has to open onto tabs of
+    // its own, since the tabs the window it was asked from is showing are terminals herdr will
+    // not hand over twice. It also takes an arrangement of its own either way - the difference is
+    // whether that arrangement is one nothing has ever held.
+    if fresh {
+        opening.arg(FRESH);
+    }
     if let Some(home) = environment::muster_home(environment) {
         opening.arg("--home").arg(home);
     }
