@@ -49,6 +49,8 @@ pub enum Asking {
     Survey,
     /// Another window, which means another process - so this starts one rather than asking.
     MakeWindow,
+    /// The window that was closed, which is the same act with the arrangement it left behind.
+    ReopenWindow,
 }
 
 /// Why a command line produced no request.
@@ -245,6 +247,14 @@ enum AboutWindows {
     // The one command that dials no window, because it is the one asked when there may be none.
     // A window is a process, so this starts one.
     New,
+
+    /// Bring back the last window that was closed, and print the socket that reaches it
+    //
+    // The same act as `new` minus one flag, which is the whole of the difference between them:
+    // a window somebody asked for takes an arrangement nothing has ever held, and this takes
+    // the most recent one no live window is holding - which, while another window is running,
+    // is the one that was closed.
+    Reopen,
 }
 
 /// What `muster font` can ask for.
@@ -511,6 +521,7 @@ pub fn parse(
         // and $MUSTER_SOCKET both narrow to one window, and the question here is which there are.
         What::Window { doing: Some(AboutWindows::List) } => Asking::Survey,
         What::Window { doing: Some(AboutWindows::New) } => Asking::MakeWindow,
+        What::Window { doing: Some(AboutWindows::Reopen) } => Asking::ReopenWindow,
         What::Pane { doing } => pane(doing, environment),
         What::Tab { doing } => tab(doing, environment),
         What::Focus { pane, next, previous, left, right, up, down, place } => {

@@ -60,6 +60,12 @@ public enum MenuActions {
   private static let fixed: [String: Described] = [
     "new_window": Described(
       title: "New Window", selector: #selector(MusterWindow.newWindow(_:)), group: .window),
+    // No chord: ⌘⇧T is what a browser puts on reopening a tab, and Muster's tabs are somebody
+    // else's to reopen - the daemon holds them and they were never gone. Binding it to a window
+    // would be one keystroke meaning two things across two apps.
+    "reopen_window": Described(
+      title: "Reopen Closed Window", selector: #selector(MusterWindow.reopenWindow(_:)),
+      group: .window),
     "new_tab": Described(
       title: "New Tab", selector: #selector(MusterWindow.newTab(_:)), group: .tab),
     "next_tab": Described(

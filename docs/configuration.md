@@ -60,7 +60,7 @@ blink = true                   # omit to let the program in the pane decide
 
 `[keymap]` is partial, so a file that names one action rebinds one action. Chords are
 modifiers and a key, in any order and any case, spelled the way you would say them: `cmd`,
-`opt`, `ctrl`, `shift`, and `left`, `return`, `f5`, `[`. The actions are `new_window`, `new_tab`,
+`opt`, `ctrl`, `shift`, and `left`, `return`, `f5`, `[`. The actions are `new_window`, `reopen_window`, `new_tab`,
 `next_tab`, `previous_tab`, `split_*` for each direction, `close_pane`, `next_pane`,
 `previous_pane`, `focus_*` and `resize_*` for each direction, `focus_pane_1` to
 `focus_pane_9`, `rename_pane`, `rename_tab`, `close_tab`, `move_pane_to_new_tab`, `find`,
@@ -70,7 +70,7 @@ modifiers and a key, in any order and any case, spelled the way you would say th
 platform dispatches a key equivalent from - so a rebound action moves in the menu too, and
 System Settings can move it again.
 
-Five of them ship with no chord at all. Ghostty has `split_left` and `split_up` as actions and
+Six of them ship with no chord at all. Ghostty has `split_left` and `split_up` as actions and
 binds neither, so Muster does the same rather than inventing a shortcut for them - they are in
 the menu, one click away and one `[keymap]` line from a chord. Which of the four sides costs
 herdr one request and which costs two is not something you can tell from here, and that is the
@@ -92,6 +92,11 @@ same act with a name for the tab.
 nobody has asked for it: it ends every pane in the tab, and a chord that destroys several panes
 is one somebody reaches by accident. `cmd+w` stays on `close_pane`, where the damage is one
 pane and the muscle memory is everybody's.
+
+`reopen_window` is the sixth. `cmd+shift+t` is what a browser puts on reopening a *tab*, and
+Muster's tabs belong to the daemon and were never gone - so binding it to a window would make
+one keystroke mean two things across two apps. The menu carries it, and `muster window reopen`
+is the same act from a script.
 
 **`cmd+1` to `cmd+9` go to a numbered agent.** The number is drawn on its row in the agent
 list, counting down the whole list across every machine, so `cmd+3` is the third row whichever

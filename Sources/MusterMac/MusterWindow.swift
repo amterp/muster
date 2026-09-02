@@ -869,12 +869,19 @@ extension MusterWindow {
   /// Launch Services through `open` and has to clear that command's own environment to get the
   /// same answer. Read back by `launchHome`.
   @objc public func newWindow(_ sender: Any?) {
+    openAnother(fresh: true)
+  }
+
+  /// Starts another Muster, and says whether it is a window somebody asked for.
+  ///
+  /// Fresh means it starts on tabs of its own rather than on the ones this window is showing -
+  /// which it could not render anyway, because herdr allows one client per terminal - and takes
+  /// an arrangement nothing has ever held. Not fresh means it takes the most recent arrangement
+  /// no live window is holding, which is the window that was closed.
+  private func openAnother(fresh: Bool) {
     let configuration = NSWorkspace.OpenConfiguration()
     configuration.createsNewApplicationInstance = true
-    // Somebody asked for this one, so it starts on tabs of its own rather than on the ones this
-    // window is showing - which it could not render anyway, because herdr allows one client per
-    // terminal.
-    var arguments = [freshFlag]
+    var arguments = fresh ? [freshFlag] : []
     if let home = ProcessInfo.processInfo.environment["MUSTER_HOME"], !home.isEmpty {
       arguments += ["--home", home]
     }
@@ -893,6 +900,15 @@ extension MusterWindow {
             + "app to make a second copy of",
         ])
     }
+  }
+
+  /// Brings back the window that was closed, which is another Muster with one flag off.
+  ///
+  /// Nothing is asked of the core, on the same terms as `newWindow`. The difference between the
+  /// two is which arrangement the launched window takes, and the launched window works that out
+  /// for itself from the flag - so this is `newWindow` without it.
+  @objc public func reopenWindow(_ sender: Any?) {
+    openAnother(fresh: false)
   }
 
   @objc public func showShortcuts(_ sender: Any?) {

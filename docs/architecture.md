@@ -862,14 +862,20 @@ easy to break in one line - **nothing writes the file before the window has open
 opened is empty, and a shell reports its frame the moment the window exists, which is before it asks the core to
 open anything.
 
-**One window owns the file, and it is the one Muster comes back to.** A window somebody asked for - `muster window
-new`, or ⌘N - is told so at launch, remembers nothing, and starts on tabs of its own. Two rules stand on that one
-fact. The file has a single writer, where before a second window would write its own arrangement over the first's
-and whichever published last decided what came back. And where a window starts stops depending on the daemon's own
-cursor: a machine's focused tab is the tab the window before this one is showing, and herdr allows one client per
-terminal, so a second window opening there renders nothing at all. So it claims a workspace on each machine as that
-machine answers, remembers which tabs it inherited, and opens onto the tab that was not there before. What is given
-up is stated in `cli/limits.md`: a second window's arrangement is not remembered, so nothing brings it back.
+**One arrangement per window, and a window claims one for as long as it runs.** They live under
+`~/.muster/state/windows/`, one file each, and a window writes its pid beside the one it took. A launch drops the
+claims of processes that are gone, then takes the most recently written arrangement nobody is holding - which is the
+window Muster comes back to when none is running, and the window that was just closed when one is. `muster window
+new` and ⌘N say `--fresh`, and a fresh window takes an arrangement nothing has ever held.
+
+Two things stand on that. The file has a single writer, where before every window shared one and whichever published
+last decided what came back. And a window that closes leaves something to come back to, which is what `muster window
+reopen` reads.
+
+**A window somebody asked for also starts on tabs of its own**, and that is a second rule with the same cause. A
+machine's focused tab is the tab the window before this one is showing, and herdr allows one client per terminal, so
+a second window opening there renders nothing at all. So it claims a workspace on each machine as that machine
+answers, remembers which tabs it inherited, and opens onto the tab that was not there before.
 
 But composition is the piece nobody else can save. A herdr daemon's export is scoped to itself and structurally cannot
 describe a workspace spanning a laptop and a devenv, because neither daemon knows the other exists. Muster is the
