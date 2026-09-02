@@ -865,7 +865,7 @@
         ]
       },
       "expect": {
-        "refused": "the config file has a key called \"divider_color\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: daemon, keymap, text, option_as_alt, resize_step, scroll_multiplier, numbered_chords, pane_padding, scrollback_bytes, font, colors, cursor, shell."
+        "refused": "the config file has a key called \"divider_color\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: daemon, keymap, text, option_as_alt, resize_step, scroll_multiplier, numbered_chords, pane_padding, scrollback_bytes, font, colors, cursor, shell, notifications."
       }
     },
     {
@@ -1154,6 +1154,70 @@
       },
       "expect": {
         "refused": "`scrollback_bytes` in the config file is -1, and it has to be a whole number of bytes, zero or more. None of the file was applied. Bytes rather than lines because that is what the daemon measures the buffer in; leave it out for its own answer."
+      }
+    },
+    {
+      "name": "one state can be silenced without silencing the other",
+      "why": "`blocked` and `done` are different questions - somebody being waited on right now, and somebody having been waited on at some point - and a person who wants one and not the other must be able to say so. Without this they turn both off, which is the same as having none.",
+      "given": {
+        "file": [
+          "[notifications]",
+          "done = false"
+        ]
+      },
+      "expect": {
+        "daemons": [],
+        "keymap": [],
+        "option_as_alt": "never",
+        "text": [],
+        "notifications": [
+          "done=false"
+        ]
+      }
+    },
+    {
+      "name": "the mute is its own key, not both of them set to false",
+      "why": "The quiet path for somebody running fifteen agents, and it is a third key so that going quiet for an afternoon does not cost you the two answers underneath. Writing `blocked = false` and `done = false` to get silence would mean re-deciding both when you want the noise back.",
+      "given": {
+        "file": [
+          "[notifications]",
+          "muted = true"
+        ]
+      },
+      "expect": {
+        "daemons": [],
+        "keymap": [],
+        "option_as_alt": "never",
+        "text": [],
+        "notifications": [
+          "muted=true"
+        ]
+      }
+    },
+    {
+      "name": "a notification setting that is not a yes or a no is refused",
+      "why": "The whole file, like every other refusal here. `blocked = \"yes\"` is somebody who meant something by it, and a key silently ignored is an agent that never tells them anything with no line saying why.",
+      "given": {
+        "file": [
+          "[notifications]",
+          "blocked = \"yes\""
+        ]
+      },
+      "expect": {
+        "refused": "`blocked` in the config file's [notifications] is a string, and it has to be true or false. None of the file was applied. `muted` silences both without forgetting which of them you wanted."
+      }
+    },
+    {
+      "name": "a misspelled notification key is refused rather than ignored",
+      "why": "`mute` for `muted` is the shape of typo this whole file exists to catch: a person who wrote it gets banners they thought they had turned off, and nothing anywhere says the key did nothing.",
+      "given": {
+        "file": [
+          "[notifications]",
+          "mute = true"
+        ]
+      },
+      "expect": {
+        "refused": "the config file's [notifications] has a key called \"mute\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: blocked, done, muted."
       }
     }
   ]

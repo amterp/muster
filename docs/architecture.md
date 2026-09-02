@@ -474,6 +474,30 @@ ordering; the shell only delivers notifications and renders indicators. Activati
 ordinary focus intent through the one action path - which may change composition first, because the pane that asked
 may not be visible in any window. Surfacing the hidden is part of the feature, and the core owns it.
 
+**Two states ask, and they ask the same question from opposite ends.** `blocked` is an agent that has stopped and
+wants an answer; `done` is an agent that has stopped and nobody has noticed. So both notify by default, both can be
+switched off on their own, and one key silences both without forgetting which of them you wanted
+(`configuration.md`, `[notifications]`). A quiet path is in the first version rather than a later one because
+everything notifying is the same as nothing notifying, and somebody running fifteen agents finds that out on their
+first afternoon.
+
+**A pane the window is focused on and showing raises nothing.** That is what the border is for, and it costs no new
+rule: seen-ness is already computed for exactly that pane, and `done` is *defined* as a completion that was not seen.
+So the notification set is the same fold the state is, with the file's answer laid over it.
+
+**Notifying and seen-ness are two sets, deliberately.** Seen-ness decides what a pane *is* and is not a person's to
+configure; the unread set decides what Muster does about it and is. A muted window still paints `done` on its
+borders, still lists it in the roster, and still prints it from `muster window` - what mute takes away is the
+interruption. Folded together, a preference about banners would quietly change the state vocabulary the product is
+built on.
+
+**A request is withdrawn as well as raised**, and the event carrying it says which. An agent that goes back to work,
+a pane somebody looks at, a pane that closes, and a state switched off in the file are all moments the core already
+computes, and a banner outliving any of them is a keystroke that lands somebody on an agent which stopped needing
+them - the exact failure notifying exists to prevent, arriving one step later. A pane that was already `done` when
+the window attached raises nothing at all: Muster witnessed no transition there, so a banner would be Muster
+announcing history at launch.
+
 **Everything the daemons hold is published as well as everything on screen.** A window shows what fits in it, and the
 pane most likely to have finished unnoticed is the one no region is showing - so a roster travels beside the view:
 every pane every attached daemon holds, ordered and named for a reader, each row saying whether anything is showing

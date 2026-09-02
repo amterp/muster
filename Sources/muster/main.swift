@@ -186,6 +186,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
       }
 
+      // After the window, because the permission prompt should land over a Muster somebody
+      // can see rather than over whatever they were doing. Nothing else waits on it: an
+      // agent that needs somebody before the answer comes back is still on its row.
+      PaneNotifier.shared.start()
+
       renderer.setFocus(true)
       Core.info("app.ready", ["typeable": String(attached)])
     } catch {

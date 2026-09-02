@@ -11,9 +11,9 @@ if your harness wants one.
 **Early, and specific about which parts.** Built, and covered by the suite: splits and tabs, a rebindable keymap
 that ships Ghostty's chords where Ghostty has one, an agent list carrying a state on every row with a chord to each
 of the first nine, renaming, trading two agents' places by dragging a row, configuration that reloads when you save
-it, a CLI that drives the window from inside a pane, and a second daemon on an SSH machine in the same window -
-where Muster installs its own herdr rather than trusting whatever is over there. Not built, and worth knowing
-before you install rather than after: an agent that needs you shows it on its row but does not notify you, the
+it, a CLI that drives the window from inside a pane, a notification when an agent needs you that takes you to the
+pane that asked, and a second daemon on an SSH machine in the same window - where Muster installs its own herdr
+rather than trusting whatever is over there. Not built, and worth knowing before you install rather than after: the
 shape of a split cannot be changed once it is made, mouse buttons and motion do not reach a pane, a pane on a
 devenv cannot drive the window it is drawn in, and find is known to mishandle a long scrollback.
 

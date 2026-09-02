@@ -1491,6 +1491,7 @@ fn apply_config(path: &str) {
     session::set_pane_input(config.input.clone());
     session::set_feel(config.feel);
     session::set_appearance(config.appearance.clone());
+    session::set_notifications(config.notifications);
     // Before following, which is what writes the derived config and starts a daemon
     // that reads it. Set after, a first launch would give its daemon last launch's
     // answer about what a pane runs.
@@ -1637,6 +1638,7 @@ fn reload_config() -> Response {
     session::set_bindings(config.bindings.clone());
     session::set_feel(config.feel);
     session::set_appearance(config.appearance.clone());
+    session::set_notifications(config.notifications);
     session::set_panes(config.panes.clone());
     // Unlike `[[daemon]]`, this one is not left for a relaunch, because a relaunch would not
     // fix it: the daemon is started and never stopped, so it outlives every launch and would

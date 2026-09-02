@@ -27,6 +27,7 @@ use crate::input::{
     Action, Binding, Bindings, Chord, NumberedChords, OptionAsAlt, PaneInputSettings, TEXT_EDITING,
 };
 
+use crate::attention::Notifications;
 use crate::composition::{Daemon, DaemonId, Endpoint};
 
 /// Everything a config file says.
@@ -49,6 +50,8 @@ pub struct Config {
     pub appearance: Appearance,
     /// What a pane is, for the daemon that makes one.
     pub panes: Panes,
+    /// Which agent states are worth interrupting somebody for.
+    pub notifications: Notifications,
 }
 
 /// What Muster looks like.
@@ -420,7 +423,7 @@ impl std::fmt::Display for Rgb {
 const DAEMON_KEYS: [&str; 4] = ["id", "socket", "host", "ssh_options"];
 
 /// The keys the file itself may carry.
-const ROOT_KEYS: [&str; 13] = [
+const ROOT_KEYS: [&str; 14] = [
     "daemon",
     "keymap",
     "text",
@@ -434,6 +437,7 @@ const ROOT_KEYS: [&str; 13] = [
     "colors",
     "cursor",
     "shell",
+    "notifications",
 ];
 
 /// The keys `[font]` may carry.
@@ -456,6 +460,9 @@ const CURSOR_KEYS: [&str; 2] = ["style", "blink"];
 
 /// The keys `[shell]` may carry.
 const SHELL_KEYS: [&str; 2] = ["command", "mode"];
+
+/// The keys `[notifications]` may carry.
+const NOTIFICATION_KEYS: [&str; 3] = ["blocked", "done", "muted"];
 
 /// Reads a config file's text.
 ///
@@ -507,7 +514,35 @@ pub fn parse(text: &str) -> Result<Config, String> {
         feel: read_feel(root)?,
         appearance: read_appearance(root)?,
         panes: read_panes(root)?,
+        notifications: read_notifications(block(root, "notifications", &NOTIFICATION_KEYS)?)?,
     })
+}
+
+/// `[notifications]`.
+///
+/// Every key defaults to on except the mute, so a file that says nothing gets the behaviour
+/// the product promises: an agent that needs you says so. A file naming one key changes one
+/// answer, the way `[keymap]` does.
+fn read_notifications(block: Option<toml::Table>) -> Result<Notifications, String> {
+    let Some(block) = block else { return Ok(Notifications::default()) };
+    let mut notifications = Notifications::default();
+    for (key, held) in [
+        ("blocked", &mut notifications.blocked),
+        ("done", &mut notifications.done),
+        ("muted", &mut notifications.muted),
+    ] {
+        if let Some(value) = block.get(key) {
+            *held = value.as_bool().ok_or_else(|| {
+                format!(
+                    "`{key}` in the config file's [notifications] is {}, and it has to be true \
+                     or false. None of the file was applied. `muted` silences both without \
+                     forgetting which of them you wanted.",
+                    described(value)
+                )
+            })?;
+        }
+    }
+    Ok(notifications)
 }
 
 /// `scrollback_bytes` and `[shell]`.

@@ -948,6 +948,14 @@ public enum Core {
           "errors": String(problems.filter { $0.severity == .error }.count),
         ])
       window?.apply(problems: problems)
+    case .attentionChanged(let changed):
+      // Straight on, because the decision was made before it crossed: the core holds the
+      // unread set, knows what this window is showing, and holds the file's answer about
+      // which states are worth interrupting for. Filtering here would be re-deriving it
+      // from two halves the shell does not have.
+      PaneNotifier.shared.apply(
+        daemon: changed.daemonID, pane: changed.paneID, state: changed.state,
+        label: changed.label, subtitle: changed.subtitle)
     case .presentationChanged(let changed):
       let presentation = Presentation(sidebar: changed.sidebar)
       info("presentation.received", ["sidebar": String(presentation.sidebar)])
