@@ -82,10 +82,14 @@ A window is a process. That is why each one has its own socket named after its p
 making one starts an app rather than asking a running one for it - the case `window new` exists
 for includes there being no window to ask.
 
-Panes are not a window's, so two windows showing one machine show the same panes under the same
-names: the names are written down where both can read them. Moving an agent to another window is
-therefore showing its tab over there, `muster --socket "$W" tab focus t1w3r07bsd`, rather than
-moving anything - a pane is a process and it lives where it lives.
+Names are not a window's: two windows on one machine call the same pane the same thing, because
+the names are written down where both can read them. Showing is a window's, and that is the
+backend's limit rather than Muster's - one client may hold a terminal, so a pane one window is
+drawing is a pane another cannot draw at the same time. A window you ask for therefore opens on
+tabs of its own rather than onto what the other one is showing.
+
+There is no move that carries a pane to another window today, and none that carries it to another
+machine ever: a pane is a process and it lives where it lives.
 
 Muster puts `~/.muster/bin` at the front of the `PATH` of every pane it makes, which is why
 `muster` is there to run at all. That directory holds a link to the command belonging to the

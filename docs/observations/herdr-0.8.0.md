@@ -1205,3 +1205,34 @@ hand-run probe against a scratch daemon rather than from `tools/herdr-probe/prob
 pins it instead is a test: `a_pane_closed_before_the_subscription_does_not_come_back` in
 `crates/muster-herdr/tests/subscription.rs`, which drives a real daemon and fails without the
 guard. Worth folding into the probe next time it is re-recorded.
+
+## 23. A client whose terminal is taken sees its stream end
+
+**A `--takeover` ends the displaced client's stream rather than leaving it reading.**
+Measured 2026-09-02 against herdr 0.8.0 on macOS/arm64. One client held a pane through
+`herdr terminal session control <pane>` and was painting frames; a second attached to the
+same pane with `--takeover`. The first client's stdout reached end of file, three runs out
+of three, 258 to 259 ms after the second client was *spawned* - and most of that is a process
+starting rather than herdr deciding.
+
+**This is the cheap answer to a question two cards were waiting on.** Only one client may hold
+a herdr terminal, which is why a second Muster window opening onto a pane the first is showing
+gets `already has an attached client` and renders nothing (`a_2IZ5TL6DQ`). What decides how
+expensive it would be to *hand* a pane from one window to another is whether the window that
+loses it finds out: a stream that ends is an event the losing window already knows how to
+react to - a bridge exiting is the same shape as a bridge whose connection dropped - where a
+stream that went quiet would mean rendering what was last painted with nothing saying so, and
+a channel of its own to announce the move.
+
+**What it does not make cheap.** Two windows showing one pane *at once* is a different thing
+and this says nothing about it: the terminal still has one holder, so that needs a relay
+feeding several surfaces rather than a handoff (`a_2IZ6Of6JP`). And a displaced window's
+bridge exiting is indistinguishable, from the near side, from one whose pane closed or whose
+route dropped - the respawn policy already has to tell those apart, and a handoff would arrive
+as a fourth case on the same signal.
+
+Evidence: `a_client_that_loses_its_terminal_sees_its_stream_end` in
+`crates/muster-herdr/tests/one_client_per_terminal.rs`, which drives a real daemon and turns
+red if a later herdr stops telling the client it displaced. Not in `corpus/herdr-0.8.0/`: the
+frame stream is not in the JSON API, so `tools/herdr-probe/probe` has nothing to record it
+with.
