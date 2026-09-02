@@ -472,11 +472,28 @@ struct AgentWatchers {
     watching: BTreeMap<PaneId, Watcher>,
 }
 
-/// A watcher's off switch. Dropping it shuts the socket down, which is what unparks the
-/// thread from its blocking read and ends it.
+/// A watcher's off switch, and its pulse. Dropping it shuts the socket down, which is what
+/// unparks the thread from its blocking read and ends it.
 #[derive(Debug)]
 struct Watcher {
     stream: Arc<Mutex<Option<UnixStream>>>,
+
+    /// Set by the thread on its way out, by every route out it has.
+    ///
+    /// Without it, a map entry was taken as a live watcher, and a thread that died with its
+    /// socket left one behind that nothing would ever replace - which is a pane whose agent
+    /// state freezes on a connection reporting itself healthy. A flag rather than a join
+    /// handle for the reason `Subscription::stopped` gives: joining inside a rebuild would
+    /// turn a wake-up that did not arrive into a hang.
+    stopped: Arc<AtomicBool>,
+}
+
+impl Watcher {
+    /// Whether the thread behind this has finished, so a rebuild can tell a map entry from a
+    /// watcher.
+    fn is_watching(&self) -> bool {
+        !self.stopped.load(Ordering::Acquire)
+    }
 }
 
 impl Drop for Watcher {
@@ -517,12 +534,22 @@ impl AgentWatchers {
     }
 
     /// Brings the set of watchers in line with the panes the mirror holds.
+    ///
+    /// Two things are dropped, and the second is the one this had wrong. A pane the mirror no
+    /// longer holds does not need watching. And a watcher whose thread has finished is not a
+    /// watcher, however present its map entry is - which is exactly what a daemon restart
+    /// leaves behind: every per-pane socket dies with the daemon, the panes themselves survive
+    /// it (herdr writes the session down and reuses the ids), so `wanted` still names them and
+    /// nothing here would have started a second watcher. The pane was then corrected once by
+    /// the reconnect's snapshot and frozen from then on, on a connection reporting itself
+    /// healthy - the "shows working forever" failure, which is the one this whole tool is
+    /// about (kan a_2HPO2UZ7u).
     fn follow(&mut self) {
         let mirror = poison::lock(&self.mirror, "mirror");
         let wanted: Vec<PaneId> = mirror.panes().map(|pane| pane.id.clone()).collect();
         drop(mirror);
 
-        self.watching.retain(|pane, _| wanted.contains(pane));
+        self.watching.retain(|pane, watcher| wanted.contains(pane) && watcher.is_watching());
         for pane in wanted {
             if !self.watching.contains_key(&pane) {
                 let watcher = self.watch(&pane);
@@ -533,6 +560,7 @@ impl AgentWatchers {
 
     fn watch(&self, pane: &PaneId) -> Watcher {
         let slot: Arc<Mutex<Option<UnixStream>>> = Arc::new(Mutex::new(None));
+        let stopped = Arc::new(AtomicBool::new(false));
         let socket_path = self.socket_path.clone();
         let mirror = Arc::clone(&self.mirror);
         let report = Arc::clone(&self.report);
@@ -542,12 +570,21 @@ impl AgentWatchers {
         // pane the mirror holds and the registry does not, which cannot happen - the mirror is
         // filled through the registry - so there is nothing here to report and no watcher to
         // start.
-        let Ok(backend) = names.backend_pane(pane) else { return Watcher { stream: slot } };
+        let Ok(backend) = names.backend_pane(pane) else {
+            // Nothing was started, so nothing is watching, and saying so is what makes the
+            // next rebuild try again rather than treat this entry as a live one.
+            stopped.store(true, Ordering::Release);
+            return Watcher { stream: slot, stopped };
+        };
         let subscription =
             vec![json!({ "type": "pane.agent_status_changed", "pane_id": backend.as_str() })];
         let pane = pane.clone();
+        let leaving = Arc::clone(&stopped);
 
         let _ = std::thread::Builder::new().name(format!("muster-agent-{pane}")).spawn(move || {
+            // Whichever way this thread leaves - a connection it could not make, a socket that
+            // closed, a read that failed - the flag is what a rebuild reads.
+            let _leaving = Leaving(leaving);
             // No retry loop of its own. A watcher whose connection drops has almost always
             // lost it to a daemon that went away, and the structure subscription notices
             // that and rebuilds every watcher through `follow` when it reconnects. Two
@@ -584,7 +621,19 @@ impl AgentWatchers {
             }
         });
 
-        Watcher { stream: slot }
+        Watcher { stream: slot, stopped }
+    }
+}
+
+/// Sets a flag when it is dropped, which is once, on every way out of a thread.
+///
+/// A guard rather than a store before each `return`, because there are three of those and the
+/// one that gets forgotten is the one that produces the bug this exists to stop.
+struct Leaving(Arc<AtomicBool>);
+
+impl Drop for Leaving {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Release);
     }
 }
 
