@@ -67,6 +67,7 @@ message Request {
     Quitting quitting = 40;
     EndNumberedChord end_numbered_chord = 41;
     ReadPane read_pane = 42;
+    CloseTab close_tab = 43;
   }
 }
 
@@ -246,6 +247,26 @@ message RenamePane {
   // than an absent field because a name nobody could have typed - the empty one - is not a
   // state worth being able to ask for, and one spelling for "no name" is fewer than two.
   string name = 3;
+}
+
+// Closes a tab, and every pane in it.
+//
+// The one verb here that ends more than it names, and it is sent rather than built out of a
+// close per pane: a daemon closing its own tab is one act, where N closes is N chances to be
+// interrupted half way and left with a tab holding one pane and no reason.
+//
+// Refused for a tab no region is showing, on the same terms as ClosePane. Emptying a tab
+// somebody can see is a decision they watched themselves make; emptying one nobody is looking
+// at is the same request with nothing to notice it went wrong.
+message CloseTab {
+  // Empty finds the daemon from the tab, since a tab name is Muster's own and unique across
+  // every attached machine.
+  string daemon_id = 1;
+
+  // Empty means the tab the window's keyboard is in, which is what a menu item means. Unlike
+  // FocusTab this has a sensible fallback, because closing what you are looking at is the thing
+  // a person picking a menu item is asking for.
+  string tab_id = 2;
 }
 
 // Calls a tab what somebody wants to call it.

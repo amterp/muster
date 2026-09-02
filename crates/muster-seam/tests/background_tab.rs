@@ -7,15 +7,15 @@
 //! doing in another tab, to perform an act that has nothing to do with what is on screen
 //! (kan `a_2A9TxffR8`).
 //!
-//! The rule underneath: where a new pane goes is a fact about the tab's tree. Closing is not
-//! here on purpose - it destroys something, and destroying a pane nobody is looking at is a
-//! different risk with its own decision to make.
+//! The rule underneath: where a new pane goes is a fact about the tab's tree. Closing is here
+//! for the opposite reason - it destroys something, so it keeps asking the window which region
+//! holds the thing, and the test says so rather than leaving the difference to be discovered.
 
 use std::sync::Mutex;
 
 use herdr_harness::{Daemon, until};
 use muster::proto::{
-    CreateTab, Event, OpenWindow, Request, Response, RosterChanged, SplitPane, Startup,
+    CloseTab, CreateTab, Event, OpenWindow, Request, Response, RosterChanged, SplitPane, Startup,
     ViewChanged, event, request, response,
 };
 use prost::Message;
@@ -106,6 +106,66 @@ fn a_split_still_refuses_a_pane_no_daemon_holds() {
         ),
         other => panic!("splitting a pane no daemon holds answered {other:?}"),
     }
+}
+
+/// Closing a tab ends every pane in it, and refuses a tab nothing is showing.
+///
+/// The verb that was missing: emptying a tab one pane at a time was the only route to a thing
+/// people do (kan `a_2Ic6mB36E`). It keeps the region requirement `pane close` has, and that is
+/// the half worth a test - the argument for loosening it is the same one splitting won, and the
+/// risk is not: a split nobody is looking at costs a shell, and this costs whatever was running
+/// in every pane of the tab.
+#[test]
+fn closing_a_tab_ends_it_and_refuses_one_nothing_is_showing() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = Daemon::start();
+
+    muster::ffi::muster_set_event_callback(Some(note));
+    assert_ok(&answer(request::Payload::Startup(Startup {
+        config_path: daemon.muster_config().to_string_lossy().into_owned(),
+        ..Startup::default()
+    })));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    until(
+        "the window to open onto a workspace",
+        || panes_of_tabs().len() == 1,
+        || format!("the last roster the core published: {:?}", tabs()),
+    );
+    let first = panes_of_tabs()[0].0.clone();
+
+    assert_ok(&answer(request::Payload::CreateTab(CreateTab::default())));
+    until(
+        "the new tab to come on screen and the first one to go behind it",
+        || tabs().len() == 2 && tabs().iter().filter(|(_, on_screen)| *on_screen).count() == 1,
+        || format!("the last roster the core published: {:?}", tabs()),
+    );
+
+    // The tab nothing is showing, named outright. Refused, and the refusal says which window
+    // is not showing it rather than that the tab is gone.
+    let refusal = answer(request::Payload::CloseTab(CloseTab {
+        tab_id: first.clone(),
+        ..CloseTab::default()
+    }));
+    match refusal.payload {
+        Some(response::Payload::Failure(failure)) => assert!(
+            failure.reason.contains("is not showing that pane or tab"),
+            "closing a background tab should refuse on the terms closing a pane does, and \
+             said: {}",
+            failure.reason
+        ),
+        other => panic!("closing a tab nothing is showing answered {other:?}"),
+    }
+    assert_eq!(tabs().len(), 2, "the refused close took the tab anyway");
+
+    // And the tab on screen goes, with its pane. Named nowhere, which is what the menu item
+    // means - the tab the keyboard is in.
+    assert_ok(&answer(request::Payload::CloseTab(CloseTab::default())));
+    until(
+        "the tab on screen to be gone",
+        || tabs().len() == 1,
+        || format!("the last roster the core published: {:?}", tabs()),
+    );
+    assert_eq!(tabs()[0].0, first, "the wrong tab closed");
 }
 
 /// Every tab the window holds, and whether a region is showing it.

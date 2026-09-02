@@ -154,6 +154,9 @@ fn described(request: &Request) -> Value {
                 ("name", Some(json!(rename.name))),
             ])
         }),
+        request::Payload::CloseTab(close) => json!({
+            "close_tab": fields([("tab_id", said(&close.tab_id))])
+        }),
         request::Payload::CreateTab(create) => json!({
             "create_tab": fields([
                 ("pane_id", said(&create.pane_id)),

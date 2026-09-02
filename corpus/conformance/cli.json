@@ -614,12 +614,47 @@
       }
     },
     {
-      "name": "a tab verb that does not exist is refused",
-      "why": "`muster tab` has two verbs where `muster pane` has four, because the other two do not exist for a tab: a tab closes when its last pane does, and nothing types into a tab. Somebody will try `close` anyway, and a refusal that lists what there is beats a request nobody can build.",
+      "name": "a tab is closed by name",
+      "why": "The verb that was missing: Close Pane existed and emptying a tab one pane at a time was the only route to the same place. A tab name is Muster's own and unique across every machine, so no daemon travels with it.",
+      "given": {
+        "argv": [
+          "tab",
+          "close",
+          "--tab",
+          "t1w3r07bsd"
+        ]
+      },
+      "expect": {
+        "request": {
+          "close_tab": {
+            "tab_id": "t1w3r07bsd"
+          }
+        }
+      }
+    },
+    {
+      "name": "closing with no --tab closes the tab this is running in",
+      "why": "The fallback going to a tab deliberately does not have. `tab focus` with no tab means nothing - there is no `the one I am already in` to go to - and closing one is exactly that, which is what a menu item means by it.",
       "given": {
         "argv": [
           "tab",
           "close"
+        ]
+      },
+      "expect": {
+        "request": {
+          "close_tab": {}
+        }
+      }
+    },
+    {
+      "name": "a tab verb that does not exist is refused",
+      "why": "`muster tab` has fewer verbs than `muster pane`, and the ones it lacks it lacks for a reason: nothing types into a tab, and nothing reads one. Somebody will try anyway, and a refusal that lists what there is beats a request nobody can build.\n\nThis case used to be `tab close`, on the argument that a tab closes when its last pane does. That argument was wrong about what it cost: emptying a tab one pane at a time was the only route to a thing people do, so `tab close` exists now (kan `a_2Ic6mB36E`) and the case moved to a verb that really has no meaning for a tab.",
+      "given": {
+        "argv": [
+          "tab",
+          "send",
+          "hello"
         ]
       },
       "expect": {

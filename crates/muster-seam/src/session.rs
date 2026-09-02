@@ -1638,7 +1638,11 @@ pub(crate) fn submit(
             | BackendIntent::FocusPane { pane } => {
                 Some(session.region_holding(daemon, pane).ok_or_else(|| not_showing(daemon))?)
             }
-            BackendIntent::SetSplitRatio { tab, .. } => Some(
+            // Closing a tab keeps the region requirement for the reason closing a pane does:
+            // it destroys every pane in the tab, and destroying what nobody is looking at is a
+            // different risk from arranging it. Dragging a divider needs the region for a
+            // plainer reason - there is no divider to move in a tab nothing is drawing.
+            BackendIntent::CloseTab { tab } | BackendIntent::SetSplitRatio { tab, .. } => Some(
                 session
                     .composition
                     .region_showing(daemon, tab)
@@ -2044,6 +2048,15 @@ pub(crate) fn arrange_pane(daemon: &DaemonId, pane: &PaneId, onto: &PaneId) -> R
         }
     };
     submit(daemon, &intent, Keyboard::Follows).map(drop)
+}
+
+/// Closes a tab and everything in it.
+///
+/// The only verb here that ends more than it names, which is why it stays beside closing a pane
+/// rather than beside renaming one: a tab this window is not showing is a tab whose panes nobody
+/// can see, and there is no undo for what was running in them.
+pub(crate) fn close_tab(daemon: &DaemonId, tab: &TabId) -> Result<(), String> {
+    submit(daemon, &BackendIntent::CloseTab { tab: tab.clone() }, Keyboard::StaysPut).map(drop)
 }
 
 /// Takes a pane out of whatever tab it is in and gives it one of its own.

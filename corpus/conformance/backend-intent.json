@@ -489,6 +489,20 @@
       }
     },
     {
+      "name": "closing a tab names the tab and nothing else",
+      "why": "`tab.close` takes herdr's `TabTarget`, which is a tab id and nothing more - so there is no `force`, no list of panes, and nothing to get wrong except the id. It is here anyway because the verb ends more than it names: one request closes every pane in the tab, which is why Muster sends it rather than closing them one at a time and being interrupted half way.",
+      "given": {
+        "intent": "closeTab",
+        "tab": "t1"
+      },
+      "expect": {
+        "method": "tab.close",
+        "params": {
+          "tab_id": "t1"
+        }
+      }
+    },
+    {
       "name": "a daemon Muster did not point anywhere is sent nothing to restore",
       "why": "A daemon named by `socket` in the config file is somebody else's, and a daemon on another machine was reached rather than started - neither had its config redirected, so a pane on either already reads the file it always did. Sending a path anyway would be worse than useless on the remote one: it names a file on this machine, and the pane is on that one.",
       "given": {

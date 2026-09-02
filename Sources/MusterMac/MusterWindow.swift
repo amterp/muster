@@ -683,6 +683,14 @@ extension MusterWindow {
     Core.createTab()
   }
 
+  /// Closes the tab the keyboard is in, and every pane in it.
+  ///
+  /// No confirmation, on the same terms as Close Pane: Muster does not ask before closing a
+  /// pane either, and a sheet in front of one of the two would say the other is safe.
+  @objc public func closeTab(_ sender: Any?) {
+    Core.closeTab()
+  }
+
   /// Pulls the pane the keyboard is on out of its split and into a tab of its own.
   ///
   /// Which pane that is is the core's, like every other item here. The pane keeps running - this
