@@ -133,6 +133,7 @@ fn a_pane_can_drive_the_window_it_is_drawn_in() {
 
     a_pane_can_be_read_back(&made_pane, &inside(&first));
     the_columns_are_described(&inside(&first));
+    the_machines_are_named_well_enough_to_end_one(&inside(&first));
     // While both panes are still in one tab and on screen, which is what stepping walks.
     the_keyboard_steps_without_being_given_a_name(&first, &made_pane, &inside(&first));
 
@@ -143,6 +144,40 @@ fn a_pane_can_drive_the_window_it_is_drawn_in() {
     a_tab_nobody_holds_is_refused_by_name(&inside(&first));
     a_mistyped_flag_is_refused_and_says_what_was_meant(&inside(&first));
     with_no_window_to_ask_nothing_is_guessed(daemon.root());
+}
+
+/// Every machine the window is attached to, and enough about it to end one on purpose.
+///
+/// The census `a_28YghIUw2` asked for. herdr answers no question that gets from a process to
+/// the work inside it, so pairing the two is Muster's to keep - and without it, twenty daemons
+/// on a machine are twenty identical rows and the one holding somebody's live agent is picked
+/// by age, which picks wrong.
+fn the_machines_are_named_well_enough_to_end_one(environment: &[(&str, String)]) {
+    let window = json_from(&run(&["window", "--json"], environment));
+    let machines = window["daemons"].as_array().expect("a window names its machines");
+    assert_eq!(machines.len(), 1, "this window is attached to one daemon: {machines:?}");
+    let machine = &machines[0];
+
+    // The socket, because it is the one thing that names *this* daemon and not the one beside
+    // it - `HERDR_SOCKET_PATH=<socket> herdr server stop` is the by-hand way out.
+    assert!(
+        machine["socket"].as_str().is_some_and(|socket| socket.contains(".sock")),
+        "a machine with no socket cannot be ended deliberately: {machine}"
+    );
+    // Started or adopted, which is the distinction nothing recorded. This daemon was already
+    // running when the window opened, because the test started it.
+    assert_eq!(machine["started_by_muster"], json!(false));
+    assert_eq!(machine["host"], json!(""), "this daemon is on this machine");
+    assert!(
+        machine["panes"].as_u64().is_some_and(|panes| panes > 0),
+        "a machine holding panes should say how many: {machine}"
+    );
+    // And where they are, because a count is a number people agree to and a directory is a
+    // thing they recognise.
+    assert!(
+        machine["directories"].as_array().is_some_and(|held| !held.is_empty()),
+        "a machine holding panes should say where they are: {machine}"
+    );
 }
 
 /// A tab name that resolves to nothing is refused, and the refusal says which name.

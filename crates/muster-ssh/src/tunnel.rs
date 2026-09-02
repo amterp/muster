@@ -357,13 +357,19 @@ const CONFIRM_WITHIN: Duration = Duration::from_secs(5);
 /// thread notices - which on quit is a window that will not close.
 fn sleep_unless_stopping(wait: Duration, stopping: &Arc<AtomicBool>) -> bool {
     let deadline = Instant::now() + wait;
-    while Instant::now() < deadline {
+    loop {
         if stopping.load(Ordering::Relaxed) {
             return false;
         }
-        std::thread::sleep(POLL.min(deadline - Instant::now()));
+        // Saturating, because the deadline can pass between the check and the subtraction and
+        // `Instant - Instant` panics on a negative result rather than answering zero. Zero
+        // left is also the exit, so the two are one test.
+        let left = deadline.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            return true;
+        }
+        std::thread::sleep(POLL.min(left));
     }
-    !stopping.load(Ordering::Relaxed)
 }
 
 /// Whether a master that was just started is actually carrying anything.
