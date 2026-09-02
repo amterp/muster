@@ -1236,3 +1236,35 @@ Evidence: `a_client_that_loses_its_terminal_sees_its_stream_end` in
 red if a later herdr stops telling the client it displaced. Not in `corpus/herdr-0.8.0/`: the
 frame stream is not in the JSON API, so `tools/herdr-probe/probe` has nothing to record it
 with.
+
+## 24. A closing stream says which of four things happened, in prose
+
+Recorded 2026-09-01, later than the rest of this file and by hand rather than through the
+probe. What prompted it: a client that is refused a terminal and a client that has one taken
+away are the same event to Muster - a bridge that stopped - and they call for opposite
+answers, so the question was whether herdr says which.
+
+It does. A `terminal.closed` frame carries a `reason` string, and the four Muster can reach
+are distinct:
+
+| What happened | `reason` |
+|---|---|
+| The terminal already had a client | `terminal attach failed: terminal <id> already has an attached client; retry with --takeover` |
+| Another client attached with `--takeover` | `terminal attach taken over` |
+| This client let go - its stdin reached EOF | `detached` |
+| The stream ended with no closing frame at all | none; the bridge supplies its own |
+
+A string and no code, so anything reading these is matching prose and will stop matching when
+herdr rewords one. `muster-herdr/src/bridge_report.rs` is the one place that does, an
+unrecognised reason falls to "the connection was lost", and
+`corpus/conformance/bridge-report.json` fails when a re-pin moves the wording.
+
+**Why the difference is worth having.** Both refusals mean somebody else holds the terminal,
+and only one of them means somebody else *wants* it. A refused attach is almost always a
+client whose transport died and which has not noticed (section 4, and kan a_2I76eCrjw), so
+attaching again with `--takeover` is recovery. A takeover is another live window that just
+asked for this pane, so attaching again would be answered the same way by the window on the
+other side, and one terminal would be traded back and forth until both gave up.
+
+Evidence: `corpus/herdr-0.8.0/closing-reasons/`, one line per case, recorded against a scratch
+daemon with three `terminal session control` clients.

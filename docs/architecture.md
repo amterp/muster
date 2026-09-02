@@ -785,6 +785,18 @@ replacement: only one client may hold a herdr terminal, and the client from befo
 measured still attached 53 minutes after its ssh was gone - so a replacement re-attaches with `--takeover`, which a
 first bridge never does, because the terminal it would take could be one another window is showing.
 
+**How the app finds out a bridge has died is Muster's own business, not the renderer's.** libghostty offers a
+`close_surface` callback and it does not arrive: a dead pane sits on libghostty's own "Process exited. Press any
+key" screen, which is the surface being held open rather than the host being asked to close it, so for two releases
+the replacement policy above was written, covered by the corpus, and reachable from nothing (kan a_2IRcMjFs0). What
+Muster watches instead is the socket it bound for the pane and the bridge dialed back on
+(`muster-herdr/src/control_socket.rs`). That connection ends when the process does, whether it exited, was killed,
+or lost the machine it was running on, and it needs no cooperation from either dependency. The bridge writes one
+sentence there before it goes, saying which ending this was, because the answer differs: a refused attach is worth
+taking the terminal for, and a terminal taken by somebody else is not. The renderer's callback is still wired, as a
+second source rather than the one that matters, and a pane whose bridge is already known gone ignores the second
+arrival.
+
 **A success that means a refusal: the daemon considered a change, performed none of it, and named its reason beside
 an ordinary answer.** herdr does this for zoom, swap, move and resize, so a window reading only the envelope cannot
 tell it from a change that worked, and the one symptom is a window that does not move - which is what a bug in the

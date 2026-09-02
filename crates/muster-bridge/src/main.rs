@@ -19,6 +19,8 @@ use std::sync::{Arc, Mutex};
 use muster_core::diagnostics::log::{self, LogLevel};
 use muster_core::diagnostics::poison;
 use muster_core::fields;
+use muster_core::respawn::Ending;
+use muster_herdr::bridge_report::{self, Exiting};
 use muster_herdr::{ControlStreamMessage, FrameDecoder, PaneStreamEvent};
 use muster_ssh::quoted;
 
@@ -139,12 +141,10 @@ fn main() {
         }
     });
 
-    if let Some(path) = &arguments.control_socket {
-        dial_the_app(path, &input);
-    }
+    let app = arguments.control_socket.as_ref().and_then(|path| dial_the_app(path, &input));
 
     pty::make_stdin_raw();
-    pump_frames(output, &arguments.pane);
+    pump_frames(output, &arguments.pane, app.as_ref());
 }
 
 struct Arguments {
@@ -358,7 +358,11 @@ fn send(input: &HerdrInput, message: &ControlStreamMessage) {
 /// The app writes herdr's control-stream JSON, so this is a copy: keeping the bridge free
 /// of any vocabulary of its own is what lets the adapter stay in one place
 /// (architecture.md, the backend seam).
-fn dial_the_app(path: &str, input: &HerdrInput) {
+///
+/// Answers with a second descriptor on the same socket, for the one sentence this process
+/// says in its own words - why it is stopping. Reads and writes on a socket are independent,
+/// so the relay below never contends with it.
+fn dial_the_app(path: &str, input: &HerdrInput) -> Option<UnixStream> {
     let Ok(socket) = UnixStream::connect(path) else {
         log::error(
             "bridge.control.failed",
@@ -370,12 +374,17 @@ fn dial_the_app(path: &str, input: &HerdrInput) {
              dead terminal rather than a broken channel. Usual cause: the app closed the \
              socket, or this bridge outlived the window that spawned it.\n\n"
         );
-        return;
+        return None;
     };
 
     log::info("bridge.control.dialed", fields! { "path" => path });
+    // Without this, reporting the exit below to an app that has already gone would kill this
+    // process with SIGPIPE before it could write down what happened.
+    muster_herdr::silence_sigpipe(&socket);
+    let reporting = socket.try_clone().ok();
     let input = input.clone();
     std::thread::spawn(move || relay(socket, &input));
+    reporting
 }
 
 /// Lines are reassembled here rather than passed on as they arrive, because herdr parses
@@ -411,7 +420,7 @@ fn relay(socket: UnixStream, input: &HerdrInput) {
 }
 
 /// Pumps decoded frames to the surface, until the stream ends.
-fn pump_frames(mut output: impl Read, pane: &str) -> ! {
+fn pump_frames(mut output: impl Read, pane: &str, app: Option<&UnixStream>) -> ! {
     let mut decoder = FrameDecoder::new();
     let mut pump = Pump::default();
     // Heap rather than stack: a repaint is routinely tens of kilobytes, and this thread
@@ -425,7 +434,7 @@ fn pump_frames(mut output: impl Read, pane: &str) -> ! {
                 // for. Same exit either way - it is what tells libghostty this pane's
                 // command is gone - but it goes through the same reporting so the window
                 // never just stops.
-                pump.finish(pane, Some("herdr's stream ended without a closing frame"));
+                pump.finish(pane, Some("herdr's stream ended without a closing frame"), app);
             }
             Ok(read) => read,
         };
@@ -433,7 +442,7 @@ fn pump_frames(mut output: impl Read, pane: &str) -> ! {
         for event in decoder.consume(&chunk[..read]) {
             match event {
                 PaneStreamEvent::Frame(frame) => pump.render(&frame.bytes),
-                PaneStreamEvent::Closed { reason } => pump.finish(pane, reason.as_deref()),
+                PaneStreamEvent::Closed { reason } => pump.finish(pane, reason.as_deref(), app),
             }
         }
     }
@@ -503,12 +512,39 @@ impl Pump {
     /// ever sees it. Exiting silently made a mistyped pane id and a pane the user closed
     /// into the same event: an empty window and ghostty's own "failed to launch" box, which
     /// blames the command rather than naming the pane that does not exist.
-    fn finish(&self, pane: &str, reason: Option<&str>) -> ! {
+    ///
+    /// The app is told first, because everything below this either exits or writes to a file
+    /// nobody opens - and the app is the one that can do something about it. It learns the
+    /// bridge is gone either way, from the socket closing behind this; what this adds is
+    /// which of the several endings it was, which is what decides whether another bridge is
+    /// worth starting.
+    fn finish(&self, pane: &str, reason: Option<&str>, app: Option<&UnixStream>) -> ! {
         let why = reason.unwrap_or("herdr gave no reason");
+        let ending = bridge_report::ending(reason);
         log::info(
             "bridge.closed",
-            fields! { "pane" => pane, "reason" => why, "rendered" => self.rendered },
+            fields! {
+                "pane" => pane,
+                "reason" => why,
+                "ending" => ending.as_str(),
+                "rendered" => self.rendered,
+            },
         );
+        self.tell(app, ending, reason);
+
+        // Nothing failed: somebody asked for this pane in another window and herdr gave it to
+        // them. Reported before the `rendered` split below, because a bridge displaced before
+        // it painted looks from there like an attach that never worked - and blaming a
+        // mistyped pane id for a terminal that went somewhere is the kind of accurate,
+        // useless message this whole path is being fixed to stop producing.
+        if ending == Ending::TakenOver {
+            eprintln!(
+                "muster-bridge: pane {pane} is now being shown somewhere else, so this window \
+                 has stopped drawing it.\nOnly one client may hold a herdr terminal. The agent \
+                 is untouched; close this pane and open it again to bring it back here."
+            );
+            std::process::exit(0);
+        }
 
         if self.rendered {
             eprintln!("muster-bridge: pane {pane} closed: {why}");
@@ -531,6 +567,18 @@ impl Pump {
         // Nothing ever painted, so the attach itself failed. Non-zero because this is not a
         // session ending - it is a session that never started.
         std::process::exit(1);
+    }
+
+    /// Says why this bridge is stopping, on the socket the app is already holding.
+    ///
+    /// Best effort by design. A write that fails means the app has gone, which is one of the
+    /// ordinary ways a bridge outlives its window - and there is nobody left to tell.
+    fn tell(&self, app: Option<&UnixStream>, ending: Ending, reason: Option<&str>) {
+        let Some(mut app) = app else { return };
+        let message =
+            Exiting { ending, reason: reason.map(str::to_string), rendered: self.rendered };
+        let _ = app.write_all(&message.wire_format());
+        let _ = app.flush();
     }
 }
 

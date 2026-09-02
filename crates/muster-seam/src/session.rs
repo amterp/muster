@@ -30,12 +30,12 @@ use muster_core::mirror::backend::{PaneId, PaneText, Snapshot, TabId};
 use muster_core::mirror::{Change, Health, Mirror};
 use muster_core::names::{self, Mint, Names, PaneNames, TabNames};
 use muster_core::problems::{Problem, Problems, Severity};
-use muster_core::respawn::{self, Decision, Respawns};
+use muster_core::respawn::{self, Decision, Ending, Respawns};
 use muster_core::roster::{Numbering, Roster, RosterTab, TabStep};
 use muster_herdr::subscription::{Notice, Subscription};
 use muster_herdr::{
-    HerdrBackend, HerdrClient, HerdrPaneChannel, PaneControlChannel, PaneEnvironment, daemon,
-    fetch_snapshot, own_socket_path, remote,
+    Ended, HerdrBackend, HerdrClient, HerdrPaneChannel, PaneControlChannel, PaneEnvironment,
+    Reports, daemon, fetch_snapshot, own_socket_path, remote,
 };
 use muster_ssh::{Forward, Remote, Tunnel, remote_environment};
 use muster_vt::KeyEncoder;
@@ -304,6 +304,15 @@ pub(crate) fn appearance() -> Appearance {
 /// config still broken on the next launch is raised again by reading it again, which is the
 /// only answer that cannot go stale.
 static PROBLEMS: Mutex<Option<ProblemState>> = Mutex::new(None);
+
+/// Panes whose bridge is known to be gone, and whose replacement has not dialed yet.
+///
+/// Two things watch a bridge die, and either may arrive first: the control socket this window
+/// bound for the pane, which is the one that reliably does, and the renderer reporting that a
+/// surface's command exited. The second arrival is not a second death.
+///
+/// A leaf lock: nothing is called while it is held.
+static DARK: Mutex<BTreeSet<PaneKey>> = Mutex::new(BTreeSet::new());
 
 #[derive(Default)]
 struct ProblemState {
@@ -1027,6 +1036,7 @@ pub(crate) fn reset() {
     *poison::lock(&APPEARANCE, "settings") = None;
     *poison::lock(&PROBLEMS, "problems") = None;
     *poison::lock(&CONFIGURED_DAEMONS, "settings") = None;
+    poison::lock(&DARK, "dark-panes").clear();
     OPENED.store(false, Ordering::Relaxed);
 
     // Not this file's, and here anyway: what needs resetting is a property of the process
@@ -1272,10 +1282,15 @@ impl Session {
             )
         })?;
         let path = self.next_socket_path();
-        let (announced_daemon, announced_pane) = (daemon.clone(), pane.clone());
-        let control = PaneControlChannel::bind(path.clone(), move || {
-            typeable(&announced_daemon, &announced_pane);
-        })
+        let dialed = PaneKey::new(daemon, pane);
+        let stopped = dialed.clone();
+        let control = PaneControlChannel::bind(
+            path.clone(),
+            Reports {
+                connected: Box::new(move || typeable(&dialed.daemon, &dialed.pane)),
+                exited: Box::new(move |ended| bridge_ended(&stopped, &ended)),
+            },
+        )
         .map_err(|error| {
             format!(
                 "could not bind the socket this pane's bridge dials back on ({error}). \
@@ -1795,18 +1810,45 @@ pub(crate) fn bridge_exited(daemon: &str, pane: &str, process_alive: bool) {
         },
     );
     let key = PaneKey::new(&daemon, &PaneId::new(pane));
-    // The wait starts again. A pane keeps its channel while its surface is thrown away and
-    // built again, so the replacement bridge has to dial too - and a replacement that never
-    // arrives is the same deaf pane, which is the case `control_socket.rs` names as the reason
-    // its accept loop runs more than once.
-    watchdog::opened(key.clone());
-    // Before deciding anything, because the decision turns on whether the daemon still holds
-    // this pane and the mirror is the only place that is written down.
-    resnapshot(&daemon, &format!("nothing is painting {pane} any more"));
     if process_alive {
+        // The wait starts again. A pane keeps its channel while its surface is thrown away and
+        // built again, so the replacement bridge has to dial too - and a replacement that never
+        // arrives is the same deaf pane, which is the case `control_socket.rs` names as the
+        // reason its accept loop runs more than once.
+        watchdog::opened(key.clone());
+        resnapshot(&daemon, &format!("nothing is painting {pane} any more"));
         return;
     }
-    replace_bridge(&key);
+    // Nothing to add about how it ended: this arrival says only that a surface's command is
+    // gone, which is `Ended::unsaid` by definition.
+    bridge_ended(&key, &Ended::unsaid());
+}
+
+/// A pane's bridge has stopped, said in its own words on the socket the app bound for it.
+///
+/// The arrival that actually happens. `bridge_exited` above is the renderer's, which two field
+/// runs on 0.4.1 show never coming (kan a_2IRcMjFs0); this one needs no cooperation from
+/// libghostty or from the dying process, because what ended is a connection this window owns.
+pub(crate) fn bridge_ended(pane: &PaneKey, ended: &Ended) {
+    // One death, however many things noticed it. Both watches can fire for one bridge, and
+    // counting the second would spend a pane's replacements twice as fast as it earned them.
+    if !poison::lock(&DARK, "dark-panes").insert(pane.clone()) {
+        return;
+    }
+    log::info(
+        "bridge.ended",
+        fields! {
+            "pane" => pane.to_string(),
+            "ending" => ended.ending.as_str(),
+            "reason" => ended.reason.clone().unwrap_or_else(|| "(it said nothing)".into()),
+            "rendered" => ended.rendered.to_string(),
+        },
+    );
+    watchdog::opened(pane.clone());
+    // Before deciding anything, because the decision turns on whether the daemon still holds
+    // this pane and the mirror is the only place that is written down.
+    resnapshot(&pane.daemon, &format!("nothing is painting {} any more", pane.pane));
+    replace_bridge(pane, ended.ending);
 }
 
 /// Starts another bridge for a pane whose last one ended, or says why it will not.
@@ -1814,7 +1856,7 @@ pub(crate) fn bridge_exited(daemon: &str, pane: &str, process_alive: bool) {
 /// Nothing is spawned here. The shell owns the surfaces and a bridge is a surface's command,
 /// so what this does is count the replacement and publish - and the view carrying a number the
 /// shell has not seen for this pane is what makes it build one.
-fn replace_bridge(pane: &PaneKey) {
+fn replace_bridge(pane: &PaneKey, ending: Ending) {
     let decision = {
         let mut session = poison::lock(&SESSION, "session");
         if !session.holds(pane) {
@@ -1824,7 +1866,7 @@ fn replace_bridge(pane: &PaneKey) {
             session.respawns.forget(pane);
             return;
         }
-        session.respawns.ended(pane, clock::monotonic_now())
+        session.respawns.ended(pane, clock::monotonic_now(), ending)
     };
 
     match decision {
@@ -1848,6 +1890,13 @@ fn replace_bridge(pane: &PaneKey) {
                 "tried" => tried.to_string(),
                 "detail" => respawn::gave_up(pane, tried),
             },
+        ),
+        // Not a warning. Everything worked: somebody asked for this pane in another window and
+        // got it, which is the arrangement herdr allows and the one Muster asked for on their
+        // behalf. What would be wrong is taking it back, and this is that not happening.
+        Decision::Yield => log::info(
+            "bridge.yielded",
+            fields! { "pane" => pane.to_string(), "detail" => respawn::yielded(pane) },
         ),
     }
 }
@@ -3989,7 +4038,10 @@ fn health(daemon: &DaemonId, state: &str, detail: &str) {
 
 /// The moment the pane becomes typeable, on the thread that accepted the connection.
 fn typeable(daemon: &DaemonId, pane: &PaneId) {
-    watchdog::typeable(&PaneKey::new(daemon, pane));
+    let key = PaneKey::new(daemon, pane);
+    // Something is painting this pane again, so the next bridge to stop is news.
+    poison::lock(&DARK, "dark-panes").remove(&key);
+    watchdog::typeable(&key);
     ffi::emit(&Event {
         payload: Some(event::Payload::PaneTypeable(PaneTypeable {
             daemon_id: daemon.to_string(),
