@@ -248,6 +248,15 @@ impl Viewport {
     pub fn centred_on(&self, rows_from_bottom: u32) -> u32 {
         rows_from_bottom.saturating_sub(self.rows.saturating_sub(1) / 2).min(self.deepest)
     }
+
+    /// How many rows the pane holds in all, screen included.
+    ///
+    /// [`Viewport::deepest`] is how far the screen can climb, so the pane is that plus one
+    /// screenful. This is what says whether a read reached everything, and what a search
+    /// reports when it did not.
+    pub fn rows_held(&self) -> u32 {
+        self.deepest.saturating_add(self.rows)
+    }
 }
 
 /// The unit that owns one pane tree. Trees hang off tabs, not workspaces.

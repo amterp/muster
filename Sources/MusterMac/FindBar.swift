@@ -95,14 +95,12 @@ struct FindBarView: View {
             return .handled
           }
 
-        if state.findings.truncated {
-          Text("last \(state.findings.rowsSearched)")
+        if let caveat {
+          Text(caveat.label)
             .font(.caption)
             .foregroundColor(.secondary)
             .monospacedDigit()
-            .help(
-              "This pane holds more history than the daemon will hand over, so only its last "
-                + "\(state.findings.rowsSearched) rows were searched.")
+            .help(caveat.detail)
         }
 
         Button(action: { onStep(true) }) { Image(systemName: "chevron.up") }
@@ -157,6 +155,32 @@ struct FindBarView: View {
     let findings = state.findings
     if state.needle.isEmpty { return "" }
     return "\(findings.selected)/\(findings.total)"
+  }
+
+  /// What the count does not cover, when it does not cover everything.
+  ///
+  /// Nothing at all for a search of a whole pane, which is most of them - a caveat that
+  /// appeared every time would stop being read by the time it mattered. The two that do
+  /// appear are the reasons "0/0" can be true and misleading at once, and the help text is
+  /// where the reason a person can act on lives.
+  private var caveat: (label: String, detail: String)? {
+    guard !state.needle.isEmpty else { return nil }
+    switch state.findings.reach {
+    case .whole:
+      return nil
+    case .capped(let rowsHeld):
+      return (
+        "last \(state.findings.rowsSearched) of \(rowsHeld)",
+        "This pane holds \(rowsHeld) rows and the daemon will not hand over more than a "
+          + "thousand at a time, so only its last \(state.findings.rowsSearched) were searched."
+      )
+    case .screenOnly:
+      return (
+        "this screen",
+        "This pane keeps no history behind what is on screen, which is what a full-screen "
+          + "program leaves - so this searched the screen and there is nothing else to search."
+      )
+    }
   }
 
   enum Corner {

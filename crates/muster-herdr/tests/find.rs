@@ -15,7 +15,7 @@ use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 
 use herdr_harness::{Daemon, until, until_within};
-use muster_core::find::Needle;
+use muster_core::find::{Needle, Reach};
 use muster_core::input::ScrollDirection;
 use muster_core::intent::BackendChannel;
 use muster_core::mirror::backend::PaneId;
@@ -60,6 +60,21 @@ impl Ruler {
             (),
         );
         ruler
+    }
+
+    /// Types into the pane and waits for `settled` to appear on its screen.
+    ///
+    /// Waited for rather than slept through, because everything after it reads the pane back
+    /// and a read taken mid-repaint is a screen nobody ever saw.
+    fn run(&self, command: &str, settled: &str) {
+        self.daemon
+            .call("pane.send_text", &json!({ "pane_id": self.pane.as_str(), "text": command }));
+        until_within(
+            &format!("{settled:?} to reach the pane"),
+            Duration::from_secs(30),
+            || self.visible().contains(settled),
+            (),
+        );
     }
 
     fn visible(&self) -> String {
@@ -132,7 +147,11 @@ fn a_needle_is_found_where_the_pane_actually_holds_it() {
         hit.rows_from_bottom,
     );
     assert!(found.rows_searched >= ROWS, "the read reached all {ROWS} printed rows");
-    assert!(!found.truncated, "{ROWS} rows is well inside what herdr answers with");
+    assert_eq!(
+        found.reach(),
+        Reach::Whole,
+        "{ROWS} rows is well inside what herdr answers with, and the pane has scrollback"
+    );
 }
 
 #[test]
@@ -184,4 +203,96 @@ fn a_pane_that_is_not_there_refuses_rather_than_answering_empty() {
     let answer = daemon.backend().find(&PaneId::new("w1:p99"), &Needle::new("anything"));
 
     assert!(answer.is_err(), "a missing pane is a refusal, not an empty result");
+}
+
+#[test]
+fn a_hit_above_a_blank_bottom_is_still_scrolled_to() {
+    // The regression this file did not have a case for. herdr trims the blank remainder of
+    // the viewport off the bottom of a read, so a pane whose program left the lower half of
+    // the screen empty answers with fewer rows than it holds - and every offset measured
+    // from that answer is short by the difference. Before the correction the landing here
+    // stopped twenty-odd rows below the match, on a screen that does not carry it.
+    //
+    // `ESC[2J ESC[H` rather than `clear`, and the difference is the whole fixture: `clear`
+    // sends `ESC[3J` as well, which erases the scrollback and leaves a pane with nothing to
+    // scroll through.
+    let mut ruler = Ruler::new();
+    ruler.run("printf '\\033[2J\\033[H'; printf 'TOP\\n'\n", "TOP");
+
+    let wanted = "ruler-00042";
+    let found =
+        ruler.daemon.backend().find(&ruler.pane, &Needle::new(wanted)).expect("herdr answered");
+    let hit = found.hits.first().expect("the ruler printed that row").rows_from_bottom;
+    assert!(
+        found.rows_searched < found.rows_read,
+        "the fixture has to leave blank rows below the last printed one, and this read of \
+         {} rows covered {} grid rows",
+        found.rows_searched,
+        found.rows_read,
+    );
+
+    ruler.scroll_up(u16::try_from(hit).expect("a 300-row pane is well inside one scroll"));
+    until(
+        "the daemon to report the offset it was asked for",
+        || ruler.offset() == u64::from(hit),
+        (),
+    );
+
+    assert!(
+        ruler.visible().contains(wanted),
+        "scrolling {hit} rows up should show {wanted}, and the screen was:\n{}",
+        ruler.visible(),
+    );
+}
+
+#[test]
+fn a_pane_on_the_alternate_screen_says_it_holds_only_the_screen() {
+    // What every agent pane looks like, and the case that made find look broken. A
+    // full-screen program leaves the daemon no history at all: `max_offset_from_bottom`
+    // drops to zero and a read comes back as the visible rows, with nothing to say the
+    // scrollback behind them is out of reach. Reported as a complete search of two hundred
+    // rows, "no results" reads as "that text is not in this pane".
+    let ruler = Ruler::new();
+    let before = ruler.daemon.backend().find(&ruler.pane, &Needle::new("ruler-00042"));
+    assert_eq!(before.expect("herdr answered").hits.len(), 1, "the row is there beforehand");
+
+    ruler.run("printf '\\033[?1049h'; printf 'FULLSCREEN\\n'\n", "FULLSCREEN");
+
+    let found = ruler
+        .daemon
+        .backend()
+        .find(&ruler.pane, &Needle::new("ruler-00042"))
+        .expect("herdr answered");
+    assert!(found.hits.is_empty(), "the row is behind a screen the daemon no longer holds");
+    assert_eq!(
+        found.reach(),
+        Reach::ScreenOnly,
+        "a pane with nothing behind its screen has to say so, or its empty answer reads as a \
+         complete one"
+    );
+}
+
+#[test]
+fn a_pane_deeper_than_herdr_will_read_says_how_deep_it_is() {
+    // herdr clamps a read to a thousand rows and offers no way to page past them, so a long
+    // pane is searched in part. The bar draws "last 1000 of 3000" from this, which is the
+    // difference between a search that found nothing and one that did not look everywhere.
+    let ruler = Ruler::new();
+    ruler.run("awk 'BEGIN{for(i=1;i<=1500;i++) printf \"deep-%05d\\n\", i}'\n", "deep-01500");
+
+    let found = ruler
+        .daemon
+        .backend()
+        .find(&ruler.pane, &Needle::new("deep-00001"))
+        .expect("herdr answered");
+
+    assert!(found.hits.is_empty(), "the first deep row is past herdr's thousand-row ceiling");
+    match found.reach() {
+        Reach::Capped { rows_held } => assert!(
+            rows_held > found.rows_read,
+            "a capped search holds more rows ({rows_held}) than it read ({})",
+            found.rows_read,
+        ),
+        other => panic!("a pane of 1800 rows read a thousand at a time is capped, not {other:?}"),
+    }
 }

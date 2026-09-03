@@ -1031,15 +1031,24 @@ message Findings {
   // the answer to "which of nothing" and needs no separate flag.
   uint32 selected = 2;
 
-  // How many rows were looked at, which is what the bar can honestly claim to have covered.
+  // How many rows of text were looked at, which is what the bar can honestly claim to have
+  // covered.
   uint32 rows_searched = 3;
 
-  // Whether the pane holds history this search never reached.
+  // How much of the pane that was: `whole`, `capped` or `screen_only`.
   //
-  // The reason the bar can say so only when it is true. A search that covered everything
-  // should say nothing at all, and a confident "no results" over a fifth of a long pane is
-  // the failure this whole feature was written around.
-  bool truncated = 4;
+  // Three answers rather than a flag, because "no results" means something different under
+  // each and a bar cannot work out which from a row count. `whole` is every row the pane
+  // holds, and wants no caveat drawn at all. `capped` is a pane deeper than the daemon will
+  // hand over, with `rows_held` saying how deep. `screen_only` is a pane showing a
+  // full-screen program, which keeps no history behind what is drawn - the search was
+  // complete and covered one screen, and it is the case somebody is most likely to read as
+  // find being broken.
+  string reach = 4;
+
+  // How many rows the pane holds in all. Set only for `capped`, where it is the other half
+  // of the sentence; zero otherwise, since "of 0 rows" is not something to draw.
+  uint32 rows_held = 5;
 }
 
 // Every action Muster has, and the chord asking for it.

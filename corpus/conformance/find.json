@@ -2,109 +2,127 @@
   "concept": "find.foundIn",
   "source": "authored",
   "citation": "ghostty src/terminal/search/sliding_window.zig (std.ascii.indexOfIgnoreCase), via docs/observations/libghostty-9f9b8d1d.md section 10; row-to-offset alignment from docs/observations/herdr-0.8.0.md section 17",
-  "why": "The whole of find's matching, and the one place two answers have to agree with each other. Muster counts the matches and libghostty highlights them, so a matcher that differs by a case rule or an overlap rule puts a counter over a screen contradicting it. The positions matter as much as the count: a hit's row is the offset a pane is scrolled by, so an off-by-one here is a find that lands somewhere near the answer.",
+  "why": "The whole of find's matching, and the one place two answers have to agree with each other. Muster counts the matches and libghostty highlights them, so a matcher that differs by a case rule or an overlap rule puts a counter over a screen contradicting it. The positions matter as much as the count: a hit's row is the offset a pane is scrolled by, so an off-by-one here is a find that lands somewhere near the answer. The last cases are about the reach instead - how much of the pane a search covered - because a confident \"no results\" over one screen of a pane whose history nobody has is the same failure wearing a different face. A case that names a `pane` is about the reach: `rows` is the viewport, `deepest` is how far it can climb, and `rows_read` is how many grid rows the backend looked at. Without one the pane is taken to hold exactly the rows in `text` with nothing trimmed, and the reach is not asserted - those cases are about matching.",
   "cases": [
     {
       "name": "the bottom row is zero rows from the bottom",
       "why": "The whole positioning scheme rests on this. A read's last row is the bottom of the pane, and a pane already at the bottom is offset zero - so a match there must ask for no scroll at all rather than for one row.",
       "given": { "text": "alpha\nbeta\nfailed to connect\n", "needle": "failed" },
-      "expect": { "hits": ["0:0-6"], "rows_searched": 3, "truncated": false }
+      "expect": { "hits": ["0:0-6"], "rows_searched": 3 }
     },
     {
       "name": "a row further up is that many rows from the bottom",
       "why": "The arithmetic the daemon's relative scroll is driven by. Rows arrive oldest first, so the index has to be counted from the other end, which is exactly the direction it is easy to get backwards.",
       "given": { "text": "failed to connect\nalpha\nbeta\n", "needle": "failed" },
-      "expect": { "hits": ["2:0-6"], "rows_searched": 3, "truncated": false }
+      "expect": { "hits": ["2:0-6"], "rows_searched": 3 }
     },
     {
       "name": "matches come back bottom-most first",
       "why": "Ghostty's order, and the find bar borrowed from it draws next as an upward chevron on this basis. In a terminal the interesting match is usually the recent one, so the first result somebody sees should be the one nearest where they are looking.",
       "given": { "text": "error one\nquiet\nerror two\n", "needle": "error" },
-      "expect": { "hits": ["0:0-5", "2:0-5"], "rows_searched": 3, "truncated": false }
+      "expect": { "hits": ["0:0-5", "2:0-5"], "rows_searched": 3 }
     },
     {
       "name": "case folds, because the renderer's matcher does",
       "why": "libghostty searches with std.ascii.indexOfIgnoreCase and there is no way to ask it for anything else. A case-sensitive count here would report one match over a screen highlighting three.",
       "given": { "text": "ERROR: Error error\n", "needle": "error" },
-      "expect": { "hits": ["0:0-5", "0:7-12", "0:13-18"], "rows_searched": 1, "truncated": false }
+      "expect": { "hits": ["0:0-5", "0:7-12", "0:13-18"], "rows_searched": 1 }
     },
     {
       "name": "several matches on one row read left to right",
       "why": "A row is read left to right whichever direction the pane is being walked in. Reversing them inside a row would make next jump backwards across a line and forwards across the pane.",
       "given": { "text": "ab-ab-ab\n", "needle": "ab" },
-      "expect": { "hits": ["0:0-2", "0:3-5", "0:6-8"], "rows_searched": 1, "truncated": false }
+      "expect": { "hits": ["0:0-2", "0:3-5", "0:6-8"], "rows_searched": 1 }
     },
     {
       "name": "matches do not overlap",
       "why": "aa in aaaa is two matches, not three. Overlapping would make the counter climb faster than pressing next walks, so the last result would be reachable only by wrapping round.",
       "given": { "text": "aaaa\n", "needle": "aa" },
-      "expect": { "hits": ["0:0-2", "0:2-4"], "rows_searched": 1, "truncated": false }
+      "expect": { "hits": ["0:0-2", "0:2-4"], "rows_searched": 1 }
     },
     {
       "name": "an empty needle matches nowhere",
       "why": "Nothing typed yet is not a search that matched everything. The alternative is a bar reporting one hit per row the instant it opens, before anybody has asked for anything.",
       "given": { "text": "alpha\nbeta\n", "needle": "" },
-      "expect": { "hits": [], "rows_searched": 2, "truncated": false }
+      "expect": { "hits": [], "rows_searched": 2 }
     },
     {
       "name": "no match is still a search that happened",
       "why": "The row count is the reach, and it is what the bar can say it looked at. Zero hits over two rows and zero hits over a thousand are different answers to show a person.",
       "given": { "text": "alpha\nbeta\n", "needle": "gamma" },
-      "expect": { "hits": [], "rows_searched": 2, "truncated": false }
+      "expect": { "hits": [], "rows_searched": 2 }
     },
     {
       "name": "the trailing newline is the end of the last row, not a row after it",
       "why": "Every read ends with one. Counting it as an empty bottom row would put every real row one further from the bottom than it is, so every hit would scroll one line short - the kind of off-by-one that reads like the daemon's fault.",
       "given": { "text": "hit\n", "needle": "hit" },
-      "expect": { "hits": ["0:0-3"], "rows_searched": 1, "truncated": false }
+      "expect": { "hits": ["0:0-3"], "rows_searched": 1 }
     },
     {
       "name": "text with no trailing newline reads the same way",
       "why": "A backend need not end its answer with one, and the positions may not depend on whether it did.",
       "given": { "text": "alpha\nhit", "needle": "hit" },
-      "expect": { "hits": ["0:0-3"], "rows_searched": 2, "truncated": false }
+      "expect": { "hits": ["0:0-3"], "rows_searched": 2 }
     },
     {
       "name": "an empty answer is no rows rather than one empty one",
       "why": "A pane that has printed nothing. One empty row would report a reach of one and a bottom to scroll to that is not there.",
       "given": { "text": "", "needle": "anything" },
-      "expect": { "hits": [], "rows_searched": 0, "truncated": false }
+      "expect": { "hits": [], "rows_searched": 0 }
     },
     {
       "name": "blank rows in the middle are still rows",
       "why": "A terminal is full of them, and they carry the count that positions everything below. Skipping them would shorten every offset above the first blank line.",
       "given": { "text": "hit\n\n\nbottom\n", "needle": "hit" },
-      "expect": { "hits": ["3:0-3"], "rows_searched": 4, "truncated": false }
+      "expect": { "hits": ["3:0-3"], "rows_searched": 4 }
     },
     {
       "name": "folding is ASCII only, so STRASSE does not find straße",
       "why": "libghostty folds ASCII and nothing else. Full Unicode folding here would find matches the highlight underneath cannot, which is the disagreement this corpus exists to prevent.",
       "given": { "text": "straße\n", "needle": "STRASSE" },
-      "expect": { "hits": [], "rows_searched": 1, "truncated": false }
+      "expect": { "hits": [], "rows_searched": 1 }
     },
     {
       "name": "a non-ASCII needle matches itself",
       "why": "Folding ASCII must not mean mangling anything else. Agents print accents, box drawing and emoji constantly, and a needle pasted from the screen has to find what it was copied from.",
       "given": { "text": "café au lait\n", "needle": "café" },
-      "expect": { "hits": ["0:0-5"], "rows_searched": 1, "truncated": false }
+      "expect": { "hits": ["0:0-5"], "rows_searched": 1 }
     },
     {
       "name": "offsets are in bytes, and land on character boundaries",
       "why": "The range is stated in bytes because nothing here paints. It still has to be sliceable: 你好 is three bytes a character, so a match after one must start at 3 and not at 1.",
       "given": { "text": "你好 world\n", "needle": "world" },
-      "expect": { "hits": ["0:7-12"], "rows_searched": 1, "truncated": false }
+      "expect": { "hits": ["0:7-12"], "rows_searched": 1 }
     },
     {
       "name": "a needle longer than the row matches nothing rather than panicking",
       "why": "Somebody pastes a paragraph into the field. The scan indexes the row by the needle's length, so this is the shape that would read past the end.",
       "given": { "text": "hi\n", "needle": "hello there" },
-      "expect": { "hits": [], "rows_searched": 1, "truncated": false }
+      "expect": { "hits": [], "rows_searched": 1 }
     },
     {
-      "name": "truncated is carried through, not worked out",
-      "why": "Only whoever asked knows whether there was more history. Two rows may be all a pane has or the last two of ten thousand, and the bar says so only when it is true.",
-      "given": { "text": "alpha\nbeta\n", "needle": "beta", "truncated": true },
-      "expect": { "hits": ["0:0-4"], "rows_searched": 2, "truncated": true }
+      "name": "the blank rows below the last printed one are still offsets",
+      "why": "A backend hands back a pane's printed rows and trims the blank remainder of the viewport off the bottom, so a read's last row is not the pane's last row. Every offset here is the number a pane gets scrolled by, so leaving those rows out lands a match that many rows below where it is - twenty-one of them for a screen somebody has just cleared.",
+      "given": { "text": "hit\nbottom\n", "needle": "hit", "pane": { "rows": 24, "deepest": 0, "rows_read": 24 } },
+      "expect": { "hits": ["23:0-3"], "rows_searched": 2, "reach": "screen_only" }
+    },
+    {
+      "name": "a pane holding more than the read reached is capped, and says how much more",
+      "why": "herdr clamps a read to a thousand rows and offers no way to page past them, so a long pane is searched in part. The bar draws \"last 1000 of 3000\" from this, which is what stops a confident \"no results\" over two thirds of a pane.",
+      "given": { "text": "alpha\nbeta\n", "needle": "beta", "pane": { "rows": 24, "deepest": 2976, "rows_read": 1000 } },
+      "expect": { "hits": ["998:0-4"], "rows_searched": 2, "reach": "capped", "rows_held": 3000 }
+    },
+    {
+      "name": "a pane with history behind the read's reach is whole when the read got all of it",
+      "why": "The ordinary case, and the one that has to draw no caveat at all. A search that covered everything and says so is what makes the other two mean anything.",
+      "given": { "text": "alpha\nbeta\n", "needle": "beta", "pane": { "rows": 1, "deepest": 1, "rows_read": 2 } },
+      "expect": { "hits": ["0:0-4"], "rows_searched": 2, "reach": "whole" }
+    },
+    {
+      "name": "a pane that holds only its screen is screen_only even when the search found something",
+      "why": "A full-screen program leaves the daemon no history behind what is drawn, and the reach says so whether or not the needle was there. Reported only on an empty answer it would be a caveat that appears when the news is bad, which reads as an excuse rather than a fact about the pane.",
+      "given": { "text": "hit\n", "needle": "hit", "pane": { "rows": 1, "deepest": 0, "rows_read": 1 } },
+      "expect": { "hits": ["0:0-3"], "rows_searched": 1, "reach": "screen_only" }
     }
   ]
 }

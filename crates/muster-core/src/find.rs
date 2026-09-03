@@ -12,14 +12,24 @@
 //! `BackendChannel`, so a daemon that grows its own search replaces that method's body
 //! and nothing here moves.
 //!
-//! **The reach is honest rather than complete.** herdr answers at most a thousand rows
-//! and offers no way to page past them (`observations/herdr-0.8.0.md` section 17), so a
-//! long pane is searched in part - and `Found::truncated` is how whoever draws the answer
-//! knows to say so. A confident "no results" over four fifths of a pane is worse than no
-//! find at all, which is the whole reason that flag is carried up rather than dropped
-//! here.
+//! **The reach is honest rather than complete**, and [`Reach`] is how. herdr answers at
+//! most a thousand rows and offers no way to page past them
+//! (`observations/herdr-0.8.0.md` section 17), so a long pane is searched in part. A pane
+//! showing a full-screen program is worse: it holds no history behind its screen at all,
+//! and a read of it comes back looking exactly like a complete one (section 17, "a pane on
+//! the alternate screen"). A confident "no results" over four fifths of a pane, or over a
+//! pane whose history nobody has, is worse than no find at all - so the answer says which
+//! of the three it is rather than leaving a bar to guess.
+//!
+//! **A row here is a row of the pane, not a row of the read.** herdr trims the blank
+//! remainder of the viewport off the bottom of what it hands back, so a read's last row is
+//! the pane's last printed row rather than its bottom row. [`found_in`] adds those trimmed
+//! rows back, because everything downstream treats a hit's row as the offset to scroll a
+//! pane by - and a hit that is 19 rows short of where it is scrolls to blank space.
 
 use std::ops::Range;
+
+use crate::mirror::backend::Viewport;
 
 /// What somebody is looking for.
 ///
@@ -58,8 +68,10 @@ pub struct Hit {
     /// How far above the bottom of the pane this row sits.
     ///
     /// The unit the daemon scrolls in, deliberately: a read's lines *are* grid rows, so a
-    /// match's place in what was read is already the offset to scroll to and nothing
-    /// converts it (`observations/herdr-0.8.0.md` section 17).
+    /// match's place in what was read converts to an offset by counting
+    /// (`observations/herdr-0.8.0.md` section 17). The one thing that has to be added is
+    /// the blank remainder of the viewport, which herdr trims off the bottom of a read -
+    /// see [`found_in`].
     pub rows_from_bottom: u32,
 
     /// Which bytes of the row matched.
@@ -84,34 +96,97 @@ pub struct Found {
     /// recent one, so starting at the bottom is also what somebody pressing ⌘F meant.
     pub hits: Vec<Hit>,
 
-    /// How many rows this answer looked at.
+    /// How many rows of text this answer looked at.
     pub rows_searched: u32,
 
-    /// Whether the pane holds history this search never reached.
+    /// Where the pane was looking, and how much it holds, at the moment it was read.
     ///
-    /// The backend's own answer rather than a guess from the row count: herdr sets it
-    /// whenever there is more than it returned, which is the question a person wants
-    /// answered and not the same as "the cap was hit".
-    pub truncated: bool,
+    /// Carried with the hits rather than asked for again, because the offsets above are
+    /// only meaningful against this viewport: they were worked out from how much the pane
+    /// holds, and landing on one has to scroll against the same answer. A second round trip
+    /// would let the pane print in between and land somewhere near the match.
+    pub viewport: Viewport,
+
+    /// How many grid rows the backend looked at, counting up from the bottom of the pane.
+    ///
+    /// Not the same as `rows_searched`, and the difference is the whole of the blank-row
+    /// correction: the backend looked at this many rows and handed back only the printed
+    /// ones. Also what says whether anything was left over, since a backend that reached
+    /// every row the pane holds searched the lot.
+    pub rows_read: u32,
+}
+
+/// How much of a pane a search covered, which is the only thing a person needs told.
+///
+/// Three answers rather than a flag, because "no results" means something different under
+/// each of them and a bar drawing one word cannot work that out from a row count.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Reach {
+    /// Every row the pane holds was searched, so "no results" means the text is not there.
+    Whole,
+
+    /// The pane holds `rows_held` rows and the backend would not hand them all over, so
+    /// there is history this search never reached (`observations/herdr-0.8.0.md` section
+    /// 17: herdr clamps a read to a thousand rows and offers no way to page past them).
+    Capped { rows_held: u32 },
+
+    /// The pane holds nothing behind the screen you are looking at.
+    ///
+    /// What a full-screen program leaves - an agent harness, an editor, anything on the
+    /// alternate screen - and what an application that erases the scrollback leaves too. The
+    /// search was complete and covered one screen, which is the case a person is most likely
+    /// to read as "find is broken": they scrolled through that output an hour ago in some
+    /// other terminal, and here there is nothing behind it to search.
+    ScreenOnly,
+}
+
+impl Found {
+    /// How much of the pane this answer covered.
+    ///
+    /// Derived rather than stored, so there is one account of the reach and it is the
+    /// numbers the search was actually made of.
+    pub fn reach(&self) -> Reach {
+        let held = self.viewport.rows_held();
+        if held > 0 && self.viewport.deepest == 0 {
+            Reach::ScreenOnly
+        } else if self.rows_read < held {
+            Reach::Capped { rows_held: held }
+        } else {
+            Reach::Whole
+        }
+    }
 }
 
 /// What a backend's answer holds, once `needle` has been looked for in it.
 ///
 /// `text` is a pane's rows oldest first, newline-separated, exactly as a backend hands
-/// them over - so the last row is the bottom of the pane and is `rows_from_bottom` zero.
-/// A single trailing newline is the end of the last row rather than an empty row after it.
+/// them over. `viewport` is where that pane was looking and how much it holds, and
+/// `rows_read` is how many grid rows the backend looked at counting up from the bottom -
+/// which is the pane's whole height for a read that reached everything, and the backend's
+/// own cap for one that did not.
 ///
-/// `truncated` rides along rather than being worked out from the row count, because only
-/// whoever asked knows whether there was more: a thousand rows back may be all a pane has
-/// or a fifth of it, and those are different answers to show a person.
+/// **The read's bottom row is not the pane's bottom row**, and reconciling the two is what
+/// `viewport` and `rows_read` are here for. herdr trims the blank remainder of the viewport
+/// off the bottom of what it returns, so a 24-row pane holding three printed rows answers
+/// with three (`observations/herdr-0.8.0.md` section 17). Those trimmed rows are added back
+/// here, because `rows_from_bottom` is an offset a pane gets scrolled by and one that is 21
+/// rows short scrolls to blank space. The count is exact rather than a guess: the backend
+/// looked at `rows_read` grid rows and returned the printed ones, so the difference is the
+/// blank ones, and it holds whether or not the read hit the cap.
 ///
 /// Within one row the matches come left to right, because a row is read left to right
 /// whichever direction the pane is being walked in. Matches do not overlap: after one is
 /// found the scan resumes at its end, which is what makes `aa` in `aaaa` two hits and not
 /// three.
-pub fn found_in(text: &str, needle: &Needle, truncated: bool) -> Found {
+pub fn found_in(text: &str, needle: &Needle, viewport: Viewport, rows_read: u32) -> Found {
     let rows = rows_of(text);
-    Found { hits: hits_in(&rows, needle), rows_searched: counted(rows.len()), truncated }
+    let trimmed = rows_read.saturating_sub(counted(rows.len()));
+    Found {
+        hits: hits_in(&rows, needle, trimmed),
+        rows_searched: counted(rows.len()),
+        viewport,
+        rows_read,
+    }
 }
 
 /// A row count at the width everything downstream carries it in.
@@ -124,7 +199,10 @@ fn counted(rows: usize) -> u32 {
 }
 
 /// Every match of `needle` in `rows`, bottom-most first.
-fn hits_in(rows: &[&str], needle: &Needle) -> Vec<Hit> {
+///
+/// `trimmed` is how many blank rows sit below the last row here, which the backend cut off
+/// its answer and this puts back into every offset.
+fn hits_in(rows: &[&str], needle: &Needle, trimmed: u32) -> Vec<Hit> {
     if needle.is_empty() {
         return Vec::new();
     }
@@ -136,7 +214,7 @@ fn hits_in(rows: &[&str], needle: &Needle) -> Vec<Hit> {
         .enumerate()
         .rev()
         .flat_map(|(place, row)| {
-            let rows_from_bottom = counted(rows.len() - 1 - place);
+            let rows_from_bottom = counted(rows.len() - 1 - place).saturating_add(trimmed);
             matches_in(row, &folded)
                 .into_iter()
                 .map(move |matched| Hit { rows_from_bottom, matched })

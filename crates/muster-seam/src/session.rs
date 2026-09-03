@@ -23,10 +23,10 @@ use muster_core::composition::{
 use muster_core::config::{Appearance, Config, Feel, Panes};
 use muster_core::diagnostics::{clock, log, poison};
 use muster_core::fields;
-use muster_core::find::{Found, Needle};
+use muster_core::find::{Found, Needle, Reach};
 use muster_core::input::{Bindings, PaneInput, PaneInputSettings, ScrollDirection};
 use muster_core::intent::{BackendChannel, BackendIntent, MoveDestination, Refusal};
-use muster_core::mirror::backend::{PaneId, PaneText, Snapshot, TabId};
+use muster_core::mirror::backend::{PaneId, PaneText, Snapshot, TabId, Viewport};
 use muster_core::mirror::{Change, Health, Mirror};
 use muster_core::names::{self, Mint, Names, PaneNames, TabNames};
 use muster_core::problems::{Problem, Problems, Severity};
@@ -3702,7 +3702,7 @@ pub(crate) fn toggle_sidebar() {
 }
 
 /// What a search is showing, which is everything the shell draws in the find bar.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Findings {
     pub(crate) total: u32,
     /// Which hit is selected, counting from one, or zero when nothing matched.
@@ -3711,7 +3711,26 @@ pub(crate) struct Findings {
     /// already the answer to "which of nothing".
     pub(crate) selected: u32,
     pub(crate) rows_searched: u32,
-    pub(crate) truncated: bool,
+
+    /// How much of the pane this covered: `whole`, `capped` or `screen_only`.
+    ///
+    /// A word rather than a flag, because the three want three different sentences under a
+    /// search box and a bar cannot tell them apart from a row count. `screen_only` is a pane
+    /// showing a full-screen program, which holds no history at all behind what is drawn.
+    pub(crate) reach: &'static str,
+
+    /// How many rows the pane holds in all, which only `capped` needs and only `capped`
+    /// sets. Zero otherwise, since "of 0 rows" is not a sentence anybody would draw.
+    pub(crate) rows_held: u32,
+}
+
+impl Default for Findings {
+    /// Nothing searched, over a pane nothing was asked about. `whole` rather than one of the
+    /// other two, so a bar with an empty field draws no caveat about a search that has not
+    /// happened.
+    fn default() -> Findings {
+        Findings { total: 0, selected: 0, rows_searched: 0, reach: "whole", rows_held: 0 }
+    }
 }
 
 /// Looks for something in the pane with the keyboard, and lands on the first match.
@@ -3732,9 +3751,13 @@ pub(crate) fn find(daemon: &DaemonId, pane: &PaneId, needle: &Needle) -> Result<
     })?;
 
     let selected = (!found.hits.is_empty()).then_some(0);
+    // The viewport the search was measured against, handed straight to the landing: the
+    // pane has not been asked to move since, so asking it again would only widen the window
+    // in which it could print and shift what the offsets mean.
+    let viewport = found.viewport;
     let search = Search { daemon: daemon.clone(), pane: pane.clone(), found, selected };
     let findings = search.findings();
-    land(&search);
+    land(&search, Some(viewport));
     poison::lock(&SESSION, "session").search = Some(search);
     Ok(findings)
 }
@@ -3770,7 +3793,7 @@ pub(crate) fn step_find(forward: bool) -> Result<Findings, String> {
         selected: search.selected,
     };
     drop(session);
-    land(&landing);
+    land(&landing, None);
     Ok(findings)
 }
 
@@ -3781,34 +3804,49 @@ pub(crate) fn end_find() {
 
 impl Search {
     fn findings(&self) -> Findings {
+        let (reach, rows_held) = match self.found.reach() {
+            Reach::Whole => ("whole", 0),
+            Reach::Capped { rows_held } => ("capped", rows_held),
+            Reach::ScreenOnly => ("screen_only", 0),
+        };
         Findings {
             total: u32::try_from(self.found.hits.len()).unwrap_or(u32::MAX),
             selected: self.selected.map_or(0, |at| u32::try_from(at + 1).unwrap_or(u32::MAX)),
             rows_searched: self.found.rows_searched,
-            truncated: self.found.truncated,
+            reach,
+            rows_held,
         }
     }
 }
 
 /// Puts the selected match on screen.
 ///
-/// Two requests on two channels, because herdr scrolls by steps rather than to a place: where
-/// the pane is looking has to be asked for, and the difference is what gets sent
+/// A scroll against where the pane is looking, because herdr scrolls by steps rather than to a
+/// place: the difference between here and there is what gets sent
 /// (`observations/herdr-0.8.0.md` section 17). A pane already showing the match is left alone,
 /// so stepping through hits on one screen does not jog the view under somebody reading it.
+///
+/// `known` is where the pane was looking when the search read it, which the search already
+/// established and which nothing has moved yet. A step passes `None` instead and asks again,
+/// because the step before it scrolled the pane and landing against the answer from two
+/// keystroke ago would walk the view further with every press.
 ///
 /// Nothing here fails loudly. The count is already right and already on screen; a landing that
 /// did not happen costs a scroll somebody can do themselves, and a refusal per keystroke in the
 /// log would bury the one that mattered.
-fn land(search: &Search) {
+fn land(search: &Search, known: Option<Viewport>) {
     let Some(hit) = search.selected.and_then(|at| search.found.hits.get(at)) else {
         return;
     };
     let Ok(channel) = channel(&search.daemon) else {
         return;
     };
-    let Ok(viewport) = channel.viewport(&search.pane) else {
-        return;
+    let viewport = match known {
+        Some(viewport) => viewport,
+        None => match channel.viewport(&search.pane) {
+            Ok(viewport) => viewport,
+            Err(_) => return,
+        },
     };
     if viewport.shows(hit.rows_from_bottom) {
         return;
