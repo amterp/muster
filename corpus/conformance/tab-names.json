@@ -339,6 +339,140 @@
         ],
         "located": {}
       }
+    },
+    {
+      "name": "a tab grouped onto another has a member on each machine",
+      "why": "The whole of what makes a Muster tab span machines (MIP-2). A tab holding a laptop pane beside a devenv pane is one herdr tab on each, and nothing but this record says the two are one tab - no daemon can be asked, because neither knows the other exists.",
+      "given": {
+        "do": [
+          {
+            "see": "local/w1:t1"
+          },
+          {
+            "group": {
+              "tab": "devenv/w1:t1",
+              "into": 0
+            }
+          }
+        ]
+      },
+      "expect": {
+        "trace": [
+          "t1w3r07bsd",
+          "t1w3r07bsd"
+        ],
+        "located": {
+          "t1w3r07bsd": "devenv/w1:t1 local/w1:t1"
+        }
+      }
+    },
+    {
+      "name": "a request about a grouped tab resolves on whichever machine it is going to",
+      "why": "One name, two ids, and which one a request needs depends on where it is going. This is what lets `RenameTab` reach both halves and a divider drag reach the half it was drawn in, without either caller knowing the tab spans anything.",
+      "given": {
+        "do": [
+          {
+            "see": "local/w1:t1"
+          },
+          {
+            "group": {
+              "tab": "devenv/w1:t1",
+              "into": 0
+            }
+          },
+          {
+            "resolve": "local/t1w3r07bsd"
+          },
+          {
+            "resolve": "devenv/t1w3r07bsd"
+          }
+        ]
+      },
+      "expect": {
+        "trace": [
+          "t1w3r07bsd",
+          "t1w3r07bsd",
+          "w1:t1",
+          "w1:t1"
+        ],
+        "located": {
+          "t1w3r07bsd": "devenv/w1:t1 local/w1:t1"
+        }
+      }
+    },
+    {
+      "name": "grouping takes a tab out of whatever named it before",
+      "why": "A herdr tab belongs to exactly one Muster tab. Grouping one that already had a name of its own has to leave that name resolving to nothing, or a window would list the same panes under two tabs and `next_tab` would visit them twice.",
+      "given": {
+        "do": [
+          {
+            "see": "local/w1:t1"
+          },
+          {
+            "see": "devenv/w1:t1"
+          },
+          {
+            "group": {
+              "tab": "devenv/w1:t1",
+              "into": 0
+            }
+          },
+          {
+            "resolve": "devenv/t1w3r0a4a9"
+          }
+        ]
+      },
+      "expect": {
+        "trace": [
+          "t1w3r07bsd",
+          "t1w3r0a4a9",
+          "t1w3r07bsd",
+          "(nothing)"
+        ],
+        "located": {
+          "t1w3r07bsd": "devenv/w1:t1 local/w1:t1"
+        }
+      }
+    },
+    {
+      "name": "one machine dropping out leaves the rest of a grouped tab",
+      "why": "A tab spanning two machines has to open showing what it can reach rather than refusing (MIP-2, degradation). Pruning takes only the machine that was asked about, so the tab survives with the member the other machine still holds and is whole again when that daemon speaks.",
+      "given": {
+        "do": [
+          {
+            "see": "local/w1:t1"
+          },
+          {
+            "group": {
+              "tab": "devenv/w1:t1",
+              "into": 0
+            }
+          },
+          {
+            "prune": {
+              "daemon": "devenv",
+              "holds": []
+            }
+          },
+          {
+            "resolve": "local/t1w3r07bsd"
+          },
+          {
+            "resolve": "devenv/t1w3r07bsd"
+          }
+        ]
+      },
+      "expect": {
+        "trace": [
+          "t1w3r07bsd",
+          "t1w3r07bsd",
+          "w1:t1",
+          "(nothing)"
+        ],
+        "located": {
+          "t1w3r07bsd": "local/w1:t1"
+        }
+      }
     }
   ]
 }

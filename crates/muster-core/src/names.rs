@@ -33,6 +33,13 @@
 //!
 //! **Never reused**, so a name that outlives what it named resolves to nothing rather than to
 //! somebody else's work.
+//!
+//! **A tab name may cover a tab on more than one machine; a pane name never does.** A Muster tab
+//! is a grouping Muster made, so one holding a laptop pane beside a devenv pane is one herdr tab
+//! on each, under one name (MIP-2). A pane is a process and lives where it lives. The grouping is
+//! written down here rather than anywhere else because no daemon can be asked for it - neither
+//! knows the other exists - and because the saved arrangement names Muster's tabs and has to
+//! resolve them again after a restart.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
@@ -268,8 +275,24 @@ pub struct Registry<N, B> {
     mint: Mint,
     /// The letter every name from this registry starts with. See [`spell`].
     prefix: char,
-    located: BTreeMap<N, Located<B>>,
+    /// Where each name's thing is, by the machine holding it.
+    ///
+    /// A map per name rather than one location, because a Muster tab may have a member on
+    /// more than one machine: a tab holding a laptop pane beside a devenv pane is one herdr
+    /// tab on each, grouped under one name (MIP-2). This is where that grouping is written
+    /// down, which is what lets the saved arrangement name Muster's tabs and nothing of
+    /// herdr's.
+    ///
+    /// A pane never has two. See [`Registry::spans_daemons`].
+    located: BTreeMap<N, BTreeMap<DaemonId, B>>,
     named: BTreeMap<Located<B>, N>,
+    /// Whether one name may cover a thing on more than one machine.
+    ///
+    /// True for tabs and false for panes, and the difference is not a policy: a pane is a
+    /// process, so it is on the machine it is on, and a second binding for one is a mistake to
+    /// overwrite rather than a member to add. A tab is a grouping Muster made, so a second
+    /// binding is the grouping.
+    spans_daemons: bool,
     /// Names handed out for things that do not exist yet. Panes only.
     ///
     /// A pane is named *before* it is asked for, so there is a moment where a name has been
@@ -301,7 +324,16 @@ pub type TabNames = Registry<TabId, BackendTabId>;
 
 impl PaneNames {
     pub fn new(mint: Mint) -> PaneNames {
-        Registry::of(mint, 'p')
+        Registry::of(mint, 'p', false)
+    }
+
+    /// Which machine holds this pane, or nothing when no attached one does.
+    ///
+    /// Only a pane registry offers this. A pane is on one machine, so the question has an
+    /// answer; a Muster tab may span two, and asking it "where is this" would get one of them
+    /// with no way to tell which.
+    pub fn locate(&self, name: &PaneId) -> Option<Located<BackendPaneId>> {
+        self.members(name).next()
     }
 
     /// A name for a pane that does not exist yet.
@@ -335,7 +367,17 @@ impl PaneNames {
 
 impl TabNames {
     pub fn new(mint: Mint) -> TabNames {
-        Registry::of(mint, 't')
+        Registry::of(mint, 't', true)
+    }
+
+    /// Makes one of this daemon's tabs a member of a Muster tab that already exists.
+    ///
+    /// The whole of grouping. A Muster tab holding panes on two machines is one herdr tab on
+    /// each, and this is what says the second one is part of the first rather than a tab of
+    /// its own. Whatever that daemon's tab was called before is taken back, because a herdr
+    /// tab belongs to exactly one Muster tab.
+    pub fn group(&mut self, name: &TabId, daemon: &DaemonId, backend: &BackendTabId) {
+        self.bind(name.clone(), Located { daemon: daemon.clone(), backend: backend.clone() });
     }
 }
 
@@ -358,12 +400,13 @@ where
     N: Ord + Clone + std::fmt::Display + From<String>,
     B: Ord + Clone + std::fmt::Display + From<String>,
 {
-    fn of(mint: Mint, prefix: char) -> Registry<N, B> {
+    fn of(mint: Mint, prefix: char, spans_daemons: bool) -> Registry<N, B> {
         Registry {
             mint,
             prefix,
             located: BTreeMap::new(),
             named: BTreeMap::new(),
+            spans_daemons,
             reserved: BTreeSet::new(),
             unannounced: BTreeSet::new(),
         }
@@ -398,6 +441,14 @@ where
         name
     }
 
+    /// Holds a name against the next prune, for a binding made from a backend's own answer.
+    ///
+    /// The half of [`name_from_answer`](Registry::name_from_answer) that a caller which already
+    /// has the name needs. See `unannounced`.
+    pub fn hold_unannounced(&mut self, name: &N) {
+        self.unannounced.insert(name.clone());
+    }
+
     /// What this is already called, without naming it if it is not.
     ///
     /// The half of [`name`](Registry::name) that costs nothing, so that the common answer -
@@ -420,33 +471,44 @@ where
     /// own settle, which is what makes the other window adopt it rather than the other way
     /// round.
     pub fn adopt(&mut self, theirs: Registry<N, B>) {
-        for (name, at) in theirs.located {
+        for (name, members) in theirs.located {
             if self.reserved.contains(&name) {
                 continue;
             }
-            // `bind` takes out whatever the two maps used to say, which is what makes this a
-            // replacement rather than a second answer sitting beside the first.
-            self.bind(name, at);
+            for (daemon, backend) in members {
+                // `bind` takes out whatever the two maps used to say about this machine, which
+                // is what makes this a replacement rather than a second answer sitting beside
+                // the first. A member on a machine the record does not mention is kept: the
+                // record is read at the start of a hold and written at the end of it, so a tab
+                // this window has grouped and not yet written is in exactly that state.
+                self.bind(name.clone(), Located { daemon, backend });
+            }
         }
     }
 
-    /// Where this name's thing is, or nothing at all.
+    /// Every machine holding part of this name's thing, and what each calls it.
     ///
-    /// Nothing is the ordinary answer for a name whose thing has closed, and the CLI turns it
+    /// Empty is the ordinary answer for a name whose thing has closed, and the CLI turns it
     /// into a refusal that says so - which is the only honest thing to do with a name that
-    /// used to mean something.
-    pub fn locate(&self, name: &N) -> Option<&Located<B>> {
-        self.located.get(name)
+    /// used to mean something. One entry for a pane; one per machine for a Muster tab that
+    /// somebody has grouped.
+    pub fn members(&self, name: &N) -> impl Iterator<Item = Located<B>> + '_ {
+        self.located
+            .get(name)
+            .into_iter()
+            .flatten()
+            .map(|(daemon, backend)| Located { daemon: daemon.clone(), backend: backend.clone() })
     }
 
     /// What this daemon calls the thing Muster calls `name`.
     ///
     /// Scoped to one daemon on purpose: a name belonging to the devenv resolves to nothing
     /// when the laptop is asked, which is what stops a request going out to the wrong machine
-    /// about an id that machine happens to also use.
+    /// about an id that machine happens to also use. For a Muster tab spanning two machines it
+    /// is the member on the one asked, which is how a request about such a tab reaches both.
     pub fn backend(&self, daemon: &DaemonId, name: &N) -> Option<B> {
-        if let Some(located) = self.located.get(name).filter(|located| &located.daemon == daemon) {
-            return Some(located.backend.clone());
+        if let Some(backend) = self.located.get(name).and_then(|members| members.get(daemon)) {
+            return Some(backend.clone());
         }
         // Under the backend mint a name *is* an id, so the mapping is the identity in both
         // directions and a pane nothing has seen yet still resolves. That is what lets a
@@ -470,8 +532,14 @@ where
         // is filtered against.
         let mut unannounced = std::mem::take(&mut self.unannounced);
         unannounced.retain(|name| !self.holds(daemon, held, name));
-        self.located.retain(|name, at| {
-            &at.daemon != daemon || held.contains(&at.backend) || unannounced.contains(name)
+        // A name loses only this machine's member. For a pane that is the whole entry; for a
+        // Muster tab whose other machine still holds its half, the tab survives with one
+        // member, which is what a devenv dropping out of a grouped tab looks like.
+        self.located.retain(|name, members| {
+            members.retain(|at, backend| {
+                at != daemon || held.contains(backend) || unannounced.contains(name)
+            });
+            !members.is_empty()
         });
         self.named.retain(|at, name| {
             &at.daemon != daemon || held.contains(&at.backend) || unannounced.contains(name)
@@ -481,31 +549,58 @@ where
 
     /// Whether this daemon is holding the thing it calls by this name.
     fn holds(&self, daemon: &DaemonId, held: &BTreeSet<B>, name: &N) -> bool {
-        self.located.get(name).is_some_and(|at| &at.daemon == daemon && held.contains(&at.backend))
+        self.located
+            .get(name)
+            .and_then(|members| members.get(daemon))
+            .is_some_and(|backend| held.contains(backend))
     }
 
-    /// Every name, and where its thing is. In name order, so two writes of an unchanged
-    /// registry produce the same bytes.
-    pub fn entries(&self) -> impl Iterator<Item = (&N, &Located<B>)> {
-        self.located.iter()
+    /// Every name, the machine holding it, and what that machine calls it.
+    ///
+    /// In name order and then machine order, so two writes of an unchanged registry produce the
+    /// same bytes. A Muster tab with a member on two machines is two rows sharing a name, which
+    /// is how the record on disk spells a grouped tab.
+    pub fn entries(&self) -> impl Iterator<Item = (&N, &DaemonId, &B)> {
+        self.located.iter().flat_map(|(name, members)| {
+            members.iter().map(move |(daemon, backend)| (name, daemon, backend))
+        })
     }
 
-    /// Binds a name to a thing, and takes out whatever the two used to say.
+    /// Binds a name to a thing on one machine, and takes out whatever the two used to say.
     ///
     /// The two maps are one fact read from either end, so a stale entry in one of them is a
     /// registry that answers differently depending which way it is asked. That became
     /// reachable when a second window could name a pane this one has already named: settling a
     /// reserved name over a guessed one left the guess in `located`, both names went into the
     /// record, and the next window to read it adopted whichever came first.
+    ///
+    /// What is replaced depends on the noun. A pane's name covers one machine, so binding it
+    /// again takes the old binding out entirely; a tab's covers one member per machine, so
+    /// binding one replaces that machine's member and leaves the others alone.
     fn bind(&mut self, name: N, at: Located<B>) {
         if let Some(previous) = self.named.remove(&at) {
-            self.located.remove(&previous);
+            self.unbind(&previous, &at.daemon);
         }
-        if let Some(previous) = self.located.remove(&name) {
-            self.named.remove(&previous);
+        if self.spans_daemons {
+            self.unbind(&name, &at.daemon);
+        } else if let Some(members) = self.located.remove(&name) {
+            for (daemon, backend) in members {
+                self.named.remove(&Located { daemon, backend });
+            }
         }
-        self.located.insert(name.clone(), at.clone());
+        self.located.entry(name.clone()).or_default().insert(at.daemon.clone(), at.backend.clone());
         self.named.insert(at, name);
+    }
+
+    /// Takes one machine's member out of a name, and the name with it when that was the last.
+    fn unbind(&mut self, name: &N, daemon: &DaemonId) {
+        let Some(members) = self.located.get_mut(name) else { return };
+        if let Some(backend) = members.remove(daemon) {
+            self.named.remove(&Located { daemon: daemon.clone(), backend });
+        }
+        if members.is_empty() {
+            self.located.remove(name);
+        }
     }
 
     /// A name nothing else answers to.
@@ -614,6 +709,23 @@ impl Names {
     pub fn tab_from_answer(&self, backend: &str) -> TabId {
         let backend = BackendTabId::new(backend);
         self.naming(|_, tabs| tabs.name_from_answer(&self.daemon, &backend))
+    }
+
+    /// Makes a tab this daemon has just made a member of a Muster tab that already exists.
+    ///
+    /// What grouping is: the second machine's herdr tab joins a Muster tab instead of becoming
+    /// one of its own. Under the shared record like a mint, because the grouping is the one
+    /// thing about a tab that no daemon can be asked for - it lives only here, and another
+    /// window reading the record is how it learns the two halves are one tab.
+    pub fn group_tab(&self, name: &TabId, backend: &str) {
+        let backend = BackendTabId::new(backend);
+        self.naming(|_, tabs| {
+            tabs.group(name, &self.daemon, &backend);
+            // Held against the next prune on the same terms as `tab_from_answer`: the daemon
+            // answers with the tab's id and announces it a moment later, and a prune in between
+            // would forget the grouping somebody just asked for.
+            tabs.hold_unannounced(name);
+        });
     }
 
     /// Names something while holding the shared record, and leaves the record saying so.
@@ -727,6 +839,10 @@ const VERSION: i64 = 1;
 /// tab each region was showing, so a registry that forgot its tabs would fail every region's
 /// check on reopen and open the window as a first launch, every launch.
 ///
+/// A tab that spans machines is two `[[tab]]` rows sharing a name, which is why grouping needed
+/// no change to this format. It is also the only place that grouping exists: a daemon holds one
+/// half of such a tab and has never been told about the other.
+///
 /// TOML for the reason the arrangement beside it is TOML: one format to learn, and a file
 /// somebody opens when a name stops resolving.
 pub fn to_toml(panes: &PaneNames, tabs: &TabNames) -> String {
@@ -797,11 +913,11 @@ where
 {
     names
         .entries()
-        .map(|(name, at)| {
+        .map(|(name, daemon, backend)| {
             let mut table = toml::Table::new();
             table.insert("name".to_string(), toml::Value::String(name.to_string()));
-            table.insert("daemon".to_string(), toml::Value::String(at.daemon.to_string()));
-            table.insert("backend".to_string(), toml::Value::String(at.backend.to_string()));
+            table.insert("daemon".to_string(), toml::Value::String(daemon.to_string()));
+            table.insert("backend".to_string(), toml::Value::String(backend.to_string()));
             toml::Value::Table(table)
         })
         .collect()

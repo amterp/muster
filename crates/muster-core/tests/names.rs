@@ -84,7 +84,7 @@ fn pane_names_conformance() {
 
         let located: Map<String, Value> = names
             .entries()
-            .map(|(name, at)| (name.to_string(), json!(format!("{}/{}", at.daemon, at.backend))))
+            .map(|(name, daemon, backend)| (name.to_string(), json!(format!("{daemon}/{backend}"))))
             .collect();
 
         Ok(fields([("trace", Some(json!(trace))), ("located", Some(Value::Object(located)))]))
@@ -116,6 +116,21 @@ fn tab_names_conformance() {
                         .name_from_answer(&daemon, &BackendTabId::new(backend.as_str()))
                         .to_string(),
                 );
+            } else if let Some(group) = step.get("group") {
+                // What makes a tab span machines: this daemon's tab joins the Muster tab named
+                // instead of being one of its own. `into` is a place in the trace so far, so a
+                // case does not have to know what the mint drew.
+                let (daemon, backend) = split(group["tab"].as_str().unwrap_or_default())?;
+                let at = usize::try_from(group["into"].as_u64().unwrap_or_default())
+                    .map_err(|_| CaseError::new(format!("{step} names no place in the trace")))?;
+                let into = TabId::new(
+                    trace
+                        .get(at)
+                        .ok_or_else(|| CaseError::new(format!("nothing named yet in {step}")))?
+                        .clone(),
+                );
+                names.group(&into, &daemon, &BackendTabId::new(backend.as_str()));
+                trace.push(into.to_string());
             } else if let Some(at) = step.get("resolve").and_then(Value::as_str) {
                 // `local/t1w3r07bsd` - the outward direction, which is what every request about a
                 // tab needs and which the trace of minted names cannot say anything about.
@@ -141,10 +156,17 @@ fn tab_names_conformance() {
             }
         }
 
-        let located: Map<String, Value> = names
-            .entries()
-            .map(|(name, at)| (name.to_string(), json!(format!("{}/{}", at.daemon, at.backend))))
-            .collect();
+        // One entry per name, with a grouped tab's members joined by a space. A tab with one
+        // member reads exactly as it did before tabs could span machines, which is every tab
+        // in this file that is not about grouping.
+        let mut located: Map<String, Value> = Map::new();
+        for (name, daemon, backend) in names.entries() {
+            let at = format!("{daemon}/{backend}");
+            match located.get(name.as_str()).and_then(Value::as_str) {
+                Some(held) => located.insert(name.to_string(), json!(format!("{held} {at}"))),
+                None => located.insert(name.to_string(), json!(at)),
+            };
+        }
 
         Ok(fields([("trace", Some(json!(trace))), ("located", Some(Value::Object(located)))]))
     });
@@ -261,7 +283,7 @@ fn what_is_written_is_what_comes_back() {
     assert_ne!(first, second, "one backend id on two daemons is two panes");
 
     assert_eq!(
-        read_tabs.locate(&tab).map(|at| at.backend.to_string()),
+        read_tabs.members(&tab).next().map(|at| at.backend.to_string()),
         Some("w1:t1".to_string()),
         "a tab name did not survive the file"
     );
