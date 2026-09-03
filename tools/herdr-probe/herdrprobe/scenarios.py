@@ -1854,6 +1854,86 @@ def read_depth(daemon, rec: Recorder) -> None:
         rec.note(f"pane.read with an offset key succeeded, returned {len(paged)} rows, "
                  f"identical to the read without one: {paged == plain}")
 
+        # 6. Where a read's bottom row actually is. Everything above compares a read's
+        # tail against a full screen, where the two line up; a screen with blank rows
+        # below its last printed one is the case that decides whether "the nth line from
+        # the end is offset n" is a rule or a coincidence. `ESC[2J ESC[H` erases the
+        # screen and leaves the scrollback, so the pane still has history to scroll
+        # through - `clear` sends `ESC[3J` as well and would take that away.
+        stream.send_input_text("printf '\\033[2J\\033[H'; printf 'TOP\\n'\n")
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline:
+            if "TOP" in _read(poll, "w1:p1", "recent", 1000)["text"]:
+                break
+            time.sleep(0.2)
+        stream.wait_quiet(0.5, timeout=10)
+        scroll = client.request("pane.get", {"pane_id": "w1:p1"})["pane"]["scroll"]
+        blanked = _read(client, "w1:p1", "recent", 1000)
+        visible = _rows(_read(client, "w1:p1", "visible"))
+        held = scroll.get("max_offset_from_bottom", 0) + scroll.get("viewport_rows", 0)
+        rec.fact("blank_bottom_read", {
+            "scroll": scroll,
+            "rows_returned": len(_rows(blanked)),
+            "truncated": blanked["truncated"],
+            "visible_rows_returned": len(visible),
+            "viewport_rows": scroll.get("viewport_rows"),
+        })
+        # The claim a client's positioning rests on once the screen is not full: the rows
+        # herdr left out are the blank ones, and the count is the read's window minus what
+        # came back. A read that hit the thousand-row cap looked at a thousand; one that
+        # did not looked at the whole pane.
+        window = min(1000, held) if blanked["truncated"] else held
+        rec.fact("trimmed_rows_are_the_blank_remainder_of_the_viewport",
+                 window - len(_rows(blanked)) ==
+                 scroll.get("viewport_rows", 0) - len(visible))
+        rec.note(f"after erasing the screen the pane holds {held} rows and a read of "
+                 f"{window} returned {len(_rows(blanked))}, with {len(visible)} of the "
+                 f"{scroll.get('viewport_rows')} viewport rows printed")
+
+        # 7. And what a full-screen program leaves behind. Every agent pane is one, so
+        # this is the shape a client's find is most often asked about: the alternate
+        # screen has no scrollback by definition, and the question is whether a read of
+        # one is distinguishable from a read of a pane that simply has no history. `TOP`
+        # rather than a ruler row is what is looked for either side of it: the ruler's
+        # first rows are past the thousand-row cap, so their absence would say nothing
+        # about the alternate screen.
+        stream.send_input_text("printf '\\033[?1049h'; printf 'FULLSCREEN\\n'\n")
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline:
+            if "FULLSCREEN" in _read(poll, "w1:p1", "visible")["text"]:
+                break
+            time.sleep(0.2)
+        stream.wait_quiet(0.5, timeout=10)
+        alternate = _read(client, "w1:p1", "recent", 1000)
+        rec.fact("alternate_screen_read", {
+            "scroll": client.request("pane.get", {"pane_id": "w1:p1"})["pane"]["scroll"],
+            "rows_returned": len(_rows(alternate)),
+            "truncated": alternate["truncated"],
+            "reaches_the_main_screen_history": "TOP" in alternate["text"],
+        })
+        rec.note("on the alternate screen the pane reports no scrollback and a read "
+                 "returns the visible rows, with truncated false")
+        stream.send_input_text("printf '\\033[?1049l'\n")
+        stream.wait_quiet(0.5, timeout=10)
+        restored = _read(client, "w1:p1", "recent", 1000)
+        rec.fact("main_screen_history_survives_the_alternate_screen",
+                 "TOP" in restored["text"])
+
+        # 8. And the second way to arrive at the same shape, on the main screen. `ESC[3J`
+        # is what `clear` sends alongside the erase, and plenty of programs send it on
+        # their own - so a pane with a long history can be left holding one screen with
+        # no full-screen program involved.
+        stream.send_input_text("printf '\\033[3J'\n")
+        stream.wait_quiet(0.5, timeout=10)
+        erased = _read(client, "w1:p1", "recent", 1000)
+        rec.fact("erase_scrollback_read", {
+            "scroll": client.request("pane.get", {"pane_id": "w1:p1"})["pane"]["scroll"],
+            "rows_returned": len(_rows(erased)),
+            "truncated": erased["truncated"],
+        })
+        rec.note("after ESC[3J the pane reports no scrollback, the same shape the "
+                 "alternate screen leaves")
+
 
 
 def arranging(daemon, rec: Recorder) -> None:

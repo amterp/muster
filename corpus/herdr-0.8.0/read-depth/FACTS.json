@@ -1,11 +1,41 @@
 {
+  "alternate_screen_read": {
+    "reaches_the_main_screen_history": false,
+    "rows_returned": 4,
+    "scroll": {
+      "max_offset_from_bottom": 0,
+      "offset_from_bottom": 0,
+      "viewport_rows": 24
+    },
+    "truncated": false
+  },
+  "blank_bottom_read": {
+    "rows_returned": 978,
+    "scroll": {
+      "max_offset_from_bottom": 2985,
+      "offset_from_bottom": 0,
+      "viewport_rows": 24
+    },
+    "truncated": true,
+    "viewport_rows": 24,
+    "visible_rows_returned": 2
+  },
   "deepest_read_vs_max_offset_from_bottom": {
     "max_offset_from_bottom": 2978,
     "rows_read": 1000
   },
+  "erase_scrollback_read": {
+    "rows_returned": 4,
+    "scroll": {
+      "max_offset_from_bottom": 0,
+      "offset_from_bottom": 0,
+      "viewport_rows": 24
+    },
+    "truncated": false
+  },
   "long_line_row_widths_in_recent": [
     80,
-    29,
+    38,
     80,
     80,
     7
@@ -13,6 +43,7 @@
   "long_line_row_widths_in_recent_unwrapped": [
     167
   ],
+  "main_screen_history_survives_the_alternate_screen": true,
   "method_exists__pane_find": false,
   "method_exists__pane_scroll": false,
   "method_exists__pane_search": false,
@@ -47,6 +78,7 @@
     "viewport_rows": 24
   },
   "scrolled_screen_is_the_predicted_slice_of_recent": true,
+  "trimmed_rows_are_the_blank_remainder_of_the_viewport": true,
   "unknown_offset_key_is_accepted_and_ignored": {
     "request_succeeded": true,
     "rows_returned": 1000,
