@@ -51,7 +51,7 @@ fn a_needle_is_counted_and_the_pane_lands_on_what_it_found() {
     assert_eq!(all.total, ROWS, "one match per printed row, and none in the command's echo");
     assert_eq!(all.selected, 1, "the first match is selected, counting from one");
     assert!(all.rows_searched >= ROWS, "the read reached every printed row");
-    assert!(!all.truncated, "{ROWS} rows is well inside what herdr hands over");
+    assert_eq!(all.reach, "whole", "{ROWS} rows is well inside what herdr hands over");
 
     // One row deep in the pane, and the claim the whole feature rests on: the core reads the
     // history, works out where the match is, and scrolls the pane onto it. Nothing here asks
@@ -88,6 +88,43 @@ fn a_needle_is_counted_and_the_pane_lands_on_what_it_found() {
     assert!(
         reason.contains("nothing is being searched for"),
         "stepping with no search open should say so, and said: {reason}"
+    );
+
+    // And the same landing over a pane whose program left the bottom of the screen empty.
+    // herdr trims those rows off a read, so every offset taken from one is short by however
+    // many there were - which put the landing twenty-odd rows below the match, on a screen
+    // that does not carry it. `ESC[2J ESC[H` rather than `clear`, which would send `ESC[3J`
+    // too and leave the pane with no history to search.
+    typing.daemon.call(
+        "pane.send_text",
+        &json!({ "pane_id": typing.pane.as_str(),
+                 "text": "printf '\\033[2J\\033[H'; printf 'TOP\\n'\n" }),
+    );
+    // Waited for at the bottom of the pane rather than on screen: the landings above left
+    // the viewport a hundred rows up, so what the surface is drawing is the ruler rather than
+    // anything just printed.
+    until(
+        "the screen to be cleared",
+        || {
+            let read = typing.daemon.call(
+                "pane.read",
+                &json!({ "pane_id": typing.pane.as_str(), "source": "recent", "lines": 1000,
+                         "strip_ansi": true }),
+            );
+            read["read"]["text"].as_str().unwrap_or_default().contains("TOP")
+        },
+        || typing.bridge.diagnosis("the screen was never cleared, so nothing was left blank"),
+    );
+    assert_eq!(findings(find(wanted)).total, 1, "the row is still in the pane's history");
+    until(
+        &format!("the pane to land on {wanted} from a screen with blank rows below"),
+        || typing.bridge.lines().iter().any(|line| line.contains(wanted)),
+        || {
+            typing.bridge.diagnosis(
+                "the landing stopped short of the match by the rows herdr trimmed off the \
+                 bottom of its answer",
+            )
+        },
     );
 }
 

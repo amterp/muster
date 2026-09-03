@@ -250,9 +250,23 @@ impl BackendChannel for HerdrBackend {
     /// so this is the match half and [`HerdrBackend::read`] above is the read half. The day a
     /// daemon-side search lands, this body becomes one request and `find::found_in` stops
     /// being called from here.
+    ///
+    /// **The viewport is asked for first, and the order is not arbitrary.** The two answers
+    /// have to describe one pane and a pane goes on printing between them, so one of them is
+    /// always slightly old. Asked in this order the read is the newer one, and a read holding
+    /// more rows than the pane was said to hold reads as no blank rows trimmed - which
+    /// under-corrects and lands a hit a little low. The other order over-corrects, and
+    /// scrolls past the match to a screen that does not hold it.
     fn find(&self, pane: &PaneId, needle: &Needle) -> Result<Found, Refusal> {
+        let viewport = self.viewport(pane)?;
         let read = self.read(pane)?;
-        Ok(found_in(&read.text, needle, read.truncated))
+        // How many grid rows herdr looked at, which is the whole pane unless it hit its own
+        // thousand-row ceiling - and `truncated` is its answer to which of those happened
+        // (`observations/herdr-0.8.0.md` section 17). The count is what tells `found_in` how
+        // many blank rows were trimmed off the bottom of the answer.
+        let rows_read =
+            if read.truncated { ROWS_READ.min(viewport.rows_held()) } else { viewport.rows_held() };
+        Ok(found_in(&read.text, needle, viewport, rows_read))
     }
 
     fn viewport(&self, pane: &PaneId) -> Result<Viewport, Refusal> {

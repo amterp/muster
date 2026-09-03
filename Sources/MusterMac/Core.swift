@@ -606,16 +606,30 @@ public enum Core {
 
   /// What a search found, which is everything the find bar draws.
   public struct Findings: Equatable, Sendable {
+    /// How much of the pane a search covered.
+    ///
+    /// The three cases want three different sentences under a search box, and only the core
+    /// can tell them apart - a bar cannot work out from a row count whether the rows it did
+    /// not see are out of reach or are not there at all.
+    public enum Reach: Equatable, Sendable {
+      /// Every row the pane holds. Draws no caveat.
+      case whole
+      /// The pane holds `rowsHeld` rows and the daemon would not hand them all over.
+      case capped(rowsHeld: UInt32)
+      /// The pane keeps no history behind the screen. What a full-screen program leaves.
+      case screenOnly
+    }
+
     public let total: UInt32
     /// Which match is selected, counting from one. Zero when nothing matched.
     public let selected: UInt32
     /// How many rows the core managed to look at.
     public let rowsSearched: UInt32
-    /// Whether the pane holds history the search never reached.
-    public let truncated: Bool
+    public let reach: Reach
 
     /// Nothing typed, so nothing found. What an empty field shows.
-    public static let none = Findings(total: 0, selected: 0, rowsSearched: 0, truncated: false)
+    public static let none = Findings(
+      total: 0, selected: 0, rowsSearched: 0, reach: .whole)
   }
 
   /// Looks for text in the pane the keyboard is on, and lands on the first match.
@@ -655,9 +669,18 @@ public enum Core {
   }
 
   static func read(_ answer: Muster_Findings) -> Findings {
-    Findings(
+    // A word the core spells rather than a number, and an unknown one reads as the reach
+    // that draws nothing. A shell that guessed here would put a caveat under a search box
+    // on the strength of a string it did not recognise.
+    let reach: Findings.Reach =
+      switch answer.reach {
+      case "capped": .capped(rowsHeld: answer.rowsHeld)
+      case "screen_only": .screenOnly
+      default: .whole
+      }
+    return Findings(
       total: answer.total, selected: answer.selected,
-      rowsSearched: answer.rowsSearched, truncated: answer.truncated)
+      rowsSearched: answer.rowsSearched, reach: reach)
   }
 
   /// Points this window's keyboard at a pane, and tells the daemon somebody looked.

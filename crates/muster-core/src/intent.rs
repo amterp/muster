@@ -516,6 +516,10 @@ pub trait BackendChannel: Send + Sync + std::fmt::Debug {
     /// matches it with `find::found_in`, which is what herdr's adapter does today. Either way
     /// the answer is the same shape and everything above it is the same code, so gaining a
     /// daemon-side search is one function body rather than a feature rewritten.
+    ///
+    /// The answer carries the pane's viewport, so an implementation has to establish it -
+    /// `Found`'s offsets are about that viewport, and a caller landing on a hit scrolls
+    /// against the same one rather than asking a second time.
     fn find(&self, pane: &PaneId, needle: &Needle) -> Result<Found, Refusal>;
 
     /// Where a pane is looking, so that something found can be scrolled to.

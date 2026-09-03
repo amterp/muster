@@ -19,12 +19,16 @@ private final class FindingDispatcher: Dispatcher, @unchecked Sendable {
   /// What every find and step will be answered with.
   private let answer: Muster_Findings
 
-  init(total: UInt32 = 0, selected: UInt32 = 0, rows: UInt32 = 0, truncated: Bool = false) {
+  init(
+    total: UInt32 = 0, selected: UInt32 = 0, rows: UInt32 = 0, reach: String = "whole",
+    rowsHeld: UInt32 = 0
+  ) {
     var findings = Muster_Findings()
     findings.total = total
     findings.selected = selected
     findings.rowsSearched = rows
-    findings.truncated = truncated
+    findings.reach = reach
+    findings.rowsHeld = rowsHeld
     answer = findings
   }
 
@@ -163,5 +167,35 @@ struct FindTests {
 
     #expect(view.highlight("error") == ["search:error"])
     #expect(surface.highlighted == ["error"])
+  }
+}
+
+@Suite("find reach")
+struct FindReachTests {
+  // How much of a pane a search covered is the core's answer and the bar's to draw, and the
+  // decoding is the only place the two meet. A word the shell does not recognise has to read
+  // as the reach that draws nothing: a caveat put under a search box on the strength of an
+  // unrecognised string would be a claim nobody made.
+
+  @Test("each word the core spells decodes to the reach it names")
+  func eachWordDecodes() {
+    #expect(reach("whole") == .whole)
+    #expect(reach("screen_only") == .screenOnly)
+    #expect(reach("capped", rowsHeld: 3000) == .capped(rowsHeld: 3000))
+  }
+
+  @Test("a word this shell does not know draws no caveat")
+  func anUnknownWordIsQuiet() {
+    // What a core one version ahead would send. The bar drawing "last 39 of 0" from a reach
+    // it could not read would be worse than drawing nothing.
+    #expect(reach("something_new") == .whole)
+    #expect(reach("") == .whole)
+  }
+
+  private func reach(_ word: String, rowsHeld: UInt32 = 0) -> Core.Findings.Reach {
+    var findings = Muster_Findings()
+    findings.reach = word
+    findings.rowsHeld = rowsHeld
+    return Core.read(findings).reach
   }
 }
