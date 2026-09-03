@@ -1295,3 +1295,50 @@ other side, and one terminal would be traded back and forth until both gave up.
 
 Evidence: `corpus/herdr-0.8.0/closing-reasons/`, one line per case, recorded against a scratch
 daemon with three `terminal session control` clients.
+
+## 25. Two verbs for sending text, and only one of them is encoded
+
+Recorded 2026-09-03, prompted by kan a_2ImLVumEP: `muster pane send` was reported as
+truncating at 1024 bytes and losing multi-line messages, and neither half turned out to be
+what it looked like.
+
+Section 5 established that `pane.send_input` encodes against the pane's live `input_state()`
+while the control stream does not. What it did not record is that `pane.send_text` is the same
+raw write - so herdr has two text verbs, they differ, and the difference is invisible until a
+program is reading. Into a raw-mode receiver that had enabled bracketed paste:
+
+| Sent | What the program read |
+|---|---|
+| `pane.send_text` `"line one\nline two\nline three"` | `line one\nline two\nline three` |
+| `pane.send_input` `"line one\nline two\nline three"` | `\x1b[200~line one\nline two\nline three\x1b[201~` |
+
+So an unfenced multi-line payload reaches a harness as several submissions - every newline in
+it is a newline - and a fenced one reaches it as one thing to edit. Muster's paste already
+used the second verb and `pane send` used the first, which is the whole of that bug.
+
+**Neither verb caps a payload.** Both carried 10,000 bytes intact into a receiver that drains
+as fast as it is written to.
+
+### The 1024 belongs to the receiving terminal
+
+The cap appears only when the program in the pane has left the terminal in canonical mode -
+`cat`, a script reading stdin, anything with no line editor of its own. An interactive shell
+is not this case, because zle and readline run in raw mode.
+
+| A line of | A canonical-mode pane read | A bare pty read |
+|---|---|---|
+| 1001 bytes | 1001 | 1001 |
+| 1024 bytes | 1024 | 1024 |
+| 1025 bytes | 0 | 0 |
+| 2201 bytes | 0 | 0 |
+
+Terminator included on both sides. The right-hand column is the control: a pty this repo's own
+probe forks, with no daemon anywhere near it, answering identically. So the boundary is the
+line discipline's `MAX_CANON` and nothing in herdr or Muster can raise it.
+
+**The failure is discard, not truncation**, which is what made it read as a clean cut at 1024:
+the tty echoes the first thousand-odd characters to the screen and then drops the whole line
+when its terminator arrives. Somebody reading the pane sees 1024 bytes of their message and
+concludes that much of it landed. None of it did.
+
+Evidence: `corpus/herdr-0.8.0/sending-text/`, and `bare-pty.json` there for the control.

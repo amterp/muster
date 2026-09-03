@@ -637,8 +637,8 @@
       }
     },
     {
-      "name": "text sent to a pane names the pane and carries no newline",
-      "why": "`pane_id` here rather than the `target_pane_id` a split takes, which is the same silent trap from the other side. And the text goes out exactly as given: Return is a second request, because herdr encodes a named key against the pane's live modes while a newline in this string is only a newline - and a program reading a bracketed paste treats those as different things, taking one as a submission and the other as more text to buffer.",
+      "name": "text sent to a pane goes out on the verb the daemon encodes",
+      "why": "`pane_id` here rather than the `target_pane_id` a split takes, which is the same silent trap from the other side.\n\nAnd `pane.send_input` rather than `pane.send_text`, which is the verb that reads like the obvious one and is wrong. Both put text in a pane; only this one is encoded against the pane's live modes, so only this one is fenced as a paste when the program in the pane has asked to be told about one. Sent on the other verb, every newline in a multi-line message arrives as a submission and the harness reads the last line as the whole prompt (`observations/herdr-0.8.0.md` section 25). This is also the verb the keyboard's own paste sends, and one act reaching a daemon by two spellings is how the two came to disagree.\n\nThe text goes out exactly as given: Return is a second request carrying a named key, because herdr encodes that against the pane's live modes while a newline in this string is only a newline.",
       "given": {
         "intent": "send_text",
         "pane": "p1",
@@ -646,7 +646,7 @@
         "enter": true
       },
       "expect": {
-        "method": "pane.send_text",
+        "method": "pane.send_input",
         "params": {
           "pane_id": "p1",
           "text": "read AGENTS.md and wait"
@@ -663,7 +663,7 @@
         "enter": false
       },
       "expect": {
-        "method": "pane.send_text",
+        "method": "pane.send_input",
         "params": {
           "pane_id": "p1",
           "text": "read AGENTS.md and wait"

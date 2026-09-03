@@ -2308,6 +2308,199 @@ def _tab_in(payload: dict):
     return None
 
 
+# --------------------------------------------------------------------------- 25
+
+# A receiver that says exactly what reached it, rather than what a grid drew.
+#
+# Raw mode with bracketed paste on, because that is the shape of every harness Muster's
+# `pane send` exists to talk to: a full-screen agent that has taken the terminal and asked
+# to be told when a paste starts. What it writes is the bytes, so a fence shows up as a
+# fence instead of vanishing into the screen the way it does when a program interprets it.
+_PASTE_RECEIVER = """\
+import os, select, sys, time, tty
+tty.setraw(0)
+os.write(1, b'\\x1b[?2004h')
+out = open(sys.argv[1], 'wb')
+os.set_blocking(0, False)
+deadline = time.time() + 10
+while time.time() < deadline:
+    if select.select([0], [], [], 0.1)[0]:
+        try:
+            chunk = os.read(0, 65536)
+        except BlockingIOError:
+            continue
+        if not chunk:
+            break
+        out.write(chunk)
+        out.flush()
+        deadline = time.time() + 1.2
+out.close()
+open(sys.argv[1] + '.done', 'w').write('1')
+"""
+
+# The same receiver with the terminal left alone, which is canonical mode: no line editor,
+# the kernel's line discipline holding a line until its terminator. `cat` is this case, and
+# so is any program that reads stdin without taking the terminal over.
+_COOKED_RECEIVER = _PASTE_RECEIVER.replace(
+    "tty.setraw(0)\nos.write(1, b'\\x1b[?2004h')\n", ""
+)
+
+_MULTI_LINE = "line one\nline two\nline three"
+
+
+def sending_text(daemon, rec: Recorder) -> None:
+    """What reaches a pane's program when a client sends it text, by each of herdr's two verbs.
+
+    Muster has one act called "send this text to that pane" and herdr has two verbs for it.
+    `pane.send_text` is the raw write section 5 recorded; `pane.send_input` is the one that
+    encodes against the pane's live `input_state()`. Section 5 established that the second
+    exists and that Muster's paste uses it. What nothing had recorded is the difference it
+    makes to a payload, which is the fact `pane send` now rests on.
+
+    The interesting payload is a multi-line one. A fenced paste arrives as one thing to edit;
+    an unfenced one arrives as several submissions, because every newline in it is a newline.
+
+    Also here, and deliberately, the control that says where a 1024-byte boundary comes from.
+    A cap was reported against `pane send` and attributed to herdr; it is the receiving
+    terminal's, and the only way to show that is to measure both a pane and a bare pty that no
+    daemon is anywhere near.
+    """
+    client = RecordingClient(daemon.client(), rec)
+    _new_workspace(client)
+    time.sleep(0.4)
+
+    receivers = daemon.root / "receivers"
+    receivers.mkdir(parents=True, exist_ok=True)
+    (receivers / "paste.py").write_text(_PASTE_RECEIVER)
+    (receivers / "cooked.py").write_text(_COOKED_RECEIVER)
+
+    def deliver(tag: str, receiver: str, method: str, text: str, submit: bool = False) -> bytes:
+        """One send into a freshly started receiver, and the bytes it read."""
+        dest = receivers / f"{tag}.bin"
+        for path in (dest, Path(str(dest) + ".done")):
+            path.unlink(missing_ok=True)
+        # `stty sane` first, every time. A receiver that took the terminal raw does not put
+        # it back on the way out, so without this each trial measures whatever the last one
+        # left - and the canonical half measures nothing at all.
+        client.request(
+            "pane.send_text",
+            {"pane_id": "w1:p1", "text": f"stty sane; python3 {receivers / receiver} {dest}"},
+        )
+        client.request("pane.send_input", {"pane_id": "w1:p1", "keys": ["enter"]})
+        time.sleep(2.0)
+        client.request(method, {"pane_id": "w1:p1", "text": text})
+        if submit:
+            time.sleep(0.5)
+            client.request("pane.send_input", {"pane_id": "w1:p1", "keys": ["enter"]})
+        deadline = time.time() + 25
+        while time.time() < deadline and not Path(str(dest) + ".done").exists():
+            time.sleep(0.2)
+        return dest.read_bytes() if dest.exists() else b""
+
+    fenced = {}
+    for method in ("pane.send_text", "pane.send_input"):
+        short = method.split(".")[1]
+        got = deliver(f"{short}-multiline", "paste.py", method, _MULTI_LINE)
+        fenced[method] = got.startswith(b"\x1b[200~") and got.endswith(b"\x1b[201~")
+        rec.write_bytes(f"{short}-multiline.bin", got)
+        rec.note(f"{method} delivered {got!r}")
+
+    rec.fact("send_text_fences_a_paste", fenced["pane.send_text"])
+    rec.fact("send_input_fences_a_paste", fenced["pane.send_input"])
+
+    # Well past the reported 1024, into a receiver that drains as fast as it is written to.
+    # Neither verb is the cap, which is what makes the cooked measurement below meaningful
+    # rather than just another number.
+    long_payload = "A" * 10000
+    carried = {}
+    for method in ("pane.send_text", "pane.send_input"):
+        short = method.split(".")[1]
+        got = deliver(f"{short}-long", "paste.py", method, long_payload)
+        body = got.replace(b"\x1b[200~", b"").replace(b"\x1b[201~", b"")
+        carried[method] = len(body)
+        rec.note(f"{method} carried {len(body)} of {len(long_payload)} bytes into a raw-mode reader")
+    rec.fact("bytes_a_raw_mode_reader_received", carried)
+
+    # And the same daemon into a program that left the terminal in canonical mode. The
+    # boundary is a line's, and over it the line is discarded rather than cut - which is why
+    # the screen's echo of the first thousand-odd characters reads as a truncation.
+    cooked = {}
+    for size in (1000, 1023, 1024, 1030, 2200):
+        got = deliver(f"cooked-{size}", "cooked.py", "pane.send_text", "B" * size, submit=True)
+        # Terminator included on both sides of this comparison, so the number here and the
+        # bare pty's below are the same measurement and not two accountings of it.
+        cooked[size] = len(got)
+        rec.note(f"a canonical-mode reader saw {cooked[size]} of a {size + 1}-byte line")
+    rec.fact("bytes_a_canonical_mode_reader_received", cooked)
+
+    bare = _bare_pty_line_limit()
+    rec.write_json("bare-pty.json", bare)
+    rec.fact("bytes_a_bare_pty_carried", bare)
+    rec.note("the same boundary on a pty with no daemon near it: " + json.dumps(bare))
+
+
+def _bare_pty_line_limit() -> dict[str, int]:
+    """The control: one write into a pty this process owns, no herdr in the picture.
+
+    Written as a fork rather than as a claim about MAX_CANON, because what the constant says
+    and what the line discipline does are two things and only one of them is evidence.
+    """
+    import os
+    import pty
+    import select
+    import termios
+
+    results = {}
+    for size in (1000, 1023, 1024, 1030, 2200):
+        pid, fd = pty.fork()
+        if pid == 0:
+            modes = termios.tcgetattr(0)
+            modes[3] &= ~termios.ECHO
+            termios.tcsetattr(0, termios.TCSANOW, modes)
+            total = 0
+            os.set_blocking(0, False)
+            deadline = time.time() + 1.5
+            while time.time() < deadline:
+                if select.select([0], [], [], 0.1)[0]:
+                    try:
+                        chunk = os.read(0, 1 << 20)
+                    except BlockingIOError:
+                        continue
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    deadline = time.time() + 0.6
+            os.write(1, f"<<{total}>>".encode())
+            os._exit(0)
+        time.sleep(0.4)
+        # In its own thread: a canonical-mode pty whose buffer is full blocks the writer, and
+        # a probe that hangs here would look like a daemon that never answered.
+        written = threading.Thread(
+            target=lambda: os.write(fd, b"B" * size + b"\n"), daemon=True
+        )
+        written.start()
+        written.join(5)
+        said = b""
+        deadline = time.time() + 6
+        while time.time() < deadline and b">>" not in said:
+            if select.select([fd], [], [], 0.2)[0]:
+                try:
+                    chunk = os.read(fd, 65536)
+                except OSError:
+                    break
+                if not chunk:
+                    break
+                said += chunk
+        for ending in (lambda: os.kill(pid, 9), lambda: os.waitpid(pid, 0), lambda: os.close(fd)):
+            try:
+                ending()
+            except OSError:
+                pass
+        digits = said.split(b"<<")[-1].split(b">>")[0]
+        results[size] = int(digits) if digits.isdigit() else -1
+    return results
+
+
 ALL = {
     "snapshot": snapshot,
     "frames": frames,
@@ -2325,4 +2518,5 @@ ALL = {
     "naming": naming,
     "read-depth": read_depth,
     "arranging": arranging,
+    "sending-text": sending_text,
 }
