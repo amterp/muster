@@ -38,6 +38,53 @@ APP = REPO / ".build/arm64-apple-macosx/debug/muster"
 BUNDLED_APP = REPO / ".build/muster.app/Contents/MacOS/muster"
 ROOT = Path("/private/tmp/muster-smoke")
 
+
+def pinned_herdr() -> str:
+    """The daemon `deps/herdr.pin` names, which is what every other tier runs against.
+
+    Not `herdr` on PATH, which is what this tier used to reach for. A contract tier judged
+    against whatever daemon the developer happens to have installed is judged against a
+    version nothing here recorded, and on a machine set up the way this project intends there
+    is no herdr on PATH at all - the stop that silently did nothing (a_2I7ASgulK) was that,
+    exiting quietly under check=False.
+    """
+    pin = json.loads((REPO / "deps/herdr.pin").read_text())
+    binary = REPO / "deps/herdr" / pin["version"] / "herdr"
+    if not binary.is_file():
+        sys.exit(
+            f"smoke: no pinned herdr at {binary}.\n"
+            f"  Impact: this tier has no daemon to launch the app against.\n"
+            f"  Fix: ./dev -t downloads and verifies it."
+        )
+    return str(binary)
+
+
+def stop_daemon(socket: Path, env: dict | None = None) -> None:
+    """Ends the daemon listening on one socket, by the one spelling that works.
+
+    `HERDR_SOCKET_PATH` rather than a `--socket` option herdr 0.8.0 does not have, and rather
+    than the session variable, which `scratch_home` pops - so the CLI resolved the default
+    session while the daemon sat on `muster` and found no socket to talk to. Both spellings
+    exited quietly and left the daemon running, which is how this went unnoticed for as long
+    as it did (a_2I7ASgulK).
+
+    One helper rather than a line per check, because three call sites got it three ways and
+    only one of them worked.
+    """
+    if not socket.exists():
+        return
+    subprocess.run(
+        [pinned_herdr(), "server", "stop"],
+        env={**(env or os.environ), "HERDR_SOCKET_PATH": str(socket)},
+        capture_output=True,
+        check=False,
+    )
+
+
+def sockets_under(root: Path) -> list[Path]:
+    """Every herdr socket beneath a directory, whoever put it there."""
+    return sorted(root.glob("**/herdr.sock")) if root.is_dir() else []
+
 # What launchd gives a GUI process, which is what an app opened from the Dock, Finder or
 # Spotlight actually has. Every directory on it is SIP-protected, so a herdr cannot be put on it
 # even deliberately - which is why a bundle whose bridge has to *find* a daemon cannot work, and
@@ -688,12 +735,7 @@ def check_a_pane_can_drive_its_own_window() -> None:
             )
     finally:
         stop(app)
-        subprocess.run(
-            [str(REPO / ".build/arm64-apple-macosx/debug/herdr"), "server", "stop"],
-            env=env,
-            capture_output=True,
-            check=False,
-        )
+        stop_daemon(socket, env)
 
 
 def check_cold_start() -> None:
@@ -752,12 +794,7 @@ def check_cold_start() -> None:
                 "the daemon fell back to defaults for everything including its update checks"
             )
     finally:
-        subprocess.run(
-            [str(APP.parent / "herdr"), "server", "stop"],
-            env={**env, "HERDR_SESSION": "muster"},
-            capture_output=True,
-            check=False,
-        )
+        stop_daemon(socket, env)
 
 
 def saved_composition_version() -> int:
@@ -860,12 +897,50 @@ def check_a_broken_config_opens_the_roster() -> None:
                 "are meant to be ignored, not the session"
             )
     finally:
-        if socket.exists():
-            subprocess.run(
-                ["herdr", "--socket", str(socket), "server", "stop"],
-                capture_output=True,
-                check=False,
-            )
+        stop_daemon(socket, env)
+
+
+def end_what_the_last_run_left() -> None:
+    """Ends any daemon still listening under ROOT from an earlier run.
+
+    A run that was interrupted, or that crashed outside a `finally`, leaves one. It is
+    harmless where it sits and becomes unreachable the moment ROOT is deleted, so this is the
+    last moment anything can ask it to stop.
+    """
+    for socket in sockets_under(ROOT):
+        stop_daemon(socket)
+
+
+def leaked_daemons() -> int:
+    """How many daemons this run left behind, named rather than counted.
+
+    Checked here rather than left to `./dev --doctor`, because a leak that only shows up in a
+    diagnostic somebody runs when already suspicious is a leak nobody finds. Four runs left
+    eight strays before anything noticed (a_2I7ASgulK).
+
+    A socket that still answers is the test. A daemon stopped cleanly takes its socket file
+    with it, so a file left behind is either a live daemon or the litter of a killed one, and
+    the ping is what tells those apart.
+    """
+    alive = []
+    for socket in sockets_under(ROOT):
+        try:
+            Client(socket, ROOT, timeout=2.0).request("ping")
+            alive.append(socket)
+        except Exception:
+            continue
+    if not alive:
+        return 0
+    print(
+        f"\n  FAIL  the tier left {len(alive)} daemon(s) running\n"
+        + "".join(f"    {socket}\n" for socket in alive)
+        + "    Each one holds a pane and outlives this run. The next run deletes these socket\n"
+        + "    files, and a daemon whose socket is gone can only be ended with a signal - so\n"
+        + "    strays accumulate silently. A check that starts a daemon has to end it in a\n"
+        + "    `finally`, through stop_daemon() above.",
+        file=sys.stderr,
+    )
+    return 1
 
 
 def main() -> int:
@@ -873,9 +948,16 @@ def main() -> int:
         print(f"smoke: {APP} is missing. Run `./dev -b` first.", file=sys.stderr)
         return 2
 
+    # Before the delete, not after, and that ordering is the third of this tier's three
+    # daemon-leak faults (a_2I7ASgulK). Removing ROOT takes the previous run's socket files
+    # with it, and a daemon whose socket path is gone cannot be reached through the API at
+    # all - `./dev --doctor` reports it as unreachable and the only way left to end one is a
+    # signal. Every check ends its own daemon in a `finally`, which is the mechanism; this is
+    # the recovery for the run that was interrupted and never reached one.
+    end_what_the_last_run_left()
     shutil.rmtree(ROOT, ignore_errors=True)
     ROOT.mkdir(parents=True, exist_ok=True)
-    daemon = IsolatedDaemon(ROOT / "d")
+    daemon = IsolatedDaemon(ROOT / "d", herdr_bin=pinned_herdr())
     daemon.prepare()
     daemon.start()
     failures = 0
@@ -923,12 +1005,15 @@ def main() -> int:
     finally:
         daemon.stop()
 
+    failures += leaked_daemons()
+
     if failures:
         print(
-            f"\nsmoke: {failures} check(s) failed.\n"
-            "These are wiring failures - the app started but did not connect something it "
-            "must. The full log for each check is under "
-            f"{ROOT}/<check>.jsonl.",
+            f"\nsmoke: {failures} failure(s).\n"
+            "A failed check is a wiring failure - the app started but did not connect "
+            "something it must. The full log for each is under "
+            f"{ROOT}/<check>.jsonl. A leaked daemon is named above and is a fault in this "
+            "script rather than in the app.",
             file=sys.stderr,
         )
         return 1
@@ -936,7 +1021,8 @@ def main() -> int:
         "\nsmoke: the app launches, connects, paints, renders a split tab as splits, shows "
         "what its agents are doing, lists the panes nothing is showing, comes up on a machine "
         "with no daemon by starting one, hands every pane a `muster` that answers for the "
-        "window it is drawn in, and does all of it assembled into a bundle with launchd's PATH."
+        "window it is drawn in, does all of it assembled into a bundle with launchd's PATH, "
+        "and leaves no daemon running afterwards."
     )
     return 0
 
