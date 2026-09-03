@@ -113,6 +113,35 @@ fn described(request: &Request) -> Value {
     let Some(payload) = request.payload.as_ref() else {
         return json!("a request with no payload, which nothing here can build");
     };
+    described_tab(payload).unwrap_or_else(|| described_pane_or_window(payload))
+}
+
+/// The arms about a tab, which is the one subject with a vocabulary of its own.
+///
+/// Split out for length rather than for meaning, and split here because this is where a real
+/// line falls: `muster tab` has four verbs and they are the four below.
+fn described_tab(payload: &request::Payload) -> Option<Value> {
+    Some(match payload {
+        request::Payload::FocusTab(focus) => json!({
+            "focus_tab": fields([("tab_id", said(&focus.tab_id))])
+        }),
+        request::Payload::RenameTab(rename) => json!({
+            "rename_tab": fields([
+                ("tab_id", said(&rename.tab_id)),
+                ("name", Some(json!(rename.name))),
+            ])
+        }),
+        request::Payload::CloseTab(close) => json!({
+            "close_tab": fields([("tab_id", said(&close.tab_id))])
+        }),
+        request::Payload::FocusTabRelative(step) => json!({
+            "focus_tab_relative": json!({ "direction": step.direction })
+        }),
+        _ => return None,
+    })
+}
+
+fn described_pane_or_window(payload: &request::Payload) -> Value {
     match payload {
         request::Payload::ReadWindow(_) => json!({ "read_window": {} }),
         request::Payload::SplitPane(split) => json!({
@@ -137,6 +166,7 @@ fn described(request: &Request) -> Value {
                 ("pane_id", said(&send.pane_id)),
                 ("text", Some(json!(send.text))),
                 ("enter", send.enter.then_some(json!(true))),
+                ("confirm", send.confirm.then_some(json!(true))),
             ])
         }),
         request::Payload::ClosePane(close) => json!({
@@ -147,18 +177,6 @@ fn described(request: &Request) -> Value {
         }),
         request::Payload::ZoomPane(zoom) => json!({
             "zoom_pane": fields([("pane_id", said(&zoom.pane_id))])
-        }),
-        request::Payload::FocusTab(focus) => json!({
-            "focus_tab": fields([("tab_id", said(&focus.tab_id))])
-        }),
-        request::Payload::RenameTab(rename) => json!({
-            "rename_tab": fields([
-                ("tab_id", said(&rename.tab_id)),
-                ("name", Some(json!(rename.name))),
-            ])
-        }),
-        request::Payload::CloseTab(close) => json!({
-            "close_tab": fields([("tab_id", said(&close.tab_id))])
         }),
         request::Payload::CreateTab(create) => json!({
             "create_tab": fields([
@@ -189,9 +207,6 @@ fn described(request: &Request) -> Value {
         }),
         request::Payload::FocusRelative(step) => json!({
             "focus_relative": json!({ "direction": step.direction })
-        }),
-        request::Payload::FocusTabRelative(step) => json!({
-            "focus_tab_relative": json!({ "direction": step.direction })
         }),
         request::Payload::FocusPaneAt(at) => {
             json!({ "focus_pane_at": json!({ "place": at.place }) })

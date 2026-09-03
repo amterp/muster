@@ -30,8 +30,20 @@ which is why the command travels with the split instead of arriving as a `pane s
 
     muster pane send --pane p1w3r0ab2n 'yes, go ahead' --enter
 
-`--enter` presses Return, which is what submits the text. Without it the text sits on the pane's
-prompt, which is what you want when a person should read it before it runs.
+`--enter` presses Return. Without it the text sits on the pane's prompt, which is what you want
+when a person should read it before it runs.
+
+Whether Return submits is the receiving harness's to decide, and exit 0 says the daemon took the
+send rather than that the agent heard it. Where that matters, ask:
+
+    muster pane send --pane p1w3r0ab2n 'yes, go ahead' --enter --confirm
+
+`--confirm` reads the pane back and exits non-zero if what was sent is not on it. It costs a
+round trip and it proves arrival rather than submission; `muster docs limits` is what it does
+and does not catch.
+
+Multi-line instructions are one send. The text reaches the harness as a single paste rather than
+as a submission per line, so a brief with paragraphs in it arrives as a brief.
 
 ## Reading what they printed
 

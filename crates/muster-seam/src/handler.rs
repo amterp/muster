@@ -11,7 +11,7 @@ use muster_core::fields;
 
 use muster_core::composition::{DaemonId, FontSizeChange, Frame, RegionId, Step};
 use muster_core::config::{self, CursorStyle};
-use muster_core::find::{Needle, Reach};
+use muster_core::find::{Needle, Reach, arrived_in};
 use muster_core::font::{self, FontReport};
 use muster_core::input::{CompositionOutcome, Modifiers, ScrollDirection, composition_outcome};
 use muster_core::intent::Refusal;
@@ -1408,11 +1408,57 @@ fn send_to_pane(send: &proto::SendToPane) -> Response {
     // The keyboard never moves for this. Being sent something is not the same as being looked
     // at, and an agent telling two others what to do would otherwise pull the user's cursor
     // onto whichever it addressed last.
-    act(&send.daemon_id, &send.pane_id, Keyboard::StaysPut, |pane| BackendIntent::SendText {
-        pane,
-        text: send.text.clone(),
-        enter: send.enter,
-    })
+    let answer = act(&send.daemon_id, &send.pane_id, Keyboard::StaysPut, |pane| {
+        BackendIntent::SendText { pane, text: send.text.clone(), enter: send.enter }
+    });
+    if !send.confirm || !matches!(answer.payload, Some(response::Payload::Ok(_))) {
+        return answer;
+    }
+    confirm_it_arrived(send)
+}
+
+/// Reads the pane back and refuses if the message that was just sent is not on it.
+///
+/// Here rather than in the CLI, for the reason the CLI holds no logic at all: a second caller
+/// asking for the same certainty - a chord, an API client - would otherwise get a different
+/// answer, or none. It is two requests to the daemon and one act to whoever asked.
+///
+/// **Refusal rather than a field on the answer**, because an exit code is the only part of this
+/// a script branches on without reading English, and a send that cannot be seen is exactly the
+/// case `--confirm` was asked for. The message says what it looked for, since the commonest
+/// cause is a pane whose harness draws the text somewhere this cannot read - which is a fact
+/// about that harness rather than about the send.
+fn confirm_it_arrived(send: &proto::SendToPane) -> Response {
+    let pane = if send.pane_id.is_empty() {
+        match session::focused_pane() {
+            Some(pane) => pane,
+            None => return Response::ok(),
+        }
+    } else {
+        PaneId::new(&send.pane_id)
+    };
+    let Some(daemon) = pane_holder(&pane, &send.daemon_id) else {
+        return Response::failure(format!(
+            "the text was sent and pane {pane} then went away, so nothing could be read back to \
+             confirm it. Whatever was sent may well have arrived; this is the confirmation \
+             going missing, not the send."
+        ));
+    };
+    match session::read_pane(&daemon, &pane, 0) {
+        Ok(read) if arrived_in(&read.text, &send.text) => Response::ok(),
+        Ok(_) => Response::failure(format!(
+            "the text was sent to pane {pane} and is not on it, so whatever is running there \
+             did not receive it. Two things do this. A terminal in canonical mode - anything \
+             reading stdin without a line editor - discards a line over 1024 bytes whole rather \
+             than cutting it, and says nothing (`muster docs limits`). And a harness that folds \
+             a long paste into a placeholder draws neither the text nor an error, which reads \
+             here the same way. `muster pane read --pane {pane}` shows what it does draw."
+        )),
+        Err(refusal) => Response::failure(format!(
+            "the text was sent to pane {pane} and reading it back to confirm failed: {refusal}. \
+             Whatever was sent may well have arrived."
+        )),
+    }
 }
 
 /// Grows a pane against its neighbour, by a step.

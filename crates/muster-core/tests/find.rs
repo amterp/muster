@@ -3,7 +3,7 @@
 use std::fmt::Write as _;
 
 use conformance::{CaseError, Conformance, fields};
-use muster_core::find::{Found, Hit, Needle, Reach, found_in};
+use muster_core::find::{Found, Hit, Needle, Reach, arrived_in, found_in};
 use muster_core::mirror::backend::Viewport;
 use serde_json::{Value, json};
 
@@ -146,4 +146,51 @@ fn a_pane_nothing_is_known_about_claims_nothing() {
     // other reach is a claim about a pane, and there is no pane here - so `whole` is the one
     // that draws no caveat rather than an assertion that a search happened.
     assert_eq!(Found::default().reach(), Reach::Whole);
+}
+
+/// A message wider than the pane arrives as several rows, and is still the message.
+///
+/// The case `--confirm` exists for and the reason it does not reuse the search above: a
+/// terminal wraps, so a hundred-and-twenty character message on an eighty-column pane is two
+/// rows with a break wherever the wrap fell. A matcher that compared rows would report a
+/// message that arrived perfectly as missing, and a caller would be told its agent never heard
+/// it.
+#[test]
+fn a_message_the_pane_wrapped_still_counts_as_arrived() {
+    let sent = "please read AGENTS.md end to end before you touch anything, and say what you \
+                found before you change it";
+    let wrapped = format!("$ agent\n{}\n{}\n", sent[..80].trim_end(), sent[80..].trim_start());
+
+    assert!(arrived_in(&wrapped, sent));
+    assert!(!arrived_in("$ agent\nsomething else entirely\n", sent));
+}
+
+/// A message longer than the pane can show is confirmed by its end, not its beginning.
+///
+/// Which end matters: a long send scrolls its opening off the top, so a matcher anchored to
+/// the start would fail on every message worth confirming. The tail is also what a truncated
+/// or discarded send loses, so looking there is looking where the failure is.
+#[test]
+fn a_long_message_is_confirmed_by_its_tail() {
+    let ending = "and finally, wait for me before you start anything at all, because the order \
+                  we do these things in matters a great deal more to the outcome here than the \
+                  speed we get through them does";
+    let sent = format!("{}\n{ending}", "context ".repeat(600));
+
+    assert!(arrived_in(&format!("a row\nanother row\n{ending}\n"), &sent));
+    assert!(
+        !arrived_in(&format!("{}\n", "context ".repeat(600)), &sent),
+        "a pane showing the message's opening and not its end has not confirmed it - that is \
+         exactly the shape of a send the receiving terminal cut short"
+    );
+}
+
+/// Pressing Return on its own is not a message, and has nothing to confirm.
+#[test]
+fn an_empty_send_arrives_trivially() {
+    // `pane send --enter ''` is how a caller submits what is already sitting on a prompt.
+    // Refusing that for want of text on the pane would make the flag unusable for the one
+    // send whose whole point is that it carries none.
+    assert!(arrived_in("", ""));
+    assert!(arrived_in("anything at all\n", "   \n  "));
 }

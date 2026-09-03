@@ -229,6 +229,31 @@
       }
     },
     {
+      "name": "asking to be sure the text arrived is a third thing the send carries",
+      "why": "Not a second command, and that is the point of it being a flag. A caller that sent and then read the pane itself would be two requests with a gap between them, and the gap is where a harness redraws - so the check has to be part of the send and the window has to make it.\n\nIt is independent of `--enter`, because the two answer different questions. `--enter` asks for a Return; this asks whether the message can be seen on the pane afterwards. A caller that wants a message left sitting on a prompt still wants to know it got there.",
+      "given": {
+        "argv": [
+          "pane",
+          "send",
+          "--pane",
+          "p1w3r07bsd",
+          "read AGENTS.md",
+          "--enter",
+          "--confirm"
+        ]
+      },
+      "expect": {
+        "request": {
+          "send_to_pane": {
+            "pane_id": "p1w3r07bsd",
+            "text": "read AGENTS.md",
+            "enter": true,
+            "confirm": true
+          }
+        }
+      }
+    },
+    {
       "name": "text with no return waits on the prompt",
       "why": "The difference between telling an agent something and leaving a line sitting there for a person to look at. Both are wanted, so the flag has to be the only thing that decides.",
       "given": {

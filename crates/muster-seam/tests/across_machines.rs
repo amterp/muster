@@ -816,6 +816,7 @@ fn a_pane_the_daemon_has_only_just_made_can_still_be_typed_into() {
         pane_id: made,
         text: SENT.to_string(),
         enter: false,
+        confirm: false,
     })));
     until(
         "the text to reach the pane that was just made",
