@@ -142,8 +142,8 @@ fn a_split_asking_for_nothing_sends_nothing_extra() {
 
 /// Whether Return is pressed is whether the text runs.
 ///
-/// The corpus pins that both spellings build the identical `pane.send_text`, which is the whole of
-/// what a request can say. What the flag does is a second request, and the difference it makes is
+/// The corpus pins that both spellings build the identical `pane.send_input`, which is the whole
+/// of what a request can say. What the flag does is a second request, and the difference it makes is
 /// the difference between an agent being told something and an agent staring at a line somebody
 /// typed for it - so it is only observable against a real shell.
 #[test]

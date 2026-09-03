@@ -439,8 +439,11 @@ impl HerdrBackend {
         let Ok(backend) = self.names.backend_pane(pane) else { return };
         self.ready(&backend);
 
+        // The same verb `SendText` goes out on, so that `pane new --run` and `pane send` are
+        // one behaviour rather than two that agree by coincidence. See `request` below for
+        // why it is this one and not `pane.send_text`.
         let text = json!({ "pane_id": backend.as_str(), "text": command });
-        if let Err(failure) = self.client.request("pane.send_text", &text) {
+        if let Err(failure) = self.client.request("pane.send_input", &text) {
             log::warn(
                 "herdr.split.command_unsent",
                 fields! {
@@ -821,11 +824,22 @@ pub fn request(
         BackendIntent::FocusPane { pane } => {
             ("pane.focus", json!({ "pane_id": names.backend_pane(pane)?.as_str() }))
         }
-        // The text only. Return is `pane.send_input` afterwards, because herdr encodes a named
-        // key against the pane's live modes and a newline in the text is just a newline - which
-        // a harness reading a bracketed paste treats as more text rather than as a submission.
+        // The text only. Return is a second `pane.send_input` afterwards, carrying a named key
+        // rather than a newline in this string, because those are different things to whatever
+        // is reading: one is a submission and the other is more text to buffer.
+        //
+        // `pane.send_input` rather than `pane.send_text`, which is what the keyboard's own paste
+        // already sends. The two verbs are not synonyms: `send_text` is a raw write to the pane's
+        // PTY, and `send_input` is encoded against the pane's live modes, so the daemon fences
+        // this in bracketed paste when the program in the pane has asked to be told about one.
+        // Unfenced, every newline in a multi-line message arrives as a submission and only the
+        // last line is read as the prompt (`observations/herdr-0.8.0.md` section 25) - which is
+        // the difference between an agent being given a brief and an agent being given its last
+        // sentence. Nothing decides here whether to fence: only the daemon can see the mode, and
+        // a client that guessed would put a literal `[200~` on the input of a program that never
+        // asked for one.
         BackendIntent::SendText { pane, text, enter: _ } => (
-            "pane.send_text",
+            "pane.send_input",
             json!({ "pane_id": names.backend_pane(pane)?.as_str(), "text": text }),
         ),
         // `source_pane_id` and `target_pane_id`, the same pair the leftward-split rearrange

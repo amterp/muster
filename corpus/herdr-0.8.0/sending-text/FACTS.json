@@ -1,0 +1,22 @@
+{
+  "bytes_a_bare_pty_carried": {
+    "1000": 1001,
+    "1023": 1024,
+    "1024": 0,
+    "1030": 0,
+    "2200": 0
+  },
+  "bytes_a_canonical_mode_reader_received": {
+    "1000": 1001,
+    "1023": 1024,
+    "1024": 0,
+    "1030": 0,
+    "2200": 0
+  },
+  "bytes_a_raw_mode_reader_received": {
+    "pane.send_input": 10000,
+    "pane.send_text": 10000
+  },
+  "send_input_fences_a_paste": true,
+  "send_text_fences_a_paste": false
+}
