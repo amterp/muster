@@ -219,20 +219,32 @@ fn doctor_processes():
 // The hazard is real and it is the reason this prints a cwd rather than a count: of twenty-odd
 // daemons on this machine one held somebody's working agent, and it was neither the oldest nor
 // the youngest. Sorting by age picks the wrong process.
+// `pgrep -a`, and the flag is the whole of a_2I8fSrotB. Without it pgrep leaves out its own
+// ancestors, and this command is run from a Muster pane - whose ancestry is launchd, the app's
+// daemon, the pane's shell, rad, pgrep. So the one daemon holding live agents was the one
+// process the census structurally could not report, every time somebody ran it where it is
+// useful. Measured 2026-09-03: 8 pids without the flag, 9 with, and the extra one held every
+// pane in the window the command was typed into.
 fn doctor_herdr():
     print(bold("\nherdr daemons"))
-    stdout, stderr, code = quiet $`pgrep -x herdr` catch:
+    stdout, stderr, code = quiet $`pgrep -a -x herdr` catch:
         stdout = ""
     pids = stdout.trim().split_lines().filter(fn(pid) pid.trim() != "")
     if len(pids) == 0:
         print(dim("  none running"))
         return
 
-    print("  {len(pids)} alive")
     herdr = doctor_herdr_binary()
+    rows = [doctor_daemon(pid.trim(), herdr) for pid in pids]
+    // Counted apart, because they are different things to somebody deciding what to end. A
+    // daemon holds sessions; a bridge is one pane's connection to one, and ending it takes that
+    // pane's picture away and nothing else. A count that added them up read as twenty daemons
+    // on a machine that had two.
+    bridges = rows.filter(fn(row) row[1])
+    print("  {len(rows) - len(bridges)} daemon(s), {len(bridges)} pane bridge(s)")
     print(dim("  pid    age          socket"))
-    for pid in pids:
-        print("  {doctor_daemon(pid.trim(), herdr)}")
+    for row in rows:
+        print("  {row[0]}")
     print(dim("  The test harness tears its own daemons down; what accumulates is what a person"))
     print(dim("  or a fixture started outside it. Twenty together drew 0.1% CPU (a_28YghIUw2), so"))
     print(dim("  this is about knowing which one holds work before ending it, not about speed."))
@@ -243,10 +255,21 @@ fn doctor_herdr():
 // returns every unix socket on the machine and each pid appears to hold whichever one is read
 // first. Over twenty daemons that produces twenty identical rows, which reads as a finished
 // inventory rather than as a broken one - measured, on this machine, on a_28YghIUw2.
+// Answers a row and whether the process is a pane's bridge rather than a daemon.
 fn doctor_daemon(pid, herdr):
-    stdout, stderr, code = quiet $`ps -o etime= -p {pid}` catch:
+    stdout, stderr, code = quiet $`ps -o etime=,args= -p {pid}` catch:
         stdout = ""
-    age = stdout.trim()
+    fields = stdout.trim().split(" ").filter(fn(field) field != "")
+    age = len(fields) > 0 ? fields[0] : ""
+    argv = len(fields) > 1 ? join(fields[1:], " ") : ""
+
+    // Named for what it is rather than for what it lacks. Most herdr processes on a machine
+    // running Muster are these - one per open pane - and each used to draw a row saying "no API
+    // socket, a client rather than a daemon", which is true and leaves the reader to work out
+    // that it is a pane's connection and not a stray. Which pane, because that is what makes it
+    // safe to leave alone.
+    if "terminal session" in argv:
+        return ["{pid:<7}{age:<13}a bridge for pane {doctor_bridged_pane(argv)}", true]
 
     stdout, stderr, code = quiet $`lsof -a -p {pid} -U` catch:
         stdout = ""
@@ -257,19 +280,34 @@ fn doctor_daemon(pid, herdr):
             socket = fields[-1]
 
     if socket == "":
-        // A herdr with no API socket is a client, not a server. Worth a row rather than a
-        // silent omission: it is still a process somebody may be about to kill.
-        return "{pid:<7}{age:<13}no API socket - a client rather than a daemon"
+        // A herdr that is neither serving nor bridging. Worth a row rather than a silent
+        // omission: it is still a process somebody may be about to kill.
+        return ["{pid:<7}{age:<13}no API socket, and not a pane's bridge either", false]
 
     // A daemon still bound to a socket whose path has been deleted is one nothing can reach
     // any more, which is a different fact from one that declined to answer - and it is the
     // one that says ending this process costs nobody anything.
     if not get_path(socket).exists:
-        return "{pid:<7}{age:<13}{socket}  unreachable, its socket path is gone"
+        return ["{pid:<7}{age:<13}{socket}  unreachable, its socket path is gone", false]
 
     scratch = socket.starts_with("/tmp/") or socket.starts_with("/private/tmp/")
     where = scratch ? "scratch" : "kept"
-    return "{pid:<7}{age:<13}{socket}  {where}{doctor_panes(socket, herdr)}"
+    return ["{pid:<7}{age:<13}{socket}  {where}{doctor_panes(socket, herdr)}", false]
+
+// The pane a bridge is painting, out of the command line that started it.
+//
+// `herdr terminal session control w6:p30 --cols 93 --rows 34`, so the word after the mode. Read
+// positionally because there is no flag naming it, and answered as a question mark rather than
+// guessed at when the shape is not that: a wrong pane name is worse than none, since the whole
+// use of this row is deciding whether the process belongs to something you are looking at.
+fn doctor_bridged_pane(argv):
+    words = argv.split(" ").filter(fn(word) word != "")
+    take_next = false
+    for word in words:
+        if take_next:
+            return word
+        take_next = word == "control" or word == "observe"
+    return "?"
 
 // The pinned daemon if it is already on disk, and nothing if it is not.
 //
