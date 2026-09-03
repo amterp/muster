@@ -260,7 +260,14 @@ fn doctor_daemon(pid, herdr):
     stdout, stderr, code = quiet $`ps -o etime=,args= -p {pid}` catch:
         stdout = ""
     fields = stdout.trim().split(" ").filter(fn(field) field != "")
-    age = len(fields) > 0 ? fields[0] : ""
+    // ps knows nothing about it, so it exited between the census and this row. Said outright,
+    // because the alternative row is "no API socket", which reads as a stray somebody should
+    // look at - and short-lived herdr processes are ordinary here: every daemon row below
+    // runs one to ask a socket what it holds.
+    if len(fields) == 0:
+        blank = ""
+        return ["{pid:<7}{blank:<13}gone - it exited while this was being written", false]
+    age = fields[0]
     argv = len(fields) > 1 ? join(fields[1:], " ") : ""
 
     // Named for what it is rather than for what it lacks. Most herdr processes on a machine
