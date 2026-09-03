@@ -380,3 +380,49 @@ Nothing here reaches the network. sentry-native and breakpad are what Ghostty us
 crash report, and `src/crash/sentry.zig` compiles no DSN and states the intent outright: reports
 are written to disk and it is the user who sends them on. `strings` over the linked binary finds
 no DSN-shaped value, so Muster inherits a local crash writer and no endpoint.
+
+## 12. A surface's selection is pinned to its own buffer, and mouse capture is unknowable
+
+Read 2026-09-03, while fixing a selection that stays put while the text under it scrolls.
+Both halves of this section come from the same fact: a Muster pane's surface is repainted
+in place from herdr's frame stream, so its terminal never moves and never learns anything
+the daemon consumed on the way past (`herdr-0.8.0.md` sections 2 and 17).
+
+**A selection is a pair of pins into the page list, and the page list never scrolls here.**
+`terminal.Selection` holds `start` and `end` as `PageList.Pin`s (`src/terminal/Selection.zig`),
+tracked so they follow the buffer as it moves. In a terminal libghostty owns, scrolling moves
+the pins with the text and the highlight stays on what was selected. A Muster pane scrolls
+somewhere else: herdr answers `terminal.scroll` by re-encoding the new screen and sending it
+as cell writes, so a ten-row scroll arrives as 479 bytes of `ESC[row;colH` plus one glyph per
+changed cell, `full: false`. Nothing scrolls. The pins stay on the rows they were dropped on
+and the text under them is rewritten, which is exactly the highlight moving off its text.
+
+**There is no C entry point that sets or clears a selection.** `ghostty_surface_has_selection`
+and `ghostty_surface_read_selection` read one; the header exports nothing that writes one, and
+`Surface.setSelection` is private (`src/Surface.zig:2360`). Nor is there a binding action for
+it - `src/input/Binding.zig` has `select_all`, `adjust_selection` and `scroll_to_selection`,
+and no way to say "none". So an embedder's only lever is the mouse: a left press with a click
+count of 1 that selects nothing clears whatever was there (`src/Surface.zig:4054-4059`), and a
+press-move-release makes a new one. Consecutive synthesised presses more than one cell width
+apart reset the click count rather than counting as a double click (`repeat_interval` and
+`max_distance` in `src/terminal/SelectionGesture.zig`), which is what makes re-driving a
+selection on every scroll safe rather than a way to select words by accident.
+
+**`ghostty_surface_mouse_captured` exists, and cannot answer for a Muster pane.** The card
+tracking mouse buttons (kan a_27CTgqqdv) assumed Muster had no way to ask its own surface
+whether the program in a pane had enabled mouse reporting. It has one, at
+`include/ghostty.h:1155`, and it reads the surface's own terminal flags. Those flags are never
+set here: herdr's VT consumes the sequences that would set them, so they do not reach the frame
+stream. A pane that had just run `printf '\033[?1000h\033[?1002h\033[?1006h'` produced a frame
+payload carrying those characters only as the shell's echo of the command line, with no `ESC`
+byte among them and no mode change anywhere in the stream.
+
+So the getter would answer `false` for every pane in every window, and gating clicks on it
+would be gating on a constant - which is worse than not asking, because the code would look
+like it was checking. The upstream ask in kan a_27CTRluw7 is still the way in, and what changes
+is the reason to put on the card: not that Muster cannot ask, but that the only party who can
+answer is the daemon.
+
+Evidence for the frame-stream half: `corpus/herdr-0.8.0/frames/`, where the same six
+mode-setting sequences were emitted and none reached the stream. The rest is source, at the
+lines named above, in `deps/ghostty` at the commit `deps/ghostty.pin` names.

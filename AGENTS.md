@@ -14,8 +14,10 @@ of the first nine, renaming, trading two agents' places by dragging a row, confi
 it, a CLI that drives the window from inside a pane, a notification when an agent needs you that takes you to the
 pane that asked, and a second daemon on an SSH machine in the same window - where Muster installs its own herdr
 rather than trusting whatever is over there, and where one tab can hold a laptop pane beside a devenv pane. Not
-built, and worth knowing before you install rather than after: the shape of a split cannot be changed once it is made, mouse buttons and motion do not reach a pane, a pane on a
-devenv cannot drive the window it is drawn in, and find is known to mishandle a long scrollback.
+built, and worth knowing before you install rather than after: the shape of a split cannot be changed once it is
+made, mouse buttons and motion do not reach a pane, a pane on a devenv cannot drive the window it is drawn in, and
+find reaches only what a daemon will hand back - a thousand rows, and nothing at all behind the screen of a pane
+running a full-screen program.
 
 `docs/origin.md` is why this exists, `docs/architecture.md` is the shape, `docs/configuration.md` is every
 setting, and `docs/cli/limits.md` is the same honest account for the CLI.

@@ -213,11 +213,16 @@ ever answers a chord you chose.
 the pane with the keyboard, `cmd+g` and `cmd+shift+g` walk the matches, and landing on one
 scrolls the pane to it and marks it. What it searches is not what is on screen: a pane's
 scrollback belongs to the daemon holding it, so the match count is Muster's answer about the
-daemon's history rather than the renderer's about the visible grid. herdr hands over at most
-its last thousand rows and offers no way to ask for more, so a pane longer than that is
-searched in part - and the bar says so, beside the counter, exactly when it is true. A find
-that quietly covered a fifth of a pane and answered "no results" would be worse than not
-having one.
+daemon's history rather than the renderer's about the visible grid.
+
+Beside the counter the bar says what the search covered, and only when that is not
+everything. **"last 1000 of 3000"** is a pane deeper than herdr will hand over: it answers with
+at most a thousand rows and offers no way to ask for more. **"this screen"** is a pane whose
+program has taken the whole terminal - an agent harness, an editor, anything on the alternate
+screen - which leaves the daemon no history behind what is drawn, so the search covered the
+screen and there was nothing else to cover. Both are the same failure avoided twice: a find
+that quietly covered a fifth of a pane, or one screen of it, and answered "no results" would
+be worse than not having one.
 
 **A row in the agent list says two things, and you write the first one.** Underneath is what
 the agent calls itself - Claude sets its terminal title to what it is working on, so the row

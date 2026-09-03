@@ -111,8 +111,10 @@ after:
 
 - Mouse buttons and motion do not reach a pane.
 - A pane on an SSH machine cannot drive the window it is drawn in.
-- Find only reaches the last thousand rows of a pane, and says nothing about the rest - so a match
-  further back reads as no match at all.
+- Find reaches only as far back as the session daemon will hand over, which is a thousand rows -
+  and a pane running a full-screen program keeps no history behind its screen at all, which is
+  most agent panes. The bar says which of those you are looking at rather than leaving a count of
+  zero to speak for itself.
 - Only the last window you closed comes back. Every window keeps its own arrangement, so
   `cmd+n`'s twin - Reopen Closed Window - brings one back; nothing lists the older ones or names
   which is which.

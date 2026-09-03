@@ -972,10 +972,37 @@ counting the echoed command that wrapped too - and from `recent_unwrapped` as on
 needle spanning a wrap, and `recent_unwrapped` is the reverse. There is no source that is
 both, and a client that read both would have two answers to how many matches there are.
 
-Evidence: `corpus/herdr-0.8.0/naming/` - `FACTS.json` for the verdicts, `events.ndjson`
-for what a subscriber saw, `replay.ndjson` and `replayed-pane-created.json` for the
-replay, `before-restart.snapshot.json` and `after-restart.snapshot.json` for the
-restart. Re-record with `tools/herdr-probe/probe naming`.
+**A read's last row is the pane's last printed row, not its bottom row**, and the two are
+only the same on a full screen - which is the screen the alignment above was measured on.
+Added 2026-09-03. herdr trims the blank remainder of the viewport off the bottom of what
+it returns: a pane holding 3009 rows whose screen had just been erased and given two lines
+answered a 1000-row read with 978, and 2 of its 24 viewport rows were printed. So "the nth
+line from the end is `offset_from_bottom` n" needs the trimmed rows added back, and their
+count is exact rather than a guess - the read's window minus what came back, where the
+window is the pane's whole height for an untruncated read and a thousand for a truncated
+one.
+
+    pane holds 3009 rows, viewport 24, screen just erased and given two lines
+    read 1000 -> 978 rows          visible -> 2 rows of 24        22 trimmed either way
+
+**A pane on the alternate screen holds nothing behind its screen, and says so like a pane
+that has no history.** `max_offset_from_bottom` drops to 0 the moment a program enables
+mode 1049, `recent` returns the visible rows, and `truncated` is `false` - the same answer
+a fresh pane gives. So a client searching an agent pane covers one screen and, taken at
+face value, reports a complete search of it. The main screen's history is intact and comes
+back when the program leaves. `ESC[3J` - which `clear` sends and plenty of programs send
+on their own - leaves the identical shape without any full-screen program involved.
+
+    main screen, 3009 rows    max_offset_from_bottom 2985    recent -> 978 rows
+    alternate screen          max_offset_from_bottom 0       recent -> 4 rows, truncated false
+    back on the main screen   history intact
+
+This is the one worth knowing before building find on `pane.read`: every agent harness is
+a full-screen program, so it is the shape most panes in a Muster window are in.
+
+Evidence: `corpus/herdr-0.8.0/read-depth/` - `FACTS.json` for the verdicts, `wire.ndjson`
+for the requests and answers, `recent-tail.txt` and `visible-at-bottom.txt` for the rows
+the alignment is read off. Re-record with `tools/herdr-probe/probe read-depth`.
 
 ## 18. Waiting for a pane to print needs the connection left open
 

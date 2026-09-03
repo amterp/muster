@@ -21,4 +21,4 @@ ruler-02997
 ruler-02998
 ruler-02999
 ruler-03000
-sh-3.2$
+amterp@Mac tmp %
