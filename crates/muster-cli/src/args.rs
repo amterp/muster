@@ -338,9 +338,13 @@ enum Doing {
         #[arg(long, value_name = "REF")]
         pane: Option<String>,
 
-        /// Press Return afterwards, which is what submits it
+        /// Press Return afterwards. Whether that submits is the harness's to decide
         #[arg(long)]
         enter: bool,
+
+        /// Read the pane back and exit non-zero if the text is not on it
+        #[arg(long)]
+        confirm: bool,
 
         /// The text, joined with spaces if it arrives in pieces
         #[arg(required = true, value_name = "TEXT")]
@@ -612,12 +616,15 @@ fn pane(doing: &Doing, environment: &BTreeMap<String, String>) -> Asking {
             name: name.join(" "),
             ..RenamePane::default()
         })),
-        Doing::Send { pane, enter, text } => send(request::Payload::SendToPane(SendToPane {
-            pane_id: pane_ref(pane.as_ref(), environment),
-            text: text.join(" "),
-            enter: *enter,
-            ..SendToPane::default()
-        })),
+        Doing::Send { pane, enter, confirm, text } => {
+            send(request::Payload::SendToPane(SendToPane {
+                pane_id: pane_ref(pane.as_ref(), environment),
+                text: text.join(" "),
+                enter: *enter,
+                confirm: *confirm,
+                ..SendToPane::default()
+            }))
+        }
         Doing::Read { pane, rows } => send(request::Payload::ReadPane(ReadPane {
             pane_id: pane_ref(pane.as_ref(), environment),
             // Zero is what the window reads as "as far as you will go", and it is also what

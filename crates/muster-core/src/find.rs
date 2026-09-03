@@ -261,3 +261,45 @@ fn matches_in(row: &str, folded_needle: &str) -> Vec<Range<usize>> {
     }
     found
 }
+
+/// How much of a sent message is looked for when confirming it arrived.
+///
+/// A tail rather than the whole thing, because a message can be longer than the pane is tall
+/// and its beginning may have scrolled off - and because the tail is exactly what a discarded
+/// line loses. Long enough to be distinctive against a screen of an agent's own output; short
+/// enough to fit inside a pane at any width somebody works at.
+const CONFIRMED_BY: usize = 120;
+
+/// Whether a message that was sent to a pane can be seen on it.
+///
+/// A different rule from [`found_in`] above, deliberately, and the difference is whitespace.
+/// A search matches what libghostty's matcher matches, because a person is reading the
+/// highlight it draws. This is nobody's search: it asks whether text Muster itself just sent
+/// came out the other end, against rows a terminal has already reflowed - a message wider than
+/// the pane arrives as several rows with a break wherever the wrap fell, and a harness is free
+/// to indent it, box it, or fold the run of spaces in it. So both sides have their whitespace
+/// removed and what is left is compared as one string.
+///
+/// **It answers arrival and not submission.** A pane draws the text whether it has been
+/// submitted or is sitting in an input box waiting for a Return, and nothing in a pane's
+/// rendered rows separates those. A harness that folds a long paste into a placeholder draws
+/// neither, which reads here as not arrived - the honest answer, since a caller that cannot
+/// see its message on the pane has not confirmed anything.
+///
+/// Empty text arrives trivially: `pane send --enter ''` is how a caller presses Return on its
+/// own, and there is nothing to look for.
+pub fn arrived_in(pane: &str, sent: &str) -> bool {
+    let wanted = squeezed(sent);
+    if wanted.is_empty() {
+        return true;
+    }
+    let characters: Vec<char> = wanted.chars().collect();
+    let from = characters.len().saturating_sub(CONFIRMED_BY);
+    let tail: String = characters[from..].iter().collect();
+    squeezed(pane).contains(&tail)
+}
+
+/// One string with every whitespace character taken out of it.
+fn squeezed(text: &str) -> String {
+    text.chars().filter(|character| !character.is_whitespace()).collect()
+}

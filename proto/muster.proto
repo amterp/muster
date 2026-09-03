@@ -675,6 +675,21 @@ message SendToPane {
   // newline inside a bracketed paste is text rather than a submission. A harness that reads
   // one and not the other is the common case, not the exotic one.
   bool enter = 4;
+
+  // Read the pane back afterwards, and refuse if what was sent is not on it.
+  //
+  // A send that reaches nothing is otherwise indistinguishable from one that lands: the
+  // daemon takes the request either way, so the answer is the same whether the program in the
+  // pane received a word of it. The case this catches is a pane whose terminal is in
+  // canonical mode, where a line over 1024 bytes is discarded whole by the line discipline
+  // and nothing above it is told (observations/herdr-0.8.0.md section 25).
+  //
+  // What it proves is arrival, not submission. A pane draws the text whether it has been
+  // submitted or is sitting in an input box waiting for a Return, so nothing readable from
+  // here tells those apart - and a harness that folds a long paste into a placeholder draws
+  // neither, which reads as unconfirmed. Off by default: it costs a round trip, and a caller
+  // sending into a pane it is watching anyway does not need one.
+  bool confirm = 5;
 }
 
 // Reads back what a pane has printed, and changes nothing.

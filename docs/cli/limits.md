@@ -45,6 +45,37 @@ rows on the wire per read, which is the price of the flag meaning what it says -
 of the *grid*, so the blank space under a quiet pane is rows to it, and a small number sent over
 the wire used to buy those and answer with nothing at all.
 
+## A send that exits 0 was taken, not necessarily received
+
+`muster pane send` exits 0 when the daemon took the request. That is not the same as the
+program in the pane having received the text, and two things routinely make them differ.
+
+A terminal in **canonical mode** - anything reading stdin without a line editor of its own,
+`cat` and a shell script's `read` among them - accepts a line of at most 1024 bytes including
+its terminator, and **discards a longer one whole** rather than cutting it. The screen still
+echoes the first thousand-odd characters, so a pane read afterwards looks like a message that
+arrived and stopped. It did not arrive at all. This is the receiving terminal's limit rather
+than Muster's or the daemon's: both carry ten thousand bytes into a program that has taken the
+terminal for itself, which every agent harness has (`observations/herdr-0.8.0.md` section 25).
+An interactive shell is not affected - readline and zle run in raw mode.
+
+And a **harness that reads the text as a paste** may leave it unsubmitted. `--enter` presses
+Return, and whether Return submits is the harness's to decide: Claude Code has been measured
+taking 1583 bytes on one line as `[Pasted text #2]` and sitting there until a person pressed
+Return. Muster cannot fix that from here and will not special-case one harness.
+
+`--confirm` is what to reach for when it matters. It reads the pane back after the send and
+exits non-zero if what was sent is not on it, so a discarded line becomes a refusal rather than
+a success. It costs a round trip, and what it proves is **arrival, not submission**: a pane
+draws the text whether it has been submitted or is sitting in an input box, so nothing readable
+from out here separates those. A harness that folds a long paste into a placeholder draws
+neither, which reads as unconfirmed - the honest answer, since a caller that cannot see its
+message has not confirmed anything.
+
+Newlines are safe to send. Muster hands the text to the daemon on the verb it encodes against
+the pane's live modes, so a multi-line message reaches a harness fenced as one paste rather
+than as a submission per line.
+
 ## There is no search
 
 `muster` cannot search a pane. The window can, from `cmd+f`, and reading only the last thousand
