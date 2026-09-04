@@ -31,20 +31,6 @@ out of the window rather than out of its environment:
 `muster tab rename` with no `--tab` is not that. It means the tab the window's keyboard is in,
 which is what a chord means and is a different tab whenever the keyboard is somewhere else.
 
-## A pane in a tab nothing is showing cannot be focused, zoomed or resized
-
-`muster focus`, `muster zoom` and `muster pane resize` refuse with "the daemon local is not
-showing that pane or tab in this window" when the pane they name is in a tab no region has on
-screen. Each of them is genuinely about a visible region - a keyboard, a filled region, a
-dragged divider - and there is none to act on.
-
-Everything else reaches a pane wherever it is: renaming, sending, moving, making a tab, and
-splitting. A split in a background tab makes the pane and leaves the keyboard where it was,
-because there is no region to move it into and moving it would take somebody off what they were
-doing in the tab that is on screen.
-
-`muster pane close` is the exception among those, and it is deliberate: see below.
-
 ## A read stops a thousand rows back
 
 `muster pane read` asks the daemon for a pane's recent rows, and herdr answers with at most a
@@ -72,14 +58,15 @@ currently keep.
 command here - which kills the shell that ran it. It is listed here because it is the one
 command whose default destroys something.
 
-For the same reason it also refuses a pane in a tab nothing is showing, where splitting one no
-longer does. The arguments are the same on paper - both are facts about the tree - and the risks
-are not: a split nobody is looking at costs a shell, and a close nobody is looking at costs
-whatever was running in it.
+It reaches a pane wherever it is, including one in a tab the window is not showing. That used to
+be refused, and the rule stopped being usable when a window came to show one tab at a time: every
+pane but the handful on screen is in a background tab, so refusing them would refuse nearly every
+`--pane` a script could name. What it still refuses is a pane in a session this window is not
+attached to.
 
 `muster tab close` is the same verb one level up and follows the same rule. It ends every pane
-in the tab in one request, and it refuses a tab no region is showing. With no `--tab` it closes
-the tab the keyboard is in, which is what the menu item means.
+in the tab in one request, and it reaches any tab the window holds. With no `--tab` it closes the
+tab the keyboard is in, which is what the menu item means.
 
 ## Only the last window you closed comes back
 
@@ -94,10 +81,11 @@ can point a launch at it with `MUSTER_STATE`.
 
 ## A second window opens on tabs of its own
 
-A window you asked for asks each machine for a workspace and opens onto that, rather than onto
-whatever that machine last had focused. It has to: the focused tab is usually the one another
-window is showing, only one client may hold a terminal, and a second window opened there paints
-nothing at all.
+A window you asked for asks for a workspace and opens onto the tab that comes back, rather than
+onto one that was already there. It has to: the tabs a machine already holds are the ones another
+window is showing, only one client may hold a terminal, and a second window opened onto one paints
+nothing at all. Those tabs are still listed and `muster tab focus` still reaches them - what the
+rule stops is Muster choosing one uninvited.
 
 So `muster window new` is not a way to look at the same agents twice. To reach a pane another
 window is showing, go to it in that window - `muster --socket "$W" tab focus <TAB>` - rather
@@ -126,7 +114,7 @@ With one window open, both are exactly what they were.
 ## A zoom with nothing to zoom still succeeds
 
 `muster zoom` in a tab holding one pane exits 0 and changes nothing. A single pane already fills
-its region, so there was nothing to hide and nothing went wrong; the run log names the daemon's
+the tab, so there was nothing to hide and nothing went wrong; the run log names the daemon's
 own reason at info level if you want to see it. A change a daemon would not make does exit
 non-zero with what it said on stderr, so this is the one answer that reads like a refusal in the
 log and is a success on purpose.

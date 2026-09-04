@@ -13,8 +13,8 @@ that ships Ghostty's chords where Ghostty has one, an agent list carrying a stat
 of the first nine, renaming, trading two agents' places by dragging a row, configuration that reloads when you save
 it, a CLI that drives the window from inside a pane, a notification when an agent needs you that takes you to the
 pane that asked, and a second daemon on an SSH machine in the same window - where Muster installs its own herdr
-rather than trusting whatever is over there. Not built, and worth knowing before you install rather than after: the
-shape of a split cannot be changed once it is made, mouse buttons and motion do not reach a pane, a pane on a
+rather than trusting whatever is over there, and where one tab can hold a laptop pane beside a devenv pane. Not
+built, and worth knowing before you install rather than after: the shape of a split cannot be changed once it is made, mouse buttons and motion do not reach a pane, a pane on a
 devenv cannot drive the window it is drawn in, and find is known to mishandle a long scrollback.
 
 `docs/origin.md` is why this exists, `docs/architecture.md` is the shape, `docs/configuration.md` is every
@@ -34,8 +34,10 @@ setting, and `docs/cli/limits.md` is the same honest account for the CLI.
 - **Sessions outlive the app, and their shape outlives the daemon.** Backend daemons own the PTYs, so quitting
   Muster, dropping the VPN or closing the lid costs nothing: agents keep working and every pane comes back. Below
   that line the guarantee weakens honestly rather than silently - a daemon restart returns the pane tree and each
-  pane's directory but not the processes, and a reboot is the same case with the daemon to start first. What can be
-  written down is written down; a live process cannot be, and Muster does not pretend otherwise
+  pane's directory but not the processes, and a reboot is the same case with the daemon to start first. The one
+  shape no daemon can write down is a tab holding panes on two machines, because neither knows the other exists;
+  that grouping lives in a file of Muster's, and only a tab somebody grouped depends on it. What can be written
+  down is written down; a live process cannot be, and Muster does not pretend otherwise
   (`docs/architecture.md`, durability).
 - **View = f(daemon state).** The app owns no truth. Layout, agent state, and scrollback live in the backend; the app
   renders them and forwards intent.

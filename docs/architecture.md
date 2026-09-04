@@ -372,12 +372,15 @@ codegen - a surface that cannot express an action is a missing message, visible 
   everything it broadcasts and for most answers, its own exported tree for a divider position. Muster reads both
   and tells them apart by which keys a payload has rather than by which verb answered, so a daemon that starts
   answering with either needs no change.
-- **The core owns composition**: which daemons are attached, and which (daemon, tab) shows in which window
-  region. A workspace is the backend's unit for a whole project and is not one of Muster's own, so it is not in
-  this record and not in the file it is written to - the adapter works out which of a backend's workspaces a
-  request means, from the pane it names (MIP-2). Mixing is at tab granularity: a region displays one tab's pane tree, rendered from daemon truth;
-  regions from different daemons sit side by side. Muster does not own an outer split tree over panes - that would
-  make it a multiplexer (non-goal) - and a pane can never move between daemons: the process lives where it lives.
+- **The core owns composition**: which daemons are attached, which tabs the window holds and in what order, which
+  of them is on screen, and how each divides between the machines holding panes in it. A workspace is the backend's
+  unit for a whole project and is not one of Muster's own, so it is not in this record and not in the file it is
+  written to - the adapter works out which of a backend's workspaces a request means, from the pane it names
+  (MIP-2). Mixing is at tab granularity: a tab holds a region per machine with panes in it, each rendering that
+  machine's pane tree from daemon truth, side by side. One region for every tab until somebody groups two. Muster
+  does not own an outer split tree over panes - that would make it a multiplexer (non-goal) - and a pane can never
+  move between daemons: the process lives where it lives, and grouping moves which tab it is in rather than the
+  process.
 - **Composition is resolved against the mirror, never patched by events.** It names daemon things - a tab, a
   pane - and those go away without asking: a tab closed from another client, a pane whose program exited. Every
   such way ends in a window that ignores the keyboard and cannot say why, so composition is brought back into line
@@ -406,9 +409,11 @@ codegen - a surface that cannot express an action is a missing message, visible 
   daemon from the tab, exactly as a pane request does, and `muster tab focus` and `muster tab rename` are sayable.
   Unlike a pane there is no backend spelling beside it in the schema, because nothing outside the core ever names a
   tab to a daemon: no bridge streams one.
-  A tab name is written down with the pane names, and for a reason that is about neither: the saved arrangement
-  records which tab each region was showing, so a registry that forgot its tabs would fail every region's check on
-  reopen and open the window as a first launch, every launch.
+  A tab name is written down with the pane names, and for two reasons that are about neither. The saved arrangement
+  records which tabs the window held, so a registry that forgot them would open the window as a first launch, every
+  launch. And a tab name may cover a backend tab on more than one machine, which is the whole of what makes a tab
+  hold a laptop pane beside a devenv one - a fact neither daemon has ever been told, so the registry is the only
+  place it can live.
 - **Health is per connection, and so is what a window says about it.** A laptop and a devenv have two answers and one
   title bar. The unhappiest is what shows, named - reporting one state for the window would let a dropped VPN read as
   though every session had gone.
@@ -558,13 +563,22 @@ answer is the only route there is for Muster's own renames: herdr emits no event
 another client arrives when the connection next re-snapshots. Clearing a name is a null rather than an empty string,
 and for a tab it is neither, because herdr has no spelling for it.
 
-**The roster is a tree, because a tab is what a person navigates between.** Daemon, then tab, then pane: a flat list
-of panes cannot say which of them sit side by side, and a region shows one tab, so "where has that agent got to" is a
-question about tabs. A tab also says whether a region is showing it, which is not the same question as its panes
-being on screen: a zoomed tab is on screen while all but one of its panes are not. Naming is the core's, on the same
-terms as the ordering, and it drops what a backend's own label repeats - herdr names an unnamed tab after its
-position, and Muster has a better position to write one from. Each row carries the tab's Muster name beside its place,
-so reading the roster and acting on what it says are the same vocabulary.
+**The roster is a tree, because a tab is what a person navigates between.** Tab, then pane: a flat list of panes
+cannot say which of them sit side by side, and a window shows one tab at a time, so "where has that agent got to" is
+a question about tabs. A tab also says whether the window is showing it, which is not the same question as its panes
+being on screen: a zoomed tab is on screen while all but one of its panes are not.
+
+**The machine is not a level of it, and that is the change stage three of MIP-2 made.** A tab may hold panes on two
+machines, so a heading over it would be wrong for some of its panes and the list would stop describing the window
+beside it. Which machine holds a pane is on the pane's row, drawn only while more than one is attached - on one
+machine the answer is the same on every row and says nothing. Beside the tabs, the roster carries the machines
+themselves, for the two states no pane row can hold: a machine that is unreachable, and a machine holding no panes at
+all. Without them a machine you asked to see would vanish from the window entirely the moment you closed its last
+pane, which is the state kan a_2HpkpfIfq was about.
+
+Naming is the core's, on the same terms as the ordering, and it drops what a backend's own label repeats - herdr
+names an unnamed tab after its position, and Muster has a better position to write one from. Each row carries the
+tab's Muster name beside its place, so reading the roster and acting on what it says are the same vocabulary.
 
 **The order within a daemon is the daemon's, and the numbering over it is Muster's.** Those are different claims and
 both are needed. A tab's place among its workspace's tabs is something the backend states - on a snapshot as a list, and
@@ -604,10 +618,17 @@ A drop across daemons is refused in the shell, before it becomes a request. A pa
 moving one to another machine means killing a process on one host and starting a different one on another - not a
 move, and nothing the core could honestly do with the intent.
 
+**A drop onto a tab caption is the one that may cross machines**, and it is a third request rather than a loosening
+of the refusal above. It names a tab and nothing inside it, so nothing is ordered and no tree is involved; the pane
+stays on its own machine, and what changes is which Muster tab it belongs to. When that tab has no part on the pane's machine
+yet, the adapter makes one there and binds it as that tab's member - which is how a tab comes to hold a laptop pane
+beside a devenv one (MIP-2, stage four). `muster pane move --tab` is the same request from a script.
+
 **Moving the keyboard comes in two axes, and the second is what makes the first a guarantee at all.** Panes and
 tabs are different questions: the *relative* pane moves reach everything the window is *showing*, and the tab moves
-reach what is behind it. Without the second, a pane in a tab no region has would be reachable only by clicking its
-row - and the list can be put away, which would leave those panes with no door. The numbered chords are the third
+reach what is behind it. Without the second, a pane in a tab the window is not showing would be reachable only by
+clicking its row - and the list can be put away, which would leave those panes with no door. The numbered chords are
+the third
 route and cut across both, because a place names a pane whether or not anything is showing it. Tab moves have no
 geometry, because tabs are a list and nothing is to the left of a tab; both directions wrap.
 
@@ -620,19 +641,19 @@ write-only by design, and every future backend would owe us a read to answer a q
 already holds. A tree walk was rejected too - on a perpendicular split it has to pick a child by position in the tree
 rather than by where it is, so in any asymmetric arrangement it lands somewhere the user did not point at.
 
-**The arrangement over regions is Muster's, and only Muster's.** Each region carries a weight and the window divides
-its width by their sum, so equal shares are what a window that has never been dragged looks like. A weight per region
+**The arrangement over regions is Muster's, and only Muster's.** Each region carries a weight and the tab divides
+its width by their sum, so equal shares are what a tab that has never been dragged looks like. A weight per region
 rather than a ratio per boundary, because regions are a list and not a tree - owning a tree over them is what would
-make Muster a multiplexer. Dragging the line between two regions moves only that pair's share of itself, so nothing
-further along the window moves, and it is the one drag that settles in the core rather than being asked of a daemon:
-no daemon knows the other one exists. It is also the one share that is clamped, because nothing sits behind it to
+make Muster a multiplexer. There is a line to drag only in a tab holding panes on more than one machine, which is a
+tab somebody has grouped; dragging it moves only that pair's share of itself, so nothing further along the tab moves,
+and it is the one drag that settles in the core rather than being asked of a daemon: no daemon knows the other one
+exists. It is also the one share that is clamped, because nothing sits behind it to
 refuse an impossible one, and a region dragged to nothing would leave no divider to grab.
 
-**A focus request surfaces the pane it names.** Naming a pane no region is showing retargets a region onto its tab
-rather than being refused - a list of panes that cannot be reached is a display, not routing. The region chosen is
-one already on that pane's daemon, preferring the focused one; a region on another daemon is never taken, because a
-window showing a laptop beside a devenv is the arrangement this project exists for. Only a daemon with no region at
-all gets a new one.
+**A focus request surfaces the pane it names.** Naming a pane the window is not showing brings its tab on screen
+rather than being refused - a list of panes that cannot be reached is a display, not routing. The tab it left keeps
+its regions, their widths, and which of them the keyboard was in, so switching away and back lands where it was
+left; and switching costs no bridge, because a surface belongs to its pane and is parked rather than torn down.
 
 ## Input precedence
 
@@ -904,6 +925,22 @@ and because the layer that can honestly answer each is different.
 | the machine reboots | the same, plus the daemon must come back | as above |
 | the machine is gone | local work only | remote daemons keep running |
 
+**A tab that spans two machines is in a weaker tier than the rest, and it is the only thing here that is.** Every row
+above holds because a daemon wrote the shape down: quitting Muster costs nothing, and a Muster that never comes back
+costs nothing either, because herdr still has the tab and its tree. A tab holding a laptop pane beside a devenv pane
+is one herdr tab on each, and *that they are one tab* is a fact neither daemon has ever been told - neither knows the
+other exists. It lives in `~/.muster/state/names.toml` and nowhere else.
+
+So the guarantee degrades per tab rather than wholesale (MIP-2). A tab whose panes are all on one machine keeps every
+row above, which is every tab until somebody deliberately groups two; only a grouped one depends on a file of
+Muster's, and only that one is lost if the file is - as a tab per machine, with every pane still running.
+
+Two states it answers either way. **A daemon restarts:** herdr returns the pane tree and each pane's directory, not
+the processes. A single-machine tab comes back as row three says; a grouped one is reassembled from two halves and is
+whole as soon as both daemons have spoken. **One of a tab's machines is unreachable:** the tab opens showing the
+panes it can reach rather than refusing to open, which is the rule the mirror already follows for a stale daemon
+applied to a tab.
+
 **The first row used to have an exception, and what closed it is the daemon being a helper application.** macOS
 charges a protected request - a folder, the camera, AppleScript, the local network - to the *responsible* process.
 For a pane's program that used to be the Muster which started its daemon, and only while that Muster was alive:
@@ -932,15 +969,16 @@ the one action path, which makes it scriptable, agent-drivable, and testable wit
 is the primitive, and it is additive rather than reconciling, so whatever calls it must apply into something fresh.
 
 **Muster's own durable state is composition, plus what the window looks like.** Composition is which daemons are
-attached, and which (daemon, tab) shows in which window region. Beside it, in the same file and under a
-table of its own, is the window's own chrome: whether the roster is open, how far the text is sized from what the
+attached, which tabs the window holds and in what order, which of them is on screen, and how each divides between the
+machines holding panes in it. Beside it, in the same file and under a table of its own, is the window's own chrome: whether the roster is open, how far the text is sized from what the
 config asked for, how big the window is, and whether it is full-screen. Everything else Muster holds is derived.
 That is a few hundred bytes, and its smallness is the point: the shell owns nothing, so there is nearly nothing to
 save.
 
-The two are kept apart because they answer different questions. A region is a wish about a session that may have
-moved on, checked against what the daemons turn out to hold; a chrome setting has nobody to check with, so it comes
-back as it went in. The window's frame is the one thing in either half that is checked against neither: the display
+The two are kept apart because they answer different questions. A tab is a wish about a session that may have moved
+on, checked against what the daemons turn out to hold - a machine that no longer holds its half loses that region,
+and a tab that loses every region is not restored; a chrome setting has nobody to check with, so it comes back as it
+went in. The window's frame is the one thing in either half that is checked against neither: the display
 it was measured on may be gone, so the shell reports the screens it has and the core answers where the window should
 open. That split is the same one `locale` draws - only a shell can ask the platform, only the core decides what to
 do about the answer - and it is what keeps a rule about displays somewhere a test can reach.
@@ -961,10 +999,12 @@ Two things stand on that. The file has a single writer, where before every windo
 last decided what came back. And a window that closes leaves something to come back to, which is what `muster window
 reopen` reads.
 
-**A window somebody asked for also starts on tabs of its own**, and that is a second rule with the same cause. A
-machine's focused tab is the tab the window before this one is showing, and herdr allows one client per terminal, so
-a second window opening there renders nothing at all. So it claims a workspace on each machine as that machine
-answers, remembers which tabs it inherited, and opens onto the tab that was not there before.
+**A window somebody asked for also opens onto a tab of its own**, and that is a second rule with the same cause. The
+tabs a machine already holds are the ones the window before this one is showing, and herdr allows one client per
+terminal, so a second window opening onto one renders nothing at all. So it writes down what each machine was holding
+when it first heard from it, asks for a workspace, and opens onto the tab that was not there before. Those tabs stay
+listed and stay reachable - taking a terminal from another window is a thing somebody may mean; what the rule stops
+is Muster deciding it uninvited.
 
 But composition is the piece nobody else can save. A herdr daemon's export is scoped to itself and structurally cannot
 describe a workspace spanning a laptop and a devenv, because neither daemon knows the other exists. Muster is the

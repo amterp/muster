@@ -333,9 +333,11 @@ introducing a cross-daemon ordering that does not exist.
 
 ### How the shakedown fixes survive it
 
-**The sidebar's on-screen mark** answers a question the new model deletes: with one tab on
-screen, the mark is true for one row and says nothing. It should be removed with the change
-rather than carried, and its test with it.
+**The sidebar's on-screen mark** answers a question the new model deletes: the mark existed to
+say which tabs shared the screen, and nothing shares it any more. What it became instead is the
+ordinary current-tab mark every tab strip has, on the one tab the window is showing - a flat list
+of tabs with nothing saying which one you are looking at would be worse than the mismatch the
+mark was added to fix.
 
 **One tab collapsing the numbered chord (`a_2Hx68fXqr`)** survives unchanged and gets more
 honest. It reads the roster's tab list, which becomes the list of Muster tabs, and "a window
@@ -374,40 +376,49 @@ else's cooperation and no behaviour change at all.
 
 3. **A window holds an ordered list of Muster tabs, one on screen.** Regions become the parts of
    that tab. `cmd+1` and `cmd+2` switch between a local tab and a devenv tab. The sidebar
-   flattens. This is the change the original card asked for.
+   flattens. This is the change the original card asked for. Built 2026-09-03.
 
 4. **A Muster tab holds member tabs on several machines.** The only stage that turns a daemon
-   guarantee into a Muster one, and the last to land for that reason.
+   guarantee into a Muster one, and the last to land for that reason. Built 2026-09-03.
 
 **Three and four land together or not at all**, and that is the one sequencing constraint here.
-Today a window shows every machine at once, side by side. Stage 3 alone would replace that with
-one tab filling the window, and grouping - the thing that puts a laptop pane beside a devenv pane
-again - is stage 4. Landing 3 on its own would take away an arrangement people are using and give
-back nothing until 4 arrived.
+Before them a window showed every machine at once, side by side. Stage 3 alone would replace that
+with one tab filling the window, and grouping - the thing that puts a laptop pane beside a devenv
+pane again - is stage 4. Landing 3 on its own would take away an arrangement people are using and
+give back nothing until 4 arrived. They landed in one branch.
 
 ## Open Questions
 
-- **Where does the machine go on a row?** On the pane, if a tab may span machines, which this
-  proposes. Then what does a tab row say about machines, if anything?
-- **How does the machine stay quiet?** A heading is read once; a badge repeats on every row.
-  Tinting, labelling only the machines that are not this one, or labelling only while more than
-  one is attached are all cheaper and all lose something.
-- **Where do a machine's own states go?** The heading carries `connected`, `disconnected` and
-  `no tabs, so this daemon is holding nothing` today. Without a heading, a machine holding zero
-  panes would vanish from the window, which is exactly the state `a_2HpkpfIfq` was about. This
-  probably has to be solved first or together.
-- **What does `muster window --json` say?** `regions[]` is documented as "the columns the window
-  is divided into", which is a machine-shaped sentence. It becomes the parts of the tab on
-  screen, and the answer needs a way to say which tab that is.
-- **What happens to an existing `~/.muster/state/window.toml`?** It names herdr workspaces and
-  tabs. Read each saved region as a single-machine Muster tab, or drop the file and open fresh?
+All settled, with stages three and four (2026-09-03).
 
-Two questions the Draft carried are settled. **A Muster tab maps to a herdr tab per machine**,
-not a workspace per machine: a workspace is herdr's unit for a whole project, and Muster's own
-schema already refuses to expose one. And **`pane move` across machines stays refused** while
-"move this pane into that tab" gains an answer that can span machines - the two are different
-requests and the vocabulary keeps them apart, which is why the destination is an enum rather than
-a second meaning for the same field.
+- **Where does the machine go on a row?** On the pane row, at its trailing edge. A tab row says
+  nothing about machines: a tab may span two, so any single answer there would be wrong for some
+  of its panes.
+- **How does the machine stay quiet?** It is not drawn at all while one machine is attached,
+  which is the common case and leaves that window reading exactly as it did. Labelling only the
+  machines that are not this one was the alternative and costs more than it saves: with two
+  devenvs attached, a reader has to already know that a blank means local.
+- **Where do a machine's own states go?** A machines section at the foot of the agent list,
+  holding a row per machine that is unreachable or holding no panes. A machine that is connected
+  and holding panes contributes no row - its panes carry its name. Picking a row there asks for a
+  pane on that machine, which is the affordance `a_2HpkpfIfq` deferred and what makes deleting
+  the refill rule safe rather than a reopening of the hole that card closed.
+- **What does `muster window --json` say?** `regions[]` keeps its name and becomes the parts of
+  the tab on screen - `region`, `daemon`, `pane`, `weight`, `keyboard`, `zoomed` - and drops
+  `tab`, because they all show the same one. A top-level `showing` names that tab. `tabs[]` drops
+  `daemon` and gains `daemons`, the machines it holds panes on.
+- **What happens to an existing `~/.muster/state/window.toml`?** Neither answer this offered. A
+  version 3 arrangement becomes **one Muster tab holding all of it**, so the first launch after
+  this lands looks like the last launch before it - splitting that into a tab per machine is
+  something to do afterwards and on purpose, once the new model is on screen to do it in. The
+  file goes to version 4 and version 3 is read rather than refused.
+
+Two questions the Draft carried were settled earlier. **A Muster tab maps to a herdr tab per
+machine**, not a workspace per machine: a workspace is herdr's unit for a whole project, and
+Muster's own schema already refuses to expose one. And **`pane move` across machines stays
+refused** while "move this pane into that tab" gains an answer that can span machines - the two
+are different requests and the vocabulary keeps them apart, which is why the destination is an
+enum rather than a second meaning for the same field.
 
 ## References
 
@@ -428,3 +439,18 @@ a second meaning for the same field.
 - 2026-09-02 Accepted, and widened from the tab alone to the window and the pane. The durability
   question the Draft was waiting on is answered: degrade per tab, with every tab that exists today
   in the tier that keeps the guarantee.
+- 2026-09-03 Built. Stages three and four landed together, and every Open Question above is
+  answered in place. Three things settled while building that this had not asked:
+  - **Closing needed a region showing the thing, and now needs only that the window holds it.**
+    Every tab but one is in the background once a window shows one at a time, so the old rule
+    would have made `muster tab close --tab` and `muster pane close --pane` refuse nearly every
+    name a script could give them. What the rule was protecting against - acting on a session
+    this window is not attached to - is still refused. The agent list names every tab and every
+    pane, so you can still see what you are about to destroy.
+  - **`--daemon` with no pane falls back further.** It was the keyboard's pane on that machine,
+    then that machine's region; a machine whose tabs are all in the background has neither, which
+    is now the ordinary state. It now falls back to that machine's first pane anywhere in the
+    window.
+  - **A window asks a machine for a workspace only once that machine has spoken.** Asking in the
+    moment before a first snapshot lands opened a tab nobody wanted and left the one they did
+    behind.

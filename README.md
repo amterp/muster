@@ -57,8 +57,10 @@ the same agent, named the same way, in the other, but only one window at a time 
 pane.
 
 **Local and remote in one window.** Name an SSH host in your config and its agents appear in the
-same list as the ones on your laptop. You install nothing over there: Muster copies across the
-session daemon it was tested against, checked against a pinned checksum.
+same list as the ones on your laptop. `cmd+1` and `cmd+2` switch between a laptop tab and a devenv
+tab the way tabs switch everywhere else, and one tab can hold both at once - drag a devenv agent's
+row onto a laptop tab's caption and they sit side by side. You install nothing over there: Muster
+copies across the session daemon it was tested against, checked against a pinned checksum.
 
 **A CLI that drives the window.** `muster` reports what every agent is doing, reads back what any
 pane has printed, makes panes and tabs, moves and resizes them, names them, types into them, moves
