@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "herdr-renders-every",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1788544675585,
+  "creator": "Alexander Terp",
+  "description": "Typing in the devenv window lags 100-250 ms with three Claude Code agents working, on a 2 ms link, with the box 92% idle. The time goes into herdr. Its main thread does a full virtual render of every attached client on each pass and answers API requests from the same thread, so a keystroke waits for whatever render is in flight. Muster keeps a client attached to every pane in the window, including the ones behind other tabs, so herdr renders seven panes nobody can see.\n\n## What was measured\n\n2026-09-04, muster 0.6.0, herdr 0.8.0, ten panes in four tabs on the devenv, three agents `working`:\n\n    herdr main thread: 53-68% of one core, sustained (/proc/\u003cpid\u003e/task/\u003cpid\u003e/stat, 5 s samples)\n    the laptop's herdr, two panes, one Claude Code: 13-16% of a core\n    pane.send_input round trip (server_channel.sent, ms): n=84, median 120, p90 178, max 249\n    herdr pane.focus, server side: 33-45 ms while busy, 1-12 ms when quiet\n    ping to the box: 2.0 ms; ssh -O check on the master: 20 ms\n\nThe round trips were logged 15:48 to 16:15 and overlap the oversized-frame episode in the frozen-pane card for 16 of those minutes, but the first samples, before it began, were already 126-147 ms.\n\n`perf record -g -p \u003cherdr\u003e` over 4 s, self time:\n\n    10.6%  alloc::vec::Vec::extend_with\n    10.2%  ghostty_render_state_row_cells_get\n     8.4%  malloc + free\n     3.8%  Vec::clone\n     3.0%  herdr::pane::terminal::PaneTerminal::render\n     2.9%  ratatui_core::buffer::Buffer::diff\n     2.1%  herdr::protocol::wire::FrameData::from_ratatui_buffer_with_hyperlinks\n\nThe loop is `src/server/headless.rs` near line 4100: for each attached client, `render_terminal_virtual(runtime, area)`, `visible_hyperlinks`, `FrameData::from_ratatui_buffer_with_hyperlinks`, serialize. Allocation leads, which says the buffers are rebuilt each pass rather than reused.\n\nHidden panes were rendered like visible ones. Between 16:05 and 16:15 the INVESTIGATIONS tab was on screen for about 40 seconds, and its bridge w4:pE received 0.65 frames per second throughout. `muster window --json` at 16:15: 10 panes attached, 3 `on_screen`.\n\n## What Muster can do\n\n- Stop paying for hidden panes. A pane behind another tab needs its state and its scrollback, not a frame per change. Detaching the control client and reattaching on show (`--takeover`, which the bridge already uses to replace a predecessor) is one shape; a lower render rate is another, and herdr does not offer one today. Seven idle clients of ten would have more than halved the daemon's load here.\n- Keep the number. `server_channel.sent` carries `ms` because `a_26BIX28HG` routed keys that way on the number being small. A record with impact and check fields when the median crosses, say, 50 ms turns the next occurrence into one line instead of a profiling session.\n\n## Upstream\n\nThe per-pass allocation and the single render thread are herdr's (herdrdev/herdr). docs/origin.md:85 says daemon-side gaps become upstream PRs; this is one. Attach the profile above, and ask separately whether API requests can be answered off the render thread, which is what turns a slow render into slow typing.",
+  "id": "a_2KHGXkKSc",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "title": "🐢 herdr renders every attached pane in full on one thread, and typing waits behind it",
+  "type": "enhancement",
+  "updated_at_millis": 1788544675585,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1788544675585}
+  ]
+}
