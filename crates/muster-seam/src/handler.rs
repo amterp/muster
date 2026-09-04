@@ -11,7 +11,7 @@ use muster_core::fields;
 
 use muster_core::composition::{DaemonId, FontSizeChange, Frame, RegionId, Step};
 use muster_core::config::{self, CursorStyle};
-use muster_core::find::Needle;
+use muster_core::find::{Needle, Reach};
 use muster_core::font::{self, FontReport};
 use muster_core::input::{CompositionOutcome, Modifiers, ScrollDirection, composition_outcome};
 use muster_core::intent::Refusal;
@@ -308,8 +308,19 @@ fn found(answer: Result<session::Findings, String>) -> Response {
                 total: findings.total,
                 selected: findings.selected,
                 rows_searched: findings.rows_searched,
-                reach: findings.reach.to_string(),
-                rows_held: findings.rows_held,
+                // The one place the core's three reaches become words a shell reads, so a
+                // fourth one added later is a match arm rather than a string invented twice.
+                reach: match findings.reach {
+                    Reach::Whole => "whole",
+                    Reach::Capped { .. } => "capped",
+                    Reach::ScreenOnly => "screen_only",
+                }
+                .to_string(),
+                rows_held: match findings.reach {
+                    Reach::Capped { rows_held } => rows_held,
+                    // Zero for the other two, since "of 0 rows" is not a sentence to draw.
+                    _ => 0,
+                },
             })),
         },
         Err(reason) => Response::failure(reason),
