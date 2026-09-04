@@ -2198,6 +2198,39 @@ pub(crate) fn move_pane_to_new_tab(
     submit(daemon, &intent, Keyboard::StaysPut).map(drop)
 }
 
+/// Puts a pane into a Muster tab, grouping its machine into that tab if it is not in it yet.
+///
+/// Stage four of MIP-2, from the outside: the request that makes a tab hold a laptop pane beside
+/// a devenv pane. The pane stays on its machine - it is a process - and what moves is which tab
+/// it belongs to, which is Muster's to decide because a tab is a grouping Muster made.
+///
+/// Refused for a tab this window does not hold, which is the only check worth making here: the
+/// adapter works out whether this machine already has a half of it, and both answers are ordinary.
+///
+/// No keyboard move, on the same terms as every other arrangement: putting an agent somewhere is
+/// not going there, and taking the keyboard would interrupt whatever is being typed.
+pub(crate) fn move_pane_to_tab(
+    daemon: &DaemonId,
+    pane: &PaneId,
+    tab: &TabId,
+) -> Result<(), Refusal> {
+    {
+        let session = poison::lock(&SESSION, "session");
+        if session.composition.tab(tab).is_none() {
+            return Err(Refusal::NotThere(format!(
+                "this window holds no tab called {tab}, so {pane} was not moved. Either it \
+                 closed while this was in flight, or the name came from another window - \
+                 `muster window` lists the tabs this one holds."
+            )));
+        }
+    }
+    let intent = BackendIntent::MovePane {
+        pane: pane.clone(),
+        to: MoveDestination::Tab { tab: tab.clone() },
+    };
+    submit(daemon, &intent, Keyboard::StaysPut).map(drop)
+}
+
 /// Brings a named tab on screen, landing the keyboard on its first pane.
 ///
 /// The mouse's half of what `next_tab` does with the keyboard, through the same [`landing`]

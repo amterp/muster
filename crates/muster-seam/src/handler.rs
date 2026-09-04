@@ -998,10 +998,33 @@ fn step_tab(direction: &str) -> Response {
 /// rule that quietly picked one would make a caller's mistake look like a working command that
 /// put the pane somewhere else.
 fn arrange_pane(arrange: &proto::ArrangePane) -> Response {
-    if arrange.new_tab && !arrange.onto_pane_id.is_empty() {
+    let named = usize::from(arrange.new_tab)
+        + usize::from(!arrange.onto_pane_id.is_empty())
+        + usize::from(!arrange.tab_id.is_empty());
+    if named > 1 {
         return Response::failure(
-            "a pane was asked to move onto another pane and into a tab of its own at once, so \
-             nothing was rearranged. Those are two different places; ask for one of them.",
+            "a pane was asked to move to more than one place at once, so nothing was \
+             rearranged. Beside a pane, into a tab, and into a tab of its own are three \
+             different places; ask for one of them.",
+        );
+    }
+    // The one destination that may cross machines, because it names a tab rather than a pane:
+    // a Muster tab is a grouping Muster made, so a pane joining one from another machine moves
+    // no process anywhere (MIP-2, stage four).
+    if !arrange.tab_id.is_empty() {
+        // Empty means the pane the keyboard is on, on the same terms as a tab of its own below:
+        // this names one pane, so there is a "the focused one" to fall back to.
+        let target = match target(&arrange.daemon_id, &arrange.pane_id) {
+            Ok(found) => found,
+            Err(refusal) => return *refusal,
+        };
+        let Some(pane) = target.pane.clone() else {
+            return nothing_to_act_on(&target.daemon);
+        };
+        return placed(
+            session::move_pane_to_tab(&target.daemon, &pane, &TabId::new(&arrange.tab_id))
+                .map(|()| Response::ok()),
+            &target,
         );
     }
     if arrange.new_tab {

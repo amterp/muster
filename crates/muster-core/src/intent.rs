@@ -55,10 +55,11 @@ impl Side {
 /// the second out of two requests in its own adapter, which is where that belongs (MIP-1: the
 /// core speaks Muster's vocabulary).
 ///
-/// Two rather than one because a person means two different things. "Put this beside that" is
-/// what dragging a row onto another row is, and it needs somewhere that already exists to land.
-/// "Give this a tab of its own" names nowhere, and used to cost three commands and a login shell
-/// started and killed on the way (kan `a_2IXGSgZi7`).
+/// Three rather than one because a person means three different things. "Put this beside that"
+/// is what dragging a row onto another row is, and it needs somewhere that already exists to
+/// land. "Give this a tab of its own" names nowhere, and used to cost three commands and a login
+/// shell started and killed on the way (kan `a_2IXGSgZi7`). "Put this in that tab" names a tab
+/// and nothing inside it, which is the one that can span machines.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MoveDestination {
     /// Into a tab that exists, landing behind one of its panes.
@@ -78,6 +79,23 @@ pub enum MoveDestination {
     /// `name` is what to call the new tab, or nothing to leave it unnamed. The dance this
     /// replaces could not name it at all.
     NewTab { name: Option<String> },
+
+    /// Into a Muster tab that exists, wherever in it this pane's machine lands.
+    ///
+    /// **The one destination that can cross machines**, and the whole of what makes a tab hold a
+    /// laptop pane beside a devenv pane (MIP-2, stage four). The pane does not move machines -
+    /// it is a process and stays where it is - what moves is which Muster tab it belongs to, and
+    /// a tab is a grouping Muster made rather than anything a daemon holds.
+    ///
+    /// The adapter does the work in two shapes. A tab that already has a member on this pane's
+    /// machine takes the pane into it, which is an ordinary move. A tab that does not gets one:
+    /// the pane goes into a new backend tab there, and that tab is bound as this Muster tab's
+    /// member on this machine.
+    ///
+    /// Distinct from [`MoveDestination::Beside`] rather than a second meaning for its `tab`,
+    /// because the two are different requests: `Beside` orders one pane against another and both
+    /// have to be in one tree, which is one machine's. This names no pane and orders nothing.
+    Tab { tab: TabId },
 }
 
 /// Which child a step down a tree takes.

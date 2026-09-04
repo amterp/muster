@@ -353,17 +353,17 @@
     },
     {
       "name": "naming a pane sends the name under herdr's own key",
-      "why": "The ordinary case. `label` is herdr's word for a name somebody gave a pane, and it sits beside the terminal title rather than replacing it - the daemon never writes one over the other, so a named pane still says what it is doing.\n\nEmoji go through unchanged, which is worth a case rather than an assumption: this is a field a person types into and `🔥 payments spike` is the sort of thing they type.",
+      "why": "The ordinary case. `label` is herdr's word for a name somebody gave a pane, and it sits beside the terminal title rather than replacing it - the daemon never writes one over the other, so a named pane still says what it is doing.\n\nEmoji go through unchanged, which is worth a case rather than an assumption: this is a field a person types into and `\ud83d\udd25 payments spike` is the sort of thing they type.",
       "given": {
         "intent": "rename-pane",
         "pane": "p1",
-        "name": "🔥 payments spike"
+        "name": "\ud83d\udd25 payments spike"
       },
       "expect": {
         "method": "pane.rename",
         "params": {
           "pane_id": "p1",
-          "label": "🔥 payments spike"
+          "label": "\ud83d\udd25 payments spike"
         }
       }
     },
@@ -619,7 +619,7 @@
         "pane": "p1",
         "side": "down",
         "run": "claude",
-        "name": "🤖 A",
+        "name": "\ud83e\udd16 A",
         "env": {
           "HOME": "/home/a"
         }
@@ -702,6 +702,28 @@
       },
       "expect": {
         "refused": "no tab called t1w3r0a4a9 on local"
+      }
+    },
+    {
+      "name": "a pane put into a tab this machine already holds part of joins that part",
+      "why": "The destination that names a tab and no pane. Nothing is ordered - the request says which tab and leaves where in its tree to the daemon - which is what separates it from a drag onto a row. It is also the one destination that may cross machines: a tab this one holds no part of gets a new one instead, which needs a registry that has not seen the name and so lives in `crates/muster-seam/tests/across_machines.rs` against two real daemons.",
+      "given": {
+        "intent": "move",
+        "pane": "p1",
+        "tab": "t2"
+      },
+      "expect": {
+        "method": "pane.move",
+        "params": {
+          "pane_id": "p1",
+          "destination": {
+            "type": "tab",
+            "tab_id": "t2",
+            "target_pane_id": null,
+            "split": "right"
+          },
+          "focus": false
+        }
       }
     }
   ]

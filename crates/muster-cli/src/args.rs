@@ -386,6 +386,14 @@ enum Doing {
         #[arg(long, group = "somewhere", value_name = "REF")]
         onto: Option<String>,
 
+        /// Put it in this tab, which may be one holding panes on another machine
+        //
+        // The one destination that crosses machines, because a tab is Muster's grouping rather
+        // than a daemon's: the pane stays on its own machine and changes which tab it is in.
+        // `--onto` cannot, because two panes in one tree are one machine's.
+        #[arg(long, group = "somewhere", value_name = "REF")]
+        tab: Option<String>,
+
         /// Give it a tab of its own instead, made by the move
         #[arg(long, group = "somewhere")]
         new_tab: bool,
@@ -622,11 +630,12 @@ fn pane(doing: &Doing, environment: &BTreeMap<String, String>) -> Asking {
             pane_id: pane_ref(pane.as_ref(), environment),
             ..ClosePane::default()
         })),
-        // clap holds the two destinations in one required group, so exactly one is set here.
-        Doing::Move { pane, onto, new_tab, name } => {
+        // clap holds the three destinations in one required group, so exactly one is set here.
+        Doing::Move { pane, onto, tab, new_tab, name } => {
             send(request::Payload::ArrangePane(ArrangePane {
                 pane_id: pane_ref(pane.as_ref(), environment),
                 onto_pane_id: onto.clone().unwrap_or_default(),
+                tab_id: tab.clone().unwrap_or_default(),
                 new_tab: *new_tab,
                 tab_name: name.clone().unwrap_or_default(),
                 ..ArrangePane::default()

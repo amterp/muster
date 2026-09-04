@@ -758,6 +758,21 @@ public enum Core {
     send(request)
   }
 
+  /// Puts a pane into a tab, which is what dropping its row on a caption means.
+  ///
+  /// The one arrangement that may cross machines: a tab is Muster's grouping rather than a
+  /// daemon's, so a pane joining one from another machine changes which tab it is in and moves
+  /// no process anywhere.
+  public static func arrange(pane: PaneKey, intoTab tab: String) {
+    var arrange = Muster_ArrangePane()
+    arrange.daemonID = pane.daemon
+    arrange.paneID = pane.pane
+    arrange.tabID = tab
+    var request = Muster_Request()
+    request.arrangePane = arrange
+    send(request)
+  }
+
   /// Brings a named tab on screen, which is what clicking its caption means.
   ///
   /// Named rather than numbered: a click knows which tab it hit, and the numbers name panes.

@@ -193,6 +193,9 @@ public final class MusterWindow: NSObject {
     sidebar.onPaneArranged = { pane, onto in
       Core.arrange(pane: pane, onto: onto)
     }
+    sidebar.onPaneGrouped = { pane, tab in
+      Core.arrange(pane: pane, intoTab: tab)
+    }
     // Both halves name their subject outright rather than leaving it to whatever has the
     // keyboard: the row somebody double-clicked is very often a pane no region is showing,
     // which is what the list is for.
