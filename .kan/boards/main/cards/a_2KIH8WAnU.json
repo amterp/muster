@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "a-script-cannot-see",
+  "alias_explicit": false,
+  "area": [
+    "shell",
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1788547081674,
+  "creator": "Alexander Terp",
+  "description": "Found while an integrator agent drove five worker panes from a sixth (lore, 2026-09-04). Asked to size the five agent panes evenly, the agent had nothing to read: `muster window --json` gives `regions[]` with one weight per machine, and `panes[]` with tab, place and state, but nothing says how the tab's tree splits, which panes share a row or column, or how wide or tall each one is. The only recourse was to replay its own split order from memory (A right of the integrator, B below A, C right of A, D right of B, E right of C), infer that the top row must be 1/2, 1/4, 1/4, and issue two blind `pane resize --by` calls, then ask the person to look. A pane the person had opened in the same tab was invisible to that reasoning until `pane read` identified it.\n\nTwo asks. First, expose geometry: per pane, its share of width and height (or pixel size and origin), and enough of the tree to know neighbors - a `layout` field on the tab or a parent/split structure on each pane. That lets a script check the result of a resize instead of trusting it. Second, a verb for the common case so a script need not compute anything: `pane resize --equalize` over a tab, or over the row or column a pane sits in.\n\nRelated, minor: `pane resize` takes a share of the region, and after two blind calls nothing confirms where the divider landed. Done: an agent with no eyes can even out N panes in one command and verify from JSON that it happened.",
+  "id": "a_2KIH8WAnU",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "title": "🧭 A script cannot see how a tab is laid out, so it cannot arrange one",
+  "type": "enhancement",
+  "updated_at_millis": 1788547081674,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1788547081674}
+  ]
+}
