@@ -3877,6 +3877,18 @@ fn land(search: &Search, known: Option<Viewport>) {
     }
 }
 
+/// Says where a pane is looking, and changes nothing.
+///
+/// A round trip at the moment somebody asks, for the reason [`find`] takes one: a pane's
+/// position is announced only to a subscription that names it, so following fifteen panes
+/// would be fifteen held connections for a number nothing renders.
+pub(crate) fn viewport(daemon: &DaemonId, pane: &PaneId) -> Result<Viewport, String> {
+    let channel = channel(daemon)?;
+    channel.viewport(pane).map_err(|refusal| {
+        format!("the daemon {daemon} would not say where pane {pane} is looking: {refusal}")
+    })
+}
+
 /// Reads a pane back, and changes nothing.
 ///
 /// A round trip at the moment somebody asks, like [`find`] above and for the same reason: a

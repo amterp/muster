@@ -19,8 +19,8 @@ use std::sync::Mutex;
 use herdr_harness::{Daemon, until};
 use muster::proto::{
     ArrangePane, ClosePane, CreateTab, Event, FocusPane, OpenWindow, PaneText, ReadPane,
-    RenamePane, Request, Response, RosterChanged, SendToPane, SplitPane, Startup, ZoomPane, event,
-    request, response,
+    ReadViewport, RenamePane, Request, Response, RosterChanged, SendToPane, SplitPane, Startup,
+    ZoomPane, event, request, response,
 };
 use prost::Message;
 use serde_json::{Value, json};
@@ -133,6 +133,7 @@ fn every_verb_that_names_a_pane_acts_on_that_panes_machine() {
     a_zoom_fills_the_named_machines_region(&on_laptop, &on_devenv);
     text_reaches_the_named_machines_pane(laptop, &on_laptop, &laptop_pane);
     a_read_answers_with_the_named_machines_pane(&on_laptop);
+    a_viewport_answers_about_the_named_machines_pane(laptop, &on_laptop, &laptop_pane);
     a_rename_reaches_the_named_machines_pane(laptop, &on_laptop, &laptop_pane);
     a_move_rearranges_the_named_machines_tab(&on_laptop);
     a_close_takes_a_pane_off_the_named_machine(laptop, devenv, &on_laptop);
@@ -236,6 +237,41 @@ fn a_read_answers_with_the_named_machines_pane(on_laptop: &str) {
         read.text.contains(SENT),
         "reading the laptop's pane answered without the text just typed into it: {:?}",
         read.text
+    );
+}
+
+/// Where a pane is looking, which the window asks for to keep a selection on its own text.
+///
+/// The oracle is the laptop's own answer for the same pane, so a read that reached the devenv
+/// would describe a pane with a different height and nothing scrolled off it.
+fn a_viewport_answers_about_the_named_machines_pane(
+    laptop: &Daemon,
+    on_laptop: &str,
+    laptop_pane: &str,
+) {
+    let answered = match answer(request::Payload::ReadViewport(ReadViewport {
+        pane_id: on_laptop.to_string(),
+        ..ReadViewport::default()
+    }))
+    .payload
+    {
+        Some(response::Payload::PaneViewport(viewport)) => viewport,
+        other => panic!("expected a viewport, got {other:?}"),
+    };
+    let scroll =
+        laptop.call("pane.get", &json!({ "pane_id": laptop_pane }))["pane"]["scroll"].clone();
+    assert_eq!(
+        u64::from(answered.rows),
+        scroll["viewport_rows"].as_u64().unwrap_or_default(),
+        "the window answered about a pane of a different height than the laptop's"
+    );
+    assert_eq!(
+        u64::from(answered.deepest),
+        scroll["max_offset_from_bottom"].as_u64().unwrap_or_default(),
+    );
+    assert_eq!(
+        u64::from(answered.rows_from_bottom),
+        scroll["offset_from_bottom"].as_u64().unwrap_or_default(),
     );
 }
 

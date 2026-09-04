@@ -79,6 +79,7 @@ fn named(payload: &response::Payload) -> &'static str {
         response::Payload::Made(_) => "a pane",
         response::Payload::WindowFrame(_) => "a window frame",
         response::Payload::PaneText(_) => "a pane's text",
+        response::Payload::PaneViewport(_) => "where a pane is looking",
     }
 }
 

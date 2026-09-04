@@ -68,6 +68,7 @@ message Request {
     EndNumberedChord end_numbered_chord = 41;
     ReadPane read_pane = 42;
     CloseTab close_tab = 43;
+    ReadViewport read_viewport = 44;
   }
 }
 
@@ -229,6 +230,26 @@ message Find {
   // that is what the renderer highlighting these does, and two matchers that disagreed would
   // put a count over a screen contradicting it.
   string needle = 3;
+}
+
+// Where a pane is looking, and how much history it holds.
+//
+// The one fact a shell cannot work out for itself and needs in order to keep a selection on
+// the text it was made on. A pane is scrolled somewhere else - the daemon holds the history
+// and repaints the screen in place, so a surface's own buffer never moves
+// (`observations/libghostty-9f9b8d1d.md` section 12) - and a selection made at screen row 4
+// is at screen row 4 forever unless something says how far the pane has travelled since.
+//
+// Asked at the moment it is wanted rather than followed: the change to it is announced only
+// to a subscription that names the pane, so fifteen panes would be fifteen held connections
+// for a number nothing renders.
+message ReadViewport {
+  string daemon_id = 1;
+
+  // Empty means the pane this window's keyboard is on, as everywhere else. A wheel scrolls
+  // whatever the pointer is over rather than whatever has the keyboard, so a caller asking
+  // about a scrolled pane names it.
+  string pane_id = 2;
 }
 
 // Goes to the next match, or the previous one, and puts it on screen.
@@ -921,6 +942,7 @@ message Response {
     Made made = 8;
     WindowFrame window_frame = 9;
     PaneText pane_text = 10;
+    PaneViewport pane_viewport = 11;
   }
 }
 
@@ -1049,6 +1071,24 @@ message Findings {
   // How many rows the pane holds in all. Set only for `capped`, where it is the other half
   // of the sentence; zero otherwise, since "of 0 rows" is not something to draw.
   uint32 rows_held = 5;
+}
+
+// Where a pane is looking, in the rows the daemon scrolls in.
+//
+// The same three numbers a search's landing is worked out from, and the same unit: a row is a
+// grid row of the pane, counted up from the bottom of its history.
+message PaneViewport {
+  // How far above the bottom of the history the lowest visible row sits. Zero is a pane
+  // showing its newest output, which is where a pane nobody has scrolled always is.
+  uint32 rows_from_bottom = 1;
+
+  // How many rows the daemon is drawing. Not the grid a shell laid out, which is the number
+  // to use for anything about that shell's own screen - the two differ for a frame while a
+  // resize settles.
+  uint32 rows = 2;
+
+  // The furthest up this pane can go, which is zero until something has scrolled off it.
+  uint32 deepest = 3;
 }
 
 // Every action Muster has, and the chord asking for it.

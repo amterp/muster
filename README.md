@@ -122,7 +122,6 @@ after:
   window you open starts on tabs of its own rather than onto what another one is drawing.
 - A name you give a pane reaches another window the next time that window asks the daemon what it
   holds, rather than at the moment you type it. Muster's own names are the same in every window.
-- Selecting text and then scrolling leaves the highlight where it was on screen, over other text.
 
 Muster is not a multiplexer, an agent framework, or a workflow: it gives you panes, states, sessions
 and a scriptable surface, and has no opinion about how you run your agents. `AGENTS.md` is the

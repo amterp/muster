@@ -166,6 +166,7 @@ fn handle(request: Request) -> Response {
         request::Payload::RenamePane(rename) => rename_pane(&rename),
         request::Payload::RenameTab(rename) => rename_tab(&rename),
         request::Payload::CloseTab(close) => close_tab(&close),
+        request::Payload::ReadViewport(read) => read_viewport(&read),
         request::Payload::Find(find) => find_in_pane(&find),
         request::Payload::FindStep(step) => step_find(&step.direction),
         request::Payload::EndFind(_) => {
@@ -238,6 +239,31 @@ fn read_pane(read: &proto::ReadPane) -> Response {
                     .unwrap_or(u32::MAX),
                 text: read.text,
                 truncated: read.truncated,
+            })),
+        },
+        Err(refusal) => Response::failure(refusal),
+    }
+}
+
+/// Says where a pane is looking, so a shell can keep a selection on its own text.
+///
+/// Named like every other pane request, and the empty case is the unusual one here: a wheel
+/// scrolls whatever the pointer is over rather than whatever has the keyboard, so the caller
+/// that wants this normally names the pane it just scrolled.
+fn read_viewport(read: &proto::ReadViewport) -> Response {
+    let target = match target(&read.daemon_id, &read.pane_id) {
+        Ok(target) => target,
+        Err(refusal) => return *refusal,
+    };
+    let Some(pane) = &target.pane else {
+        return nothing_to_act_on(&target.daemon);
+    };
+    match session::viewport(&target.daemon, pane) {
+        Ok(viewport) => Response {
+            payload: Some(response::Payload::PaneViewport(proto::PaneViewport {
+                rows_from_bottom: viewport.rows_from_bottom,
+                rows: viewport.rows,
+                deepest: viewport.deepest,
             })),
         },
         Err(refusal) => Response::failure(refusal),

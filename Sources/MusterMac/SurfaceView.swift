@@ -204,18 +204,26 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
   /// again to pick the pane - a papercut on every switch back.
   public override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-  // A drag makes a selection, and a selection is the surface's own.
+  // A drag makes a selection, and libghostty paints it from what is already on this screen.
   //
-  // Nothing here reaches the daemon. libghostty has already painted this grid, so the range
-  // of cells a drag covers is answerable from what is on screen - which is why copy works
-  // while reporting mouse buttons to the program in the pane does not (kan a_27CTgqqdv):
-  // that needs the pane's mouse mode, and frame diffs consume mode changes before this
-  // surface ever sees one (`observations/herdr-0.8.0.md` section 2). The consequence worth
-  // knowing is that this surface believes mouse reporting is always off, which is exactly
-  // what makes a drag mean "select" here and never "click" over there.
+  // No mode has to be guessed for that, which is why copy works while reporting mouse buttons
+  // to the program in the pane does not (kan a_27CTgqqdv): that needs the pane's mouse mode,
+  // and frame diffs consume mode changes before this surface ever sees one
+  // (`observations/herdr-0.8.0.md` section 2). The consequence worth knowing is that this
+  // surface believes mouse reporting is always off, which is exactly what makes a drag mean
+  // "select" here and never "click" over there.
+  //
+  // The one thing a drag does need from the daemon is where the pane is looking, so that the
+  // selection can be counted from the bottom of the pane rather than from the top of this
+  // screen - see the selection tracking below.
 
   public override func mouseDown(with event: NSEvent) {
     onClick?()
+    // A new press starts a new selection, so whatever was pinned stops being what is on
+    // screen. Dropped rather than replaced, because what replaces it is not known until the
+    // button comes up - a click that never drags selects nothing.
+    selection = .none
+    pressedInGrid = cell(at: event)
     reportMouse(event, pressed: true)
   }
 
@@ -225,6 +233,172 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
 
   public override func mouseUp(with event: NSEvent) {
     reportMouse(event, pressed: false)
+    guard let from = pressedInGrid, let to = cell(at: event), from != to else {
+      // A click rather than a drag. libghostty may still have selected something - a double
+      // click takes the word under it - and there is no way to read back what, so this is
+      // left alone rather than pinned to cells it did not cover.
+      pressedInGrid = nil
+      return
+    }
+    pressedInGrid = nil
+    selection = .madeOnScreen(GridSelection(from: from, to: to))
+    onSelectionMade?()
+  }
+
+  // Keeping a selection on its own text.
+  //
+  // A pane is scrolled somewhere else. The daemon holds the history and answers a scroll by
+  // repainting the screen in place, so this surface's own buffer never moves and a selection
+  // - which libghostty pins to rows of that buffer - stays where it was drawn while the text
+  // under it is rewritten (`observations/libghostty-9f9b8d1d.md` section 12).
+  //
+  // So the selection is remembered in the pane's own coordinates instead, and asked for again
+  // wherever those have landed. Turning one into the other needs the pane's viewport, which
+  // only the daemon knows and which is a round trip - hence the two steps: a drag reports
+  // that it needs one, and whoever knows which pane this is fetches it and hands it back.
+
+  /// The cell the current press started on, while a button is down.
+  private var pressedInGrid: GridCell?
+
+  private var selection: SelectionState = .none
+
+  /// Called when a drag has ended and the cells it covered need pinning to the pane.
+  ///
+  /// A report rather than a request, for the reason a click and a wheel are reports: this view
+  /// knows the gesture and the grid, and which pane it is drawing belongs to the chrome
+  /// around it.
+  public var onSelectionMade: (@MainActor () -> Void)?
+
+  private enum SelectionState {
+    case none
+    /// A drag has ended and its cells are still screen cells, waiting for a viewport to be
+    /// counted from the bottom of the pane instead.
+    case madeOnScreen(GridSelection)
+    /// Pinned to the pane, and placeable on whatever screen it is now showing.
+    case pinnedToPane(GridSelection)
+  }
+
+  /// A cell of a grid, as a column and a row counted up from the bottom row.
+  ///
+  /// Up from the bottom because that is the direction everything else about a pane counts in -
+  /// a match's row, a viewport's offset - and because it is the half of the conversion that
+  /// does not need to know how tall anything is.
+  struct GridCell: Equatable {
+    var column: Int
+    var rowsFromBottom: Int
+  }
+
+  struct GridSelection: Equatable {
+    var from: GridCell
+    var to: GridCell
+  }
+
+  /// Takes where the pane is looking, and does whatever the selection is waiting for.
+  ///
+  /// One entry point rather than two, because which of them applies is this view's own state
+  /// and a caller choosing would have to know it. `movedSince` says whether the pane was asked
+  /// to scroll between the drag ending and this answer arriving, which only matters while a
+  /// selection is being pinned.
+  ///
+  /// A nil viewport is a core that would not say, which is the same news either way: the
+  /// selection cannot be placed, so it comes off rather than staying over whatever is there.
+  public func applyViewport(_ viewport: Core.Viewport?, movedSince: Bool = false) {
+    switch selection {
+    case .none: return
+    case .madeOnScreen: anchorSelection(in: viewport, movedSince: movedSince)
+    case .pinnedToPane: placeSelection(in: viewport)
+    }
+  }
+
+  /// Pins a selection just made to the pane, so it can be found again after a scroll.
+  ///
+  /// The viewport has to be the one in force when the drag ended. A scroll in between makes
+  /// this the wrong answer, and the honest response is to forget the selection and take it off
+  /// the screen rather than pin it somewhere it never was.
+  private func anchorSelection(in viewport: Core.Viewport?, movedSince: Bool) {
+    guard case .madeOnScreen(let made) = selection else { return }
+    guard let viewport, !movedSince else {
+      selection = .none
+      surface?.select(nil)
+      return
+    }
+    let offset = Int(viewport.rowsFromBottom)
+    selection = .pinnedToPane(
+      GridSelection(
+        from: GridCell(column: made.from.column, rowsFromBottom: made.from.rowsFromBottom + offset),
+        to: GridCell(column: made.to.column, rowsFromBottom: made.to.rowsFromBottom + offset)))
+  }
+
+  /// Draws the pinned selection where the pane is now looking, or takes it off.
+  ///
+  /// An end that has scrolled past the screen is asked for beyond the edge it went past rather
+  /// than clamped here, because libghostty clamps a position to its own grid - so a selection
+  /// running up off the top starts at the first cell of the top row, which is what it means.
+  private func placeSelection(in viewport: Core.Viewport?) {
+    guard case .pinnedToPane(let pinned) = selection else { return }
+    guard let viewport, let cellSize = cellPointSize else {
+      surface?.select(nil)
+      return
+    }
+    // The grid this view is drawing rather than the one the daemon reports, and the two can
+    // differ for a frame while a resize settles. What is being worked out is a point on this
+    // surface, so it has to be this surface's own height - the daemon's number is only good
+    // for how far down the pane it is looking.
+    let offset = Int(viewport.rowsFromBottom)
+    guard let rows = gridRows else {
+      surface?.select(nil)
+      return
+    }
+    let lowest = pinned.from.rowsFromBottom < pinned.to.rowsFromBottom ? pinned.from : pinned.to
+    let highest = lowest == pinned.from ? pinned.to : pinned.from
+    // Wholly past one edge, so there is nothing of it to draw. The pin is kept: scrolling back
+    // brings it into view again, which is what a selection anchored to text means.
+    if highest.rowsFromBottom < offset || lowest.rowsFromBottom >= offset + rows {
+      surface?.select(nil)
+      return
+    }
+    surface?.select(
+      SurfaceSelection(
+        from: point(of: pinned.from, offset: offset, rows: rows, cellSize: cellSize),
+        to: point(of: pinned.to, offset: offset, rows: rows, cellSize: cellSize)))
+  }
+
+  /// Whether anything is pinned, so a caller knows whether a scroll is worth a round trip.
+  public var isTrackingSelection: Bool {
+    if case .none = selection { return false }
+    return true
+  }
+
+  /// Where a cell of the pane sits on this surface, in points from its top left.
+  ///
+  /// Deliberately off the surface when the cell is off the screen, and by a whole cell rather
+  /// than a fraction of one: a renderer clamps it to the grid's edge, and half a cell over
+  /// would round back onto the edge row instead of past it.
+  private func point(
+    of cell: GridCell, offset: Int, rows: Int, cellSize: (width: Float, height: Float)
+  ) -> CGPoint {
+    let row = rows - 1 - (cell.rowsFromBottom - offset)
+    // The middle of the cell, so rounding cannot put it in its neighbour.
+    return CGPoint(
+      x: (CGFloat(cell.column) + 0.5) * CGFloat(cellSize.width),
+      y: (CGFloat(row) + 0.5) * CGFloat(cellSize.height))
+  }
+
+  /// How many rows this view is drawing, or nil before anything has measured a cell.
+  private var gridRows: Int? {
+    guard let size = cellPointSize, size.height > 0 else { return nil }
+    let rows = Int((frame.height / CGFloat(size.height)).rounded(.down))
+    return rows > 0 ? rows : nil
+  }
+
+  /// Which cell of the grid an event landed on, counted up from the bottom row.
+  private func cell(at event: NSEvent) -> GridCell? {
+    guard let size = cellPointSize, size.width > 0, let rows = gridRows else { return nil }
+    let point = convert(event.locationInWindow, from: nil)
+    let row = Int(((frame.height - point.y) / CGFloat(size.height)).rounded(.down))
+    let column = Int((point.x / CGFloat(size.width)).rounded(.down))
+    return GridCell(
+      column: max(0, column), rowsFromBottom: max(0, min(rows - 1, rows - 1 - row)))
   }
 
   private func reportMouse(_ event: NSEvent, pressed: Bool) {
