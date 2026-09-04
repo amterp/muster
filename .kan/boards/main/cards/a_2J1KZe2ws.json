@@ -1,0 +1,25 @@
+{
+  "_v": 3,
+  "alias": "a-window-opening",
+  "alias_explicit": false,
+  "area": [
+    "shell",
+    "backend"
+  ],
+  "column": "next",
+  "created_at_millis": 1788358934684,
+  "creator": "Alexander Terp",
+  "description": "A window that opens onto a zoomed tab accuses its own hidden panes of being deaf. Three untypeable errors appeared within five seconds of launch, naming panes that were working: the notification read \"the pane devenv/p206y9p61r has had a socket open for over 5s, and nothing has dialed it\". Nothing was wrong with any of them, and unzooming cleared all three within 100ms.\n\n## What happens\n\n`open_channels` binds a socket for every leaf of the tab's layout (`crates/muster-seam/src/session.rs:1291`). The view for a zoomed tab names one pane, because `zoom_filling` resolves the tree down to it (`crates/muster-core/src/composition/view.rs:589`). So the shell starts one bridge and the other three sockets sit bound with nothing to dial them. At five seconds the watchdog reports each one.\n\nMeasured on run 2227, which opened onto a devenv tab zoomed on `p20970gz3s`:\n\n    08:18:33.760  channel.listening x4, server_channel.ready for w4:pB, w4:p1, w4:p3, w4:pA\n    08:18:33.837  surface.create    p20970gz3s        \u003c- one bridge, for the zoomed pane\n    08:18:38.765  problems.received count=1 errors=1\n    08:18:38.791  problems.received count=3 errors=3\n    08:20:10.6    (unzoom) surface.create x3, pane.typeable x3, problems count=0\n\nThe three panes were never deaf. They had no surface, because nothing was drawing them.\n\n## Why it matters more than a spurious toast\n\nThe watchdog exists to catch a pane that renders and swallows keystrokes, which `crates/muster-core/src/typeable.rs` opens by naming three shipped bugs that ended that way. An alarm that fires on a healthy zoomed window is the thing that teaches somebody to ignore it, and it fires on every launch onto a zoomed tab.\n\nIt reaches the person as a notification now, so on a Developer ID build this is three banners at launch rather than three rows in a list.\n\n## Fix\n\nNarrow `open_channels` the way the view is narrowed: bind a socket for the panes the view names, using `zoom_filling`. Unzooming republishes, and `open_channels` runs from `publish`, so the revealed panes get their sockets before the shell builds their surfaces - which is the invariant its own doc comment already states.\n\nThe alternative is to leave the sockets bound and tell the watchdog which panes are covered. That keeps a bound socket per hidden pane for no reason, and it splits the question of which panes are showing across two places when `View::showing` already answers it.\n\n## Reproducing it\n\n1. Zoom a tab holding two or more panes.\n2. Quit Muster and relaunch, so the window opens onto that tab.\n3. Wait five seconds. One problem per hidden pane, each naming a pane that is fine.\n4. Unzoom. They clear immediately and every pane paints.\n\n## Validating a fix\n\n- A window opening onto a zoomed tab of four panes raises nothing.\n- Unzooming paints all four, with no gap where one is typeable and the others are not.\n- The watchdog still reports a pane whose bridge genuinely never dials - `crates/muster-seam/tests/untypeable.rs` covers this and must stay green.",
+  "id": "a_2J1KZe2ws",
+  "labels": [
+    "ai-lo"
+  ],
+  "position": "!J",
+  "title": "🔇 A window opening onto a zoomed tab reports its hidden panes as deaf",
+  "type": "bug",
+  "updated_at_millis": 1788359295420,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1788358934684},
+    {"field":"column","value":"next","at":1788359295420}
+  ]
+}

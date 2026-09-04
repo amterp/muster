@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-relaunch-brings",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1788527953489,
+  "creator": "Alexander Terp",
+  "description": "`brew upgrade` to 0.6.0 quit both Muster windows. The relaunch brought back one. Nothing in the app, the CLI or the docs said a second window had existed, and getting it back took reading `StateLocation.swift` and the launch logs to learn it had been started with `--home ~/.muster-local`. Nine panes were running the whole time, seven of them agents, on a daemon no window was showing.\n\nThe rule this breaks: losing a window should take a deliberate act. Closing a window is that act. Quitting is not, and neither is a crash or an upgrade - every window open at that moment should come back on relaunch, or at the least be listed and reopenable by somebody who has never read Muster's source.\n\n## What happened\n\nBoth windows quit cleanly at 08:06 when the cask replaced the app (`quit.geometry.restored` is the last line in both logs), so both released their `.held` claims. On relaunch, `Arrangements.open` took the most recently written arrangement nobody held under `~/.muster/state/windows/` - the devenv window - and opened it. That is the whole of what a bare launch does, and README says so: \"Only the last window you closed comes back\".\n\nThe second window was worse off. It ran from `--home ~/.muster-local`, the two-home workaround from `a_2IZ5TL6DQ`, so its arrangement sits under a different `state/windows/` that a launch from the Dock never reads. The record was intact and unheld the whole time. Reopen Closed Window and `muster window reopen` both look under the running window's home, so neither would have found it. This did:\n\n    open -n /Applications/Muster.app --args --home ~/.muster-local\n\nNothing was lost. herdr held every pane and the arrangement file was intact. What was lost was the knowledge that the window existed, which is the one thing a person needs in order to recover it.\n\n## What recovery should not have needed\n\n- Knowing arrangements are files, where they live, and that a second home keeps its own.\n- Knowing the app takes `--home` as an argument.\n- Reading the launch log of a dead process to see which config it had read.\n\n## Directions, none settled\n\n- **Quit is not close.** Relaunch reopens every window that was open when Muster last quit, and only a window somebody closed stays closed. A browser's rule, and the smallest change that covers a crash and an upgrade - the two cases where nobody chose anything. Pid-liveness on `.held` files does not distinguish these today, because a clean quit releases the claim; what is needed is a record of which windows were open at quit, written as the set changes rather than on the way out.\n- **List and name closed windows.** `muster window list --closed`, or a Reopen submenu, so the twenty kept records are reachable by name rather than by reopening twice and hoping. README already names this gap.\n- **A second home's windows are still Muster's windows.** Either every home a window has run from is remembered somewhere every launch reads, or the two-home workaround goes and this case stops existing. 0.6.0's tab model removed the refill rule and the dead-surface problem that made the workaround necessary (`a_2I6h18OU6`, `a_2IZ5TL6DQ`), so the second may already be true. Worth checking before building the first.\n\n## Validating a fix\n\n- Two windows open, `cmd+q`, relaunch from the Dock: both come back, on the tabs they were showing.\n- Two windows open, `kill -9` both, relaunch: both come back.\n- Close one window with `cmd+w`, quit, relaunch: only the other comes back, and the closed one is one menu item or one `muster window` command away, by name.",
+  "id": "a_2KAFWbZBa",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "title": "🫥 A relaunch brings back one window, and nothing says there was another",
+  "type": "bug",
+  "updated_at_millis": 1788527953489,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1788527953489}
+  ]
+}

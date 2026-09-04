@@ -26,6 +26,7 @@
     {"field":"column","value":"backlog-lo","at":1787033901134},
     {"field":"column","value":"in-progress","at":1787041487337},
     {"field":"column","value":"next","at":1787047243086},
+    {"field":"column","value":"backlog-hi","at":1788359295020},
     {"field":"column","value":"done","at":1788483712973}
   ]
 }
