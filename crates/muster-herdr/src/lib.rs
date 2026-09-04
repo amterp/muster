@@ -19,6 +19,7 @@ pub mod intent;
 pub mod layout;
 pub mod pane_channel;
 pub mod pin;
+pub mod records;
 pub mod remote;
 pub mod snapshot;
 pub mod subscription;
@@ -36,5 +37,6 @@ pub use intent::{HerdrBackend, considered, makes_a_pane, read_request, refusal, 
 pub use layout::{PaneCells, read_exported_layout, read_layout, unattached_sizes};
 pub use pane_channel::HerdrPaneChannel;
 pub use pin::{Pin, pinned};
+pub use records::{Census, State};
 pub use snapshot::{fetch_snapshot, fetch_unattached_sizes, pane_rows, read_snapshot};
 pub use subscription::{Notice, Subscription};

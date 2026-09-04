@@ -53,6 +53,9 @@ pub fn answer(response: &Response, json: bool) -> Result<String, Trouble> {
             // reader is about to grep. `--json` is where the two facts beside it live.
             read.text.clone()
         }),
+        Some(response::Payload::Daemons(daemons)) => {
+            Ok(if json { daemons_json(daemons).to_string() } else { daemons_text(daemons) })
+        }
         Some(other) => Err(Trouble::Refused(format!(
             "the window answered with {}, which nothing here asked for. That is a bug in muster \
              rather than anything to do with the request.",
@@ -80,6 +83,7 @@ fn named(payload: &response::Payload) -> &'static str {
         response::Payload::WindowFrame(_) => "a window frame",
         response::Payload::PaneText(_) => "a pane's text",
         response::Payload::PaneViewport(_) => "where a pane is looking",
+        response::Payload::Daemons(_) => "a list of daemons",
     }
 }
 
@@ -578,6 +582,84 @@ fn keyboard_pane(window: &Window) -> Option<String> {
 /// without knowing where it lives.
 fn states(window: &Window) -> BTreeMap<&str, &str> {
     window.panes.iter().map(|pane| (pane.pane_id.as_str(), pane.state.as_str())).collect()
+}
+
+/// The daemons on this machine, for somebody deciding which of them to end.
+///
+/// Every row carries what it holds and how to end it, because those are the two things the
+/// decision needs and neither is recoverable from a process list. A count is not enough: of
+/// twenty daemons on one machine, nineteen held nothing and one held somebody's live agent.
+///
+/// Nothing here sorts by age or suggests a candidate. Age is exactly what picked the wrong
+/// process on that machine, and a tool that nominated one to kill would be a reaper with extra
+/// steps.
+fn daemons_text(daemons: &muster_proto::Daemons) -> String {
+    if !daemons.remembered {
+        return "Muster has nowhere to write down the daemons it starts, so there is no record \
+                to read. This says nothing about what is running on this machine."
+            .to_string();
+    }
+    if daemons.daemons.is_empty() {
+        return "Muster has started no daemon on this machine that it still has a record of."
+            .to_string();
+    }
+
+    let mut lines = Vec::new();
+    for daemon in &daemons.daemons {
+        let here = if daemon.attached_here { " · this window" } else { "" };
+        lines.push(format!("{}{}{}{here}", NAME.render(), described(daemon), NAME.render_reset()));
+        lines.push(format!("  {}{}{}", QUIET.render(), daemon.socket, QUIET.render_reset()));
+    }
+    lines.push(String::new());
+    lines.push(format!(
+        "{}End one with: HERDR_SOCKET_PATH=<socket> herdr server stop{}",
+        QUIET.render(),
+        QUIET.render_reset()
+    ));
+    lines.join("\n")
+}
+
+/// One daemon as a headline: what state it is in, and what it holds if it would say.
+fn described(daemon: &muster_proto::KnownDaemon) -> String {
+    match daemon.state.as_str() {
+        "answering" if daemon.panes == 0 => "answering · holding nothing".to_string(),
+        "answering" => format!(
+            "answering · {} pane(s){}",
+            daemon.panes,
+            if daemon.directories.is_empty() {
+                String::new()
+            } else {
+                format!(" in {}", daemon.directories.join(", "))
+            }
+        ),
+        // Both of the not-answering cases say what to conclude, because the conclusions differ
+        // and neither is obvious from the word alone.
+        "silent" => "silent · its socket file is there and nothing answers on it, so this daemon \
+                     has ended and left the file behind"
+            .to_string(),
+        "gone" => "gone · no socket file left, so it either ended or is running with its socket \
+                   path deleted out from under it, and nothing here can tell those apart"
+            .to_string(),
+        other => format!("{other} · a state this muster does not know, so the window is newer"),
+    }
+}
+
+fn daemons_json(daemons: &muster_proto::Daemons) -> Value {
+    json!({
+        "remembered": daemons.remembered,
+        "daemons": daemons
+            .daemons
+            .iter()
+            .map(|daemon| json!({
+                "socket": daemon.socket,
+                "started": daemon.started,
+                "state": daemon.state,
+                "panes": daemon.panes,
+                "directories": daemon.directories,
+                "attached_here": daemon.attached_here,
+            }))
+            .collect::<Vec<Value>>(),
+    })
 }
 
 #[cfg(test)]

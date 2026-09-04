@@ -116,6 +116,7 @@ fn handle(request: Request) -> Response {
         request::Payload::ReadWindow(_) => read_window(),
         request::Payload::ReadPane(read) => read_pane(&read),
         request::Payload::SendToPane(send) => send_to_pane(&send),
+        request::Payload::ReadDaemons(_) => read_daemons(),
         request::Payload::ReadAppearance(_) => read_appearance(),
         request::Payload::ReadWindowFrame(read) => read_window_frame(&read.screens),
         request::Payload::ReportFontFamily(report) => report_font_family(&report),
@@ -267,6 +268,42 @@ fn read_viewport(read: &proto::ReadViewport) -> Response {
             })),
         },
         Err(refusal) => Response::failure(refusal),
+    }
+}
+
+/// Which herdr daemons Muster has started on this machine, and whether each is still there.
+///
+/// The half `read_window` cannot answer. That says what *this* window is attached to, which is
+/// what makes ending this window's sessions deliberate; a person about to end a stray herdr
+/// needs the other half, and until now the only thing that answered it was a build script in
+/// this repository walking processes with `pgrep` and `lsof`.
+///
+/// Every socket is dialed rather than believed. The record is a hint - it says a daemon was
+/// started there, not that one is there now - and a census that reported a file as a running
+/// process would be worse than none, because the whole use of it is deciding what to end.
+fn read_daemons() -> Response {
+    let (found, remembered) = match session::daemon_census() {
+        Some(found) => (found, true),
+        // Nowhere to write records, so nothing was ever remembered. Answered rather than
+        // refused, because "Muster is not keeping this" is a true answer to the question and a
+        // caller reading an empty list needs to know which empty it is.
+        None => (Vec::new(), false),
+    };
+    Response {
+        payload: Some(response::Payload::Daemons(proto::Daemons {
+            daemons: found
+                .into_iter()
+                .map(|(census, attached_here)| proto::KnownDaemon {
+                    socket: census.socket,
+                    started: i64::try_from(census.started).unwrap_or(i64::MAX),
+                    state: census.state.as_str().to_string(),
+                    panes: census.panes,
+                    directories: census.directories,
+                    attached_here,
+                })
+                .collect(),
+            remembered,
+        })),
     }
 }
 
@@ -1584,6 +1621,7 @@ fn start(startup: &proto::Startup) -> Response {
     // is part of the environment that daemon is born with - so a pane it spawns has `muster` on
     // its PATH from the first one onwards.
     session::set_commands_path(&startup.commands_path);
+    session::set_daemon_records_path(&startup.daemon_records_path);
     // Before the config, because applying one can attach a daemon on another machine and that
     // is the whole of what this is for: a herdr for that machine's platform, fetched here and
     // pushed across. Set after, the first launch to meet a new devenv would download to a

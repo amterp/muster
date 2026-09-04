@@ -148,3 +148,43 @@ herdr has no method that answers "which process are you". So pairing a herdr pro
 work inside it is Muster's to keep, because Muster either started the daemon or chose to attach
 to it. Without it the choice is made on age, and age picks the wrong process: of twenty daemons
 on one machine, the one holding somebody's live agent was neither the oldest nor the youngest.
+
+# The daemons on this machine
+
+`muster window` is about one window. It cannot say which daemons are on this machine that no
+window is attached to, and those are the ones that accumulate: measured on one machine, twenty
+herdr daemons alive, nineteen holding nothing, and one holding somebody's live agent.
+
+    muster daemons
+
+    answering · 3 pane(s) in ~/src/muster, ~/src/rad · this window
+      /Users/you/.config/herdr/sessions/muster/herdr.sock
+    answering · holding nothing
+      /private/tmp/muster-smoke/driving/config/herdr/sessions/muster/herdr.sock
+
+    End one with: HERDR_SOCKET_PATH=<socket> herdr server stop
+
+Every row is a daemon **Muster started**, checked by dialing its socket rather than believed
+from the file. A daemon Muster adopted is somebody else's to account for; `muster window` names
+it while this window is using it, and Muster has no standing to tell you what it holds after
+that.
+
+- `state` is `answering`, `silent` or `gone`. `answering` replied when it was dialed. `silent`
+  has a socket file nothing answers on, which is a daemon that ended without tidying up. `gone`
+  has no socket file left, and it is the one case Muster cannot resolve for you: a daemon whose
+  socket path was deleted out from under it is still running and unreachable, and looks
+  identical to one that ended.
+- `panes` and `directories` say what an answering daemon holds. This is the row that decides
+  anything - a count of zero is a daemon you can end and lose nothing.
+- `attached_here` says whether the window answering is using it. A window can only speak for
+  itself, so `false` means "not this window" rather than "nothing". With more than one window
+  open you get one answer per window, the way `muster window` does.
+- `started` is when Muster started it. It is there to be recognised, not sorted by: age is
+  exactly what picks the wrong process.
+
+**Nothing here ends a daemon, and nothing ever will.** A process holding somebody's live agent
+is the wrong thing to reap on a schedule, in a tool whose promise is that agents outlive the
+app. The census exists so that ending one is deliberate.
+
+`remembered` in the `--json` answer is `false` when Muster has nowhere to write records, and
+then the empty list means nothing was written down rather than that the machine is clean.

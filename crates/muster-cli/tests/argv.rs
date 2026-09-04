@@ -144,6 +144,7 @@ fn described_tab(payload: &request::Payload) -> Option<Value> {
 fn described_pane_or_window(payload: &request::Payload) -> Value {
     match payload {
         request::Payload::ReadWindow(_) => json!({ "read_window": {} }),
+        request::Payload::ReadDaemons(_) => json!({ "read_daemons": {} }),
         request::Payload::SplitPane(split) => json!({
             "split_pane": fields([
                 ("pane_id", said(&split.pane_id)),

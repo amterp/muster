@@ -28,7 +28,7 @@ pub const TOPICS: &[Topic] = &[
     },
     Topic {
         name: "window",
-        about: "what `muster window` answers, and what every field of it means",
+        about: "what `muster window` answers, every field of it, and `muster daemons`",
         text: include_str!("../../../docs/cli/window.md"),
     },
     Topic {

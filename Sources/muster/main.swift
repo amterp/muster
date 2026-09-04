@@ -78,7 +78,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       logPath: logPath, configPath: config, daemonPath: daemon, statePath: arrangement,
       daemonConfigPath: daemonConfigPath(), paneNamesPath: paneNamesPath(),
       commandSocketPath: commandSocketPath(), commandsPath: commands, cachePath: cachePath(),
-      fresh: fresh)
+      daemonRecordsPath: daemonRecordsPath(), fresh: fresh)
     // Given up on the way out so that a window closed and reopened in the same second finds its
     // own record rather than the one before it. Not relied on: a window that is killed never
     // gets here, and the claim carries a pid for exactly that.

@@ -5,6 +5,20 @@
   "why": "What `muster pane new --down --run claude` becomes is the whole contract between an agent and the window it is sitting in, and it is the part that outlives this implementation - a `muster` rewritten in anything else has to turn the same words into the same requests. Three shapes of outcome are pinned: the request a line becomes, the refusal a line earns from us, and the *kind* of complaint clap makes about a line it cannot read. The kind rather than the wording, because the wording is clap's and would change under a version bump, while `an unknown flag is refused rather than swallowed` is the promise. Fields left at their protobuf default are absent here, so a case reads as what somebody actually said: `side` and a rename's `name` are the exceptions, the first because every split has a side and the default is the point, and the second because an empty name is what takes a name away.",
   "cases": [
     {
+      "name": "asking what daemons are on this machine names no window and no pane",
+      "why": "The one verb here that is about the machine rather than about a window. `muster window` answers what this window is attached to; this answers what is on the machine at all, including the daemons no window is attached to - which are the ones that accumulate.\n\nIt takes nothing, and that is the case. A pane ref would be meaningless and a daemon ref would be asking about the thing being enumerated. A verb that took a filter would be a verb somebody could use to narrow a census down to the row they already expected.",
+      "given": {
+        "argv": [
+          "daemons"
+        ]
+      },
+      "expect": {
+        "request": {
+          "read_daemons": {}
+        }
+      }
+    },
+    {
       "name": "the whole window is one read",
       "why": "An agent has no eyes, so this is half the value of the surface. One request rather than a question per pane, because a caller that has to ask again for each cannot see them at one moment.",
       "given": {

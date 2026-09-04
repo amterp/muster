@@ -20,8 +20,9 @@ use clap::{ArgGroup, CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::Shell;
 use muster_proto::{
     AdjustFontSize, ArrangePane, ClosePane, CloseTab, CreateTab, FocusPane, FocusPaneAt,
-    FocusRelative, FocusTab, FocusTabRelative, ReadPane, ReadWindow, ReloadConfig, RenamePane,
-    RenameTab, Request, ResizePane, SendToPane, SplitPane, ToggleSidebar, ZoomPane, request,
+    FocusRelative, FocusTab, FocusTabRelative, ReadDaemons, ReadPane, ReadWindow, ReloadConfig,
+    RenamePane, RenameTab, Request, ResizePane, SendToPane, SplitPane, ToggleSidebar, ZoomPane,
+    request,
 };
 
 use crate::{docs, environment};
@@ -159,6 +160,14 @@ enum What {
         #[command(subcommand)]
         doing: WithTab,
     },
+
+    /// Every herdr daemon Muster started on this machine, and whether it is still there
+    //
+    // Its own verb rather than a section of `muster window`, because the two answer different
+    // questions about different things. `window` is about one window and everything in it;
+    // this is about the machine, and the daemons worth knowing about are exactly the ones no
+    // window is showing.
+    Daemons,
 
     /// Put the window's keyboard on a pane, or step it somewhere
     //
@@ -529,6 +538,7 @@ pub fn parse(
 
     let asking = match &cli.what {
         What::Window { doing: None } => send(request::Payload::ReadWindow(ReadWindow {})),
+        What::Daemons => send(request::Payload::ReadDaemons(ReadDaemons {})),
         // Asked of every window rather than of one, which is why it is not a `Send`: `--socket`
         // and $MUSTER_SOCKET both narrow to one window, and the question here is which there are.
         What::Window { doing: Some(AboutWindows::List) } => Asking::Survey,
