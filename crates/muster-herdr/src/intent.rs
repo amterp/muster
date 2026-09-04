@@ -78,6 +78,39 @@ impl HerdrBackend {
     }
 }
 
+impl HerdrBackend {
+    /// Binds the tab a grouping move made as this Muster tab's member on this machine.
+    ///
+    /// The other half of `MoveDestination::Tab` reaching a machine that held no part of the tab
+    /// (MIP-2, stage four). herdr answers `pane.move` with the tab it created, and that tab is
+    /// what this machine's half of the Muster tab now is - a fact no daemon can be told and only
+    /// the name registry can hold.
+    ///
+    /// Bound from the answer rather than from the event that follows it, on the same terms as a
+    /// tab made by `tab.create`: the reply comes back on this thread before the daemon announces
+    /// anything, so the announcement is decoded with the binding already in place.
+    ///
+    /// Silent for every other intent, and for a move that needed no grouping.
+    fn group(&self, intent: &BackendIntent, result: &Value) {
+        let BackendIntent::MovePane { to: MoveDestination::Tab { tab }, .. } = intent else {
+            return;
+        };
+        let Some(made) = nested(result, "created_tab")
+            .and_then(|created| created.get("tab_id"))
+            .and_then(Value::as_str)
+        else {
+            // Nothing was made, which is the ordinary answer for a tab this machine already
+            // held half of - the move went into that half and the binding is already there.
+            return;
+        };
+        log::info(
+            "herdr.tab.grouped",
+            fields! { "tab" => tab.to_string(), "backend" => made.to_string() },
+        );
+        self.names.group_tab(tab, made);
+    }
+}
+
 impl BackendChannel for HerdrBackend {
     fn submit(&self, intent: &BackendIntent) -> Result<Outcome, Refusal> {
         // Minted before the request rather than read off the answer, because it has to travel
@@ -108,6 +141,11 @@ impl BackendChannel for HerdrBackend {
                 return Err(refusal(&failure));
             }
         };
+
+        // Before anything reads the answer's layout. A move that grouped this machine into a
+        // Muster tab made a herdr tab to hold the pane, and until that tab is bound the mirror
+        // would name it a tab of its own - which is the grouping not having happened.
+        self.group(intent, &result);
 
         let created = self.settle(created(intent, &result).as_deref(), minted.as_ref());
         let settled = match (rearranges(intent), &created) {
@@ -825,6 +863,22 @@ pub fn request(
                     MoveDestination::NewTab { name: Some(name) } => {
                         json!({ "type": "new_tab", "label": name })
                     }
+                    // A Muster tab this machine already holds half of takes the pane into that
+                    // half, with no pane named: `target_pane_id` is nullable, and where in the
+                    // tree it lands is herdr's to decide because the request ordered nothing.
+                    //
+                    // A Muster tab this machine holds no half of is the grouping case, and it
+                    // goes out as a new tab. Which Muster tab that new one belongs to is bound
+                    // when the answer names it - see `group`, below.
+                    MoveDestination::Tab { tab } => match names.backend_tab(tab) {
+                        Ok(member) => json!({
+                            "type": "tab",
+                            "tab_id": member.as_str(),
+                            "target_pane_id": Value::Null,
+                            "split": "right",
+                        }),
+                        Err(_) => json!({ "type": "new_tab" }),
+                    },
                 },
                 "focus": false,
             }),

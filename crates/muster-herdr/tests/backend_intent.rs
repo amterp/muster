@@ -391,12 +391,16 @@ fn intent(given: &Value) -> Result<BackendIntent, CaseError> {
         // in - which is how a caller says the same two things.
         "move" => Ok(BackendIntent::MovePane {
             pane: PaneId::new(&text(given, "pane")?),
-            to: match given.get("tab").and_then(Value::as_str) {
-                Some(tab) => MoveDestination::Beside {
+            // Three destinations, told apart by what the case names beside the tab. `after` is
+            // an ordering against a pane and `tab` alone is the tab itself, which is the one
+            // that may cross machines.
+            to: match (given.get("tab").and_then(Value::as_str), given.get("after")) {
+                (Some(tab), Some(_)) => MoveDestination::Beside {
                     tab: TabId::new(tab),
                     after: PaneId::new(&text(given, "after")?),
                 },
-                None => MoveDestination::NewTab {
+                (Some(tab), None) => MoveDestination::Tab { tab: TabId::new(tab) },
+                (None, _) => MoveDestination::NewTab {
                     name: given.get("name").and_then(Value::as_str).map(str::to_string),
                 },
             },

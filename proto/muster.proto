@@ -782,11 +782,16 @@ message FocusTabRelative {
 // the same tab is an exchange, a different tab is a move - and a caller that chose would be a
 // second place that rule lives.
 //
-// **Both panes must be on the same daemon.** A pane is a PTY its daemon owns, so moving one to
+// **Two panes must be on the same daemon.** A pane is a PTY its daemon owns, so moving one to
 // another machine would mean killing a process on one host and starting a different one on
 // another; that is not a move, and there is no honest thing to do with the request. The
 // sidebar refuses such a drop before sending this and the core refuses it on arrival, which is
 // what a CLI caller gets - it has two names and no way to know they are on different machines.
+//
+// **A tab is the one destination that may.** `tab_id` names a Muster tab rather than a pane, and
+// a Muster tab is a grouping Muster made rather than anything a daemon holds - so a pane joining
+// one from another machine changes which tab it belongs to and moves no process anywhere. That
+// is what makes a tab hold a laptop pane beside a devenv pane.
 //
 // The keyboard does not follow. Arranging the list is not going somewhere, and moving the
 // keyboard would interrupt whatever is being typed into the pane that had it.
@@ -808,6 +813,14 @@ message ArrangePane {
   // request that means two things, and neither is a request that means nothing - so both are
   // refused by name rather than resolved by precedence.
   string onto_pane_id = 3;
+
+  // Put it in a tab that already exists, which may be one holding panes on another machine.
+  //
+  // The Muster tab's name, as `muster window` prints it. Where in that tab the pane lands is not
+  // said and not decided here: the request orders nothing, unlike `onto_pane_id` above.
+  //
+  // Exclusive with the other two, on the same terms.
+  string tab_id = 6;
 
   // Put it in a tab of its own instead, which this makes.
   //

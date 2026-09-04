@@ -382,20 +382,30 @@ public enum SidebarModel {
     return rows
   }
 
-  /// Whether dragging one pane onto another row is a gesture Muster can carry out.
+  /// Whether dragging one pane onto a row is a gesture Muster can carry out.
   ///
   /// Here rather than in the view so that the rule is testable: a decision inside
   /// `validateDrop` is a decision no test can reach, and this one has a case that is easy to
   /// get wrong and impossible to see - two daemons hand out the same pane ids, so a rule
   /// comparing ids alone would call a cross-machine drop legal.
   ///
-  /// **A drop must land on a pane row on the same daemon.** A daemon heading and a tab caption
-  /// are not places a pane can go. Crossing daemons is refused because a pane is a PTY its
-  /// daemon owns: moving one to another machine would mean killing a process on one host and
-  /// starting a different one on another, which is not what dragging a row looks like it does.
+  /// **A drop on a pane row must be on the same machine.** A pane is a PTY its daemon owns, so
+  /// moving one to another machine would mean killing a process on one host and starting a
+  /// different one on another, which is not what dragging a row looks like it does.
+  ///
+  /// **A drop on a tab caption may cross machines**, and is how a tab comes to hold a laptop
+  /// pane beside a devenv one (MIP-2, stage four). The pane stays where it is; what changes is
+  /// which tab it belongs to, and a tab is a grouping Muster made rather than anything a daemon
+  /// holds. So the two destinations differ in exactly the way the requests behind them do.
+  ///
+  /// A machine's row is not a place a pane can go: it names no tab, and dropping onto a machine
+  /// that already holds the pane would mean nothing at all.
   ///
   /// Dropping a row on itself is legal and does nothing, which is what an accidental drag is.
   public static func canArrange(_ pane: PaneKey, onto row: Row) -> Bool {
+    if row.isTab {
+      return true
+    }
     guard let target = row.pane else { return false }
     return target.daemon == pane.daemon
   }
@@ -510,6 +520,13 @@ public final class SidebarView: NSView {
   /// exchange within a tab, or a move into another one - is decided in the core from where the
   /// two panes are, and the list changes when the roster that comes back says so.
   public var onPaneArranged: ((PaneKey, PaneKey) -> Void)?
+
+  /// Called when somebody drags an agent's row onto a tab caption, meaning they want it in that
+  /// tab - which may be a tab holding panes on another machine.
+  ///
+  /// Its own callback rather than the one above, because the request behind it is a different
+  /// one: that names two panes and this names a tab, and only this one may cross machines.
+  public var onPaneGrouped: ((PaneKey, String) -> Void)?
 
   public private(set) var rows: [SidebarModel.Row] = []
 
@@ -749,8 +766,13 @@ extension SidebarView: NSTableViewDataSource, NSTableViewDelegate {
     dropOperation operation: NSTableView.DropOperation
   ) -> Bool {
     guard let pane = dragged(info), rows.indices.contains(row),
-      SidebarModel.canArrange(pane, onto: rows[row]), let onto = rows[row].pane
+      SidebarModel.canArrange(pane, onto: rows[row])
     else { return false }
+    if rows[row].isTab {
+      onPaneGrouped?(pane, rows[row].tab)
+      return true
+    }
+    guard let onto = rows[row].pane else { return false }
     onPaneArranged?(pane, onto)
     return true
   }

@@ -336,7 +336,9 @@ struct SidebarTests {
     #expect(SidebarModel.canArrange(dragged, onto: sameDaemon))
     // Same pane id, different machine. This is the one a careless rule gets wrong.
     #expect(!SidebarModel.canArrange(dragged, onto: otherDaemon))
-    #expect(!SidebarModel.canArrange(dragged, onto: caption))
+    // A caption is a place a pane can go, and the one destination that may cross machines: it
+    // names a tab rather than a pane, and a tab is Muster's grouping rather than a daemon's.
+    #expect(SidebarModel.canArrange(dragged, onto: caption))
   }
 
   @Test("dropping a row on itself is allowed and means nothing")
@@ -390,6 +392,35 @@ struct SidebarTests {
     }
 
     #expect(rows.map(\.onScreen) == [true, false])
+  }
+
+  @Test("a pane can be dropped on a caption from any machine, and on a machine's row from none")
+  func aDropOnACaptionMayCrossMachines() throws {
+    // What MIP-2 stage four is, as a gesture: dragging a devenv agent onto a laptop tab's
+    // caption puts it in that tab. The pane stays on the devenv - it is a process - and what
+    // changes is which tab it belongs to, which is why this one drop may cross machines where a
+    // drop onto a pane row may not.
+    let roster = roster(
+      [
+        tab(
+          "local", "w1:t1", place: 1, label: "here", onScreen: true,
+          panes: [pane("local", "w1:p1", place: 1)]),
+        tab(
+          "devenv", "w2:t1", place: 2, label: "there", panes: [pane("devenv", "w2:p1", place: 2)]),
+      ],
+      machines: [
+        Roster.Machine(id: "local", state: "connected", panes: 1),
+        Roster.Machine(id: "devenv", state: "connected", panes: 0),
+      ])
+    let rows = SidebarModel.rows(roster: roster, states: [:])
+    let onDevenv = PaneKey(daemon: "devenv", pane: "w2:p1")
+
+    let laptopCaption = try #require(rows.first { $0.isTab && $0.tab == "w1:t1" })
+    #expect(SidebarModel.canArrange(onDevenv, onto: laptopCaption))
+
+    // A machine's row names no tab, so there is nothing to ask for.
+    let machine = try #require(rows.first { $0.isMachine })
+    #expect(!SidebarModel.canArrange(onDevenv, onto: machine))
   }
 
   @Test("every row in the list is somewhere to go")

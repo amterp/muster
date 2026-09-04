@@ -561,6 +561,36 @@ fn pane_on(daemon: &str) -> Option<String> {
         .find_map(|(held, name, pane)| (held == daemon && name == given).then_some(pane))
 }
 
+/// Which tab the list says holds this pane.
+fn tab_holding(pane: &str) -> Option<String> {
+    rows_by_tab().into_iter().find_map(|(tab, held)| (held == pane).then_some(tab))
+}
+
+/// The machines the list says a tab holds panes on, in the order its regions sit.
+fn machines_of(tab: &str) -> Vec<String> {
+    ROSTER
+        .lock()
+        .expect("a panicking reader poisoned the roster")
+        .as_ref()
+        .into_iter()
+        .flat_map(|roster| roster.tabs.iter())
+        .filter(|held| held.tab_id == tab)
+        .flat_map(|held| held.daemon_ids.clone())
+        .collect()
+}
+
+/// One (tab, pane) pair per pane the list holds.
+fn rows_by_tab() -> Vec<(String, String)> {
+    ROSTER
+        .lock()
+        .expect("a panicking reader poisoned the roster")
+        .as_ref()
+        .into_iter()
+        .flat_map(|roster| roster.tabs.iter())
+        .flat_map(|tab| tab.panes.iter().map(|pane| (tab.tab_id.clone(), pane.pane_id.clone())))
+        .collect()
+}
+
 /// Every pane the list holds for one machine, by Muster's name for it.
 fn panes_on(daemon: &str) -> Vec<String> {
     rows().into_iter().filter(|(held, ..)| held == daemon).map(|(_, _, pane)| pane).collect()
@@ -755,6 +785,99 @@ fn a_pane_the_daemon_has_only_just_made_can_still_be_typed_into() {
         "the text to reach the pane that was just made",
         || panes(laptop).iter().any(|pane| screen(laptop, pane).contains(SENT)),
         || format!("the laptop holds {:?}", panes(laptop)),
+    );
+}
+
+/// One tab holding a laptop pane beside a devenv pane, which is what MIP-2 stage four is for.
+///
+/// The one arrangement that crosses machines, and the one thing in Muster that no daemon can be
+/// told: neither of these knows the other exists, so the grouping lives in Muster's name
+/// registry and nowhere else. What it takes is one request naming a tab - the pane stays on its
+/// own machine, because it is a process, and what moves is which Muster tab it belongs to.
+///
+/// Asserted from the agent list rather than from either daemon, because neither daemon can
+/// answer it. The laptop sees one tab with one pane and so does the devenv; only the window sees
+/// one tab with two.
+#[test]
+fn a_tab_can_hold_panes_from_two_machines() {
+    let _turn = muster::testing::fresh_session();
+    let TwoMachines { laptop, devenv } = a_window_showing_two_machines();
+
+    let on_laptop = pane_on("laptop").expect("the fixture waited for it");
+    let on_devenv = pane_on("devenv").expect("the fixture waited for it");
+    let laptop_tab = tab_holding(&on_laptop).expect("the list says which tab holds each pane");
+    assert_ne!(
+        tab_holding(&on_devenv),
+        Some(laptop_tab.clone()),
+        "the two machines' panes are in one tab before anything grouped them"
+    );
+
+    // The devenv's pane, into the laptop's tab. Named by the tab and nothing inside it, which
+    // is what separates this from a drag onto a row - that orders two panes in one tree, and a
+    // tree is one machine's.
+    assert_ok(&answer(request::Payload::ArrangePane(ArrangePane {
+        pane_id: on_devenv.clone(),
+        tab_id: laptop_tab.clone(),
+        ..ArrangePane::default()
+    })));
+
+    // Read back by the name somebody gave the pane rather than by the id captured above. The
+    // id is Muster's and can be re-minted while this waits - a daemon that drops a pane for an
+    // instant takes its name with it - and what the test is about is where the devenv's named
+    // pane ended up.
+    until(
+        "the devenv's pane to join the laptop's tab",
+        || pane_on("devenv").and_then(|pane| tab_holding(&pane)) == Some(laptop_tab.clone()),
+        || {
+            format!(
+                "the laptop's tab is {laptop_tab} holding {on_laptop}, the devenv's pane is \
+                 {:?}, and the list holds {:?}",
+                pane_on("devenv"),
+                rows()
+            )
+        },
+    );
+    assert_eq!(
+        pane_on("laptop").and_then(|pane| tab_holding(&pane)),
+        Some(laptop_tab.clone()),
+        "grouping took the laptop's own pane out of the tab it was in"
+    );
+
+    // Each machine still holds its own pane, and one tab of its own. A grouping that had moved
+    // a process would show as a pane appearing on one machine and going from the other.
+    assert_eq!(panes(&laptop).len(), 1, "the laptop's pane count moved");
+    assert_eq!(panes(&devenv).len(), 1, "the devenv's pane count moved");
+    assert_eq!(tabs(&laptop), 1, "the laptop grew a tab it was not asked for");
+    assert_eq!(tabs(&devenv), 1, "the devenv grew a tab it was not asked for");
+
+    // And the window says the tab is on both machines, which is the answer nothing else can
+    // give: it is the only place the grouping is written down.
+    until(
+        "the list to say the tab spans both machines",
+        || machines_of(&laptop_tab) == vec!["laptop".to_string(), "devenv".to_string()],
+        || format!("the tab says it is on {:?}", machines_of(&laptop_tab)),
+    );
+}
+
+/// A tab a pane cannot be put into, refused by name.
+///
+/// A tab name from another window, or one that closed while the request was in flight. Refused
+/// rather than sent, because the adapter's answer to a tab it holds no part of is to make one -
+/// so a name that means nothing would quietly produce a tab nobody asked for.
+#[test]
+fn a_pane_put_into_a_tab_this_window_does_not_hold_is_refused() {
+    let _turn = muster::testing::fresh_session();
+    let TwoMachines { laptop: _laptop, devenv: _devenv } = a_window_showing_two_machines();
+    let on_devenv = pane_on("devenv").expect("the fixture waited for it");
+
+    let reason = refusal(request::Payload::ArrangePane(ArrangePane {
+        pane_id: on_devenv,
+        tab_id: "t0nesuch".to_string(),
+        ..ArrangePane::default()
+    }));
+    assert!(
+        reason.contains("t0nesuch"),
+        "the refusal should name the tab that reached nothing, and said: {reason}"
     );
 }
 
