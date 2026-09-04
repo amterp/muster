@@ -69,6 +69,7 @@ message Request {
     ReadPane read_pane = 42;
     CloseTab close_tab = 43;
     ReadViewport read_viewport = 44;
+    ReadDaemons read_daemons = 45;
   }
 }
 
@@ -958,6 +959,7 @@ message Response {
     WindowFrame window_frame = 9;
     PaneText pane_text = 10;
     PaneViewport pane_viewport = 11;
+    Daemons daemons = 12;
   }
 }
 
@@ -988,6 +990,61 @@ message PaneText {
   // than a guess from the row count: a thousand rows back may be all a pane has or a fifth of
   // it, and those are different things to tell somebody.
   bool truncated = 3;
+}
+
+// Asks which herdr daemons Muster has started on this machine, and whether each is still there.
+//
+// The half `ReadWindow` cannot answer. That says which daemons *this* window is attached to,
+// which is what makes ending this window's sessions deliberate; this says which daemons are on
+// the machine at all, including the ones nothing is attached to. Those are the ones that
+// accumulate - twenty alive, nineteen holding nothing, one holding somebody's work.
+//
+// A read, and only a read. Nothing here ends a daemon, and nothing ever will: a process
+// holding somebody's live agent is the wrong thing to reap on a schedule, in a tool whose
+// promise is that agents outlive the app.
+message ReadDaemons {}
+
+// What Muster started on this machine, checked against what is answering now.
+message Daemons {
+  repeated KnownDaemon daemons = 1;
+
+  // Whether Muster has anywhere to write these down. False means the shell found nowhere, and
+  // then the list above is empty for that reason rather than because the machine is clean -
+  // which are opposite things to tell somebody about to end a process.
+  bool remembered = 2;
+}
+
+// One daemon Muster started, and what it is doing now.
+message KnownDaemon {
+  // The socket it binds, which is the handle for everything anyone can do to it.
+  // `HERDR_SOCKET_PATH=<socket> herdr server stop` ends this one and not the one beside it.
+  string socket = 1;
+
+  // When Muster started it, in seconds since the epoch. Zero when the record does not say.
+  //
+  // Not what decides anything, and here to be recognised rather than sorted by: on the machine
+  // that prompted this, the daemon holding somebody's live agent was neither the oldest nor
+  // the youngest of twenty.
+  int64 started = 2;
+
+  // `answering`, `silent`, or `gone`.
+  //
+  // `answering` was dialed and replied. `silent` has a socket file that nothing answers on,
+  // which is a daemon that exited without tidying up. `gone` has no socket file left at all,
+  // and that is the one case Muster cannot resolve: a daemon whose socket path was deleted out
+  // from under it is still running and unreachable, and looks identical to one that ended.
+  string state = 3;
+
+  // How many panes it holds and where they are, for a daemon that answered. Empty otherwise,
+  // because a daemon that did not answer was not asked.
+  uint32 panes = 4;
+  repeated string directories = 5;
+
+  // Whether the window answering this is attached to it.
+  //
+  // A window can only speak for itself. False does not mean nothing is using this daemon - it
+  // means this window is not - so with more than one window open, read one answer per window.
+  bool attached_here = 6;
 }
 
 // Everything about a window at one moment: what it draws, what it holds, and how the agents in
@@ -1272,6 +1329,18 @@ message Startup {
   // `state_path` is where "remember nothing" is said - the shell sends it empty for a window
   // like this, because two windows writing one file is the other half of the same bug.
   bool fresh = 13;
+
+  // Where Muster writes down the daemons it starts, or empty for nowhere.
+  //
+  // A directory rather than a file, one record per daemon, so two windows starting daemons on
+  // two sockets never write the same file and neither needs a lock. `muster daemons` reads it
+  // back and dials each socket, which is the only way to tell a daemon that is still there
+  // from one that has gone.
+  //
+  // The shell decides where it goes for the same reason it decides where the arrangement does.
+  // Empty is a real state and not a failure: `muster daemons` then answers with nothing and
+  // says so, which is exactly what it did before this existed.
+  string daemon_records_path = 14;
 
   // trace, debug, info, warn, error. Empty means debug.
   string log_level = 2;

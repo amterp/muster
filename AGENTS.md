@@ -117,6 +117,14 @@ without saying which daemon holds it. What a tab does not get is a name in any p
 nothing has to tell a tab which tab it is, so there is no `$MUSTER_TAB`, and a script that means the
 tab it is sitting in reads that out of `muster window` - where every pane says which tab holds it.
 
+`muster daemons` is the one verb that is about the machine rather than about a window. `muster
+window` says which daemons this window is attached to; that says which are on this machine at
+all, including the ones no window is attached to - which are the ones that accumulate, and the
+ones somebody reaches for `pkill` over. Muster writes down every daemon it starts, under
+`~/.muster/state/daemons/`, and the verb dials each socket rather than trusting the file.
+Nothing there ends a daemon and nothing will: a process holding somebody's live agent is the
+wrong thing to reap on a schedule.
+
 `muster docs` is the reference and it ships inside the binary, so it describes the version you are
 running. `muster --help` has the grammar, `muster completions zsh` writes a completion script.
 

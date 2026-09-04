@@ -48,6 +48,7 @@ pub fn only_reads(payload: &request::Payload) -> bool {
             | request::Payload::ReportFontFamily(_)
             | request::Payload::ReadPane(_)
             | request::Payload::ReadViewport(_)
+            | request::Payload::ReadDaemons(_)
     )
 }
 

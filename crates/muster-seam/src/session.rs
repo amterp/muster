@@ -36,7 +36,7 @@ use muster_core::roster::{Numbering, Roster, RosterTab, TabStep};
 use muster_herdr::subscription::{Notice, Subscription};
 use muster_herdr::{
     HerdrBackend, HerdrClient, HerdrPaneChannel, PaneControlChannel, PaneEnvironment, Reports,
-    daemon, fetch_snapshot, own_socket_path, remote,
+    daemon, fetch_snapshot, own_socket_path, records, remote,
 };
 use muster_ssh::{Forward, Remote, State as TunnelState, Tunnel, remote_environment};
 use muster_vt::KeyEncoder;
@@ -106,6 +106,25 @@ pub(crate) fn set_commands_path(path: &str) {
 
 fn commands_path() -> Option<String> {
     poison::lock(&COMMANDS, "commands").clone()
+}
+
+/// Where Muster writes down the daemons it starts.
+///
+/// Held on the same terms as the three above. Needed at two moments that are nowhere near each
+/// other: when a daemon is started, and when somebody asks what is on this machine.
+///
+/// None means the shell found nowhere to write, and then `muster daemons` answers with nothing
+/// and says that is why - "no record" and "no daemons" are opposite things to tell somebody
+/// about to end a process.
+static DAEMON_RECORDS: Mutex<Option<String>> = Mutex::new(None);
+
+pub(crate) fn set_daemon_records_path(path: &str) {
+    let mut held = poison::lock(&DAEMON_RECORDS, "daemon-records");
+    *held = if path.is_empty() { None } else { Some(path.to_string()) };
+}
+
+pub(crate) fn daemon_records_path() -> Option<String> {
+    poison::lock(&DAEMON_RECORDS, "daemon-records").clone()
 }
 
 /// Where Muster keeps what it downloaded, for the one thing that downloads anything.
@@ -691,6 +710,14 @@ fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, String> {
                 config.as_ref().map(|(path, _)| path.as_str()),
                 commands_path().as_deref(),
             )?;
+            // Written down only when Muster started it. An adopted daemon belongs to whoever
+            // started it, and offering it in Muster's own census would be offering somebody a
+            // process to end on Muster's word.
+            if adopted == daemon::Reached::Started
+                && let Some(directory) = daemon_records_path()
+            {
+                records::started(&directory, &path);
+            }
             // A daemon left running by an earlier Muster is holding somebody's agents, so it
             // is reused rather than restarted - but it read its config when it started. Asking
             // it to read again is what makes a setting saved between launches take effect
@@ -3893,6 +3920,33 @@ pub(crate) fn read_pane(daemon: &DaemonId, pane: &PaneId, rows: u32) -> Result<P
         // rather than a ceiling on grid rows that a quiet pane spends on blanks.
         .map(|read| read.tail(rows))
         .map_err(|refusal| format!("the daemon {daemon} would not read pane {pane}: {refusal}"))
+}
+
+/// Every daemon Muster has started on this machine, checked, and marked where this window is
+/// using one.
+///
+/// `None` means the shell named nowhere to write records, which is a different answer from an
+/// empty list: one says nothing was remembered and the other says nothing is there.
+///
+/// `attached_here` is the only part a window can add that the record cannot, and it is the part
+/// that decides whether ending a daemon costs this window anything. A window can only speak for
+/// itself, which is why the field is named for that rather than for "in use".
+pub(crate) fn daemon_census() -> Option<Vec<(records::Census, bool)>> {
+    let directory = daemon_records_path()?;
+    let attached: BTreeSet<String> = poison::lock(&SESSION, "session")
+        .backends
+        .values()
+        .map(|backend| backend.socket_path.clone())
+        .collect();
+    Some(
+        records::census(&directory)
+            .into_iter()
+            .map(|found| {
+                let here = attached.contains(&found.socket);
+                (found, here)
+            })
+            .collect(),
+    )
 }
 
 /// The way to one daemon, or why there is not one.

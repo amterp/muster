@@ -672,6 +672,10 @@ def check_a_pane_can_drive_its_own_window() -> None:
     """
     root, env, socket = scratch_home("driving")
     answered = root / "answered.txt"
+    # A file of its own, and written first. `answered` is read as soon as it is non-empty and
+    # its last line has to be `$MUSTER_PANE`, so a second command appending to it would be a
+    # race this check loses roughly one run in three - measured, by adding one.
+    census = root / "census.txt"
     app = subprocess.Popen(
         [str(APP)],
         env={**env, "MUSTER_LOG_FILE": str(ROOT / "driving.jsonl")},
@@ -706,7 +710,13 @@ def check_a_pane_can_drive_its_own_window() -> None:
         # the question.
         client.request(
             "pane.send_text",
-            {"pane_id": pane, "text": f"muster window > {answered} 2>&1; echo $MUSTER_PANE >> {answered}"},
+            {
+                "pane_id": pane,
+                "text": (
+                    f"muster daemons > {census} 2>&1; "
+                    f"muster window > {answered} 2>&1; echo $MUSTER_PANE >> {answered}"
+                ),
+            },
         )
         client.request("pane.send_input", {"pane_id": pane, "keys": ["enter"]})
 
@@ -732,6 +742,17 @@ def check_a_pane_can_drive_its_own_window() -> None:
             raise Failure(
                 f"the window did not list {named}, which is the pane that asked - so a pane's "
                 f"own name is not one the window answers to. It said:\n{said}"
+            )
+
+        # And the other half of the same question, from the same pane: `muster window` says what
+        # this window is attached to, `muster daemons` says what is on the machine. Only a cold
+        # start can prove this one, because only a daemon Muster started is written down.
+        counted = census.read_text() if census.exists() else ""
+        if str(socket) not in counted:
+            raise Failure(
+                "a pane ran `muster daemons` and did not get back the daemon this window "
+                f"started at {socket}, so nothing running in a pane can find out what is on "
+                f"this machine before ending something. It got:\n{counted or '(nothing at all)'}"
             )
     finally:
         stop(app)
@@ -792,6 +813,22 @@ def check_cold_start() -> None:
             raise Failure(
                 f"the app named {derived} as its daemon's config and wrote no such file, so "
                 "the daemon fell back to defaults for everything including its update checks"
+            )
+        # And Muster wrote down the daemon it started, which is what `muster daemons` reads
+        # back. Only a real launch takes this path - every other test points Muster at a daemon
+        # somebody else started, and an adopted daemon is deliberately not written down.
+        written = [
+            record
+            for record in sorted((root / "home/.muster/state/daemons").glob("*.toml"))
+            if str(socket) in record.read_text()
+        ]
+        if not written:
+            raise Failure(
+                f"the app started a daemon on {socket} and wrote no record of it under "
+                f"{root / 'home/.muster/state/daemons'}. Impact: `muster daemons` cannot name "
+                "the daemon Muster started, which is the whole of what makes ending a stray "
+                "one safe - the process holding somebody's live agent looks exactly like the "
+                "nineteen that hold nothing."
             )
     finally:
         stop_daemon(socket, env)
