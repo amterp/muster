@@ -8,12 +8,16 @@ here.
 
 ## What a window holds
 
-A window shows one or more regions, side by side. Each region shows one tab, and a tab holds a
-tree of panes. Panes are where programs run.
+A window holds an ordered list of tabs and shows one of them, the way tabs work everywhere else.
+A tab holds a tree of panes, and panes are where programs run.
 
 A daemon owns the panes on one machine. One window can show panes from several daemons - a
-laptop beside an SSH devenv - and each daemon has its own tabs. Panes outlive the window:
-quitting Muster leaves the daemons running, and the agents in their panes keep working.
+laptop beside an SSH devenv - and a tab can hold panes from more than one of them, side by side.
+Those side-by-side parts are the tab's *regions*, one per machine with panes in it, and most tabs
+have exactly one. `muster pane move --tab` is what puts a second machine in a tab.
+
+Panes outlive the window: quitting Muster leaves the daemons running, and the agents in their
+panes keep working.
 
 ## Pane names
 
@@ -35,7 +39,9 @@ across every machine, so `muster tab focus t1w3r07bsd` needs nothing beside it. 
 letter says which noun, so a tab's name can never be mistaken for a pane's.
 
 The difference is that nothing tells a tab which tab it is. There is no `$MUSTER_TAB`, and a tab
-is named the first time a daemon mentions it rather than before it is made. To act on the tab a
+is named the first time a daemon mentions it rather than before it is made. A tab holding panes
+on two machines is still one name: which of each machine's tabs it means is Muster's to know, and
+nothing outside Muster ever needs to. To act on the tab a
 script is sitting in, read the name out of `muster window`, where every pane says which tab holds
 it - see `muster docs limits`.
 
