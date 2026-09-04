@@ -270,12 +270,16 @@ message RenamePane {
 // close per pane: a daemon closing its own tab is one act, where N closes is N chances to be
 // interrupted half way and left with a tab holding one pane and no reason.
 //
-// Refused for a tab no region is showing, on the same terms as ClosePane. Emptying a tab
-// somebody can see is a decision they watched themselves make; emptying one nobody is looking
-// at is the same request with nothing to notice it went wrong.
+// Refused for a tab this window does not hold, which is a tab in a session nobody here is
+// attached to. It used to be refused for any tab no region was showing, and that stopped being
+// a usable rule when a window came to show one tab at a time: every tab but one would be
+// unclosable, and naming one of those is what `muster tab close --tab` is for. What the old
+// rule was after survives elsewhere - the agent list names every tab, so you can still see what
+// you are about to destroy.
 message CloseTab {
-  // Empty finds the daemon from the tab, since a tab name is Muster's own and unique across
-  // every attached machine.
+  // Ignored. A Muster tab may hold panes on more than one machine, so it belongs to none of
+  // them - the name is Muster's own and unique across every attached machine, which is all this
+  // needs. Kept so that a caller built against an older schema still parses.
   string daemon_id = 1;
 
   // Empty means the tab the window's keyboard is in, which is what a menu item means. Unlike
@@ -1478,13 +1482,26 @@ message PresentationChanged {
 // Whole list every time, absolute and idempotent. It is a few dozen short rows for a window
 // nobody can fill past about fifteen panes, and a shell handed the whole answer keeps no
 // picture of its own to patch.
-// Daemon, then tab, then pane, because a flat list of panes cannot say which of them sit
-// side by side in one tab - and a window shows one tab per region, so the tab is what a
-// person navigates between. The nesting is decided here rather than rebuilt by each reader,
-// on the same terms as the order and the labels.
+// Tab, then pane, because a flat list of panes cannot say which of them sit side by side in
+// one tab - and a window shows one tab at a time, so the tab is what a person navigates
+// between. The nesting is decided here rather than rebuilt by each reader, on the same terms
+// as the order and the labels.
+//
+// The machine is not a level of it. A tab may hold panes on two machines, so grouping by
+// machine would be a list that no longer describes the window beside it: which machine holds a
+// pane is on the pane, and a machine holding no panes at all is in `machines` below.
 message RosterChanged {
-  // Daemons in the order their regions sit in the window, then any daemon with no region.
-  repeated RosterDaemon daemons = 1;
+  // The window's tabs, in the order it walks them.
+  repeated RosterTab tabs = 3;
+
+  // The machines behind them, for the two states no pane can carry: a machine that is
+  // unreachable, and a machine holding nothing at all.
+  //
+  // Without a heading per machine over the tabs, a machine holding no panes would vanish from
+  // the window entirely - and a machine you asked to see, that nothing can put a pane on, is
+  // the bug kan a_2HpkpfIfq was about. A machine that is connected and holding panes is still
+  // listed; what to draw is the shell's decision.
+  repeated RosterMachine machines = 4;
 
   // Which question the numbers on those rows are answering.
   Counting counting = 2;
@@ -1517,15 +1534,24 @@ message RosterChanged {
   }
 }
 
-message RosterDaemon {
+message RosterMachine {
   string daemon_id = 1;
 
-  // In the order the daemon holds them, which is also the order they are numbered in.
-  repeated RosterTab tabs = 2;
+  // `connected`, `stale` or `disconnected`, the same words Machine.state uses.
+  string state = 2;
+
+  // How many panes it holds, on screen or not. Zero is the state worth drawing.
+  uint32 panes = 3;
 }
 
 message RosterTab {
-  string daemon_id = 1;
+  // The machines holding panes in this tab, in the order their regions sit on screen. One
+  // for every tab until somebody groups two.
+  //
+  // The tab itself says nothing else about machines, and that is the decision: a tab may span
+  // them, so any single answer on the row would be wrong for some of its panes. Which machine
+  // holds a pane is on the pane.
+  repeated string daemon_ids = 9;
 
   // What Muster calls this tab - `t1w3r07bsd` - and what every tab id in this schema means.
   // Minted by Muster rather than borrowed from the backend, and unique across every attached
@@ -1554,8 +1580,9 @@ message RosterTab {
   // the daemon holds more than one, and the tab's own name otherwise.
   string label = 4;
 
-  // Whether a region is showing this tab right now. Not the same question as any of its
-  // panes being on screen: a zoomed tab is on screen while all but one of its panes are not.
+  // Whether this is the tab the window is showing. Exactly one tab carries it, because a
+  // window shows one at a time. Not the same question as any of its panes being on screen: a
+  // zoomed tab is on screen while all but one of its panes are not.
   bool on_screen = 5;
 
   // In the order this tab's tree lays them out.
@@ -1624,8 +1651,13 @@ message RosterPane {
 // would repaint the tree every time an agent blinked - and because that field already has
 // exactly one writer, which is the property that keeps it correct.
 message ViewChanged {
-  // In the order they are laid out. Muster owns no split tree over regions; side by side,
-  // in this order, is the whole arrangement.
+  // The Muster tab on screen, or empty when this window holds none it may open onto. Every
+  // region below is one machine's half of it.
+  string tab_id = 3;
+
+  // In the order they are laid out, one per machine holding panes in the tab on screen.
+  // Muster owns no split tree over regions; side by side, in this order, is the whole
+  // arrangement.
   repeated ViewRegion regions = 1;
 
   // Which region's pane the keyboard feeds. Empty when none does, which is what a window

@@ -39,23 +39,46 @@ struct SidebarTests {
     label: String? = nil, onScreen: Bool = false, panes: [Roster.Pane]
   ) -> Roster.Tab {
     Roster.Tab(
-      key: TabKey(daemon: daemon, tab: id), place: place, number: number, label: label ?? id,
+      id: id, daemons: [daemon], place: place, number: number, label: label ?? id,
       onScreen: onScreen, panes: panes)
   }
 
-  @Test("each daemon's panes sit under a heading of their own")
+  /// A roster of tabs, with the machines behind them worked out from the panes.
+  ///
+  /// Derived rather than stated, because what the machines list decides up here is whether a
+  /// pane row says which machine it is on - and that follows from how many are attached, which
+  /// is exactly what the panes say. A case about a machine holding nothing states them instead.
+  private func roster(
+    _ tabs: [Roster.Tab], machines: [Roster.Machine]? = nil,
+    numbering: Roster.Numbering = .panes
+  ) -> Roster {
+    var found: [String] = []
+    for daemon in tabs.flatMap(\.panes).map(\.key.daemon) where !found.contains(daemon) {
+      found.append(daemon)
+    }
+    return Roster(
+      tabs: tabs,
+      machines: machines ?? found.map { Roster.Machine(id: $0, state: "connected", panes: 1) },
+      numbering: numbering)
+  }
+
+  @Test("panes from two machines sit in one flat list of tabs")
   func daemonsAreGrouped() {
-    let roster = Roster(daemons: [
-      Roster.Daemon(id: "local", tabs: [tab("local", panes: [pane("local", "w1:p1")])]),
-      Roster.Daemon(
-        id: "devenv", tabs: [tab("devenv", place: 2, panes: [pane("devenv", "w1:p1")])]),
+    let roster = roster([
+      tab("local", panes: [pane("local", "w1:p1")]),
+      tab("devenv", place: 2, panes: [pane("devenv", "w1:p1")]),
     ])
     let rows = SidebarModel.rows(roster: roster, states: [:])
 
-    #expect(rows.filter(\.isHeader).map(\.label) == ["local", "devenv"])
+    // No heading per machine: a tab may hold panes on two, so grouping by machine would be a
+    // list that no longer describes the window beside it (MIP-2).
+    #expect(rows.filter(\.isHeader).isEmpty)
     // The core's order, not re-sorted here. A list that sorted for itself would disagree
     // with the window it sits beside for any arrangement but the alphabetical one.
     #expect(rows.compactMap(\.pane?.daemon) == ["local", "devenv"])
+    // And with two machines attached, every pane row says which it is on. With one it says
+    // nothing, because the answer would be the same on every row.
+    #expect(rows.filter { $0.isPane }.allSatisfy { $0.showsMachine })
   }
 
   /// What the sidebar's partial redraw rests on.
@@ -69,16 +92,12 @@ struct SidebarTests {
   /// stops saving anything while still looking right.
   @Test("one agent changing state changes one row and leaves the rest identical")
   func aStateChangeTouchesOneRow() {
-    let roster = Roster(daemons: [
-      Roster.Daemon(
-        id: "local",
-        tabs: [
-          tab(
-            "local",
-            panes: [
-              pane("local", "w1:p1", place: 1), pane("local", "w1:p2", place: 2),
-              pane("local", "w1:p3", place: 3),
-            ])
+    let roster = roster([
+      tab(
+        "local",
+        panes: [
+          pane("local", "w1:p1", place: 1), pane("local", "w1:p2", place: 2),
+          pane("local", "w1:p3", place: 3),
         ])
     ])
     let before = SidebarModel.rows(roster: roster, states: [:])
@@ -95,10 +114,9 @@ struct SidebarTests {
   func paneIdsAreScopedToTheirDaemon() {
     // The whole reason a row is keyed by the pair. Collapsing these would put one machine's
     // agent state on the other's row, and clicking it would open the wrong pane.
-    let roster = Roster(daemons: [
-      Roster.Daemon(id: "local", tabs: [tab("local", panes: [pane("local", "w1:p1")])]),
-      Roster.Daemon(
-        id: "devenv", tabs: [tab("devenv", place: 2, panes: [pane("devenv", "w1:p1")])]),
+    let roster = roster([
+      tab("local", panes: [pane("local", "w1:p1")]),
+      tab("devenv", place: 2, panes: [pane("devenv", "w1:p1")]),
     ])
     let rows = SidebarModel.rows(
       roster: roster,
@@ -117,8 +135,8 @@ struct SidebarTests {
     // The roster and the states are two messages and arrive in either order, so a list built
     // from the first alone has no state for anything. Reading that as idle would paint a
     // window full of running agents as a window with nothing to do.
-    let roster = Roster(daemons: [
-      Roster.Daemon(id: "local", tabs: [tab("local", panes: [pane("local", "w1:p1")])])
+    let roster = roster([
+      tab("local", panes: [pane("local", "w1:p1")])
     ])
     let rows = SidebarModel.rows(roster: roster, states: [:])
 
@@ -149,15 +167,11 @@ struct SidebarTests {
 
   @Test("a row says whether anything is showing its pane")
   func hiddenPanesAreMarked() {
-    let roster = Roster(daemons: [
-      Roster.Daemon(
-        id: "local",
-        tabs: [
-          tab(
-            "local",
-            panes: [
-              pane("local", "w1:p1", onScreen: true), pane("local", "w1:p9", onScreen: false),
-            ])
+    let roster = roster([
+      tab(
+        "local",
+        panes: [
+          pane("local", "w1:p1", onScreen: true), pane("local", "w1:p9", onScreen: false),
         ])
     ])
     let rows = SidebarModel.rows(roster: roster, states: [:]).filter { $0.isPane }
@@ -169,8 +183,8 @@ struct SidebarTests {
   func nothingIsNothing() {
     // A window on the way up has an attached daemon and no panes yet. A heading over no rows
     // reads as a machine that lost its session.
-    #expect(SidebarModel.rows(roster: Roster(daemons: []), states: [:]).isEmpty)
-    let bare = Roster(daemons: [Roster.Daemon(id: "local", tabs: [])])
+    #expect(SidebarModel.rows(roster: roster([]), states: [:]).isEmpty)
+    let bare = roster([])
     #expect(SidebarModel.rows(roster: bare, states: [:]).isEmpty)
   }
 
@@ -179,45 +193,36 @@ struct SidebarTests {
     // The common case, and the reason this rule exists: with nothing to navigate between, a
     // row saying which tab you are in answers a question nobody has, and it costs a level of
     // indentation off every label in a 200pt column.
-    let roster = Roster(daemons: [
-      Roster.Daemon(
-        id: "local", tabs: [tab("local", onScreen: true, panes: [pane("local", "w1:p1")])])
+    let roster = roster([
+      tab("local", onScreen: true, panes: [pane("local", "w1:p1")])
     ])
     let rows = SidebarModel.rows(roster: roster, states: [:])
 
-    #expect(rows.map(\.kind) == [.daemon, .pane(number: 1)])
+    #expect(rows.map(\.kind) == [.pane(number: 1)])
   }
 
   @Test("a second tab anywhere in the window gives every tab a caption")
   func tabsAppearTogetherOrNotAtAll() {
     // Including the tabs on a daemon that only holds one. Captions in patches would read as a
     // boundary that comes and goes, which is worse than one that is always there.
-    let roster = Roster(daemons: [
-      Roster.Daemon(
-        id: "local",
-        tabs: [
-          tab(
-            "local", "w1:t1", place: 1, label: "one", onScreen: true,
-            panes: [pane("local", "w1:p1", place: 1)]),
-          tab(
-            "local", "w1:t2", place: 2, label: "two",
-            panes: [pane("local", "w1:p2", place: 2)]),
-        ]),
-      Roster.Daemon(
-        id: "devenv",
-        tabs: [
-          tab(
-            "devenv", "w1:t1", place: 3, label: "three",
-            panes: [pane("devenv", "w1:p1", place: 3)])
-        ]),
+    let roster = roster([
+      tab(
+        "local", "w1:t1", place: 1, label: "one", onScreen: true,
+        panes: [pane("local", "w1:p1", place: 1)]),
+      tab(
+        "local", "w1:t2", place: 2, label: "two",
+        panes: [pane("local", "w1:p2", place: 2)]),
+      tab(
+        "devenv", "w1:t1", place: 3, label: "three",
+        panes: [pane("devenv", "w1:p1", place: 3)]),
     ])
     let rows = SidebarModel.rows(roster: roster, states: [:])
 
-    #expect(
-      rows.map(\.kind) == [
-        .daemon, .tab(number: 0), .pane(number: 1), .tab(number: 0), .pane(number: 2),
-        .daemon, .tab(number: 0), .pane(number: 3),
-      ])
+    let kinds: [SidebarModel.Kind] = [
+      .tab(number: 0), .pane(number: 1), .tab(number: 0), .pane(number: 2),
+      .tab(number: 0), .pane(number: 3),
+    ]
+    #expect(rows.map(\.kind) == kinds)
     #expect(rows.filter { $0.isTab }.map(\.label) == ["one", "two", "three"])
   }
 
@@ -227,34 +232,29 @@ struct SidebarTests {
     // point of drawing it at all is that a person can read what ⌘2 will do instead of
     // remembering what they last pressed - and the way that stays honest is that only one
     // kind of row carries a number at a time.
-    let roster = Roster(
-      daemons: [
-        Roster.Daemon(
-          id: "local",
-          tabs: [
-            tab(
-              "local", "w1:t1", place: 1, number: 1, onScreen: true,
-              panes: [pane("local", "w1:p1", place: 1, number: 0)]),
-            tab(
-              "local", "w1:t2", place: 2, number: 2,
-              panes: [
-                pane("local", "w1:p2", place: 2, number: 0),
-                pane("local", "w1:p3", place: 3, number: 0),
-              ]),
-          ])
+    let roster = roster(
+      [
+        tab(
+          "local", "w1:t1", place: 1, number: 1, onScreen: true,
+          panes: [pane("local", "w1:p1", place: 1, number: 0)]),
+        tab(
+          "local", "w1:t2", place: 2, number: 2,
+          panes: [
+            pane("local", "w1:p2", place: 2, number: 0),
+            pane("local", "w1:p3", place: 3, number: 0),
+          ]),
       ], numbering: .tabs)
 
     let rows = SidebarModel.rows(roster: roster, states: [:])
 
-    #expect(
-      rows.map(\.kind) == [
-        .daemon, .tab(number: 1), .pane(number: 0), .tab(number: 2), .pane(number: 0),
-        .pane(number: 0),
-      ])
+    let kinds: [SidebarModel.Kind] = [
+      .tab(number: 1), .pane(number: 0), .tab(number: 2), .pane(number: 0), .pane(number: 0),
+    ]
+    #expect(rows.map(\.kind) == kinds)
     // Every tab and pane row leaves room for a digit, so that the press moving the numbers
     // inside a tab does not also drag every label in the list sixteen points sideways. This is
     // the list somebody reads to decide what to press, and it has to hold still while they do.
-    #expect(rows.filter(\.isDestination).allSatisfy { $0.reservesNumber })
+    #expect(rows.allSatisfy { $0.reservesNumber })
     // Nothing is half-typed yet, so the numbers are a reference rather than a live keystroke.
     #expect(rows.contains { $0.isSecondPress } == false)
   }
@@ -265,37 +265,32 @@ struct SidebarTests {
     // the tab that was named and left every other row without one. Nothing here decides that -
     // the core sends which row carries what, and this is the assertion that the list draws the
     // answer it was given rather than one of its own.
-    let roster = Roster(
-      daemons: [
-        Roster.Daemon(
-          id: "local",
-          tabs: [
-            tab(
-              "local", "w1:t1", place: 1, number: 0,
-              panes: [pane("local", "w1:p1", place: 1, number: 0)]),
-            tab(
-              "local", "w1:t2", place: 2, number: 0, onScreen: true,
-              panes: [
-                pane("local", "w1:p2", place: 2, number: 1),
-                pane("local", "w1:p3", place: 3, number: 2),
-              ]),
-          ])
+    let roster = roster(
+      [
+        tab(
+          "local", "w1:t1", place: 1, number: 0,
+          panes: [pane("local", "w1:p1", place: 1, number: 0)]),
+        tab(
+          "local", "w1:t2", place: 2, number: 0, onScreen: true,
+          panes: [
+            pane("local", "w1:p2", place: 2, number: 1),
+            pane("local", "w1:p3", place: 3, number: 2),
+          ]),
       ], numbering: .panesInTab)
 
     let rows = SidebarModel.rows(roster: roster, states: [:])
 
-    #expect(
-      rows.map(\.kind) == [
-        .daemon, .tab(number: 0), .pane(number: 0), .tab(number: 0), .pane(number: 1),
-        .pane(number: 2),
-      ])
+    let kinds: [SidebarModel.Kind] = [
+      .tab(number: 0), .pane(number: 0), .tab(number: 0), .pane(number: 1), .pane(number: 2),
+    ]
+    #expect(rows.map(\.kind) == kinds)
     // The gutter is the same one it was a moment ago, which is the whole point of reserving
     // it: these two cases are one list one keystroke apart, and no label may have moved.
-    #expect(rows.filter(\.isDestination).allSatisfy { $0.reservesNumber })
+    #expect(rows.allSatisfy { $0.reservesNumber })
     // And a pane row's number now says what the very next press does, so it is drawn as the
     // keystroke it is rather than as something to look up. Captions carry none to emphasise.
-    #expect(rows.filter(\.isPane).allSatisfy { $0.isSecondPress })
-    #expect(rows.filter(\.isTab).contains { $0.isSecondPress } == false)
+    #expect(rows.filter { $0.isPane }.allSatisfy { $0.isSecondPress })
+    #expect(rows.filter { $0.isTab }.contains { $0.isSecondPress } == false)
   }
 
   @Test("a numbered tab is drawn even in a window that would hide its caption")
@@ -306,19 +301,15 @@ struct SidebarTests {
     // with one tab the two numberings produce the same numbers - so this pins the guard rather
     // than a state a running window reaches. Which rows carry numbers is the core's answer,
     // and the list has to draw whatever it is handed.
-    let roster = Roster(daemons: [
-      Roster.Daemon(
-        id: "local",
-        tabs: [
-          tab(
-            "local", "w1:t1", place: 1, number: 1, onScreen: true,
-            panes: [pane("local", "w1:p1", place: 1, number: 0)])
-        ])
+    let roster = roster([
+      tab(
+        "local", "w1:t1", place: 1, number: 1, onScreen: true,
+        panes: [pane("local", "w1:p1", place: 1, number: 0)])
     ])
 
     let rows = SidebarModel.rows(roster: roster, states: [:])
 
-    #expect(rows.map(\.kind) == [.daemon, .tab(number: 1), .pane(number: 0)])
+    #expect(rows.map(\.kind) == [.tab(number: 1), .pane(number: 0)])
   }
 
   @Test("a row can only be dropped on a pane row belonging to the same daemon")
@@ -326,21 +317,13 @@ struct SidebarTests {
     // The case worth a test rather than a glance: two daemons hand out the same pane ids, so a
     // rule comparing ids alone calls a cross-machine drop legal and the core then resolves the
     // dragged pane against the wrong mirror and moves a different agent.
-    let roster = Roster(daemons: [
-      Roster.Daemon(
-        id: "local",
-        tabs: [
-          tab(
-            "local", "w1:t1", place: 1, label: "here", onScreen: true,
-            panes: [pane("local", "w1:p1", place: 1), pane("local", "w1:p2", place: 2)])
-        ]),
-      Roster.Daemon(
-        id: "devenv",
-        tabs: [
-          tab(
-            "devenv", "w1:t1", place: 2, label: "there",
-            panes: [pane("devenv", "w1:p1", place: 3)])
-        ]),
+    let roster = roster([
+      tab(
+        "local", "w1:t1", place: 1, label: "here", onScreen: true,
+        panes: [pane("local", "w1:p1", place: 1), pane("local", "w1:p2", place: 2)]),
+      tab(
+        "devenv", "w1:t1", place: 2, label: "there",
+        panes: [pane("devenv", "w1:p1", place: 3)]),
     ])
     let rows = SidebarModel.rows(roster: roster, states: [:])
     let dragged = PaneKey(daemon: "local", pane: "w1:p1")
@@ -349,13 +332,11 @@ struct SidebarTests {
     let otherDaemon = try #require(
       rows.first { $0.pane == PaneKey(daemon: "devenv", pane: "w1:p1") })
     let caption = try #require(rows.first { $0.isTab })
-    let heading = try #require(rows.first { $0.isHeader })
 
     #expect(SidebarModel.canArrange(dragged, onto: sameDaemon))
     // Same pane id, different machine. This is the one a careless rule gets wrong.
     #expect(!SidebarModel.canArrange(dragged, onto: otherDaemon))
     #expect(!SidebarModel.canArrange(dragged, onto: caption))
-    #expect(!SidebarModel.canArrange(dragged, onto: heading))
   }
 
   @Test("dropping a row on itself is allowed and means nothing")
@@ -363,8 +344,8 @@ struct SidebarTests {
     // An accidental drag, which is a mistake with no cost. Refusing it would put a cursor
     // change and a log line in front of somebody who twitched, and the core answers it by
     // doing nothing.
-    let roster = Roster(daemons: [
-      Roster.Daemon(id: "local", tabs: [tab("local", panes: [pane("local", "w1:p1", place: 1)])])
+    let roster = roster([
+      tab("local", panes: [pane("local", "w1:p1", place: 1)])
     ])
     let rows = SidebarModel.rows(roster: roster, states: [:])
     let itself = PaneKey(daemon: "local", pane: "w1:p1")
@@ -380,17 +361,11 @@ struct SidebarTests {
     // numbered row down the sidebar, whichever machine holds it. The number comes from the core
     // rather than from the row's position here, so a shell that renumbered for itself would
     // show one number and the keyboard would mean another.
-    let roster = Roster(daemons: [
-      Roster.Daemon(
-        id: "local",
-        tabs: [
-          tab(
-            "local", "w1:t1", place: 1, onScreen: true,
-            panes: [pane("local", "w1:p1", place: 1), pane("local", "w1:p2", place: 2)])
-        ]),
-      Roster.Daemon(
-        id: "devenv",
-        tabs: [tab("devenv", "w1:t1", place: 2, panes: [pane("devenv", "w1:p1", place: 3)])]),
+    let roster = roster([
+      tab(
+        "local", "w1:t1", place: 1, onScreen: true,
+        panes: [pane("local", "w1:p1", place: 1), pane("local", "w1:p2", place: 2)]),
+      tab("devenv", "w1:t1", place: 2, panes: [pane("devenv", "w1:p1", place: 3)]),
     ])
 
     let rows = SidebarModel.rows(roster: roster, states: [:])
@@ -405,13 +380,9 @@ struct SidebarTests {
     // Which tab you are looking at is a different question from which pane you are typing
     // into, and in a two-region window they are two different tabs. The caption answers the
     // first; the keyboard highlight answers the second.
-    let roster = Roster(daemons: [
-      Roster.Daemon(
-        id: "local",
-        tabs: [
-          tab("local", "w1:t1", place: 1, onScreen: true, panes: [pane("local", "w1:p1")]),
-          tab("local", "w1:t2", place: 2, onScreen: false, panes: [pane("local", "w1:p2")]),
-        ])
+    let roster = roster([
+      tab("local", "w1:t1", place: 1, onScreen: true, panes: [pane("local", "w1:p1")]),
+      tab("local", "w1:t2", place: 2, onScreen: false, panes: [pane("local", "w1:p2")]),
     ])
     let rows = SidebarModel.rows(roster: roster, states: [:]).filter {
       if case .tab = $0.kind { return true }
@@ -421,23 +392,25 @@ struct SidebarTests {
     #expect(rows.map(\.onScreen) == [true, false])
   }
 
-  @Test("a tab caption is somewhere to go, and a daemon heading is not")
-  func onlyTheReachableRowsSelect() {
-    // Clicking a caption shows that tab, which is the mouse's half of what ⌘N does. A daemon
-    // heading names no destination, and a highlight on one would suggest it had moved
-    // something.
-    let roster = Roster(daemons: [
-      Roster.Daemon(
-        id: "local",
-        tabs: [
-          tab("local", "w1:t1", place: 1, panes: [pane("local", "w1:p1")]),
-          tab("local", "w1:t2", place: 2, panes: [pane("local", "w1:p2")]),
-        ])
-    ])
+  @Test("every row in the list is somewhere to go")
+  func everyRowSelects() {
+    // Clicking a caption shows that tab, which is the mouse's half of what ⌘N does; clicking a
+    // pane row moves the keyboard there; and clicking a machine asks for a pane on it, which is
+    // the only way into one holding nothing. There is no longer a row that names nothing.
+    let roster = roster(
+      [
+        tab("local", "w1:t1", place: 1, panes: [pane("local", "w1:p1")]),
+        tab("local", "w1:t2", place: 2, panes: [pane("local", "w1:p2")]),
+      ],
+      machines: [
+        Roster.Machine(id: "local", state: "connected", panes: 2),
+        Roster.Machine(id: "devenv", state: "connected", panes: 0),
+      ])
     let rows = SidebarModel.rows(roster: roster, states: [:])
 
-    #expect(rows.filter(\.isDestination).count == 4)
-    #expect(rows.filter { !$0.isDestination }.map(\.kind) == [.daemon])
+    #expect(rows.allSatisfy { $0.isDestination })
+    // Only the machine holding nothing gets a row: the one holding panes says so through them.
+    #expect(rows.filter { $0.isMachine }.map(\.label) == ["devenv"])
   }
 
   @Test("the list takes a fixed width, and gives it up before squeezing the panes")
@@ -459,15 +432,9 @@ struct SidebarTests {
     // against the other is hard. Marking the same pane in both is what joins them.
     let local = PaneKey(daemon: "local", pane: "w1:p1")
     let devenv = PaneKey(daemon: "devenv", pane: "w1:p1")
-    let roster = Roster(daemons: [
-      Roster.Daemon(
-        id: "local",
-        tabs: [tab("local", panes: [Roster.Pane(key: local, label: "rad", onScreen: true)])]),
-      Roster.Daemon(
-        id: "devenv",
-        tabs: [
-          tab("devenv", place: 2, panes: [Roster.Pane(key: devenv, label: "rad", onScreen: true)])
-        ]),
+    let roster = roster([
+      tab("local", panes: [Roster.Pane(key: local, label: "rad", onScreen: true)]),
+      tab("devenv", place: 2, panes: [Roster.Pane(key: devenv, label: "rad", onScreen: true)]),
     ])
 
     let rows = SidebarModel.rows(roster: roster, states: [:], keyboard: devenv)
@@ -481,16 +448,12 @@ struct SidebarTests {
 
   @Test("with the keyboard nowhere, no row claims it")
   func noRegionMeansNoMark() {
-    let roster = Roster(daemons: [
-      Roster.Daemon(
-        id: "local",
-        tabs: [
-          tab(
-            "local",
-            panes: [
-              Roster.Pane(
-                key: PaneKey(daemon: "local", pane: "w1:p1"), label: "rad", onScreen: false)
-            ])
+    let roster = roster([
+      tab(
+        "local",
+        panes: [
+          Roster.Pane(
+            key: PaneKey(daemon: "local", pane: "w1:p1"), label: "rad", onScreen: false)
         ])
     ])
     #expect(
@@ -512,16 +475,12 @@ struct SidebarTests {
 
   @Test("a row carries what its agent is doing, and most rows carry nothing")
   func theSecondLineTravelsToTheRow() {
-    let roster = Roster(daemons: [
-      Roster.Daemon(
-        id: "local",
-        tabs: [
-          tab(
-            "local",
-            panes: [
-              pane("local", "w1:p1", label: "muster · claude", subtitle: "first working build"),
-              pane("local", "w1:p2", label: "src"),
-            ])
+    let roster = roster([
+      tab(
+        "local",
+        panes: [
+          pane("local", "w1:p1", label: "muster · claude", subtitle: "first working build"),
+          pane("local", "w1:p2", label: "src"),
         ])
     ])
 
@@ -535,17 +494,13 @@ struct SidebarTests {
     // read by scanning it, and a height that varied with what an agent happened to be writing
     // would move every row below it whenever one of them wrote a longer sentence. Two heights
     // and no more means the only thing that can move a row is a title arriving or leaving.
-    let roster = Roster(daemons: [
-      Roster.Daemon(
-        id: "local",
-        tabs: [
-          tab(
-            "local",
-            panes: [
-              pane("local", "w1:p1", subtitle: "first working build"),
-              pane("local", "w1:p2", subtitle: "a very much longer sentence about the work"),
-              pane("local", "w1:p3"),
-            ])
+    let roster = roster([
+      tab(
+        "local",
+        panes: [
+          pane("local", "w1:p1", subtitle: "first working build"),
+          pane("local", "w1:p2", subtitle: "a very much longer sentence about the work"),
+          pane("local", "w1:p3"),
         ])
     ])
 
@@ -560,19 +515,15 @@ struct SidebarTests {
     // the starting text of a rename would ask somebody to delete a name they never wrote. An
     // unnamed pane starts empty; a named one starts from its name and not from its caption,
     // which for a tab may carry the workspace in front of it.
-    let roster = Roster(daemons: [
-      Roster.Daemon(
-        id: "local",
-        tabs: [
-          Roster.Tab(
-            key: TabKey(daemon: "local", tab: "w1:t1"), place: 1, label: "one · release",
-            onScreen: true, givenName: "release",
-            panes: [
-              pane("local", "w1:p1", label: "🔥 payments spike", givenName: "🔥 payments spike"),
-              pane("local", "w1:p2", label: "muster · claude"),
-            ]),
-          tab("local", "w1:t2", place: 2, panes: [pane("local", "w1:p3")]),
-        ])
+    let roster = roster([
+      Roster.Tab(
+        id: "w1:t1", daemons: ["local"], place: 1, label: "one · release",
+        onScreen: true, givenName: "release",
+        panes: [
+          pane("local", "w1:p1", label: "🔥 payments spike", givenName: "🔥 payments spike"),
+          pane("local", "w1:p2", label: "muster · claude"),
+        ]),
+      tab("local", "w1:t2", place: 2, panes: [pane("local", "w1:p3")]),
     ])
 
     let rows = SidebarModel.rows(roster: roster, states: [:])
@@ -584,7 +535,7 @@ struct SidebarTests {
   /// One daemon, one tab, the panes given. The shape most of the redraw cases want, where
   /// what is under test is what moved between two rosters rather than how they nest.
   private func roster(_ panes: [Roster.Pane]) -> Roster {
-    Roster(daemons: [Roster.Daemon(id: "local", tabs: [tab("local", panes: panes)])])
+    roster([tab("local", panes: panes)])
   }
 
   @Test("a second line arriving asks for the row to be measured again, not just drawn again")
@@ -602,9 +553,9 @@ struct SidebarTests {
       ]), states: [:])
 
     let changed = SidebarModel.changes(from: before, to: after)
-    // Row 0 is the daemon heading, so the first pane is row 1.
-    #expect(changed?.redraw == IndexSet(integer: 1))
-    #expect(changed?.remeasure == IndexSet(integer: 1))
+    // One tab, so no caption: the first pane is row 0.
+    #expect(changed?.redraw == IndexSet(integer: 0))
+    #expect(changed?.remeasure == IndexSet(integer: 0))
   }
 
   @Test("a second line leaving asks for the same thing")
@@ -617,8 +568,8 @@ struct SidebarTests {
     let after = SidebarModel.rows(roster: roster([pane("local", "w1:p1")]), states: [:])
 
     let changed = SidebarModel.changes(from: before, to: after)
-    #expect(changed?.redraw == IndexSet(integer: 1))
-    #expect(changed?.remeasure == IndexSet(integer: 1))
+    #expect(changed?.redraw == IndexSet(integer: 0))
+    #expect(changed?.remeasure == IndexSet(integer: 0))
   }
 
   @Test("an agent blinking is drawn again and never measured again")
@@ -633,7 +584,7 @@ struct SidebarTests {
     let after = SidebarModel.rows(roster: roster(panes), states: [key: "working"])
 
     let changed = SidebarModel.changes(from: before, to: after)
-    #expect(changed?.redraw == IndexSet(integer: 1))
+    #expect(changed?.redraw == IndexSet(integer: 0))
     #expect(changed?.remeasure.isEmpty == true)
   }
 
@@ -654,13 +605,13 @@ struct SidebarTests {
     let sidebar = SidebarView(
       frame: NSRect(x: 0, y: 0, width: SidebarModel.width, height: 400))
     sidebar.apply(roster: roster([pane("local", "w1:p1", label: "muster · claude")]), states: [:])
-    #expect(sidebar.drawnRows.map(\.height) == [SidebarModel.oneLine, SidebarModel.oneLine])
+    #expect(sidebar.drawnRows.map(\.height) == [SidebarModel.oneLine])
 
     sidebar.apply(
       roster: roster([
         pane("local", "w1:p1", label: "muster · claude", subtitle: "align-agent-state colours")
       ]), states: [:])
-    #expect(sidebar.drawnRows.map(\.height) == [SidebarModel.oneLine, SidebarModel.twoLines])
+    #expect(sidebar.drawnRows.map(\.height) == [SidebarModel.twoLines])
   }
 
   @Test("rows are drawn against the width the list was given, not the one it was born with")

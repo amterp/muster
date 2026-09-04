@@ -2,7 +2,7 @@
   "concept": "composition",
   "source": "authored",
   "citation": "docs/architecture.md, ownership of truth (the core owns composition; cursors are written, not read) and durability (Muster's own durable state is composition, and only composition)",
-  "why": "Composition is the only thing Muster owns rather than mirrors, which makes it the only thing it can get wrong on its own. Every other picture in the app converges on a daemon's answer eventually; this one has no authority above it to be corrected by. Two properties carry the file. The first is that view-local focus is written and never read back: which pane this window's keyboard feeds is Muster's decision, so another client moving daemon focus must not yank it, and the case that pins that is the one where a reconcile leaves a working focus alone. The second is that composition names daemon things - a tab, a pane - which disappear without asking, and every way they can disappear ends in a window that ignores the keyboard and cannot say why. The cases are written as steps rather than as one call because that is where the bugs are: what a reconcile does to a focus somebody set three steps earlier.",
+  "why": "Composition is the only thing Muster owns rather than mirrors, which makes it the only thing it can get wrong on its own. Every other picture in the app converges on a daemon's answer eventually; this one has no authority above it to be corrected by. What it holds is a window's ordered list of Muster tabs, which of them is on screen, and how each is divided between the machines holding panes in it (MIP-2). Three properties carry the file. View-local focus is written and never read back: which pane this window's keyboard feeds is Muster's decision, so another client moving daemon focus must not yank it, and the case that pins that is the one where a reconcile leaves a working focus alone. Composition names daemon things - a tab, a pane - which disappear without asking, and every way they can disappear ends in a window that ignores the keyboard and cannot say why. And a tab left behind keeps its arrangement, which is what makes switching between tabs cost nothing. The cases are written as steps rather than as one call because that is where the bugs are: what a reconcile does to a focus somebody set three steps earlier.",
   "cases": [
     {
       "name": "a fresh composition is attached to nothing",
@@ -66,12 +66,13 @@
         "daemons": [
           "local local=/tmp/herdr-local.sock"
         ],
+        "focusedRegion": "r0",
         "regions": [
           "r0 daemon=local tab=w1:t1"
         ],
-        "focusedRegion": "r0",
-        "view": [],
-        "showing": []
+        "showing": [],
+        "showingTab": "w1:t1",
+        "view": []
       }
     },
     {
@@ -159,18 +160,19 @@
         "daemons": [
           "local local=/tmp/herdr-local.sock"
         ],
+        "focusedPane": "w1:p1",
+        "focusedRegion": "r0",
         "regions": [
           "r0 daemon=local tab=w1:t1 pane=w1:p1"
-        ],
-        "focusedRegion": "r0",
-        "focusedPane": "w1:p1",
-        "view": [
-          "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
         ],
         "showing": [
           "local/w1:p1",
           "local/w1:p2",
           "local/w1:p3"
+        ],
+        "showingTab": "w1:t1",
+        "view": [
+          "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
         ]
       }
     },
@@ -259,18 +261,19 @@
         "daemons": [
           "local local=/tmp/herdr-local.sock"
         ],
+        "focusedPane": "w1:p3",
+        "focusedRegion": "r0",
         "regions": [
           "r0 daemon=local tab=w1:t1 pane=w1:p3"
-        ],
-        "focusedRegion": "r0",
-        "focusedPane": "w1:p3",
-        "view": [
-          "r0 tab=w1:t1 columns(w1:p3, columns(w1:p1*, w1:p2@0.5)@0.5)"
         ],
         "showing": [
           "local/w1:p1",
           "local/w1:p2",
           "local/w1:p3"
+        ],
+        "showingTab": "w1:t1",
+        "view": [
+          "r0 tab=w1:t1 columns(w1:p3, columns(w1:p1*, w1:p2@0.5)@0.5)"
         ]
       }
     },
@@ -337,17 +340,18 @@
         "daemons": [
           "local local=/tmp/herdr-local.sock"
         ],
+        "focusedPane": "w1:p1",
+        "focusedRegion": "r0",
         "regions": [
           "r0 daemon=local tab=w1:t1 pane=w1:p1"
-        ],
-        "focusedRegion": "r0",
-        "focusedPane": "w1:p1",
-        "view": [
-          "r0 tab=w1:t1 (no tree)"
         ],
         "showing": [
           "local/w1:p1",
           "local/w1:p2"
+        ],
+        "showingTab": "w1:t1",
+        "view": [
+          "r0 tab=w1:t1 (no tree)"
         ]
       }
     },
@@ -417,16 +421,17 @@
         "daemons": [
           "local local=/tmp/herdr-local.sock"
         ],
+        "focusedPane": "w1:p2",
+        "focusedRegion": "r0",
         "regions": [
           "r0 daemon=local tab=w1:t1 pane=w1:p2"
         ],
-        "focusedRegion": "r0",
-        "focusedPane": "w1:p2",
-        "view": [
-          "r0 tab=w1:t1 (no tree)"
-        ],
         "showing": [
           "local/w1:p2"
+        ],
+        "showingTab": "w1:t1",
+        "view": [
+          "r0 tab=w1:t1 (no tree)"
         ]
       }
     },
@@ -525,18 +530,19 @@
         "daemons": [
           "local local=/tmp/herdr-local.sock"
         ],
+        "focusedPane": "w1:p2",
+        "focusedRegion": "r0",
         "regions": [
           "r0 daemon=local tab=w1:t1 pane=w1:p2"
-        ],
-        "focusedRegion": "r0",
-        "focusedPane": "w1:p2",
-        "view": [
-          "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
         ],
         "showing": [
           "local/w1:p1",
           "local/w1:p2",
           "local/w1:p3"
+        ],
+        "showingTab": "w1:t1",
+        "view": [
+          "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
         ]
       }
     },
@@ -672,17 +678,18 @@
         "daemons": [
           "local local=/tmp/herdr-local.sock"
         ],
+        "focusedPane": "w1:p1",
+        "focusedRegion": "r0",
         "regions": [
           "r0 daemon=local tab=w1:t1 pane=w1:p1"
-        ],
-        "focusedRegion": "r0",
-        "focusedPane": "w1:p1",
-        "view": [
-          "r0 tab=w1:t1 columns(w1:p1*, w1:p3@0.5)"
         ],
         "showing": [
           "local/w1:p1",
           "local/w1:p3"
+        ],
+        "showingTab": "w1:t1",
+        "view": [
+          "r0 tab=w1:t1 columns(w1:p1*, w1:p3@0.5)"
         ]
       }
     },
@@ -909,18 +916,19 @@
           "devenv local=/tmp/herdr-devenv.sock",
           "local local=/tmp/herdr-local.sock"
         ],
+        "focusedPane": "w1:p1",
+        "focusedRegion": "r1",
         "regions": [
           "r1 daemon=devenv tab=w1:t1 pane=w1:p1"
-        ],
-        "focusedRegion": "r1",
-        "focusedPane": "w1:p1",
-        "view": [
-          "r1 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
         ],
         "showing": [
           "devenv/w1:p1",
           "devenv/w1:p2",
           "devenv/w1:p3"
+        ],
+        "showingTab": "w1:t1",
+        "view": [
+          "r1 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
         ]
       }
     },
@@ -1028,18 +1036,19 @@
         "daemons": [
           "devenv local=/tmp/herdr-devenv.sock"
         ],
+        "focusedPane": "w1:p1",
+        "focusedRegion": "r1",
         "regions": [
           "r1 daemon=devenv tab=w1:t1 pane=w1:p1"
-        ],
-        "focusedRegion": "r1",
-        "focusedPane": "w1:p1",
-        "view": [
-          "r1 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
         ],
         "showing": [
           "devenv/w1:p1",
           "devenv/w1:p2",
           "devenv/w1:p3"
+        ],
+        "showingTab": "w1:t1",
+        "view": [
+          "r1 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
         ]
       }
     },
@@ -1141,18 +1150,19 @@
         "daemons": [
           "local local=/tmp/herdr-local.sock"
         ],
+        "focusedPane": "w1:p1",
+        "focusedRegion": "r0",
         "regions": [
           "r0 daemon=local tab=w1:t1 pane=w1:p1"
-        ],
-        "focusedRegion": "r0",
-        "focusedPane": "w1:p1",
-        "view": [
-          "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
         ],
         "showing": [
           "local/w1:p1",
           "local/w1:p2",
           "local/w1:p3"
+        ],
+        "showingTab": "w1:t1",
+        "view": [
+          "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
         ]
       }
     },
@@ -1254,18 +1264,19 @@
         "daemons": [
           "local local=/tmp/herdr-local.sock"
         ],
+        "focusedPane": "w1:p1",
+        "focusedRegion": "r0",
         "regions": [
           "r0 daemon=local tab=w1:t1 pane=w1:p1"
-        ],
-        "focusedRegion": "r0",
-        "focusedPane": "w1:p1",
-        "view": [
-          "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
         ],
         "showing": [
           "local/w1:p1",
           "local/w1:p2",
           "local/w1:p3"
+        ],
+        "showingTab": "w1:t1",
+        "view": [
+          "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
         ]
       }
     },
@@ -1363,18 +1374,19 @@
         "daemons": [
           "local local=/tmp/herdr-local.sock"
         ],
+        "focusedPane": "w1:p1",
+        "focusedRegion": "r1",
         "regions": [
           "r1 daemon=local tab=w1:t1 pane=w1:p1"
-        ],
-        "focusedRegion": "r1",
-        "focusedPane": "w1:p1",
-        "view": [
-          "r1 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
         ],
         "showing": [
           "local/w1:p1",
           "local/w1:p2",
           "local/w1:p3"
+        ],
+        "showingTab": "w1:t1",
+        "view": [
+          "r1 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
         ]
       }
     },
@@ -1468,18 +1480,19 @@
         "daemons": [
           "local local=/tmp/herdr-restarted.sock"
         ],
+        "focusedPane": "w1:p1",
+        "focusedRegion": "r0",
         "regions": [
           "r0 daemon=local tab=w1:t1 pane=w1:p1"
-        ],
-        "focusedRegion": "r0",
-        "focusedPane": "w1:p1",
-        "view": [
-          "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
         ],
         "showing": [
           "local/w1:p1",
           "local/w1:p2",
           "local/w1:p3"
+        ],
+        "showingTab": "w1:t1",
+        "view": [
+          "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
         ]
       }
     },
@@ -1615,17 +1628,18 @@
         "daemons": [
           "local local=/tmp/herdr-local.sock"
         ],
+        "focusedPane": "w1:p2",
+        "focusedRegion": "r0",
         "regions": [
           "r0 daemon=local tab=w1:t1 pane=w1:p2"
-        ],
-        "focusedRegion": "r0",
-        "focusedPane": "w1:p2",
-        "view": [
-          "r0 tab=w1:t1 (no tree)"
         ],
         "showing": [
           "local/w1:p1",
           "local/w1:p2"
+        ],
+        "showingTab": "w1:t1",
+        "view": [
+          "r0 tab=w1:t1 (no tree)"
         ]
       }
     },
@@ -1716,16 +1730,17 @@
         "daemons": [
           "local local=/tmp/herdr-local.sock"
         ],
+        "focusedPane": "w1:p1",
+        "focusedRegion": "r0",
         "regions": [
           "r0 daemon=local tab=w1:t1 pane=w1:p1"
         ],
-        "focusedRegion": "r0",
-        "focusedPane": "w1:p1",
-        "view": [
-          "r0 tab=w1:t1 w1:p1* zoomed"
-        ],
         "showing": [
           "local/w1:p1"
+        ],
+        "showingTab": "w1:t1",
+        "view": [
+          "r0 tab=w1:t1 w1:p1* zoomed"
         ]
       }
     },
@@ -1816,17 +1831,18 @@
         "daemons": [
           "local local=/tmp/herdr-local.sock"
         ],
+        "focusedPane": "w1:p2",
+        "focusedRegion": "r0",
         "regions": [
           "r0 daemon=local tab=w1:t1 pane=w1:p2"
-        ],
-        "focusedRegion": "r0",
-        "focusedPane": "w1:p2",
-        "view": [
-          "r0 tab=w1:t1 columns(w1:p1*, w1:p2*+2@0.5)"
         ],
         "showing": [
           "local/w1:p1",
           "local/w1:p2"
+        ],
+        "showingTab": "w1:t1",
+        "view": [
+          "r0 tab=w1:t1 columns(w1:p1*, w1:p2*+2@0.5)"
         ]
       }
     },
@@ -1921,23 +1937,24 @@
         "daemons": [
           "local local=/tmp/herdr-local.sock"
         ],
+        "focusedPane": "w1:p2",
+        "focusedRegion": "r0",
         "regions": [
           "r0 daemon=local tab=w1:t1 pane=w1:p2"
-        ],
-        "focusedRegion": "r0",
-        "focusedPane": "w1:p2",
-        "view": [
-          "r0 tab=w1:t1 columns(w1:p1*-1, w1:p2*@0.5)"
         ],
         "showing": [
           "local/w1:p1",
           "local/w1:p2"
+        ],
+        "showingTab": "w1:t1",
+        "view": [
+          "r0 tab=w1:t1 columns(w1:p1*-1, w1:p2*@0.5)"
         ]
       }
     },
     {
       "name": "moving the keyboard inside a zoomed tab moves what is on screen",
-      "why": "⌘2 in a zoomed tab used to leave the previous pane filling the region, so the keyboard fed a pane nobody could see. herdr publishes `layout_updated` when a pane appears or goes and never for a focus change (observations/herdr-0.8.0.md section 10), so the cursor its zoom flag sits beside is stale from the moment focus moves - which is why the zoomed pane has to be read off this window's own keyboard rather than off the daemon's. The tab stays zoomed: what moved is which pane fills it, not whether one does.",
+      "why": "\u23182 in a zoomed tab used to leave the previous pane filling the region, so the keyboard fed a pane nobody could see. herdr publishes `layout_updated` when a pane appears or goes and never for a focus change (observations/herdr-0.8.0.md section 10), so the cursor its zoom flag sits beside is stale from the moment focus moves - which is why the zoomed pane has to be read off this window's own keyboard rather than off the daemon's. The tab stays zoomed: what moved is which pane fills it, not whether one does.",
       "given": {
         "attached": [
           "w1:p1",
@@ -2028,16 +2045,17 @@
         "daemons": [
           "local local=/tmp/herdr-local.sock"
         ],
+        "focusedPane": "w1:p3",
+        "focusedRegion": "r0",
         "regions": [
           "r0 daemon=local tab=w1:t1 pane=w1:p3"
         ],
-        "focusedRegion": "r0",
-        "focusedPane": "w1:p3",
-        "view": [
-          "r0 tab=w1:t1 w1:p3* zoomed"
-        ],
         "showing": [
           "local/w1:p3"
+        ],
+        "showingTab": "w1:t1",
+        "view": [
+          "r0 tab=w1:t1 w1:p3* zoomed"
         ]
       }
     },
@@ -2142,15 +2160,11 @@
           "devenv local=/tmp/herdr-devenv.sock",
           "local local=/tmp/herdr-local.sock"
         ],
+        "focusedPane": "w1:p1",
+        "focusedRegion": "r0",
         "regions": [
           "r0 daemon=devenv tab=w1:t1 pane=w1:p1",
           "r1 daemon=local tab=w1:t1 pane=w1:p1"
-        ],
-        "focusedRegion": "r0",
-        "focusedPane": "w1:p1",
-        "view": [
-          "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)",
-          "r1 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
         ],
         "showing": [
           "devenv/w1:p1",
@@ -2159,6 +2173,11 @@
           "local/w1:p1",
           "local/w1:p2",
           "local/w1:p3"
+        ],
+        "showingTab": "w1:t1",
+        "view": [
+          "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)",
+          "r1 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
         ]
       }
     },
@@ -2251,18 +2270,19 @@
         "daemons": [
           "local local=/tmp/herdr-local.sock"
         ],
+        "focusedPane": "w1:p2",
+        "focusedRegion": "r0",
         "regions": [
           "r0 daemon=local tab=w1:t1 pane=w1:p2"
-        ],
-        "focusedRegion": "r0",
-        "focusedPane": "w1:p2",
-        "view": [
-          "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
         ],
         "showing": [
           "local/w1:p1",
           "local/w1:p2",
           "local/w1:p3"
+        ],
+        "showingTab": "w1:t1",
+        "view": [
+          "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
         ]
       }
     },
@@ -2360,18 +2380,19 @@
         "daemons": [
           "local local=/tmp/herdr-local.sock"
         ],
+        "focusedPane": "w1:p1",
+        "focusedRegion": "r0",
         "regions": [
           "r0 daemon=local tab=w1:t1 pane=w1:p1"
-        ],
-        "focusedRegion": "r0",
-        "focusedPane": "w1:p1",
-        "view": [
-          "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
         ],
         "showing": [
           "local/w1:p1",
           "local/w1:p2",
           "local/w1:p3"
+        ],
+        "showingTab": "w1:t1",
+        "view": [
+          "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
         ]
       }
     },
@@ -2464,18 +2485,19 @@
         "daemons": [
           "local local=/tmp/herdr-local.sock"
         ],
+        "focusedPane": "w1:p3",
+        "focusedRegion": "r0",
         "regions": [
           "r0 daemon=local tab=w1:t1 pane=w1:p3"
-        ],
-        "focusedRegion": "r0",
-        "focusedPane": "w1:p3",
-        "view": [
-          "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
         ],
         "showing": [
           "local/w1:p1",
           "local/w1:p2",
           "local/w1:p3"
+        ],
+        "showingTab": "w1:t1",
+        "view": [
+          "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
         ]
       }
     },
@@ -2589,15 +2611,11 @@
           "devenv local=/tmp/herdr-devenv.sock",
           "local local=/tmp/herdr-local.sock"
         ],
+        "focusedPane": "w1:p1",
+        "focusedRegion": "r1",
         "regions": [
           "r0 daemon=devenv tab=w1:t1 pane=w1:p3",
           "r1 daemon=local tab=w1:t1 pane=w1:p1"
-        ],
-        "focusedRegion": "r1",
-        "focusedPane": "w1:p1",
-        "view": [
-          "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)",
-          "r1 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
         ],
         "showing": [
           "devenv/w1:p1",
@@ -2606,6 +2624,11 @@
           "local/w1:p1",
           "local/w1:p2",
           "local/w1:p3"
+        ],
+        "showingTab": "w1:t1",
+        "view": [
+          "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)",
+          "r1 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
         ]
       }
     },
@@ -2770,18 +2793,19 @@
         "daemons": [
           "local local=/tmp/herdr-local.sock"
         ],
+        "focusedPane": "w1:p1",
+        "focusedRegion": "r0",
         "regions": [
           "r0 daemon=local tab=w1:t1 pane=w1:p1"
-        ],
-        "focusedRegion": "r0",
-        "focusedPane": "w1:p1",
-        "view": [
-          "r0 tab=w1:t1 (no tree)"
         ],
         "showing": [
           "local/w1:p1",
           "local/w1:p2",
           "local/w1:p3"
+        ],
+        "showingTab": "w1:t1",
+        "view": [
+          "r0 tab=w1:t1 (no tree)"
         ]
       }
     },
@@ -2922,17 +2946,18 @@
         "daemons": [
           "local local=/tmp/herdr-local.sock"
         ],
+        "focusedPane": "w1:p1",
+        "focusedRegion": "r0",
         "regions": [
           "r0 daemon=local tab=w1:t1 pane=w1:p1"
-        ],
-        "focusedRegion": "r0",
-        "focusedPane": "w1:p1",
-        "view": [
-          "r0 tab=w1:t1 (no tree)"
         ],
         "showing": [
           "local/w1:p1",
           "local/w1:p2"
+        ],
+        "showingTab": "w1:t1",
+        "view": [
+          "r0 tab=w1:t1 (no tree)"
         ]
       }
     },
@@ -3085,15 +3110,11 @@
           "devenv local=/tmp/herdr-devenv.sock",
           "local local=/tmp/herdr-local.sock"
         ],
+        "focusedPane": "w1:p1",
+        "focusedRegion": "r1",
         "regions": [
           "r0 daemon=devenv tab=w1:t1 pane=w1:p1",
           "r1 daemon=local tab=w1:t1 pane=w1:p1"
-        ],
-        "focusedRegion": "r1",
-        "focusedPane": "w1:p1",
-        "view": [
-          "r0 tab=w1:t1 (no tree)",
-          "r1 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
         ],
         "showing": [
           "devenv/w1:p1",
@@ -3102,6 +3123,11 @@
           "local/w1:p1",
           "local/w1:p2",
           "local/w1:p3"
+        ],
+        "showingTab": "w1:t1",
+        "view": [
+          "r0 tab=w1:t1 (no tree)",
+          "r1 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
         ]
       }
     },
@@ -3206,27 +3232,28 @@
           "devenv ssh=dev@localhost options=-p 2222",
           "local local"
         ],
+        "focusedPane": "w1:p2",
+        "focusedRegion": "r1",
         "regions": [
           "r0 daemon=local tab=w1:t1 pane=w1:p1",
           "r1 daemon=devenv tab=w1:t1 pane=w1:p2"
-        ],
-        "focusedRegion": "r1",
-        "focusedPane": "w1:p2",
-        "view": [
-          "r0 tab=w1:t1 columns(w1:p1*, w1:p2*@0.5)",
-          "r1 tab=w1:t1 columns(w1:p1*, w1:p2*@0.5)"
         ],
         "showing": [
           "devenv/w1:p1",
           "devenv/w1:p2",
           "local/w1:p1",
           "local/w1:p2"
+        ],
+        "showingTab": "w1:t1",
+        "view": [
+          "r0 tab=w1:t1 columns(w1:p1*, w1:p2*@0.5)",
+          "r1 tab=w1:t1 columns(w1:p1*, w1:p2*@0.5)"
         ]
       }
     },
     {
-      "name": "surfacing a tab nothing shows retargets that daemon's region",
-      "why": "The common shape of attention routing. A pane that finished unseen is almost always in a tab this window is not showing, and the region on its daemon is the honest place to put it - a second region onto the same daemon would split the window in two for what the user experiences as switching tabs.",
+      "name": "surfacing a tab nothing shows brings it on screen",
+      "why": "The common shape of attention routing. A pane that finished unseen is almost always in a tab this window is not showing, and going to it means showing that tab - which is a switch rather than a rearrangement, now that a window shows one tab at a time. The tab it was showing keeps its region and its arrangement, so switching back is free.",
       "given": {
         "steps": [
           {
@@ -3251,12 +3278,14 @@
         "daemons": [
           "local local=/tmp/herdr-local.sock"
         ],
+        "focusedRegion": "r1",
         "regions": [
-          "r0 daemon=local tab=w1:t2"
+          "r0 daemon=local tab=w1:t1",
+          "r1 daemon=local tab=w1:t2"
         ],
-        "focusedRegion": "r0",
-        "view": [],
-        "showing": []
+        "showing": [],
+        "showingTab": "w1:t2",
+        "view": []
       }
     },
     {
@@ -3286,17 +3315,18 @@
         "daemons": [
           "local local=/tmp/herdr-local.sock"
         ],
+        "focusedRegion": "r0",
         "regions": [
           "r0 daemon=local tab=w1:t1"
         ],
-        "focusedRegion": "r0",
-        "view": [],
-        "showing": []
+        "showing": [],
+        "showingTab": "w1:t1",
+        "view": []
       }
     },
     {
-      "name": "surfacing never takes a region from another daemon",
-      "why": "A window showing a laptop beside a devenv is the arrangement this project exists for. Retargeting the laptop's region onto a devenv tab would make one machine's panes vanish to show the other's, which is a worse surprise than a new region appearing - so the devenv's own region is the one that moves.",
+      "name": "surfacing a devenv tab leaves the laptop's tab as it was",
+      "why": "A window showing a laptop beside a devenv is the arrangement this project exists for, and it survives this change as a tab holding a region on each. Surfacing a devenv tab that is not in it shows that tab instead - it does not take a region out of the one that is, so switching back finds both halves where they were.",
       "given": {
         "steps": [
           {
@@ -3336,18 +3366,20 @@
           "devenv local=/tmp/herdr-devenv.sock",
           "local local=/tmp/herdr-local.sock"
         ],
+        "focusedRegion": "r2",
         "regions": [
           "r0 daemon=local tab=w1:t1",
-          "r1 daemon=devenv tab=w1:t9"
+          "r1 daemon=devenv tab=w1:t1",
+          "r2 daemon=devenv tab=w1:t9"
         ],
-        "focusedRegion": "r0",
-        "view": [],
-        "showing": []
+        "showing": [],
+        "showingTab": "w1:t9",
+        "view": []
       }
     },
     {
-      "name": "a daemon with no region on screen gets one rather than borrowing",
-      "why": "The only case where a region appears. The daemon is attached and holds panes, and nothing is showing any of them - so there is nothing to retarget, and refusing would leave the list naming panes that cannot be reached.",
+      "name": "a tab both machines hold gets a region on each",
+      "why": "What a tab spanning two machines is made of. Each machine holds its own half - one herdr tab and one pane tree - and each gets a region, side by side in the order they arrived. This is the shape a version 3 arrangement migrates into, and the shape grouping produces.",
       "given": {
         "steps": [
           {
@@ -3378,18 +3410,19 @@
           "devenv local=/tmp/herdr-devenv.sock",
           "local local=/tmp/herdr-local.sock"
         ],
+        "focusedRegion": "r0",
         "regions": [
           "r0 daemon=local tab=w1:t1",
           "r1 daemon=devenv tab=w1:t1"
         ],
-        "focusedRegion": "r0",
-        "view": [],
-        "showing": []
+        "showing": [],
+        "showingTab": "w1:t1",
+        "view": []
       }
     },
     {
-      "name": "the keyboard's own region is the one that moves when it can",
-      "why": "Following a notification should not slide the keyboard's region out from under the next keystroke. When the focused region is already on the right daemon it is the one retargeted, so what the user was typing into is what changes rather than some other region of the same machine.",
+      "name": "surfacing a third tab leaves the other two holding their arrangements",
+      "why": "Switching tabs must not cost the tabs you switched away from. Each keeps the regions it had and which of them the keyboard was in, so a window walked through with next-tab comes back to every tab as it was left - which the rule this replaces could not do, because it moved one region between tabs and had nowhere to remember the rest.",
       "given": {
         "steps": [
           {
@@ -3423,18 +3456,20 @@
         "daemons": [
           "local local=/tmp/herdr-local.sock"
         ],
+        "focusedRegion": "r2",
         "regions": [
           "r0 daemon=local tab=w1:t1",
-          "r1 daemon=local tab=w1:t3"
+          "r1 daemon=local tab=w1:t2",
+          "r2 daemon=local tab=w1:t3"
         ],
-        "focusedRegion": "r1",
-        "view": [],
-        "showing": []
+        "showing": [],
+        "showingTab": "w1:t3",
+        "view": []
       }
     },
     {
-      "name": "a retargeted region forgets the pane it was showing",
-      "why": "The pane it held is in the tab it just stopped showing, so keeping it would point the keyboard at something off screen - and the input path reads that answer without checking. The caller names the pane it wanted, and a reconcile fills one in otherwise. The region carries no pane of its own afterwards; the tree beside it is the tab's, which is daemon truth and was always going to render.",
+      "name": "a tab switched away from keeps the pane its keyboard was on",
+      "why": "The other half of switching being free. The tab left behind still holds the pane the keyboard was in, so coming back lands there rather than at the start of its tree - and the tab arriving carries its own, which is what the view renders. The rule this replaces had one region for both tabs and had to clear the pane on every switch.",
       "given": {
         "worlds": {
           "two tabs": {
@@ -3512,15 +3547,18 @@
         "daemons": [
           "local local=/tmp/herdr-local.sock"
         ],
+        "focusedPane": "w1:p9",
+        "focusedRegion": "r1",
         "regions": [
-          "r0 daemon=local tab=w1:t2"
-        ],
-        "focusedRegion": "r0",
-        "view": [
-          "r0 tab=w1:t2 w1:p9"
+          "r0 daemon=local tab=w1:t1 pane=w1:p1",
+          "r1 daemon=local tab=w1:t2 pane=w1:p9"
         ],
         "showing": [
           "local/w1:p9"
+        ],
+        "showingTab": "w1:t2",
+        "view": [
+          "r1 tab=w1:t2 w1:p9"
         ]
       }
     },
@@ -3557,13 +3595,14 @@
           "devenv local=/tmp/herdr-devenv.sock",
           "local local=/tmp/herdr-local.sock"
         ],
+        "focusedRegion": "r0",
         "regions": [
           "r0 daemon=local tab=w1:t1",
           "r1 daemon=devenv tab=w1:t1"
         ],
-        "focusedRegion": "r0",
-        "view": [],
-        "showing": []
+        "showing": [],
+        "showingTab": "w1:t1",
+        "view": []
       }
     },
     {
@@ -3604,18 +3643,19 @@
           "devenv local=/tmp/herdr-devenv.sock",
           "local local=/tmp/herdr-local.sock"
         ],
+        "focusedRegion": "r0",
         "regions": [
           "r0 daemon=local tab=w1:t1 weight=1.500",
           "r1 daemon=devenv tab=w1:t1 weight=0.500"
         ],
-        "focusedRegion": "r0",
-        "view": [],
-        "showing": []
+        "showing": [],
+        "showingTab": "w1:t1",
+        "view": []
       }
     },
     {
       "name": "a boundary keeps the pair's own width, so nothing else moves",
-      "why": "What makes a drag local. The two weights still sum to what they summed to before, so every other region in the window keeps exactly the width it had - which is what the person dragging expects and what a rule dividing the whole window would break.",
+      "why": "What makes a drag local. The two weights still sum to what they summed to before, so every other region in the tab keeps exactly the width it had - which is what the person dragging expects and what a rule dividing the whole tab would break. Three machines rather than two, because a pair is the whole tab when there are only two of them and nothing is left to leave alone.",
       "given": {
         "steps": [
           {
@@ -3624,19 +3664,29 @@
             "socketPath": "/tmp/herdr-local.sock"
           },
           {
+            "do": "attachDaemon",
+            "daemon": "devenv",
+            "socketPath": "/tmp/herdr-devenv.sock"
+          },
+          {
+            "do": "attachDaemon",
+            "daemon": "builder",
+            "socketPath": "/tmp/herdr-builder.sock"
+          },
+          {
             "do": "openRegion",
             "daemon": "local",
             "tab": "w1:t1"
           },
           {
             "do": "openRegion",
-            "daemon": "local",
-            "tab": "w1:t2"
+            "daemon": "devenv",
+            "tab": "w1:t1"
           },
           {
             "do": "openRegion",
-            "daemon": "local",
-            "tab": "w1:t3"
+            "daemon": "builder",
+            "tab": "w1:t1"
           },
           {
             "do": "setBoundary",
@@ -3648,16 +3698,19 @@
       },
       "expect": {
         "daemons": [
+          "builder local=/tmp/herdr-builder.sock",
+          "devenv local=/tmp/herdr-devenv.sock",
           "local local=/tmp/herdr-local.sock"
         ],
+        "focusedRegion": "r0",
         "regions": [
           "r0 daemon=local tab=w1:t1 weight=0.500",
-          "r1 daemon=local tab=w1:t2 weight=1.500",
-          "r2 daemon=local tab=w1:t3"
+          "r1 daemon=devenv tab=w1:t1 weight=1.500",
+          "r2 daemon=builder tab=w1:t1"
         ],
-        "focusedRegion": "r0",
-        "view": [],
-        "showing": []
+        "showing": [],
+        "showingTab": "w1:t1",
+        "view": []
       }
     },
     {
@@ -3698,13 +3751,14 @@
           "devenv local=/tmp/herdr-devenv.sock",
           "local local=/tmp/herdr-local.sock"
         ],
+        "focusedRegion": "r0",
         "regions": [
           "r0 daemon=local tab=w1:t1 weight=0.200",
           "r1 daemon=devenv tab=w1:t1 weight=1.800"
         ],
-        "focusedRegion": "r0",
-        "view": [],
-        "showing": []
+        "showing": [],
+        "showingTab": "w1:t1",
+        "view": []
       }
     },
     {
@@ -3745,13 +3799,14 @@
           "devenv local=/tmp/herdr-devenv.sock",
           "local local=/tmp/herdr-local.sock"
         ],
+        "focusedRegion": "r0",
         "regions": [
           "r0 daemon=local tab=w1:t1 weight=1.800",
           "r1 daemon=devenv tab=w1:t1 weight=0.200"
         ],
-        "focusedRegion": "r0",
-        "view": [],
-        "showing": []
+        "showing": [],
+        "showingTab": "w1:t1",
+        "view": []
       }
     },
     {
@@ -3792,13 +3847,14 @@
           "devenv local=/tmp/herdr-devenv.sock",
           "local local=/tmp/herdr-local.sock"
         ],
+        "focusedRegion": "r0",
         "regions": [
           "r0 daemon=local tab=w1:t1",
           "r1 daemon=devenv tab=w1:t1"
         ],
-        "focusedRegion": "r0",
-        "view": [],
-        "showing": []
+        "showing": [],
+        "showingTab": "w1:t1",
+        "view": []
       }
     },
     {
@@ -3843,12 +3899,13 @@
           "devenv local=/tmp/herdr-devenv.sock",
           "local local=/tmp/herdr-local.sock"
         ],
+        "focusedRegion": "r1",
         "regions": [
           "r1 daemon=devenv tab=w1:t1"
         ],
-        "focusedRegion": "r1",
-        "view": [],
-        "showing": []
+        "showing": [],
+        "showingTab": "w1:t1",
+        "view": []
       }
     },
     {
@@ -3955,19 +4012,20 @@
         "daemons": [
           "local local=/tmp/herdr-local.sock"
         ],
+        "focusedPane": "w1:p2",
+        "focusedRegion": "r0",
         "regions": [
           "r0 daemon=local tab=w1:t1 pane=w1:p2"
-        ],
-        "focusedRegion": "r0",
-        "focusedPane": "w1:p2",
-        "view": [
-          "r0 tab=w1:t1 columns(rows(w1:p1, w1:p3@0.5), rows(w1:p2, w1:p4@0.5)@0.5)"
         ],
         "showing": [
           "local/w1:p1",
           "local/w1:p2",
           "local/w1:p3",
           "local/w1:p4"
+        ],
+        "showingTab": "w1:t1",
+        "view": [
+          "r0 tab=w1:t1 columns(rows(w1:p1, w1:p3@0.5), rows(w1:p2, w1:p4@0.5)@0.5)"
         ]
       }
     },
@@ -4075,19 +4133,20 @@
         "daemons": [
           "local local=/tmp/herdr-local.sock"
         ],
+        "focusedPane": "w1:p1",
+        "focusedRegion": "r0",
         "regions": [
           "r0 daemon=local tab=w1:t1 pane=w1:p1"
-        ],
-        "focusedRegion": "r0",
-        "focusedPane": "w1:p1",
-        "view": [
-          "r0 tab=w1:t1 columns(rows(w1:p1, w1:p3@0.5), rows(w1:p2, w1:p4@0.5)@0.5)"
         ],
         "showing": [
           "local/w1:p1",
           "local/w1:p2",
           "local/w1:p3",
           "local/w1:p4"
+        ],
+        "showingTab": "w1:t1",
+        "view": [
+          "r0 tab=w1:t1 columns(rows(w1:p1, w1:p3@0.5), rows(w1:p2, w1:p4@0.5)@0.5)"
         ]
       }
     },
@@ -4195,19 +4254,20 @@
         "daemons": [
           "local local=/tmp/herdr-local.sock"
         ],
+        "focusedPane": "w1:p3",
+        "focusedRegion": "r0",
         "regions": [
           "r0 daemon=local tab=w1:t1 pane=w1:p3"
-        ],
-        "focusedRegion": "r0",
-        "focusedPane": "w1:p3",
-        "view": [
-          "r0 tab=w1:t1 columns(rows(w1:p1, w1:p3@0.5), rows(w1:p2, w1:p4@0.5)@0.5)"
         ],
         "showing": [
           "local/w1:p1",
           "local/w1:p2",
           "local/w1:p3",
           "local/w1:p4"
+        ],
+        "showingTab": "w1:t1",
+        "view": [
+          "r0 tab=w1:t1 columns(rows(w1:p1, w1:p3@0.5), rows(w1:p2, w1:p4@0.5)@0.5)"
         ]
       }
     },
@@ -4315,19 +4375,20 @@
         "daemons": [
           "local local=/tmp/herdr-local.sock"
         ],
+        "focusedPane": "w1:p1",
+        "focusedRegion": "r0",
         "regions": [
           "r0 daemon=local tab=w1:t1 pane=w1:p1"
-        ],
-        "focusedRegion": "r0",
-        "focusedPane": "w1:p1",
-        "view": [
-          "r0 tab=w1:t1 columns(rows(w1:p1, w1:p3@0.5), rows(w1:p2, w1:p4@0.5)@0.5)"
         ],
         "showing": [
           "local/w1:p1",
           "local/w1:p2",
           "local/w1:p3",
           "local/w1:p4"
+        ],
+        "showingTab": "w1:t1",
+        "view": [
+          "r0 tab=w1:t1 columns(rows(w1:p1, w1:p3@0.5), rows(w1:p2, w1:p4@0.5)@0.5)"
         ]
       }
     },
@@ -4435,19 +4496,20 @@
         "daemons": [
           "local local=/tmp/herdr-local.sock"
         ],
+        "focusedPane": "w1:p1",
+        "focusedRegion": "r0",
         "regions": [
           "r0 daemon=local tab=w1:t1 pane=w1:p1"
-        ],
-        "focusedRegion": "r0",
-        "focusedPane": "w1:p1",
-        "view": [
-          "r0 tab=w1:t1 columns(rows(w1:p1, w1:p3@0.5), rows(w1:p2, w1:p4@0.5)@0.5)"
         ],
         "showing": [
           "local/w1:p1",
           "local/w1:p2",
           "local/w1:p3",
           "local/w1:p4"
+        ],
+        "showingTab": "w1:t1",
+        "view": [
+          "r0 tab=w1:t1 columns(rows(w1:p1, w1:p3@0.5), rows(w1:p2, w1:p4@0.5)@0.5)"
         ]
       }
     },
@@ -4555,19 +4617,20 @@
         "daemons": [
           "local local=/tmp/herdr-local.sock"
         ],
+        "focusedPane": "w1:p4",
+        "focusedRegion": "r0",
         "regions": [
           "r0 daemon=local tab=w1:t1 pane=w1:p4"
-        ],
-        "focusedRegion": "r0",
-        "focusedPane": "w1:p4",
-        "view": [
-          "r0 tab=w1:t1 columns(rows(w1:p1, w1:p4@0.2), rows(w1:p2, w1:p3@0.8)@0.5)"
         ],
         "showing": [
           "local/w1:p1",
           "local/w1:p2",
           "local/w1:p3",
           "local/w1:p4"
+        ],
+        "showingTab": "w1:t1",
+        "view": [
+          "r0 tab=w1:t1 columns(rows(w1:p1, w1:p4@0.2), rows(w1:p2, w1:p3@0.8)@0.5)"
         ]
       }
     },
@@ -4675,19 +4738,751 @@
         "daemons": [
           "local local=/tmp/herdr-local.sock"
         ],
+        "focusedPane": "w1:p2",
+        "focusedRegion": "r0",
         "regions": [
           "r0 daemon=local tab=w1:t1 pane=w1:p2"
-        ],
-        "focusedRegion": "r0",
-        "focusedPane": "w1:p2",
-        "view": [
-          "r0 tab=w1:t1 columns(rows(w1:p1, w1:p4@0.2), rows(w1:p2, w1:p3@0.8)@0.5)"
         ],
         "showing": [
           "local/w1:p1",
           "local/w1:p2",
           "local/w1:p3",
           "local/w1:p4"
+        ],
+        "showingTab": "w1:t1",
+        "view": [
+          "r0 tab=w1:t1 columns(rows(w1:p1, w1:p4@0.2), rows(w1:p2, w1:p3@0.8)@0.5)"
+        ]
+      }
+    },
+    {
+      "name": "a window holds tabs from two machines and shows one of them",
+      "why": "The shape this whole model is for. A laptop tab and a devenv tab sit in one list that cmd+1 and cmd+2 walk, and exactly one of them fills the window - which is what every other terminal and every browser has trained the reader to expect, and what the column-per-machine window could not express.",
+      "given": {
+        "attached": [],
+        "worlds": {
+          "laptop": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "w1"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              },
+              {
+                "id": "w1:t2",
+                "workspace": "w1",
+                "label": "t2"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p9",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ],
+            "layouts": [
+              {
+                "tab": "w1:t1",
+                "root": "w1:p1"
+              },
+              {
+                "tab": "w1:t2",
+                "root": "w1:p9"
+              }
+            ]
+          },
+          "devenv": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "w1"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w2:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w2:p1",
+                "tab": "w2:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ],
+            "layouts": [
+              {
+                "tab": "w2:t1",
+                "root": "w2:p1"
+              }
+            ]
+          }
+        },
+        "steps": [
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/herdr-local.sock"
+          },
+          {
+            "do": "attachDaemon",
+            "daemon": "devenv",
+            "socketPath": "/tmp/herdr-devenv.sock"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "laptop"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "devenv",
+            "world": "devenv"
+          }
+        ]
+      },
+      "expect": {
+        "daemons": [
+          "devenv local=/tmp/herdr-devenv.sock",
+          "local local=/tmp/herdr-local.sock"
+        ],
+        "focusedPane": "w1:p1",
+        "focusedRegion": "r0",
+        "regions": [
+          "r0 daemon=local tab=w1:t1 pane=w1:p1",
+          "r1 daemon=local tab=w1:t2 pane=w1:p9",
+          "r2 daemon=devenv tab=w2:t1 pane=w2:p1"
+        ],
+        "showing": [
+          "local/w1:p1"
+        ],
+        "showingTab": "w1:t1",
+        "view": [
+          "r0 tab=w1:t1 w1:p1"
+        ]
+      }
+    },
+    {
+      "name": "showing another tab puts the first one away",
+      "why": "One tab on screen at a time is the rule, so the panes of the tab that was showing stop being on screen - which is what tells the agent list that a pane nobody is watching has gone quiet, and what stops a bridge being spawned for a pane nothing is drawing.",
+      "given": {
+        "attached": [],
+        "worlds": {
+          "laptop": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "w1"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              },
+              {
+                "id": "w1:t2",
+                "workspace": "w1",
+                "label": "t2"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p9",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ],
+            "layouts": [
+              {
+                "tab": "w1:t1",
+                "root": "w1:p1"
+              },
+              {
+                "tab": "w1:t2",
+                "root": "w1:p9"
+              }
+            ]
+          },
+          "devenv": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "w1"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w2:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w2:p1",
+                "tab": "w2:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ],
+            "layouts": [
+              {
+                "tab": "w2:t1",
+                "root": "w2:p1"
+              }
+            ]
+          }
+        },
+        "steps": [
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/herdr-local.sock"
+          },
+          {
+            "do": "attachDaemon",
+            "daemon": "devenv",
+            "socketPath": "/tmp/herdr-devenv.sock"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "laptop"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "devenv",
+            "world": "devenv"
+          },
+          {
+            "do": "showTab",
+            "tab": "w2:t1"
+          }
+        ]
+      },
+      "expect": {
+        "daemons": [
+          "devenv local=/tmp/herdr-devenv.sock",
+          "local local=/tmp/herdr-local.sock"
+        ],
+        "focusedPane": "w2:p1",
+        "focusedRegion": "r2",
+        "regions": [
+          "r0 daemon=local tab=w1:t1 pane=w1:p1",
+          "r1 daemon=local tab=w1:t2 pane=w1:p9",
+          "r2 daemon=devenv tab=w2:t1 pane=w2:p1"
+        ],
+        "showing": [
+          "devenv/w2:p1"
+        ],
+        "showingTab": "w2:t1",
+        "view": [
+          "r2 tab=w2:t1 w2:p1"
+        ]
+      }
+    },
+    {
+      "name": "a window somebody asked for does not open onto a tab another window has",
+      "why": "herdr allows one client per terminal, so a second window opening onto the first one's tab renders panes that refuse to attach and cannot be closed (kan a_2IZ5TL6DQ). What the machine already held is claimed, and the window shows nothing until a tab of its own arrives - which is what the empty window on screen is for.",
+      "given": {
+        "attached": [],
+        "worlds": {
+          "laptop": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "w1"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              },
+              {
+                "id": "w1:t2",
+                "workspace": "w1",
+                "label": "t2"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p9",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ],
+            "layouts": [
+              {
+                "tab": "w1:t1",
+                "root": "w1:p1"
+              },
+              {
+                "tab": "w1:t2",
+                "root": "w1:p9"
+              }
+            ]
+          }
+        },
+        "steps": [
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/herdr-local.sock"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "laptop"
+          },
+          {
+            "do": "claim",
+            "daemon": "local",
+            "tabs": [
+              "w1:t1",
+              "w1:t2"
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "daemons": [
+          "local local=/tmp/herdr-local.sock"
+        ],
+        "regions": [
+          "r0 daemon=local tab=w1:t1 pane=w1:p1",
+          "r1 daemon=local tab=w1:t2 pane=w1:p9"
+        ],
+        "showing": [],
+        "view": []
+      }
+    },
+    {
+      "name": "a claimed machine's next tab is the one the window opens onto",
+      "why": "The other half of the claim: what a fresh window asked for is the tab that appears after it, and nothing has to correlate the answer with the request for that to work. Every tab in the claim stays listed and stays reachable - taking a terminal from another window is a thing somebody may mean, and only Muster doing it uninvited is the bug.",
+      "given": {
+        "attached": [],
+        "worlds": {
+          "one tab": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "w1"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ],
+            "layouts": [
+              {
+                "tab": "w1:t1",
+                "root": "w1:p1"
+              }
+            ]
+          },
+          "two tabs": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "w1"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              },
+              {
+                "id": "w1:t2",
+                "workspace": "w1",
+                "label": "t2"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p9",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ],
+            "layouts": [
+              {
+                "tab": "w1:t1",
+                "root": "w1:p1"
+              },
+              {
+                "tab": "w1:t2",
+                "root": "w1:p9"
+              }
+            ]
+          }
+        },
+        "steps": [
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/herdr-local.sock"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "one tab"
+          },
+          {
+            "do": "claim",
+            "daemon": "local",
+            "tabs": [
+              "w1:t1"
+            ]
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "two tabs"
+          }
+        ]
+      },
+      "expect": {
+        "daemons": [
+          "local local=/tmp/herdr-local.sock"
+        ],
+        "focusedPane": "w1:p9",
+        "focusedRegion": "r1",
+        "regions": [
+          "r0 daemon=local tab=w1:t1 pane=w1:p1",
+          "r1 daemon=local tab=w1:t2 pane=w1:p9"
+        ],
+        "showing": [
+          "local/w1:p9"
+        ],
+        "showingTab": "w1:t2",
+        "view": [
+          "r1 tab=w1:t2 w1:p9"
+        ]
+      }
+    },
+    {
+      "name": "a tab the daemon no longer holds leaves the window",
+      "why": "A tab closed from another client has nothing left to show, and a window still listing it is a caption that goes nowhere. The window moves to whatever took its place rather than to the first tab, which is what every tab strip does when you close the one you are on.",
+      "given": {
+        "attached": [],
+        "worlds": {
+          "three tabs": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "w1"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              },
+              {
+                "id": "w1:t2",
+                "workspace": "w1",
+                "label": "t2"
+              },
+              {
+                "id": "w1:t3",
+                "workspace": "w1",
+                "label": "t3"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p9",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p5",
+                "tab": "w1:t3",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ],
+            "layouts": [
+              {
+                "tab": "w1:t1",
+                "root": "w1:p1"
+              },
+              {
+                "tab": "w1:t2",
+                "root": "w1:p9"
+              },
+              {
+                "tab": "w1:t3",
+                "root": "w1:p5"
+              }
+            ]
+          },
+          "without the second": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "w1"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              },
+              {
+                "id": "w1:t3",
+                "workspace": "w1",
+                "label": "t3"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p5",
+                "tab": "w1:t3",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ],
+            "layouts": [
+              {
+                "tab": "w1:t1",
+                "root": "w1:p1"
+              },
+              {
+                "tab": "w1:t3",
+                "root": "w1:p5"
+              }
+            ]
+          }
+        },
+        "steps": [
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/herdr-local.sock"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "three tabs"
+          },
+          {
+            "do": "showTab",
+            "tab": "w1:t2"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "without the second"
+          }
+        ]
+      },
+      "expect": {
+        "daemons": [
+          "local local=/tmp/herdr-local.sock"
+        ],
+        "focusedPane": "w1:p5",
+        "focusedRegion": "r2",
+        "regions": [
+          "r0 daemon=local tab=w1:t1 pane=w1:p1",
+          "r2 daemon=local tab=w1:t3 pane=w1:p5"
+        ],
+        "showing": [
+          "local/w1:p5"
+        ],
+        "showingTab": "w1:t3",
+        "view": [
+          "r2 tab=w1:t3 w1:p5"
+        ]
+      }
+    },
+    {
+      "name": "a tab spanning two machines opens on the half it can still reach",
+      "why": "The degradation this model has to pay for (MIP-2, durability). A tab whose devenv is unreachable has to show the panes it can and say nothing about the rest, rather than refusing to open - which is the rule the mirror already follows for a stale daemon, applied to a tab.",
+      "given": {
+        "attached": [],
+        "worlds": {
+          "laptop": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "w1"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              },
+              {
+                "id": "w1:t2",
+                "workspace": "w1",
+                "label": "t2"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p9",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ],
+            "layouts": [
+              {
+                "tab": "w1:t1",
+                "root": "w1:p1"
+              },
+              {
+                "tab": "w1:t2",
+                "root": "w1:p9"
+              }
+            ]
+          }
+        },
+        "steps": [
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/herdr-local.sock"
+          },
+          {
+            "do": "attachDaemon",
+            "daemon": "devenv",
+            "socketPath": "/tmp/herdr-devenv.sock"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "local",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "devenv",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "laptop"
+          },
+          {
+            "do": "detachDaemon",
+            "daemon": "devenv"
+          }
+        ]
+      },
+      "expect": {
+        "daemons": [
+          "local local=/tmp/herdr-local.sock"
+        ],
+        "focusedPane": "w1:p1",
+        "focusedRegion": "r0",
+        "regions": [
+          "r0 daemon=local tab=w1:t1 pane=w1:p1",
+          "r2 daemon=local tab=w1:t2 pane=w1:p9"
+        ],
+        "showing": [
+          "local/w1:p1"
+        ],
+        "showingTab": "w1:t1",
+        "view": [
+          "r0 tab=w1:t1 w1:p1"
         ]
       }
     }

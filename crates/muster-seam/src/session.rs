@@ -17,8 +17,8 @@ use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 use muster_core::AgentState;
 use muster_core::attention::{Attend, Attention, Notifications};
 use muster_core::composition::{
-    Composition, Daemon, DaemonId, Endpoint, FontSizeChange, FontSizes, Frame, PaneKey,
-    Presentation, RegionId, Saved, Step, TabKey, Transport, View, ViewPane, saved,
+    Composition, Daemon, DaemonId, Endpoint, FontSizeChange, FontSizes, Frame, MusterTab, PaneKey,
+    Presentation, RegionId, Saved, Step, Transport, View, ViewPane, saved,
 };
 use muster_core::config::{Appearance, Config, Feel, Panes};
 use muster_core::diagnostics::{clock, log, poison};
@@ -938,57 +938,33 @@ pub(crate) struct Session {
     /// somebody pressing the key twice and the second is the one they are looking at.
     wanted_panes: BTreeMap<DaemonId, (RegionId, PaneId)>,
 
-    /// Machines Muster has asked for a workspace and has not heard back about.
+    /// Machines this window has asked for a workspace, once each.
     ///
     /// Beside `wanted_tabs` and `wanted_panes` above, and the one of the three that guards the
-    /// *asking* rather than what to do with the answer. A machine holding nothing is asked for a
-    /// workspace, and until that workspace exists the machine still holds nothing - so an
-    /// unguarded rule would ask again on every event any *other* machine sent, and a laptop that
-    /// chatters would give a devenv a dozen workspaces before the first reply landed.
+    /// *asking* rather than what to do with the answer. A window with nothing to show asks a
+    /// machine for a workspace, and until that workspace exists the window still has nothing -
+    /// so an unguarded rule would ask again on every event any machine sent, and a laptop that
+    /// chatters would give it a dozen workspaces before the first reply landed.
     ///
-    /// Shared with the launch-time rule rather than kept beside it, which is the whole reason
-    /// it is here and not a local. Launch asks before any daemon has spoken; this asks once one
-    /// has spoken and said it holds nothing. Two sets would let a fresh window ask twice and
-    /// open with a workspace it never wanted.
-    ///
-    /// Emptied per machine once that machine holds a tab, and never otherwise: a daemon that
-    /// refuses is left in here deliberately, because a rule that retried a refusal would retry
-    /// it on every event forever.
-    ///
-    /// Not emptied for a machine a window somebody asked for has claimed and not yet been given
-    /// a tab on. That window is waiting for a tab of its own on a machine that already holds
-    /// somebody else's, so "this machine holds a tab" is true throughout and would let the rule
-    /// ask again on every event until the machine had a workspace per event.
+    /// **Never emptied.** A machine is asked at most once for the life of this window, which is
+    /// what makes closing a machine's last pane leave it empty instead of getting a fresh shell
+    /// a moment later (kan a_2I6h18OU6). A daemon that refuses is left in here for the sharper
+    /// version of the same reason: a rule that retried a refusal would retry it forever.
     workspaces_asked_of: BTreeSet<DaemonId>,
 
     /// Whether somebody asked for this window, rather than it being the one Muster comes back
     /// to.
     ///
     /// One rule turns on it, and it is about where the window starts rather than about how it
-    /// behaves: a window somebody asked for takes a tab of its own on every machine instead of
-    /// the tab that machine last had focused. That tab is very often the one another window is
-    /// showing, and herdr allows one client per terminal - so the alternative is a window of
-    /// surfaces that paint nothing (kan `a_2IZ5TL6DQ`).
+    /// behaves: a window somebody asked for opens onto a tab of its own instead of one that was
+    /// already there. That tab is very often the one another window is showing, and herdr allows
+    /// one client per terminal - so the alternative is a window of surfaces that paint nothing
+    /// (kan `a_2IZ5TL6DQ`).
     ///
     /// Said by the shell rather than worked out here, because the two launches differ in
-    /// nothing this layer can see. It stops mattering once every machine has been claimed
-    /// below, which is what makes this a rule about where a window starts rather than about
-    /// how it behaves.
+    /// nothing this layer can see. It stops mattering once every machine has been claimed, which
+    /// is what makes this a rule about where a window starts rather than about how it behaves.
     fresh: bool,
-
-    /// What each machine was already holding when a window somebody asked for claimed a
-    /// workspace on it.
-    ///
-    /// A record rather than a guard, and it is the difference between the two that matters:
-    /// this window may open onto any tab that is not in here, and every tab that is belongs to
-    /// whatever was using that machine before. So the entry both suppresses the wrong answer
-    /// and identifies the right one, without needing the claim's reply to arrive while
-    /// something is still waiting for it.
-    ///
-    /// One entry per machine for the life of the window, never removed. After the first fill
-    /// all it says is which tabs this window inherited, and preferring the others is what
-    /// somebody opening a window by hand meant anyway.
-    claimed: BTreeMap<DaemonId, BTreeSet<TabId>>,
 
     /// Which agents have been seen, and so which are `done`.
     ///
@@ -1047,7 +1023,7 @@ pub(crate) struct Session {
     /// Advisory rather than authoritative: [`Session::numbering`] derives what is numbered
     /// from this *and* the roster every time, so a tab that closed while it was armed reads
     /// as disarmed rather than wedging the chords. Always `None` under the settled scheme.
-    armed: Option<TabKey>,
+    armed: Option<TabId>,
 }
 
 /// One pane's live search.
@@ -1297,10 +1273,11 @@ impl Session {
             let mirror = poison::lock(&backend.mirror, "mirror");
             let attached = self.panes.entry(daemon.clone()).or_default();
 
+            let showing = self.composition.showing().cloned();
             self.composition
                 .regions()
                 .filter(|region| &region.daemon == daemon)
-                .filter_map(|region| mirror.layout(&region.tab))
+                .filter_map(|_| mirror.layout(showing.as_ref()?))
                 .flat_map(|layout| layout.root.panes())
                 .filter(|pane| !attached.contains_key(pane) && mirror.pane(pane).is_some())
                 .cloned()
@@ -1460,7 +1437,7 @@ impl Session {
             }
         }
         self.wanted_tabs.remove(daemon);
-        self.composition.surface(daemon, tab).is_some()
+        self.composition.surface(daemon, &tab).is_some()
     }
 
     /// Puts a region onto the tab holding this pane, so that something can show it.
@@ -1494,7 +1471,7 @@ impl Session {
             })?;
             held.tab.clone()
         };
-        self.composition.surface(daemon, tab).ok_or_else(|| {
+        self.composition.surface(daemon, &tab).ok_or_else(|| {
             Refusal::Declined(format!(
                 "{daemon} is followed but not attached to this window's composition, so no \
                  region could be opened onto {pane}."
@@ -1603,22 +1580,22 @@ impl Session {
         self.panes.get(daemon)?.get(pane).map(Arc::clone)
     }
 
-    /// Which of one daemon's regions shows this pane.
+    /// Which region would draw this pane, whether or not its tab is the one on screen.
     ///
     /// Scoped to a daemon rather than searched across all of them, because two daemons hand
     /// out the same pane ids - `w1:p1` means something on each - and a search would let
-    /// whichever happened to be first answer for the other's pane. A pane in none of that
-    /// daemon's regions is one this window is not showing, and nothing here will act on it.
+    /// whichever happened to be first answer for the other's pane.
+    ///
+    /// A pane in a tab the window is not showing still has one, and that is the whole of what
+    /// this answers now that a window shows one tab at a time: every pane but the handful on
+    /// screen is in a background tab, and a rule that refused them would refuse going to a pane
+    /// that finished unseen - which is the feature. `None` means the window holds no tab with
+    /// this pane in it at all, which is a pane in a session it is not attached to.
     fn region_holding(&self, daemon: &DaemonId, pane: &PaneId) -> Option<RegionId> {
         let backend = self.backends.get(daemon)?;
         let held = poison::lock(&backend.mirror, "mirror");
-        self.composition
-            .regions()
-            .find(|region| {
-                &region.daemon == daemon
-                    && held.pane(pane).is_some_and(|held| held.tab == region.tab)
-            })
-            .map(|region| region.id)
+        let tab = held.pane(pane)?.tab.clone();
+        self.composition.region_of(daemon, &tab)
     }
 
     fn channel_of(&self, daemon: &DaemonId) -> Option<Arc<dyn BackendChannel>> {
@@ -1733,14 +1710,16 @@ pub(crate) fn submit(
                     .region_holding(daemon, pane)
                     .ok_or_else(|| Refusal::Declined(not_showing(daemon)))?,
             ),
-            // Closing a tab keeps the region requirement for the reason closing a pane does:
-            // it destroys every pane in the tab, and destroying what nobody is looking at is a
-            // different risk from arranging it. Dragging a divider needs the region for a
-            // plainer reason - there is no divider to move in a tab nothing is drawing.
+            // Both keep the region requirement, which now means the window holds this tab
+            // rather than that it is the tab on screen. A window shows one tab at a time, so
+            // the old reading would refuse closing any tab but the one you are looking at -
+            // and `muster tab close --tab <t>` naming another is the ordinary case. What it
+            // still refuses is a tab in a session this window is not attached to, which is
+            // what the guard was protecting against.
             BackendIntent::CloseTab { tab } | BackendIntent::SetSplitRatio { tab, .. } => Some(
                 session
                     .composition
-                    .region_showing(daemon, tab)
+                    .region_of(daemon, tab)
                     .ok_or_else(|| Refusal::Declined(not_showing(daemon)))?,
             ),
         };
@@ -2131,10 +2110,7 @@ pub(crate) fn step(direction: Step) -> Result<(), String> {
 pub(crate) fn step_tab(direction: TabStep) -> Result<(), String> {
     let stepped = {
         let session = poison::lock(&SESSION, "session");
-        let from = session
-            .composition
-            .focused_region()
-            .map(|region| TabKey::new(&region.daemon, &region.tab));
+        let from = session.composition.showing().cloned();
         session.roster(&session.view()).step(from.as_ref(), direction).map(landing)
     };
     let (daemon, pane) = stepped.ok_or_else(|| {
@@ -2226,15 +2202,14 @@ pub(crate) fn move_pane_to_new_tab(
 ///
 /// The mouse's half of what `next_tab` does with the keyboard, through the same [`landing`]
 /// rule so that the two agree about where a tab is entered.
-pub(crate) fn focus_tab(daemon: &DaemonId, tab: &TabId) -> Result<(), String> {
+pub(crate) fn focus_tab(tab: &TabId) -> Result<(), String> {
     let found = {
         let session = poison::lock(&SESSION, "session");
-        let key = TabKey::new(daemon, tab);
-        match session.roster(&session.view()).tabs().find(|held| held.key == key) {
+        match session.roster(&session.view()).tabs().find(|held| &held.id == tab) {
             Some(held) => landing(held),
             None => Err(format!(
-                "this window is not showing a tab called {key}, so the keyboard stayed where \
-                 it was. Most likely it closed while the click was in flight."
+                "this window holds no tab called {tab}, so the keyboard stayed where it was. \
+                 Most likely it closed while the click was in flight."
             )),
         }
     };
@@ -2302,7 +2277,7 @@ fn nothing_numbered(roster: &Roster, numbering: &Numbering, place: usize) -> Str
             roster.tabs().count()
         ),
         Numbering::PanesIn(key) => {
-            let held = roster.tabs().find(|tab| &tab.key == key).map_or(0, |tab| tab.panes.len());
+            let held = roster.tabs().find(|tab| &tab.id == key).map_or(0, |tab| tab.panes.len());
             format!(
                 "{key} holds {held} panes, so there is no pane {place} in it and the keyboard \
                  stayed where it was. This was the second press of a `tab_then_pane` chord, so \
@@ -2383,10 +2358,10 @@ fn landing(tab: &RosterTab) -> Result<(DaemonId, PaneId), String> {
         format!(
             "{} holds no panes, so there is nothing for the keyboard to land on. Most likely \
              they closed while this was in flight.",
-            tab.key
+            tab.id
         )
     })?;
-    Ok((tab.key.daemon.clone(), pane.key.pane.clone()))
+    Ok((pane.key.daemon.clone(), pane.key.pane.clone()))
 }
 
 /// The pane this window's keyboard feeds, named.
@@ -2416,33 +2391,51 @@ pub(crate) fn focused_daemon() -> Option<DaemonId> {
 
 /// The pane this window's keyboard feeds on one named machine.
 ///
-/// What a request that names a machine and no pane means. The focused region when the
-/// keyboard is already on that machine, and otherwise that machine's first region - so
-/// `--daemon` reaches the pane somebody would be typing into if they went there.
+/// What a request that names a machine and no pane means, in three steps: the pane the keyboard
+/// is on if that is on the named machine, then that machine's half of the tab on screen, and
+/// failing both that machine's first pane anywhere in the window. So `--daemon` reaches the pane
+/// somebody would be typing into if they went there.
+///
+/// The third step is what a window showing one tab needs. At most one machine's panes are drawn
+/// unless somebody has grouped two, so a machine whose tabs are all in the background is the
+/// ordinary state rather than a rare one - and refusing there would leave `--daemon` working
+/// only for whichever machine happened to be on screen.
 ///
 /// Read from the composition and never from the daemon's own focus cursor, which is one value
 /// shared with every other client: routing by it would let a herdr TUI in another window
 /// decide where this one's requests land (`architecture.md`, cursors are written, not read).
 pub(crate) fn focused_pane_on(daemon: &DaemonId) -> Option<PaneId> {
     let session = poison::lock(&SESSION, "session");
-    session
+    let on_screen = session
         .composition
         .focused_region()
         .filter(|region| &region.daemon == daemon)
-        .or_else(|| session.composition.regions().find(|region| &region.daemon == daemon))?
+        .or_else(|| session.composition.regions().find(|region| &region.daemon == daemon))
+        .and_then(|region| region.pane.clone());
+    if on_screen.is_some() {
+        return on_screen;
+    }
+    // A machine whose tabs are all in the background, which is now the ordinary state rather
+    // than a rare one: a window shows one tab, so at most one machine's panes are drawn unless
+    // somebody has grouped two. `--daemon` names a machine directly, and a caller saying it
+    // means "act over there" rather than "act over there if it happens to be on screen".
+    session
+        .composition
+        .tabs()
+        .flat_map(MusterTab::regions)
+        .find(|region| &region.daemon == daemon)?
         .pane
         .clone()
 }
 
-/// Whether no region of this window is showing this machine.
+/// Whether this window is holding any tab with panes on this machine.
 ///
-/// The question that separates a machine there is nothing to act on from one whose tab this
-/// window has not been told the panes of yet. Both leave a request that named no pane without
-/// one, and only the first should be answered by making a workspace - a machine that has a
-/// region is a machine whose event is on its way.
-pub(crate) fn showing_nothing(daemon: &DaemonId) -> bool {
+/// Not the same question as whether it is *showing* one: a tab in the background is still a
+/// tab this window can act on, and a machine that has none is one nothing in the window can
+/// reach.
+pub(crate) fn holding_nothing(daemon: &DaemonId) -> bool {
     let session = poison::lock(&SESSION, "session");
-    !session.composition.regions().any(|region| &region.daemon == daemon)
+    !session.composition.tabs().any(|tab| tab.daemons().any(|holding| holding == daemon))
 }
 
 /// Whether this window is following a daemon by this name.
@@ -2613,15 +2606,14 @@ pub(crate) enum AttachError {
 
 /// Opens this window onto whatever the daemons hold.
 ///
-/// What a bare `muster` means. No pane is named, so nothing decides which daemon or which tab
-/// beyond what each daemon is already focused on - which is what its user was last looking at
-/// and the best answer Muster has to invent.
+/// What a bare `muster` means. No pane is named, so nothing decides which tab beyond the saved
+/// arrangement and, failing that, the first tab this window is free to open onto.
 ///
-/// Three steps, and each is the reason the next can be simple: be following something, give
-/// every daemon a region and a workspace to put in it if it has none, and make a workspace at
-/// all costs if that still leaves nothing to show. The last is the one a fresh machine needs,
-/// where Muster has just started a daemon that has not answered anything yet - the step above it
-/// can only act on a machine that has spoken.
+/// Three steps, and each is the reason the next can be simple: be following something, put back
+/// what was left, and settle what to show - which for a window somebody asked for means keeping
+/// off the tabs another window has, and for a window with nothing at all means asking a machine
+/// for a workspace. That last one is what a fresh machine needs, where Muster has just started a
+/// daemon that has not answered anything yet.
 pub(crate) fn open() -> Result<(), String> {
     follow_implicitly_if_nothing_else()?;
     restore_presentation();
@@ -2634,8 +2626,7 @@ pub(crate) fn open() -> Result<(), String> {
     // by the standing rule when that answer lands; a window that had not yet said it was open
     // would turn that rule off and wait forever for a region nothing else will make.
     mark_opened();
-    open_remaining_regions();
-    open_a_workspace_if_the_window_is_empty();
+    settle_what_the_window_shows();
     publish();
     Ok(())
 }
@@ -2724,48 +2715,43 @@ fn reopen_what_was_left() {
             .get(daemon)
             .is_some_and(|backend| poison::lock(&backend.mirror, "mirror").tab(tab).is_some())
     });
-    if restorable.regions.is_empty() {
+    if restorable.tabs.is_empty() {
         return;
     }
 
-    let mut restored = Vec::new();
-    let mut duplicates = 0usize;
-    for region in &restorable.regions {
-        // A tab already on screen is shown by the region showing it, and never by a second
-        // one beside it. Two regions on one tab render the same pane twice, and only one of
-        // the two surfaces can have the terminal - the other prints herdr's refusal and
-        // becomes a panel that cannot be closed, because closing it would close the pane the
-        // live one is using. A file holding the same region twice is the case that heals
-        // here; it is written by a Muster that had already done this once.
-        let showing = session.composition.region_showing(&region.daemon, &region.tab);
-        if showing.is_some() {
-            duplicates += 1;
+    let mut regions = 0usize;
+    for tab in &restorable.tabs {
+        for region in &tab.regions {
+            // Idempotent per machine per tab, so a file holding the same region twice heals
+            // here rather than opening a second one. Two regions on one machine's half of a
+            // tab render the same pane twice, and only one of the two surfaces can have the
+            // terminal - the other prints herdr's refusal and becomes a panel that cannot be
+            // closed, because closing it would close the pane the live one is using
+            // (kan a_2Ht74jTXV).
+            let Some(id) = session.composition.open_region(&region.daemon, tab.id.clone()) else {
+                continue;
+            };
+            session.composition.set_weight(id, region.weight);
+            if let Some(pane) = &region.pane {
+                session.composition.focus_pane(id, pane.clone());
+            }
+            if region.keyboard {
+                session.composition.focus_region(id);
+            }
+            regions += 1;
         }
-        let Some(id) =
-            showing.or_else(|| session.composition.open_region(&region.daemon, region.tab.clone()))
-        else {
-            continue;
-        };
-        session.composition.set_weight(id, region.weight);
-        if let Some(pane) = &region.pane {
-            session.composition.focus_pane(id, pane.clone());
-        }
-        restored.push(id);
     }
-    if let Some(place) = restorable.focused.and_then(|place| restored.get(place)) {
-        session.composition.focus_region(*place);
+    if let Some(showing) = &restorable.showing {
+        session.composition.show(showing);
     }
 
     log::info(
         "composition.restored",
         fields! {
-            "regions" => restored.len().to_string(),
-            "dropped" => (saved.regions.len() - restorable.regions.len()).to_string(),
-            // Saved regions that named a tab another region was already showing. Anything but
-            // zero says the file on disk holds the same tab twice, which is worth knowing
-            // rather than healing silently: it is what a window that had drawn a pane twice
-            // wrote on its way out, and the count says how many copies it had.
-            "duplicates" => duplicates.to_string(),
+            "tabs" => restorable.tabs.len().to_string(),
+            "regions" => regions.to_string(),
+            "showing" => restorable.showing.as_ref().map(ToString::to_string).unwrap_or_default(),
+            "dropped" => (saved.tabs.len() - restorable.tabs.len()).to_string(),
         },
     );
 }
@@ -2783,48 +2769,51 @@ fn follow_implicitly_if_nothing_else() -> Result<(), String> {
     attach_daemon(&implicit)
 }
 
-/// Asks for one workspace when nothing else has produced anything to show.
+/// Asks for one workspace when this window has no tab it may open onto.
 ///
-/// This runs during launch, before any daemon has answered a subscription, which is what
-/// separates it from [`open_remaining_regions`] beside it: it can tell an empty window from a
-/// full one and cannot tell which machine is empty. It has to fire anyway, because a daemon
-/// Muster started a moment ago holds nothing and every rule above it produces an empty window.
-/// So it picks, and it picks the first local machine: a remote one is somebody else's, and
-/// choosing it uninvited is a bigger claim than filling a window. Once a machine has spoken,
-/// `open_remaining_regions` asks each one that holds nothing, remote ones included, and no
-/// longer has to pick.
+/// The one rule that makes a window out of nothing, and the only one left: a window is not a
+/// window if it is showing nothing, so something has to fill it. It picks the first local
+/// machine, because a remote one is somebody else's and choosing it uninvited is a bigger claim
+/// than filling a window.
 ///
-/// Nothing is opened here. The daemon answers by publishing a workspace, a tab and a pane,
-/// and the region appears the way every other region does - through the reconcile that
-/// follows. A window that built one itself would be a second place layout is decided.
+/// **Once per launch, per machine, and never again.** Nothing takes a machine back out of
+/// `workspaces_asked_of`, so a machine whose panes all close later stays empty - which is the
+/// answer `a_2I6h18OU6` settled on, now that `muster pane new --daemon <id>` and the machines at
+/// the foot of the agent list are both ways back in. The rule this replaces gave every attached
+/// machine a column and refilled it the moment it emptied, so somebody finished with a devenv
+/// for the afternoon got a fresh ssh shell every time they closed one.
+///
+/// Nothing is opened here. The daemon answers by publishing a workspace, a tab and a pane, and
+/// the tab appears the way every other tab does - through the reconcile that follows. A window
+/// that built one itself would be a second place layout is decided.
 fn open_a_workspace_if_the_window_is_empty() {
     let empty = {
         let session = poison::lock(&SESSION, "session");
-        session.composition.regions().next().is_none()
+        session.composition.showing().is_none()
     };
     if !empty {
         return;
     }
 
-    let Some(daemon) = first_local_daemon() else {
-        log::warn(
+    let Some(daemon) = first_local_daemon().filter(has_spoken) else {
+        log::info(
             "window.empty",
             fields! {
-                "impact" => "this window shows nothing yet, because no attached daemon holds a \
-                             tab and none of them is on this machine",
-                "check" => "nothing, if the remote daemons answer. Each one is asked for a \
-                            workspace of its own as soon as it says it holds nothing, which is \
-                            a moment after this; what this rule will not do is pick which of \
-                            them fills an empty window",
+                "impact" => "this window shows nothing yet, because no machine on this one has \
+                             both answered and offered a tab it may open onto",
+                "check" => "nothing, on the way up - this runs again on every machine's first \
+                            snapshot. If it stays this way, `muster pane new --daemon <id>` \
+                            names a machine directly, and so does the row for it at the foot \
+                            of the agent list. What this rule will not do is pick somebody \
+                            else's machine to fill a window with",
             },
         );
         return;
     };
 
-    // Recorded before the ask rather than after, and in the set the standing rule reads: the
-    // machine is asked here, holds nothing until it answers, and the standing rule runs on the
-    // very bootstrap that says so. Two records of "already asked" would make a fresh window
-    // open with a second workspace nobody wanted.
+    // Recorded before the ask rather than after: this runs again on the reconcile behind every
+    // event, and the machine holds nothing until its answer arrives - so a record written
+    // afterwards would ask two or three times over.
     {
         let mut session = poison::lock(&SESSION, "session");
         if !session.workspaces_asked_of.insert(daemon.clone()) {
@@ -2832,24 +2821,6 @@ fn open_a_workspace_if_the_window_is_empty() {
         }
     }
     ask_for_a_workspace(&daemon);
-}
-
-/// Which of a machine's tabs a window somebody asked for may open onto.
-///
-/// The tab that appeared since it claimed one. `workspace.create` leaves that tab focused, so
-/// the daemon's own cursor is the answer almost always, and the scan behind it is for the case
-/// where somebody has moved that cursor since.
-///
-/// Falls back to the cursor when every tab the machine holds is one it already held. That is a
-/// claim that was refused, or one whose panes have all been closed since, and showing the
-/// machine nothing at all is worse than showing what is there.
-fn tab_that_is_ours(mirror: &Mirror, theirs: &BTreeSet<TabId>) -> Option<TabId> {
-    let cursor = mirror.focus().tab.clone();
-    cursor
-        .clone()
-        .filter(|tab| !theirs.contains(tab))
-        .or_else(|| mirror.tabs().map(|tab| &tab.id).find(|tab| !theirs.contains(tab)).cloned())
-        .or(cursor)
 }
 
 /// Asks one machine for a workspace, and says what a refusal costs.
@@ -2878,6 +2849,22 @@ fn ask_for_a_workspace(daemon: &DaemonId) {
             },
         );
     }
+}
+
+/// Whether this machine has told this window what it holds.
+///
+/// The difference between "this machine is empty" and "this machine has not answered yet", and
+/// the reason asking for a workspace waits for it. A daemon Muster attached to already has a
+/// session, and asking it for a workspace in the moment before its first snapshot lands is a
+/// window that opens onto a tab nobody asked for and leaves the one they did behind.
+///
+/// A daemon Muster just started answers this true and holds nothing, which is the case the ask
+/// exists for - it simply happens on that bootstrap rather than a moment before it.
+fn has_spoken(daemon: &DaemonId) -> bool {
+    let session = poison::lock(&SESSION, "session");
+    session.backends.get(daemon).is_some_and(|backend| {
+        poison::lock(&backend.mirror, "mirror").health() == Health::Connected
+    })
 }
 
 /// The first attached daemon on this machine, in the order the config named them.
@@ -2934,13 +2921,10 @@ pub(crate) fn attach(pane_id: &str) -> Result<Arc<AttachedPane>, AttachError> {
         // One region per tab, not per pane. A tab's panes are the tab's own tree and they
         // are rendered inside one region; attaching a second pane from a tab already on
         // screen is asking for the keyboard, not for a second copy of the tab.
-        let region = match session.composition.region_showing(&daemon, &tab) {
-            Some(region) => region,
-            None => session
-                .composition
-                .open_region(&daemon, tab)
-                .expect("the daemon holding this pane is one being followed"),
-        };
+        let region = session
+            .composition
+            .surface(&daemon, &tab)
+            .expect("the daemon holding this pane is one being followed");
         session.composition.focus_pane(region, pane.clone());
         session.reconcile(&daemon);
 
@@ -2950,12 +2934,10 @@ pub(crate) fn attach(pane_id: &str) -> Result<Arc<AttachedPane>, AttachError> {
             .ok_or_else(|| AttachError::NoChannel("the channel opened and then went".to_string()))?
     };
 
-    // Every other daemon gets a region of its own, on whatever tab it is focused on. This is
-    // what puts a laptop and a devenv side by side: `argv` decides where the keyboard starts
-    // and the config decides what else is on screen.
-    open_remaining_regions();
-
+    // What the tabs are is settled by the reconcile above; this is only about which of them
+    // this window may show, and about a window somebody asked for that has none.
     mark_opened();
+    settle_what_the_window_shows();
     // Outside the lock, because emitting reaches the shell and a shell reacting to an event
     // by dispatching a request is ordinary.
     publish();
@@ -3056,111 +3038,67 @@ fn locate(pane: &PaneId) -> Option<(DaemonId, TabId)> {
     found
 }
 
-/// Gives every daemon with nothing on screen a region of its own, and a workspace if it has
-/// nothing to put in one.
+/// Keeps a window somebody asked for off the tabs another window is already showing.
 ///
-/// The region goes on the daemon's own focused tab, because that is the one its user was last
-/// looking at and Muster has no better answer to invent.
+/// `muster window new` and ⌘N pass `--fresh`, and a fresh window remembers nothing. What it must
+/// not do is open onto what is already on screen elsewhere: herdr allows one client per terminal,
+/// so a second window onto the first one's tab renders panes that refuse to attach and cannot be
+/// closed (kan a_2IZ5TL6DQ). So what each machine was already holding is written down the first
+/// time this window hears from it, and the window opens onto the tab that appears afterwards -
+/// which is the workspace [`open_a_workspace_if_the_window_is_empty`] then asks for.
 ///
-/// **A machine holding no tabs at all is asked for a workspace.** Without it, such a machine
-/// attaches, appears in the agent list, and cannot be given a pane by anything in the window:
-/// every other route to a new pane goes through an existing one, so a machine that reaches zero
-/// panes drops out of reach until somebody makes a pane on it with herdr. That is the state a
-/// devenv is in the day it is attached, and the state the local machine is in the moment you
-/// close its last pane (kan a_2HpkpfIfq).
+/// Only what a machine held when this window first saw it. A claim is made once per machine, so
+/// the tab this window opens for itself is never in it.
 ///
-/// Only once the mirror is `Connected`, which is the whole of what separates "this machine says
-/// it holds nothing" from "this machine has not spoken yet". `Connected` is set by `bootstrap`
-/// and by nothing else, so a daemon still coming up is skipped and picked up by the reconcile
-/// behind its first snapshot. Asking one of those would put a workspace on a machine that is
-/// full.
-///
-/// This is the rule that makes a workspace on somebody else's machine, which
-/// [`open_a_workspace_if_the_window_is_empty`] deliberately will not do. The two are consistent
-/// rather than at odds: that rule *picks* a machine to fill an empty window with, and picking
-/// somebody else's is a claim Muster has no business making. This one is told which machine, by
-/// a `[[daemon]]` block a person wrote to see that machine's agents - and a machine you asked to
-/// see, showing nothing, that nothing can put a pane on, is the bug.
-///
-/// The ask blocks this thread on a round trip to that daemon, which for a devenv is a round trip
-/// over ssh, and this runs on whichever daemon's event thread called the reconcile. Affordable
-/// because it is once per machine: `workspaces_asked_of` holds the machine from the moment it is
-/// asked, and only a machine that comes back with a tab leaves it.
-fn open_remaining_regions() {
+/// Nothing is hidden by this. Every tab is still listed and still reachable by ⌘2 or a click -
+/// taking a terminal from another window is a thing somebody may mean. What it stops is Muster
+/// deciding it uninvited.
+fn claim_for_a_fresh_window() {
     let mut session = poison::lock(&SESSION, "session");
-    let showing: Vec<DaemonId> = session.composition.regions().map(|r| r.daemon.clone()).collect();
-    let mut wanted: Vec<(DaemonId, TabId)> = Vec::new();
-    let mut wants_one: Vec<DaemonId> = Vec::new();
-    let mut leave_alone: Vec<DaemonId> = Vec::new();
-    let mut inherited: Vec<(DaemonId, BTreeSet<TabId>)> = Vec::new();
-    for (id, backend) in &session.backends {
-        let mirror = poison::lock(&backend.mirror, "mirror");
-        let connected = mirror.health() == Health::Connected;
+    if !session.fresh {
+        return;
+    }
+    let theirs: Vec<(DaemonId, BTreeSet<TabId>)> = session
+        .backends
+        .iter()
+        .filter_map(|(id, backend)| {
+            let mirror = poison::lock(&backend.mirror, "mirror");
+            // Only a machine that has spoken. A daemon still coming up holds nothing as far as
+            // this window knows, and claiming that would claim nothing and then stand.
+            (mirror.health() == Health::Connected)
+                .then(|| (id.clone(), mirror.tabs().map(|tab| tab.id.clone()).collect()))
+        })
+        .collect();
+    for (id, tabs) in theirs {
+        session.composition.claim(&id, tabs);
+    }
+}
 
-        // A window somebody asked for, on a machine that has not answered it yet. Whatever
-        // that machine last had focused is what the window before this one is showing, and
-        // one client may hold a herdr terminal - so none of what it holds is this window's to
-        // open onto. What it holds is written down instead, so that the tab this window is
-        // about to ask for can be told from the rest, and the ask goes out below.
-        if session.fresh && !session.claimed.contains_key(id) && !showing.contains(id) {
-            if connected {
-                inherited.push((id.clone(), mirror.tabs().map(|tab| tab.id.clone()).collect()));
-                wants_one.push(id.clone());
-            }
-            continue;
-        }
+/// Settles what this window is showing, after anything that could have changed it.
+///
+/// Three rules with an order between them. Take in whatever the machines have already said,
+/// then claim what belongs to another window, and only then ask for a workspace - so the window
+/// that asks is one that genuinely has nothing to open onto.
+fn settle_what_the_window_shows() {
+    reconcile_every_daemon();
+    claim_for_a_fresh_window();
+    open_a_workspace_if_the_window_is_empty();
+}
 
-        if mirror.tabs().next().is_some() {
-            // Left in `workspaces_asked_of` while a claim is outstanding: the machine holds
-            // somebody's tabs throughout, so forgetting here would ask it for a workspace
-            // again on every event that arrived from anywhere.
-            if !session.claimed.contains_key(id) || showing.contains(id) {
-                leave_alone.push(id.clone());
-            }
-        } else if connected {
-            wants_one.push(id.clone());
-        }
-        if showing.contains(id) {
-            continue;
-        }
-        // A claimed machine opens onto the tab that appeared after the claim rather than onto
-        // the one it had focused, which is usually the same tab and is not when the claim's
-        // answer arrived before anything was waiting for it.
-        let opening = match session.claimed.get(id) {
-            Some(theirs) => tab_that_is_ours(&mirror, theirs),
-            None => mirror.focus().tab.clone(),
-        };
-        // The mirror has to hold the tab, not only name it: a cursor pointing at a tab this
-        // window has not been told the shape of is a region that would render nothing.
-        if let Some(tab) = opening
-            && mirror.tab(&tab).is_some()
-        {
-            wanted.push((id.clone(), tab));
-        }
-    }
-    // Forgotten as soon as a machine has a tab, so a machine whose panes all close later is
-    // asked again rather than remembered as one Muster has already dealt with.
-    for id in leave_alone {
-        session.workspaces_asked_of.remove(&id);
-    }
-    let asking: Vec<DaemonId> =
-        wants_one.into_iter().filter(|id| session.workspaces_asked_of.insert(id.clone())).collect();
-    // Recorded before the ask goes out, and never removed. A machine is inherited once per
-    // window: after the first fill this only says which of its tabs were somebody else's, and
-    // preferring the others is what a person opening a window by hand meant either way.
-    for (id, theirs) in inherited {
-        session.claimed.insert(id, theirs);
-    }
-
-    for (daemon, tab) in wanted {
-        session.composition.open_region(&daemon, tab);
-        session.reconcile(&daemon);
-    }
-    // Outside the lock, because submitting is a round trip and `submit` takes the session for
-    // itself.
-    drop(session);
-    for daemon in asking {
-        ask_for_a_workspace(&daemon);
+/// Brings every attached machine's tabs into the window, whatever order the events arrived in.
+///
+/// A launch is two requests - follow the daemons, then open the window - with a renderer, a
+/// menu and a window built in between, and a machine's first snapshot lands somewhere in that
+/// gap. Reconciling here rather than waiting for the next thing a daemon says is what stops the
+/// window deciding it is empty while holding a snapshot that says otherwise, which is a window
+/// that asks for a workspace nobody wanted and opens onto it.
+///
+/// Idempotent, and the same call the event path makes for one daemon.
+fn reconcile_every_daemon() {
+    let mut session = poison::lock(&SESSION, "session");
+    let daemons: Vec<DaemonId> = session.backends.keys().cloned().collect();
+    for daemon in &daemons {
+        session.reconcile(daemon);
     }
 }
 
@@ -3436,7 +3374,7 @@ fn reconcile(daemon: &DaemonId) {
     // this would reopen it on the next thing the daemon said, and the rule needs to learn the
     // difference between empty and dismissed.
     if opened() {
-        open_remaining_regions();
+        settle_what_the_window_shows();
     }
     if showed {
         publish();

@@ -48,7 +48,7 @@ public final class MusterWindow: NSObject {
   /// Held here rather than only in the sidebar because it is half of what the sidebar draws
   /// and the other half arrives separately: a roster and an agent state land in either
   /// order, and whichever is second has to be able to redraw with both.
-  private var roster = Roster(daemons: [])
+  private var roster = Roster(tabs: [])
 
   /// The modifiers a numbered chord is held with, so that letting go of them can end one.
   ///
@@ -184,6 +184,12 @@ public final class MusterWindow: NSObject {
     sidebar.onTabPicked = { tab in
       Core.focus(tab: tab)
     }
+    // A machine's row is the way into one holding nothing: it asks for a tab there, which on a
+    // machine with none is a workspace with a pane in it. The same request `muster tab new
+    // --daemon <id>` sends.
+    sidebar.onMachinePicked = { daemon in
+      Core.createTab(daemonID: daemon)
+    }
     sidebar.onPaneArranged = { pane, onto in
       Core.arrange(pane: pane, onto: onto)
     }
@@ -196,9 +202,9 @@ public final class MusterWindow: NSObject {
         askToName(subject: "pane", current: row.givenName) { name in
           Core.renamePane(name: name, daemonID: pane.daemon, paneID: pane.pane)
         }
-      } else if let tab = row.tab {
+      } else if row.isTab {
         askToName(subject: "tab", current: row.givenName) { name in
-          Core.renameTab(name: name, daemonID: tab.daemon, tabID: tab.tab)
+          Core.renameTab(name: name, tabID: row.tab)
         }
       }
     }

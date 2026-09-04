@@ -9,7 +9,7 @@ use std::collections::BTreeSet;
 use conformance::{CaseError, Conformance, fields};
 use muster_core::composition::presentation::{FontSizes, Frame, Presentation};
 use muster_core::composition::record::{Composition, Daemon, DaemonId, Endpoint, PaneKey};
-use muster_core::composition::saved::{Saved, SavedRegion, from_toml, to_toml};
+use muster_core::composition::saved::{Saved, SavedRegion, SavedTab, from_toml, to_toml};
 use muster_core::mirror::backend::{PaneId, TabId};
 use serde_json::{Value, json};
 
@@ -24,21 +24,33 @@ fn composition_saved_conformance() {
 
         Ok(fields([
             (
-                "regions",
+                "tabs",
                 Some(json!(
                     restorable
-                        .regions
+                        .tabs
                         .iter()
                         // Whole numbers, because a weight in a case is there to be followed
-                        // through the list rather than to test float rendering.
-                        .map(|region| format!(
-                            "{}/{}@{:.0}",
-                            region.daemon, region.tab, region.weight
-                        ))
+                        // through the list rather than to test float rendering. A star marks
+                        // the region the keyboard was in.
+                        .map(|tab| {
+                            let regions: Vec<String> = tab
+                                .regions
+                                .iter()
+                                .map(|region| {
+                                    format!(
+                                        "{}@{:.0}{}",
+                                        region.daemon,
+                                        region.weight,
+                                        if region.keyboard { "*" } else { "" }
+                                    )
+                                })
+                                .collect();
+                            format!("{} {}", tab.id, regions.join(" "))
+                        })
                         .collect::<Vec<String>>()
                 )),
             ),
-            ("focused", Some(restorable.focused.map_or(Value::Null, |place| json!(place)))),
+            ("showing", Some(restorable.showing.map_or(Value::Null, |tab| json!(tab.as_str())))),
         ]))
     });
 
@@ -209,29 +221,83 @@ fn a_file_from_a_format_nobody_knows_is_refused_by_name() {
     assert!(refusal.contains("version"), "the refusal should say what is missing: {refusal}");
 }
 
+/// A column-per-machine arrangement comes back as one tab holding all of it.
+///
+/// The decision behind this is that an upgrade does not take away what somebody is looking at.
+/// Version 3 was a column per machine, each column naming a tab of its own; read as a tab per
+/// column, the first launch after this landed would replace a laptop beside a devenv with one of
+/// them alone. Read as one tab, it looks exactly like the launch before it, and splitting it up
+/// is something to do afterwards and on purpose.
+#[test]
+fn a_column_per_machine_arrangement_becomes_one_tab_holding_all_of_it() {
+    let read = from_toml(
+        "version = 3\n\
+         focused = 1\n\
+         [[region]]\n\
+         daemon = \"local\"\n\
+         tab = \"t1w3r07bsd\"\n\
+         weight = 2.0\n\
+         pane = \"p1w3r07bsd\"\n\
+         [[region]]\n\
+         daemon = \"devenv\"\n\
+         tab = \"t1w3r0a4a9\"\n\
+         weight = 1.0\n",
+    )
+    .expect("the format before this one is read rather than refused");
+
+    assert_eq!(read.tabs.len(), 1, "the columns did not become one tab: {:?}", read.tabs);
+    let tab = &read.tabs[0];
+    assert_eq!(tab.id.as_str(), "t1w3r07bsd", "the tab kept is the first column's");
+    assert_eq!(
+        tab.regions.iter().map(|region| region.daemon.to_string()).collect::<Vec<_>>(),
+        ["local", "devenv"],
+        "the columns did not come back side by side, in the order they were in"
+    );
+    assert_eq!(read.showing.as_ref().map(TabId::as_str), Some("t1w3r07bsd"));
+    // The keyboard follows the column that had it, which version 3 recorded as an index.
+    assert!(tab.regions[1].keyboard, "the keyboard did not follow the column it was in");
+    // And the tab the second column named is now a member of the first, which only the name
+    // registry can act on - so the file says what it implied and whoever holds the registry
+    // does the grouping.
+    assert_eq!(
+        read.grouped
+            .iter()
+            .map(|(into, absorbed)| format!("{absorbed} -> {into}"))
+            .collect::<Vec<_>>(),
+        ["t1w3r0a4a9 -> t1w3r07bsd"]
+    );
+}
+
 /// One case's `given`, as the arrangement it describes.
+///
+/// The rows are flat and each names its tab, the way the file itself spells them, and the tabs
+/// come out in the order their first row appears.
 fn saved(given: &Value) -> Result<Saved, CaseError> {
     let regions = given
         .get("regions")
         .and_then(Value::as_array)
         .ok_or_else(|| CaseError::new("`regions` is missing: there is nothing to restore"))?;
+    let mut tabs: Vec<SavedTab> = Vec::new();
+    for region in regions {
+        let id = TabId::new(region["tab"].as_str().unwrap_or_default());
+        let held = SavedRegion {
+            daemon: DaemonId::new(region["daemon"].as_str().unwrap_or_default()),
+            weight: serde_json::from_value(region["weight"].clone()).unwrap_or(1.0),
+            pane: None,
+            keyboard: region["keyboard"].as_bool().unwrap_or_default(),
+        };
+        match tabs.iter_mut().find(|tab| tab.id == id) {
+            Some(tab) => tab.regions.push(held),
+            None => tabs.push(SavedTab { id, regions: vec![held] }),
+        }
+    }
     Ok(Saved {
         daemons: Vec::new(),
-        regions: regions
-            .iter()
-            .map(|region| SavedRegion {
-                daemon: DaemonId::new(region["daemon"].as_str().unwrap_or_default()),
-                tab: TabId::new(region["tab"].as_str().unwrap_or_default()),
-                weight: serde_json::from_value(region["weight"].clone()).unwrap_or(1.0),
-                pane: None,
-            })
-            .collect(),
-        focused: given
-            .get("focused")
-            .and_then(Value::as_u64)
-            .and_then(|place| usize::try_from(place).ok()),
-        // Not what these cases are about: they judge which regions survive a check against
-        // the daemons, and nothing here is checked against anything.
+        tabs,
+        showing: given.get("showing").and_then(Value::as_str).map(TabId::new),
+        grouped: Vec::new(),
+        // Not what these cases are about: they judge which tabs survive a check against the
+        // daemons, and nothing here is checked against anything.
         presentation: Presentation::default(),
         font_sizes: FontSizes::default(),
     })

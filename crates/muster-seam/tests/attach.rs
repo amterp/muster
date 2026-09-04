@@ -724,9 +724,8 @@ fn listed(pane: &str) -> Option<bool> {
         .lock()
         .expect("a panicking reader poisoned the roster")
         .as_ref()?
-        .daemons
+        .tabs
         .iter()
-        .flat_map(|daemon| daemon.tabs.iter())
         .flat_map(|tab| tab.panes.iter())
         .find(|row| row.pane_id == pane)
         .map(|row| row.on_screen)
@@ -779,8 +778,7 @@ fn rows<T>(read: impl Fn(&muster::proto::RosterPane) -> T) -> Vec<T> {
         .expect("a panicking reader poisoned the roster")
         .as_ref()
         .into_iter()
-        .flat_map(|roster| roster.daemons.iter())
-        .flat_map(|daemon| daemon.tabs.iter())
+        .flat_map(|roster| roster.tabs.iter())
         .flat_map(|tab| tab.panes.iter())
         .map(read)
         .collect()

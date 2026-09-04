@@ -16,9 +16,7 @@ use std::io::Read;
 use std::os::unix::net::UnixListener;
 use std::path::{Path, PathBuf};
 
-use muster_proto::{
-    Response, RosterChanged, RosterDaemon, RosterPane, RosterTab, Window, frame, response,
-};
+use muster_proto::{Response, RosterChanged, RosterPane, RosterTab, Window, frame, response};
 use prost::Message;
 
 #[test]
@@ -162,23 +160,20 @@ fn window(home: &Path, pid: u32, pane: &str) -> String {
     let answer = Response {
         payload: Some(response::Payload::Window(Window {
             roster: Some(RosterChanged {
-                daemons: vec![RosterDaemon {
-                    daemon_id: "local".to_string(),
-                    tabs: vec![RosterTab {
+                tabs: vec![RosterTab {
+                    daemon_ids: vec!["local".to_string()],
+                    tab_id: format!("t{pid}"),
+                    place: 1,
+                    label: format!("tab of {pid}"),
+                    panes: vec![RosterPane {
                         daemon_id: "local".to_string(),
-                        tab_id: format!("t{pid}"),
+                        pane_id: pane.to_string(),
                         place: 1,
-                        label: format!("tab of {pid}"),
-                        panes: vec![RosterPane {
-                            daemon_id: "local".to_string(),
-                            pane_id: pane.to_string(),
-                            place: 1,
-                            label: pane.to_string(),
-                            on_screen: true,
-                            ..RosterPane::default()
-                        }],
-                        ..RosterTab::default()
+                        label: pane.to_string(),
+                        on_screen: true,
+                        ..RosterPane::default()
                     }],
+                    ..RosterTab::default()
                 }],
                 ..RosterChanged::default()
             }),

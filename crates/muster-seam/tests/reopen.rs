@@ -24,6 +24,7 @@ use muster::proto::{
     CreateTab, Event, OpenWindow, ReadWindow, Request, Response, SplitPane, Startup, ViewChanged,
     ViewNode, ViewRegion, event, request, response, view_node,
 };
+use muster_core::mirror::backend::TabId;
 use prost::Message;
 
 #[test]
@@ -58,16 +59,17 @@ fn a_window_writes_down_what_it_is_showing() {
     let written = std::fs::read_to_string(&state)
         .unwrap_or_else(|e| panic!("the window wrote no arrangement to {}: {e}", state.display()));
 
-    // The tab it ended on, not the one it started on. A file that recorded the first would be
-    // one written at open and never again, which is the failure that looks most like working.
+    // Both tabs, because the window holds both - and `showing` naming the one it ended on. A
+    // file that said the first was on screen would be one written at open and never again,
+    // which is the failure that looks most like working.
     assert!(
-        written.contains(&second),
-        "the arrangement does not name the tab the window was showing ({second}):\n{written}"
+        written.contains(&format!("showing = \"{second}\"")),
+        "the arrangement does not say the window was showing {second}:\n{written}"
     );
     assert!(
-        !written.contains(&first),
-        "the arrangement still names the tab the window moved off ({first}), so it was \
-         written once and never updated:\n{written}"
+        written.contains(&first),
+        "the arrangement dropped the tab the window moved off ({first}), which it still holds \
+         and can switch back to:\n{written}"
     );
     // Intent, not observation. The tab somebody chose is written; how that tab was arranged
     // is not, because it is the daemon's to say and it will have moved on. A file carrying a
@@ -90,12 +92,13 @@ fn a_window_writes_down_what_it_is_showing() {
         .expect("the core can read back what it just wrote");
     let restorable = saved.restorable(|_, tab| tab.as_str() == second);
     assert_eq!(
-        restorable.regions.len(),
+        restorable.tabs.len(),
         1,
-        "reopening onto this session shows {} regions rather than the one it was left with",
-        restorable.regions.len()
+        "reopening onto this session holds {} tabs rather than the one this daemon still has",
+        restorable.tabs.len()
     );
-    assert_eq!(restorable.regions[0].tab.as_str(), second);
+    assert_eq!(restorable.tabs[0].id.as_str(), second);
+    assert_eq!(restorable.showing.as_ref().map(TabId::as_str), Some(second.as_str()));
 }
 
 /// A window opening onto a saved arrangement shows each of its tabs once.
@@ -460,8 +463,7 @@ fn a_restored_window_says_which_panes_it_is_drawing() {
     let hidden: Vec<String> = window
         .roster
         .iter()
-        .flat_map(|roster| roster.daemons.iter())
-        .flat_map(|held| held.tabs.iter())
+        .flat_map(|roster| roster.tabs.iter())
         .flat_map(|tab| tab.panes.iter())
         .filter(|pane| !pane.on_screen && drawn.contains(&pane.pane_id))
         .map(|pane| pane.pane_id.clone())

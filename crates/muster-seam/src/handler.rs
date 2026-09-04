@@ -159,7 +159,7 @@ fn handle(request: Request) -> Response {
         request::Payload::FocusRelative(step) => focus_relative(&step.direction),
         request::Payload::FocusTabRelative(step) => step_tab(&step.direction),
         request::Payload::FocusPaneAt(at) => focus_pane_at(at.place),
-        request::Payload::FocusTab(tab) => focus_tab(&tab.daemon_id, &tab.tab_id),
+        request::Payload::FocusTab(tab) => focus_tab(&tab.tab_id),
         request::Payload::ArrangePane(arrange) => arrange_pane(&arrange),
         request::Payload::SetSplitRatio(set) => set_split_ratio(set),
         request::Payload::Scroll(scroll) => scroll_pane(&scroll),
@@ -661,22 +661,22 @@ fn relayed(answer: Result<Response, Refusal>) -> Response {
 
 /// Why a request that named no pane found none.
 ///
-/// Two states with two ways out, so they get a message each. A machine showing nothing wants a
-/// pane made on it. A machine that has a region and no pane in it is a tab whose panes have not
-/// been described yet, which resolves on its own and wants nothing done about it.
+/// Two states with two ways out, so they get a message each. A machine holding no panes at all
+/// wants one made on it. A machine that holds a tab and no pane in it is a tab whose panes have
+/// not been described yet, which resolves on its own and wants nothing done about it.
 fn nothing_to_act_on(daemon: &DaemonId) -> Response {
-    if session::showing_nothing(daemon) {
+    if session::holding_nothing(daemon) {
         return Response::failure(format!(
-            "the daemon {daemon} has nothing on screen in this window, so a request that named \
-             no pane had nothing to act on and nothing happened. `muster pane new --daemon \
-             {daemon}` makes it a pane; every other verb needs one to already be there."
+            "the daemon {daemon} holds no panes in this window, so a request that named no pane \
+             had nothing to act on and nothing happened. `muster pane new --daemon {daemon}` \
+             makes it a pane; every other verb needs one to already be there."
         ));
     }
     Response::failure(format!(
-        "the daemon {daemon} is showing a tab this window has not been told the panes of yet, \
-         so a request that named no pane had nothing to act on and nothing happened. The \
-         daemon's event is on its way - ask again. A request that names no pane means the one \
-         that machine's region has the keyboard on."
+        "the daemon {daemon} holds a tab this window has not been told the panes of yet, so a \
+         request that named no pane had nothing to act on and nothing happened. The daemon's \
+         event is on its way - ask again. A request that names no pane means the pane that \
+         machine has the keyboard on, or its first in the tab on screen."
     ))
 }
 
@@ -809,7 +809,7 @@ fn open_a_workspace(
              daemon was meant to be there.",
         );
     };
-    if !session::showing_nothing(&daemon) {
+    if !session::holding_nothing(&daemon) {
         return nothing_to_act_on(&daemon);
     }
     let nowhere_else = session::focused_daemon().is_none();
@@ -1060,12 +1060,12 @@ fn no_pane_to_rearrange(pane: &PaneId) -> Response {
 
 /// Brings a named tab on screen, which is what clicking its caption means.
 ///
-/// The daemon is optional and found from the tab when it is absent, because a tab name is
-/// Muster's own and unique across every attached machine - so a script that read one out of
-/// `muster window` has said enough. The tab itself is not optional: unlike a pane, a tab has no
-/// "the focused one" to fall back to, and a request naming neither is a caller that had a tab in
-/// hand and dropped it.
-fn focus_tab(daemon_id: &str, tab_id: &str) -> Response {
+/// The daemon on the request is ignored, and that is not an oversight. A Muster tab may hold
+/// panes on more than one machine, so it does not belong to one; the name is Muster's own and
+/// unique across every attached machine, which is all the request needs. The tab itself is not
+/// optional: unlike a pane, a tab has no "the focused one" to fall back to, and a request naming
+/// neither is a caller that had a tab in hand and dropped it.
+fn focus_tab(tab_id: &str) -> Response {
     if tab_id.is_empty() {
         return Response::failure(
             "a tab was asked for without naming one, so the keyboard stayed where it was. \
@@ -1073,11 +1073,7 @@ fn focus_tab(daemon_id: &str, tab_id: &str) -> Response {
              this request had a tab in hand and dropped it.",
         );
     }
-    let tab = TabId::new(tab_id);
-    let Some(daemon) = holder_of(&tab, daemon_id) else {
-        return no_such_tab(&tab, "focused");
-    };
-    answer(session::focus_tab(&daemon, &tab))
+    answer(session::focus_tab(&TabId::new(tab_id)))
 }
 
 /// Which daemon a request about this pane goes to: the one it named, or the one holding the

@@ -24,7 +24,7 @@ use crate::diagnostics::log;
 use crate::fields;
 use crate::mirror::backend::{PaneId, TabId};
 
-/// One region, as much of it as outlives the process.
+/// One machine's half of a tab, as much of it as outlives the process.
 ///
 /// No `RegionId`: ids are handed out per run and never reused, so writing one down would name
 /// a region that is about to be a different region. Order in the list is the arrangement, and
@@ -32,11 +32,24 @@ use crate::mirror::backend::{PaneId, TabId};
 #[derive(Debug, Clone, PartialEq)]
 pub struct SavedRegion {
     pub daemon: DaemonId,
-    pub tab: TabId,
     pub weight: f32,
     /// The pane this region's keyboard was on. A wish like the rest: the pane may be gone,
     /// and a region restored without it simply starts wherever the tab's tree begins.
     pub pane: Option<PaneId>,
+    /// Whether this was the region the keyboard was in while its tab was on screen.
+    ///
+    /// Per region rather than an index into the tab's list, because the list is filtered on the
+    /// way back in - a machine that has gone takes its region with it - and an index into a
+    /// filtered list points at whatever moved up. At most one region of a tab carries it.
+    pub keyboard: bool,
+}
+
+/// One Muster tab, as much of it as outlives the process.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SavedTab {
+    pub id: TabId,
+    /// One per machine holding panes in it, in the order they are laid out.
+    pub regions: Vec<SavedRegion>,
 }
 
 /// A window's arrangement, as it survives a restart.
@@ -48,9 +61,20 @@ pub struct Saved {
     /// to be the only memory of them - a daemon attached by a CLI or by an agent is one
     /// nothing else wrote down.
     pub daemons: Vec<Daemon>,
-    pub regions: Vec<SavedRegion>,
-    /// Which region had the keyboard, by its place in the list.
-    pub focused: Option<usize>,
+    /// The tabs this window held, in the order they are walked.
+    pub tabs: Vec<SavedTab>,
+    /// Which of them was on screen.
+    pub showing: Option<TabId>,
+    /// Tabs a migration folded into another, as pairs of the tab that stayed and the tab that
+    /// became a member of it.
+    ///
+    /// Empty for every file this Muster wrote. A version 3 arrangement is a column per machine
+    /// and each column named a tab of its own, so reading one back as a window holding one tab
+    /// per column would take away the side-by-side view somebody was using. It becomes one
+    /// Muster tab holding all of it instead, which needs those tabs grouped under one name in
+    /// the name registry - and the registry is not this file's to write. So the file says what
+    /// it implied, and whoever holds the registry acts on it.
+    pub grouped: Vec<(TabId, TabId)>,
     /// The window's own chrome, which needs no checking against a daemon.
     ///
     /// The only part of this file no daemon has an opinion about: nobody else knows whether a
@@ -71,8 +95,8 @@ pub struct Saved {
 /// What survives a check against what the daemons actually hold.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Restorable {
-    pub regions: Vec<SavedRegion>,
-    pub focused: Option<usize>,
+    pub tabs: Vec<SavedTab>,
+    pub showing: Option<TabId>,
 }
 
 impl Saved {
@@ -82,51 +106,65 @@ impl Saved {
         presentation: Presentation,
         font_sizes: &FontSizes,
     ) -> Saved {
-        let focused = composition
-            .focused_region()
-            .and_then(|focused| composition.regions().position(|region| region.id == focused.id));
         Saved {
             presentation,
             font_sizes: font_sizes.clone(),
             daemons: composition.daemons().cloned().collect(),
-            regions: composition
-                .regions()
-                .map(|region| SavedRegion {
-                    daemon: region.daemon.clone(),
-                    tab: region.tab.clone(),
-                    weight: region.weight,
-                    pane: region.pane.clone(),
+            showing: composition.showing().cloned(),
+            grouped: Vec::new(),
+            tabs: composition
+                .tabs()
+                .map(|tab| {
+                    let keyboard = tab.focused_region().map(|region| region.id);
+                    SavedTab {
+                        id: tab.id.clone(),
+                        regions: tab
+                            .regions()
+                            .map(|region| SavedRegion {
+                                daemon: region.daemon.clone(),
+                                weight: region.weight,
+                                pane: region.pane.clone(),
+                                keyboard: keyboard == Some(region.id),
+                            })
+                            .collect(),
+                    }
                 })
                 .collect(),
-            focused,
         }
     }
 
-    /// The regions worth reopening, given what each daemon turns out to hold.
+    /// The tabs worth reopening, given what each daemon turns out to hold.
     ///
-    /// A tab that is gone takes its region with it rather than leaving an empty one on
-    /// screen: a region showing a tab nobody has is indistinguishable from a daemon that has
-    /// not finished describing itself, and one of those is worth waiting for.
+    /// A machine that no longer holds its half of a tab loses that region rather than leaving
+    /// an empty one on screen: a region showing a tab nobody has is indistinguishable from a
+    /// daemon that has not finished describing itself, and one of those is worth waiting for. A
+    /// tab that loses every region goes with them, and a tab that loses one of two opens showing
+    /// the machine still there, which is what a tab whose devenv is unreachable has to do.
     ///
-    /// Order is kept, because order is the arrangement. Focus moves to the first survivor
-    /// when the region that had it did not make it - a window that opens with the keyboard
-    /// nowhere is a window that ignores the first thing typed into it.
+    /// Order is kept, because order is the arrangement. The tab that was on screen falls back to
+    /// the first survivor - a window that opens showing nothing while it holds tabs is a window
+    /// that ignores the first thing typed into it.
     pub fn restorable(&self, holds: impl Fn(&DaemonId, &TabId) -> bool) -> Restorable {
-        let mut regions = Vec::new();
-        let mut focused = None;
-        for (place, region) in self.regions.iter().enumerate() {
-            if !holds(&region.daemon, &region.tab) {
-                continue;
-            }
-            if self.focused == Some(place) {
-                focused = Some(regions.len());
-            }
-            regions.push(region.clone());
-        }
-        if focused.is_none() && !regions.is_empty() {
-            focused = Some(0);
-        }
-        Restorable { regions, focused }
+        let tabs: Vec<SavedTab> = self
+            .tabs
+            .iter()
+            .map(|tab| SavedTab {
+                id: tab.id.clone(),
+                regions: tab
+                    .regions
+                    .iter()
+                    .filter(|region| holds(&region.daemon, &tab.id))
+                    .cloned()
+                    .collect(),
+            })
+            .filter(|tab| !tab.regions.is_empty())
+            .collect();
+        let showing = self
+            .showing
+            .clone()
+            .filter(|showing| tabs.iter().any(|tab| &tab.id == showing))
+            .or_else(|| tabs.first().map(|tab| tab.id.clone()));
+        Restorable { tabs, showing }
     }
 }
 
@@ -148,7 +186,15 @@ impl Saved {
 /// says which one it is in (MIP-2). A version 2 file would parse and restore correctly with the
 /// key ignored, so this bump buys less than the last one - what it buys is that the file on
 /// disk and the format this reads never differ silently, which is the property a version is for.
-const VERSION: i64 = 3;
+const VERSION: i64 = 4;
+
+/// The version that wrote a column per machine, which this one still reads.
+///
+/// Version 3 named a tab on every `[[region]]` and had no notion of a window's tab list, because
+/// the window was the columns. Read rather than refused, and read as one Muster tab holding every
+/// column, so the first launch after this lands looks like the last launch before it - see
+/// [`into_one_tab`].
+const COLUMN_PER_MACHINE: i64 = 3;
 
 /// The arrangement as the text that gets written to disk.
 ///
@@ -164,7 +210,15 @@ pub fn to_toml(saved: &Saved) -> String {
         root.insert("daemon".to_string(), toml::Value::Array(daemons));
     }
 
-    let regions: Vec<toml::Value> = saved.regions.iter().map(region_table).collect();
+    // Flat, with each row naming its tab, rather than nested under `[[tab]]`. The tabs are the
+    // order their rows first appear in, so nothing has to be stated twice - and a person opening
+    // this file to find out why a window came back wrong reads a list of rows rather than a
+    // nesting TOML spells awkwardly.
+    let regions: Vec<toml::Value> = saved
+        .tabs
+        .iter()
+        .flat_map(|tab| tab.regions.iter().map(move |region| region_table(&tab.id, region)))
+        .collect();
     if !regions.is_empty() {
         root.insert("region".to_string(), toml::Value::Array(regions));
     }
@@ -177,8 +231,8 @@ pub fn to_toml(saved: &Saved) -> String {
     if !panes.is_empty() {
         root.insert("pane".to_string(), toml::Value::Array(panes));
     }
-    if let Some(focused) = saved.focused.and_then(|place| i64::try_from(place).ok()) {
-        root.insert("focused".to_string(), toml::Value::Integer(focused));
+    if let Some(showing) = &saved.showing {
+        root.insert("showing".to_string(), toml::Value::String(showing.to_string()));
     }
 
     // Written even when it matches the default, unlike the keys above that are absent when
@@ -248,13 +302,18 @@ fn pane_table((pane, offset): (&PaneKey, i32)) -> toml::Value {
     toml::Value::Table(table)
 }
 
-fn region_table(region: &SavedRegion) -> toml::Value {
+fn region_table(tab: &TabId, region: &SavedRegion) -> toml::Value {
     let mut table = toml::Table::new();
+    table.insert("tab".to_string(), toml::Value::String(tab.to_string()));
     table.insert("daemon".to_string(), toml::Value::String(region.daemon.to_string()));
-    table.insert("tab".to_string(), toml::Value::String(region.tab.to_string()));
     table.insert("weight".to_string(), toml::Value::Float(f64::from(region.weight)));
     if let Some(pane) = &region.pane {
         table.insert("pane".to_string(), toml::Value::String(pane.to_string()));
+    }
+    // Only on the one region of a tab that had it, so a reader can find the keyboard by looking
+    // for the word rather than by counting rows.
+    if region.keyboard {
+        table.insert("keyboard".to_string(), toml::Value::Boolean(true));
     }
     toml::Value::Table(table)
 }
@@ -268,8 +327,8 @@ pub fn from_toml(text: &str) -> Result<Saved, String> {
     let root: toml::Table = toml::from_str(text)
         .map_err(|error| format!("the saved arrangement is not TOML: {error}"))?;
 
-    match root.get("version").and_then(toml::Value::as_integer) {
-        Some(VERSION) => {}
+    let version = match root.get("version").and_then(toml::Value::as_integer) {
+        Some(version @ (VERSION | COLUMN_PER_MACHINE)) => version,
         Some(other) => {
             return Err(format!(
                 "the saved arrangement is version {other} and this Muster writes version \
@@ -278,22 +337,30 @@ pub fn from_toml(text: &str) -> Result<Saved, String> {
             ));
         }
         None => return Err("the saved arrangement does not say what version it is".to_string()),
-    }
+    };
 
     let daemons = root
         .get("daemon")
         .and_then(toml::Value::as_array)
         .map(|entries| entries.iter().filter_map(read_daemon).collect())
         .unwrap_or_default();
-    let regions = root
+    let rows: Vec<(TabId, SavedRegion)> = root
         .get("region")
         .and_then(toml::Value::as_array)
         .map(|entries| entries.iter().filter_map(read_region).collect())
         .unwrap_or_default();
-    let focused = root
-        .get("focused")
-        .and_then(toml::Value::as_integer)
-        .and_then(|place| usize::try_from(place).ok());
+    let (mut tabs, grouped) = match version {
+        COLUMN_PER_MACHINE => into_one_tab(rows, &root),
+        _ => (into_tabs(rows), Vec::new()),
+    };
+    let showing = root
+        .get("showing")
+        .and_then(toml::Value::as_str)
+        .map(TabId::new)
+        .filter(|showing| tabs.iter().any(|tab| &tab.id == showing))
+        .or_else(|| tabs.first().map(|tab| tab.id.clone()));
+    // A tab with no region on any machine is not a tab, and a hand-edited file can say one.
+    tabs.retain(|tab| !tab.regions.is_empty());
 
     // Absent means the default, which is what a file written before this key existed looks
     // like. Worth reading that way rather than refusing the file: the version above is for a
@@ -321,7 +388,7 @@ pub fn from_toml(text: &str) -> Result<Saved, String> {
         .map(|entries| entries.iter().filter_map(read_pane_font_size).collect())
         .unwrap_or_default();
 
-    Ok(Saved { daemons, regions, focused, presentation, font_sizes })
+    Ok(Saved { daemons, tabs, showing, grouped, presentation, font_sizes })
 }
 
 /// Says so when a file remembers a text size for the whole window.
@@ -389,11 +456,12 @@ fn read_daemon(value: &toml::Value) -> Option<Daemon> {
     Some(Daemon { id, endpoint })
 }
 
-fn read_region(value: &toml::Value) -> Option<SavedRegion> {
+fn read_region(value: &toml::Value) -> Option<(TabId, SavedRegion)> {
     let table = value.as_table()?;
-    Some(SavedRegion {
+    let tab = TabId::new(text(table, "tab")?);
+    let region = SavedRegion {
         daemon: DaemonId::new(text(table, "daemon")?),
-        tab: TabId::new(text(table, "tab")?),
+        keyboard: table.get("keyboard").and_then(toml::Value::as_bool).unwrap_or_default(),
         // A region with no readable weight takes an equal share rather than none: zero would
         // be a region the window renders at no width, which nobody can see or grab.
         // Through serde rather than a cast: the same narrowing, without a lint about it.
@@ -404,7 +472,64 @@ fn read_region(value: &toml::Value) -> Option<SavedRegion> {
             .filter(|weight: &f32| weight.is_finite() && *weight > 0.0)
             .unwrap_or(1.0),
         pane: text(table, "pane").map(PaneId::new),
-    })
+    };
+    Some((tab, region))
+}
+
+/// The rows gathered into tabs, in the order each tab's first row appears.
+fn into_tabs(rows: Vec<(TabId, SavedRegion)>) -> Vec<SavedTab> {
+    let mut tabs: Vec<SavedTab> = Vec::new();
+    for (tab, region) in rows {
+        match tabs.iter_mut().find(|held| held.id == tab) {
+            Some(held) => held.regions.push(region),
+            None => tabs.push(SavedTab { id: tab, regions: vec![region] }),
+        }
+    }
+    tabs
+}
+
+/// A column-per-machine arrangement, read as the one Muster tab holding all of it.
+///
+/// The decision this implements is that an upgrade does not take away what somebody is looking
+/// at: a window showing a laptop column beside a devenv column comes back showing both, side by
+/// side, in one tab. Splitting that into a tab per machine is something to do afterwards and on
+/// purpose, once the new model is on screen to do it in.
+///
+/// The tab that stays is the first column's, and the rest become members of it - which is the
+/// grouping reported in `Saved::grouped` for whoever holds the name registry to apply. Two
+/// columns on one machine collapse into one region, which is what a file written by a window
+/// that had drawn a pane twice looks like (kan a_2Ht74jTXV).
+fn into_one_tab(
+    rows: Vec<(TabId, SavedRegion)>,
+    root: &toml::Table,
+) -> (Vec<SavedTab>, Vec<(TabId, TabId)>) {
+    let focused = root
+        .get("focused")
+        .and_then(toml::Value::as_integer)
+        .and_then(|place| usize::try_from(place).ok())
+        .unwrap_or_default();
+    let Some(into) = rows.first().map(|(tab, _)| tab.clone()) else {
+        return (Vec::new(), Vec::new());
+    };
+
+    let mut regions: Vec<SavedRegion> = Vec::new();
+    let mut grouped: Vec<(TabId, TabId)> = Vec::new();
+    for (place, (tab, mut region)) in rows.into_iter().enumerate() {
+        if tab != into && !grouped.iter().any(|(_, absorbed)| absorbed == &tab) {
+            grouped.push((into.clone(), tab));
+        }
+        if regions.iter().any(|held| held.daemon == region.daemon) {
+            continue;
+        }
+        region.keyboard = place == focused;
+        regions.push(region);
+    }
+    if !regions.iter().any(|region| region.keyboard)
+        && let Some(first) = regions.first_mut()
+    {
+        first.keyboard = true;
+    }
+    (vec![SavedTab { id: into, regions }], grouped)
 }
 
 fn text(table: &toml::Table, key: &str) -> Option<String> {

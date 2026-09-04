@@ -16,34 +16,62 @@
 //! and the agent-facing API would each need their own copy (`architecture.md`, one action
 //! path).
 //!
-//! **Daemon, then tab, then pane.** A flat list of panes cannot say which of them sit side by
-//! side in one tab, which is the question "where has that agent got to" actually asks - and a
-//! window shows one tab per region, so the tab is the thing a person navigates between. The
-//! nesting is here rather than rebuilt by each reader for the same reason the order is: it is
-//! a decision, and the sidebar, the CLI and an agent must not each make their own.
+//! **Tab, then pane.** A flat list of panes cannot say which of them sit side by side in one
+//! tab, which is the question "where has that agent got to" actually asks - and a window shows
+//! one tab at a time, so the tab is the thing a person navigates between. The nesting is here
+//! rather than rebuilt by each reader for the same reason the order is: it is a decision, and
+//! the sidebar, the CLI and an agent must not each make their own.
+//!
+//! **The machine is not a level of it.** A tab may hold panes on two machines (MIP-2), so
+//! grouping by machine would be a list that no longer describes the window beside it. Which
+//! machine holds a pane is on the pane, and a machine holding no panes at all is in `machines`
+//! below - a state that would otherwise have nowhere to be said.
 
-use crate::composition::{Composition, DaemonId, PaneKey, TabKey};
+use crate::composition::{Composition, DaemonId, PaneKey};
 use crate::input::NumberedChords;
 use crate::mirror::Mirror;
+use crate::mirror::backend::Health;
 use crate::mirror::backend::{Pane, PaneId, TabId};
 
 /// Everything the attached daemons hold, in the order to show it.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Roster {
-    pub daemons: Vec<RosterDaemon>,
+    /// The window's tabs, in the order it walks them.
+    pub tabs: Vec<RosterTab>,
+
+    /// The machines behind them, for the states no pane can carry.
+    ///
+    /// A machine that is connected and holding panes says nothing here that its panes do not
+    /// already say; what needs somewhere to go is a machine that is unreachable, and a machine
+    /// holding nothing at all. Without a per-machine heading over the tabs, the second would
+    /// vanish from the window entirely, and a machine you asked to see and cannot use is the
+    /// bug `a_2HpkpfIfq` was about.
+    pub machines: Vec<RosterMachine>,
 }
 
-/// One attached daemon, and the tabs it holds.
+/// One attached machine, as something to say a word about and somewhere to put a pane.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RosterDaemon {
+pub struct RosterMachine {
     pub id: DaemonId,
-    pub tabs: Vec<RosterTab>,
+
+    /// `connected`, `stale` or `disconnected`, as the mirror answers it.
+    pub health: Health,
+
+    /// How many panes it holds, on screen or not. Zero is the state worth drawing.
+    pub panes: usize,
 }
 
 /// One tab, as something to list and something to go to.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RosterTab {
-    pub key: TabKey,
+    pub id: TabId,
+
+    /// The machines holding panes in it, in the order their regions sit on screen.
+    ///
+    /// One for every tab until somebody groups two. What a reader wants it for is the tab
+    /// itself saying nothing about machines: a tab may span them, so the machine goes on the
+    /// pane row, and this is how anything that needs the set gets it without walking the panes.
+    pub daemons: Vec<DaemonId>,
 
     /// Where this tab sits in the window's whole tab order, counting from one.
     ///
@@ -58,11 +86,12 @@ pub struct RosterTab {
     /// What to call this tab to somebody who did not open it.
     pub label: String,
 
-    /// Whether a region is showing this tab right now.
+    /// Whether this is the tab the window is showing.
     ///
-    /// Not the same question as any of its panes being on screen. A zoomed tab is on screen
-    /// while all but one of its panes are not, and that is the honest reading of both: the tab
-    /// is what a region shows, and a pane is what the tree inside it renders.
+    /// Exactly one tab carries it, because a window shows one at a time. Not the same question
+    /// as any of its panes being on screen: a zoomed tab is on screen while all but one of its
+    /// panes are not, and that is the honest reading of both - the tab is what the window shows,
+    /// and a pane is what the tree inside it renders.
     pub on_screen: bool,
 
     /// The name somebody gave this tab, if anybody has, on the same terms as a pane's.
@@ -144,7 +173,7 @@ pub enum Numbering {
     Tabs,
 
     /// The panes inside one tab. The prototype scheme, after a first press named that tab.
-    PanesIn(TabKey),
+    PanesIn(TabId),
 }
 
 impl Numbering {
@@ -174,12 +203,12 @@ impl Numbering {
     /// when a second tab appears, which at least moves every number in the sidebar as it
     /// happens - and this function is handed the roster and knows nothing about the keyboard,
     /// which is the shape the other reading would have to break.
-    pub fn of(scheme: NumberedChords, named: Option<&TabKey>, roster: &Roster) -> Numbering {
+    pub fn of(scheme: NumberedChords, named: Option<&TabId>, roster: &Roster) -> Numbering {
         match scheme {
             NumberedChords::Panes => Numbering::Panes,
             NumberedChords::TabThenPane if roster.tabs().count() == 1 => Numbering::Panes,
             NumberedChords::TabThenPane => match named {
-                Some(key) if roster.tabs().any(|tab| &tab.key == key) => {
+                Some(key) if roster.tabs().any(|tab| &tab.id == key) => {
                     Numbering::PanesIn(key.clone())
                 }
                 _ => Numbering::Tabs,
@@ -203,7 +232,7 @@ impl Numbering {
         match self {
             Numbering::Panes => Some(pane.place),
             Numbering::Tabs => None,
-            Numbering::PanesIn(key) => (&tab.key == key).then_some(pane.place_in_tab),
+            Numbering::PanesIn(key) => (&tab.id == key).then_some(pane.place_in_tab),
         }
     }
 }
@@ -241,11 +270,11 @@ impl Landing<'_> {
     /// between: the press has already landed on the only pane there is. Naming it would leave
     /// the window in a state whose whole content is one number nobody needs, and would spend
     /// the press after it on a chord that can only miss.
-    pub fn named(&self) -> Option<TabKey> {
+    pub fn named(&self) -> Option<TabId> {
         match self {
             Landing::Pane(_) => None,
             Landing::Tab(tab, _) if tab.panes.len() < 2 => None,
-            Landing::Tab(tab, _) => Some(tab.key.clone()),
+            Landing::Tab(tab, _) => Some(tab.id.clone()),
         }
     }
 }
@@ -300,74 +329,81 @@ impl Roster {
         mirror: impl Fn(&DaemonId) -> Option<&'a Mirror>,
         showing: &std::collections::BTreeSet<PaneKey>,
     ) -> Roster {
-        let mut ordered: Vec<&DaemonId> = Vec::new();
-        for region in composition.regions() {
-            if !ordered.contains(&&region.daemon) {
-                ordered.push(&region.daemon);
-            }
-        }
-        for daemon in composition.daemons() {
-            if !ordered.contains(&&daemon.id) {
-                ordered.push(&daemon.id);
-            }
-        }
+        let on_screen = composition.showing().cloned();
 
-        let on_screen: std::collections::BTreeSet<TabKey> =
-            composition.regions().map(|region| TabKey::new(&region.daemon, &region.tab)).collect();
-
-        // Two counters, both running across every daemon: panes are what the chords name, and
+        // Two counters, both running across every tab: panes are what the chords name, and
         // tabs are numbered only so that one nobody has named still has something to be called.
         let mut tab_place = 0;
         let mut pane_place = 0;
-        let daemons = ordered
-            .into_iter()
-            .filter_map(|daemon| Some((daemon, mirror(daemon)?)))
-            .map(|(daemon, held)| {
-                let named = names_its_workspaces(held);
-                let tabs = held
-                    .tabs()
-                    .map(|tab| {
-                        tab_place += 1;
-                        RosterTab {
-                            key: TabKey::new(daemon, &tab.id),
-                            place: tab_place,
-                            label: tab_label(held, tab, named, tab_place),
-                            on_screen: on_screen.contains(&TabKey::new(daemon, &tab.id)),
-                            given_name: given_name(tab_own_name(tab)),
-                            panes: ordered_panes(held, &tab.id)
-                                .into_iter()
-                                .enumerate()
-                                .map(|(at, pane)| {
-                                    let key = PaneKey::new(daemon, &pane.id);
-                                    let label = pane_label(pane);
-                                    pane_place += 1;
-                                    RosterPane {
-                                        place: pane_place,
-                                        place_in_tab: at + 1,
-                                        subtitle: pane_subtitle(pane, &label),
-                                        label,
-                                        given_name: given_name(pane.name.as_deref()),
-                                        on_screen: showing.contains(&key),
-                                        key,
-                                    }
-                                })
-                                .collect(),
+        let tabs = composition
+            .tabs()
+            .map(|tab| {
+                tab_place += 1;
+                let panes: Vec<RosterPane> = tab
+                    .regions()
+                    .filter_map(|region| Some((&region.daemon, mirror(&region.daemon)?)))
+                    .flat_map(|(daemon, held)| {
+                        ordered_panes(held, &tab.id)
+                            .into_iter()
+                            .map(move |pane| (daemon, pane))
+                            .collect::<Vec<_>>()
+                    })
+                    .enumerate()
+                    .map(|(at, (daemon, pane))| {
+                        let key = PaneKey::new(daemon, &pane.id);
+                        let label = pane_label(pane);
+                        pane_place += 1;
+                        RosterPane {
+                            place: pane_place,
+                            place_in_tab: at + 1,
+                            subtitle: pane_subtitle(pane, &label),
+                            label,
+                            given_name: given_name(pane.name.as_deref()),
+                            on_screen: showing.contains(&key),
+                            key,
                         }
                     })
                     .collect();
-                RosterDaemon { id: daemon.clone(), tabs }
+                // The first machine holding panes in it answers for the tab's caption. A tab
+                // that spans two is one tab with one name, and its members are renamed together
+                // - so which of them is read is a question only about which has answered.
+                let first = tab.daemons().next().and_then(|daemon| Some((daemon, mirror(daemon)?)));
+                let own = first.and_then(|(_, held)| held.tab(&tab.id));
+                RosterTab {
+                    id: tab.id.clone(),
+                    daemons: tab.daemons().cloned().collect(),
+                    place: tab_place,
+                    label: match (first, own) {
+                        (Some((_, held)), Some(own)) => {
+                            tab_label(held, own, names_its_workspaces(held), tab_place)
+                        }
+                        _ => format!("Tab {tab_place}"),
+                    },
+                    on_screen: on_screen.as_ref() == Some(&tab.id),
+                    given_name: own.and_then(tab_own_name).and_then(|name| given_name(Some(name))),
+                    panes,
+                }
             })
             .collect();
-        Roster { daemons }
+
+        let machines = composition
+            .daemons()
+            .map(|daemon| {
+                let held = mirror(&daemon.id);
+                RosterMachine {
+                    id: daemon.id.clone(),
+                    health: held.map_or(Health::Disconnected, Mirror::health),
+                    panes: held.map_or(0, |held| held.panes().count()),
+                }
+            })
+            .collect();
+
+        Roster { tabs, machines }
     }
 
     /// Every tab in the window, in the order they are numbered.
-    ///
-    /// The flat reading of the tree, which is what moving between tabs is about: the nesting
-    /// is for a reader, and a keystroke asking for the next one does not care which machine
-    /// answers.
     pub fn tabs(&self) -> impl Iterator<Item = &RosterTab> {
-        self.daemons.iter().flat_map(|daemon| daemon.tabs.iter())
+        self.tabs.iter()
     }
 
     /// Every pane in the window, in the order they are listed.
@@ -422,9 +458,9 @@ impl Roster {
     /// Stepping from a tab that is not in the list - nothing focused, or a tab that closed
     /// while the keystroke was in flight - goes to the end it came from rather than refusing,
     /// on the same terms as [`crate::composition::View::step`].
-    pub fn step(&self, from: Option<&TabKey>, direction: TabStep) -> Option<&RosterTab> {
+    pub fn step(&self, from: Option<&TabId>, direction: TabStep) -> Option<&RosterTab> {
         let order: Vec<&RosterTab> = self.tabs().collect();
-        let at = from.and_then(|key| order.iter().position(|tab| &tab.key == key));
+        let at = from.and_then(|key| order.iter().position(|tab| &tab.id == key));
         match at {
             Some(at) => {
                 let step = match direction {

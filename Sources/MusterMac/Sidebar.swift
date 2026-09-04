@@ -46,7 +46,11 @@ public struct Roster: Equatable {
   }
 
   public struct Tab: Equatable {
-    public let key: TabKey
+    public let id: String
+
+    /// The machines holding panes in it, in the order their regions sit on screen. One for
+    /// every tab until somebody groups two.
+    public let daemons: [String]
 
     /// Where this tab sits in the window's whole tab order, counting from one. The number in
     /// the caption of a tab nobody named.
@@ -70,10 +74,11 @@ public struct Roster: Equatable {
     public let panes: [Pane]
 
     public init(
-      key: TabKey, place: Int, number: Int = 0, label: String, onScreen: Bool,
-      givenName: String = "", panes: [Pane]
+      id: String, daemons: [String] = [], place: Int, number: Int = 0, label: String,
+      onScreen: Bool, givenName: String = "", panes: [Pane]
     ) {
-      self.key = key
+      self.id = id
+      self.daemons = daemons
       self.place = place
       self.number = number
       self.label = label
@@ -83,14 +88,29 @@ public struct Roster: Equatable {
     }
   }
 
-  public struct Daemon: Equatable {
+  /// One attached machine, for the two states no pane row can carry.
+  ///
+  /// A machine that is connected and holding panes says it through its panes; what needs
+  /// somewhere else to go is a machine that is unreachable and a machine holding nothing at all.
+  /// Without a heading per machine over the tabs, the second would vanish from the window
+  /// entirely, which is the state kan a_2HpkpfIfq was about.
+  public struct Machine: Equatable {
     public let id: String
-    public let tabs: [Tab]
 
-    public init(id: String, tabs: [Tab]) {
+    /// `connected`, `stale` or `disconnected`.
+    public let state: String
+
+    /// How many panes it holds, on screen or not. Zero is the state worth drawing.
+    public let panes: Int
+
+    public init(id: String, state: String, panes: Int) {
       self.id = id
-      self.tabs = tabs
+      self.state = state
+      self.panes = panes
     }
+
+    /// Whether this machine has something to say that its panes do not.
+    public var worthDrawing: Bool { panes == 0 || state != "connected" }
   }
 
   /// What the numbered chords are counting, and so whether one is half-typed.
@@ -122,20 +142,28 @@ public struct Roster: Equatable {
     public var movesBetweenRows: Bool { self != .panes }
   }
 
-  public let daemons: [Daemon]
+  /// The window's tabs, in the order it walks them.
+  public let tabs: [Tab]
+
+  /// The machines behind them.
+  public let machines: [Machine]
 
   public let numbering: Numbering
 
-  public init(daemons: [Daemon], numbering: Numbering = .panes) {
-    self.daemons = daemons
+  public init(tabs: [Tab], machines: [Machine] = [], numbering: Numbering = .panes) {
+    self.tabs = tabs
+    self.machines = machines
     self.numbering = numbering
   }
 
-  /// Every tab in the window, in the order they are numbered.
-  public var tabs: [Tab] { daemons.flatMap(\.tabs) }
-
   /// Every pane in the window, in the order they are listed.
   public var panes: [Pane] { tabs.flatMap(\.panes) }
+
+  /// Whether more than one machine is attached, which is when a pane row says which it is on.
+  ///
+  /// On one machine the answer is the same on every row and says nothing, and the window reads
+  /// exactly as it did before a tab could span two.
+  public var spansMachines: Bool { machines.count > 1 }
 }
 
 /// What the window shows of itself, as the core decided it.
@@ -164,23 +192,26 @@ public struct Presentation: Equatable {
 public enum SidebarModel {
   /// What one line in the list is.
   public enum Kind: Equatable {
-    /// A machine's name, over the tabs it holds.
-    case daemon
     /// A tab, over the panes in it, carrying the numbered chord that reaches it or 0.
     case tab(number: Int)
     /// A pane, carrying the numbered chord that reaches it or 0.
     case pane(number: Int)
+    /// A machine with something to say its panes cannot: unreachable, or holding nothing.
+    case machine
   }
 
   /// One line in the list.
   public struct Row: Equatable {
     public let kind: Kind
 
-    /// The daemon this row belongs to, whichever kind it is.
+    /// The machine this row is about: the one holding the pane, or the machine itself.
+    ///
+    /// Empty on a tab row, and that is the decision the flattening rests on: a tab may hold
+    /// panes on two machines, so any single answer there would be wrong for some of its panes.
     public let daemon: String
 
-    /// The tab this row is or sits under. Nil only on a daemon heading.
-    public let tab: TabKey?
+    /// The tab this row is or sits under. Empty on a machine row.
+    public let tab: String
 
     /// The pane this row is, on a pane row and nowhere else.
     public let pane: PaneKey?
@@ -220,6 +251,17 @@ public enum SidebarModel {
     /// number no tab will ever carry would be an indent that buys nothing.
     public let reservesNumber: Bool
 
+    /// Whether this row says which machine its pane is on.
+    ///
+    /// True on every pane row while more than one machine is attached, and false on all of them
+    /// otherwise - the answer is a property of the window rather than of the row, because a
+    /// column that appeared on some rows and not others would be worse than either.
+    ///
+    /// Here rather than in the view so the rule is testable, and because it is the visible half
+    /// of the flattening: with no heading per machine, this is the only thing that says a pane
+    /// is on the devenv (MIP-2).
+    public let showsMachine: Bool
+
     /// Whether this row's number is the second press of a chord already begun.
     ///
     /// Only under `tab_then_pane`, and only once a press has named a tab. Drawn brighter than
@@ -228,10 +270,16 @@ public enum SidebarModel {
     /// modifier is still down.
     public let isSecondPress: Bool
 
-    public var isHeader: Bool { kind == .daemon }
+    public var isHeader: Bool { kind == .machine }
 
-    /// Whether picking this row means something. A daemon heading names no destination.
-    public var isDestination: Bool { kind != .daemon }
+    /// Whether picking this row means something.
+    ///
+    /// Every row does now, including a machine's: picking one asks for a pane on it, which is
+    /// the only way into a machine holding nothing (kan a_2HpkpfIfq) and what makes it safe to
+    /// stop giving every machine a column of its own (kan a_2I6h18OU6).
+    public var isDestination: Bool { true }
+
+    public var isMachine: Bool { kind == .machine }
 
     public var isTab: Bool {
       if case .tab = kind { return true }
@@ -244,22 +292,24 @@ public enum SidebarModel {
     }
   }
 
-  /// The rows to draw, in order: a daemon heading, then a caption per tab, then its panes.
+  /// The rows to draw, in order: a caption per tab with its panes under it, then the machines
+  /// that have something to say.
   ///
-  /// Inserted here rather than by the view because where a group starts is a property of the
-  /// order the core chose, and the view should not have to re-derive it.
+  /// **Flat, because the window is.** A window holds an ordered list of tabs and shows one, so
+  /// the list reads the way ⌘1 to ⌘9 and next-tab walk it. Grouping by machine is what this
+  /// stopped doing (MIP-2): a tab may hold panes on two, so a heading over it would be wrong for
+  /// some of its panes, and the list would no longer describe the window beside it.
   ///
-  /// A daemon holding no tabs contributes no heading. An attached daemon whose subscription
-  /// has not bootstrapped is an ordinary moment on the way up, and a heading over nothing
-  /// reads as a machine that lost its session.
+  /// **The machine goes on the pane row, and only with more than one attached.** On one machine
+  /// the answer is the same on every row and says nothing, which is the common case and reads
+  /// exactly as it did before.
   ///
   /// **A window with one tab draws no caption, unless a chord names it.** There is nothing to
   /// navigate between, so a row saying which tab you are in is a line that answers a question
-  /// nobody has - and this
-  /// is the common case, so paying a level of nesting for it would make the list worse for
-  /// most people to make it better for some. The moment a second tab exists anywhere in the
-  /// window, every tab gets a caption, including the tabs on a daemon that only holds one:
-  /// captions in patches would read as a boundary that comes and goes.
+  /// nobody has - and this is the common case, so paying a level of nesting for it would make
+  /// the list worse for most people to make it better for some. The moment a second tab exists
+  /// anywhere in the window, every tab gets a caption: captions in patches would read as a
+  /// boundary that comes and goes.
   ///
   /// The exception is a numbered tab, which is drawn whatever else this rule says: a number
   /// nothing draws is a chord nobody can find. The core stopped producing one in a window of a
@@ -273,6 +323,12 @@ public enum SidebarModel {
   /// the chord that reaches it or with none, so a caption numbered `2` and a ⌘2 that goes
   /// somewhere else is not a state this side can produce.
   ///
+  /// **A machine gets a row only when it has something to say**: it is unreachable, or it is
+  /// holding no panes at all. A machine that is connected and holding panes says so through its
+  /// panes, and a row repeating it would be a heading in everything but name. The rows that do
+  /// appear are what keeps an empty machine visible and reachable now that nothing is owed a
+  /// column of its own (kan a_2HpkpfIfq, a_2I6h18OU6).
+  ///
   /// `keyboard` is the pane the core's view says has the keyboard, or nil when no region
   /// does. Passed in rather than derived here: which pane that is arrives on the view, and
   /// the roster is a separate message - the same join the window already makes for states.
@@ -285,40 +341,43 @@ public enum SidebarModel {
     // which is the whole point of reserving it.
     let gutter = roster.numbering.movesBetweenRows
     let second = roster.numbering.isHalfTyped
+    let sayMachine = roster.spansMachines
     var rows: [Row] = []
-    for daemon in roster.daemons where !daemon.tabs.isEmpty {
+    for tab in roster.tabs {
+      if captions {
+        rows.append(
+          Row(
+            kind: .tab(number: tab.number), daemon: "", tab: tab.id, pane: nil,
+            label: tab.label, subtitle: "", givenName: tab.givenName, state: "",
+            onScreen: tab.onScreen, hasKeyboard: false, reservesNumber: gutter,
+            showsMachine: false,
+            // A tab carries no number once one of them has been named, so there is no such
+            // thing as a second press onto a caption.
+            isSecondPress: false))
+      }
+      for pane in tab.panes {
+        rows.append(
+          Row(
+            kind: .pane(number: pane.number), daemon: pane.key.daemon, tab: tab.id,
+            pane: pane.key, label: pane.label,
+            subtitle: pane.subtitle, givenName: pane.givenName,
+            // A pane the core has said nothing about is unknown, not idle. An agent we have
+            // not heard from is not an agent that finished
+            // (`corpus/conformance/agent-state.json`).
+            state: states[pane.key] ?? "unknown",
+            onScreen: pane.onScreen,
+            hasKeyboard: pane.key == keyboard,
+            reservesNumber: gutter,
+            showsMachine: sayMachine,
+            isSecondPress: second))
+      }
+    }
+    for machine in roster.machines where machine.worthDrawing {
       rows.append(
         Row(
-          kind: .daemon, daemon: daemon.id, tab: nil, pane: nil, label: daemon.id, subtitle: "",
-          givenName: "", state: "", onScreen: true, hasKeyboard: false, reservesNumber: false,
-          isSecondPress: false))
-      for tab in daemon.tabs {
-        if captions {
-          rows.append(
-            Row(
-              kind: .tab(number: tab.number), daemon: daemon.id, tab: tab.key, pane: nil,
-              label: tab.label, subtitle: "", givenName: tab.givenName, state: "",
-              onScreen: tab.onScreen, hasKeyboard: false, reservesNumber: gutter,
-              // A tab carries no number once one of them has been named, so there is no such
-              // thing as a second press onto a caption.
-              isSecondPress: false))
-        }
-        for pane in tab.panes {
-          rows.append(
-            Row(
-              kind: .pane(number: pane.number), daemon: daemon.id, tab: tab.key, pane: pane.key,
-              label: pane.label,
-              subtitle: pane.subtitle, givenName: pane.givenName,
-              // A pane the core has said nothing about is unknown, not idle. An agent we have
-              // not heard from is not an agent that finished
-              // (`corpus/conformance/agent-state.json`).
-              state: states[pane.key] ?? "unknown",
-              onScreen: pane.onScreen,
-              hasKeyboard: pane.key == keyboard,
-              reservesNumber: gutter,
-              isSecondPress: second))
-        }
-      }
+          kind: .machine, daemon: machine.id, tab: "", pane: nil, label: machine.id,
+          subtitle: "", givenName: "", state: machine.state, onScreen: false,
+          hasKeyboard: false, reservesNumber: false, showsMachine: false, isSecondPress: false))
     }
     return rows
   }
@@ -428,7 +487,14 @@ public final class SidebarView: NSView {
   ///
   /// The mouse's half of what next-tab does with the keyboard. Names the tab rather than
   /// numbering it: the numbers name panes, and a click already knows which caption it hit.
-  public var onTabPicked: ((TabKey) -> Void)?
+  public var onTabPicked: ((String) -> Void)?
+
+  /// Called when somebody picks a machine's row, meaning they want a pane on it.
+  ///
+  /// The only way into a machine holding nothing, and what makes it safe for Muster to stop
+  /// giving every machine a column of its own: a machine you have finished with stays empty,
+  /// and one row gets you back (kan a_2HpkpfIfq, a_2I6h18OU6).
+  public var onMachinePicked: ((String) -> Void)?
 
   /// Called when somebody double-clicks a row, meaning they want to rename what it names.
   ///
@@ -609,18 +675,17 @@ public final class SidebarView: NSView {
       guard let pane = rows[clicked].pane else { return }
       onPanePicked?(pane)
     case .tab:
-      guard let tab = rows[clicked].tab else { return }
-      onTabPicked?(tab)
-    case .daemon:
-      break
+      onTabPicked?(rows[clicked].tab)
+    case .machine:
+      onMachinePicked?(rows[clicked].daemon)
     }
   }
 
-  /// A double-click asks to rename. A daemon heading names nothing renameable, so it does
-  /// nothing - the machine's name is not Muster's to change.
+  /// A double-click asks to rename. A machine's row names nothing renameable, so it does
+  /// nothing - the machine's name is the config file's and not Muster's to change.
   @objc private func rowDoubleClicked() {
     let clicked = table.clickedRow
-    guard rows.indices.contains(clicked), rows[clicked].isDestination else { return }
+    guard rows.indices.contains(clicked), !rows[clicked].isMachine else { return }
     onRowRenamed?(rows[clicked])
   }
 }
@@ -732,7 +797,7 @@ final class SidebarRowView: NSView {
     }
 
     switch row.kind {
-    case .daemon:
+    case .machine:
       name.font = .systemFont(ofSize: 10, weight: .semibold)
       name.stringValue = row.label.uppercased()
       name.textColor = .secondaryLabelColor
@@ -745,12 +810,11 @@ final class SidebarRowView: NSView {
       name.stringValue = row.label
       name.textColor = row.onScreen ? .labelColor : .secondaryLabelColor
       draw(number: reached, in: row)
-      // A mark rather than only the weight above, because the question a reader has is which
-      // captions are on screen *together*: the window shows one tab per machine at once, and
-      // ⌘2 onto a tab already showing moves the keyboard while ⌘2 onto another tab of the same
-      // machine swaps what that machine's column shows. Same chord, two acts, and the list
-      // gave no sign of which. A font weight is something you compare; a column of marks is
-      // something you see (kan a_2HtF52Itm).
+      // A mark rather than only the weight above: one row in the list is the tab you are
+      // looking at, and a font weight is something you compare where a mark is something you
+      // see. It answers a narrower question than it used to - the window shows one tab now, so
+      // this is the ordinary current-tab mark rather than the "which of these share the screen"
+      // mark a column-per-machine window needed (kan a_2HtF52Itm).
       //
       // Quiet, and deliberately not the accent colour: this says where you are looking, and the
       // accent highlight on a pane row already says where you are typing.

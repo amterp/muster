@@ -107,30 +107,39 @@ public struct WindowContents: Equatable {
 extension Roster {
   /// The seam's roster, in the shell's own words.
   init(_ changed: Muster_RosterChanged) {
-    let daemons = changed.daemons.map { daemon in
-      Roster.Daemon(
-        id: daemon.daemonID,
-        tabs: daemon.tabs.map { tab in
-          Roster.Tab(
-            key: TabKey(daemon: tab.daemonID, tab: tab.tabID),
-            place: Int(tab.place),
-            number: Int(tab.number),
-            label: tab.label,
-            onScreen: tab.onScreen,
-            givenName: tab.givenName,
-            panes: tab.panes.map { pane in
-              Roster.Pane(
-                key: PaneKey(daemon: pane.daemonID, pane: pane.paneID),
-                place: Int(pane.place),
-                number: Int(pane.number),
-                label: pane.label,
-                subtitle: pane.subtitle,
-                givenName: pane.givenName,
-                onScreen: pane.onScreen)
-            })
-        })
-    }
-    self.init(daemons: daemons, numbering: Roster.Numbering(changed.counting))
+    self.init(
+      tabs: changed.tabs.map(Roster.Tab.init),
+      machines: changed.machines.map { machine in
+        Roster.Machine(id: machine.daemonID, state: machine.state, panes: Int(machine.panes))
+      },
+      numbering: Roster.Numbering(changed.counting))
+  }
+}
+
+extension Roster.Tab {
+  init(_ tab: Muster_RosterTab) {
+    self.init(
+      id: tab.tabID,
+      daemons: tab.daemonIds,
+      place: Int(tab.place),
+      number: Int(tab.number),
+      label: tab.label,
+      onScreen: tab.onScreen,
+      givenName: tab.givenName,
+      panes: tab.panes.map(Roster.Pane.init))
+  }
+}
+
+extension Roster.Pane {
+  init(_ pane: Muster_RosterPane) {
+    self.init(
+      key: PaneKey(daemon: pane.daemonID, pane: pane.paneID),
+      place: Int(pane.place),
+      number: Int(pane.number),
+      label: pane.label,
+      subtitle: pane.subtitle,
+      givenName: pane.givenName,
+      onScreen: pane.onScreen)
   }
 }
 
@@ -161,17 +170,6 @@ public struct PaneKey: Hashable {
   public init(daemon: String, pane: String) {
     self.daemon = daemon
     self.pane = pane
-  }
-}
-
-/// A tab, named on the same terms as a pane and for the same reason.
-public struct TabKey: Hashable {
-  public let daemon: String
-  public let tab: String
-
-  public init(daemon: String, tab: String) {
-    self.daemon = daemon
-    self.tab = tab
   }
 }
 

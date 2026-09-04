@@ -294,10 +294,10 @@ public enum Core {
   /// Calls a tab what somebody wants to call it.
   ///
   /// An empty tab id means the tab the keyboard's pane is in, which is what a menu item means -
-  /// there is no other way for one to point at a tab.
-  public static func renameTab(name: String, daemonID: String = "", tabID: String = "") {
+  /// there is no other way for one to point at a tab. No machine goes with it: a Muster tab may
+  /// hold panes on two, and the core renames every half of one.
+  public static func renameTab(name: String, tabID: String = "") {
     var rename = Muster_RenameTab()
-    rename.daemonID = daemonID
     rename.tabID = tabID
     rename.name = name
     var request = Muster_Request()
@@ -761,10 +761,10 @@ public enum Core {
   /// Brings a named tab on screen, which is what clicking its caption means.
   ///
   /// Named rather than numbered: a click knows which tab it hit, and the numbers name panes.
-  public static func focus(tab: TabKey) {
+  /// No machine goes with it - a Muster tab may hold panes on two, so it belongs to neither.
+  public static func focus(tab: String) {
     var focus = Muster_FocusTab()
-    focus.daemonID = tab.daemon
-    focus.tabID = tab.tab
+    focus.tabID = tab
     var request = Muster_Request()
     request.focusTab = focus
     send(request)

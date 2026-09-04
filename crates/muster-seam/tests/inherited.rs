@@ -231,7 +231,7 @@ fn latest_roster() -> Option<RosterChanged> {
 
 /// Every pane the roster lists, flattened out of the daemon-tab-pane nesting.
 fn roster_panes(roster: &RosterChanged) -> impl Iterator<Item = &muster::proto::RosterPane> {
-    roster.daemons.iter().flat_map(|daemon| daemon.tabs.iter()).flat_map(|tab| tab.panes.iter())
+    roster.tabs.iter().flat_map(|tab| tab.panes.iter())
 }
 
 fn answer(payload: request::Payload) -> Response {

@@ -443,8 +443,7 @@ const INNER_SECOND: &str = "inner-second";
 fn numbered_tabs() -> Vec<u32> {
     roster()
         .into_iter()
-        .flat_map(|roster| roster.daemons)
-        .flat_map(|daemon| daemon.tabs)
+        .flat_map(|roster| roster.tabs)
         .filter_map(|tab| (tab.number > 0).then_some(tab.number))
         .collect()
 }
@@ -453,8 +452,7 @@ fn numbered_tabs() -> Vec<u32> {
 fn numbered_panes() -> Vec<u32> {
     roster()
         .into_iter()
-        .flat_map(|roster| roster.daemons)
-        .flat_map(|daemon| daemon.tabs)
+        .flat_map(|roster| roster.tabs)
         .flat_map(|tab| tab.panes)
         .filter_map(|pane| (pane.number > 0).then_some(pane.number))
         .collect()
@@ -519,9 +517,8 @@ fn places(roster: &RosterChanged) -> Vec<(u32, String)> {
 /// Every listed pane, as its place, the name somebody gave it, and the name Muster minted.
 fn rows(roster: &RosterChanged) -> Vec<(u32, String, String)> {
     roster
-        .daemons
+        .tabs
         .iter()
-        .flat_map(|daemon| daemon.tabs.iter())
         .flat_map(|tab| tab.panes.iter())
         .map(|pane| (pane.place, pane.given_name.clone(), pane.pane_id.clone()))
         .collect()

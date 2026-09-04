@@ -233,8 +233,7 @@ fn given_names(window: &Window) -> Vec<String> {
     window
         .roster
         .iter()
-        .flat_map(|roster| roster.daemons.iter())
-        .flat_map(|daemon| daemon.tabs.iter())
+        .flat_map(|roster| roster.tabs.iter())
         .flat_map(|tab| tab.panes.iter())
         .map(|pane| pane.given_name.clone())
         .collect()
@@ -245,8 +244,7 @@ fn named_panes(window: &Window) -> Vec<String> {
     window
         .roster
         .iter()
-        .flat_map(|roster| roster.daemons.iter())
-        .flat_map(|daemon| daemon.tabs.iter())
+        .flat_map(|roster| roster.tabs.iter())
         .flat_map(|tab| tab.panes.iter())
         .map(|pane| pane.pane_id.clone())
         .collect()

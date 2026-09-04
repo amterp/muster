@@ -6,7 +6,7 @@ mod support;
 use std::collections::{BTreeMap, BTreeSet};
 
 use conformance::{CaseError, Conformance, fields};
-use muster_core::composition::{Composition, Daemon, DaemonId, Endpoint, PaneKey, TabKey};
+use muster_core::composition::{Composition, Daemon, DaemonId, Endpoint, PaneKey};
 use muster_core::input::NumberedChords;
 use muster_core::mirror::Mirror;
 use muster_core::mirror::backend::{PaneId, TabId};
@@ -22,10 +22,12 @@ fn roster_conformance() {
         // Each daemon's world, or none for one attached whose subscription has not
         // bootstrapped - which is a state a window really passes through.
         let mut worlds: BTreeMap<DaemonId, Mirror> = BTreeMap::new();
+        let mut attached: Vec<DaemonId> = Vec::new();
         let mut composition = Composition::new();
 
         for described in given.get("daemons").and_then(Value::as_array).into_iter().flatten() {
             let id = DaemonId::new(text(described, "id"));
+            attached.push(id.clone());
             composition.attach_daemon(Daemon {
                 id: id.clone(),
                 endpoint: Endpoint::Local { socket_path: None },
@@ -40,11 +42,25 @@ fn roster_conformance() {
             worlds.insert(id, mirror);
         }
 
+        // The window's tabs come from what its daemons hold, in the order the case attaches
+        // them - which is what a launch with nothing saved produces.
+        for id in &attached {
+            if let Some(mirror) = worlds.get(id) {
+                composition.reconcile(id, mirror);
+            }
+        }
+        // `regions` then says which machines share a tab, which is the one thing a reconcile
+        // cannot produce on its own: grouping is Muster's, and no daemon knows the other exists.
         for region in given.get("regions").and_then(Value::as_array).into_iter().flatten() {
             composition.open_region(
                 &DaemonId::new(text(region, "daemon")),
                 TabId::new(text(region, "tab")),
             );
+        }
+        // Which tab is on screen, when a case cares. Without one the window shows the first it
+        // holds, which is what a launch onto a machine already holding tabs does.
+        if let Some(tab) = given.get("showingTab").and_then(Value::as_str) {
+            composition.show(&TabId::new(tab));
         }
 
         let showing = read_showing(given)?;
@@ -53,7 +69,7 @@ fn roster_conformance() {
             (
                 "stepped",
                 read_step(given)?.map(|(from, direction)| {
-                    json!(roster.step(from.as_ref(), direction).map(|tab| tab.key.to_string()))
+                    json!(roster.step(from.as_ref(), direction).map(|tab| tab.id.to_string()))
                 }),
             ),
             (
@@ -66,6 +82,23 @@ fn roster_conformance() {
             ),
             ("pressed", read_presses(given, &roster)?),
             ("tabs", Some(json!(roster.tabs().map(describe_tab).collect::<Vec<String>>()))),
+            // The machines, which the tabs no longer group by. Only the ones with something to
+            // say: a machine that is connected and holding panes says it through its panes.
+            (
+                "machines",
+                Some(json!(
+                    roster
+                        .machines
+                        .iter()
+                        .map(|machine| format!(
+                            "{} {} {} panes",
+                            machine.id,
+                            machine.health.as_str(),
+                            machine.panes
+                        ))
+                        .collect::<Vec<String>>()
+                )),
+            ),
             (
                 "panes",
                 Some(json!(
@@ -110,9 +143,11 @@ fn every_numbering_scheme_is_pressed_in_the_corpus() {
 /// about, and a list of readable lines shows a wrong order at a glance where a list of objects
 /// hides it.
 fn describe_tab(tab: &RosterTab) -> String {
+    let daemons: Vec<String> = tab.daemons.iter().map(ToString::to_string).collect();
     format!(
-        "{} place={} label={:?}{} {}",
-        tab.key,
+        "{} on={} place={} label={:?}{} {}",
+        tab.id,
+        daemons.join("+"),
         tab.place,
         tab.label,
         described("given-name", tab.given_name.as_deref()),
@@ -138,7 +173,7 @@ fn describe_pane(tab: &RosterTab, pane: &RosterPane) -> String {
         "{} place={} tab={} label={:?}{}{} {}",
         pane.key,
         pane.place,
-        tab.key.tab,
+        tab.id,
         pane.label,
         described("subtitle", pane.subtitle.as_deref()),
         described("given-name", pane.given_name.as_deref()),
@@ -185,12 +220,12 @@ fn describe_press(place: usize, numbering: &Numbering, landing: Option<&Landing<
     let counting = match numbering {
         Numbering::Panes => "panes".to_string(),
         Numbering::Tabs => "tabs".to_string(),
-        Numbering::PanesIn(key) => format!("panes in {key}"),
+        Numbering::PanesIn(tab) => format!("panes in {tab}"),
     };
     match landing {
         Some(Landing::Pane(pane)) => format!("⌘{place} of {counting} → pane {}", pane.key),
         Some(Landing::Tab(tab, pane)) => {
-            format!("⌘{place} of {counting} → tab {} landing on {}", tab.key, pane.key)
+            format!("⌘{place} of {counting} → tab {} landing on {}", tab.id, pane.key)
         }
         None => format!("⌘{place} of {counting} → nothing"),
     }
@@ -201,24 +236,14 @@ fn describe_press(place: usize, numbering: &Numbering, landing: Option<&Landing<
 /// `from` is named outright rather than taken from whichever region has focus, so that a case
 /// can start from a tab nothing is showing - which is the interesting half, since the whole
 /// point of stepping tabs is reaching the ones no region has.
-fn read_step(given: &Value) -> Result<Option<(Option<TabKey>, TabStep)>, CaseError> {
+fn read_step(given: &Value) -> Result<Option<(Option<TabId>, TabStep)>, CaseError> {
     let Some(step) = given.get("step") else { return Ok(None) };
     let named = text(step, "direction");
     let direction = TabStep::parse(&named).ok_or_else(|| {
         CaseError::new(format!("`{named}` is not a tab step - write `next` or `previous`"))
     })?;
-    let from = match step.get("from").and_then(Value::as_str) {
-        Some(text) => Some(read_tab(text)?),
-        None => None,
-    };
+    let from = step.get("from").and_then(Value::as_str).map(TabId::new);
     Ok(Some((from, direction)))
-}
-
-fn read_tab(text: &str) -> Result<TabKey, CaseError> {
-    let (daemon, tab) = text.split_once('/').ok_or_else(|| {
-        CaseError::new(format!("`{text}` names no daemon - write a tab `local/w1:t1`"))
-    })?;
-    Ok(TabKey { daemon: DaemonId::new(daemon), tab: TabId::new(tab) })
 }
 
 fn read_showing(given: &Value) -> Result<BTreeSet<PaneKey>, CaseError> {

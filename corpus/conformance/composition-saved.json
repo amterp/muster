@@ -2,94 +2,205 @@
   "concept": "muster.composition.restorable",
   "source": "authored",
   "citation": "docs/architecture.md, durability: what can be written down is written down, and a live process cannot be. The rule that a saved region is a wish checked against the daemon follows from the same section - a daemon restart returns the pane tree and each pane's directory but not the processes, so a tab named here may or may not still exist.",
-  "why": "Reopening is where a saved arrangement meets a session that moved on while the app was closed. Every region here is intent - the tab somebody chose, the width they dragged it to - and none of it is a claim that any of it still exists. So the decision worth pinning is which regions survive the check and where the keyboard lands, because both failure modes are silent: a region kept for a tab nobody holds renders as an empty square that never fills in, and a window that opens with focus nowhere ignores the first thing typed into it. The order is part of the answer too - regions are a list, and the list is the arrangement.",
+  "why": "Reopening is where a saved arrangement meets a session that moved on while the app was closed. Everything in it is intent - the tabs somebody had, which was on screen, how wide each machine's half of one was - and none of it is a claim that any of it still exists. So the decision worth pinning is which of it survives the check and which tab the window opens onto, because both failure modes are silent: a tab kept for a session nobody holds renders a caption that goes nowhere, and a window that opens showing nothing ignores the keyboard without saying why.",
   "cases": [
     {
       "name": "everything is still there",
       "why": "The ordinary reopen, and the one that has to keep order and widths exactly: a window that comes back with its regions shuffled or evened out is one somebody has to rearrange every morning.",
       "given": {
         "regions": [
-          { "daemon": "local", "tab": "w1:t1", "weight": 2.0 },
-          { "daemon": "devenv", "tab": "w1:t3", "weight": 1.0 }
+          {
+            "tab": "w1:t1",
+            "daemon": "local",
+            "weight": 2.0
+          },
+          {
+            "tab": "w1:t3",
+            "daemon": "devenv",
+            "weight": 1.0,
+            "keyboard": true
+          }
         ],
-        "focused": 1,
-        "held": ["local/w1:t1", "devenv/w1:t3"]
+        "showing": "w1:t3",
+        "held": [
+          "local/w1:t1",
+          "devenv/w1:t3"
+        ]
       },
-      "expect": { "regions": ["local/w1:t1@2", "devenv/w1:t3@1"], "focused": 1 }
+      "expect": {
+        "showing": "w1:t3",
+        "tabs": [
+          "w1:t1 local@2",
+          "w1:t3 devenv@1*"
+        ]
+      }
     },
     {
-      "name": "a tab that is gone takes its region with it",
-      "why": "The commonest way a saved arrangement is wrong: somebody closed that tab from another client, or its daemon came back from a reboot without it. Keeping the region would render a square that never fills in, which is indistinguishable from a daemon that has not finished describing itself.",
+      "name": "a tab that is gone leaves the window",
+      "why": "A tab nobody holds any more renders as a caption that goes nowhere and a square that never fills in. The check is against what each daemon turns out to hold, because a saved tab is a wish and the session moved on while the app was closed.",
       "given": {
         "regions": [
-          { "daemon": "local", "tab": "w1:t1", "weight": 1.0 },
-          { "daemon": "local", "tab": "w1:t2", "weight": 1.0 }
+          {
+            "tab": "w1:t1",
+            "daemon": "local",
+            "weight": 1.0,
+            "keyboard": true
+          },
+          {
+            "tab": "w1:t2",
+            "daemon": "local",
+            "weight": 1.0
+          }
         ],
-        "focused": 0,
-        "held": ["local/w1:t1"]
+        "showing": "w1:t1",
+        "held": [
+          "local/w1:t1"
+        ]
       },
-      "expect": { "regions": ["local/w1:t1@1"], "focused": 0 }
+      "expect": {
+        "showing": "w1:t1",
+        "tabs": [
+          "w1:t1 local@1*"
+        ]
+      }
     },
     {
-      "name": "focus follows the region that had it",
-      "why": "Dropping a region ahead of the focused one shifts every place after it. Recorded as a place in the list rather than a name because ids do not survive the process, which is exactly what makes this shift possible to get wrong.",
+      "name": "the window comes back on the tab it was showing",
+      "why": "The arrangement records which tab was on screen, and it survives the tabs around it disappearing. This is the thing a person notices: coming back to the work they left rather than to whatever happens to be first.",
       "given": {
         "regions": [
-          { "daemon": "local", "tab": "w1:t1", "weight": 1.0 },
-          { "daemon": "local", "tab": "w1:t2", "weight": 1.0 },
-          { "daemon": "local", "tab": "w1:t3", "weight": 1.0 }
+          {
+            "tab": "w1:t1",
+            "daemon": "local",
+            "weight": 1.0
+          },
+          {
+            "tab": "w1:t2",
+            "daemon": "local",
+            "weight": 1.0
+          },
+          {
+            "tab": "w1:t3",
+            "daemon": "local",
+            "weight": 1.0
+          }
         ],
-        "focused": 2,
-        "held": ["local/w1:t2", "local/w1:t3"]
+        "showing": "w1:t3",
+        "held": [
+          "local/w1:t2",
+          "local/w1:t3"
+        ]
       },
-      "expect": { "regions": ["local/w1:t2@1", "local/w1:t3@1"], "focused": 1 }
+      "expect": {
+        "showing": "w1:t3",
+        "tabs": [
+          "w1:t2 local@1",
+          "w1:t3 local@1"
+        ]
+      }
     },
     {
-      "name": "the focused region is the one that went",
-      "why": "Focus has to land somewhere. A window that opens with the keyboard nowhere looks identical to one that opened correctly, right up until the first keystroke goes nowhere.",
+      "name": "the tab that was on screen is the one that went",
+      "why": "The window has to open onto something. The first survivor rather than nothing at all - a window with tabs in it and none on screen ignores the keyboard and cannot say why.",
       "given": {
         "regions": [
-          { "daemon": "local", "tab": "w1:t1", "weight": 1.0 },
-          { "daemon": "local", "tab": "w1:t2", "weight": 1.0 }
+          {
+            "tab": "w1:t1",
+            "daemon": "local",
+            "weight": 1.0
+          },
+          {
+            "tab": "w1:t2",
+            "daemon": "local",
+            "weight": 1.0
+          }
         ],
-        "focused": 1,
-        "held": ["local/w1:t1"]
+        "showing": "w1:t2",
+        "held": [
+          "local/w1:t1"
+        ]
       },
-      "expect": { "regions": ["local/w1:t1@1"], "focused": 0 }
+      "expect": {
+        "showing": "w1:t1",
+        "tabs": [
+          "w1:t1 local@1"
+        ]
+      }
     },
     {
-      "name": "a daemon that is not there takes all of its regions",
-      "why": "The devenv case: a laptop opened away from the network has no ssh daemon to attach, and every region showing it is a region with nothing behind it. The local ones are unaffected, which is the property that makes one unreachable machine cost one machine.",
+      "name": "a machine that is not there takes its half of every tab",
+      "why": "A tab spanning two machines opens on the half it can reach rather than refusing, which is the rule the mirror already follows for a stale daemon applied to a tab (MIP-2, durability). The regions that go are that machine's; the tab stays if anything is left of it, and goes when nothing is.",
       "given": {
         "regions": [
-          { "daemon": "devenv", "tab": "w1:t1", "weight": 1.0 },
-          { "daemon": "local", "tab": "w1:t1", "weight": 3.0 },
-          { "daemon": "devenv", "tab": "w1:t2", "weight": 1.0 }
+          {
+            "tab": "w1:t1",
+            "daemon": "devenv",
+            "weight": 1.0,
+            "keyboard": true
+          },
+          {
+            "tab": "w1:t1",
+            "daemon": "local",
+            "weight": 3.0
+          },
+          {
+            "tab": "w1:t2",
+            "daemon": "devenv",
+            "weight": 1.0
+          }
         ],
-        "focused": 0,
-        "held": ["local/w1:t1"]
+        "showing": "w1:t1",
+        "held": [
+          "local/w1:t1"
+        ]
       },
-      "expect": { "regions": ["local/w1:t1@3"], "focused": 0 }
+      "expect": {
+        "showing": "w1:t1",
+        "tabs": [
+          "w1:t1 local@3"
+        ]
+      }
     },
     {
       "name": "nothing survives, and the window opens as a first launch does",
       "why": "The state a laptop is in after a reboot took every daemon with it. Answering with no focus rather than a made-up one is what lets the caller tell this apart from a restore that worked, and open the way it would with no saved file at all.",
       "given": {
-        "regions": [{ "daemon": "local", "tab": "w1:t1", "weight": 1.0 }],
-        "focused": 0,
+        "regions": [
+          {
+            "tab": "w1:t1",
+            "daemon": "local",
+            "weight": 1.0
+          }
+        ],
+        "showing": "w1:t1",
         "held": []
       },
-      "expect": { "regions": [], "focused": null }
+      "expect": {
+        "showing": null,
+        "tabs": []
+      }
     },
     {
       "name": "a saved arrangement that never had focus",
       "why": "Reachable from a file written before anything took the keyboard. The first surviving region gets it, on the same reasoning as a focused region that went: somewhere beats nowhere.",
       "given": {
-        "regions": [{ "daemon": "local", "tab": "w1:t1", "weight": 1.0 }],
-        "focused": null,
-        "held": ["local/w1:t1"]
+        "regions": [
+          {
+            "tab": "w1:t1",
+            "daemon": "local",
+            "weight": 1.0
+          }
+        ],
+        "held": [
+          "local/w1:t1"
+        ]
       },
-      "expect": { "regions": ["local/w1:t1@1"], "focused": 0 }
+      "expect": {
+        "showing": "w1:t1",
+        "tabs": [
+          "w1:t1 local@1"
+        ]
+      }
     }
   ]
 }
