@@ -1,4 +1,5 @@
 import AppKit
+import MusterRenderer
 import Testing
 
 @testable import MusterMac
@@ -28,6 +29,9 @@ final class RecordingSurface: PaneSurface {
   var highlighted: [String?] = []
   /// What this surface will not do, for the tests about a renderer that refuses.
   var refuses: [String] = []
+  /// Every selection it was asked to draw, `nil` for a clear, so a test can tell one from
+  /// none. Points rather than cells, because that is what the seam carries.
+  var selections: [SurfaceSelection?] = []
 
   init(selection: String? = nil) { selectedText = selection }
 
@@ -43,6 +47,10 @@ final class RecordingSurface: PaneSurface {
   }
   func mouseMoved(to point: NSPoint, modifiers: NSEvent.ModifierFlags) { positions.append(point) }
   func leftMouse(pressed: Bool, modifiers: NSEvent.ModifierFlags) { buttons.append(pressed) }
+  func select(_ selection: SurfaceSelection?) {
+    selections.append(selection)
+    selectedText = selection == nil ? nil : selectedText
+  }
 }
 
 /// Answers every request with `ok` and keeps what it was asked.

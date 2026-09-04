@@ -54,6 +54,19 @@ public protocol PaneSurface: AnyObject {
 
   func leftMouse(pressed: Bool, modifiers: NSEvent.ModifierFlags)
 
+  /// Selects the cells between two points, or clears the selection for nil.
+  ///
+  /// The renderer's whole part in keeping a selection on its own text. A pane is scrolled by
+  /// the daemon, which repaints the screen in place, so the surface's own buffer never moves
+  /// and a selection stays on the screen rows it was made on while the text under it changes
+  /// (`observations/libghostty-9f9b8d1d.md` section 12). Muster remembers where the selection
+  /// is in the pane and asks for it again wherever it has landed.
+  ///
+  /// Points measured from this surface's top left, on the same terms as `mouseMoved`, and a
+  /// point outside the surface is asked for on purpose - it is how an end scrolled off the
+  /// screen is placed against the edge it went past. A renderer clamps it to its own grid.
+  func select(_ selection: SurfaceSelection?)
+
   /// What is selected in this pane, or nil when nothing is.
   var selectedText: String? { get }
 

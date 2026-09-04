@@ -373,12 +373,14 @@ public final class Surface {
     return (size.cell_width_px, size.cell_height_px)
   }
 
-  // Selection, which is the surface's own business and nobody else's.
+  // Selection, which libghostty makes and paints from the grid it has already drawn.
   //
-  // Unlike a keystroke, a drag over a pane never reaches the daemon: the selection is made
-  // against the grid libghostty has already painted here, so no mode has to be guessed and no
-  // daemon has to agree. That is what makes copy possible while reporting mouse buttons to
-  // the program in the pane is still blocked (kan a_27CTgqqdv).
+  // Unlike a keystroke, a drag over a pane needs no mode guessed and no daemon's agreement -
+  // which is what makes copy possible while reporting mouse buttons to the program in the pane
+  // is still blocked (kan a_27CTgqqdv). What the host does own is *where* the selection is:
+  // a pane is scrolled by its daemon, which repaints this screen in place, so the buffer these
+  // are pinned to never moves and the host asks for the selection again wherever the text
+  // went (`observations/libghostty-9f9b8d1d.md` section 12).
 
   /// Reports where the pointer is, measured from this surface's top left.
   ///
@@ -400,6 +402,41 @@ public final class Surface {
       ghosttyModifiers(modifiers))
   }
 
+  /// Selects the cells between two points, or clears the selection for nil.
+  ///
+  /// Driven as a drag because that is the only lever libghostty gives an embedder: it exports
+  /// no way to set or clear a selection, `Surface.setSelection` is private, and no binding
+  /// action says "none" (`observations/libghostty-9f9b8d1d.md` section 12). A press, a move
+  /// and a release is what a person's own drag does, so the selection this produces is the
+  /// same object their drag produced.
+  ///
+  /// **Clearing is a click**, because a left press whose click count is one and which selects
+  /// nothing is what clears a selection in libghostty's own handling. Skipped when nothing is
+  /// selected, which also keeps two clicks from ever landing back to back at one point - two
+  /// within the repeat interval and within a cell's width of each other would be a double
+  /// click, and would select the word there rather than nothing.
+  ///
+  /// A point outside the surface is deliberate rather than a caller's mistake: libghostty
+  /// clamps a position to its grid, so an end scrolled off the top is asked for above the top
+  /// and lands on the first cell of the first row - which is where a selection continuing from
+  /// further up should start.
+  ///
+  /// Points measured from the top left, on the same terms as `mouseMoved`: whoever owns the
+  /// view owns the conversion, because that is where AppKit's flipped coordinates are.
+  public func select(_ selection: SurfaceSelection?) {
+    guard let selection else {
+      guard ghostty_surface_has_selection(surface) else { return }
+      mouseMoved(to: .zero, modifiers: [])
+      leftMouse(pressed: true, modifiers: [])
+      leftMouse(pressed: false, modifiers: [])
+      return
+    }
+    mouseMoved(to: selection.from, modifiers: [])
+    leftMouse(pressed: true, modifiers: [])
+    mouseMoved(to: selection.to, modifiers: [])
+    leftMouse(pressed: false, modifiers: [])
+  }
+
   /// What is selected in this pane, or nil when nothing is.
   ///
   /// Copied out rather than handed back as a pointer: libghostty owns the buffer and wants it
@@ -412,6 +449,21 @@ public final class Surface {
     guard let bytes = text.text, text.text_len > 0 else { return nil }
     return String(
       decoding: UnsafeRawBufferPointer(start: bytes, count: Int(text.text_len)), as: UTF8.self)
+  }
+}
+
+/// A selection, as the drag that would have made it.
+///
+/// Two points rather than two cells, because a cell is a fact about a grid whose size only the
+/// renderer knows and a point is what the surface API takes. Either point may be outside the
+/// surface, which libghostty clamps to its grid - see `Surface.select`.
+public struct SurfaceSelection: Equatable, Sendable {
+  public let from: CGPoint
+  public let to: CGPoint
+
+  public init(from: CGPoint, to: CGPoint) {
+    self.from = from
+    self.to = to
   }
 }
 

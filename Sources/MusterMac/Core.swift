@@ -632,6 +632,40 @@ public enum Core {
       total: 0, selected: 0, rowsSearched: 0, reach: .whole)
   }
 
+  /// Where a pane is looking, and how much history it holds.
+  ///
+  /// The one fact a selection cannot survive a scroll without. A pane is scrolled by the
+  /// daemon, which repaints the screen in place rather than moving anything, so the surface
+  /// drawing it has no idea it travelled - and a highlight made at screen row 4 stays at
+  /// screen row 4 while the text under it changes.
+  ///
+  /// Named rather than left empty, because a wheel scrolls whatever the pointer is over and
+  /// that is often not the pane with the keyboard.
+  public struct Viewport: Equatable, Sendable {
+    /// How far above the bottom of the pane's history its lowest visible row sits.
+    public let rowsFromBottom: UInt32
+    /// How many rows the daemon is drawing, which is its answer rather than the grid the
+    /// shell laid out - the two differ for a frame while a resize settles.
+    public let rows: UInt32
+    /// The furthest up this pane can go.
+    public let deepest: UInt32
+  }
+
+  public static func viewport(daemonID: String = "", paneID: String) -> Viewport? {
+    var asked = Muster_ReadViewport()
+    asked.daemonID = daemonID
+    asked.paneID = paneID
+    var request = Muster_Request()
+    request.readViewport = asked
+    guard case .paneViewport(let answer) = send(request) else { return nil }
+    return read(answer)
+  }
+
+  static func read(_ answer: Muster_PaneViewport) -> Viewport {
+    Viewport(
+      rowsFromBottom: answer.rowsFromBottom, rows: answer.rows, deepest: answer.deepest)
+  }
+
   /// Looks for text in the pane the keyboard is on, and lands on the first match.
   ///
   /// Sent per keystroke: the needle is the whole question every time, never something added
@@ -932,6 +966,7 @@ public enum Core {
     case .readAppearance: return "read_appearance"
     case .readWindow: return "read_window"
     case .readPane: return "read_pane"
+    case .readViewport: return "read_viewport"
     case .readWindowFrame: return "read_window_frame"
     case .setWindowFrame: return "set_window_frame"
     case .reportFontFamily: return "report_font_family"
