@@ -87,6 +87,14 @@ fn handle(request: Request) -> Response {
         session::disarm();
     }
 
+    route(payload)
+}
+
+/// Every request the core answers, one arm each.
+///
+/// Split from [`handle`] so that the rule above it - which applies to every request alike -
+/// is not read as part of a table where each line is about one request only.
+fn route(payload: request::Payload) -> Response {
     match payload {
         request::Payload::Startup(startup) => start(&startup),
         request::Payload::LogRecord(record) => write(record),
