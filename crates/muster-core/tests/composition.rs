@@ -11,8 +11,8 @@ use std::fmt::Write as _;
 
 use conformance::{CaseError, Conformance, fields};
 use muster_core::composition::{
-    Composition, Daemon, DaemonId, Endpoint, FontSizeChange, FontSizes, PaneKey, Region, RegionId,
-    Step, Transport, View, ViewPane,
+    Composition, Daemon, DaemonId, Endpoint, FontSizeChange, FontSizes, MusterTab, PaneKey, Region,
+    RegionId, Step, Transport, View, ViewPane,
 };
 use muster_core::mirror::Mirror;
 use muster_core::mirror::backend::{PaneId, TabId};
@@ -46,6 +46,10 @@ fn composition_conformance() {
         Ok(fields([
             ("daemons", Some(json!(describe_daemons(&composition)))),
             ("regions", Some(json!(describe_regions(&composition)))),
+            // Which of the window's tabs is on screen. Absent when it is showing none, which
+            // is a window whose only tabs are another window's - and a real state, since it
+            // is what a fresh window looks like until its own workspace arrives.
+            ("showingTab", composition.showing().map(|tab| json!(tab.as_str()))),
             (
                 "focusedRegion",
                 composition.focused_region().map(|region| json!(region.id.to_string())),
@@ -120,13 +124,31 @@ fn act(
             composition.open_region(&daemon(step), TabId::new(text(step, "tab")));
         }
         "closeRegion" => composition.close_region(region(step)?),
+        // Which of the window's tabs is on screen, which is what ⌘2, `next_tab` and a click
+        // on a caption all come down to.
+        "showTab" => {
+            composition.show(&TabId::new(text(step, "tab")));
+        }
+        // What a window somebody asked for records about a machine it has just met: these
+        // tabs are another window's, so do not open onto them uninvited.
+        "claim" => {
+            let tabs = step
+                .get("tabs")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .map(TabId::new)
+                .collect();
+            composition.claim(&daemon(step), tabs);
+        }
         // The one drag Muster settles for itself: no daemon knows the other one exists, so
         // nothing upstream can say how a window divides between them.
         "setBoundary" => composition.set_boundary(region(step)?, ratio(step)),
         // What following a notification does before it moves the keyboard: the pane that
         // asked may be in a tab no region is showing, and surfacing it is the core's job.
         "surface" => {
-            composition.surface(&daemon(step), TabId::new(text(step, "tab")));
+            composition.surface(&daemon(step), &TabId::new(text(step, "tab")));
         }
         "focusRegion" => composition.focus_region(region(step)?),
         "focusPane" => composition.focus_pane(region(step)?, PaneId::new(text(step, "pane"))),
@@ -338,18 +360,21 @@ fn describe_daemons(composition: &Composition) -> Vec<String> {
     composition.daemons().map(describe_daemon).collect()
 }
 
-/// Regions render as readable lines rather than as nested objects.
+/// Every region the window holds, across every tab, as readable lines.
 ///
-/// `r0 daemon=local workspace=w1 tab=w1:t1 pane=w1:p2` says it where an object makes the
-/// reader assemble it (docs/testing.md: bytes render readably). A region with no pane omits
-/// the field, because "no pane yet" is a different answer from an empty one and the
-/// rendering should not blur them.
+/// `r0 daemon=local tab=w1:t1 pane=w1:p2` says it where an object makes the reader assemble it
+/// (docs/testing.md: bytes render readably). A region with no pane omits the field, because "no
+/// pane yet" is a different answer from an empty one and the rendering should not blur them.
+///
+/// Every tab's, not only the tab on screen: a tab in the background keeps its arrangement, and a
+/// case that asserted only what is drawn could not say so. Which of them is on screen is
+/// `showingTab`, and what that adds up to is `view`.
 fn describe_regions(composition: &Composition) -> Vec<String> {
     composition
-        .regions()
-        .map(|region: &Region| {
-            let mut described =
-                format!("{} daemon={} tab={}", region.id, region.daemon, region.tab);
+        .tabs()
+        .flat_map(|tab| tab.regions().map(move |region| (tab, region)))
+        .map(|(tab, region): (&MusterTab, &Region)| {
+            let mut described = format!("{} daemon={} tab={}", region.id, region.daemon, tab.id);
             // Only when it has moved, so that the great majority of cases - which are not
             // about widths - stay readable. Rounded, because a share is arrived at by
             // division and a case should not pin the last bit of a float.

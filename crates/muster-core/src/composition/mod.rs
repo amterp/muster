@@ -10,14 +10,15 @@
 //! itself and structurally cannot describe a window spanning a laptop and a devenv, because
 //! neither daemon knows the other exists.
 //!
-//! Regions sit in a list rather than a tree. A region shows one tab, whose pane tree is
-//! daemon truth; Muster owns no outer tree over those, because owning one is what would
-//! make it a multiplexer (a non-goal). Side by side, in this order, is the whole
-//! arrangement.
+//! A window holds an ordered list of Muster tabs and shows one of them (MIP-2). A tab holds a
+//! region per machine that has panes in it, which is one region for every tab until somebody
+//! groups two; a region shows that machine's pane tree, which is daemon truth. Muster owns no
+//! outer tree over those, because owning one is what would make it a multiplexer (a non-goal).
+//! Side by side, in this order, is the whole arrangement.
 //!
-//! One window's worth of regions, because there is one window. A second window wraps the
-//! list and leaves the daemons where they are - which daemons are attached is not a
-//! window's business.
+//! One window's worth of tabs, because there is one window. A second window keeps a list of its
+//! own and leaves the daemons where they are - which daemons are attached is not a window's
+//! business.
 //!
 //! `saved` is what that smallness buys: the records write to a few hundred bytes of TOML and
 //! read back, so a window reopens onto the tabs it was showing, in the order and at the
@@ -36,6 +37,8 @@ pub mod saved;
 pub mod view;
 
 pub use presentation::{FontSizeChange, FontSizes, Frame, Presentation};
-pub use record::{Composition, Daemon, DaemonId, Endpoint, PaneKey, Region, RegionId, TabKey};
-pub use saved::{Restorable, Saved, SavedRegion};
+pub use record::{
+    Composition, Daemon, DaemonId, Endpoint, MusterTab, PaneKey, Region, RegionId, TabKey,
+};
+pub use saved::{Restorable, Saved, SavedRegion, SavedTab};
 pub use view::{Step, Transport, View, ViewNode, ViewPane, ViewRegion};

@@ -312,25 +312,32 @@ fn a_pane_can_be_read_back(pane: &str, environment: &[(&str, String)]) {
     );
 }
 
-/// The columns the window is divided into, which nothing else in the answer implies.
+/// The parts of the tab on screen, which nothing else in the answer implies.
 ///
 /// A person reading the plain output has the window in front of them. A script arranging one has
-/// neither that nor any other way to tell which tabs sit beside each other: `tabs[].on_screen`
-/// says a tab is showing somewhere and not where, and a weight has no other spelling at all.
+/// neither that nor any other way to tell how a tab is divided between the machines holding
+/// panes in it: `tabs[].daemons` says which they are and not how wide each is, and a weight has
+/// no other spelling at all.
 fn the_columns_are_described(environment: &[(&str, String)]) {
     let window = json_from(&run(&["window", "--json"], environment));
     let regions = window["regions"].as_array().cloned().unwrap_or_default();
     assert_eq!(
         regions.len(),
         1,
-        "a window showing one daemon's tab is one column, and this answer describes {}: {window}",
+        "a tab holding panes on one machine is one column, and this answer describes {}: {window}",
         regions.len()
     );
     let region = &regions[0];
+    // Which tab they divide is said once, at the top. A key on every region would be the same
+    // answer repeated, since they all show the tab the window is on.
     assert_eq!(
-        region["tab"], window["tabs"][0]["tab"],
-        "the column says it is showing a tab the answer does not describe, so nothing can join \
+        window["showing"], window["tabs"][0]["tab"],
+        "the window says it is showing a tab the answer does not describe, so nothing can join \
          the two: {window}"
+    );
+    assert_eq!(
+        region["daemon"], window["tabs"][0]["daemons"][0],
+        "the column names a machine the tab does not say it holds panes on: {window}"
     );
     assert_eq!(
         region["keyboard"],

@@ -293,7 +293,7 @@ fn roster_cost() -> Cost {
         for _ in 0..200 {
             let roster =
                 Roster::of(&composition, |named| (named == &daemon).then_some(&mirror), &showing);
-            black_box(roster.daemons.len());
+            black_box(roster.tabs.len());
         }
     })
 }

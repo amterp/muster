@@ -208,70 +208,56 @@ fn named_or_empty(response: &Response) -> &'static str {
 }
 
 fn counted_panes(window: &Window) -> usize {
-    window
-        .roster
-        .iter()
-        .flat_map(|roster| roster.daemons.iter())
-        .map(|daemon| daemon.tabs.iter().map(|tab| tab.panes.len()).sum::<usize>())
-        .sum()
+    tabs(window).map(|tab| tab.panes.len()).sum()
 }
 
 fn counted_tabs(window: &Window) -> usize {
-    window
-        .roster
-        .iter()
-        .flat_map(|roster| roster.daemons.iter())
-        .map(|daemon| daemon.tabs.len())
-        .sum()
+    tabs(window).count()
 }
 
-/// A window as somebody reads it: each daemon, its tabs, and the panes in them.
+/// Every tab the window holds, in the order it walks them.
+fn tabs(window: &Window) -> impl Iterator<Item = &muster_proto::RosterTab> {
+    window.roster.iter().flat_map(|roster| roster.tabs.iter())
+}
+
+/// A window as somebody reads it: its tabs, the panes in them, then the machines behind them.
+///
+/// Tabs first because that is the window: it holds an ordered list of them and shows one, so a
+/// person reading this is reading the thing they navigate. The machines follow rather than
+/// heading the list, because a tab may hold panes on two of them and grouping by machine would
+/// describe a window that no longer exists (MIP-2).
+///
+/// Which machine holds a pane is on the pane's own row, and only while more than one is
+/// attached. On one machine the answer is on every row and says nothing.
 fn window_text(window: &Window) -> String {
     let keyboard = keyboard_pane(window);
     let states = states(window);
     let widths = Widths::across(window, &states);
-
-    let mut machines: BTreeMap<&str, &muster_proto::Machine> = BTreeMap::new();
-    for daemon in &window.daemons {
-        machines.insert(&daemon.daemon_id, daemon);
-    }
+    let machines: Vec<&muster_proto::Machine> = window.daemons.iter().collect();
+    let say_machine = machines.len() > 1;
 
     let mut lines: Vec<String> = Vec::new();
-    let roster = window.roster.iter().flat_map(|roster| roster.daemons.iter());
-    for daemon in roster {
-        if !lines.is_empty() {
-            lines.push(String::new());
-        }
-        match machines.remove(daemon.daemon_id.as_str()) {
-            Some(machine) => lines.extend(daemon_lines(machine)),
-            None => lines.push(daemon_line(&daemon.daemon_id, "unknown", "")),
-        }
-
-        if daemon.tabs.is_empty() {
-            lines.push(styled("  no tabs, so this daemon is holding nothing", QUIET));
-        }
-        for tab in &daemon.tabs {
-            lines.push(tab_line(&widths, tab));
-            for pane in &tab.panes {
-                lines.push(pane_line(
-                    &widths,
-                    pane,
-                    states.get(pane.pane_id.as_str()).copied().unwrap_or("unknown"),
-                    keyboard.as_deref() == Some(pane.pane_id.as_str()),
-                ));
-            }
+    for tab in tabs(window) {
+        lines.push(tab_line(&widths, tab));
+        for pane in &tab.panes {
+            lines.push(pane_line(
+                &widths,
+                pane,
+                states.get(pane.pane_id.as_str()).copied().unwrap_or("unknown"),
+                keyboard.as_deref() == Some(pane.pane_id.as_str()),
+                say_machine,
+            ));
         }
     }
 
-    // A daemon Muster is following that the roster does not mention. Reported rather than dropped:
-    // a window with a daemon it cannot describe is worth seeing, and a caller told nothing would
-    // read it as a window with one fewer machine in it.
-    for machine in machines.into_values() {
+    // The machines, whether or not they are holding anything. A machine holding nothing is the
+    // one worth seeing here: nothing above mentions it, and it is still attached and still
+    // somewhere a pane can be made (`muster pane new --daemon <id>`).
+    for machine in machines {
         if !lines.is_empty() {
             lines.push(String::new());
         }
         lines.extend(daemon_lines(machine));
-        lines.push(styled("  nothing described yet", QUIET));
     }
 
     if lines.is_empty() {
@@ -324,7 +310,7 @@ fn daemon_line(daemon: &str, state: &str, detail: &str) -> String {
 /// and not act on is what this said before tabs were named.
 fn tab_line(widths: &Widths, tab: &muster_proto::RosterTab) -> String {
     let mut line = format!(
-        "  {} {}  {}",
+        "{} {}  {}",
         styled("tab", QUIET),
         tab.place,
         pad(&tab.tab_id, widths.name, PLAIN, Align::Left),
@@ -351,6 +337,7 @@ fn pane_line(
     pane: &muster_proto::RosterPane,
     state: &str,
     has_keyboard: bool,
+    say_machine: bool,
 ) -> String {
     let mut line = format!(
         "  {}{}  {}  {}  {}",
@@ -365,6 +352,12 @@ fn pane_line(
     }
     if !pane.on_screen {
         line.push_str(&styled("  (hidden)", QUIET));
+    }
+    // Last on the row and only with more than one machine attached, because a tab may span two
+    // and the pane is the only thing that can say which. On one machine it is on every row and
+    // says nothing.
+    if say_machine {
+        line.push_str(&styled(&format!("  ({})", pane.daemon_id), QUIET));
     }
     line
 }
@@ -445,12 +438,7 @@ struct Widths {
 impl Widths {
     fn across(window: &Window, states: &BTreeMap<&str, &str>) -> Widths {
         let mut widths = Widths { place: 1, name: 0, state: 0 };
-        let tabs = window
-            .roster
-            .iter()
-            .flat_map(|roster| roster.daemons.iter())
-            .flat_map(|daemon| daemon.tabs.iter());
-        for tab in tabs {
+        for tab in tabs(window) {
             widths.name = widths.name.max(tab.tab_id.width());
             for pane in &tab.panes {
                 widths.place = widths.place.max(pane.place.to_string().width());
@@ -471,33 +459,34 @@ fn window_json(window: &Window) -> Value {
     let keyboard = keyboard_pane(window);
     let states = states(window);
 
-    let mut tabs = Vec::new();
+    let mut tabs_out = Vec::new();
     let mut panes = Vec::new();
-    let roster = window.roster.iter().flat_map(|roster| roster.daemons.iter());
-    for daemon in roster {
-        for tab in &daemon.tabs {
-            tabs.push(json!({
+    for tab in tabs(window) {
+        tabs_out.push(json!({
+            "tab": tab.tab_id,
+            // The machines this tab holds panes on, in the order their regions sit on screen.
+            // Plural because a tab may span two, which is the whole of what changed here: a
+            // script that read `daemon` off a tab was reading a question the tab no longer
+            // answers on its own.
+            "daemons": tab.daemon_ids,
+            "place": tab.place,
+            "label": tab.label,
+            "given_name": tab.given_name,
+            "on_screen": tab.on_screen,
+        }));
+        for pane in &tab.panes {
+            panes.push(json!({
+                "pane": pane.pane_id,
+                "place": pane.place,
+                "daemon": pane.daemon_id,
                 "tab": tab.tab_id,
-                "daemon": daemon.daemon_id,
-                "place": tab.place,
-                "label": tab.label,
-                "given_name": tab.given_name,
-                "on_screen": tab.on_screen,
+                "label": pane.label,
+                "given_name": pane.given_name,
+                "subtitle": pane.subtitle,
+                "state": states.get(pane.pane_id.as_str()).copied().unwrap_or("unknown"),
+                "on_screen": pane.on_screen,
+                "keyboard": keyboard.as_deref() == Some(pane.pane_id.as_str()),
             }));
-            for pane in &tab.panes {
-                panes.push(json!({
-                    "pane": pane.pane_id,
-                    "place": pane.place,
-                    "daemon": daemon.daemon_id,
-                    "tab": tab.tab_id,
-                    "label": pane.label,
-                    "given_name": pane.given_name,
-                    "subtitle": pane.subtitle,
-                    "state": states.get(pane.pane_id.as_str()).copied().unwrap_or("unknown"),
-                    "on_screen": pane.on_screen,
-                    "keyboard": keyboard.as_deref() == Some(pane.pane_id.as_str()),
-                }));
-            }
         }
     }
 
@@ -525,18 +514,30 @@ fn window_json(window: &Window) -> Value {
     json!({
         "daemons": daemons,
         "keyboard": keyboard,
+        // Which tab the window is on, named once rather than repeated on every region below.
+        // `tabs[].on_screen` says the same thing and needs a scan to find it.
+        "showing": showing(window),
         "regions": regions(window),
-        "tabs": tabs,
+        "tabs": tabs_out,
         "panes": panes,
     })
 }
 
-/// The columns the window is divided into, left to right.
+/// Which tab the window is showing, or null when it is showing none.
+fn showing(window: &Window) -> Option<&str> {
+    let tab = window.view.as_ref()?.tab_id.as_str();
+    (!tab.is_empty()).then_some(tab)
+}
+
+/// The parts of the tab on screen, left to right, one per machine holding panes in it.
 ///
-/// JSON only. A person reads `on_screen` on a tab and has the window in front of them; a script
-/// arranging one has neither, and `tabs[].on_screen` cannot say which tabs sit beside each other
-/// or how wide each column is. This is the only part of the arrangement Muster owns outright -
-/// no daemon knows another one exists - so nothing else in the answer implies it.
+/// JSON only, and one region for every tab until somebody groups two. A person reads `on_screen`
+/// on a tab and has the window in front of them; a script arranging one has neither, and nothing
+/// else in the answer says how wide each machine's half is or which order they sit in. This is
+/// the only part of the arrangement Muster owns outright - no daemon knows another one exists.
+///
+/// Which tab these divide is `showing` above rather than a key on every row, because they all
+/// show the same one.
 fn regions(window: &Window) -> Vec<Value> {
     let Some(view) = window.view.as_ref() else { return Vec::new() };
     view.regions
@@ -545,7 +546,6 @@ fn regions(window: &Window) -> Vec<Value> {
             json!({
                 "region": region.region_id,
                 "daemon": region.daemon_id,
-                "tab": region.tab_id,
                 "pane": region.pane_id,
                 // A share of the sum rather than a fraction of the window, which is how the
                 // core holds it: every region starts at 1, so three untouched regions read as

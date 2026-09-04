@@ -22,6 +22,11 @@ use crate::mirror::backend::{Layout, LayoutNode, PaneId, SplitAxis, TabId};
 /// Everything one window is showing.
 #[derive(Debug, Clone, PartialEq)]
 pub struct View {
+    /// The Muster tab on screen, or nothing when this window holds none it may open onto.
+    ///
+    /// One at a time, which is what a window holding an ordered list of tabs means (MIP-2).
+    /// Every region below is a machine's half of this tab.
+    pub tab: Option<TabId>,
     pub regions: Vec<ViewRegion>,
     /// The region whose pane the keyboard feeds.
     pub focused: Option<RegionId>,
@@ -188,12 +193,14 @@ impl View {
         pane: impl Fn(&DaemonId, &PaneId) -> ViewPane,
     ) -> View {
         let mut showing = BTreeSet::new();
+        let Some(tab) = composition.showing().cloned() else {
+            return View { tab: None, regions: Vec::new(), focused: None, showing };
+        };
         let regions = composition
             .regions()
             .filter_map(|region| {
                 let held = mirror(&region.daemon)?;
-                let layout =
-                    held.layout(&region.tab).filter(|layout| arranges(held, region, layout));
+                let layout = held.layout(&tab).filter(|layout| arranges(held, &tab, layout));
                 // What this region has on screen, which is the tab it shows rather than the
                 // tree it was last told about. The tree decides the arrangement and a zoom
                 // decides what is covered; neither absence puts a pane away, and reading this
@@ -204,14 +211,13 @@ impl View {
                         showing.insert(PaneKey::new(&region.daemon, &pane));
                     }
                     None => showing.extend(
-                        held.panes_in_tab(&region.tab)
-                            .map(|pane| PaneKey::new(&region.daemon, &pane.id)),
+                        held.panes_in_tab(&tab).map(|pane| PaneKey::new(&region.daemon, &pane.id)),
                     ),
                 }
                 Some(ViewRegion {
                     id: region.id,
                     daemon: region.daemon.clone(),
-                    tab: region.tab.clone(),
+                    tab: tab.clone(),
                     pane: region.pane.clone(),
                     weight: region.weight,
                     root: layout.map(|layout| {
@@ -242,7 +248,12 @@ impl View {
                 })
             })
             .collect();
-        View { regions, focused: composition.focused_region().map(|region| region.id), showing }
+        View {
+            tab: Some(tab),
+            regions,
+            focused: composition.focused_region().map(|region| region.id),
+            showing,
+        }
     }
 
     pub fn region(&self, id: RegionId) -> Option<&ViewRegion> {
@@ -590,10 +601,10 @@ fn zoom_filling(region: &Region, layout: Option<&Layout>) -> Option<PaneId> {
     region.pane.clone().or_else(|| layout.zoomed.clone())
 }
 
-fn arranges(mirror: &Mirror, region: &Region, layout: &Layout) -> bool {
+fn arranges(mirror: &Mirror, tab: &TabId, layout: &Layout) -> bool {
     let mut arranged: Vec<&PaneId> = layout.root.panes();
     arranged.sort_unstable();
-    let mut held: Vec<&PaneId> = mirror.panes_in_tab(&region.tab).map(|pane| &pane.id).collect();
+    let mut held: Vec<&PaneId> = mirror.panes_in_tab(tab).map(|pane| &pane.id).collect();
     held.sort_unstable();
     arranged == held
 }

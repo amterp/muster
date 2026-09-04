@@ -108,15 +108,19 @@ fn a_split_still_refuses_a_pane_no_daemon_holds() {
     }
 }
 
-/// Closing a tab ends every pane in it, and refuses a tab nothing is showing.
+/// Closing a tab ends every pane in it, whichever tab is on screen.
 ///
 /// The verb that was missing: emptying a tab one pane at a time was the only route to a thing
-/// people do (kan `a_2Ic6mB36E`). It keeps the region requirement `pane close` has, and that is
-/// the half worth a test - the argument for loosening it is the same one splitting won, and the
-/// risk is not: a split nobody is looking at costs a shell, and this costs whatever was running
-/// in every pane of the tab.
+/// people do (kan `a_2Ic6mB36E`). What it required was a region *showing* the tab, and that
+/// stopped being a usable rule when a window came to show one tab at a time (MIP-2): every tab
+/// but one would be unclosable, and `muster tab close --tab <t>` names one of those by design.
+///
+/// The guard that remains is that this window holds the tab, which is what it was protecting
+/// against - a tab in a session nobody here is attached to. The property the old rule was really
+/// after survives elsewhere: the agent list names every tab, so you can still see what you are
+/// destroying.
 #[test]
-fn closing_a_tab_ends_it_and_refuses_one_nothing_is_showing() {
+fn closing_a_tab_ends_it_whether_or_not_it_is_the_one_on_screen() {
     let _turn = muster::testing::fresh_session();
     let daemon = Daemon::start();
 
@@ -140,45 +144,54 @@ fn closing_a_tab_ends_it_and_refuses_one_nothing_is_showing() {
         || format!("the last roster the core published: {:?}", tabs()),
     );
 
-    // The tab nothing is showing, named outright. Refused, and the refusal says which window
-    // is not showing it rather than that the tab is gone.
+    let second = tabs()
+        .into_iter()
+        .find(|(tab, _)| tab != &first)
+        .map(|(tab, _)| tab)
+        .expect("the window holds two tabs");
+
+    // A tab nobody here holds. Refused, and the refusal says this window is not showing it
+    // rather than that the tab is gone.
     let refusal = answer(request::Payload::CloseTab(CloseTab {
-        tab_id: first.clone(),
+        tab_id: "t0nesuch".to_string(),
         ..CloseTab::default()
     }));
     match refusal.payload {
         Some(response::Payload::Failure(failure)) => assert!(
-            failure.reason.contains("is not showing that pane or tab"),
-            "closing a background tab should refuse on the terms closing a pane does, and \
-             said: {}",
-            failure.reason
+            !failure.reason.is_empty(),
+            "a refusal with nothing in it tells a script only that nothing happened"
         ),
-        other => panic!("closing a tab nothing is showing answered {other:?}"),
+        other => panic!("closing a tab this window does not hold answered {other:?}"),
     }
-    assert_eq!(tabs().len(), 2, "the refused close took the tab anyway");
+    assert_eq!(tabs().len(), 2, "the refused close took a tab anyway");
 
-    // And the tab on screen goes, with its pane. Named nowhere, which is what the menu item
-    // means - the tab the keyboard is in.
-    assert_ok(&answer(request::Payload::CloseTab(CloseTab::default())));
+    // The tab behind the one on screen, named outright. This is the case the old rule refused
+    // and the one `muster tab close --tab` exists for.
+    assert_ok(&answer(request::Payload::CloseTab(CloseTab {
+        tab_id: first.clone(),
+        ..CloseTab::default()
+    })));
     until(
-        "the tab on screen to be gone",
+        "the background tab to be gone",
         || tabs().len() == 1,
         || format!("the last roster the core published: {:?}", tabs()),
     );
-    assert_eq!(tabs()[0].0, first, "the wrong tab closed");
+    assert_eq!(tabs()[0].0, second, "the wrong tab closed");
+
+    // And the tab on screen goes when none is named, which is what the menu item means - the
+    // tab the keyboard is in.
+    assert_ok(&answer(request::Payload::CloseTab(CloseTab::default())));
+    until(
+        "the tab on screen to be gone too",
+        || tabs().is_empty(),
+        || format!("the last roster the core published: {:?}", tabs()),
+    );
 }
 
 /// Every tab the window holds, and whether a region is showing it.
 fn tabs() -> Vec<(String, bool)> {
     latest_roster()
-        .map(|roster| {
-            roster
-                .daemons
-                .iter()
-                .flat_map(|daemon| daemon.tabs.iter())
-                .map(|tab| (tab.tab_id.clone(), tab.on_screen))
-                .collect()
-        })
+        .map(|roster| roster.tabs.iter().map(|tab| (tab.tab_id.clone(), tab.on_screen)).collect())
         .unwrap_or_default()
 }
 
@@ -187,9 +200,8 @@ fn panes_of_tabs() -> Vec<(String, String)> {
     latest_roster()
         .map(|roster| {
             roster
-                .daemons
+                .tabs
                 .iter()
-                .flat_map(|daemon| daemon.tabs.iter())
                 .flat_map(|tab| {
                     tab.panes.iter().map(move |pane| (tab.tab_id.clone(), pane.pane_id.clone()))
                 })

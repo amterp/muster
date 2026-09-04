@@ -2,7 +2,7 @@
   "concept": "roster.of",
   "source": "authored",
   "citation": "README.md desiderata, agent states are the point and attention routing; docs/architecture.md, ownership of truth and one action path",
-  "why": "The view says what is on screen. The roster says what exists, which is the other half of the founding desideratum - and the more important half for attention, because a pane no window is showing is the one most likely to have finished without anybody noticing.\n\nTwo decisions live here and both are why it is in the core rather than the sidebar. What order a person reads the panes in, and what a pane is called when `w1:p2` tells them nothing. A shell that sorted and named for itself would be a second place those answers live, and the CLI and the agent-facing API would each grow a third.\n\nThe list is a tree - daemon, then tab, then pane - because a flat list of panes cannot say which of them sit side by side in one tab, and a window shows one tab per region, so the tab is the thing a person navigates between. The numbering runs across the whole window rather than restarting at each machine, so that the third caption down the sidebar, ⌘3, and two presses of next-tab all mean one tab.\n\nThe rendering below is one line per tab and one line per pane, in list order, so a case that gets the order wrong reads as obviously wrong rather than as a set that happens to differ.",
+  "why": "The list is what makes agent states glanceable, so the decisions it carries are what somebody sees before they see anything else: which tabs there are, in what order, what each row is called, and which numbered chord reaches it. Tab, then pane - a flat list of panes cannot say which of them sit side by side, and a window shows one tab at a time, so the tab is what a person navigates between. The machine is not a level of it, because a tab may hold panes on two (MIP-2): it goes on the pane row, and a machine holding no panes at all is in the machines list, which is the only place that state can be said. Ordering and labelling are here rather than in the shell so that the sidebar, the CLI and an agent cannot each make their own answer.",
   "cases": [
     {
       "name": "panes read in the order their tab lays them out",
@@ -64,12 +64,15 @@
         ]
       },
       "expect": {
-        "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen"
+        "machines": [
+          "local connected 2 panes"
         ],
         "panes": [
           "local/w1:p2 place=1 tab=w1:t1 label=\"beta\" hidden",
           "local/w1:p1 place=2 tab=w1:t1 label=\"alpha\" hidden"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"
         ]
       }
     },
@@ -123,12 +126,15 @@
         ]
       },
       "expect": {
-        "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen"
+        "machines": [
+          "local connected 2 panes"
         ],
         "panes": [
           "local/w1:p1 place=1 tab=w1:t1 label=\"alpha\" hidden",
           "local/w1:p2 place=2 tab=w1:t1 label=\"beta\" hidden"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"
         ]
       }
     },
@@ -187,12 +193,15 @@
         ]
       },
       "expect": {
-        "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen"
+        "machines": [
+          "local connected 2 panes"
         ],
         "panes": [
           "local/w1:p1 place=1 tab=w1:t1 label=\"alpha\" hidden",
           "local/w1:p2 place=2 tab=w1:t1 label=\"beta\" hidden"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"
         ]
       }
     },
@@ -241,11 +250,14 @@
         ]
       },
       "expect": {
-        "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen"
+        "machines": [
+          "local connected 1 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"muster · claude\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"muster \u00b7 claude\" hidden"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"
         ]
       }
     },
@@ -293,11 +305,14 @@
         ]
       },
       "expect": {
-        "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen"
+        "machines": [
+          "local connected 1 panes"
         ],
         "panes": [
           "local/w1:p1 place=1 tab=w1:t1 label=\"rad\" hidden"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"
         ]
       }
     },
@@ -351,12 +366,15 @@
         ]
       },
       "expect": {
-        "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen"
+        "machines": [
+          "local connected 2 panes"
         ],
         "panes": [
           "local/w1:p1 place=1 tab=w1:t1 label=\"w1:p1\" hidden",
           "local/w1:p2 place=2 tab=w1:t1 label=\"w1:p2\" hidden"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"
         ]
       }
     },
@@ -404,11 +422,14 @@
         ]
       },
       "expect": {
-        "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen"
+        "machines": [
+          "local connected 1 panes"
         ],
         "panes": [
           "local/w1:p1 place=1 tab=w1:t1 label=\"src\" hidden"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"
         ]
       }
     },
@@ -470,19 +491,22 @@
         ]
       },
       "expect": {
-        "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen",
-          "local/w1:t2 place=2 label=\"t2\" given-name=\"t2\" hidden"
+        "machines": [
+          "local connected 2 panes"
         ],
         "panes": [
           "local/w1:p1 place=1 tab=w1:t1 label=\"shown\" on-screen",
           "local/w1:p9 place=2 tab=w1:t2 label=\"elsewhere\" hidden"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen",
+          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" hidden"
         ]
       }
     },
     {
-      "name": "daemons come in the order their regions sit in the window",
-      "why": "The list reads down the side in the order the panes read across it. Sorting by daemon id would be stable and arbitrary - it would put a devenv above a laptop for no reason a person looking at the window could see, and every glance would cost a translation.",
+      "name": "tabs come in the order the window walks them",
+      "why": "The list reads down the side in the order cmd+1 to cmd+9 and next-tab walk it, which is the order the window holds its tabs in. Sorting by machine would be stable and arbitrary, and it would say something the window no longer does - a tab may hold panes on two machines, so there is no machine to sort it under.",
       "given": {
         "worlds": {
           "laptop": {
@@ -518,15 +542,15 @@
             ],
             "tabs": [
               {
-                "id": "w1:t1",
+                "id": "w2:t1",
                 "workspace": "w1",
                 "label": "t1"
               }
             ],
             "panes": [
               {
-                "id": "w1:p1",
-                "tab": "w1:t1",
+                "id": "w2:p1",
+                "tab": "w2:t1",
                 "workspace": "w1",
                 "cwd": "/src/there"
               }
@@ -551,24 +575,28 @@
           },
           {
             "daemon": "devenv",
-            "tab": "w1:t1"
+            "tab": "w2:t1"
           }
         ]
       },
       "expect": {
-        "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen",
-          "devenv/w1:t1 place=2 label=\"t1\" given-name=\"t1\" on-screen"
+        "machines": [
+          "devenv connected 1 panes",
+          "local connected 1 panes"
         ],
         "panes": [
           "local/w1:p1 place=1 tab=w1:t1 label=\"here\" hidden",
-          "devenv/w1:p1 place=2 tab=w1:t1 label=\"there\" hidden"
+          "devenv/w2:p1 place=2 tab=w2:t1 label=\"there\" hidden"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen",
+          "w2:t1 on=devenv place=2 label=\"t1\" given-name=\"t1\" hidden"
         ]
       }
     },
     {
-      "name": "a daemon with no region on screen comes after the ones that have",
-      "why": "It still belongs on the list - its panes are exactly the ones nobody is looking at. Last rather than first, because the part of the list that maps onto the window should be the part that reads in the window's order.",
+      "name": "a machine holding no panes is still in the window",
+      "why": "The state kan a_2HpkpfIfq was about. A machine you named in the config, that has never held a pane or has just had its last one closed, contributes no tabs at all - so without a list of the machines themselves it would vanish from the window entirely, and nothing would say it was attached or offer anywhere to put a pane. It is here rather than as a heading over its tabs, because it has none.",
       "given": {
         "worlds": {
           "laptop": {
@@ -596,27 +624,9 @@
             "layouts": []
           },
           "box": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
-            "tabs": [
-              {
-                "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
-              }
-            ],
-            "panes": [
-              {
-                "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "cwd": "/src/offscreen"
-              }
-            ],
+            "workspaces": [],
+            "tabs": [],
+            "panes": [],
             "layouts": []
           }
         },
@@ -638,19 +648,21 @@
         ]
       },
       "expect": {
-        "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen",
-          "devenv/w1:t1 place=2 label=\"t1\" given-name=\"t1\" hidden"
+        "machines": [
+          "devenv connected 0 panes",
+          "local connected 1 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"shown\" hidden",
-          "devenv/w1:p1 place=2 tab=w1:t1 label=\"offscreen\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"shown\" hidden"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"
         ]
       }
     },
     {
       "name": "a daemon that has said nothing yet contributes no rows",
-      "why": "An attached daemon whose subscription has not bootstrapped holds no panes this process knows of, and inventing rows for it would show a session nobody has. It is an ordinary moment on the way up, not a failure, so it is silence rather than a placeholder.",
+      "why": "An attached daemon whose subscription has not bootstrapped holds no panes this process knows of, and inventing tabs for it would show a session nobody has. It is an ordinary moment on the way up, not a failure, so its tabs are silence rather than a placeholder - and the machines list says `disconnected`, which is the honest thing to draw while it comes up.",
       "given": {
         "worlds": {
           "laptop": {
@@ -695,11 +707,15 @@
         ]
       },
       "expect": {
-        "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen"
+        "machines": [
+          "devenv disconnected 0 panes",
+          "local connected 1 panes"
         ],
         "panes": [
           "local/w1:p1 place=1 tab=w1:t1 label=\"here\" hidden"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"
         ]
       }
     },
@@ -741,15 +757,15 @@
             ],
             "tabs": [
               {
-                "id": "w1:t1",
+                "id": "w2:t1",
                 "workspace": "w1",
                 "label": "t1"
               }
             ],
             "panes": [
               {
-                "id": "w1:p1",
-                "tab": "w1:t1",
+                "id": "w2:p1",
+                "tab": "w2:t1",
                 "workspace": "w1",
                 "cwd": "/src/devenv"
               }
@@ -774,7 +790,7 @@
           },
           {
             "daemon": "devenv",
-            "tab": "w1:t1"
+            "tab": "w2:t1"
           }
         ],
         "showing": [
@@ -782,19 +798,23 @@
         ]
       },
       "expect": {
-        "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen",
-          "devenv/w1:t1 place=2 label=\"t1\" given-name=\"t1\" on-screen"
+        "machines": [
+          "devenv connected 1 panes",
+          "local connected 1 panes"
         ],
         "panes": [
           "local/w1:p1 place=1 tab=w1:t1 label=\"laptop\" hidden",
-          "devenv/w1:p1 place=2 tab=w1:t1 label=\"devenv\" on-screen"
+          "devenv/w2:p1 place=2 tab=w2:t1 label=\"devenv\" hidden"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen",
+          "w2:t1 on=devenv place=2 label=\"t1\" given-name=\"t1\" hidden"
         ]
       }
     },
     {
       "name": "tabs are numbered across the window, not within each daemon",
-      "why": "The number is the place in the list a person is looking at, and that list spans machines - a window showing a laptop beside a devenv is the arrangement this project exists for. Restarting at each daemon would give two tabs the same number, so two captions would read alike and next_tab would walk an order the sidebar does not show. Panes are counted the same way and for the same reason; the difference is that theirs is what ⌘N names and this one only names the tab.",
+      "why": "The number is the place in the list a person is looking at, and that list spans machines - a window showing a laptop beside a devenv is the arrangement this project exists for. Restarting at each daemon would give two tabs the same number, so two captions would read alike and next_tab would walk an order the sidebar does not show. Panes are counted the same way and for the same reason; the difference is that theirs is what \u2318N names and this one only names the tab.",
       "given": {
         "worlds": {
           "laptop": {
@@ -841,26 +861,26 @@
             ],
             "tabs": [
               {
-                "id": "w1:t1",
+                "id": "w2:t1",
                 "workspace": "w1",
                 "label": "t1"
               },
               {
-                "id": "w1:t2",
+                "id": "w2:t2",
                 "workspace": "w1",
                 "label": "t2"
               }
             ],
             "panes": [
               {
-                "id": "w1:p1",
-                "tab": "w1:t1",
+                "id": "w2:p1",
+                "tab": "w2:t1",
                 "workspace": "w1",
                 "cwd": "/src/third"
               },
               {
-                "id": "w1:p2",
-                "tab": "w1:t2",
+                "id": "w2:p2",
+                "tab": "w2:t2",
                 "workspace": "w1",
                 "cwd": "/src/fourth"
               }
@@ -885,22 +905,26 @@
           },
           {
             "daemon": "devenv",
-            "tab": "w1:t1"
+            "tab": "w2:t1"
           }
         ]
       },
       "expect": {
-        "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen",
-          "local/w1:t2 place=2 label=\"t2\" given-name=\"t2\" hidden",
-          "devenv/w1:t1 place=3 label=\"t1\" given-name=\"t1\" on-screen",
-          "devenv/w1:t2 place=4 label=\"t2\" given-name=\"t2\" hidden"
+        "machines": [
+          "devenv connected 2 panes",
+          "local connected 2 panes"
         ],
         "panes": [
           "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
           "local/w1:p2 place=2 tab=w1:t2 label=\"second\" hidden",
-          "devenv/w1:p1 place=3 tab=w1:t1 label=\"third\" hidden",
-          "devenv/w1:p2 place=4 tab=w1:t2 label=\"fourth\" hidden"
+          "devenv/w2:p1 place=3 tab=w2:t1 label=\"third\" hidden",
+          "devenv/w2:p2 place=4 tab=w2:t2 label=\"fourth\" hidden"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen",
+          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" hidden",
+          "w2:t1 on=devenv place=3 label=\"t1\" given-name=\"t1\" hidden",
+          "w2:t2 on=devenv place=4 label=\"t2\" given-name=\"t2\" hidden"
         ]
       }
     },
@@ -957,12 +981,15 @@
         ]
       },
       "expect": {
-        "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen"
+        "machines": [
+          "local connected 2 panes"
         ],
         "panes": [
           "local/w1:p1 place=1 tab=w1:t1 label=\"zoomed\" on-screen",
           "local/w1:p2 place=2 tab=w1:t1 label=\"behind\" hidden"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"
         ]
       }
     },
@@ -1025,13 +1052,16 @@
         ]
       },
       "expect": {
-        "tabs": [
-          "local/w1:t1 place=1 label=\"muster\" on-screen",
-          "local/w2:t1 place=2 label=\"rad\" hidden"
+        "machines": [
+          "local connected 2 panes"
         ],
         "panes": [
           "local/w1:p1 place=1 tab=w1:t1 label=\"muster\" hidden",
           "local/w2:p1 place=2 tab=w2:t1 label=\"rad\" hidden"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"muster\" on-screen",
+          "w2:t1 on=local place=2 label=\"rad\" hidden"
         ]
       }
     },
@@ -1079,11 +1109,14 @@
         ]
       },
       "expect": {
-        "tabs": [
-          "local/w1:t1 place=1 label=\"Tab 1\" on-screen"
+        "machines": [
+          "local connected 1 panes"
         ],
         "panes": [
           "local/w1:p1 place=1 tab=w1:t1 label=\"nameless\" hidden"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"Tab 1\" on-screen"
         ]
       }
     },
@@ -1136,26 +1169,26 @@
             ],
             "tabs": [
               {
-                "id": "w1:t1",
+                "id": "w2:t1",
                 "workspace": "w1",
                 "label": "t1"
               },
               {
-                "id": "w1:t2",
+                "id": "w2:t2",
                 "workspace": "w1",
                 "label": "t2"
               }
             ],
             "panes": [
               {
-                "id": "w1:p1",
-                "tab": "w1:t1",
+                "id": "w2:p1",
+                "tab": "w2:t1",
                 "workspace": "w1",
                 "cwd": "/src/third"
               },
               {
-                "id": "w1:p2",
-                "tab": "w1:t2",
+                "id": "w2:p2",
+                "tab": "w2:t2",
                 "workspace": "w1",
                 "cwd": "/src/fourth"
               }
@@ -1180,27 +1213,31 @@
           },
           {
             "daemon": "devenv",
-            "tab": "w1:t1"
+            "tab": "w2:t1"
           }
         ],
         "step": {
-          "from": "local/w1:t2",
+          "from": "w1:t2",
           "direction": "next"
         }
       },
       "expect": {
-        "stepped": "devenv/w1:t1",
-        "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen",
-          "local/w1:t2 place=2 label=\"t2\" given-name=\"t2\" hidden",
-          "devenv/w1:t1 place=3 label=\"t1\" given-name=\"t1\" on-screen",
-          "devenv/w1:t2 place=4 label=\"t2\" given-name=\"t2\" hidden"
+        "machines": [
+          "devenv connected 2 panes",
+          "local connected 2 panes"
         ],
         "panes": [
           "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
           "local/w1:p2 place=2 tab=w1:t2 label=\"second\" hidden",
-          "devenv/w1:p1 place=3 tab=w1:t1 label=\"third\" hidden",
-          "devenv/w1:p2 place=4 tab=w1:t2 label=\"fourth\" hidden"
+          "devenv/w2:p1 place=3 tab=w2:t1 label=\"third\" hidden",
+          "devenv/w2:p2 place=4 tab=w2:t2 label=\"fourth\" hidden"
+        ],
+        "stepped": "w2:t1",
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen",
+          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" hidden",
+          "w2:t1 on=devenv place=3 label=\"t1\" given-name=\"t1\" hidden",
+          "w2:t2 on=devenv place=4 label=\"t2\" given-name=\"t2\" hidden"
         ]
       }
     },
@@ -1253,26 +1290,26 @@
             ],
             "tabs": [
               {
-                "id": "w1:t1",
+                "id": "w2:t1",
                 "workspace": "w1",
                 "label": "t1"
               },
               {
-                "id": "w1:t2",
+                "id": "w2:t2",
                 "workspace": "w1",
                 "label": "t2"
               }
             ],
             "panes": [
               {
-                "id": "w1:p1",
-                "tab": "w1:t1",
+                "id": "w2:p1",
+                "tab": "w2:t1",
                 "workspace": "w1",
                 "cwd": "/src/third"
               },
               {
-                "id": "w1:p2",
-                "tab": "w1:t2",
+                "id": "w2:p2",
+                "tab": "w2:t2",
                 "workspace": "w1",
                 "cwd": "/src/fourth"
               }
@@ -1297,27 +1334,31 @@
           },
           {
             "daemon": "devenv",
-            "tab": "w1:t1"
+            "tab": "w2:t1"
           }
         ],
         "step": {
-          "from": "devenv/w1:t2",
+          "from": "w2:t2",
           "direction": "next"
         }
       },
       "expect": {
-        "stepped": "local/w1:t1",
-        "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen",
-          "local/w1:t2 place=2 label=\"t2\" given-name=\"t2\" hidden",
-          "devenv/w1:t1 place=3 label=\"t1\" given-name=\"t1\" on-screen",
-          "devenv/w1:t2 place=4 label=\"t2\" given-name=\"t2\" hidden"
+        "machines": [
+          "devenv connected 2 panes",
+          "local connected 2 panes"
         ],
         "panes": [
           "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
           "local/w1:p2 place=2 tab=w1:t2 label=\"second\" hidden",
-          "devenv/w1:p1 place=3 tab=w1:t1 label=\"third\" hidden",
-          "devenv/w1:p2 place=4 tab=w1:t2 label=\"fourth\" hidden"
+          "devenv/w2:p1 place=3 tab=w2:t1 label=\"third\" hidden",
+          "devenv/w2:p2 place=4 tab=w2:t2 label=\"fourth\" hidden"
+        ],
+        "stepped": "w1:t1",
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen",
+          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" hidden",
+          "w2:t1 on=devenv place=3 label=\"t1\" given-name=\"t1\" hidden",
+          "w2:t2 on=devenv place=4 label=\"t2\" given-name=\"t2\" hidden"
         ]
       }
     },
@@ -1370,26 +1411,26 @@
             ],
             "tabs": [
               {
-                "id": "w1:t1",
+                "id": "w2:t1",
                 "workspace": "w1",
                 "label": "t1"
               },
               {
-                "id": "w1:t2",
+                "id": "w2:t2",
                 "workspace": "w1",
                 "label": "t2"
               }
             ],
             "panes": [
               {
-                "id": "w1:p1",
-                "tab": "w1:t1",
+                "id": "w2:p1",
+                "tab": "w2:t1",
                 "workspace": "w1",
                 "cwd": "/src/third"
               },
               {
-                "id": "w1:p2",
-                "tab": "w1:t2",
+                "id": "w2:p2",
+                "tab": "w2:t2",
                 "workspace": "w1",
                 "cwd": "/src/fourth"
               }
@@ -1414,27 +1455,31 @@
           },
           {
             "daemon": "devenv",
-            "tab": "w1:t1"
+            "tab": "w2:t1"
           }
         ],
         "step": {
-          "from": "local/w1:t1",
+          "from": "w1:t1",
           "direction": "previous"
         }
       },
       "expect": {
-        "stepped": "devenv/w1:t2",
-        "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen",
-          "local/w1:t2 place=2 label=\"t2\" given-name=\"t2\" hidden",
-          "devenv/w1:t1 place=3 label=\"t1\" given-name=\"t1\" on-screen",
-          "devenv/w1:t2 place=4 label=\"t2\" given-name=\"t2\" hidden"
+        "machines": [
+          "devenv connected 2 panes",
+          "local connected 2 panes"
         ],
         "panes": [
           "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
           "local/w1:p2 place=2 tab=w1:t2 label=\"second\" hidden",
-          "devenv/w1:p1 place=3 tab=w1:t1 label=\"third\" hidden",
-          "devenv/w1:p2 place=4 tab=w1:t2 label=\"fourth\" hidden"
+          "devenv/w2:p1 place=3 tab=w2:t1 label=\"third\" hidden",
+          "devenv/w2:p2 place=4 tab=w2:t2 label=\"fourth\" hidden"
+        ],
+        "stepped": "w2:t2",
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen",
+          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" hidden",
+          "w2:t1 on=devenv place=3 label=\"t1\" given-name=\"t1\" hidden",
+          "w2:t2 on=devenv place=4 label=\"t2\" given-name=\"t2\" hidden"
         ]
       }
     },
@@ -1487,26 +1532,26 @@
             ],
             "tabs": [
               {
-                "id": "w1:t1",
+                "id": "w2:t1",
                 "workspace": "w1",
                 "label": "t1"
               },
               {
-                "id": "w1:t2",
+                "id": "w2:t2",
                 "workspace": "w1",
                 "label": "t2"
               }
             ],
             "panes": [
               {
-                "id": "w1:p1",
-                "tab": "w1:t1",
+                "id": "w2:p1",
+                "tab": "w2:t1",
                 "workspace": "w1",
                 "cwd": "/src/third"
               },
               {
-                "id": "w1:p2",
-                "tab": "w1:t2",
+                "id": "w2:p2",
+                "tab": "w2:t2",
                 "workspace": "w1",
                 "cwd": "/src/fourth"
               }
@@ -1531,27 +1576,31 @@
           },
           {
             "daemon": "devenv",
-            "tab": "w1:t1"
+            "tab": "w2:t1"
           }
         ],
         "step": {
-          "from": "local/w9:t9",
+          "from": "w9:t9",
           "direction": "next"
         }
       },
       "expect": {
-        "stepped": "local/w1:t1",
-        "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen",
-          "local/w1:t2 place=2 label=\"t2\" given-name=\"t2\" hidden",
-          "devenv/w1:t1 place=3 label=\"t1\" given-name=\"t1\" on-screen",
-          "devenv/w1:t2 place=4 label=\"t2\" given-name=\"t2\" hidden"
+        "machines": [
+          "devenv connected 2 panes",
+          "local connected 2 panes"
         ],
         "panes": [
           "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
           "local/w1:p2 place=2 tab=w1:t2 label=\"second\" hidden",
-          "devenv/w1:p1 place=3 tab=w1:t1 label=\"third\" hidden",
-          "devenv/w1:p2 place=4 tab=w1:t2 label=\"fourth\" hidden"
+          "devenv/w2:p1 place=3 tab=w2:t1 label=\"third\" hidden",
+          "devenv/w2:p2 place=4 tab=w2:t2 label=\"fourth\" hidden"
+        ],
+        "stepped": "w1:t1",
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen",
+          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" hidden",
+          "w2:t1 on=devenv place=3 label=\"t1\" given-name=\"t1\" hidden",
+          "w2:t2 on=devenv place=4 label=\"t2\" given-name=\"t2\" hidden"
         ]
       }
     },
@@ -1604,26 +1653,26 @@
             ],
             "tabs": [
               {
-                "id": "w1:t1",
+                "id": "w2:t1",
                 "workspace": "w1",
                 "label": "t1"
               },
               {
-                "id": "w1:t2",
+                "id": "w2:t2",
                 "workspace": "w1",
                 "label": "t2"
               }
             ],
             "panes": [
               {
-                "id": "w1:p1",
-                "tab": "w1:t1",
+                "id": "w2:p1",
+                "tab": "w2:t1",
                 "workspace": "w1",
                 "cwd": "/src/third"
               },
               {
-                "id": "w1:p2",
-                "tab": "w1:t2",
+                "id": "w2:p2",
+                "tab": "w2:t2",
                 "workspace": "w1",
                 "cwd": "/src/fourth"
               }
@@ -1648,7 +1697,7 @@
           },
           {
             "daemon": "devenv",
-            "tab": "w1:t1"
+            "tab": "w2:t1"
           }
         ],
         "step": {
@@ -1656,24 +1705,28 @@
         }
       },
       "expect": {
-        "stepped": "devenv/w1:t2",
-        "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen",
-          "local/w1:t2 place=2 label=\"t2\" given-name=\"t2\" hidden",
-          "devenv/w1:t1 place=3 label=\"t1\" given-name=\"t1\" on-screen",
-          "devenv/w1:t2 place=4 label=\"t2\" given-name=\"t2\" hidden"
+        "machines": [
+          "devenv connected 2 panes",
+          "local connected 2 panes"
         ],
         "panes": [
           "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
           "local/w1:p2 place=2 tab=w1:t2 label=\"second\" hidden",
-          "devenv/w1:p1 place=3 tab=w1:t1 label=\"third\" hidden",
-          "devenv/w1:p2 place=4 tab=w1:t2 label=\"fourth\" hidden"
+          "devenv/w2:p1 place=3 tab=w2:t1 label=\"third\" hidden",
+          "devenv/w2:p2 place=4 tab=w2:t2 label=\"fourth\" hidden"
+        ],
+        "stepped": "w2:t2",
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen",
+          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" hidden",
+          "w2:t1 on=devenv place=3 label=\"t1\" given-name=\"t1\" hidden",
+          "w2:t2 on=devenv place=4 label=\"t2\" given-name=\"t2\" hidden"
         ]
       }
     },
     {
       "name": "a number names the pane at that place, counting from one",
-      "why": "What ⌘3 means. Counting from one rather than zero because the sidebar counts that way and the keyboard has no zero next to the one - and the number a person reads off a row has to be the number that takes them there.\n\nThe count runs across daemons and across tabs alike, so the third numbered row is the third pane in the window rather than the third on some machine. Here that lands on a pane the second daemon holds, in a tab nothing is showing: focusing a pane surfaces the tab holding it, so the numbers reach every tab through the panes in it and no tab needs a chord of its own.",
+      "why": "What \u23183 means. Counting from one rather than zero because the sidebar counts that way and the keyboard has no zero next to the one - and the number a person reads off a row has to be the number that takes them there.\n\nThe count runs across daemons and across tabs alike, so the third numbered row is the third pane in the window rather than the third on some machine. Here that lands on a pane the second daemon holds, in a tab nothing is showing: focusing a pane surfaces the tab holding it, so the numbers reach every tab through the panes in it and no tab needs a chord of its own.",
       "given": {
         "worlds": {
           "laptop": {
@@ -1720,26 +1773,26 @@
             ],
             "tabs": [
               {
-                "id": "w1:t1",
+                "id": "w2:t1",
                 "workspace": "w1",
                 "label": "t1"
               },
               {
-                "id": "w1:t2",
+                "id": "w2:t2",
                 "workspace": "w1",
                 "label": "t2"
               }
             ],
             "panes": [
               {
-                "id": "w1:p1",
-                "tab": "w1:t1",
+                "id": "w2:p1",
+                "tab": "w2:t1",
                 "workspace": "w1",
                 "cwd": "/src/third"
               },
               {
-                "id": "w1:p2",
-                "tab": "w1:t2",
+                "id": "w2:p2",
+                "tab": "w2:t2",
                 "workspace": "w1",
                 "cwd": "/src/fourth"
               }
@@ -1764,30 +1817,34 @@
           },
           {
             "daemon": "devenv",
-            "tab": "w1:t1"
+            "tab": "w2:t1"
           }
         ],
         "at": 3
       },
       "expect": {
-        "at": "devenv/w1:p1",
-        "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen",
-          "local/w1:t2 place=2 label=\"t2\" given-name=\"t2\" hidden",
-          "devenv/w1:t1 place=3 label=\"t1\" given-name=\"t1\" on-screen",
-          "devenv/w1:t2 place=4 label=\"t2\" given-name=\"t2\" hidden"
+        "at": "devenv/w2:p1",
+        "machines": [
+          "devenv connected 2 panes",
+          "local connected 2 panes"
         ],
         "panes": [
           "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
           "local/w1:p2 place=2 tab=w1:t2 label=\"second\" hidden",
-          "devenv/w1:p1 place=3 tab=w1:t1 label=\"third\" hidden",
-          "devenv/w1:p2 place=4 tab=w1:t2 label=\"fourth\" hidden"
+          "devenv/w2:p1 place=3 tab=w2:t1 label=\"third\" hidden",
+          "devenv/w2:p2 place=4 tab=w2:t2 label=\"fourth\" hidden"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen",
+          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" hidden",
+          "w2:t1 on=devenv place=3 label=\"t1\" given-name=\"t1\" hidden",
+          "w2:t2 on=devenv place=4 label=\"t2\" given-name=\"t2\" hidden"
         ]
       }
     },
     {
       "name": "a number past the last pane names nothing",
-      "why": "Doing nothing beats landing somewhere. Clamping to the last pane would make ⌘9 mean a different pane every time one opened or closed, which is a chord nobody can build a habit on - and the honest answer to 'go to the ninth pane' in a window of four is that there isn't one.",
+      "why": "Doing nothing beats landing somewhere. Clamping to the last pane would make \u23189 mean a different pane every time one opened or closed, which is a chord nobody can build a habit on - and the honest answer to 'go to the ninth pane' in a window of four is that there isn't one.",
       "given": {
         "worlds": {
           "laptop": {
@@ -1834,26 +1891,26 @@
             ],
             "tabs": [
               {
-                "id": "w1:t1",
+                "id": "w2:t1",
                 "workspace": "w1",
                 "label": "t1"
               },
               {
-                "id": "w1:t2",
+                "id": "w2:t2",
                 "workspace": "w1",
                 "label": "t2"
               }
             ],
             "panes": [
               {
-                "id": "w1:p1",
-                "tab": "w1:t1",
+                "id": "w2:p1",
+                "tab": "w2:t1",
                 "workspace": "w1",
                 "cwd": "/src/third"
               },
               {
-                "id": "w1:p2",
-                "tab": "w1:t2",
+                "id": "w2:p2",
+                "tab": "w2:t2",
                 "workspace": "w1",
                 "cwd": "/src/fourth"
               }
@@ -1878,30 +1935,34 @@
           },
           {
             "daemon": "devenv",
-            "tab": "w1:t1"
+            "tab": "w2:t1"
           }
         ],
         "at": 9
       },
       "expect": {
         "at": null,
-        "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen",
-          "local/w1:t2 place=2 label=\"t2\" given-name=\"t2\" hidden",
-          "devenv/w1:t1 place=3 label=\"t1\" given-name=\"t1\" on-screen",
-          "devenv/w1:t2 place=4 label=\"t2\" given-name=\"t2\" hidden"
+        "machines": [
+          "devenv connected 2 panes",
+          "local connected 2 panes"
         ],
         "panes": [
           "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
           "local/w1:p2 place=2 tab=w1:t2 label=\"second\" hidden",
-          "devenv/w1:p1 place=3 tab=w1:t1 label=\"third\" hidden",
-          "devenv/w1:p2 place=4 tab=w1:t2 label=\"fourth\" hidden"
+          "devenv/w2:p1 place=3 tab=w2:t1 label=\"third\" hidden",
+          "devenv/w2:p2 place=4 tab=w2:t2 label=\"fourth\" hidden"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen",
+          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" hidden",
+          "w2:t1 on=devenv place=3 label=\"t1\" given-name=\"t1\" hidden",
+          "w2:t2 on=devenv place=4 label=\"t2\" given-name=\"t2\" hidden"
         ]
       }
     },
     {
       "name": "an agent's own title is the second line of its row",
-      "why": "The founding promise is that fifteen agents can be told apart at a glance, and fifteen rows reading `<directory> · claude` cannot do it: they say where a session lives, never what it is doing. A harness already publishes what it is doing as its terminal title, so nothing has to be invented - only carried and drawn.\n\nIn the core rather than in the sidebar because it is a decision, and the CLI and an agent asking what the window holds must get the same answer as the person reading it.",
+      "why": "The founding promise is that fifteen agents can be told apart at a glance, and fifteen rows reading `<directory> \u00b7 claude` cannot do it: they say where a session lives, never what it is doing. A harness already publishes what it is doing as its terminal title, so nothing has to be invented - only carried and drawn.\n\nIn the core rather than in the sidebar because it is a decision, and the CLI and an agent asking what the window holds must get the same answer as the person reading it.",
       "given": {
         "worlds": {
           "laptop": {
@@ -1945,11 +2006,14 @@
         ]
       },
       "expect": {
-        "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen"
+        "machines": [
+          "local connected 1 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"muster · claude\" subtitle=\"first working build\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"muster \u00b7 claude\" subtitle=\"first working build\" hidden"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"
         ]
       }
     },
@@ -1998,11 +2062,14 @@
         ]
       },
       "expect": {
-        "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen"
+        "machines": [
+          "local connected 1 panes"
         ],
         "panes": [
           "local/w1:p1 place=1 tab=w1:t1 label=\"muster\" hidden"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"
         ]
       }
     },
@@ -2052,11 +2119,14 @@
         ]
       },
       "expect": {
-        "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen"
+        "machines": [
+          "local connected 1 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"muster · claude\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"muster \u00b7 claude\" hidden"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"
         ]
       }
     },
@@ -2086,7 +2156,7 @@
                 "workspace": "w1",
                 "cwd": "/Users/a/src/muster",
                 "agent": "claude",
-                "name": "🔥 payments spike",
+                "name": "\ud83d\udd25 payments spike",
                 "title": "first working build"
               }
             ],
@@ -2107,11 +2177,14 @@
         ]
       },
       "expect": {
-        "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen"
+        "machines": [
+          "local connected 1 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"🔥 payments spike\" subtitle=\"first working build\" given-name=\"🔥 payments spike\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"\ud83d\udd25 payments spike\" subtitle=\"first working build\" given-name=\"\ud83d\udd25 payments spike\" hidden"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"
         ]
       }
     },
@@ -2162,11 +2235,14 @@
         ]
       },
       "expect": {
-        "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen"
+        "machines": [
+          "local connected 1 panes"
         ],
         "panes": [
           "local/w1:p1 place=1 tab=w1:t1 label=\"payments spike\" given-name=\"payments spike\" hidden"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"
         ]
       }
     },
@@ -2225,19 +2301,22 @@
         ]
       },
       "expect": {
-        "tabs": [
-          "local/w1:t1 place=1 label=\"release\" given-name=\"release\" on-screen",
-          "local/w1:t2 place=2 label=\"Tab 2\" hidden"
+        "machines": [
+          "local connected 2 panes"
         ],
         "panes": [
           "local/w1:p1 place=1 tab=w1:t1 label=\"muster\" hidden",
           "local/w1:p2 place=2 tab=w1:t2 label=\"muster\" hidden"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"release\" given-name=\"release\" on-screen",
+          "w1:t2 on=local place=2 label=\"Tab 2\" hidden"
         ]
       }
     },
     {
       "name": "the tenth tab is the tenth, not the second",
-      "why": "The chords name places in this list, so the order it is built in is the order ⌘1 to ⌘9 reach. Ids are opaque strings the backend spells - `w1:t1`, `w1:t10` - and sorting them is numeric order right up until there are ten of something, at which point `w1:t10` lands between `w1:t1` and `w1:t2`. A window with eleven tabs drew them 1, 10, 11, 2, 3 and every numbered chord past the first named the wrong pane. Fifteen panes is this project's own reference workload, so the failure sat exactly where the design says to look. The order is the one the backend listed rather than one derived from the id, which is why this case states its tabs in order and expects them back in it.",
+      "why": "The chords name places in this list, so the order it is built in is the order \u23181 to \u23189 reach. Ids are opaque strings the backend spells - `w1:t1`, `w1:t10` - and sorting them is numeric order right up until there are ten of something, at which point `w1:t10` lands between `w1:t1` and `w1:t2`. A window with eleven tabs drew them 1, 10, 11, 2, 3 and every numbered chord past the first named the wrong pane. Fifteen panes is this project's own reference workload, so the failure sat exactly where the design says to look. The order is the one the backend listed rather than one derived from the id, which is why this case states its tabs in order and expects them back in it.",
       "given": {
         "worlds": {
           "laptop": {
@@ -2389,18 +2468,8 @@
         ]
       },
       "expect": {
-        "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen",
-          "local/w1:t2 place=2 label=\"t2\" given-name=\"t2\" hidden",
-          "local/w1:t3 place=3 label=\"t3\" given-name=\"t3\" hidden",
-          "local/w1:t4 place=4 label=\"t4\" given-name=\"t4\" hidden",
-          "local/w1:t5 place=5 label=\"t5\" given-name=\"t5\" hidden",
-          "local/w1:t6 place=6 label=\"t6\" given-name=\"t6\" hidden",
-          "local/w1:t7 place=7 label=\"t7\" given-name=\"t7\" hidden",
-          "local/w1:t8 place=8 label=\"t8\" given-name=\"t8\" hidden",
-          "local/w1:t9 place=9 label=\"t9\" given-name=\"t9\" hidden",
-          "local/w1:t10 place=10 label=\"t10\" given-name=\"t10\" hidden",
-          "local/w1:t11 place=11 label=\"t11\" given-name=\"t11\" hidden"
+        "machines": [
+          "local connected 11 panes"
         ],
         "panes": [
           "local/w1:p1 place=1 tab=w1:t1 label=\"p1\" hidden",
@@ -2414,12 +2483,25 @@
           "local/w1:p9 place=9 tab=w1:t9 label=\"p9\" hidden",
           "local/w1:p10 place=10 tab=w1:t10 label=\"p10\" hidden",
           "local/w1:p11 place=11 tab=w1:t11 label=\"p11\" hidden"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen",
+          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" hidden",
+          "w1:t3 on=local place=3 label=\"t3\" given-name=\"t3\" hidden",
+          "w1:t4 on=local place=4 label=\"t4\" given-name=\"t4\" hidden",
+          "w1:t5 on=local place=5 label=\"t5\" given-name=\"t5\" hidden",
+          "w1:t6 on=local place=6 label=\"t6\" given-name=\"t6\" hidden",
+          "w1:t7 on=local place=7 label=\"t7\" given-name=\"t7\" hidden",
+          "w1:t8 on=local place=8 label=\"t8\" given-name=\"t8\" hidden",
+          "w1:t9 on=local place=9 label=\"t9\" given-name=\"t9\" hidden",
+          "w1:t10 on=local place=10 label=\"t10\" given-name=\"t10\" hidden",
+          "w1:t11 on=local place=11 label=\"t11\" given-name=\"t11\" hidden"
         ]
       }
     },
     {
       "name": "with the settled scheme a numbered chord names a pane and nothing is left over",
-      "why": "The half of `numbered_chords` that has to keep working exactly as it did. ⌘2 is the second row down the whole list, one press is the whole gesture, and no press leaves anything behind for the next one to mean something different. This window is arranged so the two schemes disagree - the second pane of the window and the second pane of the second tab are different panes - so a case that passed under either would be pinning nothing.",
+      "why": "The half of `numbered_chords` that has to keep working exactly as it did. \u23182 is the second row down the whole list, one press is the whole gesture, and no press leaves anything behind for the next one to mean something different. This window is arranged so the two schemes disagree - the second pane of the window and the second pane of the second tab are different panes - so a case that passed under either would be pinning nothing.",
       "given": {
         "worlds": {
           "laptop": {
@@ -2497,13 +2579,8 @@
         }
       },
       "expect": {
-        "pressed": [
-          "⌘2 of panes → pane local/w1:p2",
-          "⌘2 of panes → pane local/w1:p2"
-        ],
-        "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen",
-          "local/w1:t2 place=2 label=\"t2\" given-name=\"t2\" hidden"
+        "machines": [
+          "local connected 5 panes"
         ],
         "panes": [
           "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
@@ -2511,12 +2588,20 @@
           "local/w1:p3 place=3 tab=w1:t2 label=\"third\" hidden",
           "local/w1:p4 place=4 tab=w1:t2 label=\"fourth\" hidden",
           "local/w1:p5 place=5 tab=w1:t2 label=\"fifth\" hidden"
+        ],
+        "pressed": [
+          "\u23182 of panes \u2192 pane local/w1:p2",
+          "\u23182 of panes \u2192 pane local/w1:p2"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen",
+          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" hidden"
         ]
       }
     },
     {
       "name": "a window of one tab numbers panes under the prototype too",
-      "why": "With one tab the first press of `tab_then_pane` carries no information: ⌘1 names the only tab there is, and reaching its second pane costs ⌘1 ⌘2. So a window holding one tab numbers panes, which is not a third behaviour - a pane's place down the whole window and its place inside that tab are the same number here, so this is the settled scheme, which under these conditions the prototype agrees with.\n\nBoth presses are pinned, and that is the half worth pinning. Counting `panes` rather than `panes in local/w1:t1` is what says no chord is half-typed: the shell draws a number over every pane while one is and ends the gesture when the modifier comes up, so a numbering that said panes-inside-a-tab here would leave those numbers drawn forever with nothing having been pressed. Two presses in a row reaching the same pane is what that reads as.\n\nThe trigger is one tab in the window rather than one tab on the machine holding the keyboard. Per machine the same key would mean different things depending which column the keyboard sat in, with nothing on screen changing as it moved; per window the meaning changes only when a second tab appears, and that at least moves every number in the list as it happens. kan a_2Hx68fXqr.",
+      "why": "With one tab the first press of `tab_then_pane` carries no information: \u23181 names the only tab there is, and reaching its second pane costs \u23181 \u23182. So a window holding one tab numbers panes, which is not a third behaviour - a pane's place down the whole window and its place inside that tab are the same number here, so this is the settled scheme, which under these conditions the prototype agrees with.\n\nBoth presses are pinned, and that is the half worth pinning. Counting `panes` rather than `panes in local/w1:t1` is what says no chord is half-typed: the shell draws a number over every pane while one is and ends the gesture when the modifier comes up, so a numbering that said panes-inside-a-tab here would leave those numbers drawn forever with nothing having been pressed. Two presses in a row reaching the same pane is what that reads as.\n\nThe trigger is one tab in the window rather than one tab on the machine holding the keyboard. Per machine the same key would mean different things depending which column the keyboard sat in, with nothing on screen changing as it moved; per window the meaning changes only when a second tab appears, and that at least moves every number in the list as it happens. kan a_2Hx68fXqr.",
       "given": {
         "worlds": {
           "laptop": {
@@ -2577,23 +2662,26 @@
         }
       },
       "expect": {
-        "pressed": [
-          "⌘2 of panes → pane local/w1:p2",
-          "⌘2 of panes → pane local/w1:p2"
-        ],
-        "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen"
+        "machines": [
+          "local connected 3 panes"
         ],
         "panes": [
           "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
           "local/w1:p2 place=2 tab=w1:t1 label=\"second\" hidden",
           "local/w1:p3 place=3 tab=w1:t1 label=\"third\" hidden"
+        ],
+        "pressed": [
+          "\u23182 of panes \u2192 pane local/w1:p2",
+          "\u23182 of panes \u2192 pane local/w1:p2"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"
         ]
       }
     },
     {
       "name": "the first press picks a tab and the one after it picks a pane inside that tab",
-      "why": "The prototype, in one line. Pressing ⌘2 twice reaches the second tab's second pane, which is the fourth pane of the window - so the second press is counting inside the tab the first one named rather than down the list. Both halves are needed to see it: after the first press the chords are counting panes in that tab, and that is what makes the same keystroke mean two things.",
+      "why": "The prototype, in one line. Pressing \u23182 twice reaches the second tab's second pane, which is the fourth pane of the window - so the second press is counting inside the tab the first one named rather than down the list. Both halves are needed to see it: after the first press the chords are counting panes in that tab, and that is what makes the same keystroke mean two things.",
       "given": {
         "worlds": {
           "laptop": {
@@ -2671,13 +2759,8 @@
         }
       },
       "expect": {
-        "pressed": [
-          "⌘2 of tabs → tab local/w1:t2 landing on local/w1:p3",
-          "⌘2 of panes in local/w1:t2 → pane local/w1:p4"
-        ],
-        "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen",
-          "local/w1:t2 place=2 label=\"t2\" given-name=\"t2\" hidden"
+        "machines": [
+          "local connected 5 panes"
         ],
         "panes": [
           "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
@@ -2685,11 +2768,19 @@
           "local/w1:p3 place=3 tab=w1:t2 label=\"third\" hidden",
           "local/w1:p4 place=4 tab=w1:t2 label=\"fourth\" hidden",
           "local/w1:p5 place=5 tab=w1:t2 label=\"fifth\" hidden"
+        ],
+        "pressed": [
+          "\u23182 of tabs \u2192 tab w1:t2 landing on local/w1:p3",
+          "\u23182 of panes in w1:t2 \u2192 pane local/w1:p4"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen",
+          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" hidden"
         ]
       }
     },
     {
-      "name": "reaching a tab lands on its first pane, so ⌘2 alone is ⌘2 ⌘1",
+      "name": "reaching a tab lands on its first pane, so \u23182 alone is \u23182 \u23181",
       "why": "Where a tab is entered is one rule, shared with clicking its caption and with next_tab, so that three ways of arriving agree. The consequence is worth pinning rather than deriving: the first press is not a half-gesture waiting to be completed, it has already put you somewhere, and the somewhere is the one the second press would have named with a 1.",
       "given": {
         "worlds": {
@@ -2768,13 +2859,8 @@
         }
       },
       "expect": {
-        "pressed": [
-          "⌘2 of tabs → tab local/w1:t2 landing on local/w1:p3",
-          "⌘1 of panes in local/w1:t2 → pane local/w1:p3"
-        ],
-        "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen",
-          "local/w1:t2 place=2 label=\"t2\" given-name=\"t2\" hidden"
+        "machines": [
+          "local connected 5 panes"
         ],
         "panes": [
           "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
@@ -2782,12 +2868,20 @@
           "local/w1:p3 place=3 tab=w1:t2 label=\"third\" hidden",
           "local/w1:p4 place=4 tab=w1:t2 label=\"fourth\" hidden",
           "local/w1:p5 place=5 tab=w1:t2 label=\"fifth\" hidden"
+        ],
+        "pressed": [
+          "\u23182 of tabs \u2192 tab w1:t2 landing on local/w1:p3",
+          "\u23181 of panes in w1:t2 \u2192 pane local/w1:p3"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen",
+          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" hidden"
         ]
       }
     },
     {
       "name": "a third press starts over rather than going a level deeper",
-      "why": "There is no third level, so the alternative would be a chord that does nothing at all - and a person holding ⌘ and tapping a digit has to be able to predict the third tap. Landing on a pane is what ends the sequence, so ⌘2 ⌘2 ⌘2 is the second tab, its second pane, and the second tab again.",
+      "why": "There is no third level, so the alternative would be a chord that does nothing at all - and a person holding \u2318 and tapping a digit has to be able to predict the third tap. Landing on a pane is what ends the sequence, so \u23182 \u23182 \u23182 is the second tab, its second pane, and the second tab again.",
       "given": {
         "worlds": {
           "laptop": {
@@ -2866,14 +2960,8 @@
         }
       },
       "expect": {
-        "pressed": [
-          "⌘2 of tabs → tab local/w1:t2 landing on local/w1:p3",
-          "⌘2 of panes in local/w1:t2 → pane local/w1:p4",
-          "⌘2 of tabs → tab local/w1:t2 landing on local/w1:p3"
-        ],
-        "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen",
-          "local/w1:t2 place=2 label=\"t2\" given-name=\"t2\" hidden"
+        "machines": [
+          "local connected 5 panes"
         ],
         "panes": [
           "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
@@ -2881,12 +2969,21 @@
           "local/w1:p3 place=3 tab=w1:t2 label=\"third\" hidden",
           "local/w1:p4 place=4 tab=w1:t2 label=\"fourth\" hidden",
           "local/w1:p5 place=5 tab=w1:t2 label=\"fifth\" hidden"
+        ],
+        "pressed": [
+          "\u23182 of tabs \u2192 tab w1:t2 landing on local/w1:p3",
+          "\u23182 of panes in w1:t2 \u2192 pane local/w1:p4",
+          "\u23182 of tabs \u2192 tab w1:t2 landing on local/w1:p3"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen",
+          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" hidden"
         ]
       }
     },
     {
       "name": "a tab holding one pane is not named, so the press after it is still counting tabs",
-      "why": "There is nothing in a one-pane tab to choose between - the press has already landed on the only pane it holds - so naming it would arm a chord that can only miss, and leave the window carrying one number nobody needs. ⌘2 onto such a tab therefore ends there, and ⌘3 after it is the third tab rather than a pane inside the second.",
+      "why": "There is nothing in a one-pane tab to choose between - the press has already landed on the only pane it holds - so naming it would arm a chord that can only miss, and leave the window carrying one number nobody needs. \u23182 onto such a tab therefore ends there, and \u23183 after it is the third tab rather than a pane inside the second.",
       "given": {
         "worlds": {
           "laptop": {
@@ -2969,14 +3066,8 @@
         }
       },
       "expect": {
-        "pressed": [
-          "⌘2 of tabs → tab local/w1:t2 landing on local/w1:p3",
-          "⌘3 of tabs → tab local/w1:t3 landing on local/w1:p4"
-        ],
-        "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen",
-          "local/w1:t2 place=2 label=\"t2\" given-name=\"t2\" hidden",
-          "local/w1:t3 place=3 label=\"t3\" given-name=\"t3\" hidden"
+        "machines": [
+          "local connected 5 panes"
         ],
         "panes": [
           "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
@@ -2984,12 +3075,21 @@
           "local/w1:p3 place=3 tab=w1:t2 label=\"third\" hidden",
           "local/w1:p4 place=4 tab=w1:t3 label=\"fourth\" hidden",
           "local/w1:p5 place=5 tab=w1:t3 label=\"fifth\" hidden"
+        ],
+        "pressed": [
+          "\u23182 of tabs \u2192 tab w1:t2 landing on local/w1:p3",
+          "\u23183 of tabs \u2192 tab w1:t3 landing on local/w1:p4"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen",
+          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" hidden",
+          "w1:t3 on=local place=3 label=\"t3\" given-name=\"t3\" hidden"
         ]
       }
     },
     {
       "name": "a second press past the end of its tab does nothing, and the press after it starts over",
-      "why": "The second tab holds three panes, so ⌘9 after it has nothing to reach. Doing nothing rather than landing on the last pane is the same answer the flat scheme gives, for the same reason - a chord that landed elsewhere as the tab grew would mean something different every time a pane opened. What is new is what it leaves behind: nothing, so the next press is a first press again rather than being stuck counting inside a tab.",
+      "why": "The second tab holds three panes, so \u23189 after it has nothing to reach. Doing nothing rather than landing on the last pane is the same answer the flat scheme gives, for the same reason - a chord that landed elsewhere as the tab grew would mean something different every time a pane opened. What is new is what it leaves behind: nothing, so the next press is a first press again rather than being stuck counting inside a tab.",
       "given": {
         "worlds": {
           "laptop": {
@@ -3068,14 +3168,8 @@
         }
       },
       "expect": {
-        "pressed": [
-          "⌘2 of tabs → tab local/w1:t2 landing on local/w1:p3",
-          "⌘9 of panes in local/w1:t2 → nothing",
-          "⌘1 of tabs → tab local/w1:t1 landing on local/w1:p1"
-        ],
-        "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen",
-          "local/w1:t2 place=2 label=\"t2\" given-name=\"t2\" hidden"
+        "machines": [
+          "local connected 5 panes"
         ],
         "panes": [
           "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
@@ -3083,12 +3177,21 @@
           "local/w1:p3 place=3 tab=w1:t2 label=\"third\" hidden",
           "local/w1:p4 place=4 tab=w1:t2 label=\"fourth\" hidden",
           "local/w1:p5 place=5 tab=w1:t2 label=\"fifth\" hidden"
+        ],
+        "pressed": [
+          "\u23182 of tabs \u2192 tab w1:t2 landing on local/w1:p3",
+          "\u23189 of panes in w1:t2 \u2192 nothing",
+          "\u23181 of tabs \u2192 tab w1:t1 landing on local/w1:p1"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen",
+          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" hidden"
         ]
       }
     },
     {
       "name": "a first press past the last tab does nothing, and the window is still counting tabs",
-      "why": "Two tabs, so ⌘5 reaches nothing. Worth its own case beside the one above because the refusal a person meets is about tabs rather than panes, and because it pins that a press which reached nothing has not quietly armed anything - the press after it is counting tabs, which is where it started.",
+      "why": "Two tabs, so \u23185 reaches nothing. Worth its own case beside the one above because the refusal a person meets is about tabs rather than panes, and because it pins that a press which reached nothing has not quietly armed anything - the press after it is counting tabs, which is where it started.",
       "given": {
         "worlds": {
           "laptop": {
@@ -3166,13 +3269,8 @@
         }
       },
       "expect": {
-        "pressed": [
-          "⌘5 of tabs → nothing",
-          "⌘2 of tabs → tab local/w1:t2 landing on local/w1:p3"
-        ],
-        "tabs": [
-          "local/w1:t1 place=1 label=\"t1\" given-name=\"t1\" on-screen",
-          "local/w1:t2 place=2 label=\"t2\" given-name=\"t2\" hidden"
+        "machines": [
+          "local connected 5 panes"
         ],
         "panes": [
           "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
@@ -3180,6 +3278,99 @@
           "local/w1:p3 place=3 tab=w1:t2 label=\"third\" hidden",
           "local/w1:p4 place=4 tab=w1:t2 label=\"fourth\" hidden",
           "local/w1:p5 place=5 tab=w1:t2 label=\"fifth\" hidden"
+        ],
+        "pressed": [
+          "\u23185 of tabs \u2192 nothing",
+          "\u23182 of tabs \u2192 tab w1:t2 landing on local/w1:p3"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen",
+          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" hidden"
+        ]
+      }
+    },
+    {
+      "name": "a tab holding panes on two machines lists them together",
+      "why": "What stage four of MIP-2 is for, seen from the list. One tab, one caption, and its panes from both machines under it in the order their regions sit - which is why the machine goes on the pane row: the tab cannot say it, because for this tab there is no single answer.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/here"
+              }
+            ],
+            "layouts": []
+          },
+          "box": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w2:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/there"
+              }
+            ],
+            "layouts": []
+          }
+        },
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          },
+          {
+            "id": "devenv",
+            "world": "box"
+          }
+        ],
+        "regions": [
+          {
+            "daemon": "devenv",
+            "tab": "w1:t1"
+          }
+        ]
+      },
+      "expect": {
+        "machines": [
+          "devenv connected 1 panes",
+          "local connected 1 panes"
+        ],
+        "panes": [
+          "local/w1:p1 place=1 tab=w1:t1 label=\"here\" hidden",
+          "devenv/w2:p1 place=2 tab=w1:t1 label=\"there\" hidden"
+        ],
+        "tabs": [
+          "w1:t1 on=local+devenv place=1 label=\"t1\" given-name=\"t1\" on-screen"
         ]
       }
     }

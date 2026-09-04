@@ -130,7 +130,7 @@ fn every_verb_that_names_a_pane_acts_on_that_panes_machine() {
 
     a_focus_moves_the_keyboard_to_the_named_machine(&on_laptop, &on_devenv);
     a_split_lands_on_the_named_machine(laptop, devenv, &on_laptop);
-    a_zoom_fills_the_named_machines_region(&on_laptop);
+    a_zoom_fills_the_named_machines_region(&on_laptop, &on_devenv);
     text_reaches_the_named_machines_pane(laptop, &on_laptop, &laptop_pane);
     a_read_answers_with_the_named_machines_pane(&on_laptop);
     a_rename_reaches_the_named_machines_pane(laptop, &on_laptop, &laptop_pane);
@@ -175,18 +175,31 @@ fn a_split_lands_on_the_named_machine(laptop: &Daemon, devenv: &Daemon, on_lapto
 }
 
 /// `muster zoom`, and the one check here that asks the *window* about the machine rather than
-/// only the daemon: a zoom needs a region holding the pane, and the devenv's region does not.
+/// only the daemon.
+///
+/// Asked for with the keyboard on the devenv, like everything else here, and looked at by going
+/// to the laptop's pane afterwards. A window shows one tab at a time, so the laptop's half of
+/// the arrangement is not drawn while the devenv's tab is - which is exactly why the request
+/// must not need it to be: zooming a pane in a tab you are not looking at is ordinary, and its
+/// effect is there when you arrive.
 ///
 /// Sent twice, because herdr's `pane.zoom` defaults to toggling - so this leaves the tab the
 /// way it found it for the checks that follow.
-fn a_zoom_fills_the_named_machines_region(on_laptop: &str) {
+fn a_zoom_fills_the_named_machines_region(on_laptop: &str, on_devenv: &str) {
     let zoom = || {
         assert_ok(&answer(request::Payload::ZoomPane(ZoomPane {
             pane_id: on_laptop.to_string(),
             ..ZoomPane::default()
         })));
     };
+    let go_to = |pane: &str| {
+        assert_ok(&answer(request::Payload::FocusPane(FocusPane {
+            daemon_id: String::new(),
+            pane_id: pane.to_string(),
+        })));
+    };
     zoom();
+    go_to(on_laptop);
     until(
         "the laptop's region to be filled by the pane that was named",
         || zoomed_on("laptop").as_deref() == Some(on_laptop),
@@ -198,6 +211,7 @@ fn a_zoom_fills_the_named_machines_region(on_laptop: &str) {
         || zoomed_on("laptop").is_none(),
         || format!("the laptop's region is still zoomed on {:?}", zoomed_on("laptop")),
     );
+    put_the_keyboard_back(on_devenv);
 }
 
 /// `muster pane send`, read back off the laptop's own screen. The daemon renders every pane
@@ -345,40 +359,47 @@ fn a_tab_naming_no_pane_lands_where_the_keyboard_is() {
     );
 }
 
-/// A machine attached for the first time, and the pane it has no other way to get.
+/// A machine attached for the first time: left alone, and reachable when asked.
 ///
-/// The window's own half of kan a_2HpkpfIfq. Before this, such a machine attached, appeared in
-/// the agent list saying `no tabs, so this daemon is holding nothing`, and stayed that way:
-/// every route to a new pane goes through an existing one, so there was nothing in Muster that
-/// could give it a first. `herdr workspace create` against the forwarded socket was the way
-/// through, which is not a way through for anybody who did not already know that.
+/// Both halves of kan a_2HpkpfIfq and kan a_2I6h18OU6, which pull in opposite directions and
+/// settle here. Muster no longer fills a machine it has not been asked to fill - the rule that
+/// gave every machine a column of its own is gone, and with it the devenv shell that appeared
+/// over ssh a moment after you closed the last one. What replaces it is a way in: the machine
+/// is listed whether or not it holds anything, and one request gives it a pane.
 ///
-/// Nothing is asked for here. The window asks on its own, the way it already did for a window
-/// showing nothing at all - which is what makes this a fix for the machine rather than for the
-/// window it happened to be alone in.
+/// The request is the one the machine's row in the agent list sends, and the one
+/// `muster tab new --daemon <id>` sends from a script.
 #[test]
-fn a_machine_that_has_never_held_a_pane_is_given_one() {
+fn a_machine_that_has_never_held_a_pane_is_left_alone_until_it_is_asked_for() {
     let _turn = muster::testing::fresh_session();
     let TwoMachines { laptop, devenv } = a_window_and_an_untouched_devenv();
 
     until(
-        "the untouched machine to be given a pane of its own",
+        "the laptop to reach the list, so the window has settled on something",
+        || pane_on("laptop").is_some(),
+        || format!("the list holds {:?}", rows()),
+    );
+    assert!(
+        panes(&devenv).is_empty(),
+        "the untouched machine was given a pane nobody asked for: {:?}",
+        panes(&devenv)
+    );
+
+    assert_ok(&answer(request::Payload::CreateTab(CreateTab {
+        daemon_id: "devenv".to_string(),
+        ..CreateTab::default()
+    })));
+    until(
+        "the machine that was asked for to be given a pane",
         || panes(&devenv).len() == 1,
         || format!("the devenv holds {:?}", panes(&devenv)),
     );
     until(
-        "the window to show the pane it gave that machine",
+        "the window to list the pane it made there",
         || panes_on("devenv").len() == 1,
         || format!("the list holds {:?}", rows()),
     );
-    assert_eq!(
-        panes(&devenv).len(),
-        1,
-        "the machine was given more than one workspace, so the rule that asks is asking again \
-         while its own answer is still in flight"
-    );
-    // The laptop is untouched by any of it: a rule that filled every machine it could reach
-    // would be a rule that opens panes nobody asked for on the machine you are working on.
+    // The laptop is untouched by any of it: asking for one machine must not fill another.
     assert_eq!(panes(&laptop).len(), 1, "the laptop was given a pane it did not need");
 }
 
@@ -523,13 +544,11 @@ fn rows() -> Vec<(String, String, String)> {
         .expect("a panicking reader poisoned the roster")
         .as_ref()
         .into_iter()
-        .flat_map(|roster| roster.daemons.iter())
-        .flat_map(|daemon| {
-            daemon.tabs.iter().flat_map(move |tab| {
-                tab.panes.iter().map(move |pane| {
-                    (daemon.daemon_id.clone(), pane.given_name.clone(), pane.pane_id.clone())
-                })
-            })
+        .flat_map(|roster| roster.tabs.iter())
+        .flat_map(|tab| {
+            tab.panes
+                .iter()
+                .map(|pane| (pane.daemon_id.clone(), pane.given_name.clone(), pane.pane_id.clone()))
         })
         .collect()
 }
