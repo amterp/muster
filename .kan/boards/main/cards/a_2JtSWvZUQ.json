@@ -1,0 +1,28 @@
+{
+  "_v": 3,
+  "alias": "a-new-tab-goes-on",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "uncommitted",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Related: `a_29eFFiDco` is the other half of tab ordering, from the daemon's side - `tab_moved` is unread, so a tab dragged elsewhere by another client keeps the place it arrived in.\n\nThe two have come apart since that card was written. The window's tab list is now Muster's own record rather than a reading of one daemon's order: tabs are appended on first sight and never reordered, and the list spans machines. So reading `tab_moved` would tell Muster that a herdr TUI moved a tab, and Muster would still have to decide whether its own list should follow - which is a third question neither card asks yet.",
+      "created_at_millis": 1788487959297,
+      "id": "c_2JtT5t51c"
+    }
+  ],
+  "created_at_millis": 1788487937635,
+  "creator": "Alexander Terp",
+  "description": "A window now holds an ordered list of tabs, so where a new one goes is a question it did not have before. Today it appends: `Composition::reconcile` adds a tab the first time a daemon mentions it, and the list is in the order the tabs arrived.\n\nThat is what every browser does and it is probably right for a tab you asked for out of nothing. It reads less well for ⌘T from inside a tab, and worse for `muster pane move --new-tab`, which pulls a pane out of a tab you are looking at and puts the result at the far end of the list - so the thing you just made is the one furthest from the thing you made it from.\n\nRaised from reading the change rather than from using it, which is the honest provenance and the reason to wait. What would settle it is a day of making tabs and noticing whether ⌘T followed by ⌘N to get back is a thing you do.\n\nNot free, either. \"After the one it came from\" needs the composition to know which tab a `tab.create` answer belongs beside, and the tab arrives through the daemon's event rather than through the request - the same gap `show_wanted_tab` already bridges for which tab to show, so the mechanism exists and would have to grow a place as well as a name.",
+  "id": "a_2JtSWvZUQ",
+  "position": "UUUUUUUUUU",
+  "title": "🗂️ A new tab goes on the end of the list, never beside the one you made it from",
+  "type": "chore",
+  "updated_at_millis": 1788487959297,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1788487937635}
+  ]
+}

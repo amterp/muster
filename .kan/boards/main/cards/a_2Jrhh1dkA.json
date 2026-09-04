@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-word-or-line",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1788483753933,
+  "creator": "Alexander Terp",
+  "description": "A drag is pinned to the pane and re-placed after every scroll (a_2ADMeD8nM). A double or triple click is not, because libghostty exports no way to read back which cells its own word or line selection covered - `ghostty_surface_read_selection` hands over the text and nothing hands over the bounds. Pinning the one cell that was clicked would be worse than leaving it: the first scroll would replace a word with a single cell.\n\nTwo ways out, and the second needs no upstream. Ask ghostty for a getter that answers a selection's start and end. Or drive the click count back in: the view sees `NSEvent.clickCount`, and re-driving two presses at the projected cell would re-select the word there, which is the same word the text carried with it. The second is timing-dependent - libghostty counts a repeat from `mouse-click-repeat-interval` and a cell's width - so it wants measuring against a real surface before it is trusted.\n\nUntil then a word selection scrolled over is the old bug in miniature, over one word rather than a paragraph.",
+  "id": "a_2Jrhh1dkA",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "title": "🖱️ A word or line selection still drifts when the pane scrolls",
+  "type": "bug",
+  "updated_at_millis": 1788483753933,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1788483753933}
+  ]
+}

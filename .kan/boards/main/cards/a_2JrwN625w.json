@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "the-contract-tier-s",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1788484318180,
+  "creator": "Alexander Terp",
+  "description": "The three checks that assert a pane painted - `a named pane comes up and paints`, `the app as it ships paints every pane`, and `a bare launch opens a usable window` - fail on a loaded machine and pass on a quiet one, with no error anywhere in the run log. The tier is otherwise deterministic, so a run that fails this way reads as a wiring regression and is not one.\n\n## Measured, 2026-09-03\n\nFive back-to-back `./dev --contract` runs while the machine was busy: three had one or two of those checks fail, and the messages differed every time.\n\n    a bare launch never built a surface for w1:p1, so nothing here can learn what Muster calls it. It named [].\n    ['p20vx3wx7n'] got a surface and never painted a frame, so they are blank squares in a window that believes it is showing them\n    the core never published a view, so the window was never told anything\n\nThree failures at three different points of the same sequence is the shape of a deadline, not of a break. The run log agrees: `naming.jsonl` for a failing run ends at `surface.create` with no `channel.connected` and no error or warning of any kind. The bridge was spawned and had not dialed back when the check gave up.\n\nConfirmed as load rather than code by running the same tier at two commits. Three consecutive green runs at `da8989e` under a one-minute load of 10.28, and four runs with failures at the commit after it under a load of 5-8 - so the failing runs were the *lighter*-loaded ones by that measure. What separated them was a transient storm the load average had not caught up with: `syspolicyd` pinning a core for four days, and an iOS simulator runtime cold-starting four daemons of its own. The commit under test made no difference; running the tier twice in immediate succession did.\n\n## Why it is worth fixing rather than knowing about\n\nThe contract tier is the only thing that launches the real app, and it is what somebody runs before cutting a release. A tier that fails for reasons unrelated to the code is one people learn to re-run until it passes, and then it is not a gate. `--perf` already refuses to run on a machine whose fast cores are committed, for the same reason and with the reason written down.\n\n## Worth deciding rather than assuming\n\n- **Whether the deadline is the right lever.** `launch()` settles for 6 seconds and `expect_every_pane_painted` reads whatever the log holds afterwards. Waiting *for* the frame rather than *for a while* would be the honest fix and needs the log to be tailed rather than read once.\n- **Or whether the tier should refuse a busy machine**, the way `--perf` does. Cheaper, and it turns a false red into a skip - which is its own hazard, since a tier that skips is a tier that stops running.\n- **Not a longer sleep.** A bigger number is a guess about somebody else's scheduler and would be wrong again on a slower machine.",
+  "id": "a_2JrwN625w",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "title": "🎲 The contract tier's paint checks fail on a loaded machine",
+  "type": "bug",
+  "updated_at_millis": 1788484318180,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1788484318180}
+  ]
+}

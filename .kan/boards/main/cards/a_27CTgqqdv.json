@@ -13,6 +13,12 @@
       "body": "Source read (herdr v0.8.0) settles two things this card was guessing at.\n\nThere IS a structured mouse channel, and it is reachable. ClientMessage::InputEvents carries ClientInputEvent::Mouse (src/protocol/wire.rs:113-134, :416) - button, motion, wheel, column, row, modifiers - and the gate is the message type, not the client mode: the transport converts it with no mode check (src/server/client_transport.rs:731), and the dispatch arm rejects only TerminalObserve (src/server/headless.rs:2892-2917). A TerminalAttach connection can send it. Today it is only emitted by herdr's Windows client, whose console gives structured records rather than a VT byte stream.\n\nIt is still the wrong channel for Muster, and now for a concrete reason rather than a hunch. It routes into herdr's own TUI application layer: route_client_events_from (src/app/mod.rs:1670) -\u003e handle_pane_mouse_only (src/app/input/mouse.rs:73), which requires Mode::Terminal, hit-tests pane_at(column, row) against herdr's live pane layout, and can be intercepted first by popups, mouse capture, sidebar, launcher or the global menu. Our coordinates are a surface's own grid; herdr would resolve them against its TUI screen and deliver to whichever pane sits at that point - not necessarily the pane we attached to. Using it means giving up the raw-pipe property entirely.\n\nSo the ask in a_27CTRluw7 stands as the way in. Once InputState is readable, encoding is free: herdr's own mouse encoding is libghostty-vt's (src/pane/terminal.rs:1736 -\u003e ghostty_mouse_encoder_setopt_from_terminal), the same library Muster already links, and mouse/encoder.h is in our headers.\n\nTrap for whoever reads this next: src/input/encode.rs:78 and :96 are a complete hand-rolled Rust mouse encoder (SGR/Default/UTF8) and are dead code, annotated as such, with zero call sites outside their own unit tests. It is not what herdr runs.",
       "created_at_millis": 1786614445451,
       "id": "c_27DMRNi5f"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Measured 2026-09-03 while working slot 2. The block is real, and the reason on this card is\none step off.\n\n**Muster does have a way to ask its own surface.** `ghostty_surface_mouse_captured` is in\nlibghostty's C API at `include/ghostty.h:1155` and reads the surface's own terminal flags. The\ncard was written on the belief that no such door existed, so \"encoding them client-side means\nwriting SGR sequences into the PTY blind\" was the wrong half of the problem.\n\n**It cannot answer, and the reason makes the block sharper rather than softer.** The flags are\nnever set on a Muster surface. herdr's VT consumes the sequences that would set them before the\nframe stream, which section 2 of `observations/herdr-0.8.0.md` recorded and which a\nmouse-specific run confirms: a pane that had just run\n`printf '\\033[?1000h\\033[?1002h\\033[?1006h'` produced a frame payload carrying those characters\nonly as the shell's echo of the command line, with no `ESC` byte among them.\n\nSo the getter answers `false` for every pane in every window, forever. Gating clicks on it\nwould be gating on a constant, which is worse than not asking - the code would read as though\nit were checking. Written up as section 12 of `docs/observations/libghostty-9f9b8d1d.md`.\n\nThe ask in a_27CTRluw7 stands unchanged as the way in. What changes is the sentence to put in\nfront of the herdr team: not \"Muster has no way to ask\", but \"the only party who can answer is\nthe daemon, and it already holds the answer in one serializable struct\".",
+      "created_at_millis": 1788441743490,
+      "id": "c_2Ja4oHScA"
     }
   ],
   "created_at_millis": 1786612340848,
@@ -22,7 +28,7 @@
   "position": "UUUUUUUUUUUUU",
   "title": "Mouse buttons and motion: blocked on pane mode exposure",
   "type": "feature",
-  "updated_at_millis": 1786614445451,
+  "updated_at_millis": 1788441743490,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786612340848}
   ]

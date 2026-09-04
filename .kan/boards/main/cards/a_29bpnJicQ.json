@@ -1,16 +1,36 @@
 {
   "_v": 3,
-  "id": "a_29bpnJicQ",
   "alias": "find-doesn-t-really",
   "alias_explicit": false,
-  "title": "Find doesn't really properly work, the whole buffer thing isn't right",
-  "creator": "Alexander Terp",
+  "area": [
+    "shell",
+    "backend"
+  ],
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Plan for this round (slot 2: find, selection, and the mouse), written before any code.\n\n## What is actually wrong with find, measured\n\nThree separate faults, all of them about which rows a search is really over.\n\n**1. A search covers the pane's *active screen* history, and an agent pane has none.** Every\npane in the live window running an agent reports `max_offset_from_bottom: 0` and reads back\nexactly its viewport - 39 rows for a 39-row pane, 23 for a 23-row one - with\n`truncated: false`. Reproduced in the harness: a pane holding 200 printed rows reports\n`max_offset_from_bottom: 178`, and the moment something enters the alternate screen that\nbecomes 0 and `pane.read --source recent` returns the 24 visible rows. `ESC[3J` does the same\nto a pane on the main screen. So Cmd-F over an agent pane searches one screen, finds nothing\nolder, and - because `truncated` is false - draws no caveat at all. A confident \"0/0\" over a\npane whose history the daemon does not hold is the failure the feature was written to avoid,\narriving through a case nobody had measured.\n\n**2. `pane.read` trims trailing blank rows**, so a read's last row is the pane's last non-blank\nrow rather than its bottom row. A 24-row pane holding three printed rows answers with five.\nEvery hit's `rows_from_bottom` is therefore short by the blank remainder of the viewport, and\n`land()` scrolls that many rows short of the match. Section 17 measured the offsets on a full\npane, where the remainder is zero, so the arithmetic looked exact.\n\n**3. Nothing outside the GUI can exercise any of this.** There is no CLI verb and no test that\ndrives a find through the seam against a real daemon, which is why 1 and 2 have been shipping.\n\n## What is wrong with selection\n\nherdr's frame stream repaints cells in place. A 10-row scroll up produced 479 bytes of\n`ESC[row;colH` plus one glyph per changed cell, `full: false` - no scroll region, no index, no\ninsert-line. So a libghostty surface never scrolls its own screen, and a selection - which is a\npair of pins into libghostty's page list - stays on the same screen rows while the text under\nit is rewritten. That is the whole of the reported bug, and it is the same fault as find's: a\ncoordinate that means \"row on screen\" where it has to mean \"row in the pane\".\n\n## Mouse: the mode is still not readable, and now for a sharper reason\n\nThe card assumed Muster has no way to ask its own surface. It has one:\n`ghostty_surface_mouse_captured` is in the C API. It cannot answer, because the surface's\nterminal never sees the sequence that would set the mode. A pane that ran\n`printf '\\033[?1000h\\033[?1002h\\033[?1006h'` produced a frame payload carrying those\ncharacters only as the shell's echo of the command line, never as escape sequences - herdr's\nown VT consumed them, exactly as section 2 recorded. So the getter would answer `false` for\nevery pane in every window, forever, and gating clicks on it would be gating on a constant.\n\nSo a_27CTgqqdv stays blocked and the upstream ask in a_27CTRluw7 is still the way in. What\nchanges is the reason to write on the card: not \"Muster has no way to ask\" but \"Muster can ask\nand the answer is structurally wrong\".\n\n## What I am building\n\n**Find.** Make `rows_from_bottom` a pane coordinate rather than a coordinate in the read: the\nherdr adapter asks for the viewport alongside the read and adds back the rows herdr trimmed,\nand the seam reuses that viewport to land, so the round-trip count per keystroke does not move.\nReplace `truncated` with what a person actually needs to know - the whole pane was searched,\nthe last thousand rows of a deeper one were, or this pane holds only the screen you are looking\nat - and draw each of the three truthfully in the find bar.\n\n**Selection.** Anchor a selection to the pane when it is made and re-project it onto the surface\nwhenever the pane scrolls. One new request carries it: the shell says where the selection sits\nin screen cells, the core converts to pane coordinates against the pane's viewport, and after\neach scroll answers with where those coordinates now are, or that they are off screen. The\narithmetic is pure and lives in the core with its own cases; the surface gains one method that\nsets or clears a selection, so a fake surface can assert what the window decided.\n\n**Mouse.** Write the measurement into `docs/observations/`, answer a_2A3MOmupb with it, and\nleave a_27CTgqqdv blocked carrying the finding.\n\n## What the suite gets\n\nCore cases for the offset arithmetic and the selection projection. Adapter tests against a real\ndaemon for the alternate-screen case, the trimmed blank rows, and a hit that is on screen after\nlanding. A seam test that drives a find and a selection through the request path against a real\ndaemon, which is the coverage whose absence let all of this ship.",
+      "created_at_millis": 1788440039084,
+      "id": "c_2JZMTE6qj"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Done, in three commits. What the plan above got wrong, and what shipped.\n\n**One thing in the plan was wrong.** It said nothing outside the GUI can exercise find. There is\n`crates/muster-bridge/tests/find_path.rs`, which drives a find through the request path against a\nreal daemon and a real bridge and reads the pane back through libghostty-vt. What it had no case\nfor is a pane whose screen has blank rows below its last printed one, and a pane with no history\nbehind its screen - which is why both faults shipped past it. It has the first of those now; the\nalternate screen is covered against a real daemon in `crates/muster-herdr/tests/find.rs`, where\nstaging one costs no bridge.\n\n**What shipped.**\n\nA hit's row is now a row of the pane rather than a row of the read. The herdr adapter asks for the\nviewport alongside the read and adds back the rows herdr trimmed; the count is exact - the daemon\nlooked at a known number of grid rows and returned the printed ones - and it holds whether or not\nthe read hit the thousand-row cap. The seam reuses that viewport to land, so a keystroke still\ncosts two round trips.\n\n`truncated` is gone, replaced by three named reaches. `whole` draws nothing. `capped` draws \"last\n1000 of 3000\". `screen_only` draws \"this screen\", and is the one this card was really about: every\nagent pane is a full-screen program, the daemon holds no history behind its screen, and a search of\none used to report a complete search of 39 rows.\n\nMeasured facts are in `docs/observations/herdr-0.8.0.md` section 17, with the probe extended and\n`corpus/herdr-0.8.0/read-depth/` re-recorded, so the claims cite transcripts rather than this\ncomment.\n\n**What I left, and why.** The find bar's counter is the core's answer over the pane's history while\nthe marks under it are libghostty's over one screen, so a count of 47 can sit above two highlights.\nThat is the same division of labour the feature was designed with - the renderer cannot search what\nit does not hold - and the reach line now explains the gap where there is one. Making the two agree\nwould mean Muster drawing the marks itself, which is a different feature.\n\nA needle spanning a line wrap still does not match, because `recent` returns grid rows and\n`recent_unwrapped` returns logical lines with no way to locate one. Section 17 has had that\nrecorded since it was written and there is no source that is both.",
+      "created_at_millis": 1788483731557,
+      "id": "c_2Jrh6xvVZ"
+    }
+  ],
   "created_at_millis": 1786968299272,
-  "updated_at_millis": 1787041516084,
-  "column": "backlog-hi",
-  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUE",
+  "creator": "Alexander Terp",
+  "id": "a_29bpnJicQ",
+  "position": "!!!!!!!!!!!!!!!!!!!!!!!!!!E",
+  "title": "Find doesn't really properly work, the whole buffer thing isn't right",
+  "type": "bug",
+  "updated_at_millis": 1788483784796,
   "history": [
     {"field":"column","value":"backlog-lo","at":1786968299272},
-    {"field":"column","value":"backlog-hi","at":1787041516084}
+    {"field":"column","value":"backlog-hi","at":1787041516084},
+    {"field":"column","value":"done","at":1788483712787}
   ]
 }

@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-daemon-change",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1788487914368,
+  "creator": "Alexander Terp",
+  "description": "Editing `[[daemon]]` in `~/.muster/config.toml` and saving it does not attach or detach a machine. `muster reload` says so - `daemons_differ` logs \"relaunch to pick up a `[[daemon]]` change\" - and a relaunch costs every pane in the window, since a window that comes back is a window whose surfaces and bridges are all new.\n\nFound while driving a two-machine window on 0.4.1 (`a_2I6h18OU6`, 2026-09-01 comment): taking a machine out of the config was the only way to stop it holding a pane, and it cost a relaunch to do it. That reason has gone - a machine you finish with now stays empty - so this is no longer the workaround for anything, which is why it is a card of its own rather than a line in that one.\n\nWhat it still costs: a machine you want to *add* is a relaunch away, and so is one you want gone entirely. Neither is a thing Muster can do without stopping.\n\n## What it would take\n\nAttaching is already something the window does at runtime - it happens once per machine at startup, and `follow_implicitly_if_nothing_else` does one on demand. Detaching exists too: `Composition::detach_daemon` takes the machine's half out of every tab and drops the tabs that were only its. So the pieces are there, and what is missing is reading a changed config as a set of attaches and detaches rather than as a reason to give up.\n\nThe sharp edge is what a detach does to a window showing that machine's tab. The composition already answers it - the tab goes and the window moves to whatever took its place - but the panes on that machine keep running, and somebody who detached by accident has no way back short of editing the file again.",
+  "id": "a_2JtRvPUH5",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "title": "🔁 A [[daemon]] change needs a relaunch, and takes every pane with it",
+  "type": "bug",
+  "updated_at_millis": 1788487914368,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1788487914368}
+  ]
+}

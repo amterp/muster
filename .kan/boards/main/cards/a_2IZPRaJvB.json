@@ -6,13 +6,19 @@
     "shell",
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "comments": [
     {
       "author": "Alexander Terp",
       "body": "Slot 3 of the 2026-09-02 parallel round worked this card. What landed is on `main3`; what did not is `a_2IoXIHzri`. Against the five things this card says today is far from the vision:\n\n**A tab belongs to a machine.** Not done, and the largest thing left. MIP-2 is Accepted and carries the whole design, including the durability answer the Draft was waiting on: degrade per tab, and every tab that exists today is single-machine and keeps the guarantee it has. Carded as `a_2IoXIHzri` with the reason it was not started - stages three and four land together or not at all, because stage three alone replaces \"every machine on screen at once\" with \"one tab fills the window\" and stage four is what gives the side-by-side back.\n\n**A machine always gets a column.** Falls out of the same change. `a_2I6h18OU6` is answered rather than left open and moved out of `uncommitted`.\n\n**A window is not a unit.** Done, in two parts. The bug is fixed - a window somebody asked for opens onto tabs of its own and remembers nothing of anybody else's (`a_2IZ5TL6DQ`). And the unit is built: each window keeps its own arrangement and claims it while it runs, so a window that closes leaves something to come back to. `muster window reopen` and a menu item read it.\n\n**Two windows cannot show one pane.** Measured rather than built, and `a_2IZ6Of6JP` now carries the answer: a herdr client that loses its terminal to a `--takeover` sees its stream end, 258 to 259 ms after the taking client is spawned. That makes handoff nearly free and leaves fan-out - two windows showing one pane at once - the expensive one nobody asked for. README and `muster docs overview` stopped claiming the thing that was never true.\n\n**`pane move` cannot name a tab that does not exist.** Done (`a_2IXGSgZi7`). The core says where a pane is going in Muster's words and the adapter picks herdr's tag.\n\n## The leak, which this card says is ours alone\n\nTwo of its three ways in are closed. `Region` and the saved arrangement no longer carry a workspace, and `BackendIntent` no longer names one - the herdr adapter asks the daemon which of its workspaces a pane is in, which is where a defence against one backend's behaviour belongs. The tab is the way in that remains, and it is the whole of `a_2IoXIHzri`.\n\nThe glossary still defines a tab as daemon truth, and that is still accurate: a Muster tab is one herdr tab until something groups two. It stops being accurate when `a_2IoXIHzri` lands, and MIP-2 says so.",
       "created_at_millis": 1788328512526,
       "id": "c_2IoZ9gfLG"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Slot 1 of the 2026-09-03 parallel round worked the last of this card's five gaps that was ours alone. What landed is on `main1`, as MIP-2 stages three and four (`a_2IoXIHzri`). Against the five:\n\n**A tab belongs to a machine.** Done, and it was the largest thing left. A window holds an ordered list of Muster tabs and shows one; `cmd+1` and `cmd+2` switch between a local tab and a devenv tab the way tabs switch everywhere else. A tab holds a region per machine with panes in it, which is one for every tab until somebody groups two - and `muster pane move --tab`, or dragging a row onto a caption, is what groups them. So one tab can hold a laptop pane beside a devenv pane, which is the sentence this card opened with.\n\n**A machine always gets a column.** Gone with it (`a_2I6h18OU6`, now done). Nothing is owed a column, a machine you have finished with stays empty, and a row per machine at the foot of the agent list is the way back in.\n\n**A window is not a unit.** Was already done on `main3`, and unchanged.\n\n**Two windows cannot show one pane.** Unchanged, and the one thing here that is not ours: it is herdr's frame stream, and `a_2IZ6Of6JP` carries the measurement.\n\n**`pane move` cannot name a tab that does not exist.** Was already done, and it grew the third destination this needed: a tab, named rather than pointed at through one of its panes.\n\n## The leak, which this card said is ours alone\n\nClosed. `Region` no longer carries a workspace, a daemon or a tab - it carries the machine and its share, and the tab owns the list it is in. The saved arrangement names Muster's tabs and Muster's panes and nothing of herdr's. The glossary stops calling a tab daemon truth.\n\n## The bill, paid where the card said to pay it\n\n`docs/architecture.md`'s durability table now has two tiers and says which is which. Every tab that is on one machine keeps every row it had; only a tab somebody deliberately grouped depends on a file of Muster's, and only that one is lost if the file is - as a tab per machine, with every pane still running. A daemon restart reassembles a grouped tab from two halves; a machine that is unreachable leaves the tab showing the half it can.\n\nWhat is left of this card is the second pile - the restriction - which is not ours: one client per terminal, and `a_2IZ6Of6JP` is where it lives.",
+      "created_at_millis": 1788487872761,
+      "id": "c_2JtQqKPri"
     }
   ],
   "created_at_millis": 1788292390046,
@@ -22,11 +28,12 @@
   "labels": [
     "ai-lo"
   ],
-  "position": "!!!U",
+  "position": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!E",
   "title": "🧩 Windows, tabs and panes are Muster's own units, and a pane moves freely between them",
   "type": "feature",
-  "updated_at_millis": 1788328512526,
+  "updated_at_millis": 1788487885655,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1788292390046}
+    {"field":"column","value":"backlog-hi","at":1788292390046},
+    {"field":"column","value":"done","at":1788487885655}
   ]
 }

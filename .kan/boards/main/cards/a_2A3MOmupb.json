@@ -1,18 +1,31 @@
 {
   "_v": 3,
-  "id": "a_2A3MOmupb",
   "alias": "click-and-mouse",
   "alias_explicit": false,
-  "title": "click and mouse placement detection maybe doesn't work?",
-  "description": "like claude code which could use it and detecting where in the pane the mouse is and where they're clicking-- not sure we're passing that information thru?",
-  "creator": "Alexander Terp",
+  "area": [
+    "shell"
+  ],
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Answered 2026-09-03 while working slot 2. The position and the click both reach Muster; neither\nreaches the program in the pane, and that half is blocked on a_27CTgqqdv rather than missing.\n\n**What reaches Muster.** `SurfaceView.mouseDown` reports the click so the core can move the\nkeyboard to that pane, and every press, drag and release is forwarded to the pane's own\nlibghostty surface with the pointer position converted into the surface's coordinates\n(`SurfaceView.reportMousePosition`). That is what makes a drag select text and Cmd-C copy it,\nand it is why the cell under the pointer is already known accurately - the surface has the same\ngrid the person is looking at. Selection is now anchored to the pane rather than to a screen\nrow, which is a_2ADMeD8nM.\n\n**What does not reach the program, and why it is not a plumbing gap.** Nothing sends the click\non to the pane's PTY, deliberately. A program that never enabled mouse reporting receives an\nSGR sequence as typed text - garbage in a shell, a corrupted prompt in an agent mid-task - so\nthe click has to be gated on the mode, and the mode is not readable. Muster's own surface has a\ngetter for it, `ghostty_surface_mouse_captured`, and it answers `false` for every pane because\nherdr's VT consumes the mode-setting sequences before the frame stream ever carries them. The\nmeasurement and the source citations are section 12 of\n`docs/observations/libghostty-9f9b8d1d.md`.\n\nThe wheel is the exception and is already right: `terminal.scroll` is structured, and the\ndaemon encodes it against the pane's real state. Buttons and motion have no equivalent, which\nis exactly what a_27CTRluw7 asks for.\n\nSo this card has its answer and the work behind it is a_27CTgqqdv.",
+      "created_at_millis": 1788441756328,
+      "id": "c_2Ja58yYDd"
+    }
+  ],
   "created_at_millis": 1787033901134,
-  "updated_at_millis": 1787047243086,
-  "column": "next",
-  "position": "UUUUUUUUUUUUUUUUUUU",
+  "creator": "Alexander Terp",
+  "description": "like claude code which could use it and detecting where in the pane the mouse is and where they're clicking-- not sure we're passing that information thru?",
+  "id": "a_2A3MOmupb",
+  "position": "!!!!!!!!!!!!!!!!!!!!!!!!!!2",
+  "title": "click and mouse placement detection maybe doesn't work?",
+  "type": "chore",
+  "updated_at_millis": 1788483784958,
   "history": [
     {"field":"column","value":"backlog-lo","at":1787033901134},
     {"field":"column","value":"in-progress","at":1787041487337},
-    {"field":"column","value":"next","at":1787047243086}
+    {"field":"column","value":"next","at":1787047243086},
+    {"field":"column","value":"done","at":1788483712973}
   ]
 }
