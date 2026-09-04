@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "a-pane-past-100k",
+  "alias_explicit": false,
+  "area": [
+    "backend",
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1788544675975,
+  "creator": "Alexander Terp",
+  "description": "A zoomed devenv pane shrunk to a tiny font stopped updating for sixteen minutes while the daemon kept rendering it. herdr refuses any client frame over 2 MiB (`MAX_FRAME_SIZE`, `src/protocol/wire.rs:20`, a guard against oversized length prefixes). A text-only frame that exceeds it is logged and skipped (`src/server/headless.rs:4251`, \"skipping oversized frame for client\"), so the attached client receives nothing for that render pass. Muster puts no ceiling on the grid it asks for, and nothing tells the person at the keyboard why the pane in front of them stopped moving.\n\n## What was measured\n\nRun 34598, 0.6.0, herdr 0.8.0 on the devenv, 2026-09-04 15:53 to 16:14 UTC, from `/home/.config/herdr/sessions/muster/herdr-server.log`:\n\n    about 5,000 \"skipping oversized frame for client\" WARN lines in 21 minutes\n    client 148 (bridge w4:pS): 4,007 frames of 4,721,387 bytes skipped, 4 per second, 15:58 to 16:14\n    clients 146 and 147 (w4:pQ and w4:pR by timing): about 1,000 frames of 2,529,141 bytes skipped\n\nFrames cost about 20 bytes per cell for a Claude Code screen, so the cap is roughly 100k cells:\n\n    349 x 95  =  33k cells   fine; a full-window pane at the default size\n    698 x 179 = 125k cells   2.5 MB, every frame skipped\n    931 x 248 = 231k cells   4.7 MB, every frame skipped\n\nHow the pane got there: split at 15:58:10, zoomed at 15:58:13, then `cmd+-` held for 0.7 s. Each press is one `pane.font_size` line and one `bridge.resize` 30 ms later: 349x95, 399x101, 429x111, 465x124, 508x134, 558x153, 698x179, 798x202, 931x248. The offset saturates with no floor (`presentation.rs:309`), and a split inherits its parent's offset (`presentation.rs:250`), so this pane opened at -6 already.\n\nThe skipped frames were still paid for: the render, the frame build and the serialization all happen before the size check (`headless.rs:4184-4251`), so herdr built a 231k-cell frame four times a second for sixteen minutes and threw it away. Its API requests wait on the same thread: `pane.focus` took 33-45 ms server-side while it was rendering and 1 ms when quiet, and the `pane.send_input` round trip Muster logs as `server_channel.sent` was 105-250 ms (median 120) on a 2 ms link. The render cost that exists without any oversized pane is `a_2KHGXkKSc`; an oversized pane adds the largest possible frame to every pass.\n\n## What Muster showed\n\nNothing. `muster window` reported the pane `idle`, its bridge kept relaying input, its client stayed connected. The only evidence was a WARN in a log file on the far machine.\n\n## Fix\n\nBoth halves are Muster's. herdr's cap is a reasonable wire-level guard and not the thing to argue with.\n\n1. Do not ask for a grid herdr cannot deliver. Muster knows the cell count whenever a region or an offset changes, and the cap is a constant, so the font-size setter can saturate at the smallest size whose grid fits, in the spirit of its own comment: text that stops shrinking rather than a refusal. The floor is per pane and per region size, since a zoomed pane has more pixels to fill than a quarter of a tab. Bytes per cell depend on content, so leave headroom rather than computing it exactly.\n\n2. Say so when it happens anyway. A pane whose bridge has relayed input and received no frame for a few seconds, while the daemon still answers, has stopped, whatever `state` says. The bridge already counts `bridge.frames`; a record with impact and check fields, and a mark on the pane, would have named this in seconds.\n\nUpstream, an issue rather than a PR: a text-only frame over the cap could degrade instead of being skipped. herdr already does that for graphics (\"dropping graphics from oversized frame\", `headless.rs:4262`); text has no fallback.",
+  "id": "a_2KHGYMpnK",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "title": "🧊 A pane past ~100k cells freezes: herdr skips every frame over its 2 MB cap, and the window says nothing",
+  "type": "bug",
+  "updated_at_millis": 1788544675975,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1788544675975}
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-bound-chord-leaves",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1788544676175,
+  "creator": "Alexander Terp",
+  "description": "`input.key` records only keys that reach a pane. A chord the keymap consumes is logged by its effect, when the effect has a line of its own, and never by the press. So a run log cannot tell someone holding `cmd+-` from Muster resizing a pane on its own.\n\n## What was measured\n\nRun 34598, 2026-09-04: 16,589 `input.key` lines, 2 with `super` in `mods`, on a day spent switching panes and tabs with cmd chords. `input.bound.text` exists for the `[text]` table (165 lines, `pane_input.rs:123`); there is no sibling for actions. `pane_input.rs:177` logs a key after the bindings have had their turn.\n\nWhat it cost: eight `pane.font_size` lines 100 ms apart, each followed by a `bridge.resize` 30 ms later, growing a pane from 349x95 to 931x248 (`a_2KHGYMpnK`). That is exactly what a replay bug looks like, and it was called one in this session until the doc comment on `adjust_font_size` (\"one press of a font-size chord\") settled it. The log had every effect and none of the causes.\n\n## Fix\n\nLog the press where the binding resolves: `input.bound.action` beside `input.bound.text`, with key, mods, the action's name from `Action::ALL`, and whether the event was a repeat. Debug level, like `input.key`. A chord can also arrive as a menu item's key equivalent (`MenuActions.swift:143`); both paths run the same action and should write the same record, with a `source` field, so a reader need not know which one fired.",
+  "id": "a_2KHGYh7xD",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "title": "🔎 A bound chord leaves no trace in the run log, so a held key and a bug look the same",
+  "type": "enhancement",
+  "updated_at_millis": 1788544676175,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1788544676175}
+  ]
+}
