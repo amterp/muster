@@ -1,0 +1,32 @@
+{
+  "_v": 3,
+  "alias": "every-tunnel-reopen",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "next",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Correction, measured on the quit this card describes: quitting leaves *every* master behind, not just the last one. The title understates it.\n\nPid 2227 was quit from the menu with `cmd+q`. Eighteen masters against its control path were still running afterwards, all reparented to init, holding eighteen authenticated connections to the far machine. They had to be killed by hand:\n\n    before: 18 masters\n    pkill -f \"ssh -N -M -S /private/tmp/muster-2227-\"\n    after:  0 masters\n\nThe socket files needed removing too - `/private/tmp/muster-2227-*.sock` and the `.ctl` - since `Drop` unlinks them only on the path it thinks it owns.\n\nThis sharpens the fix rather than changing it. `Drop` cannot end connections it has no handle on, so ending the master has to be addressed to the control path with `ssh -O exit`, and one call per tunnel is not enough while previous masters are still bound to paths of their own. Either the reopen path ends the old master before it abandons the path (which is where the accumulation starts), or `Drop` sweeps every master matching this process's own path prefix. The first is better: it stops them accumulating rather than tidying up after.",
+      "created_at_millis": 1788359320869,
+      "id": "c_2J1UcY0wI"
+    }
+  ],
+  "created_at_millis": 1788358933914,
+  "creator": "Alexander Terp",
+  "description": "Every tunnel reopen leaves an ssh master running, and quitting Muster leaves the last one behind. One app process had 19 of them alive against a single control path, one per reopen, ages laddering in 31 second steps from 27 seconds to 9 minutes 46. Each holds an authenticated connection to the far machine and a forwarded socket on it.\n\nThey also outlive the app. Masters were found running for pids 39103, 64903 and 78471 - Muster instances that had already quit - alongside the ones belonging to the live process.\n\n## Why killing the child does not end the connection\n\n`Drop` kills the child it spawned and unlinks both paths (`crates/muster-ssh/src/tunnel.rs:417`). That ends the connection only while the child is the master. When the user's ssh config sets `ControlPersist`, `ssh -N -M` forks after authenticating and the process Muster holds a handle to has already exited, so the kill lands on a corpse and the real master keeps running. Every orphan observed had been reparented to init, which is the same fact from the process table.\n\nThe fork is `a_2J1KZ9FbM`, and fixing that removes the common way masters are orphaned. It does not remove this one. `Drop` would still be killing a pid rather than ending a connection, so any future ssh that backgrounds itself puts the leak straight back.\n\n## Fix\n\nEnd the master by addressing the control path rather than the pid:\n\n    ssh -O exit -S \u003ccontrol_path\u003e \u003chost\u003e\n\n`-O exit` reaches whichever process currently owns that path, which is the thing that needs to stop. It also removes the control path on its way out, so the \"stale path disables multiplexing\" hazard that `a_2IRdZK6Un` fixed cannot come back through this door. Keep the `child.kill()` as the fallback for a master that never answered.\n\nThe same call belongs on the reopen path, before the unlink, for the same reason: the loop currently deletes the paths and abandons a master that is still connected.\n\n## What it costs today\n\n- Each orphan holds an ssh session and a forward on the far machine, and `ControlPersist 10m` does not apply to them because `-N` means they never had a client to persist past.\n- `./dev --doctor` reports daemons and the devenv container. It does not report these, so the count grows unnoticed across a day of network changes.\n- Related upstream: `a_2I76eCrjw`, a herdr client whose transport is gone holding its terminal forever. Different process, same shape.\n\n## Reproducing it\n\n1. `pgrep -fc \"ssh -N -M -S .*muster\"` before starting Muster.\n2. Attach a remote daemon, then force a few reopens by unplugging and replugging the network.\n3. Count again. One master per reopen, all with `PPID 1`.\n4. Quit Muster and count once more. The last master is still there.\n\n## Validating a fix\n\n- After any number of reopens, one master per remote daemon is alive.\n- Quitting Muster leaves none.\n- No master survives with `PPID 1` against a control path that no longer exists.",
+  "id": "a_2J1KYPWhZ",
+  "labels": [
+    "ai-lo"
+  ],
+  "position": "!A",
+  "title": "🧟 Every tunnel reopen leaks an ssh master, and quitting leaves them all running",
+  "type": "bug",
+  "updated_at_millis": 1788359333568,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1788358933914},
+    {"field":"column","value":"next","at":1788359295218}
+  ]
+}

@@ -37,6 +37,7 @@
   "history": [
     {"field":"column","value":"backlog-hi","at":1788228657309},
     {"field":"column","value":"next","at":1788352327037},
+    {"field":"column","value":"backlog-hi","at":1788367071489},
     {"field":"column","value":"in-progress","at":1788439847234},
     {"field":"column","value":"done","at":1788484322241}
   ]
