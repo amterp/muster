@@ -3712,24 +3712,19 @@ pub(crate) struct Findings {
     pub(crate) selected: u32,
     pub(crate) rows_searched: u32,
 
-    /// How much of the pane this covered: `whole`, `capped` or `screen_only`.
+    /// How much of the pane this covered, which is what the bar draws beside the count.
     ///
-    /// A word rather than a flag, because the three want three different sentences under a
-    /// search box and a bar cannot tell them apart from a row count. `screen_only` is a pane
-    /// showing a full-screen program, which holds no history at all behind what is drawn.
-    pub(crate) reach: &'static str,
-
-    /// How many rows the pane holds in all, which only `capped` needs and only `capped`
-    /// sets. Zero otherwise, since "of 0 rows" is not a sentence anybody would draw.
-    pub(crate) rows_held: u32,
+    /// The core's own answer rather than a word, so the three cases stay a thing the compiler
+    /// checks and only the one place that has to spell them for the shell does.
+    pub(crate) reach: Reach,
 }
 
 impl Default for Findings {
-    /// Nothing searched, over a pane nothing was asked about. `whole` rather than one of the
+    /// Nothing searched, over a pane nothing was asked about. `Whole` rather than one of the
     /// other two, so a bar with an empty field draws no caveat about a search that has not
     /// happened.
     fn default() -> Findings {
-        Findings { total: 0, selected: 0, rows_searched: 0, reach: "whole", rows_held: 0 }
+        Findings { total: 0, selected: 0, rows_searched: 0, reach: Reach::Whole }
     }
 }
 
@@ -3804,17 +3799,11 @@ pub(crate) fn end_find() {
 
 impl Search {
     fn findings(&self) -> Findings {
-        let (reach, rows_held) = match self.found.reach() {
-            Reach::Whole => ("whole", 0),
-            Reach::Capped { rows_held } => ("capped", rows_held),
-            Reach::ScreenOnly => ("screen_only", 0),
-        };
         Findings {
             total: u32::try_from(self.found.hits.len()).unwrap_or(u32::MAX),
             selected: self.selected.map_or(0, |at| u32::try_from(at + 1).unwrap_or(u32::MAX)),
             rows_searched: self.found.rows_searched,
-            reach,
-            rows_held,
+            reach: self.found.reach(),
         }
     }
 }
