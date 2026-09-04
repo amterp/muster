@@ -5,7 +5,7 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -18,18 +18,25 @@
       "body": "Answered, though not yet built. The 2026-09-01 comment settled on the card's first option - ask once per attach, and leave a machine empty once you empty it - and the reason it is still open is that the rule it wants deleted is the same rule the tab model deletes.\n\n`open_remaining_regions` refills a machine because the window is a column per machine: a machine with no region has nothing on screen, and a window showing a machine you cannot use is the state `a_2HpkpfIfq` was about. Once a window holds an ordered list of Muster tabs with one on screen (MIP-2, stages three and four, carded as `a_2IoXIHzri`), nothing is owed a column and the rule stops existing in its present form. Deleting it before then would put back the hole `a_2HpkpfIfq` closed.\n\nSo this card's answer is: yes, refilling is too eager, and it goes when the tab model does. MIP-2 says so in \"What gets easier\". Moving it to `backlog-hi` rather than leaving it in `uncommitted`, because the question is settled and only the sequencing is outstanding.\n\nOne thing the 2026-09-01 comment turned up that outlives the rule and is worth keeping in view: `muster reload` does not apply a `[[daemon]]` change, so detaching a machine costs a relaunch and every pane in the window with it. That is a separate gap from refilling and stays one after the tab model lands.",
       "created_at_millis": 1788328490266,
       "id": "c_2IoYZmDj9"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Answered and built, on `main1` (slot 1 of the 2026-09-03 parallel round), as part of MIP-2 stages three and four (`a_2IoXIHzri`).\n\n`open_remaining_regions` is gone. Nothing is owed a column now that a window holds an ordered list of Muster tabs and shows one of them, so a machine whose last pane you close simply stops contributing tabs - and stays that way. That is the card's first option, which the 2026-09-01 comment settled on: ask once per attach, and leave a machine empty once you empty it.\n\nWhat replaces the property it gave up. The card and `a_2HpkpfIfq` both worried about a machine that is attached and holds nothing dropping out of the window's reach. Two things keep it reachable:\n\n- **It is still in the window.** The agent list grows a section at its foot holding a row per machine that is unreachable or holding no panes. A machine that is connected and holding panes contributes no row - its panes carry its name - so the common case is unchanged and silent.\n- **That row is a way in.** Picking one asks for a pane on that machine, which is the sidebar affordance `a_2HpkpfIfq` deliberately deferred. `muster pane new --daemon \u003cid\u003e` and `muster tab new --daemon \u003cid\u003e` are the same reach from a script.\n\nThe window still asks for a workspace when it has no tab at all to open onto, which is a different rule and the one that makes a first launch a window rather than an empty rectangle. It asks once per machine for the life of the window and never again - so closing your last pane later leaves it empty, which is the whole of what this card wanted.\n\nOne thing tightened while doing it, because it was the same rule misfiring: the window now waits for a machine to say what it holds before asking it for a workspace. Asking in the moment before a first snapshot lands opened a tab nobody wanted and left the one they did behind.\n\nThe gap the 2026-09-01 comment turned up and said outlives this is still open: `muster reload` does not apply a `[[daemon]]` change, so detaching a machine still costs a relaunch.",
+      "created_at_millis": 1788487858103,
+      "id": "c_2JtQSg6OX"
     }
   ],
   "created_at_millis": 1788223950434,
   "creator": "Alexander Terp",
   "description": "Closing the last pane on a machine now gets you a fresh shell on it, because the window asks any attached machine that says it holds nothing for a workspace (`a_2HpkpfIfq`). That closed a real hole: before it, a machine reaching zero panes dropped out of the window's reach entirely, and the only way back was `herdr workspace create` or editing the saved arrangement.\n\nThe question is whether the rule is too eager now that it runs per machine rather than per window.\n\n`open_a_workspace_if_the_window_is_empty` has always refilled a window with no panes at all, and nobody has objected to that: a window showing nothing is not a state anybody wants. Applied per machine, the same rule means closing the devenv's last pane spawns a devenv shell, over ssh, a moment later. Somebody who has finished with a machine for the afternoon cannot stop it holding a pane without taking its `[[daemon]]` block out of the config and relaunching.\n\nNot observed as a complaint - raised from reading the change rather than from using it, which is the honest provenance and also the reason to wait. What would settle it is driving a two-machine window for a day and noticing whether a devenv shell you did not ask for ever gets in the way.\n\nThings that might be true if it does:\n\n- **Ask once per attach rather than whenever a machine empties.** A machine gets its first pane and is then left alone; closing the last one leaves it empty and reachable through `muster pane new --daemon \u003cid\u003e`, which now exists. Cheapest, and it gives up the property that the window is never showing a machine you cannot use.\n- **Ask for the local machine and offer for a remote one.** A row in the agent list that opens a pane on an empty machine, rather than one appearing. That is the sidebar affordance `a_2HpkpfIfq` deliberately deferred, and it depends on the tab model `docs/mip/0002-muster-tabs.md` is about.\n- **A setting.** Last resort - this is a question about what Muster is for, and a key that lets both answers exist is how you avoid deciding.\n- **Leave it.** A machine you are not using is one you take out of the config, and a pane costs a shell.",
   "id": "a_2I6h18OU6",
-  "position": "!!!6",
+  "position": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!U",
   "title": "🌱 Is refilling a machine that empties too eager?",
   "type": "chore",
-  "updated_at_millis": 1788328490345,
+  "updated_at_millis": 1788487858184,
   "history": [
     {"field":"column","value":"uncommitted","at":1788223950434},
-    {"field":"column","value":"backlog-hi","at":1788328490345}
+    {"field":"column","value":"backlog-hi","at":1788328490345},
+    {"field":"column","value":"done","at":1788487858184}
   ]
 }

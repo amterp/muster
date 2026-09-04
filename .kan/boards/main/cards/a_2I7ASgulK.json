@@ -5,17 +5,27 @@
   "area": [
     "testing"
   ],
-  "column": "backlog-hi",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "**Done, and the open question is decided: both, because they are not the same mechanism.**\n\n**Each check owns its daemon's life.** All three cleanups now go through one `stop_daemon(socket, env)`, spelled `HERDR_SOCKET_PATH=\u003csocket\u003e \u003cpinned herdr\u003e server stop`. Three call sites had it three ways and one of them worked; the other two exited quietly under `check=False`, which is why this was invisible for as long as it was.\n\n**And `main()` ends what a previous run left, before it deletes ROOT.** Not a second way of doing the same job: a run that is interrupted never reaches its `finally`, and the delete is what makes a stray unreachable by anything but a signal. That ordering was the third fault on this card and the one that made the first two stick.\n\n**Third, not asked for: the tier now fails if it leaked.** After the checks, any socket under ROOT that still answers a ping is named and the run exits non-zero. The first validation bullet was otherwise something somebody had to re-measure with `./dev --doctor`, which is a thing people run when already suspicious - four runs left eight strays before anybody looked. Exercised against a daemon staged under ROOT on purpose, and it reports zero when there is none.\n\n**Also chosen: the tier runs the pinned daemon rather than whatever is on PATH.** Every other tier does, and it is what makes the stop above reach a binary that exists - on a machine set up the way this project intends there is no herdr on PATH at all, which is half of why the `--socket` cleanup did nothing. A contract judged against an unpinned daemon is judged against a version nothing here recorded. AGENTS.md said the tier needs a herdr on PATH; it no longer does, and now says so.\n\n**All three validation bullets checked on this machine.** Two `./dev --contract` runs back to back, green both times, and `./dev --doctor` naming no daemon under `/private/tmp/muster-smoke` afterwards.\n\n**One thing this cannot recover.** The two strays this machine was carrying from before the fix - `/private/tmp/muster-smoke/{driving,problems}` - had already had their socket files deleted by a later run's `rmtree`, so nothing could ask them to stop and they had to be signalled. The fix stops new ones being orphaned; it cannot reach one that already is.",
+      "created_at_millis": 1788484542427,
+      "id": "c_2Js2CoDzW"
+    }
+  ],
   "created_at_millis": 1788225082277,
   "creator": "Alexander Terp",
   "description": "`./dev --contract` leaves two herdr daemons running per invocation - one from `a pane can drive the window it is drawn in` and one from `a refused config opens the roster it would have had nowhere to appear in`. Four runs this evening left eight. `./dev --doctor` sees them and labels them `scratch`, so nothing is hidden, but nothing ends them either.\n\n**Three separate faults, and the third is what makes it stick.**\n\n1. `check_a_pane_can_drive_its_own_window`'s cleanup runs `herdr server stop` with `env=env`, and `scratch_home` pops `HERDR_SESSION`. So the CLI resolves the *default* session while the daemon is on `muster`, finds no socket, and exits quietly under `check=False`. `check_cold_start` gets this right two functions later - it passes `{**env, \"HERDR_SESSION\": \"muster\"}` - and leaks nothing, which is the comparison that shows the shape of the bug.\n\n2. `check_a_broken_config_opens_the_roster`'s cleanup runs `herdr --socket \u003cpath\u003e server stop`. herdr 0.8.0 has no `--socket` option; it answers `unknown option: --socket` and exits non-zero, which `check=False` swallows. It also reaches for `herdr` on PATH rather than the pinned binary, which on a machine set up the way this project intends finds nothing at all. The environment variable is the way to name a socket: `HERDR_SOCKET_PATH=\u003cpath\u003e herdr server stop`.\n\n3. `main()` does `shutil.rmtree(ROOT)` at the start of every run. That deletes the previous run's socket files out from under daemons that are still alive, so from the second run onward the strays cannot be reached through the API at all - `./dev --doctor` reports them as `unreachable, its socket path is gone`, and the only way to end one is a signal. So a fix to 1 and 2 alone still leaves whatever is already running unreachable.\n\n## Reproducing it\n\n    ./dev --contract\n    ./dev --doctor          # two scratch daemons under /private/tmp/muster-smoke\n    ./dev --contract\n    ./dev --doctor          # four, and the first two now say their socket path is gone\n\n## Validating a fix\n\n- `./dev --doctor` names no daemon under `/private/tmp/muster-smoke` after a run finishes.\n- A second run in a row leaves the same count as the first, rather than twice it.\n- `HERDR_SOCKET_PATH=\u003csocket\u003e herdr server stop` is the spelling used, and the pinned binary is what runs it - a stop that silently does nothing is what made this invisible for as long as it has been.\n\nWorth deciding rather than assuming: whether `main()` should stop what the last run left before deleting `ROOT`, or whether each check should own its daemon's life so the question never arises.",
   "id": "a_2I7ASgulK",
-  "position": "!!E",
+  "position": "!!!!!!!!!!!!!!!!!!!!!!!!!!!6",
   "title": "🧟 The contract tier leaks two daemons per run, and orphans them on the next",
   "type": "bug",
-  "updated_at_millis": 1788225086743,
+  "updated_at_millis": 1788484542427,
   "history": [
     {"field":"column","value":"backlog-lo","at":1788225082277},
-    {"field":"column","value":"backlog-hi","at":1788225086743}
+    {"field":"column","value":"backlog-hi","at":1788225086743},
+    {"field":"column","value":"in-progress","at":1788439847325},
+    {"field":"column","value":"done","at":1788484322332}
   ]
 }

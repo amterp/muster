@@ -1,15 +1,28 @@
 {
   "_v": 3,
-  "id": "a_2ADMeD8nM",
   "alias": "bug-if-i-highlight",
   "alias_explicit": false,
-  "title": "bug: if i highlight some text, and then scroll, the highlihgted cells dont follow the specific text - it stays still positionally on the screen, highlighting other text as you scroll",
-  "creator": "Alexander Terp",
+  "area": [
+    "shell"
+  ],
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Fixed. The cause is that a Muster pane does not scroll: its daemon holds the history and answers a\nscroll by re-encoding the new screen as cell writes, so a ten-row scroll arrives as absolute cursor\nmoves and one glyph per changed cell. libghostty pins a selection to rows of its own buffer, and\nthat buffer never moved - the text under the highlight was simply rewritten. Measured and written\nup as section 12 of `docs/observations/libghostty-9f9b8d1d.md`.\n\nSo a selection is remembered in the pane's own coordinates - a column and a row counted up from the\nbottom of its history, the same unit a search's landing uses - and asked for again wherever the\npane has travelled to. The seam gains one read for where a pane is looking, coalesced like a\ndivider drag and only sent while something is selected.\n\nWorth knowing about what it does not cover:\n\n- A double or triple click selects a word or a line, and libghostty exports no way to read back\n  which cells that covered. Those selections are left alone rather than pinned to the one cell\n  that was clicked, so they still drift on a scroll. Carded as a_2Jrhh1dkA.\n- Landing on a find scrolls the pane without the window asking for it, so a selection made and then\n  searched past is not re-placed until the next scroll. Carded as a_2JrhrSBOx.\n- Whether libghostty then paints the right cells is not something the suite can judge: a real\n  surface needs a GPU and a window. What is tested is the decision - which cells were asked for,\n  and when the answer is that there is nothing to draw - through the same fake surface the rest of\n  the view's decisions use. That is the same footing `highlight` and `setFontSizeOffset` have\n  stood on since they were written.",
+      "created_at_millis": 1788483766289,
+      "id": "c_2Jri0yg9y"
+    }
+  ],
   "created_at_millis": 1787057743516,
-  "updated_at_millis": 1787057743516,
-  "column": "backlog-hi",
-  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "creator": "Alexander Terp",
+  "id": "a_2ADMeD8nM",
+  "position": "!!!!!!!!!!!!!!!!!!!!!!!!!!6",
+  "title": "bug: if i highlight some text, and then scroll, the highlihgted cells dont follow the specific text - it stays still positionally on the screen, highlighting other text as you scroll",
+  "type": "bug",
+  "updated_at_millis": 1788483784868,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1787057743516}
+    {"field":"column","value":"backlog-hi","at":1787057743516},
+    {"field":"column","value":"done","at":1788483712882}
   ]
 }

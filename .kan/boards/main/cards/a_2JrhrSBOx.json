@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "landing-on-a-match",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1788483760404,
+  "creator": "Alexander Terp",
+  "description": "A selection is re-placed when the window asks a pane to scroll, because that is when it knows the pane moved (a_2ADMeD8nM). A find's landing scrolls it from the other side: the core works out where the match is and writes the scroll onto the pane's own channel, so the window never hears about it and a selection made before a search sits over the wrong text until the next wheel notch.\n\nSmall, and narrow - it needs somebody to select text and then search the same pane without scrolling afterwards. The fix is a line rather than a design: the core already knows it scrolled, so a find that lands can say so, and the chrome asks where the pane is looking the way a wheel makes it.",
+  "id": "a_2JrhrSBOx",
+  "position": "UUUUUUUUUU",
+  "title": "🔎 Landing on a match moves a pane without the window noticing",
+  "type": "bug",
+  "updated_at_millis": 1788483760404,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1788483760404}
+  ]
+}

@@ -6,6 +6,14 @@
     "backend"
   ],
   "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Worth knowing that the ground moved under this, with MIP-2 stages three and four (2026-09-03). The window's tab order is now Muster's own record - a window holds an ordered list of Muster tabs, appended on first sight and never reordered, spanning machines - rather than a reading of one daemon's order.\n\nSo the answer this card was reaching for has changed shape. Reading `tab_moved` would say that another client moved a tab within its daemon; whether Muster's own list should follow is a separate decision, and there is now somewhere to put an order that there was not before. `a_2JtSWvZUQ` asks the nearest live version of the question.",
+      "created_at_millis": 1788487959390,
+      "id": "c_2JtT63dEC"
+    }
+  ],
   "created_at_millis": 1786974044438,
   "creator": "Alexander Terp",
   "description": "`events.rs` leaves `tab_moved` in the unknown set, so a tab dragged elsewhere by another client keeps the place it arrived in - `crates/muster-core/src/mirror/ordered.rs:22-25` says so outright.\n\n`pane_moved` was in the same position and was settled by recording one (a_29LNsfI7u): the probe's `arranging` scenario drives a real move, and the recording showed the event carries the whole pane with its new tab, that the answer's trees are under names Muster's reader does not match, and that nothing else states the change. Decoding it was then obvious rather than a guess.\n\nThis is the same job for tabs, and the scenario is the place to do it: add a `tab.move` to `arranging`, record what herdr broadcasts and what the answer carries, then decide whether the mirror can hold an order at all. Worth doing together with whatever settles tab ordering generally, since a mirror that reads `tab_moved` but has nowhere to put the order gains nothing.",
@@ -13,7 +21,7 @@
   "position": "UUUUUUUUUUUUUUUUUUUUUUUU",
   "title": "🔀 tab_moved is unread, so tab order is arrival order",
   "type": "chore",
-  "updated_at_millis": 1786988798666,
+  "updated_at_millis": 1788487959390,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786974044438},
     {"field":"column","value":"in-progress","at":1786982998800},

@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "closing-now-reaches",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "uncommitted",
+  "created_at_millis": 1788487927544,
+  "creator": "Alexander Terp",
+  "description": "`muster pane close --pane \u003cp\u003e` and `muster tab close --tab \u003ct\u003e` used to refuse a pane or tab no region was showing. They no longer do: they refuse only a pane or tab this window does not hold. Changed on `main1` with MIP-2 stages three and four, and raised here because it is a real safety loosening that the MIP did not ask for.\n\n## Why it had to move\n\nThe old rule read \"you can only destroy what you can see\". That was a usable line while a window was a column per machine, because each machine's current tab was on screen. A window now shows one tab at a time, so every tab but one is in the background - and the rule would have made `muster tab close --tab \u003ct\u003e` refuse every tab except the one you are looking at, which is not a verb. `pane close --pane \u003cp\u003e` would have refused nearly every name a script could give it.\n\nKeeping it strict for panes and loose for tabs was the other option and reads worse: you could close a whole background tab and not one pane inside it.\n\n## What is left of the protection\n\n- The window has to hold it. A pane or tab in a session this window is not attached to is still refused, which is what the guard was actually protecting against.\n- You can still see what you are destroying. The agent list names every tab and every pane whether or not the window is showing them, which is more than the old rule guaranteed - it only ever checked that a *region* was on the thing.\n- `muster docs limits` says so under \"Closing with no --pane closes the pane you are in\", and MIP-2's History records the change.\n\n## What would settle it\n\nDriving it. The question is whether closing something you are not looking at ever happens by accident in practice - a chord cannot do it (⌘W and ⌘⇧W both mean the tab you are in), so it takes a CLI call or an agent naming the wrong id. If it does, the answer is probably a confirmation on the CLI rather than a refusal, since the refusal has nowhere left to draw its line.",
+  "id": "a_2JtSGeKhK",
+  "position": "UUUUUUUUU",
+  "title": "🗑️ Closing now reaches a tab you are not looking at - is that the right trade?",
+  "type": "chore",
+  "updated_at_millis": 1788487927544,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1788487927544}
+  ]
+}
