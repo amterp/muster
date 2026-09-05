@@ -17,6 +17,7 @@
     "pane.send_input": 10000,
     "pane.send_text": 10000
   },
+  "canonical_reader_matches_bare_pty": true,
   "send_input_fences_a_paste": true,
   "send_text_fences_a_paste": false
 }
