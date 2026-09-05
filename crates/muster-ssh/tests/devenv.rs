@@ -43,24 +43,20 @@ fn devenv() -> (String, Vec<String>) {
 /// forwarded path instead of inventing a second way to probe.
 fn master(name: &str) -> Tunnel {
     let (host, options) = devenv();
+    Tunnel::open(forward(name, &host, &options), Arc::new(|_| {})).expect("the tunnel should open")
+}
+
+/// Where one test's tunnel puts its ends, named so that tests running in parallel do not
+/// share a control path.
+fn forward(name: &str, host: &str, options: &[String]) -> Forward {
     let temporary = std::env::temp_dir();
-    Tunnel::open(
-        Forward {
-            host,
-            options,
-            control_path: temporary
-                .join(format!("muster-devenv-{name}.ctl"))
-                .to_string_lossy()
-                .into(),
-            local_socket: temporary
-                .join(format!("muster-devenv-{name}.sock"))
-                .to_string_lossy()
-                .into(),
-            remote_socket: format!("/tmp/muster-devenv-{name}-nothing.sock"),
-        },
-        Arc::new(|_| {}),
-    )
-    .expect("the tunnel should open")
+    Forward {
+        host: host.to_string(),
+        options: options.to_vec(),
+        control_path: temporary.join(format!("muster-devenv-{name}.ctl")).to_string_lossy().into(),
+        local_socket: temporary.join(format!("muster-devenv-{name}.sock")).to_string_lossy().into(),
+        remote_socket: format!("/tmp/muster-devenv-{name}-nothing.sock"),
+    }
 }
 
 #[test]
@@ -120,6 +116,97 @@ fn a_master_that_was_killed_comes_back_still_carrying_commands() {
         tunnel.host(),
         tunnel.control_path(),
     );
+}
+
+#[test]
+#[ignore = "needs the devenv container; run through ./dev --ssh"]
+fn a_config_that_backgrounds_the_master_cannot_reach_it() {
+    // The bug the pin exists for, reached from the option side. `ControlPersist` in a personal
+    // ssh config makes `ssh -N -M` fork once it has authenticated, so the process Muster
+    // spawned exits and a different one carries the forward - which is how a working
+    // connection was called down 31 times in thirteen minutes, and how a quit left eighteen
+    // authenticated connections behind (kan a_2J1KZ9FbM, a_2J1KYPWhZ).
+    //
+    // The container's ssh config has none and cannot be given one by accident, which is why
+    // the suite missed the bug entirely. The option arrives the same way through
+    // `ssh_options`, and that is a fixture the container can hold.
+    let (host, mut options) = devenv();
+    options.extend(["-o".to_string(), "ControlPersist=10m".to_string()]);
+
+    // The control arm, and it runs first deliberately. Without it, an ssh that stopped
+    // forking would make everything below pass while proving nothing about the pin.
+    assert!(
+        backgrounds_itself(&host, &options),
+        "ssh here did not leave the foreground with ControlPersist set, so this test cannot \
+         tell a working pin from an ssh that never had the behaviour"
+    );
+
+    let tunnel = Tunnel::open(forward("persist", &host, &options), Arc::new(|_| {}))
+        .expect("the tunnel should open");
+    assert_eq!(
+        parent_of(&master_pid(&tunnel)),
+        std::process::id().to_string(),
+        "the master should still be this process's own child. A master reparented to init is \
+         one that forked past the pinned ControlPersist=no, which puts every pid-shaped \
+         assumption above it back in play."
+    );
+    assert!(tunnel.remote().run(&["true"]).is_ok(), "and should be carrying commands");
+}
+
+/// Whether an ssh master with `ControlPersist` set leaves the foreground on this machine.
+///
+/// Spawned without Muster's pin, so what is being measured is ssh's own behaviour rather than
+/// anything in this crate: the process is expected to exit while the forward it opened carries
+/// on under a pid nobody was handed.
+fn backgrounds_itself(host: &str, options: &[String]) -> bool {
+    let temporary = std::env::temp_dir();
+    let control: String = temporary.join("muster-devenv-forks.ctl").to_string_lossy().into_owned();
+    let local: String = temporary.join("muster-devenv-forks.sock").to_string_lossy().into_owned();
+    let _ = std::fs::remove_file(&control);
+    let _ = std::fs::remove_file(&local);
+
+    let mut arguments = vec![
+        "-N".to_string(),
+        "-M".to_string(),
+        "-S".to_string(),
+        control.clone(),
+        "-L".to_string(),
+        format!("{local}:/tmp/muster-devenv-forks-nothing.sock"),
+        "-o".to_string(),
+        "BatchMode=yes".to_string(),
+    ];
+    arguments.extend(options.iter().cloned());
+    arguments.push(host.to_string());
+
+    let mut child = Command::new("ssh").args(&arguments).spawn().expect("ssh runs");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let forked = loop {
+        match child.try_wait().expect("the spawned ssh can be waited on") {
+            Some(_) => break true,
+            None if Instant::now() >= deadline => {
+                let _ = child.kill();
+                let _ = child.wait();
+                break false;
+            }
+            None => std::thread::sleep(Duration::from_millis(50)),
+        }
+    };
+
+    // Addressed to the path rather than to the pid, which is the whole point: after a fork
+    // there is no pid here that would end it.
+    let _ = Command::new("ssh").args(["-O", "exit", "-S", &control, host]).output();
+    let _ = std::fs::remove_file(&control);
+    let _ = std::fs::remove_file(&local);
+    forked
+}
+
+/// What the process table says spawned this pid.
+///
+/// The same reading the diagnosis was made from: every leaked master had been reparented to
+/// init, which is the fork seen from the other side.
+fn parent_of(pid: &str) -> String {
+    let read = Command::new("ps").args(["-o", "ppid=", "-p", pid]).output().expect("ps runs");
+    String::from_utf8_lossy(&read.stdout).trim().to_string()
 }
 
 /// The pid of the master behind this tunnel, out of ssh's own answer.

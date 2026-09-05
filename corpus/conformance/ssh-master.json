@@ -30,6 +30,8 @@
           "ServerAliveInterval=15",
           "-o",
           "ServerAliveCountMax=3",
+          "-o",
+          "ControlPersist=no",
           "devenv"
         ]
       }
@@ -60,13 +62,15 @@
           "ServerAliveInterval=15",
           "-o",
           "ServerAliveCountMax=3",
+          "-o",
+          "ControlPersist=no",
           "devenv"
         ]
       }
     },
     {
       "name": "the user's own options come after Muster's, and so cannot switch them off",
-      "why": "ssh uses the first value it is given for any setting, so this order decides who wins. Muster's four are what make a broken tunnel fail loudly rather than hang a window, and they are not a preference; the escape hatch exists for connection details - a port, a key, a jump host - which is what this case passes. Anything a host alias can express belongs in the user's own ssh config instead, where every other tool already looks.",
+      "why": "ssh uses the first value it is given for any setting, so this order decides who wins. Muster's five are what make a broken tunnel fail loudly rather than hang a window, and they are not a preference; the escape hatch exists for connection details - a port, a key, a jump host - which is what this case passes. Anything a host alias can express belongs in the user's own ssh config instead, where every other tool already looks.",
       "given": {
         "host": "dev@localhost",
         "options": ["-p", "2222", "-i", "devenv/.ssh/id_ed25519"],
@@ -90,6 +94,8 @@
           "ServerAliveInterval=15",
           "-o",
           "ServerAliveCountMax=3",
+          "-o",
+          "ControlPersist=no",
           "-p",
           "2222",
           "-i",
@@ -124,7 +130,43 @@
           "ServerAliveInterval=15",
           "-o",
           "ServerAliveCountMax=3",
+          "-o",
+          "ControlPersist=no",
           "-4",
+          "devenv"
+        ]
+      }
+    },
+    {
+      "name": "a config that backgrounds the master cannot reach this command line",
+      "why": "The one option here that is not about how the connection behaves but about whether Muster is holding it. `ControlPersist` makes `ssh -N -M` fork into the background once it has authenticated, so the process Muster spawned exits and a different one carries the forward - and every pane died for thirteen minutes because a supervisor believed the handle it had (kan a_2J1KZ9FbM). It is a common thing to have in a personal ssh config, and it also arrives through `ssh_options`, which is what this case passes: Muster's `no` comes first and ssh takes the first value, so neither route can switch it off. Pinning it keeps one master per daemon rather than a spawned process and a backgrounded one; the code no longer asks a pid whether a master is alive, so this is a cost and a clarity choice rather than the correctness fix it started as.",
+      "given": {
+        "host": "devenv",
+        "options": ["-o", "ControlPersist=10m"],
+        "controlPath": "/tmp/muster-1-devenv.ctl",
+        "localSocket": "/tmp/muster-1-devenv.sock",
+        "remoteSocket": "/home/dev/.config/herdr/herdr.sock"
+      },
+      "expect": {
+        "arguments": [
+          "-N",
+          "-M",
+          "-S",
+          "/tmp/muster-1-devenv.ctl",
+          "-L",
+          "/tmp/muster-1-devenv.sock:/home/dev/.config/herdr/herdr.sock",
+          "-o",
+          "BatchMode=yes",
+          "-o",
+          "ExitOnForwardFailure=yes",
+          "-o",
+          "ServerAliveInterval=15",
+          "-o",
+          "ServerAliveCountMax=3",
+          "-o",
+          "ControlPersist=no",
+          "-o",
+          "ControlPersist=10m",
           "devenv"
         ]
       }

@@ -91,6 +91,18 @@ pub fn master_arguments(forward: &Forward) -> Vec<String> {
         "ServerAliveInterval=15".to_string(),
         "-o".to_string(),
         "ServerAliveCountMax=3".to_string(),
+        // Whether the child Muster spawned is the connection at all. `ControlPersist` is a
+        // common thing to have in a personal ssh config, and with it set `ssh -N -M` forks
+        // into the background once it has authenticated - so the process Muster holds a
+        // handle to has already exited while a different one carries the forward. A
+        // supervisor watching that handle called a working connection down 31 times in
+        // thirteen minutes, and a quit left eighteen authenticated connections behind
+        // (kan a_2J1KZ9FbM, a_2J1KYPWhZ). Nothing below this line asks a pid about a master
+        // any more, but the option stays pinned: a master in the foreground is one process
+        // per daemon rather than two, and the escape hatch exists for connection details
+        // rather than for how Muster supervises its own child.
+        "-o".to_string(),
+        "ControlPersist=no".to_string(),
     ];
     arguments.extend(forward.options.iter().cloned());
     arguments.push(forward.host.clone());
