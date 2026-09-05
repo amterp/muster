@@ -227,6 +227,102 @@ fn master_pid(tunnel: &Tunnel) -> String {
 
 #[test]
 #[ignore = "needs the devenv container; run through ./dev --ssh"]
+fn dropping_a_tunnel_leaves_no_master_behind() {
+    // Eighteen authenticated connections to the far machine survived one cmd+q and had to be
+    // killed by hand, because `Drop` killed a pid rather than ending a connection
+    // (kan a_2J1KYPWhZ). This is that card's acceptance criterion: quitting leaves none.
+    let tunnel = master("teardown");
+    let pid = master_pid(&tunnel);
+    let control = tunnel.control_path().to_string();
+    let local = tunnel.local_socket_path().to_string();
+    assert!(tunnel.remote().run(&["true"]).is_ok(), "it should carry a command to begin with");
+
+    drop(tunnel);
+
+    assert!(
+        gone(&pid),
+        "the master should have ended with the tunnel. One left running holds an ssh session \
+         and a forward on the far machine that nothing on this one can see or reach."
+    );
+    assert!(!std::path::Path::new(&control).exists(), "and should have taken {control} with it");
+    assert!(!std::path::Path::new(&local).exists(), "and {local}");
+}
+
+#[test]
+#[ignore = "needs the devenv container; run through ./dev --ssh"]
+fn a_master_that_stopped_answering_is_replaced_by_exactly_one() {
+    // Two halves of the same fix, and this is the case that needs both. Removing the control
+    // path leaves the master process alive and every bridge riding `-S` dialing nothing: a
+    // supervisor that asks the pid sees a healthy child and never reopens, which is the shape
+    // that made a plugged-in laptop unusable (kan a_2IRdZK6Un). Asking the path notices it.
+    //
+    // What happens next is the other card. The loop used to unlink both paths and spawn over
+    // the top, leaving the previous master holding its connection - nineteen of them were
+    // counted against one control path, one per reopen (kan a_2J1KYPWhZ).
+    let tunnel = master("replaced");
+    assert!(tunnel.remote().run(&["true"]).is_ok(), "it should carry a command to begin with");
+    assert_eq!(masters_on(tunnel.control_path()), 1, "and should be one master to begin with");
+
+    for round in 1..=2 {
+        std::fs::remove_file(tunnel.control_path()).expect("the control path should be removable");
+
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while Instant::now() < deadline {
+            if tunnel.remote().run(&["true"]).is_ok() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        assert!(
+            tunnel.remote().run(&["true"]).is_ok(),
+            "round {round}: the tunnel to {} did not carry a command again within 30s of its \
+             control path going missing.\n  Impact: every pane on that machine stays dark \
+             until the app is relaunched.\n  The supervisor asks `ssh -O check -S {}` rather \
+             than asking whether its child is alive, so check the run log for `tunnel.down` \
+             and `tunnel.reopened`.",
+            tunnel.host(),
+            tunnel.control_path(),
+        );
+        assert_eq!(
+            masters_on(tunnel.control_path()),
+            1,
+            "round {round}: a reopen should end the master it is replacing, not abandon it. \
+             Every one left behind holds an authenticated session and a forward on the far \
+             machine, and they accumulate one per reopen."
+        );
+    }
+}
+
+/// How many ssh masters are bound to this control path.
+///
+/// Matched on `-N -M -S`, which only a master's command line carries: the supervisor's own
+/// `-O check` and every bridge's command name the same path and are not masters.
+fn masters_on(control_path: &str) -> usize {
+    let found = Command::new("pgrep")
+        .args(["-f", &format!("ssh -N -M -S {control_path}")])
+        .output()
+        .expect("pgrep runs");
+    String::from_utf8_lossy(&found.stdout).lines().filter(|line| !line.trim().is_empty()).count()
+}
+
+/// Whether this pid has finished, given a moment to do it in.
+///
+/// Polled rather than asked once, because a process asked to leave is gone shortly afterwards
+/// rather than instantly, and a test that raced it would fail for the wrong reason.
+fn gone(pid: &str) -> bool {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < deadline {
+        let alive = Command::new("kill").args(["-0", pid]).status().expect("kill runs").success();
+        if !alive {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    false
+}
+
+#[test]
+#[ignore = "needs the devenv container; run through ./dev --ssh"]
 fn a_command_rides_the_master_and_says_what_the_machine_is() {
     let tunnel = master("platform");
     let far = tunnel.remote();

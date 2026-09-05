@@ -183,6 +183,18 @@ half a minute, not when one came up - so nothing about a process existing can re
 deliberately differs: a bridge that gives up costs one pane, and a tunnel that gave up costs every pane on that
 machine until the app is relaunched, which is the failure this whole arrangement exists to prevent.
 
+**A master is addressed by its control path, not by its pid.** The child Muster spawned is the master only while ssh
+stays in the foreground, and `ControlPersist` in somebody's own ssh config makes `ssh -N -M` fork once it has
+authenticated - the process Muster watches exits and a different one carries the forward. Believing that child
+declared a working connection down 250ms after every confirmed reopen for thirteen minutes, each false down
+unlinking both paths from under a master that was carrying every pane's traffic; and it left eighteen authenticated
+connections running on the far machine after one quit (kan a_2J1KZ9FbM, a_2J1KYPWhZ). So `ControlPersist=no` joins
+the options a config cannot override, the supervisor asks `ssh -O check -S <path>` rather than the child, and a
+master is ended with `ssh -O exit -S <path>` - on the reopen path as well as at `Drop`, because the reopen path is
+where they accumulate. Killing the child remains the fallback for a master that never answered. Both the option and
+the question are kept: the first holds a daemon to one ssh process rather than two, and the second is right whatever
+a future ssh does about forking.
+
 That bridge command needs two things it cannot work out, and both are answered rather than guessed. It is handed the
 daemon's socket as the *far* side spells it, because the near end of a tunnel names nothing over there and Muster's
 daemon listens on a session of its own on both machines. And it looks for its herdr at `~/.muster/bin/herdr` before

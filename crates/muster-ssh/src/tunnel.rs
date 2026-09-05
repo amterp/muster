@@ -147,9 +147,13 @@ impl Tunnel {
                 forward.local_socket,
             ));
         }
-        // A path left behind by a previous run binds nothing and refuses everything, and ssh
-        // will not replace it. Removing it is safe because the name carries this process's id.
+        // Paths left behind by a run that crashed, and ssh will not replace either: a stale
+        // local socket binds nothing and refuses everything, and `-M -S` onto a path that
+        // exists disables multiplexing with a warning instead of failing, which leaves every
+        // bridge dialing a master that is gone (kan a_2IRdZK6Un). Safe because both names
+        // carry this process's id.
         let _ = std::fs::remove_file(&forward.local_socket);
+        let _ = std::fs::remove_file(&forward.control_path);
 
         let child = spawn(&forward)?;
         let tunnel = Tunnel {
@@ -254,6 +258,13 @@ impl Tunnel {
     /// back in retried at 1.25s forever. A run of failures now ends when the connection has
     /// *held*, which `muster_core::reconnect` decides and which nothing about a process
     /// existing can satisfy.
+    ///
+    /// **And "up" is asked of the control path rather than of a pid.** A pid is the master
+    /// only while ssh stays in the foreground: with `ControlPersist` set, `ssh -N -M` forks
+    /// after authenticating, and this loop spent thirteen minutes calling a connection down
+    /// 250ms after confirming it - unlinking both paths out from under a master that was
+    /// carrying every pane's traffic (kan a_2J1KZ9FbM). `master_arguments` pins the option
+    /// away, and asking the path as well means no future ssh can put the bug back.
     fn supervise(&self, report: Report) {
         let forward = self.forward.clone();
         let child = Arc::clone(&self.child);
@@ -261,25 +272,29 @@ impl Tunnel {
         std::thread::spawn(move || {
             let mut attempts = Attempts::new();
             while !stopping.load(Ordering::Relaxed) {
-                std::thread::sleep(POLL);
-                if stopping.load(Ordering::Relaxed) {
+                if !sleep_unless_stopping(HEALTH_POLL, &stopping) {
                     return;
                 }
-                let alive = poison::lock(&child, "ssh-child")
-                    .try_wait()
-                    .is_ok_and(|exited| exited.is_none());
-                if alive {
-                    // Cheap, and asked every time: `ExitOnForwardFailure` means a master that
-                    // is still running is one whose forward stood up, so aliveness is the
-                    // honest reading of "up" once a reopen has been confirmed once. What it
-                    // cannot say is that the connection has *worked*, which is what ends a run
-                    // of failures and is the only thing time can answer.
-                    if attempts.holding(clock::monotonic_now()) {
-                        log::info("tunnel.settled", fields! { "host" => forward.host.clone() });
-                        report(State::Reachable);
+                // Reaped rather than read. The answer is no longer the health check, but a
+                // `Child` nobody waits on is a zombie and this loop is the only place holding
+                // the handle.
+                let _ = poison::lock(&child, "ssh-child").try_wait();
+
+                let down = match control(&forward, "check") {
+                    Ok(()) => {
+                        // `ExitOnForwardFailure` means a master that is still running is one
+                        // whose forward stood up, so a master that answers is the honest
+                        // reading of "up" once a reopen has been confirmed once. What it
+                        // cannot say is that the connection has *worked*, which is what ends a
+                        // run of failures and is the only thing time can answer.
+                        if attempts.holding(clock::monotonic_now()) {
+                            log::info("tunnel.settled", fields! { "host" => forward.host.clone() });
+                            report(State::Reachable);
+                        }
+                        continue;
                     }
-                    continue;
-                }
+                    Err(silence) => silence,
+                };
 
                 let retry = attempts.failed();
                 log::warn(
@@ -288,6 +303,7 @@ impl Tunnel {
                         "host" => forward.host.clone(),
                         "attempt" => retry.attempt.to_string(),
                         "retry_in_ms" => (retry.after / 1_000_000).to_string(),
+                        "detail" => down,
                         "impact" => "every pane on this daemon is rendering what it last \
                                      showed, and its agent states are a guess about the \
                                      present",
@@ -305,17 +321,23 @@ impl Tunnel {
                     return;
                 }
 
-                // Both paths, and the control path is the one that was missing. ssh will not
-                // replace either: a stale local socket refuses every connection, and `-M -S`
-                // onto a path that exists disables multiplexing with a warning instead of
-                // failing - which leaves every bridge riding `-S` dialing a master that is
-                // gone, and is the shape the card's "two masters fighting" hypothesis has.
-                // Safe because both names carry this process's id.
-                let _ = std::fs::remove_file(&forward.local_socket);
-                let _ = std::fs::remove_file(&forward.control_path);
+                // Ended rather than abandoned, and this is where the leak started: the loop
+                // used to unlink both paths and spawn over the top, so a master that was
+                // still connected went on holding an authenticated session nothing could
+                // reach. Nineteen of them were counted against one control path, one per
+                // reopen (kan a_2J1KYPWhZ). Doing it here rather than sweeping at `Drop` time
+                // stops them accumulating instead of tidying up after.
+                end_master(&forward, &child);
                 match spawn(&forward) {
                     Ok(fresh) => {
                         *poison::lock(&child, "ssh-child") = fresh;
+                        if stopping.load(Ordering::Relaxed) {
+                            // Dropped while this reconnect was in flight. `Drop` asked the
+                            // control path to leave before this master bound it, so it is one
+                            // nothing else will ever end.
+                            end_master(&forward, &child);
+                            return;
+                        }
                         match confirm(&forward, &child, &stopping) {
                             Ok(()) => log::info(
                                 "tunnel.reopened",
@@ -352,8 +374,25 @@ impl Tunnel {
     }
 }
 
-/// How often the supervisor looks at its child.
-const POLL: Duration = Duration::from_millis(250);
+/// The longest a sleeping supervisor waits before noticing the tunnel is being taken down.
+///
+/// Every wait in here is sliced by this, so dropping a tunnel does not sit out a thirty-second
+/// backoff before the thread reacts - which on quit is a window that will not close.
+const STOP_CHECK: Duration = Duration::from_millis(250);
+
+/// How often the supervisor asks whether the master is still there.
+///
+/// Slower than the slice above, because the question is a subprocess now rather than a syscall
+/// on a handle. Nothing recovers sooner for asking four times a second: ssh's own
+/// `ServerAlive` settings take about forty-five seconds to notice a black-holed connection,
+/// and the first retry after a real drop waits 1.25s regardless.
+const HEALTH_POLL: Duration = Duration::from_secs(1);
+
+/// How long a control request gets before the master is treated as not answering.
+///
+/// Bounded because a wedged master answers nothing, and both callers run somewhere that cannot
+/// afford to block: the supervising thread, and `Drop` on the way to closing a window.
+const CONTROL_WITHIN: Duration = Duration::from_secs(2);
 
 /// How long a reopened master gets to bind its socket and answer, before the attempt counts as
 /// having failed.
@@ -364,9 +403,6 @@ const POLL: Duration = Duration::from_millis(250);
 const CONFIRM_WITHIN: Duration = Duration::from_secs(5);
 
 /// Sleeps, unless the tunnel is being taken down. Answers whether it is worth going on.
-///
-/// In slices, so that dropping a tunnel does not wait out a thirty-second backoff before the
-/// thread notices - which on quit is a window that will not close.
 fn sleep_unless_stopping(wait: Duration, stopping: &Arc<AtomicBool>) -> bool {
     let deadline = Instant::now() + wait;
     loop {
@@ -380,8 +416,96 @@ fn sleep_unless_stopping(wait: Duration, stopping: &Arc<AtomicBool>) -> bool {
         if left.is_zero() {
             return true;
         }
-        std::thread::sleep(POLL.min(left));
+        std::thread::sleep(STOP_CHECK.min(left));
     }
+}
+
+/// Asks the master on this control path to do something, and does not wait forever for it.
+///
+/// Addressed to the path rather than to a pid, which is the difference the two cards behind
+/// this turn on: `-O` requests reach whichever process currently owns the path, and a pid is
+/// the master only while ssh stays in the foreground. `check` asks whether a master is there;
+/// `exit` asks it to leave, and it removes the control path on its way out.
+///
+/// A local question either way - a control request rides the multiplexing socket and never
+/// touches the network - so this says a master is there, not that its connection is carrying
+/// anything. Whether it *works* is [`confirm`], which is worth a round trip once per reopen
+/// and not once a second.
+///
+/// ssh's own words are folded into the error rather than inherited, unlike [`spawn`]: a host
+/// that is away would otherwise print "Control socket connect: No such file or directory" to
+/// this process's stderr every second for as long as the outage lasts.
+fn control(forward: &Forward, request: &str) -> Result<(), String> {
+    let mut asked = Command::new("ssh")
+        .args(["-O", request, "-S", &forward.control_path, &forward.host])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("could not run ssh to ask for `-O {request}` ({error})"))?;
+
+    let deadline = Instant::now() + CONTROL_WITHIN;
+    loop {
+        match asked.try_wait() {
+            Ok(Some(status)) if status.success() => return Ok(()),
+            Ok(Some(status)) => {
+                return Err(format!(
+                    "the master refused `-O {request}` ({status}): {}",
+                    stderr_of(asked)
+                ));
+            }
+            Err(error) => return Err(format!("ssh would not finish `-O {request}` ({error})")),
+            Ok(None) => {}
+        }
+        if Instant::now() >= deadline {
+            let _ = asked.kill();
+            let _ = asked.wait();
+            return Err(format!(
+                "the master on {} did not answer `-O {request}` within {}s",
+                forward.control_path,
+                CONTROL_WITHIN.as_secs(),
+            ));
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+}
+
+/// What a finished ssh had to say for itself, in one line.
+fn stderr_of(mut asked: Child) -> String {
+    let mut text = String::new();
+    if let Some(mut stderr) = asked.stderr.take() {
+        let _ = std::io::Read::read_to_string(&mut stderr, &mut text);
+    }
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Ends the master behind this tunnel, whichever process that turns out to be, and takes both
+/// its paths with it.
+///
+/// Killing the child ends the connection only while the child is the master, and one quit left
+/// eighteen authenticated connections running on the far machine because it was not
+/// (kan a_2J1KYPWhZ). So the master is asked to leave through its control path first; the kill
+/// stays as the fallback for one that never answered, and is also what reaps the handle.
+fn end_master(forward: &Forward, child: &Arc<Mutex<Child>>) {
+    let asked = control(forward, "exit");
+    {
+        let mut child = poison::lock(child, "ssh-child");
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+    log::debug(
+        "tunnel.master_ended",
+        fields! {
+            "host" => forward.host.clone(),
+            "control_path" => forward.control_path.clone(),
+            "asked" => match &asked {
+                Ok(()) => "the master left when the control path asked it to".to_string(),
+                Err(refusal) => format!("fell back to killing the child: {refusal}"),
+            },
+        },
+    );
+    let _ = std::fs::remove_file(&forward.local_socket);
+    let _ = std::fs::remove_file(&forward.control_path);
 }
 
 /// Whether a master that was just started is actually carrying anything.
@@ -424,13 +548,7 @@ fn confirm(
 impl Drop for Tunnel {
     fn drop(&mut self) {
         self.stopping.store(true, Ordering::Relaxed);
-        {
-            let mut child = poison::lock(&self.child, "ssh-child");
-            let _ = child.kill();
-            let _ = child.wait();
-        }
-        let _ = std::fs::remove_file(&self.forward.local_socket);
-        let _ = std::fs::remove_file(&self.forward.control_path);
+        end_master(&self.forward, &self.child);
     }
 }
 
