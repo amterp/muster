@@ -1511,7 +1511,7 @@ def naming(daemon, rec: Recorder) -> None:
     rec.fact("pane_keys_when_unnamed", sorted(fresh.keys()))
 
     with daemon.client().subscribe(STRUCTURE_SUBSCRIPTIONS) as stream:
-        time.sleep(1.0)
+        stream.wait_quiet(settle=1.0)
         seen = len(stream.snapshot())
 
         # 1. A title arrives, and something says so.
@@ -1995,7 +1995,7 @@ def arranging(daemon, rec: Recorder) -> None:
              {p["pane_id"]: p.get("tab_id") for p in _panes(client)})
 
     with daemon.client().subscribe(STRUCTURE_SUBSCRIPTIONS) as stream:
-        time.sleep(1.0)
+        stream.wait_quiet(settle=1.0)
         seen = len(stream.snapshot())
 
         # 1. The control: a swap inside one tab. Nothing changes tab, so whatever this
@@ -2073,7 +2073,7 @@ def arranging(daemon, rec: Recorder) -> None:
     # structural kind except this one, so the only difference is the asking.
     without = [s for s in STRUCTURE_SUBSCRIPTIONS if s["type"] != "pane.moved"]
     with daemon.client().subscribe(without) as stream:
-        time.sleep(1.0)
+        stream.wait_quiet(settle=1.0)
         seen = len(stream.snapshot())
         client.request("pane.move", {
             "pane_id": moving,
@@ -2105,7 +2105,7 @@ def arranging(daemon, rec: Recorder) -> None:
     workspace = tabs_before[0].get("workspace_id")
 
     with daemon.client().subscribe(STRUCTURE_SUBSCRIPTIONS) as stream:
-        time.sleep(1.0)
+        stream.wait_quiet(settle=1.0)
         seen = len(stream.snapshot())
 
         # The last tab to the front, which is the largest move the arrangement allows and
@@ -2178,7 +2178,7 @@ def arranging(daemon, rec: Recorder) -> None:
     # 5. And whether asking matters, the same control the pane half runs.
     without_tab = [s for s in STRUCTURE_SUBSCRIPTIONS if s["type"] != "tab.moved"]
     with daemon.client().subscribe(without_tab) as stream:
-        time.sleep(1.0)
+        stream.wait_quiet(settle=1.0)
         seen = len(stream.snapshot())
         client.request("tab.move", {"tab_id": moving_tab, "insert_index": 2})
         time.sleep(1.5)

@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import socket
 import threading
+import time
 import uuid
 from pathlib import Path
 from typing import Any, Callable
@@ -102,6 +103,29 @@ class EventStream:
                 seen = len(self.events)
                 if self._closed or not self._cv.wait(timeout):
                     return None
+
+    def wait_quiet(self, quiet_for: float = 0.6, settle: float = 0.0, timeout: float = 10.0) -> None:
+        """Wait until no event has arrived for `quiet_for` seconds.
+
+        `settle` is a minimum this will not return before, and it is 0 by default so a caller
+        draining events that are already flowing behaves as a bare quiet-detector. Pass it when
+        the wait is the drain of a *fresh* subscription's replay before the first `seen` line:
+        the replay does not begin the instant the subscription opens, and a quiet window
+        measured in that first silence returns *before* the replay rather than after it, drawing
+        the line ahead of the very events it exists to exclude (a replay of state that already
+        existed, miscounted as a consequence of the change the caller is about to make). A
+        `settle` past the gap-before-the-burst plus the burst itself holds the wait until the
+        replay has arrived; the `quiet_for` after it then covers a slow machine's trailing tail.
+        """
+        start = time.monotonic()
+        deadline = start + timeout
+        with self._cv:
+            while time.monotonic() < deadline:
+                before = len(self.events)
+                self._cv.wait(quiet_for)
+                quiet = len(self.events) == before
+                if self._closed or (quiet and time.monotonic() - start >= settle):
+                    return
 
     def snapshot(self) -> list[dict]:
         with self._cv:
