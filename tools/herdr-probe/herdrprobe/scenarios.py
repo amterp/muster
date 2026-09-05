@@ -2442,13 +2442,17 @@ def sending_text(daemon, rec: Recorder) -> None:
         got = deliver(f"cooked-{size}", "cooked.py", "pane.send_text", "B" * size, submit=True)
         # Terminator included on both sides of this comparison, so the number here and the
         # bare pty's below are the same measurement and not two accountings of it.
-        cooked[size] = len(got)
-        rec.note(f"a canonical-mode reader saw {cooked[size]} of a {size + 1}-byte line")
+        cooked[str(size)] = len(got)
+        rec.note(f"a canonical-mode reader saw {cooked[str(size)]} of a {size + 1}-byte line")
     rec.fact("bytes_a_canonical_mode_reader_received", cooked)
 
     bare = _bare_pty_line_limit(daemon)
     rec.write_json("bare-pty.json", bare)
     rec.fact("bytes_a_bare_pty_carried", bare)
+    # The claim the two tables are evidence for, as one fact: the boundary is the kernel's and
+    # not the daemon's. The tables carry that kernel's own number, which differs between macOS
+    # and Linux, so they are compared only between recordings of one platform (diff-corpus).
+    rec.fact("canonical_reader_matches_bare_pty", cooked == bare)
     rec.note(
         "the same boundary on a pty with no daemon near it, on the daemon's own machine: "
         + json.dumps(bare)

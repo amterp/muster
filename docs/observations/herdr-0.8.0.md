@@ -1336,6 +1336,14 @@ Terminator included on both sides. The right-hand column is the control: a pty t
 probe forks, with no daemon anywhere near it, answering identically. So the boundary is the
 line discipline's `MAX_CANON` and nothing in herdr or Muster can raise it.
 
+`MAX_CANON` is the kernel's, so its value is the platform's: 1024 bytes on macOS, 4095 on
+Linux. The table above is macOS. The control pty is forked on the daemon's own machine - over
+SSH for the devenv container - so a remote recording measures the same kernel the pane's
+program runs under, and there both columns carry a 2201-byte line that macOS drops. What holds
+on every platform, and what the cross-platform diff compares, is that the canonical reader and
+the bare pty agree (`canonical_reader_matches_bare_pty`). The two byte-count tables are the
+kernel's own numbers, so they are compared only between recordings of one kernel.
+
 **The failure is discard, not truncation**, which is what made it read as a clean cut at 1024:
 the tty echoes the first thousand-odd characters to the screen and then drops the whole line
 when its terminator arrives. Somebody reading the pane sees 1024 bytes of their message and

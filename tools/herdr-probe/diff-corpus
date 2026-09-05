@@ -81,6 +81,13 @@ NOT_PORTABLE = {
     # wrapping. The unwrapped variant beside it carries the same claim without the prompt in
     # it, and is compared.
     "long_line_row_widths_in_recent",
+    # Where the kernel's line discipline stops accepting a canonical-mode line. That is
+    # MAX_CANON, and it is 1024 bytes on macOS and 4095 on Linux, so a pane's program and a
+    # bare pty agree about it on one machine and no two platforms can. The claim they are
+    # evidence for - that the boundary is the kernel's and not the daemon's - is carried
+    # beside them as `canonical_reader_matches_bare_pty`, and that one is compared.
+    "bytes_a_bare_pty_carried",
+    "bytes_a_canonical_mode_reader_received",
 }
 
 
