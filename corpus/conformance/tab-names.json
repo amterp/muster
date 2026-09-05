@@ -436,7 +436,7 @@
     },
     {
       "name": "one machine dropping out leaves the rest of a grouped tab",
-      "why": "A tab spanning two machines has to open showing what it can reach rather than refusing (MIP-2, degradation). Pruning takes only the machine that was asked about, so the tab survives with the member the other machine still holds and is whole again when that daemon speaks.",
+      "why": "A tab spanning two machines has to open showing what it can reach rather than refusing (MIP-2, degradation). Pruning takes only the machine that was asked about, so the tab survives with the member the other machine still holds and is whole again when that daemon speaks. The devenv describes its half once before it drops out, which is what makes the absence mean gone rather than not yet announced.",
       "given": {
         "do": [
           {
@@ -446,6 +446,14 @@
             "group": {
               "tab": "devenv/w1:t1",
               "into": 0
+            }
+          },
+          {
+            "prune": {
+              "daemon": "devenv",
+              "holds": [
+                "w1:t1"
+              ]
             }
           },
           {
@@ -467,6 +475,68 @@
           "t1w3r07bsd",
           "t1w3r07bsd",
           "w1:t1",
+          "(nothing)"
+        ],
+        "located": {
+          "t1w3r07bsd": "local/w1:t1"
+        }
+      }
+    },
+    {
+      "name": "a grouping survives the other machine's prune until its own machine has seen it",
+      "why": "Grouping binds a tab the devenv has just made and answered with, and the devenv announces it a moment later. Every publish prunes every machine, and the laptop goes first: it holds its own half of the tab, and it always did, so a hold that was only a name would be lifted there - and the devenv's next prune would forget the grouping somebody just asked for. The gate saw exactly that, once: a pane put into the laptop's tab never arrived in it. The hold belongs to the machine the answer came from, and lifts once that machine has described the tab.",
+      "given": {
+        "do": [
+          {
+            "see": "local/w1:t1"
+          },
+          {
+            "group": {
+              "tab": "devenv/w1:t2",
+              "into": 0
+            }
+          },
+          {
+            "prune": {
+              "daemon": "local",
+              "holds": [
+                "w1:t1"
+              ]
+            }
+          },
+          {
+            "prune": {
+              "daemon": "devenv",
+              "holds": []
+            }
+          },
+          {
+            "resolve": "devenv/t1w3r07bsd"
+          },
+          {
+            "prune": {
+              "daemon": "devenv",
+              "holds": [
+                "w1:t2"
+              ]
+            }
+          },
+          {
+            "prune": {
+              "daemon": "devenv",
+              "holds": []
+            }
+          },
+          {
+            "resolve": "devenv/t1w3r07bsd"
+          }
+        ]
+      },
+      "expect": {
+        "trace": [
+          "t1w3r07bsd",
+          "t1w3r07bsd",
+          "w1:t2",
           "(nothing)"
         ],
         "located": {

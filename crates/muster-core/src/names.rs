@@ -313,7 +313,13 @@ pub struct Registry<N, B> {
     /// Left the first time a prune sees the thing, so it covers that gap and nothing wider: a
     /// name read back from a previous launch was never in here, and a pane that closed while
     /// Muster was shut is forgotten on the first prune the way it should be.
-    unannounced: BTreeSet<N>,
+    ///
+    /// Keyed by the machine that answered as well as by the name, because a Muster tab can have
+    /// a member on each machine and the hold is about one of them. A prune on the laptop finds
+    /// the laptop's member held - it always was - and must not lift a hold placed for the
+    /// devenv's member, which the devenv has not announced yet. Keyed by name alone it did,
+    /// and the next prune on the devenv forgot the grouping somebody had just asked for.
+    unannounced: BTreeSet<(DaemonId, N)>,
 }
 
 /// Every pane Muster has a name for.
@@ -355,7 +361,7 @@ impl PaneNames {
     /// Says where a reserved name's pane turned out to be.
     pub fn settle(&mut self, name: &PaneId, daemon: &DaemonId, backend: &BackendPaneId) {
         self.reserved.remove(name);
-        self.unannounced.insert(name.clone());
+        self.unannounced.insert((daemon.clone(), name.clone()));
         self.bind(name.clone(), Located { daemon: daemon.clone(), backend: backend.clone() });
     }
 
@@ -376,7 +382,12 @@ impl TabNames {
     /// each, and this is what says the second one is part of the first rather than a tab of
     /// its own. Whatever that daemon's tab was called before is taken back, because a herdr
     /// tab belongs to exactly one Muster tab.
+    ///
+    /// Held against the next prune on the same terms as [`name_from_answer`]
+    /// (Registry::name_from_answer): the tab being grouped is one the daemon has just made and
+    /// answered with, and will announce a moment later.
     pub fn group(&mut self, name: &TabId, daemon: &DaemonId, backend: &BackendTabId) {
+        self.unannounced.insert((daemon.clone(), name.clone()));
         self.bind(name.clone(), Located { daemon: daemon.clone(), backend: backend.clone() });
     }
 }
@@ -437,16 +448,8 @@ where
     /// `unannounced`.
     pub fn name_from_answer(&mut self, daemon: &DaemonId, backend: &B) -> N {
         let name = self.name(daemon, backend);
-        self.unannounced.insert(name.clone());
+        self.unannounced.insert((daemon.clone(), name.clone()));
         name
-    }
-
-    /// Holds a name against the next prune, for a binding made from a backend's own answer.
-    ///
-    /// The half of [`name_from_answer`](Registry::name_from_answer) that a caller which already
-    /// has the name needs. See `unannounced`.
-    pub fn hold_unannounced(&mut self, name: &N) {
-        self.unannounced.insert(name.clone());
     }
 
     /// What this is already called, without naming it if it is not.
@@ -529,20 +532,31 @@ where
     /// this registry has seen the daemon hold at least once.
     pub fn prune(&mut self, daemon: &DaemonId, held: &BTreeSet<B>) {
         // Taken out and put back because the retains below read it while borrowing the maps it
-        // is filtered against.
+        // is filtered against. Only this machine's holds are lifted, and only where this
+        // machine now holds the thing: another machine's member of the same name is its own
+        // hold, lifted by its own prune.
         let mut unannounced = std::mem::take(&mut self.unannounced);
-        unannounced.retain(|name| !self.holds(daemon, held, name));
+        unannounced.retain(|(at, name)| at != daemon || !self.holds(daemon, held, name));
+        // The names this daemon still owes an announcement for, which its own members survive
+        // the prune under. Owned rather than a borrow of `unannounced`, so `unannounced` can be
+        // put back below without a lifetime standing in the way - and it is a handful at most,
+        // one per pane or tab made since the last publish.
+        let protected: BTreeSet<N> = unannounced
+            .iter()
+            .filter(|(at, _)| at == daemon)
+            .map(|(_, name)| name.clone())
+            .collect();
         // A name loses only this machine's member. For a pane that is the whole entry; for a
         // Muster tab whose other machine still holds its half, the tab survives with one
         // member, which is what a devenv dropping out of a grouped tab looks like.
         self.located.retain(|name, members| {
             members.retain(|at, backend| {
-                at != daemon || held.contains(backend) || unannounced.contains(name)
+                at != daemon || held.contains(backend) || protected.contains(name)
             });
             !members.is_empty()
         });
         self.named.retain(|at, name| {
-            &at.daemon != daemon || held.contains(&at.backend) || unannounced.contains(name)
+            &at.daemon != daemon || held.contains(&at.backend) || protected.contains(name)
         });
         self.unannounced = unannounced;
     }
@@ -719,13 +733,7 @@ impl Names {
     /// window reading the record is how it learns the two halves are one tab.
     pub fn group_tab(&self, name: &TabId, backend: &str) {
         let backend = BackendTabId::new(backend);
-        self.naming(|_, tabs| {
-            tabs.group(name, &self.daemon, &backend);
-            // Held against the next prune on the same terms as `tab_from_answer`: the daemon
-            // answers with the tab's id and announces it a moment later, and a prune in between
-            // would forget the grouping somebody just asked for.
-            tabs.hold_unannounced(name);
-        });
+        self.naming(|_, tabs| tabs.group(name, &self.daemon, &backend));
     }
 
     /// Names something while holding the shared record, and leaves the record saying so.
