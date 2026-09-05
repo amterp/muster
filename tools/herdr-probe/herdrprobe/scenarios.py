@@ -2315,8 +2315,14 @@ def _tab_in(payload: dict):
 # `pane send` exists to talk to: a full-screen agent that has taken the terminal and asked
 # to be told when a paste starts. What it writes is the bytes, so a fence shows up as a
 # fence instead of vanishing into the screen the way it does when a program interprets it.
+#
+# The terminal goes back the way it was found, as every harness puts it back. That is not
+# only manners: the shell the next trial types into is whatever this left, and a shell with
+# no line editor - dash, which is /bin/sh on the devenv - reads a raw terminal's Enter as a
+# carriage return in the middle of a line rather than the end of one, and never runs a thing.
 _PASTE_RECEIVER = """\
-import os, select, sys, time, tty
+import os, select, sys, termios, time, tty
+was = termios.tcgetattr(0)
 tty.setraw(0)
 os.write(1, b'\\x1b[?2004h')
 out = open(sys.argv[1], 'wb')
@@ -2334,14 +2340,17 @@ while time.time() < deadline:
         out.flush()
         deadline = time.time() + 1.2
 out.close()
+os.write(1, b'\\x1b[?2004l')
+termios.tcsetattr(0, termios.TCSADRAIN, was)
 open(sys.argv[1] + '.done', 'w').write('1')
 """
 
 # The same receiver with the terminal left alone, which is canonical mode: no line editor,
 # the kernel's line discipline holding a line until its terminator. `cat` is this case, and
 # so is any program that reads stdin without taking the terminal over.
-_COOKED_RECEIVER = _PASTE_RECEIVER.replace(
-    "tty.setraw(0)\nos.write(1, b'\\x1b[?2004h')\n", ""
+_COOKED_RECEIVER = (
+    _PASTE_RECEIVER.replace("was = termios.tcgetattr(0)\ntty.setraw(0)\nos.write(1, b'\\x1b[?2004h')\n", "")
+    .replace("os.write(1, b'\\x1b[?2004l')\ntermios.tcsetattr(0, termios.TCSADRAIN, was)\n", "")
 )
 
 _MULTI_LINE = "line one\nline two\nline three"
@@ -2379,14 +2388,16 @@ def sending_text(daemon, rec: Recorder) -> None:
         """One send into a freshly started receiver, and the bytes it read."""
         dest = f"{receivers}/{tag}.bin"
         daemon.shell(f"rm -f {dest} {dest}.done", check=False)
-        # `stty sane` first, every time. A receiver that took the terminal raw does not put
-        # it back on the way out, so without this each trial measures whatever the last one
-        # left - and the canonical half measures nothing at all.
+        # The command line carries its own newline rather than being followed by an Enter, and
+        # starts with `stty sane`: both are for the trial after a receiver that never got to
+        # put the terminal back. An Enter into a raw terminal reaches a shell with no line
+        # editor as a carriage return, not a line, and `stty sane` typed that way never runs -
+        # a newline reaches it either way. The measurement below is unaffected: only the
+        # receiver's own modes are what the sends are encoded against.
         client.request(
             "pane.send_text",
-            {"pane_id": "w1:p1", "text": f"stty sane; python3 {receivers}/{receiver} {dest}"},
+            {"pane_id": "w1:p1", "text": f"stty sane; python3 {receivers}/{receiver} {dest}\n"},
         )
-        client.request("pane.send_input", {"pane_id": "w1:p1", "keys": ["enter"]})
         time.sleep(2.0)
         client.request(method, {"pane_id": "w1:p1", "text": text})
         if submit:
