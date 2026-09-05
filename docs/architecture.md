@@ -782,9 +782,12 @@ arrives the pane renders, paints, and discards everything typed into it. Three s
 state - the bridge failed to dial, the socket path had moved, the channel could not be opened - and every one of them
 was found by somebody typing. Both ends of the wait were already known to the core, which binds the socket and runs
 the callback the accept fires, so what was missing was a deadline between them: five seconds, one problem per pane,
-cleared by a bridge that arrives late and by the pane closing. A socket is bound for the panes the window is
-drawing rather than for every pane the tab holds, which is what keeps the accusation about something: a zoomed tab
-draws one pane, and a socket bound for one of the three it covers is an alarm about a pane nothing was rendering.
+cleared by a bridge that arrives late and by the pane closing. **What keeps the accusation about something is that
+both ends are scoped to what the window is drawing**: a socket is bound for the panes a region shows rather than for
+every pane its tab holds, and the wait is counted only while one is being shown. A pane nothing draws renders
+nothing, so it cannot be swallowing anything - and one drawn again waits a whole deadline from the moment it is
+drawn rather than carrying forward a silence nobody was in a position to notice. A zoomed tab is where that was
+found: a window opening onto one accused the three panes the zoom covered, every launch, as a notification each.
 An error rather than a warning, even though nobody
 misconfigured anything, because severity is about interruption and a warning waiting to be found would be found the
 old way - by typing into a pane that had stopped listening. The decision is a fold in `typeable.rs` and the clock is

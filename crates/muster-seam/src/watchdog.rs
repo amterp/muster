@@ -13,6 +13,7 @@
 //! connection. One writer removes the ordering question instead of documenting an answer to
 //! it.
 
+use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Condvar, LazyLock, Mutex};
 use std::time::Duration;
@@ -103,6 +104,16 @@ pub(crate) fn typeable(pane: &PaneKey) {
 /// The pane is gone, so nothing is owed about it.
 pub(crate) fn closed(pane: &PaneKey) {
     poison::lock(&WAITING, "typeable").closed(pane);
+    KNOCK.notify_all();
+}
+
+/// Which panes the window is drawing, straight from the view it just published.
+///
+/// Nothing is started here. A pane the window began drawing waits a full deadline from now,
+/// so there is never anything to say at this moment - and a run that has opened no pane
+/// should not gain a thread for having published a view of nothing.
+pub(crate) fn showing(visible: BTreeSet<PaneKey>) {
+    poison::lock(&WAITING, "typeable").showing(visible, clock::monotonic_now());
     KNOCK.notify_all();
 }
 

@@ -10,6 +10,11 @@
 //! the socket, so it knows when the wait started, and it runs the callback the accept fires,
 //! so it knows when the wait ended. The only thing missing was a deadline between them.
 //!
+//! And a third thing, which the deadline alone got wrong: whether anybody is looking. The
+//! accusation is that a pane renders and swallows what is typed into it, and a pane nothing is
+//! drawing renders nothing - so a wait is only counted while the window is showing that pane,
+//! and a pane that comes back waits again from the moment it is drawn.
+//!
 //! Pure - no clock, no thread, no socket. Time arrives as a number, so every rule here is
 //! driven by a recorded case: whose deadline has passed, what to say about it, and what to
 //! take back when a bridge turns up late.
@@ -52,7 +57,7 @@ struct Wait {
 /// Every pane whose socket is bound and whose bridge has not dialed.
 #[derive(Debug, Default)]
 pub struct Waiting {
-    waiting: BTreeMap<PaneKey, Wait>,
+    waits: BTreeMap<PaneKey, Wait>,
 
     /// Which panes have already been reported, so that clearing knows what to take back.
     ///
@@ -60,11 +65,18 @@ pub struct Waiting {
     /// pane is reported once and cleared once, and splitting the two across a lock boundary
     /// is how a stale error outlives the pane it was about.
     reported: BTreeSet<PaneKey>,
+
+    /// Which panes the window is drawing, or `None` while nothing has said.
+    ///
+    /// `None` is not "no panes". It is the state before a window has published anything, and
+    /// filtering on it would be filtering on ignorance - so it means every waiting pane
+    /// counts, which is also the only safe direction to be wrong in here.
+    visible: Option<BTreeSet<PaneKey>>,
 }
 
 impl Waiting {
     pub const fn new() -> Waiting {
-        Waiting { waiting: BTreeMap::new(), reported: BTreeSet::new() }
+        Waiting { waits: BTreeMap::new(), reported: BTreeSet::new(), visible: None }
     }
 
     /// A pane's socket is bound and its bridge is expected.
@@ -74,7 +86,7 @@ impl Waiting {
     /// too - and that second wait is the one `control_socket.rs` calls out as the exact
     /// failure the accept loop exists to prevent.
     pub fn opened(&mut self, pane: PaneKey, at: u64) {
-        self.waiting.insert(pane, Wait { since: at, last: None });
+        self.waits.insert(pane, Wait { since: at, last: None });
     }
 
     /// A bridge for this pane has ended, so the wait starts again knowing why.
@@ -85,12 +97,12 @@ impl Waiting {
     /// bridge, and a pane that stays dark for five seconds after a refused attach has a remedy
     /// where a pane at launch has only a deadline.
     pub fn ended(&mut self, pane: PaneKey, at: u64, ended: Ended) {
-        self.waiting.insert(pane, Wait { since: at, last: Some(ended) });
+        self.waits.insert(pane, Wait { since: at, last: Some(ended) });
     }
 
     /// A bridge dialed in, so this pane can be typed into.
     pub fn typeable(&mut self, pane: &PaneKey) {
-        self.waiting.remove(pane);
+        self.waits.remove(pane);
     }
 
     /// The pane is gone, so nothing is owed about it.
@@ -99,7 +111,34 @@ impl Waiting {
     /// pane is the case that goes wrong when it is forgotten: its error would otherwise
     /// outlive it and sit in the roster naming a pane nobody can look at.
     pub fn closed(&mut self, pane: &PaneKey) {
-        self.waiting.remove(pane);
+        self.waits.remove(pane);
+    }
+
+    /// Which panes the window is drawing, as the view answered it.
+    ///
+    /// What this raises is that a pane renders and discards everything typed into it. A pane
+    /// nothing is drawing renders nothing, so the sentence is false about it however long its
+    /// socket has been bound - and a watch that says it anyway is wrong on its own terms.
+    /// That is the whole reason this exists; a zoomed tab is only where somebody noticed,
+    /// three false alarms at a time on every launch onto one.
+    ///
+    /// The set is `View::showing`, which is the window's single answer to which panes are on
+    /// screen and is what the roster and attention are already settled against. So this is
+    /// that answer reaching one more reader rather than a second opinion about it.
+    ///
+    /// A pane that comes back waits again from here. Its clock ran while nobody could see it,
+    /// so carrying that reading forward would accuse a bridge the moment its pane is drawn,
+    /// for a silence nobody was in a position to notice - and a pane that is genuinely deaf
+    /// still says so, one full deadline after it is drawn again. Getting this half wrong in
+    /// the quiet direction would remove the alarm rather than correct it.
+    pub fn showing(&mut self, visible: BTreeSet<PaneKey>, at: u64) {
+        for (pane, wait) in &mut self.waits {
+            let drawn = self.visible.as_ref().is_none_or(|held| held.contains(pane));
+            if !drawn && visible.contains(pane) {
+                wait.since = at;
+            }
+        }
+        self.visible = Some(visible);
     }
 
     /// Compares the waiting panes against the clock and says what the problem list owes.
@@ -110,8 +149,9 @@ impl Waiting {
         let overdue: BTreeSet<PaneKey> = if deadline == 0 {
             BTreeSet::new()
         } else {
-            self.waiting
+            self.waits
                 .iter()
+                .filter(|(pane, _)| self.drawn(pane))
                 .filter(|(_, wait)| now.saturating_sub(wait.since) >= deadline)
                 .map(|(pane, _)| pane.clone())
                 .collect()
@@ -121,7 +161,7 @@ impl Waiting {
             raise: overdue
                 .difference(&self.reported)
                 .map(|pane| {
-                    let last = self.waiting.get(pane).and_then(|wait| wait.last.as_ref());
+                    let last = self.waits.get(pane).and_then(|wait| wait.last.as_ref());
                     (key(pane), detail(pane, deadline, last))
                 })
                 .collect(),
@@ -146,8 +186,9 @@ impl Waiting {
         if deadline == 0 {
             return None;
         }
-        self.waiting
+        self.waits
             .iter()
+            .filter(|(pane, _)| self.drawn(pane))
             .filter_map(|(pane, wait)| {
                 let waited = now.saturating_sub(wait.since);
                 if waited < deadline {
@@ -157,6 +198,11 @@ impl Waiting {
                 }
             })
             .min()
+    }
+
+    /// Whether the window is drawing this pane, and so whether anything is owed about it.
+    fn drawn(&self, pane: &PaneKey) -> bool {
+        self.visible.as_ref().is_none_or(|visible| visible.contains(pane))
     }
 }
 

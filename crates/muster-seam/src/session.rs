@@ -3370,6 +3370,11 @@ fn publish() {
         let roster = session.roster(&view);
         let numbering = session.numbering(&roster);
         let noticed = session.attention.showing(view.showing().clone());
+        // The typeable watch is settled against the same set, and for a reason of its own: what
+        // it says is that a pane renders and swallows what is typed into it, and a pane no
+        // region is drawing renders nothing - so a socket bound for one is owed no bridge until
+        // the window shows it.
+        watchdog::showing(view.showing().clone());
         // Here because this is the moment composition is settled, and because everything that
         // changes it ends up here - so nothing has to remember to save.
         save(&session.composition, session.presentation, &session.font_sizes);

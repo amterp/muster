@@ -2,7 +2,7 @@
   "concept": "typeable",
   "source": "authored",
   "citation": "crates/muster-core/src/typeable.rs, crates/muster-herdr/src/control_socket.rs, and kan card a_27Y4QtzyK. There is no oracle above these: how long a pane may render before Muster accuses its bridge is Muster's call, and these cases are where it is written down. The five seconds the seam actually uses is argued from tools/smoke-launch.py, which waits 2.0s after `app.ready` for a healthy bridge to start, dial back and paint.",
-  "why": "A pane becomes typeable when its bridge dials the socket Muster bound for it, and until then it renders, paints and discards every keystroke. Three separate bugs in this repo all ended in exactly that state - the bridge failed to dial, the socket path had moved, the channel could not be opened - and none of them said anything until somebody typed. Both ends of the wait are already known to the core, so the only thing missing was a deadline between them, which is what these cases pin.\n\nEvery case answers with the diff rather than the current set, because raising and clearing are the two things the caller can do, and getting the second one wrong is how a stale error outlives the pane it was about. `next_wake` is answered by every case too, because a loop around this has exactly two ways to go wrong: spinning on a pane it has already reported, and sleeping through one that fell overdue while it was busy elsewhere.\n\nTimes are nanoseconds, matching the monotonic clock the seam counts in. `raised` and `cleared` accumulate over every `reconcile` a case performs, so a case with two readings shows whether the second one had anything new to say. `next_wake` is asked once, at the case's `now` or at its last reading.\n\nA wait starts either way a pane can be waiting: `opened` is a socket bound with no bridge yet, and `ended` is the same wait restarting after one stopped, carrying how it stopped. The second is why the sentence differs at all - a pane looks identical in every one of these cases and the thing to do differs in all of them, and until they were told apart every one of them read as `look in the run log`.",
+  "why": "A pane becomes typeable when its bridge dials the socket Muster bound for it, and until then it renders, paints and discards every keystroke. Three separate bugs in this repo all ended in exactly that state - the bridge failed to dial, the socket path had moved, the channel could not be opened - and none of them said anything until somebody typed. Both ends of the wait are already known to the core, so the only thing missing was a deadline between them, which is what these cases pin.\n\nEvery case answers with the diff rather than the current set, because raising and clearing are the two things the caller can do, and getting the second one wrong is how a stale error outlives the pane it was about. `next_wake` is answered by every case too, because a loop around this has exactly two ways to go wrong: spinning on a pane it has already reported, and sleeping through one that fell overdue while it was busy elsewhere.\n\nTimes are nanoseconds, matching the monotonic clock the seam counts in. `raised` and `cleared` accumulate over every `reconcile` a case performs, so a case with two readings shows whether the second one had anything new to say. `next_wake` is asked once, at the case's `now` or at its last reading.\n\nA wait starts either way a pane can be waiting: `opened` is a socket bound with no bridge yet, and `ended` is the same wait restarting after one stopped, carrying how it stopped. The second is why the sentence differs at all - a pane looks identical in every one of these cases and the thing to do differs in all of them, and until they were told apart every one of them read as `look in the run log`.\n\n`showing` is the third thing a wait turns on, and it is the window rather than the clock: the panes it names are the ones a region is drawing, straight from `View::showing`. What this raises is that a pane renders and swallows what is typed into it, so a pane nothing is drawing has no such claim to make - and a pane drawn again waits a whole deadline from the moment it is drawn, because its clock ran while nobody could have noticed the silence. That last part is the one to get right: too eager and it accuses a bridge that has had no time to dial, too quiet and it deletes the alarm this whole concept exists to raise.",
   "cases": [
     {
       "name": "a pane whose bridge never dials is reported once the deadline passes",
@@ -260,6 +260,94 @@
         "steps": [{ "opened": "local/w1:p1", "at": 0 }]
       },
       "expect": { "raised": [], "cleared": [], "next_wake": 0 }
+    },
+    {
+      "name": "a pane nobody is drawing is not accused of swallowing anything",
+      "why": "What this raises is that a pane renders and discards everything typed into it. A pane no region is showing renders nothing, so the sentence is false about it however long its socket has been bound. The zoomed tab is where it was noticed - a window opening onto one bound a socket per pane and then accused the three the zoom covered, on every launch, as a notification each - but the rule is not about zoom: it is that an accusation nobody could have observed is not an observation.",
+      "given": {
+        "deadline": 5000000000,
+        "steps": [
+          { "opened": "local/w1:p1", "at": 0 },
+          { "opened": "local/w1:p2", "at": 0 },
+          { "showing": ["local/w1:p1"], "at": 0 },
+          { "reconcile": 5000000000 }
+        ]
+      },
+      "expect": {
+        "raised": ["pane:local/w1:p1"],
+        "cleared": [],
+        "next_wake": null
+      }
+    },
+    {
+      "name": "a pane that stops being drawn takes its problem back",
+      "why": "Switching tabs, or zooming one, must not leave an error standing about a pane nobody can look at - that is the same stale accusation as an error outliving a closed pane, and it reaches a person as a notification. The pane keeps its channel through this, because its surface is parked rather than released and its bridge may still be dialed into that socket; what it loses is the claim being made about it.",
+      "given": {
+        "deadline": 5000000000,
+        "steps": [
+          { "opened": "local/w1:p1", "at": 0 },
+          { "showing": ["local/w1:p1"], "at": 0 },
+          { "reconcile": 5000000000 },
+          { "showing": [], "at": 6000000000 },
+          { "reconcile": 7000000000 }
+        ]
+      },
+      "expect": {
+        "raised": ["pane:local/w1:p1"],
+        "cleared": ["pane:local/w1:p1"],
+        "next_wake": null
+      }
+    },
+    {
+      "name": "a pane drawn again waits a whole deadline from the moment it is drawn",
+      "why": "The half of this that goes wrong quietly, and the one worth pinning hardest. A pane's clock runs while nobody is looking at it, so carrying that reading forward would accuse a bridge the instant its pane is drawn, for a silence nobody was in a position to notice. Here the pane is hidden with almost its whole deadline spent and comes back: a reading one nanosecond short of a full deadline from its return says nothing, and the wake it asks for is the remainder rather than zero.",
+      "given": {
+        "deadline": 5000000000,
+        "steps": [
+          { "opened": "local/w1:p1", "at": 0 },
+          { "showing": [], "at": 1000000000 },
+          { "reconcile": 9000000000 },
+          { "showing": ["local/w1:p1"], "at": 10000000000 },
+          { "reconcile": 14999999999 }
+        ]
+      },
+      "expect": {
+        "raised": [],
+        "cleared": [],
+        "next_wake": 1
+      }
+    },
+    {
+      "name": "a pane drawn again and still deaf does say so",
+      "why": "The other side of the restart, and the reason it is a restart rather than an exemption. A pane hidden while its bridge died and then brought back on screen is a pane somebody is now typing into - so the alarm has to arrive, one full deadline after it was drawn and not before. Getting this wrong in the quiet direction would delete the alarm rather than correct it, which is worse than the false ones this began as.",
+      "given": {
+        "deadline": 5000000000,
+        "steps": [
+          { "opened": "local/w1:p1", "at": 0 },
+          { "showing": [], "at": 1000000000 },
+          { "reconcile": 9000000000 },
+          { "showing": ["local/w1:p1"], "at": 10000000000 },
+          { "reconcile": 15000000000 }
+        ]
+      },
+      "expect": {
+        "raised": ["pane:local/w1:p1"],
+        "cleared": [],
+        "next_wake": null
+      }
+    },
+    {
+      "name": "nothing on screen is nothing to wake up for",
+      "why": "A window showing none of the panes it is holding open - every tab off screen, or a launch that has not drawn anything yet - owes nothing on the clock, so an idle window costs no wakeups. Without this the loop would ask again at every deadline about panes nobody can see.",
+      "given": {
+        "deadline": 5000000000,
+        "now": 1000000000,
+        "steps": [
+          { "opened": "local/w1:p1", "at": 0 },
+          { "showing": [], "at": 0 }
+        ]
+      },
+      "expect": { "raised": [], "cleared": [], "next_wake": null }
     }
   ]
 }

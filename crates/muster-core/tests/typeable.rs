@@ -5,6 +5,8 @@
 //! condition that stays true has nothing new to say, and a pane that stops waiting has
 //! something to take back.
 
+use std::collections::BTreeSet;
+
 use conformance::{CaseError, Conformance, fields};
 use muster_core::PaneKey;
 use muster_core::composition::DaemonId;
@@ -32,6 +34,10 @@ fn typeable_conformance() {
                 waiting.typeable(&pane_key(pane)?);
             } else if let Some(pane) = step.get("closed").and_then(Value::as_str) {
                 waiting.closed(&pane_key(pane)?);
+            } else if let Some(visible) = step.get("showing").and_then(Value::as_array) {
+                let visible: Result<BTreeSet<PaneKey>, CaseError> =
+                    visible.iter().filter_map(Value::as_str).map(pane_key).collect();
+                waiting.showing(visible?, number(step, "at")?);
             } else if let Some(now) = step.get("reconcile").and_then(Value::as_u64) {
                 last_read = now;
                 let reported = waiting.reconcile(now, deadline);
