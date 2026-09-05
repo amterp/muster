@@ -8,14 +8,15 @@
 //!
 //! The pane is held by a control stream throughout, because attaching one sets its geometry:
 //! a stream opened after the rows were printed would reflow them and every offset measured
-//! before it would be about a pane that no longer exists.
+//! before it would be about a pane that no longer exists. Held means waited for, not merely
+//! spawned - see `Ruler::new`.
 
 use std::io::Write;
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 
 use herdr_harness::{Daemon, until, until_within};
-use muster_core::find::{Needle, Reach};
+use muster_core::find::{Needle, Reach, rows_of};
 use muster_core::input::ScrollDirection;
 use muster_core::intent::BackendChannel;
 use muster_core::mirror::backend::PaneId;
@@ -25,6 +26,10 @@ use serde_json::json;
 /// How many numbered rows the fixture prints. Comfortably inside herdr's thousand-row read,
 /// so what these measure is the alignment rather than the cap.
 const ROWS: u32 = 300;
+
+/// How tall the control stream holds the pane. Without a viewer herdr keeps a pane at its
+/// own 53x23, so this is also how a test can tell the stream has taken hold.
+const SCREEN_ROWS: u64 = 24;
 
 /// A pane holding `ROWS` numbered rows, with a live control stream to scroll it by.
 struct Ruler {
@@ -40,6 +45,17 @@ impl Ruler {
         let pane = PaneId::new("w1:p1");
         let stream = attach(&daemon, &pane);
         let ruler = Ruler { daemon, pane, stream };
+
+        // Waited for, not only spawned. The stream is a process, and until it has connected
+        // the pane is still at the daemon's own 53x23 - so rows printed in that gap are
+        // resized under the measurements below, and a resize landing between the two calls a
+        // find makes puts those calls a row apart. A slow runner is where awk outruns a
+        // process launch, and a slow runner is where the gate saw this test land two rows off.
+        until(
+            "the control stream to set the pane's geometry",
+            || ruler.viewport_rows() == SCREEN_ROWS,
+            || format!("the pane is {} rows tall", ruler.viewport_rows()),
+        );
 
         // One awk rather than a shell loop: three hundred forks through a PTY is slow, and
         // the command's own echo carries no `ruler-0`, so the rows below are only the rows.
@@ -59,7 +75,40 @@ impl Ruler {
             || ruler.visible().contains(&last),
             (),
         );
+        // The last row on screen is not the pane settled. Between awk's final newline and the
+        // shell's prompt the cursor sits on a blank row, which herdr trims off a read and
+        // counts in the pane's height - the one-row disagreement `found_in` corrects for, and
+        // not one a test of that correction should start inside.
+        until(
+            "the shell's prompt to come back after the ruler",
+            || ruler.settled(),
+            || {
+                format!(
+                    "the pane holds {} rows and a read returns {}",
+                    ruler.rows_held(),
+                    ruler.rows_printed()
+                )
+            },
+        );
         ruler
+    }
+
+    /// Whether every row the pane holds is a printed one - a cursor on the last row, which
+    /// for a shell is a shell at its prompt.
+    fn settled(&self) -> bool {
+        self.rows_held() == self.rows_printed()
+    }
+
+    fn rows_held(&self) -> u64 {
+        self.scroll("max_offset_from_bottom") + self.viewport_rows()
+    }
+
+    fn rows_printed(&self) -> u64 {
+        let answer = self.daemon.call(
+            "pane.read",
+            &json!({ "pane_id": self.pane.as_str(), "source": "recent", "lines": 1000 }),
+        );
+        rows_of(answer["read"]["text"].as_str().unwrap_or_default()).len() as u64
     }
 
     /// Types into the pane and waits for `settled` to appear on its screen.
@@ -86,8 +135,16 @@ impl Ruler {
     }
 
     fn offset(&self) -> u64 {
+        self.scroll("offset_from_bottom")
+    }
+
+    fn viewport_rows(&self) -> u64 {
+        self.scroll("viewport_rows")
+    }
+
+    fn scroll(&self, field: &str) -> u64 {
         let answer = self.daemon.call("pane.get", &json!({ "pane_id": self.pane.as_str() }));
-        answer["pane"]["scroll"]["offset_from_bottom"].as_u64().unwrap_or_default()
+        answer["pane"]["scroll"][field].as_u64().unwrap_or_default()
     }
 
     /// Moves the viewport the only way herdr offers: relative steps on the control stream.
@@ -115,7 +172,8 @@ impl Drop for Ruler {
 /// test is one adapter and pulling in the bridge would make this a test of three things.
 fn attach(daemon: &Daemon, pane: &PaneId) -> Child {
     Command::new(herdr_harness::binary())
-        .args(["terminal", "session", "control", pane.as_str(), "--cols", "80", "--rows", "24"])
+        .args(["terminal", "session", "control", pane.as_str(), "--cols", "80", "--rows"])
+        .arg(SCREEN_ROWS.to_string())
         .env("HERDR_SOCKET_PATH", daemon.socket_path())
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
