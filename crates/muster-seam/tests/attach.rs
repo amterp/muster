@@ -524,16 +524,32 @@ fn zoom_follows_the_keyboard() {
         || zoomed_pane().as_deref() == Some(first.as_str()),
         || format!("the last view the core published: {:?}", latest_view()),
     );
+
+    // And the socket follows too. A channel is opened for the panes a region draws, so which
+    // pane a zoom shows decides which pane has one - and a pane published without a socket is
+    // one the shell must not start a bridge for, so the keyboard would land somewhere that
+    // paints and takes nothing.
+    let filling = zoomed_leaf().expect("just waited for the region to be filled by one pane");
+    assert!(
+        !filling.control_socket_path.is_empty(),
+        "the keyboard moved onto {} and its control socket did not: {filling:?}",
+        filling.pane_id
+    );
 }
 
 /// The pane filling the region, when one is - and nothing when the region is showing its tree.
 fn zoomed_pane() -> Option<String> {
+    zoomed_leaf().map(|pane| pane.pane_id)
+}
+
+/// The same, with everything else a shell is told about that pane.
+fn zoomed_leaf() -> Option<muster::proto::ViewPane> {
     let region = latest_view()?.regions.into_iter().next()?;
     if !region.zoomed {
         return None;
     }
     match region.root?.node? {
-        view_node::Node::Pane(pane) => Some(pane.pane_id),
+        view_node::Node::Pane(pane) => Some(pane),
         // A zoomed region publishes the one pane, so a split here is the resolution not having
         // happened at all - which is the bug this is about, and it is not an answer.
         view_node::Node::Split(_) => None,

@@ -782,7 +782,10 @@ arrives the pane renders, paints, and discards everything typed into it. Three s
 state - the bridge failed to dial, the socket path had moved, the channel could not be opened - and every one of them
 was found by somebody typing. Both ends of the wait were already known to the core, which binds the socket and runs
 the callback the accept fires, so what was missing was a deadline between them: five seconds, one problem per pane,
-cleared by a bridge that arrives late and by the pane closing. An error rather than a warning, even though nobody
+cleared by a bridge that arrives late and by the pane closing. A socket is bound for the panes the window is
+drawing rather than for every pane the tab holds, which is what keeps the accusation about something: a zoomed tab
+draws one pane, and a socket bound for one of the three it covers is an alarm about a pane nothing was rendering.
+An error rather than a warning, even though nobody
 misconfigured anything, because severity is about interruption and a warning waiting to be found would be found the
 old way - by typing into a pane that had stopped listening. The decision is a fold in `typeable.rs` and the clock is
 a single parked thread in the seam, so an idle window costs no wakeups and the rules are answerable by a case.

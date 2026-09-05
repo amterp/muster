@@ -564,20 +564,6 @@ impl ViewNode {
     }
 }
 
-/// Whether a tab's tree describes the panes that tab actually holds.
-///
-/// A backend publishes a tab's pane list and its arrangement as separate events, and nothing
-/// orders them against each other. Two ways that shows up, both measured against herdr 0.8.0:
-/// a tab mid-split briefly has a tree naming fewer panes than it holds, and a subscription
-/// that has just bootstrapped replays layout events, walking a tab backwards through
-/// arrangements it had minutes ago.
-///
-/// A tree that disagrees is withheld rather than repaired. Repairing it means inventing a
-/// place to put a pane no daemon put anywhere, and rendering it as it stands means dropping
-/// every pane it omits - which costs those panes their surfaces and, with them, the bridges
-/// that feed them. Withholding is a state the shell already understands and already has the
-/// right answer to: it leaves what it is showing alone, and the real tree arrives on its own
-/// event a moment later.
 /// The one pane filling a region, when its tab is zoomed.
 ///
 /// Which pane that is is this window's own answer, not the daemon's. The backend spells zoom as
@@ -595,12 +581,30 @@ impl ViewNode {
 /// which is the same answer for a different reason, and the right one for both: a zoom is the
 /// only thing that covers a pane without closing its tab, and a tree nobody has published covers
 /// nothing at all.
-fn zoom_filling(region: &Region, layout: Option<&Layout>) -> Option<PaneId> {
+///
+/// Public because the seam asks the same question about the same region: a socket is bound per
+/// pane a shell will build a surface for, so the narrowing here and the binding there have to
+/// be one answer rather than two that agree.
+pub fn zoom_filling(region: &Region, layout: Option<&Layout>) -> Option<PaneId> {
     let layout = layout?;
     layout.zoomed.as_ref()?;
     region.pane.clone().or_else(|| layout.zoomed.clone())
 }
 
+/// Whether a tab's tree describes the panes that tab actually holds.
+///
+/// A backend publishes a tab's pane list and its arrangement as separate events, and nothing
+/// orders them against each other. Two ways that shows up, both measured against herdr 0.8.0:
+/// a tab mid-split briefly has a tree naming fewer panes than it holds, and a subscription
+/// that has just bootstrapped replays layout events, walking a tab backwards through
+/// arrangements it had minutes ago.
+///
+/// A tree that disagrees is withheld rather than repaired. Repairing it means inventing a
+/// place to put a pane no daemon put anywhere, and rendering it as it stands means dropping
+/// every pane it omits - which costs those panes their surfaces and, with them, the bridges
+/// that feed them. Withholding is a state the shell already understands and already has the
+/// right answer to: it leaves what it is showing alone, and the real tree arrives on its own
+/// event a moment later.
 fn arranges(mirror: &Mirror, tab: &TabId, layout: &Layout) -> bool {
     let mut arranged: Vec<&PaneId> = layout.root.panes();
     arranged.sort_unstable();

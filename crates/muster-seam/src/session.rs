@@ -18,7 +18,7 @@ use muster_core::AgentState;
 use muster_core::attention::{Attend, Attention, Notifications};
 use muster_core::composition::{
     Composition, Daemon, DaemonId, Endpoint, FontSizeChange, FontSizes, Frame, MusterTab, PaneKey,
-    Presentation, RegionId, Saved, Step, Transport, View, ViewPane, saved,
+    Presentation, RegionId, Saved, Step, Transport, View, ViewPane, saved, zoom_filling,
 };
 use muster_core::config::{Appearance, Config, Feel, Panes};
 use muster_core::diagnostics::{clock, log, poison};
@@ -1287,6 +1287,18 @@ impl Session {
     /// pane the daemon added is one Muster has to be ready to be typed into before anyone
     /// looks at it.
     ///
+    /// On screen means the tree the view will publish, narrowed through the same
+    /// [`zoom_filling`] the view narrows with, and not every leaf the tab's tree names. A
+    /// zoomed region draws one pane, so binding a socket for each of the others leaves sockets
+    /// nothing will ever dial - and five seconds later the typeable watch reports each of them
+    /// as a pane swallowing keystrokes. They were fine; nothing was drawing them. An alarm on
+    /// a healthy window is what teaches somebody to ignore the alarm that matters, and this
+    /// one fired on every launch onto a zoomed tab.
+    ///
+    /// Nothing is closed here for a pane that stops showing. A hidden pane's surface is parked
+    /// rather than released, so its bridge is still dialed into the socket it has, and taking
+    /// that socket away would be taking the keyboard from a pane one keystroke can bring back.
+    ///
     /// Called from `publish`, which is what makes it a rule rather than a step somebody has to
     /// remember. Every path that changes what is on screen ends in a publish, and a view naming
     /// a pane with no socket is a pane a shell must not build a surface for - so it renders
@@ -1304,10 +1316,12 @@ impl Session {
             self.composition
                 .regions()
                 .filter(|region| &region.daemon == daemon)
-                .filter_map(|_| mirror.layout(showing.as_ref()?))
-                .flat_map(|layout| layout.root.panes())
+                .filter_map(|region| Some((region, mirror.layout(showing.as_ref()?)?)))
+                .flat_map(|(region, layout)| match zoom_filling(region, Some(layout)) {
+                    Some(filling) => vec![filling],
+                    None => layout.root.panes().into_iter().cloned().collect(),
+                })
                 .filter(|pane| !attached.contains_key(pane) && mirror.pane(pane).is_some())
-                .cloned()
                 .collect()
         };
 
@@ -3344,7 +3358,13 @@ fn publish() {
             // After the reconcile rather than before it, because the reconcile is what would
             // undo it: it resolves every region against the mirror's pane list, so a keyboard
             // put on a pane the mirror has just heard of has to be put there afterwards.
-            session.keyboard_to_wanted_pane(daemon);
+            //
+            // And the channels again when it moved, because a zoomed region draws whichever
+            // pane the keyboard is on: a pane that has just taken it in one is a pane the
+            // reconcile above bound no socket for, and the view is about to name it.
+            if session.keyboard_to_wanted_pane(daemon) {
+                session.open_channels(daemon);
+            }
         }
         let view = session.view();
         let roster = session.roster(&view);
