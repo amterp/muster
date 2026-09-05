@@ -13,7 +13,6 @@ import json
 import re
 import threading
 import time
-from pathlib import Path
 
 from .panestream import MODE_SEQUENCES, PaneStream
 from .recorder import Recorder, RecordingClient
@@ -2369,22 +2368,23 @@ def sending_text(daemon, rec: Recorder) -> None:
     _new_workspace(client)
     time.sleep(0.4)
 
-    receivers = daemon.root / "receivers"
-    receivers.mkdir(parents=True, exist_ok=True)
-    (receivers / "paste.py").write_text(_PASTE_RECEIVER)
-    (receivers / "cooked.py").write_text(_COOKED_RECEIVER)
+    # On the daemon's machine, because that is where the pane is. Against a remote daemon a
+    # path on this machine names nothing the pane's shell can run, and every trial then waits
+    # out its deadline for a file no program was ever going to write.
+    receivers = f"{daemon.scratch}/receivers"
+    daemon.write_file(f"{receivers}/paste.py", _PASTE_RECEIVER)
+    daemon.write_file(f"{receivers}/cooked.py", _COOKED_RECEIVER)
 
     def deliver(tag: str, receiver: str, method: str, text: str, submit: bool = False) -> bytes:
         """One send into a freshly started receiver, and the bytes it read."""
-        dest = receivers / f"{tag}.bin"
-        for path in (dest, Path(str(dest) + ".done")):
-            path.unlink(missing_ok=True)
+        dest = f"{receivers}/{tag}.bin"
+        daemon.shell(f"rm -f {dest} {dest}.done", check=False)
         # `stty sane` first, every time. A receiver that took the terminal raw does not put
         # it back on the way out, so without this each trial measures whatever the last one
         # left - and the canonical half measures nothing at all.
         client.request(
             "pane.send_text",
-            {"pane_id": "w1:p1", "text": f"stty sane; python3 {receivers / receiver} {dest}"},
+            {"pane_id": "w1:p1", "text": f"stty sane; python3 {receivers}/{receiver} {dest}"},
         )
         client.request("pane.send_input", {"pane_id": "w1:p1", "keys": ["enter"]})
         time.sleep(2.0)
@@ -2393,9 +2393,11 @@ def sending_text(daemon, rec: Recorder) -> None:
             time.sleep(0.5)
             client.request("pane.send_input", {"pane_id": "w1:p1", "keys": ["enter"]})
         deadline = time.time() + 25
-        while time.time() < deadline and not Path(str(dest) + ".done").exists():
+        while time.time() < deadline:
+            if daemon.read_file(f"{dest}.done") is not None:
+                return daemon.read_file(dest) or b""
             time.sleep(0.2)
-        return dest.read_bytes() if dest.exists() else b""
+        return b""
 
     fenced = {}
     for method in ("pane.send_text", "pane.send_input"):
@@ -2433,72 +2435,95 @@ def sending_text(daemon, rec: Recorder) -> None:
         rec.note(f"a canonical-mode reader saw {cooked[size]} of a {size + 1}-byte line")
     rec.fact("bytes_a_canonical_mode_reader_received", cooked)
 
-    bare = _bare_pty_line_limit()
+    bare = _bare_pty_line_limit(daemon)
     rec.write_json("bare-pty.json", bare)
     rec.fact("bytes_a_bare_pty_carried", bare)
-    rec.note("the same boundary on a pty with no daemon near it: " + json.dumps(bare))
+    rec.note(
+        "the same boundary on a pty with no daemon near it, on the daemon's own machine: "
+        + json.dumps(bare)
+    )
 
 
-def _bare_pty_line_limit() -> dict[str, int]:
-    """The control: one write into a pty this process owns, no herdr in the picture.
-
-    Written as a fork rather than as a claim about MAX_CANON, because what the constant says
-    and what the line discipline does are two things and only one of them is evidence.
-    """
-    import os
-    import pty
-    import select
-    import termios
-
-    results = {}
-    for size in (1000, 1023, 1024, 1030, 2200):
-        pid, fd = pty.fork()
-        if pid == 0:
-            modes = termios.tcgetattr(0)
-            modes[3] &= ~termios.ECHO
-            termios.tcsetattr(0, termios.TCSANOW, modes)
-            total = 0
-            os.set_blocking(0, False)
-            deadline = time.time() + 1.5
-            while time.time() < deadline:
-                if select.select([0], [], [], 0.1)[0]:
-                    try:
-                        chunk = os.read(0, 1 << 20)
-                    except BlockingIOError:
-                        continue
-                    if not chunk:
-                        break
-                    total += len(chunk)
-                    deadline = time.time() + 0.6
-            os.write(1, f"<<{total}>>".encode())
-            os._exit(0)
-        time.sleep(0.4)
-        # In its own thread: a canonical-mode pty whose buffer is full blocks the writer, and
-        # a probe that hangs here would look like a daemon that never answered.
-        written = threading.Thread(
-            target=lambda: os.write(fd, b"B" * size + b"\n"), daemon=True
-        )
-        written.start()
-        written.join(5)
-        said = b""
-        deadline = time.time() + 6
-        while time.time() < deadline and b">>" not in said:
-            if select.select([fd], [], [], 0.2)[0]:
+# The control: one write into a pty on the daemon's machine, with no herdr in the picture.
+#
+# Written as a fork rather than as a claim about MAX_CANON, because what the constant says
+# and what the line discipline does are two things and only one of them is evidence.
+#
+# Timings are generous and the whole of one size is retried on a miss, because this is an
+# oracle: recorded rarely, on whatever machine a person is re-pinning from, and a control
+# that flaked to -1 under load would bake the flake into the corpus every other run is judged
+# against. A pass-through size settles in well under a second; a discarded one has to wait out
+# a quiet window to conclude nothing arrived, which is what QUIET buys.
+_BARE_PTY_PROBE = """\
+import json, os, pty, select, termios, threading, time
+QUIET = 2.0
+def measure(size):
+    pid, fd = pty.fork()
+    if pid == 0:
+        modes = termios.tcgetattr(0)
+        modes[3] &= ~termios.ECHO
+        termios.tcsetattr(0, termios.TCSANOW, modes)
+        total = 0
+        os.set_blocking(0, False)
+        deadline = time.time() + QUIET
+        while time.time() < deadline:
+            if select.select([0], [], [], 0.1)[0]:
                 try:
-                    chunk = os.read(fd, 65536)
-                except OSError:
-                    break
+                    chunk = os.read(0, 1 << 20)
+                except BlockingIOError:
+                    continue
                 if not chunk:
                     break
-                said += chunk
-        for ending in (lambda: os.kill(pid, 9), lambda: os.waitpid(pid, 0), lambda: os.close(fd)):
+                total += len(chunk)
+                deadline = time.time() + QUIET
+        os.write(1, ('<<%d>>' % total).encode())
+        os._exit(0)
+    time.sleep(0.5)
+    # In its own thread: a canonical-mode pty whose buffer is full blocks the writer, and
+    # a probe that hangs here would look like a daemon that never answered.
+    writer = threading.Thread(target=lambda: os.write(fd, b'B' * size + b'\\n'), daemon=True)
+    writer.start()
+    writer.join(10)
+    said = b''
+    deadline = time.time() + QUIET + 8
+    while time.time() < deadline and b'>>' not in said:
+        if select.select([fd], [], [], 0.2)[0]:
             try:
-                ending()
+                chunk = os.read(fd, 65536)
             except OSError:
-                pass
-        digits = said.split(b"<<")[-1].split(b">>")[0]
-        results[size] = int(digits) if digits.isdigit() else -1
-    return results
+                break
+            if not chunk:
+                break
+            said += chunk
+    for ending in (lambda: os.kill(pid, 9), lambda: os.waitpid(pid, 0), lambda: os.close(fd)):
+        try:
+            ending()
+        except OSError:
+            pass
+    digits = said.split(b'<<')[-1].split(b'>>')[0]
+    return int(digits) if digits.isdigit() else -1
+
+results = {}
+for size in (1000, 1023, 1024, 1030, 2200):
+    for _ in range(3):
+        got = measure(size)
+        if got >= 0:
+            break
+    results[str(size)] = got
+print(json.dumps(results))
+"""
+
+
+def _bare_pty_line_limit(daemon) -> dict[str, int]:
+    """Runs the control where the daemon is, and hands back what it measured.
+
+    There rather than here because it measures a kernel's line discipline, and over SSH the
+    probe's kernel and the pane's are two different ones: a control taken on this machine
+    would say nothing about the pane it is meant to be a control for.
+    """
+    path = f"{daemon.scratch}/bare_pty.py"
+    daemon.write_file(path, _BARE_PTY_PROBE)
+    return json.loads(daemon.shell(f"python3 {path}").stdout)
 
 
 ALL = {

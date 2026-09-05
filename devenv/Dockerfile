@@ -19,9 +19,13 @@ ARG DEV_PUBKEY
 # ForceIPv4 because deb.debian.org resolves to an IPv6 address that Docker's default
 # bridge has no route to, and apt then hangs for minutes instead of failing. Costs
 # nothing when IPv6 works.
+#
+# python3 is for the corpus probe. Its sending-text scenario puts a program in a pane that
+# says exactly which bytes reached it, and the pane is in here - so the program has to run
+# in here too, and it is the same Python the local probe runs on a Mac.
 RUN apt-get -o Acquire::ForceIPv4=true update \
     && apt-get -o Acquire::ForceIPv4=true install -y --no-install-recommends \
-        openssh-server ca-certificates curl procps git less sudo \
+        openssh-server ca-certificates curl procps git less sudo python3 \
     && rm -rf /var/lib/apt/lists/*
 
 RUN useradd --create-home --shell /bin/bash dev \

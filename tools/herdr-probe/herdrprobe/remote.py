@@ -13,6 +13,8 @@ is the same code the local runs use. Anything that shells out goes through
 from __future__ import annotations
 
 import os
+import posixpath
+import shlex
 import subprocess
 import time
 from pathlib import Path
@@ -59,8 +61,31 @@ class RemoteDaemon:
         return "/usr/local/bin/claude"
 
     def ssh(self, command: str, check: bool = True) -> subprocess.CompletedProcess:
-        return subprocess.run(["ssh", *self.ssh_opts, self.target, command],
-                              capture_output=True, text=True, check=check)
+        return self.shell(command, check=check)
+
+    # Files on the daemon's machine, which here is the container. The same three verbs as
+    # IsolatedDaemon, which is what lets one scenario put a program in a pane on either and
+    # read back what it wrote.
+
+    @property
+    def scratch(self) -> str:
+        return "/tmp/muster-probe-scratch"
+
+    def shell(
+        self, command: str, check: bool = True, text: bool = True, **kwargs
+    ) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            ["ssh", *self.ssh_opts, self.target, command], capture_output=True, text=text,
+            check=check, **kwargs,
+        )
+
+    def write_file(self, path: str, text: str) -> None:
+        directory = shlex.quote(posixpath.dirname(path))
+        self.shell(f"mkdir -p {directory} && cat > {shlex.quote(path)}", input=text)
+
+    def read_file(self, path: str) -> bytes | None:
+        answer = self.shell(f"cat {shlex.quote(path)}", check=False, text=False)
+        return answer.stdout if answer.returncode == 0 else None
 
     def prepare(self, manifest_source=None) -> None:
         """The image already carries the daemon config, manifests, and fake agents.

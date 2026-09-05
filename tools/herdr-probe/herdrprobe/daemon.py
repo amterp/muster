@@ -135,6 +135,41 @@ class IsolatedDaemon:
     def client(self, timeout: float = 10.0) -> Client:
         return Client(self.socket_path, self.root, timeout=timeout)
 
+    # Files on the daemon's machine.
+    #
+    # A scenario that puts a program in a pane and reads back what that program wrote is
+    # talking to the machine the pane is on, and for a remote daemon that is not the machine
+    # the probe is on. RemoteDaemon has the same three verbs, on the terms `herdr_argv` is on
+    # for anything that shells out: a scenario never has to know which it is driving.
+
+    @property
+    def scratch(self) -> str:
+        """A directory on the daemon's machine that a pane's shell can reach.
+
+        A string rather than a Path, because on a remote daemon it names a directory on
+        another machine and a Path would resolve it against this one.
+        """
+        return str(self.root / "scratch")
+
+    def shell(
+        self, command: str, check: bool = True, text: bool = True, **kwargs
+    ) -> subprocess.CompletedProcess:
+        """Runs a shell command on the daemon's machine."""
+        return subprocess.run(
+            ["/bin/sh", "-c", command], env=self.env, capture_output=True, text=text,
+            check=check, **kwargs,
+        )
+
+    def write_file(self, path: str, text: str) -> None:
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text)
+
+    def read_file(self, path: str) -> bytes | None:
+        """The file's bytes, or None when there is no such file."""
+        target = Path(path)
+        return target.read_bytes() if target.exists() else None
+
     def stop(self) -> None:
         if self._process is None:
             return
