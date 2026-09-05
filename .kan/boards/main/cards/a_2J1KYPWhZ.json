@@ -5,7 +5,7 @@
   "area": [
     "backend"
   ],
-  "column": "in-progress",
+  "column": "done",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -21,13 +21,14 @@
   "labels": [
     "ai-lo"
   ],
-  "position": "6",
+  "position": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!0",
   "title": "🧟 Every tunnel reopen leaks an ssh master, and quitting leaves them all running",
   "type": "bug",
-  "updated_at_millis": 1788646075569,
+  "updated_at_millis": 1788651864695,
   "history": [
     {"field":"column","value":"backlog-hi","at":1788358933914},
     {"field":"column","value":"next","at":1788359295218},
-    {"field":"column","value":"in-progress","at":1788646075569}
+    {"field":"column","value":"in-progress","at":1788646075569},
+    {"field":"column","value":"done","at":1788651864695}
   ]
 }
