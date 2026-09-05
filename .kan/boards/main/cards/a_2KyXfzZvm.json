@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-launch-onto-a",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1788647815221,
+  "creator": "Alexander Terp",
+  "description": "Opening a window onto a zoomed tab draws the tab unzoomed for about 110ms before\nsettling back. herdr's bootstrap replay walks the tab backwards through the\narrangements it has had, and one of those is the tab before it was zoomed.\n`arranges` (`crates/muster-core/src/composition/view.rs`) withholds a tree that\ndisagrees with the tab's pane list, but a stale *unzoomed* tree names exactly the\npanes the tab holds, so it passes and the window draws it.\n\n## The trace\n\nFrom a run opening onto a tab of four panes with one zoomed:\n\n    41.968  view.region  tree=p21bz8s7e7*                     \u003c- zoomed, one pane\n    42.180  channel.listening x1, tree=(not yet published)\n    42.290  channel.listening x1, tree=(not yet published)\n    42.399  channel.listening x1, tree=rows(rows(rows(4 panes)))  \u003c- stale, unzoomed\n    42.508  view.region  tree=p21bz8s7e7*                     \u003c- zoomed again\n\n## How it was found\n\n`a_2J1KZe2ws`, the false deaf-pane alarm on a zoomed tab. Narrowing `open_channels`\nto the panes the view names took the sockets bound before the first view from four to\none, and the alarm came back anyway: at 42.399 the window really is drawing all four\npanes, so three more sockets bind correctly and then outlive the drawing. The alarm is\nwhat made this visible, and fixing the alarm hides it again.\n\n## The question\n\nWhether `arranges` should reject a replayed arrangement that disagrees with the\nregion's zoom, the way it already rejects one that disagrees with the tab's pane list.\nThe pane set is not enough to tell a current arrangement from a stale one when the\nonly difference is the zoom.\n\nWorth knowing before deciding: the card that found this did not hit the flash in its\nown reproduction, where the replay never produced an unzoomed tree that passed\n`arranges`. So this fires on some launches and not others, and what decides it is not\nestablished.",
+  "id": "a_2KyXfzZvm",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "title": "🫨 A launch onto a zoomed tab flashes the unzoomed layout for ~110ms",
+  "type": "bug",
+  "updated_at_millis": 1788647815221,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1788647815221}
+  ]
+}
