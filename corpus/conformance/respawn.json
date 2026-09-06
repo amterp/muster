@@ -13,15 +13,15 @@
       "expect": { "decisions": ["start:1"], "count": 1 }
     },
     {
-      "name": "a bridge that ran for a while starts the count over",
-      "why": "The case the whole rule is for. A laptop that changes network twice in an afternoon must get its panes back both times, and a pane whose bridge worked for half an hour has proved that rebuilding it works.",
+      "name": "a bridge that ran for a while starts the run of failures over, and still asks for a new surface",
+      "why": "The case the whole rule is for. A laptop that changes network twice in an afternoon must get its panes back both times, and a pane whose bridge worked for half an hour has proved that rebuilding it works.\n\nTwo numbers, and this case is where they come apart. The run of failures starts over, so the second ending is `start:1` like the first - that is what the limit is about. The published count does not, because the shell rebuilds a surface when that number *changes* and a second `1` is a number it has already seen. It read 1, it reads 1, it reuses the surface, and the pane the daemon is still holding never gets its second bridge. So the published number counts every bridge this pane has been given, and only ever climbs.",
       "given": {
         "steps": [
           { "ended": "devenv/w1:p1", "at": 0, "ending": "lost" },
           { "ended": "devenv/w1:p1", "at": 1800000000000, "ending": "lost" }
         ]
       },
-      "expect": { "decisions": ["start:1", "start:1"], "count": 1 }
+      "expect": { "decisions": ["start:1", "start:1"], "count": 2 }
     },
     {
       "name": "three bridges dying on sight is the last one tried",
@@ -55,7 +55,7 @@
     },
     {
       "name": "a bridge that lasted exactly the settling time counts as having worked",
-      "why": "The boundary, stated rather than left to whichever comparison got written. Inclusive on the near side: thirty seconds of a pane rendering is a pane that was working, and the alternative is a window that gives up on a machine one nanosecond slower than the rule.",
+      "why": "The boundary, stated rather than left to whichever comparison got written. Inclusive on the near side: thirty seconds of a pane rendering is a pane that was working, and the alternative is a window that gives up on a machine one nanosecond slower than the rule. Four bridges were asked for, so the published count is four however many runs of failures they fell into.",
       "given": {
         "steps": [
           { "ended": "devenv/w1:p1", "at": 0, "ending": "lost" },
@@ -64,7 +64,7 @@
           { "ended": "devenv/w1:p1", "at": 30200000000, "ending": "lost" }
         ]
       },
-      "expect": { "decisions": ["start:1", "start:2", "start:3", "start:1"], "count": 1 }
+      "expect": { "decisions": ["start:1", "start:2", "start:3", "start:1"], "count": 4 }
     },
     {
       "name": "one pane failing says nothing about the pane beside it",
