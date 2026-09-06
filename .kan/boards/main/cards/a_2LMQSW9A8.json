@@ -5,16 +5,17 @@
   "area": [
     "testing"
   ],
-  "column": "next",
+  "column": "done",
   "created_at_millis": 1788704736506,
   "creator": "Alexander Terp",
   "description": "A fifth test joined this family during a parallel round: a_program_that_discards_what_it_was_typed_early_still_gets_what_muster_asked_for (crates/muster-herdr/tests/pane_equipping.rs), failing at 96e0573 with no Rust changes in the tree.\n\nFour cards already describe the same failure at four sites:\n\n    a_29eAVr11v  subscription.rs  dropping_the_handle_stops_the_thread  10s bootstrap\n    a_2L19sAmLZ  muster-seam      three respawn tests, one per run      20s until.rs:81\n    a_2JrwN625w  contract tier    three paint checks                    measured x5\n    a_2KCtOvgbo  gate             three flakes (done)\n\n## Two readings, and the first one is probably wrong\n\nTwo agents independently timed bridge_death at 17.62s and 17.5s against a 20s deadline. This card first read that as 2.4s of headroom - tests sized about two seconds above what they need.\n\nThat reading does not survive contact with the code. PATIENCE is a single shared constant (herdr-harness/src/until.rs:26, 20s) that every site inherits, so no site is individually sized at all, and a 17.62s success cannot be \"just under its own deadline\". Nothing in the code costs seventeen seconds either: the daemon answers ping in ~25ms, a bridge dies on a socket EOF, and the only fixed multi-second numbers nearby are a 5s typeable watchdog and a 1.0s sleep in one fixture. The 17.62s is more likely the cargo test invocation than the wait.\n\nThe competing reading is that the family wedges rather than running out of room. The seam holds its window in process globals, and fresh_session() resets the data without waiting for the previous test threads: a control-socket watcher (control_socket.rs:279) or the watchdog (watchdog.rs:158) can report into whichever session exists by the time it is scheduled. Since DARK is keyed by pane and every test in a binary uses the same key, a late arrival either dedupes away the next test own death or counts as an extra one - which are exactly the two reported failure signatures. It also explains what deadline-sizing cannot: why --exact never reproduces it, and why load is required.\n\n## What settles it\n\nPer-wait margins, instrumented rather than argued. A wedge shows as failures at exactly the deadline with successes finishing in well under a second; a genuinely tight site shows successes clustered just under it with a continuous tail.\n\n## Why it matters more than a re-run\n\ndocs/testing.md rests the project confidence on a green suite, on the grounds that Muster is built largely by AI agents. A flake spends that: a_29eAVr11v already observes it teaches whoever hits it to re-run rather than to read. In one parallel round it cost three agents a diagnosis each.",
   "id": "a_2LMQSW9A8",
-  "position": "!QUUU",
+  "position": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!E",
   "title": "Daemon-backed tests fail on work that is fine, and the cause is contested",
   "type": "chore",
-  "updated_at_millis": 1788705546232,
+  "updated_at_millis": 1788722269442,
   "history": [
-    {"field":"column","value":"next","at":1788704736506}
+    {"field":"column","value":"next","at":1788704736506},
+    {"field":"column","value":"done","at":1788722269442}
   ]
 }

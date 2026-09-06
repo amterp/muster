@@ -6,16 +6,17 @@
     "backend",
     "testing"
   ],
-  "column": "in-progress",
+  "column": "done",
   "created_at_millis": 1788708668373,
   "creator": "Alexander Terp",
   "description": "Muster opens a window by asking its daemon for a snapshot under a 500ms client timeout - HerdrClient::DEFAULT_TIMEOUT, the keystroke budget, chosen so a wedged daemon cannot take the keyboard with it. On timeout the configured daemon counts as unattachable, follow_configured skips it, and follow_implicitly_if_nothing_else then runs. That function asks whether anything is currently being followed, and a config that named a daemon and failed to reach it answers identically to an empty config. So the window attaches Muster own daemon under the configured daemon id, and nothing on screen says which session it is looking at.\n\nsubscription.rs already grants itself a 5s SESSION_ALLOWANCE on exactly this reasoning, and snapshot.rs argues in its own doc comment that a caller for whom nothing renders until the answer arrives should not be held to the keystroke budget. The seed snapshot that runs before the subscription kept it.\n\n## Severity: no damage by luck, not contained\n\ndocs/testing.md states as a property of the suite that \"nothing here can touch a session someone is working in\". That was false. Measured 2026-09-06: three of four observed failures were a test window talking to /Users/amterp/.config/herdr/sessions/muster/herdr.sock - the developer own live herdr, holding 21 panes across 7 tabs.\n\nNothing was mutated **this time**. Ping succeeded, which is why the failure said \"timed out\" rather than \"nothing listening\"; session.snapshot then missed 500ms, so the attach failed before anything was followed, the config write was skipped and reload was never called. The live session was checked afterwards and held exactly what it had before.\n\n**What stopped it was the bug itself.** A 21-pane snapshot cannot be serialized inside 500ms on a loaded machine. A smaller live session, or a quieter machine, and the snapshot arrives, the attach completes under the configured id, and the seam tests then drive real panes - focus, resize, KeyDown, and respawn.rs reporting a live agent pane bridge as dead. The protection was proportional to how busy the machine was and how large the session happened to be, which is not protection.\n\n## The part that changes the fix\n\nRaising the budget on its own does not leave the same bug further away - **it converts a loud read-only failure into a silent mutating one**, by making the snapshot that currently fails succeed. Four cards in this family were arguing for exactly that fix.\n\nBoth halves are required and the fallback is the one that matters: a config that named a daemon and could not reach it must fail, and say which id it asked for and how long it waited. Only then is a longer budget safe.\n\nWorth checking whether the same fallback sits on any other path that resolves a daemon id.",
   "id": "a_2LO4kETFT",
-  "position": "E",
+  "position": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!0",
   "title": "A snapshot that times out silently attaches the developer own herdr",
   "type": "bug",
-  "updated_at_millis": 1788716289441,
+  "updated_at_millis": 1788722269717,
   "history": [
-    {"field":"column","value":"in-progress","at":1788708668373}
+    {"field":"column","value":"in-progress","at":1788708668373},
+    {"field":"column","value":"done","at":1788722269717}
   ]
 }
