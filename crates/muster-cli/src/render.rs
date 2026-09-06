@@ -463,6 +463,7 @@ impl Widths {
 fn window_json(window: &Window) -> Value {
     let keyboard = keyboard_pane(window);
     let states = states(window);
+    let places = places(window);
 
     let mut tabs_out = Vec::new();
     let mut panes = Vec::new();
@@ -491,6 +492,15 @@ fn window_json(window: &Window) -> Value {
                 "state": states.get(pane.pane_id.as_str()).copied().unwrap_or("unknown"),
                 "on_screen": pane.on_screen,
                 "keyboard": keyboard.as_deref() == Some(pane.pane_id.as_str()),
+                // Null rather than zeroes for a pane the window is not drawing, so this and
+                // `on_screen` above cannot say different things: a rectangle of no size is a
+                // place, and a pane behind a zoom or in a background tab has none.
+                "rect": places.get(pane.pane_id.as_str()).map_or(Value::Null, |place| {
+                    json!({
+                        "x": place.x, "y": place.y,
+                        "width": place.width, "height": place.height,
+                    })
+                }),
             }));
         }
     }
@@ -528,6 +538,14 @@ fn window_json(window: &Window) -> Value {
     })
 }
 
+/// Where each pane on screen sits, by pane.
+///
+/// Keyed by pane alone, like [`states`] and for the same reason: a pane name is Muster's own and
+/// unique across every machine the window is showing.
+fn places(window: &Window) -> BTreeMap<&str, &muster_proto::PanePlace> {
+    window.places.iter().map(|place| (place.pane_id.as_str(), place)).collect()
+}
+
 /// Which tab the window is showing, or null when it is showing none.
 fn showing(window: &Window) -> Option<&str> {
     let tab = window.view.as_ref()?.tab_id.as_str();
@@ -563,9 +581,37 @@ fn regions(window: &Window) -> Vec<Value> {
                 // it: every pane in the tab still lists, and the ones a zoom is covering read
                 // as `on_screen: false` exactly like the panes of a tab in the background.
                 "zoomed": region.zoomed,
+                // How this part splits, which is the only place the answer says so. `rect` on
+                // each pane says where everything ended up; this says the shape that put it
+                // there, and which divider a caller would be moving. Null while the daemon has
+                // not said how the tab is arranged - an ordinary moment, not a failure, and a
+                // different answer from a part holding no panes.
+                //
+                // Resolved for a zoom, like `zoomed` beside it: a zoomed part is one pane here,
+                // because that is what is drawn.
+                "layout": region.root.as_ref().map_or(Value::Null, layout_json),
             })
         })
         .collect()
+}
+
+/// One node of a part's tree, and everything under it.
+fn layout_json(node: &muster_proto::ViewNode) -> Value {
+    match node.node.as_ref() {
+        Some(muster_proto::view_node::Node::Pane(pane)) => json!({ "pane": pane.pane_id }),
+        Some(muster_proto::view_node::Node::Split(split)) => json!({
+            // `columns` puts its children side by side and `rows` stacks them, so a row of
+            // panes is a `columns` split. Muster's own spelling rather than a backend's, which
+            // says which way a split was made rather than how to lay two children out.
+            "axis": split.axis,
+            "ratio": split.ratio,
+            "first": split.first.as_deref().map_or(Value::Null, layout_json),
+            "second": split.second.as_deref().map_or(Value::Null, layout_json),
+        }),
+        // A node the app sent with neither half set. Nothing builds one, so this is a schema
+        // this CLI is too old to read - said rather than silently rendered as a leaf.
+        None => Value::Null,
+    }
 }
 
 /// Which pane this window's keyboard is on, by way of the region that has it.

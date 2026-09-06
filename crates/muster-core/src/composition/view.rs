@@ -379,7 +379,12 @@ impl View {
     ///
     /// Normalized rather than in points, because the core has no window and needs none: which
     /// pane is to the left of which is the same answer at any size.
-    fn places(&self) -> Vec<(RegionId, PaneId, Rect)> {
+    ///
+    /// Public because `muster window` answers with it, and that is the same question the four
+    /// directional moves ask: an agent arranging a window has no eyes, and the shares each pane
+    /// ended up with are what tells it whether a resize landed. One answer for both, rather than
+    /// a second walk of the same trees that could disagree with what the keyboard does.
+    pub fn places(&self) -> Vec<(RegionId, PaneId, Rect)> {
         let total: f32 = self
             .regions
             .iter()
@@ -420,12 +425,18 @@ impl Axis {
 }
 
 /// A pane's place in the window, as fractions of it.
+///
+/// Fractions and never points, on the rule the whole backend contract follows: a layout is
+/// proportions, and the cell rectangles a daemon publishes describe a viewport of its own that
+/// is nobody's window (`architecture.md`, the vocabulary). `x` and `y` are from the window's top
+/// left, and the region weights are already folded in - so two panes on two machines are
+/// measured in one space, which is the only way "which of these is wider" has an answer.
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct Rect {
-    x: f32,
-    y: f32,
-    width: f32,
-    height: f32,
+pub struct Rect {
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
 }
 
 /// How close two rectangles have to be before they count as touching.

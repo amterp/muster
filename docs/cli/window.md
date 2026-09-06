@@ -59,6 +59,17 @@ One entry per pane every followed daemon holds, on screen or not.
 - `state` - `working`, `blocked`, `idle`, `done` or `unknown`.
 - `on_screen` - whether the window is showing it right now.
 - `keyboard` - whether the window's keyboard is on it.
+- `rect` - where it sits, as fractions of the window: `x` and `y` from the top left, `width` and
+  `height` of it. `null` for a pane the window is not drawing, which is every pane in a background
+  tab and every pane a zoom is covering. Fractions and not points, because the answer is the same
+  at any window size and there is nothing to convert; every machine's part of the tab is measured
+  in the same space, so two panes that came from two daemons can still be compared. Two panes
+  share a row if their `y` and `height` cover the same band - the same arithmetic `muster focus
+  --left` is decided by.
+
+`rect` is how a script checks an arrangement instead of trusting it:
+
+    muster window --json | jq -r '.panes[] | select(.rect) | "\(.pane) \(.rect.width)"'
 
 ## tabs[], showing and keyboard
 
@@ -100,6 +111,17 @@ part is or which order they sit in.
 - `zoomed` - whether one pane is filling it rather than the tab's whole tree. Nothing else in the
   answer says so: a zoom's hidden panes read `on_screen: false` exactly like the panes of a tab
   in the background, and `pane` above is the one still drawn.
+- `layout` - how this part splits. A leaf is `{"pane": "p1w3r07bsd"}`; a divider is
+  `{"axis": "columns"|"rows", "ratio": 0.5, "first": …, "second": …}`, where `columns` puts its
+  children side by side and `rows` stacks them - so a row of panes is a `columns` split. `ratio`
+  is the first child's share of what the divider divides. `null` while the daemon has not yet said
+  how the tab is arranged, which is ordinary rather than a failure and is a different answer from
+  a part holding no panes. Resolved for a zoom, like `zoomed` above: a zoomed part is one leaf,
+  because that is what is drawn.
+
+`rect` on a pane and `layout` here answer different halves of the same question. `rect` is where
+everything ended up, which is what checks a resize; `layout` is the shape that put it there, which
+is what names the divider somebody would move.
 
 Which tab they divide is `showing` above rather than a key on every row, because they all show the
 same one. This is the one part of the arrangement Muster owns outright rather than mirrors from a

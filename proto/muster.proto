@@ -1079,6 +1079,42 @@ message Window {
   // and the one that mattered was neither the oldest nor the youngest (kan a_28YghIUw2).
   // Muster started the daemon, or chose to attach to it, so Muster can say.
   repeated Machine daemons = 4;
+
+  // Where each pane on screen sits, as fractions of the window. One entry per pane the window
+  // is drawing, and none at all for a pane in a background tab or behind a zoom.
+  //
+  // Here rather than on ViewChanged, which is the other place it would fit. A shell lays the
+  // tree out itself at the size it has and would never read this; what needs it is whatever is
+  // arranging the window without being able to look at it, and that only ever asks by reading.
+  // Building it per render would put it on a path with a budget against it (perf/baseline.json,
+  // view.build) to serve nobody up there.
+  repeated PanePlace places = 5;
+}
+
+// Where one pane sits, as fractions of the window.
+//
+// Fractions and never points, on the rule the backend contract already follows: a layout is
+// proportions, and the cell rectangles a daemon publishes are for a viewport of its own that is
+// nobody's window. `x` and `y` are from the top left, and the region weights are folded in - so
+// two panes on two machines are measured in one space, which is what makes "which of these is
+// wider" answerable at all.
+//
+// This is the same arithmetic the four directional focus moves are decided by, so a script
+// reading it and a person pressing a chord are looking at one arrangement rather than two.
+message PanePlace {
+  // Which part of the tab it is in. See ViewRegion.region_id.
+  string region_id = 1;
+
+  // Which machine holds it.
+  string daemon_id = 2;
+
+  // What Muster calls the pane, as `muster window` prints it.
+  string pane_id = 3;
+
+  float x = 4;
+  float y = 5;
+  float width = 6;
+  float height = 7;
 }
 
 // One machine this window is attached to.

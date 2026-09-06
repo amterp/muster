@@ -133,6 +133,7 @@ fn a_pane_can_drive_the_window_it_is_drawn_in() {
 
     a_pane_can_be_read_back(&made_pane, &inside(&first));
     the_columns_are_described(&inside(&first));
+    the_arrangement_is_readable(&first, &made_pane, &inside(&first));
     the_machines_are_named_well_enough_to_end_one(&inside(&first));
     // While both panes are still in one tab and on screen, which is what stepping walks.
     the_keyboard_steps_without_being_given_a_name(&first, &made_pane, &inside(&first));
@@ -348,6 +349,80 @@ fn the_columns_are_described(environment: &[(&str, String)]) {
         region["weight"].as_f64().is_some_and(|weight| weight > 0.0),
         "a column with no width is a column nothing can be laid out from: {window}"
     );
+}
+
+/// How the tab splits, and how big each pane came out.
+///
+/// The gap this closes: an agent asked to even out five panes could read that they existed and
+/// which tab held them, and nothing about their arrangement - so it replayed its own split order
+/// from memory, guessed at the shares, resized blind and asked a person to look (kan a_2KIH8WAnU).
+/// Asserted here rather than only in the core because the arithmetic being right is worth nothing
+/// if the numbers do not reach the command somebody types.
+fn the_arrangement_is_readable(first: &str, made: &str, environment: &[(&str, String)]) {
+    let window = json_from(&run(&["window", "--json"], environment));
+    let layout = &window["regions"][0]["layout"];
+    assert_eq!(
+        layout["axis"],
+        json!("rows"),
+        "the pane was made below the other, so the tab is one column of two - and the answer says \
+         {layout}"
+    );
+    assert_eq!(
+        (layout["first"]["pane"].clone(), layout["second"]["pane"].clone()),
+        (json!(first), json!(made)),
+        "a split down puts the new pane second, and the tree names them the other way or not at \
+         all: {layout}"
+    );
+
+    let place = |pane: &str| -> (f64, f64, f64, f64) {
+        let row = window["panes"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|row| row["pane"] == json!(pane))
+            .unwrap_or_else(|| panic!("the window lists no pane called {pane}: {window}"));
+        let rect = &row["rect"];
+        assert!(
+            rect.is_object(),
+            "{pane} is on screen and has no rect, so nothing can tell how big it is: {row}"
+        );
+        let at = |key: &str| rect[key].as_f64().unwrap_or_else(|| panic!("{key} is not a number"));
+        (at("x"), at("y"), at("width"), at("height"))
+    };
+    let (top_x, top_y, top_width, top_height) = place(first);
+    let (below_x, below_y, below_width, below_height) = place(made);
+
+    // Fractions of the window, so a one-column tab fills it: two panes stacked are each full
+    // width, and between them they cover it top to bottom with no gap and no overlap.
+    for (name, width) in [(first, top_width), (made, below_width)] {
+        assert!(
+            (width - 1.0).abs() < 0.001,
+            "{name} is the only pane across the window and is {width} of it wide: {window}"
+        );
+    }
+    assert!(
+        top_x.abs() < 0.001 && top_y.abs() < 0.001 && below_x.abs() < 0.001,
+        "a pane's place is measured from the top left of the window, and these are not: {window}"
+    );
+    assert!(
+        (below_y - top_height).abs() < 0.001,
+        "the lower pane starts at {below_y} and the upper one ends at {top_height}, so the two \
+         either overlap or leave a strip nothing is drawing: {window}"
+    );
+    assert!(
+        (top_height + below_height - 1.0).abs() < 0.001,
+        "two stacked panes fill the window between them, and these cover {}: {window}",
+        top_height + below_height
+    );
+
+    // A pane nobody is drawing has no place, which is a different answer from a place of no size.
+    for row in window["panes"].as_array().into_iter().flatten() {
+        assert_eq!(
+            row["rect"].is_null(),
+            row["on_screen"] == json!(false),
+            "`rect` and `on_screen` disagree about whether this pane is being drawn: {row}"
+        );
+    }
 }
 
 /// The keyboard moves by a direction and by a number, neither of which names a pane.

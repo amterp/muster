@@ -9,7 +9,7 @@ use muster_core::diagnostics::log::{self, LogLevel};
 use muster_core::diagnostics::sink::JsonLinesSink;
 use muster_core::fields;
 
-use muster_core::composition::{DaemonId, FontSizeChange, Frame, RegionId, Step};
+use muster_core::composition::{DaemonId, FontSizeChange, Frame, RegionId, Step, View};
 use muster_core::config::{self, CursorStyle};
 use muster_core::find::{Needle, Reach, arrived_in};
 use muster_core::font::{self, FontReport};
@@ -1352,8 +1352,30 @@ fn read_window() -> Response {
                     detail: machine.detail.clone(),
                 })
                 .collect(),
+            places: places(&now.view),
         })),
     }
+}
+
+/// Where each pane on screen sits, for a caller that cannot look at the window.
+///
+/// A region that has since gone is skipped rather than sent with an empty daemon: a place is
+/// only worth anything if it says whose pane it is, and the view answered both a moment ago.
+fn places(view: &View) -> Vec<proto::PanePlace> {
+    view.places()
+        .into_iter()
+        .filter_map(|(region, pane, rect)| {
+            Some(proto::PanePlace {
+                region_id: region.to_string(),
+                daemon_id: view.region(region)?.daemon.to_string(),
+                pane_id: pane.to_string(),
+                x: rect.x,
+                y: rect.y,
+                width: rect.width,
+                height: rect.height,
+            })
+        })
+        .collect()
 }
 
 /// Which chord means what, as the config file left it.
