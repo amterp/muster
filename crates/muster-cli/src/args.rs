@@ -727,11 +727,24 @@ fn pane(
                     ..EqualizePanes::default()
                 })));
             }
-            // The group above is required and `--equalize` is in it and handled, so exactly one
-            // of the four is true here.
+            // The `towards` group is required and `--equalize` is in it and handled above, so
+            // exactly one of the four is true here - which is why this refuses rather than
+            // falling back on a side. A default would be a real answer to a question nobody
+            // asked, and the day somebody edits that group it would resize a pane rightwards
+            // and report success. Unlike `pane new`, where right *is* what a split with no side
+            // means.
             let direction =
                 chosen(&[(*left, "left"), (*right, "right"), (*up, "up"), (*down, "down")])
-                    .unwrap_or("right");
+                    .ok_or_else(|| {
+                        Failure::Refused(
+                            "`muster pane resize` reached the request with no direction and no \
+                     `--equalize`, and nothing was asked of the window. clap refuses that \
+                     command line before this is reached, so this is a bug in muster's own \
+                     argument definition rather than in what you typed - the `towards` group in \
+                     args.rs no longer holds all four sides."
+                                .to_string(),
+                        )
+                    })?;
             send(request::Payload::ResizePane(ResizePane {
                 pane_id,
                 direction: direction.to_string(),
