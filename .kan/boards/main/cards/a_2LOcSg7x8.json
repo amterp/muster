@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "six-macos",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1788709964443,
+  "creator": "Alexander Terp",
+  "description": "corpus/herdr-0.8.0 wire.ndjson files accumulated across runs until Recorder.append_ndjson was taught to truncate. a_29qxvebDg fixed `layout` (492 lines to 120 when four stale runs dropped out). Six others still hold several runs each:\n\n    lifecycle        7 runs\n    naming           3\n    split-sides      3\n    durability       2\n    frame-fidelity   2\n    input-encoding   2\n\nA reader takes the file for one exchange and t_ms resets partway down with nothing saying why. The Linux corpus has none of this.\n\nEach is one `probe \u003cscenario\u003e` away, but this wants checking case by case rather than a sweep: `lifecycle` and `snapshot` are what corpus/conformance/mirror.json regenerates from, so a re-record can move an oracle that cases are pinned to. a_29qxvebDg is the worked example of what that costs and how to check it - the re-record there was faithful and it still took reading every artifact to know that.\n\nFound by slot 2 while re-recording layout, 2026-09-06.",
+  "id": "a_2LOcSg7x8",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "title": "Six macOS transcripts are several runs concatenated, and read as one",
+  "type": "chore",
+  "updated_at_millis": 1788709964443,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1788709964443}
+  ]
+}
