@@ -32,6 +32,20 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::composition::PaneKey;
 use crate::respawn::{self, Ended, Ending};
 
+/// How many deadlines a pane waits before a bridge is asked for, rather than only reported.
+///
+/// Three, and not one, because saying something and doing something cost different amounts of
+/// being wrong. A sentence about a pane that turns out to be fine is withdrawn a moment later
+/// and costs a row in a list. An ask tears down the surface a bridge is the command of - so an
+/// ask aimed at a bridge that was merely slow kills one that was about to work, and replaces it
+/// with one that is just as slow on a machine that is just as busy. That is a recovery that
+/// prevents recovery, and a loaded machine is exactly the condition this was written for.
+///
+/// The deadline is already 2.5x the budget a launch known to work fits inside. Three of them is
+/// past anything measured here, so a bridge that has not dialed by then is absent rather than
+/// late. Expressed as a multiple so that a run which shortens the deadline shortens both.
+pub const ASK_AFTER_DEADLINES: u64 = 3;
+
 /// What the problem list should be told, having compared the waiting panes against the clock.
 ///
 /// A diff on both halves, because the caller's job is to raise and clear and those are the two
@@ -49,10 +63,10 @@ pub struct Reported {
 
     /// Panes that should be asked for a bridge, because nothing has dialed them.
     ///
-    /// Every overdue pane whose last ask is a whole deadline old, not only the ones that have
-    /// just fallen overdue - which is the difference between this and `raise`. Saying a thing
-    /// twice is nagging; asking twice is the recovery, because the first ask is exactly what
-    /// may have produced nothing.
+    /// Every overdue pane whose last ask is [`ASK_AFTER_DEADLINES`] deadlines old, not only the
+    /// ones that have just fallen overdue - which is the difference between this and `raise`.
+    /// Saying a thing twice is nagging; asking twice is the recovery, because the first ask is
+    /// exactly what may have produced nothing.
     pub stalled: Vec<PaneKey>,
 }
 
@@ -200,12 +214,13 @@ impl Waiting {
         // Taken before `asked` is restamped below, and separately from `raise`, because the
         // two are opposite rules on purpose: a condition that stays true is said once, and a
         // bridge that never arrived is asked for again.
+        let ask_after = deadline.saturating_mul(ASK_AFTER_DEADLINES);
         let stalled: Vec<PaneKey> = overdue
             .iter()
             .filter(|pane| {
                 self.waits
                     .get(*pane)
-                    .is_some_and(|wait| now.saturating_sub(wait.asked) >= deadline)
+                    .is_some_and(|wait| now.saturating_sub(wait.asked) >= ask_after)
             })
             .cloned()
             .collect();
@@ -261,7 +276,9 @@ impl Waiting {
                 } else {
                     (!self.reported.contains(pane)).then_some(0)
                 };
-                let to_ask = deadline.saturating_sub(now.saturating_sub(wait.asked));
+                let to_ask = deadline
+                    .saturating_mul(ASK_AFTER_DEADLINES)
+                    .saturating_sub(now.saturating_sub(wait.asked));
                 to_say.map_or(to_ask, |say| say.min(to_ask))
             })
             .min()
@@ -299,6 +316,7 @@ pub fn key(pane: &PaneKey) -> String {
 /// run log itself had the impact and the remedy on the same line all along.
 fn detail(pane: &PaneKey, deadline: u64, last: Option<&Ended>, backend_pane: &str) -> String {
     let waited = describe(deadline);
+    let asking = describe(deadline.saturating_mul(ASK_AFTER_DEADLINES));
     let reattach = respawn::reattach_command(pane);
     match last.map(|ended| ended.ending) {
         // Never had a bridge. The launch case, and the three bugs this watch was written for:
@@ -309,8 +327,8 @@ fn detail(pane: &PaneKey, deadline: u64, last: Option<&Ended>, backend_pane: &st
              it - the bridge carrying this pane's keystrokes either never started or cannot \
              reach the socket. Everything typed into this pane is discarded and it goes on \
              rendering, so it looks frozen rather than broken; every other pane in the window \
-             is unaffected. Muster is asking for another bridge every {waited} and will keep \
-             asking; {reattach} asks now. The run log has the cause: look for \
+             is unaffected. Muster asks for another bridge every {asking} and keeps asking; \
+             {reattach} asks now. The run log has the cause: look for \
              `channel.accept.failed`, `bridge.exited.reported` and `pane.channel.unavailable`."
         ),
 

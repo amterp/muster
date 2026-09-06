@@ -9,6 +9,7 @@ use muster_core::diagnostics::log::{self, LogLevel};
 use muster_core::diagnostics::sink::JsonLinesSink;
 use muster_core::fields;
 
+use muster_core::PaneKey;
 use muster_core::composition::{DaemonId, FontSizeChange, Frame, RegionId, Step, View};
 use muster_core::config::{self, CursorStyle};
 use muster_core::equalize::Evenly;
@@ -18,7 +19,6 @@ use muster_core::input::{CompositionOutcome, Modifiers, ScrollDirection, composi
 use muster_core::intent::Refusal;
 use muster_core::intent::{BackendIntent, Branch, Side};
 use muster_core::mirror::backend::{PaneId, TabId};
-use muster_core::PaneKey;
 use muster_core::problems::Severity;
 use muster_core::roster::TabStep;
 

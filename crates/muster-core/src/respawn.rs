@@ -269,8 +269,7 @@ impl Respawns {
 
     /// Records a bridge asked for: one more for the pane, `tried` for the run of failures.
     fn ask(&mut self, pane: &PaneKey, held: Started, tried: u32, now: u64) {
-        let started =
-            Started { restarts: held.restarts + 1, tried, asked_at: now, ended: false };
+        let started = Started { restarts: held.restarts + 1, tried, asked_at: now, ended: false };
         self.started.insert(pane.clone(), started);
     }
 
