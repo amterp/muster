@@ -29,8 +29,22 @@ pub fn ask(
     socket: Option<&str>,
     environment: &BTreeMap<String, String>,
 ) -> Result<Response, Trouble> {
+    ask_within(request, socket, environment, PATIENCE)
+}
+
+/// The same, under a deadline the caller sets.
+///
+/// The shape `HerdrClient::request`/`request_within` already uses, and here for a narrower
+/// reason: [`PATIENCE`] is a minute, so what a lost answer exits with cannot be proved by a test
+/// that has to wait one out.
+pub fn ask_within(
+    request: &Request,
+    socket: Option<&str>,
+    environment: &BTreeMap<String, String>,
+    patience: Duration,
+) -> Result<Response, Trouble> {
     let (path, stream) = reach(socket, environment)?;
-    exchange(&path, stream, request)
+    exchange(&path, stream, request, patience)
 }
 
 /// Every window listening on this machine, and what each one answers.
@@ -48,7 +62,7 @@ pub fn survey(
     candidates(environment)
         .into_iter()
         .filter_map(|path| match dial(&path) {
-            Ok(stream) => Some((path.clone(), exchange(&path, stream, request))),
+            Ok(stream) => Some((path.clone(), exchange(&path, stream, request, PATIENCE))),
             // Not an entry. A socket nothing is listening on is a window that has gone, and
             // the file outliving it is ordinary - a killed Muster never unlinks its own.
             Err(_) => None,
@@ -57,9 +71,14 @@ pub fn survey(
 }
 
 /// One request down a connection already made, and the answer back.
-fn exchange(path: &str, mut stream: UnixStream, request: &Request) -> Result<Response, Trouble> {
-    let _ = stream.set_read_timeout(Some(PATIENCE));
-    let _ = stream.set_write_timeout(Some(PATIENCE));
+fn exchange(
+    path: &str,
+    mut stream: UnixStream,
+    request: &Request,
+    patience: Duration,
+) -> Result<Response, Trouble> {
+    let _ = stream.set_read_timeout(Some(patience));
+    let _ = stream.set_write_timeout(Some(patience));
 
     write_frame(&mut stream, &request.encode_to_vec()).map_err(|error| {
         Trouble::Unreachable(format!(
