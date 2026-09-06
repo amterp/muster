@@ -5,16 +5,17 @@
   "area": [
     "shell"
   ],
-  "column": "in-progress",
+  "column": "done",
   "created_at_millis": 1788719203866,
   "creator": "Alexander Terp",
   "description": "Under numbered_chords = \"tab_then_pane\" (a_2A6T9c2r4, prototype, 19 days in trial) the numbers move: tab rows carry them until a first press, then they jump to the panes of the tab that press named. So a digit means different things depending on what you have already pressed, and a pane in an unfocused tab has no readable address until you press the tab digit and look again.\n\nProposal from the user: every pane row always shows its complete chord - \"4 2\" for the second pane of tab 4.\n\n## Why it is worth doing\n\nIt removes a mode from a surface whose whole claim is that you can read it at a glance. The case that decides it is the one this project runs in constantly: four tabs of agents, and wanting to know the chord to a pane in a tab you are not looking at. Today that costs a press and a second look.\n\n## What is settled, and by whom\n\n- **The tab keeps its number** (integrator). cmd+4 alone focuses tab 4, so it is a chord target in its own right and hiding the digit would hide a live binding. It is also what the pane row first digit refers to.\n- **The two digits are not equal ink** (integrator). The tab digit repeats identically down a group, and the sidebar already truncates labels at this width. The pane digit is the one that varies and should read first.\n- Everything else is the implementer call.\n\n## The catch, which is the real work\n\nThe moving numbers are not only a display. Numbering.isHalfTyped is the signal that a first press landed and a second is expected, and Sidebar.swift says three things depend on it: panes draw a number over themselves only then, the window ends the gesture when the modifier comes up, and the list reserves room for a digit about to arrive.\n\nStop the numbers moving and cmd+4 gives no feedback at all until the second press. That feedback has to be replaced - marking the pending tab group is the obvious candidate - and a version that only changes the rendering will feel worse than what it replaced.\n\n## Edges\n\n- A pane past the ninth, or a tab past the ninth, has no chord. The row shows nothing rather than a partial address; the model already spells that as 0.\n- This applies to tab_then_pane. Under the default \"panes\" scheme the numbers do not move and there is no second digit, so the row is already complete.\n\n## What it settles\n\na_2A6T9c2r4 has been in trial for 19 days against a named cost - the prefix-key tax, pressing cmd+2 then cmd+3 and landing on pane 3 of tab 2 rather than tab 3. Full chords do not remove that tax, but they make the destination legible before you commit to it, which is the half that can be fixed by display. Worth judging the scheme again after this lands.",
   "id": "a_2LSUoy7dd",
-  "position": "6",
+  "position": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!U",
   "title": "A pane row shows its whole chord, instead of numbers that move as you type",
   "type": "feature",
-  "updated_at_millis": 1788719203866,
+  "updated_at_millis": 1788724216429,
   "history": [
-    {"field":"column","value":"in-progress","at":1788719203866}
+    {"field":"column","value":"in-progress","at":1788719203866},
+    {"field":"column","value":"done","at":1788724216429}
   ]
 }
