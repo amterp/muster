@@ -5,16 +5,17 @@
   "area": [
     "shell"
   ],
-  "column": "next",
+  "column": "done",
   "created_at_millis": 1788704764916,
   "creator": "Alexander Terp",
   "description": "`muster pane new --cwd ../muster-1` does not resolve the path against the pane it is run from. The new pane lands in `$HOME` instead, and nothing says so: the command succeeds and returns a pane id.\n\nCost an integrator agent three panes and a recovery on 2026-09-06 - all three landed in `~`, and it only surfaced because a fresh Claude Code prompted to trust `/Users/amterp` rather than the worktree. An agent that did not prompt would have worked in the wrong directory silently.\n\nEither resolve a relative path against the source pane's cwd, which is what somebody typing it in a pane means, or refuse one and say a path must be absolute. Silently substituting `$HOME` is the one answer that cannot be right.",
   "id": "a_2LMRCLaap",
-  "position": "!QUUUUU",
+  "position": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!E",
   "title": "🧭 muster pane new --cwd silently ignores a relative path",
   "type": "bug",
-  "updated_at_millis": 1788704764916,
+  "updated_at_millis": 1788716157996,
   "history": [
-    {"field":"column","value":"next","at":1788704764916}
+    {"field":"column","value":"next","at":1788704764916},
+    {"field":"column","value":"done","at":1788716157996}
   ]
 }

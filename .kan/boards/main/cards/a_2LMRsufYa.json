@@ -5,16 +5,17 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-lo",
+  "column": "done",
   "created_at_millis": 1788704791305,
   "creator": "Alexander Terp",
   "description": "`crates/muster-cli/src/args.rs`'s `chosen(...).unwrap_or(\"right\")` on resize is unreachable: the required arg group guarantees one of the four sides, so the default can never be read.\n\nMoved behind the equalize branch with an accurate comment in `a_2KIH8WAnU`, but the fallback itself survives. Cosmetic - a nit rather than a bug - and the kind of thing that reads as a real default to whoever meets it next.",
   "id": "a_2LMRsufYa",
-  "position": "UUUUUUUUUU",
+  "position": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!2",
   "title": "🧹 args.rs's resize fallback is a value nothing can produce",
   "type": "chore",
-  "updated_at_millis": 1788704791305,
+  "updated_at_millis": 1788716158140,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1788704791305}
+    {"field":"column","value":"backlog-lo","at":1788704791305},
+    {"field":"column","value":"done","at":1788716158140}
   ]
 }
