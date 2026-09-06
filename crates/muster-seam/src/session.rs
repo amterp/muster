@@ -22,6 +22,7 @@ use muster_core::composition::{
 };
 use muster_core::config::{Appearance, Config, Feel, Panes};
 use muster_core::diagnostics::{clock, log, poison};
+use muster_core::equalize::{self, Evenly};
 use muster_core::fields;
 use muster_core::find::{Found, Needle, Reach};
 use muster_core::input::{Bindings, PaneInput, PaneInputSettings, ScrollDirection};
@@ -2137,6 +2138,135 @@ pub(crate) fn step(direction: Step) -> Result<(), String> {
             .to_string()
     })?;
     focus(&daemon, &pane).map_err(|refusal| refusal.to_string())
+}
+
+/// Evens out the panes around one, in as many requests as it takes.
+///
+/// Several requests for what is one act to whoever asked, which is the shape this seam usually
+/// avoids - and it is unavoidable here, because a backend moves one divider per request and
+/// evening a tab out is a statement about all of them at once. Contained by doing the arithmetic
+/// in one pure place ([`muster_core::equalize`]) and sending the answer, rather than by growing a
+/// backend verb no backend has.
+///
+/// The region weights go first and are Muster's own, so the tab's parts are already divided by
+/// what they hold before the first daemon is asked anything. They are only touched at all when
+/// the tab has more than one part: a tab on one machine has a weight that decides nothing, and
+/// rewriting it would print a number nobody asked about.
+pub(crate) fn equalize(daemon: &DaemonId, pane: &PaneId, evenly: Evenly) -> Result<(), String> {
+    let (tab, dividers) = {
+        let session = poison::lock(&SESSION, "session");
+        let backend = session.backends.get(daemon).ok_or_else(|| {
+            format!(
+                "this window is not following the daemon {daemon}, so it holds no arrangement to \
+                 even out and nothing moved. This is a bug in the core rather than a state to \
+                 recover from - a pane was resolved to a machine the session does not have."
+            )
+        })?;
+        let held = poison::lock(&backend.mirror, "mirror");
+        let tab = held
+            .pane(pane)
+            .ok_or_else(|| {
+                format!(
+                    "the daemon {daemon} no longer holds the pane {pane}, so there is no tab to \
+                     even out and nothing moved. A pane that closed while the request was in \
+                     flight looks like this; `muster window` says what is still there."
+                )
+            })?
+            .tab
+            .clone();
+        let layout = held.layout(&tab).ok_or_else(|| {
+            format!(
+                "the daemon {daemon} has not said how the tab {tab} is arranged, so there is no \
+                 tree to even out and no divider moved. A tab that has just been split publishes \
+                 its panes and its arrangement on separate events, so this resolves on its own - \
+                 read `muster window --json` until `regions[].layout` is no longer null and ask \
+                 again."
+            )
+        })?;
+        let dividers = equalize::dividers(layout, pane, evenly).ok_or_else(|| {
+            format!(
+                "the pane {pane} sits in no {} that could be evened out, so nothing moved. A pane \
+                 with nothing beside it is in no row and a pane with nothing above or below it is \
+                 in no column; `regions[].layout` in `muster window --json` says which. This is \
+                 also what an arrangement that has not caught up with its tab looks like, in \
+                 which case asking again works.",
+                evenly.as_str()
+            )
+        })?;
+        (tab, dividers)
+    };
+
+    if evenly == Evenly::Tab {
+        let weights = {
+            let session = poison::lock(&SESSION, "session");
+            let parts: Vec<(RegionId, &DaemonId)> = session
+                .composition
+                .tab(&tab)
+                .into_iter()
+                .flat_map(MusterTab::regions)
+                .map(|region| (region.id, &region.daemon))
+                .collect();
+            if parts.len() < 2 {
+                Vec::new()
+            } else {
+                parts
+                    .into_iter()
+                    .filter_map(|(id, daemon)| {
+                        let backend = session.backends.get(daemon)?;
+                        let held = poison::lock(&backend.mirror, "mirror");
+                        let panes = held.panes_in_tab(&tab).count();
+                        // A part the daemon holds no panes in keeps whatever width it had:
+                        // a weight of zero is a part nobody can see or grab their way out of,
+                        // and the composition refuses one anyway.
+                        (panes > 0).then_some((id, panes))
+                    })
+                    .collect()
+            }
+        };
+        if !weights.is_empty() {
+            let mut session = poison::lock(&SESSION, "session");
+            for (region, panes) in weights {
+                session.composition.set_weight(region, weight_of(panes));
+            }
+            drop(session);
+            publish();
+        }
+    }
+
+    // Stops at the first refusal rather than pressing on. What is left behind is a tab part way
+    // to even, which is ugly and honest; carrying on would send the rest against a tree the
+    // daemon has just said it disagrees about, and land dividers somewhere nobody asked for.
+    let asked = dividers.len();
+    for (sent, divider) in dividers.into_iter().enumerate() {
+        submit(
+            daemon,
+            &BackendIntent::SetSplitRatio {
+                tab: tab.clone(),
+                path: divider.path,
+                ratio: divider.ratio,
+            },
+            Keyboard::StaysPut,
+        )
+        .map_err(|refusal| {
+            format!(
+                "the daemon {daemon} refused divider {} of {asked} while evening out the tab \
+                 {tab} ({refusal}), so the tab is part way there and the rest were not sent. \
+                 `muster window --json` says where every pane ended up; asking again from what \
+                 it now holds is safe.",
+                sent + 1
+            )
+        })?;
+    }
+    Ok(())
+}
+
+/// A part's share of the window, from how many panes it holds.
+///
+/// The cast is exact for anything a machine could hold: f32 counts whole numbers exactly to
+/// sixteen million, and a window with that many panes has other problems.
+#[allow(clippy::cast_precision_loss)]
+fn weight_of(panes: usize) -> f32 {
+    panes as f32
 }
 
 /// Moves the keyboard one tab along, in the order the roster lists them.

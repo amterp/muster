@@ -206,6 +206,15 @@ fn described_pane_or_window(payload: &request::Payload) -> Value {
                 ("amount", (resize.amount != 0.0).then_some(json!(resize.amount))),
             ])
         }),
+        // `scope` is absent when nobody narrowed it, unlike `direction` above: an equalize that
+        // named no scope reaches the whole tab, and the empty string is how that is spelled -
+        // so a case reads as what somebody actually typed.
+        request::Payload::EqualizePanes(even) => json!({
+            "equalize_panes": fields([
+                ("pane_id", said(&even.pane_id)),
+                ("scope", said(&even.scope)),
+            ])
+        }),
         request::Payload::FocusRelative(step) => json!({
             "focus_relative": json!({ "direction": step.direction })
         }),

@@ -987,6 +987,7 @@ public enum Core {
     case .reloadConfig: return "reload_config"
     case .bridgeExited: return "bridge_exited"
     case .resizePane: return "resize_pane"
+    case .equalizePanes: return "equalize_panes"
     case .zoomPane: return "zoom_pane"
     case .toggleSidebar: return "toggle_sidebar"
     case .focusTabRelative: return "focus_tab_relative"

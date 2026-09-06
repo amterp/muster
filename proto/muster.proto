@@ -70,6 +70,7 @@ message Request {
     CloseTab close_tab = 43;
     ReadViewport read_viewport = 44;
     ReadDaemons read_daemons = 45;
+    EqualizePanes equalize_panes = 47;
   }
 }
 
@@ -940,6 +941,37 @@ message SetSplitRatio {
 
   // The first child's share afterwards, between 0 and 1.
   float ratio = 3;
+}
+
+// Evens out a set of panes, so that nothing has to work out a ratio.
+//
+// Every divider SetSplitRatio can move, this moves at once, and it is here because the
+// arithmetic in between is not something a caller should be doing. An agent asked to size five
+// panes evenly can address every divider one at a time and still not know where to put any: it
+// would have to hold the tree, count what hangs off each side and divide, and what it did
+// instead was guess and ask a person to look (kan a_2KIH8WAnU).
+//
+// A request rather than a chord. Muster has no keybinding that moves a divider either - that is
+// the drag - so nothing here is a second way to say something the keyboard already says.
+message EqualizePanes {
+  string daemon_id = 1;
+
+  // The pane to even out around. Empty means the pane this window's keyboard is on, like every
+  // other request that names one.
+  string pane_id = 2;
+
+  // How far to spread the evening: `tab`, `row` or `column`. Empty is `tab`.
+  //
+  // `tab` is every pane in the tab, each ending with the same area however the tree mixes rows
+  // and columns - which is what "even these out" means to whoever asked. The other two are the
+  // panes beside this one and the panes above and below it, spelled the way somebody looking at
+  // the window would spell them: a row of panes sits side by side, which the tree calls a
+  // `columns` split.
+  //
+  // A tab holding panes on two machines has its parts weighted by how many panes each holds
+  // under `tab`, since equal panes is the point and equal halves would not produce them. That
+  // part of the arrangement is Muster's own and no daemon is told, like SetRegionBoundary.
+  string scope = 3;
 }
 
 // Everything the core answers.

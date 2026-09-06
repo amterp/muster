@@ -18,9 +18,9 @@ use std::sync::Mutex;
 
 use herdr_harness::{Daemon, until};
 use muster::proto::{
-    ArrangePane, ClosePane, CreateTab, Event, FocusPane, OpenWindow, PaneText, ReadPane,
-    ReadViewport, RenamePane, Request, Response, RosterChanged, SendToPane, SplitPane, Startup,
-    ZoomPane, event, request, response,
+    ArrangePane, ClosePane, CreateTab, EqualizePanes, Event, FocusPane, OpenWindow, PaneText,
+    ReadPane, ReadViewport, ReadWindow, RenamePane, Request, Response, RosterChanged, SendToPane,
+    SplitPane, Startup, ZoomPane, event, request, response,
 };
 use prost::Message;
 use serde_json::{Value, json};
@@ -916,6 +916,87 @@ fn a_pane_put_into_a_tab_this_window_does_not_hold_is_refused() {
         reason.contains("t0nesuch"),
         "the refusal should name the tab that reached nothing, and said: {reason}"
     );
+}
+
+/// Evening out a tab that spans two machines divides it by what each machine holds.
+///
+/// The half of `--equalize` that no daemon can be asked about. Inside one machine's part the
+/// dividers are the daemon's and Muster sends it a request per divider; between the parts there
+/// is nothing to send, because neither daemon knows the other exists - so this is Muster's own
+/// arrangement, decided here (`architecture.md`, the arrangement over regions is Muster's).
+///
+/// Weights by pane count rather than in halves, and that is the decision worth pinning: equal
+/// panes is what evening out means, and a laptop holding two beside a devenv holding one gets
+/// there by taking two thirds of the width. Split down the middle instead, the tab would come
+/// back with two narrow panes beside one wide one and the answer would say it had succeeded.
+#[test]
+fn evening_out_a_grouped_tab_divides_it_by_what_each_machine_holds() {
+    let _turn = muster::testing::fresh_session();
+    let TwoMachines { laptop, devenv } = a_window_showing_two_machines();
+
+    let on_laptop = pane_on("laptop").expect("the fixture waited for it");
+    let on_devenv = pane_on("devenv").expect("the fixture waited for it");
+    let laptop_tab = tab_holding(&on_laptop).expect("the list says which tab holds each pane");
+
+    // Two panes on the laptop against one on the devenv, so that halves and pane counts are
+    // different answers and the assertion below can tell them apart.
+    assert_ok(&answer(request::Payload::SplitPane(SplitPane {
+        pane_id: on_laptop.clone(),
+        side: "down".to_string(),
+        ..SplitPane::default()
+    })));
+    until(
+        "the laptop to hold the pane the split made",
+        || panes_on("laptop").len() == 2,
+        || format!("the laptop's part holds {:?}", panes_on("laptop")),
+    );
+
+    assert_ok(&answer(request::Payload::ArrangePane(ArrangePane {
+        pane_id: on_devenv,
+        tab_id: laptop_tab.clone(),
+        ..ArrangePane::default()
+    })));
+    until(
+        "the devenv's pane to join the laptop's tab",
+        || machines_of(&laptop_tab) == vec!["laptop".to_string(), "devenv".to_string()],
+        || format!("the tab says it is on {:?}", machines_of(&laptop_tab)),
+    );
+    assert_eq!(
+        weights(),
+        vec![1.0, 1.0],
+        "a tab nobody has arranged divides itself evenly between its machines, and this one \
+         does not - so what the equalize below changes would be unreadable"
+    );
+
+    assert_ok(&answer(request::Payload::EqualizePanes(EqualizePanes {
+        pane_id: on_laptop,
+        ..EqualizePanes::default()
+    })));
+    assert_eq!(
+        weights(),
+        vec![2.0, 1.0],
+        "the laptop holds two of the tab's three panes and the devenv one, so the parts divide \
+         the width two to one - anything else leaves the panes unequal, which is the whole of \
+         what was asked for"
+    );
+
+    // Neither daemon was told, and there is nothing either could have been told: this is the
+    // one part of the arrangement that lives only in the window.
+    assert_eq!(tabs(&laptop), 1, "the laptop grew a tab it was not asked for");
+    assert_eq!(tabs(&devenv), 1, "the devenv grew a tab it was not asked for");
+}
+
+/// What each machine's part of the tab on screen is worth, left to right.
+fn weights() -> Vec<f32> {
+    match answer(request::Payload::ReadWindow(ReadWindow {})).payload {
+        Some(response::Payload::Window(window)) => window
+            .view
+            .into_iter()
+            .flat_map(|view| view.regions)
+            .map(|region| region.weight)
+            .collect(),
+        other => panic!("expected a window, got {other:?}"),
+    }
 }
 
 // --- driving the seam ------------------------------------------------------------------

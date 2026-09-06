@@ -19,10 +19,10 @@ use std::collections::BTreeMap;
 use clap::{ArgGroup, CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::Shell;
 use muster_proto::{
-    AdjustFontSize, ArrangePane, ClosePane, CloseTab, CreateTab, FocusPane, FocusPaneAt,
-    FocusRelative, FocusTab, FocusTabRelative, ReadDaemons, ReadPane, ReadWindow, ReloadConfig,
-    RenamePane, RenameTab, Request, ResizePane, SendToPane, SplitPane, ToggleSidebar, ZoomPane,
-    request,
+    AdjustFontSize, ArrangePane, ClosePane, CloseTab, CreateTab, EqualizePanes, FocusPane,
+    FocusPaneAt, FocusRelative, FocusTab, FocusTabRelative, ReadDaemons, ReadPane, ReadWindow,
+    ReloadConfig, RenamePane, RenameTab, Request, ResizePane, SendToPane, SplitPane, ToggleSidebar,
+    ZoomPane, request,
 };
 
 use crate::{docs, environment};
@@ -421,8 +421,19 @@ enum Doing {
         name: Option<String>,
     },
 
-    /// Move the divider beside a pane, making it bigger in that direction
+    /// Move the divider beside a pane, or even the panes around it out
+    //
+    // `--equalize` joins the four directions in one required group rather than standing beside
+    // them, because they are five answers to one question - what should happen to this pane's
+    // share - and clap refusing two of them at once is the same rule the four already had.
+    //
+    // A scope is refused against the four directions rather than made to require `--equalize`,
+    // which reads the same way and is not: a bool flag is present in clap's sense whether or not
+    // it was typed, so a requirement on one is a requirement nothing can fail. The group above is
+    // required, so refusing the four leaves exactly `--equalize` - the same shape `pane move`
+    // already uses for `--name`.
     #[command(group = ArgGroup::new("towards").required(true))]
+    #[command(group = ArgGroup::new("within").conflicts_with_all(["left", "right", "up", "down"]))]
     Resize {
         /// Grow it leftwards
         #[arg(long, group = "towards")]
@@ -437,12 +448,28 @@ enum Doing {
         #[arg(long, group = "towards")]
         down: bool,
 
+        /// Even out the panes around it instead, moving every divider that takes
+        #[arg(long, group = "towards")]
+        equalize: bool,
+
+        /// With --equalize: only the panes beside it
+        #[arg(long, group = "within")]
+        row: bool,
+
+        /// With --equalize: only the panes above and below it
+        #[arg(long, group = "within")]
+        column: bool,
+
         /// The pane to grow, or the one this is running in
         #[arg(long, value_name = "REF")]
         pane: Option<String>,
 
         /// How far, as a share of the region between 0 and 1. Omit for the window's own step
-        #[arg(long, value_name = "FRACTION")]
+        //
+        // Refused against `--equalize` rather than ignored beside it. An equalize's shares come
+        // out of how many panes hang off each divider, so a caller that named a fraction as well
+        // meant one of the two and would otherwise be told neither which.
+        #[arg(long, value_name = "FRACTION", conflicts_with = "equalize")]
         by: Option<f32>,
     },
 }
@@ -658,13 +685,27 @@ fn pane(doing: &Doing, environment: &BTreeMap<String, String>) -> Asking {
                 ..ArrangePane::default()
             }))
         }
-        Doing::Resize { left, right, up, down, pane, by } => {
-            // clap holds the four in one required group, so exactly one is true here.
+        Doing::Resize { left, right, up, down, equalize, row, column, pane, by } => {
+            let pane_id = pane_ref(pane.as_ref(), environment);
+            if *equalize {
+                return send(request::Payload::EqualizePanes(EqualizePanes {
+                    pane_id,
+                    // Empty is the whole tab, which is what the schema reads it as, so a caller
+                    // that narrowed nothing sends nothing. clap holds the two narrower scopes in
+                    // one group, so at most one is true.
+                    scope: chosen(&[(*row, "row"), (*column, "column")])
+                        .unwrap_or_default()
+                        .to_string(),
+                    ..EqualizePanes::default()
+                }));
+            }
+            // The group above is required and `--equalize` is in it and handled, so exactly one
+            // of the four is true here.
             let direction =
                 chosen(&[(*left, "left"), (*right, "right"), (*up, "up"), (*down, "down")])
                     .unwrap_or("right");
             send(request::Payload::ResizePane(ResizePane {
-                pane_id: pane_ref(pane.as_ref(), environment),
+                pane_id,
                 direction: direction.to_string(),
                 // Zero is what the schema reads as "the window's own step", and it is also
                 // what proto3 sends for an absent float - so omitting `--by` and asking for

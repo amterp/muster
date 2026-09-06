@@ -109,10 +109,25 @@ comes on screen whether or not the keyboard follows; `--focus` asks for the keyb
 
 To change how much room a pane gets:
 
-    muster pane resize --pane p1w3r07bsd --right 0.2
+    muster pane resize --pane p1w3r07bsd --right --by 0.2
 
-Saying nothing after the direction takes the same step a held-down chord takes. A fraction places
-the divider outright, which is what a script wants: it cannot look at the result and press again.
+Saying nothing but the direction takes the same step a held-down chord takes. `--by` places the
+divider outright, as a share of what it divides, which is what a script wants: it cannot look at
+the result and press again.
+
+To stop working shares out at all:
+
+    muster pane resize --pane p1w3r07bsd --equalize
+
+Every pane in the tab comes out the same size, however deeply the splits are nested, in one
+command. `--row` narrows it to the panes beside that one and `--column` to the panes above and
+below it. None of the three takes a number, which is the point of them: the tab already says how
+many panes hang off each divider, and turning that into ratios is the part an agent cannot do by
+looking.
+
+`muster window --json` says whether it landed. Every pane on screen carries a `rect` with its
+share of the window, and `regions[].layout` says how the tab splits - `muster docs window` has
+both.
 
 ## Moving around without a name
 

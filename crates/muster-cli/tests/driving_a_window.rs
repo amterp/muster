@@ -134,6 +134,7 @@ fn a_pane_can_drive_the_window_it_is_drawn_in() {
     a_pane_can_be_read_back(&made_pane, &inside(&first));
     the_columns_are_described(&inside(&first));
     the_arrangement_is_readable(&first, &made_pane, &inside(&first));
+    an_uneven_tab_is_evened_out(&first, &made_pane, &inside(&first));
     the_machines_are_named_well_enough_to_end_one(&inside(&first));
     // While both panes are still in one tab and on screen, which is what stepping walks.
     the_keyboard_steps_without_being_given_a_name(&first, &made_pane, &inside(&first));
@@ -421,6 +422,63 @@ fn the_arrangement_is_readable(first: &str, made: &str, environment: &[(&str, St
             row["rect"].is_null(),
             row["on_screen"] == json!(false),
             "`rect` and `on_screen` disagree about whether this pane is being drawn: {row}"
+        );
+    }
+}
+
+/// Making a tab uneven, and putting it back in one command.
+///
+/// The whole of what kan a_2KIH8WAnU asked for, end to end: an agent with no eyes evens out the
+/// panes in a tab without working out a single share, and reads back from the same answer whether
+/// it happened. Both halves have to be here, because either alone is what the card already had -
+/// numbers nothing acts on, or a command nothing can check.
+///
+/// Sizes are compared with room around them rather than exactly. A backend divides its own
+/// rectangle in whole cells and the tree here is rebuilt from those rectangles, so an even split
+/// of an odd number of rows lands a cell either side of half however right the arithmetic is
+/// (`observations/herdr-0.8.0.md` section 13). The tolerance is well under the difference the
+/// resize makes, so a divider that did not move still fails.
+fn an_uneven_tab_is_evened_out(first: &str, made: &str, environment: &[(&str, String)]) {
+    let height = |pane: &str, window: &Value| -> f64 {
+        window["panes"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|row| row["pane"] == json!(pane))
+            .and_then(|row| row["rect"]["height"].as_f64())
+            .unwrap_or_else(|| panic!("no pane called {pane} with a place: {window}"))
+    };
+
+    let grown = run(&["pane", "resize", "--pane", first, "--down", "--by", "0.25"], environment);
+    assert_eq!(grown.code, 0, "`muster pane resize` failed: {}", grown.errors);
+    let uneven = until_some("the divider to have moved", || {
+        let window = json_from(&run(&["window", "--json"], environment));
+        (height(first, &window) > 0.6).then_some(window)
+    });
+    // Stated rather than implied by what follows: if the tab were already even the equalize
+    // below would pass by doing nothing at all.
+    assert!(
+        height(first, &uneven) - height(made, &uneven) > 0.2,
+        "the tab is not uneven enough for evening it out to prove anything: {uneven}"
+    );
+
+    let evened = run(&["pane", "resize", "--pane", first, "--equalize"], environment);
+    assert_eq!(evened.code, 0, "`muster pane resize --equalize` failed: {}", evened.errors);
+    assert!(
+        evened.out.is_empty(),
+        "an equalize that worked says nothing, like every other request that answers ok: {:?}",
+        evened.out
+    );
+    let settled = until_some("the panes to be evened out", || {
+        let window = json_from(&run(&["window", "--json"], environment));
+        ((height(first, &window) - height(made, &window)).abs() < 0.1).then_some(window)
+    });
+    for pane in [first, made] {
+        let share = height(pane, &settled);
+        assert!(
+            (share - 0.5).abs() < 0.1,
+            "{pane} is one of two panes stacked in an evened-out tab and has {share} of its \
+             height: {settled}"
         );
     }
 }

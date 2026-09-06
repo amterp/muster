@@ -1049,6 +1049,100 @@
       }
     },
     {
+      "name": "evening a tab out takes no direction and no number",
+      "why": "The verb the whole card is about. Every other way of moving a divider asks the caller to know where it should end up, and working that out from a tree is exactly what an agent driving a window cannot do by looking - so this says what it wants and lets the window do the arithmetic. No scope travels, because the empty string is what the window reads as `the whole tab`, and the whole tab is what somebody who narrowed nothing means.",
+      "given": {
+        "argv": [
+          "pane",
+          "resize",
+          "--pane",
+          "p1w3r07bsd",
+          "--equalize"
+        ]
+      },
+      "expect": {
+        "request": {
+          "equalize_panes": {
+            "pane_id": "p1w3r07bsd"
+          }
+        }
+      }
+    },
+    {
+      "name": "a scope narrows an equalize to the panes beside this one",
+      "why": "`row` and `column` are spelled the way somebody looking at the window would spell them rather than the way the tree does, where a row of panes is a `columns` split. The word crosses over once, at the seam, and a command line is not where that should be visible.",
+      "given": {
+        "argv": [
+          "pane",
+          "resize",
+          "--pane",
+          "p1w3r07bsd",
+          "--equalize",
+          "--row"
+        ]
+      },
+      "expect": {
+        "request": {
+          "equalize_panes": {
+            "pane_id": "p1w3r07bsd",
+            "scope": "row"
+          }
+        }
+      }
+    },
+    {
+      "name": "an equalize takes no fraction",
+      "why": "Refused rather than ignored. An equalize's shares come out of how many panes hang off each divider, so a caller that also named a fraction meant one of the two - and silently taking the other is how a script ends up believing it asked for something it did not.",
+      "given": {
+        "argv": [
+          "pane",
+          "resize",
+          "--pane",
+          "p1w3r07bsd",
+          "--equalize",
+          "--by",
+          "0.25"
+        ]
+      },
+      "expect": {
+        "usage": "ArgumentConflict"
+      }
+    },
+    {
+      "name": "an equalize is not a direction, and cannot be given with one",
+      "why": "The five are one question - what should happen to this pane's share - so exactly one of them is an answer. Growing a pane rightwards and evening its tab out are different requests, and a command line asking for both says which one it meant to nobody.",
+      "given": {
+        "argv": [
+          "pane",
+          "resize",
+          "--pane",
+          "p1w3r07bsd",
+          "--equalize",
+          "--left"
+        ]
+      },
+      "expect": {
+        "usage": "ArgumentConflict"
+      }
+    },
+    {
+      "name": "a scope beside a direction is refused rather than dropped",
+      "why": "`--row` says how far an equalize reaches and means nothing beside a direction, so it is refused rather than quietly ignored: a caller that typed it wanted the panes beside this one evened out, and a resize that dropped it would move one divider and report success. Refused against the four directions rather than made to require `--equalize`, because a bool flag is present in clap's sense whether or not it was typed - so a requirement on one is a requirement nothing can fail.",
+      "given": {
+        "argv": [
+          "pane",
+          "resize",
+          "--pane",
+          "p1w3r07bsd",
+          "--right",
+          "--row"
+        ]
+      },
+      "expect": {
+        "usage": "ArgumentConflict"
+      }
+    },
+    {
       "name": "the keyboard steps to the next pane",
       "why": "The chord's other door. `next` and `previous` walk reading order across every region and wrap, so between them they reach every pane the window is showing - which is the guarantee the four directions do not make.",
       "given": {

@@ -11,6 +11,7 @@ use muster_core::fields;
 
 use muster_core::composition::{DaemonId, FontSizeChange, Frame, RegionId, Step, View};
 use muster_core::config::{self, CursorStyle};
+use muster_core::equalize::Evenly;
 use muster_core::find::{Needle, Reach, arrived_in};
 use muster_core::font::{self, FontReport};
 use muster_core::input::{CompositionOutcome, Modifiers, ScrollDirection, composition_outcome};
@@ -171,6 +172,7 @@ fn route(payload: request::Payload) -> Response {
         request::Payload::FocusTab(tab) => focus_tab(&tab.tab_id),
         request::Payload::ArrangePane(arrange) => arrange_pane(&arrange),
         request::Payload::SetSplitRatio(set) => set_split_ratio(set),
+        request::Payload::EqualizePanes(even) => equalize_panes(&even),
         request::Payload::Scroll(scroll) => scroll_pane(&scroll),
         request::Payload::RenamePane(rename) => rename_pane(&rename),
         request::Payload::RenameTab(rename) => rename_tab(&rename),
@@ -514,6 +516,37 @@ fn set_split_ratio(set: proto::SetSplitRatio) -> Response {
         },
         Keyboard::Follows,
     ))
+}
+
+/// Evens out the panes around one, so that nothing has to work out a ratio.
+///
+/// The keyboard stays where it is, unlike every other verb that moves a divider. Those are one
+/// person's chord or drag on one pane and going there is what they meant; this is a statement
+/// about an arrangement, made by something that is usually standing in a different pane than
+/// the one it named.
+fn equalize_panes(even: &proto::EqualizePanes) -> Response {
+    let scope = if even.scope.is_empty() { "tab" } else { &even.scope };
+    let Some(evenly) = Evenly::parse(scope) else {
+        return Response::failure(format!(
+            "the core does not know how to even out a {scope:?}, so nothing moved. Only tab, row \
+             and column exist - a row is the panes beside this one and a column is the panes \
+             above and below it. Leaving it out means the whole tab."
+        ));
+    };
+    let target = match target(&even.daemon_id, &even.pane_id) {
+        Ok(target) => target,
+        Err(refusal) => return *refusal,
+    };
+    let Some(pane) = target.pane.clone() else {
+        return nothing_to_act_on(&target.daemon);
+    };
+    // A plain failure rather than [`placed`], because most of the ways this refuses are not the
+    // daemon declining anything - a tree that has not arrived yet, a pane in no row - and
+    // reporting those as a change a daemon would not make names the wrong culprit.
+    match session::equalize(&target.daemon, &pane, evenly) {
+        Ok(()) => Response::ok(),
+        Err(detail) => Response::failure(detail),
+    }
 }
 
 /// One wheel notch or trackpad gesture, scaled by what the config file asked for.

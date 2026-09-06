@@ -1,0 +1,144 @@
+{
+  "concept": "equalize.dividers",
+  "source": "authored",
+  "numbers": "f32",
+  "citation": "kan a_2KIH8WAnU, which is the failure this answers: an agent driving five worker panes was asked to even them out, could address every divider one at a time, and had no way to work out where any of them should go. docs/architecture.md, the vocabulary - a layout is proportions and never geometry, so every number here is a share and none of them is a size. There is no oracle above these: what `even` means is Muster's own policy.",
+  "why": "Where a divider has to sit for a set of panes to come out the same. This is the whole of the arithmetic behind `muster pane resize --equalize`, and it is here rather than beside the request because it is a pure function of a tree - no daemon, no window, and nothing to stand up in order to disagree with it.\n\nTwo things these cases are pinning that a reader would otherwise have to take on trust. Even means equal *area*, not equal width: a tab that mixes rows and columns has no single axis to be even along, and the only reading of `even these out` that survives a mixed tree is that every pane ends up the same size. And a scope narrower than the tab counts members rather than panes: `the row this pane is in` is about how wide each thing in the row is, and a stack of three sitting in that row is one thing wide however many panes are inside it.\n\nEach case names the dividers to move and nothing else, because the ones left alone are the answer too: an equalize that resent every divider in the tab would cost a request and a republished tree for each one, and a tab already where it was asked to be would be the most expensive case rather than the cheapest.",
+  "cases": [
+    {
+      "name": "a tab already even asks for nothing",
+      "why": "The cheapest case has to be the one that costs nothing. A backend moves one divider per request and answers each with the tab's whole settled tree, so an equalize that restated every ratio would pay for a round trip and a republish per divider to leave the window exactly as it was. It is also the common case under a script that evens out after every split.",
+      "given": {
+        "root": { "axis": "columns", "ratio": 0.5, "first": "w1:p1", "second": "w1:p2" },
+        "pane": "w1:p1",
+        "evenly": "tab"
+      },
+      "expect": { "evened": [] }
+    },
+    {
+      "name": "a half and two quarters becomes three thirds, by moving one divider",
+      "why": "The arrangement from the card. Five agent panes and an integrator came out as a wide pane beside a pair, and the agent driving it inferred `the top row must be 1/2, 1/4, 1/4` from its own memory of the split order and resized blind. The tree already says so: one pane hangs off the left of the root and two off the right, so the root belongs at a third and the divider between the pair is already where it should be. Only the first is sent, which is what makes this readable as `one thing moved`.",
+      "given": {
+        "root": {
+          "axis": "columns",
+          "ratio": 0.5,
+          "first": "w1:p1",
+          "second": { "axis": "columns", "ratio": 0.5, "first": "w1:p2", "second": "w1:p3" }
+        },
+        "pane": "w1:p1",
+        "evenly": "tab"
+      },
+      "expect": { "evened": ["root@0.33333334"] }
+    },
+    {
+      "name": "rows and columns mixed come out equal in area, not in width",
+      "why": "The case that makes `even` mean something in a tree with no single axis. One pane down the left and three stacked on the right: at a quarter, the left pane is a quarter of the window and each of the other three is three quarters of the width by a third, a third and a sixth of the height - a quarter each. Equal width would be the other reading and is not available, because the right-hand column has no width of its own to be equal to anything.\n\nBoth dividers that move do so for the same reason and the deepest one does not move at all: a subtree gets the share of its parent that its pane count deserves, all the way down, and the pair at the bottom already divides itself evenly.",
+      "given": {
+        "root": {
+          "axis": "columns",
+          "ratio": 0.5,
+          "first": "w1:p1",
+          "second": {
+            "axis": "rows",
+            "ratio": 0.5,
+            "first": "w1:p2",
+            "second": { "axis": "rows", "ratio": 0.5, "first": "w1:p3", "second": "w1:p4" }
+          }
+        },
+        "pane": "w1:p1",
+        "evenly": "tab"
+      },
+      "expect": { "evened": ["root@0.25", "second@0.33333334"] }
+    },
+    {
+      "name": "a row is the panes beside this one, and a stack beside it counts once",
+      "why": "The same tree read two ways, which is the whole difference between the scopes. As a tab it is three panes and the root belongs at a third; as the row this pane is in it is two things side by side - a pane and a stack - and the root belongs in the middle. Neither is more correct: `even out this row` is a statement about how wide each thing in it is, and what is inside one of them is a different question with its own answer.",
+      "given": {
+        "root": {
+          "axis": "columns",
+          "ratio": 0.7,
+          "first": "w1:p1",
+          "second": { "axis": "rows", "ratio": 0.5, "first": "w1:p2", "second": "w1:p3" }
+        },
+        "pane": "w1:p1",
+        "evenly": "row"
+      },
+      "expect": { "evened": ["root@0.5"] }
+    },
+    {
+      "name": "the same tree evened out as a tab moves the same divider somewhere else",
+      "why": "Beside the case above so the two can be read together. Three panes, so the one on its own gets a third rather than a half - and nothing else moves, because the pair on the right already splits itself evenly and a third of the window each is what that leaves them with.",
+      "given": {
+        "root": {
+          "axis": "columns",
+          "ratio": 0.7,
+          "first": "w1:p1",
+          "second": { "axis": "rows", "ratio": 0.5, "first": "w1:p2", "second": "w1:p3" }
+        },
+        "pane": "w1:p1",
+        "evenly": "tab"
+      },
+      "expect": { "evened": ["root@0.33333334"] }
+    },
+    {
+      "name": "a column is the panes above and below this one, and stops at the pane beside them",
+      "why": "The narrow scope from inside a stack. The pane named is in the right-hand column, so what is evened out is that column and the divider between it and the pane to its left is left where somebody put it. The path says as much: it starts with the turn into the right-hand side rather than at the root, which is the difference between `even out my column` and `even out everything`.",
+      "given": {
+        "root": {
+          "axis": "columns",
+          "ratio": 0.5,
+          "first": "w1:p1",
+          "second": { "axis": "rows", "ratio": 0.8, "first": "w1:p2", "second": "w1:p3" }
+        },
+        "pane": "w1:p2",
+        "evenly": "column"
+      },
+      "expect": { "evened": ["second@0.5"] }
+    },
+    {
+      "name": "a run of one axis is one row however many splits it wears",
+      "why": "Three panes side by side are three panes side by side, and a tree spells that as two nested splits because a split has two children. A scope that stopped at the nearest split would even out two of them and leave the third at whatever width it had, which is not what anybody looking at three panes in a row means by evening them out. So the run is walked up as far as the axis holds: the left pair is two of the three things in the row, so the root goes to two thirds and the pair keeps the even split it already has.",
+      "given": {
+        "root": {
+          "axis": "columns",
+          "ratio": 0.5,
+          "first": { "axis": "columns", "ratio": 0.5, "first": "w1:p1", "second": "w1:p2" },
+          "second": "w1:p3"
+        },
+        "pane": "w1:p1",
+        "evenly": "row"
+      },
+      "expect": { "evened": ["root@0.6666667"] }
+    },
+    {
+      "name": "a pane with nothing beside it is in no row",
+      "why": "Refused rather than answered with nothing to do, because the two are different outcomes and a caller acts on them differently. `Nothing to do` is a row that is already even and is a success; this is a scope that does not exist for the pane that was named, and the honest thing is to say so rather than to report having evened out something that was never there.",
+      "given": {
+        "root": { "axis": "rows", "ratio": 0.5, "first": "w1:p1", "second": "w1:p2" },
+        "pane": "w1:p1",
+        "evenly": "row"
+      },
+      "expect": { "evened": null }
+    },
+    {
+      "name": "an arrangement that does not name the pane is not evened out from",
+      "why": "A tab publishes its panes and its arrangement on separate events with nothing ordering them, so a tab that has just been split holds a tree naming fewer panes than it has. Moving dividers by that tree would put them where they belong in an arrangement that no longer exists, and the caller would have no way to tell that from having asked for the wrong thing. Refusing sends it back to read the tab again, which is a state that resolves on its own.",
+      "given": {
+        "root": { "axis": "columns", "ratio": 0.5, "first": "w1:p1", "second": "w1:p2" },
+        "pane": "w1:p9",
+        "evenly": "tab"
+      },
+      "expect": { "evened": null }
+    },
+    {
+      "name": "a tab of one pane has nothing to even out and is not a refusal",
+      "why": "The other half of the distinction the two cases above draw. A tab holding one pane is already as even as a tab gets, so this is a success with no dividers rather than a refusal - a script that evens out after every split hits this on the first one, and a refusal there would read as a broken command.",
+      "given": {
+        "root": "w1:p1",
+        "pane": "w1:p1",
+        "evenly": "tab"
+      },
+      "expect": { "evened": [] }
+    }
+  ]
+}
