@@ -223,6 +223,7 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
     // screen. Dropped rather than replaced, because what replaces it is not known until the
     // button comes up - a click that never drags selects nothing.
     selection = .none
+    drivenAt = nil
     pressedInGrid = cell(at: event)
     reportMouse(event, pressed: true)
   }
@@ -233,14 +234,16 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
 
   public override func mouseUp(with event: NSEvent) {
     reportMouse(event, pressed: false)
+    defer { pressedInGrid = nil }
     guard let from = pressedInGrid, let to = cell(at: event), from != to else {
-      // A click rather than a drag. libghostty may still have selected something - a double
-      // click takes the word under it - and there is no way to read back what, so this is
-      // left alone rather than pinned to cells it did not cover.
-      pressedInGrid = nil
+      // A click rather than a drag, and what libghostty made of it depends on how many there
+      // were. Two took the word under the pointer and three took the line; one selected
+      // nothing, so there is nothing to keep.
+      guard event.clickCount > 1, let at = cell(at: event) else { return }
+      selection = .clickedOnScreen(at, times: min(event.clickCount, 3))
+      onSelectionMade?()
       return
     }
-    pressedInGrid = nil
     selection = .madeOnScreen(GridSelection(from: from, to: to))
     onSelectionMade?()
   }
@@ -276,6 +279,15 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
     case madeOnScreen(GridSelection)
     /// Pinned to the pane, and placeable on whatever screen it is now showing.
     case pinnedToPane(GridSelection)
+    /// A repeated click has ended and its cell is still a screen cell.
+    ///
+    /// One cell and a count rather than the cells it covered, because libghostty will not say
+    /// which those were: `ghostty_surface_read_selection` hands over the text and nothing hands
+    /// over the bounds. So the gesture is kept and driven again wherever the text went, which
+    /// re-selects the same word because the word travelled with it (kan a_2Jrhh1dkA).
+    case clickedOnScreen(GridCell, times: Int)
+    /// Pinned to the pane, and drivable again on whatever screen it is now showing.
+    case clickedInPane(GridCell, times: Int)
   }
 
   /// A cell of a grid, as a column and a row counted up from the bottom row.
@@ -307,6 +319,8 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
     case .none: return
     case .madeOnScreen: anchorSelection(in: viewport, movedSince: movedSince)
     case .pinnedToPane: placeSelection(in: viewport)
+    case .clickedOnScreen: anchorClick(in: viewport, movedSince: movedSince)
+    case .clickedInPane: placeClick(in: viewport)
     }
   }
 
@@ -328,6 +342,53 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
         from: GridCell(column: made.from.column, rowsFromBottom: made.from.rowsFromBottom + offset),
         to: GridCell(column: made.to.column, rowsFromBottom: made.to.rowsFromBottom + offset)))
   }
+
+  /// Pins a click just made to the pane, on the same terms as a drag.
+  private func anchorClick(in viewport: Core.Viewport?, movedSince: Bool) {
+    guard case .clickedOnScreen(let made, let times) = selection else { return }
+    guard let viewport, !movedSince else {
+      selection = .none
+      surface?.select(nil)
+      return
+    }
+    let offset = Int(viewport.rowsFromBottom)
+    selection = .clickedInPane(
+      GridCell(column: made.column, rowsFromBottom: made.rowsFromBottom + offset), times: times)
+    drivenAt = made
+  }
+
+  /// Clicks again where the word went, or takes the selection off.
+  ///
+  /// Driven only when the cell has moved, and that is a correctness rule rather than a saving.
+  /// libghostty counts a press near the last one and inside the repeat interval as the next
+  /// click of the same gesture, so driving twice at a cell it just used is a triple click and
+  /// takes the whole line instead of the word. Both outcomes are measured in
+  /// `ClickRedriveTests`.
+  private func placeClick(in viewport: Core.Viewport?) {
+    guard case .clickedInPane(let pinned, let times) = selection else { return }
+    guard let viewport, let cellSize = cellPointSize, let rows = gridRows else {
+      surface?.select(nil)
+      drivenAt = nil
+      return
+    }
+    let offset = Int(viewport.rowsFromBottom)
+    // Off the screen entirely. The pin is kept, as a drag's is: scrolling back brings the word
+    // into view again, which is what anchoring to text means.
+    guard pinned.rowsFromBottom >= offset, pinned.rowsFromBottom < offset + rows else {
+      surface?.select(nil)
+      drivenAt = nil
+      return
+    }
+    let now = GridCell(column: pinned.column, rowsFromBottom: pinned.rowsFromBottom - offset)
+    guard now != drivenAt else { return }
+    drivenAt = now
+    surface?.select(
+      .clicked(
+        at: point(of: pinned, offset: offset, rows: rows, cellSize: cellSize), times: times))
+  }
+
+  /// The screen cell the click was last driven at, so it is never driven there twice running.
+  private var drivenAt: GridCell?
 
   /// Draws the pinned selection where the pane is now looking, or takes it off.
   ///
