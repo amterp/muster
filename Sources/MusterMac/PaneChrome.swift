@@ -381,10 +381,12 @@ public final class PaneChrome: NSView {
 
   /// Draws the number a chord would reach this pane by, or nothing for zero.
   ///
-  /// Only ever non-zero under `numbered_chords = "tab_then_pane"` while a press has named this
-  /// pane's tab, so the resting window carries nothing extra. What number that is comes off the
-  /// roster - the same field the agent list draws - rather than being counted here, so the
-  /// digit on the pane and the digit on its row cannot come apart.
+  /// Handed zero except under `numbered_chords = "tab_then_pane"` while a press has named this
+  /// pane's tab, so the resting window carries nothing extra. That gating is the window's -
+  /// a pane's row carries its whole chord at all times, and only the window knows whether a
+  /// press is outstanding. What number arrives comes off the roster - the same field the agent
+  /// list draws - rather than being counted here, so the digit on the pane and the digit on its
+  /// row cannot come apart.
   public func apply(badge reached: Int) {
     badge.apply(number: reached)
   }

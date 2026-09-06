@@ -52,13 +52,13 @@ pub(crate) fn view(view: &View) -> proto::ViewChanged {
 
 /// What exists, on its way out to the shell.
 ///
-/// The numbering travels as a number on each row rather than as a mode beside the list, so
-/// that "which ⌘N reaches this row" has exactly one answer in the message and a shell cannot
-/// combine a mode and a place into a different one than the core did.
+/// The chords travel as presses on each row rather than as a mode beside the list, so that
+/// "what reaches this row" has exactly one answer in the message and a shell cannot combine a
+/// mode and a place into a different one than the core did.
 ///
-/// [`counting`] rides alongside and does not weaken that: it says what kind of thing is being
-/// counted, never which chord reaches what. Three readers need it and no row can answer them -
-/// see `RosterChanged.Counting` in the schema.
+/// [`counting`] rides alongside and does not weaken that: it says what kind of thing a press
+/// names, never what reaches what. Three readers need it and no row can answer them - see
+/// `RosterChanged.Counting` in the schema.
 pub(crate) fn roster(roster: &Roster, numbering: &Numbering) -> proto::RosterChanged {
     proto::RosterChanged {
         counting: counting(numbering).into(),
@@ -83,7 +83,8 @@ pub(crate) fn roster(roster: &Roster, numbering: &Numbering) -> proto::RosterCha
                 // four billion tabs; this is a floor, not a case anybody meets. Same for a
                 // pane's place, below.
                 place: u32::try_from(tab.place).unwrap_or_default(),
-                number: numbered(numbering.on_tab(tab)),
+                tab_press: pressed(numbering.chord_on_tab(tab).tab),
+                armed: numbering.armed_on(tab),
                 label: tab.label.clone(),
                 on_screen: tab.on_screen,
                 // Empty is how a string field says nothing was named, the same spelling the
@@ -93,15 +94,19 @@ pub(crate) fn roster(roster: &Roster, numbering: &Numbering) -> proto::RosterCha
                 panes: tab
                     .panes
                     .iter()
-                    .map(|pane| proto::RosterPane {
-                        daemon_id: pane.key.daemon.to_string(),
-                        pane_id: pane.key.pane.to_string(),
-                        place: u32::try_from(pane.place).unwrap_or_default(),
-                        number: numbered(numbering.on_pane(tab, pane)),
-                        label: pane.label.clone(),
-                        on_screen: pane.on_screen,
-                        subtitle: pane.subtitle.clone().unwrap_or_default(),
-                        given_name: pane.given_name.clone().unwrap_or_default(),
+                    .map(|pane| {
+                        let chord = numbering.chord_on_pane(tab, pane);
+                        proto::RosterPane {
+                            daemon_id: pane.key.daemon.to_string(),
+                            pane_id: pane.key.pane.to_string(),
+                            place: u32::try_from(pane.place).unwrap_or_default(),
+                            tab_press: pressed(chord.tab),
+                            pane_press: pressed(chord.pane),
+                            label: pane.label.clone(),
+                            on_screen: pane.on_screen,
+                            subtitle: pane.subtitle.clone().unwrap_or_default(),
+                            given_name: pane.given_name.clone().unwrap_or_default(),
+                        }
                     })
                     .collect(),
             })
@@ -122,17 +127,17 @@ fn counting(numbering: &Numbering) -> proto::roster_changed::Counting {
     }
 }
 
-/// The number a row carries, as the wire spells "none".
+/// One press of a chord, as the wire spells "there is none".
 ///
 /// Zero, which is proto3's own word for a field nobody set - and there is no ⌘0 among the
-/// numbered chords, so the value cannot be mistaken for a real one. A number past nine is
-/// none as well: those places exist as positions but no chord reaches them, and sending one
-/// would invite a sidebar to draw a number nothing can press.
-fn numbered(place: Option<usize>) -> u32 {
-    match place {
-        Some(place) if (1..=9).contains(&place) => u32::try_from(place).unwrap_or_default(),
-        _ => 0,
-    }
+/// numbered chords, so the value cannot be mistaken for a real one.
+///
+/// Which places count as no press at all is [`muster_core::roster::Chord`]'s answer rather than
+/// this one's. It has to be: whether the *rest* of a chord survives depends on it, and a pane
+/// past the ninth in its tab has to arrive carrying nothing rather than carrying a tab press
+/// that lands somewhere else.
+fn pressed(place: Option<usize>) -> u32 {
+    place.and_then(|place| u32::try_from(place).ok()).unwrap_or_default()
 }
 
 fn node(node: &ViewNode) -> proto::ViewNode {

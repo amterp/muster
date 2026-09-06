@@ -2,7 +2,7 @@
   "concept": "roster.of",
   "source": "authored",
   "citation": "README.md desiderata, agent states are the point and attention routing; docs/architecture.md, ownership of truth and one action path",
-  "why": "The list is what makes agent states glanceable, so the decisions it carries are what somebody sees before they see anything else: which tabs there are, in what order, what each row is called, and which numbered chord reaches it. Tab, then pane - a flat list of panes cannot say which of them sit side by side, and a window shows one tab at a time, so the tab is what a person navigates between. The machine is not a level of it, because a tab may hold panes on two (MIP-2): it goes on the pane row, and a machine holding no panes at all is in the machines list, which is the only place that state can be said. Ordering and labelling are here rather than in the shell so that the sidebar, the CLI and an agent cannot each make their own answer.",
+  "why": "The list is what makes agent states glanceable, so the decisions it carries are what somebody sees before they see anything else: which tabs there are, in what order, what each row is called, and which chord reaches it. A chord is the presses in order, and it is a property of the arrangement rather than of the gesture: the same row carries the same chord whether or not a press is outstanding, so a pane in a tab nobody is looking at can be addressed without pressing anything first (kan a_2LSUoy7dd). Tab, then pane - a flat list of panes cannot say which of them sit side by side, and a window shows one tab at a time, so the tab is what a person navigates between. The machine is not a level of it, because a tab may hold panes on two (MIP-2): it goes on the pane row, and a machine holding no panes at all is in the machines list, which is the only place that state can be said. Ordering and labelling are here rather than in the shell so that the sidebar, the CLI and an agent cannot each make their own answer.",
   "cases": [
     {
       "name": "panes read in the order their tab lays them out",
@@ -2579,6 +2579,15 @@
         }
       },
       "expect": {
+        "chords": [
+          "w1:t1 nothing",
+          "  local/w1:p1 \u23181",
+          "  local/w1:p2 \u23182",
+          "w1:t2 nothing",
+          "  local/w1:p3 \u23183",
+          "  local/w1:p4 \u23184",
+          "  local/w1:p5 \u23185"
+        ],
         "machines": [
           "local connected 5 panes"
         ],
@@ -2662,6 +2671,12 @@
         }
       },
       "expect": {
+        "chords": [
+          "w1:t1 nothing",
+          "  local/w1:p1 \u23181",
+          "  local/w1:p2 \u23182",
+          "  local/w1:p3 \u23183"
+        ],
         "machines": [
           "local connected 3 panes"
         ],
@@ -2759,6 +2774,15 @@
         }
       },
       "expect": {
+        "chords": [
+          "w1:t1 \u23181",
+          "  local/w1:p1 \u23181 \u23181",
+          "  local/w1:p2 \u23181 \u23182",
+          "w1:t2 \u23182",
+          "  local/w1:p3 \u23182 \u23181",
+          "  local/w1:p4 \u23182 \u23182",
+          "  local/w1:p5 \u23182 \u23183"
+        ],
         "machines": [
           "local connected 5 panes"
         ],
@@ -2859,6 +2883,15 @@
         }
       },
       "expect": {
+        "chords": [
+          "w1:t1 \u23181",
+          "  local/w1:p1 \u23181 \u23181",
+          "  local/w1:p2 \u23181 \u23182",
+          "w1:t2 \u23182",
+          "  local/w1:p3 \u23182 \u23181",
+          "  local/w1:p4 \u23182 \u23182",
+          "  local/w1:p5 \u23182 \u23183"
+        ],
         "machines": [
           "local connected 5 panes"
         ],
@@ -2960,6 +2993,15 @@
         }
       },
       "expect": {
+        "chords": [
+          "w1:t1 \u23181",
+          "  local/w1:p1 \u23181 \u23181",
+          "  local/w1:p2 \u23181 \u23182",
+          "w1:t2 \u23182",
+          "  local/w1:p3 \u23182 \u23181",
+          "  local/w1:p4 \u23182 \u23182",
+          "  local/w1:p5 \u23182 \u23183"
+        ],
         "machines": [
           "local connected 5 panes"
         ],
@@ -2983,7 +3025,7 @@
     },
     {
       "name": "a tab holding one pane is not named, so the press after it is still counting tabs",
-      "why": "There is nothing in a one-pane tab to choose between - the press has already landed on the only pane it holds - so naming it would arm a chord that can only miss, and leave the window carrying one number nobody needs. \u23182 onto such a tab therefore ends there, and \u23183 after it is the third tab rather than a pane inside the second.",
+      "why": "There is nothing in a one-pane tab to choose between - the press has already landed on the only pane it holds - so naming it would arm a chord that can only miss, and leave the window carrying one number nobody needs. \u23182 onto such a tab therefore ends there, and \u23183 after it is the third tab rather than a pane inside the second.\n\nSo that tab's pane is reached in one press and its chord is that press alone. \u23182 \u23181 is not another spelling of it - the \u23181 is a first press again, and lands on the first tab.",
       "given": {
         "worlds": {
           "laptop": {
@@ -3066,6 +3108,16 @@
         }
       },
       "expect": {
+        "chords": [
+          "w1:t1 \u23181",
+          "  local/w1:p1 \u23181 \u23181",
+          "  local/w1:p2 \u23181 \u23182",
+          "w1:t2 \u23182",
+          "  local/w1:p3 \u23182",
+          "w1:t3 \u23183",
+          "  local/w1:p4 \u23183 \u23181",
+          "  local/w1:p5 \u23183 \u23182"
+        ],
         "machines": [
           "local connected 5 panes"
         ],
@@ -3168,6 +3220,15 @@
         }
       },
       "expect": {
+        "chords": [
+          "w1:t1 \u23181",
+          "  local/w1:p1 \u23181 \u23181",
+          "  local/w1:p2 \u23181 \u23182",
+          "w1:t2 \u23182",
+          "  local/w1:p3 \u23182 \u23181",
+          "  local/w1:p4 \u23182 \u23182",
+          "  local/w1:p5 \u23182 \u23183"
+        ],
         "machines": [
           "local connected 5 panes"
         ],
@@ -3182,6 +3243,171 @@
           "\u23182 of tabs \u2192 tab w1:t2 landing on local/w1:p3",
           "\u23189 of panes in w1:t2 \u2192 nothing",
           "\u23181 of tabs \u2192 tab w1:t1 landing on local/w1:p1"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen",
+          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" hidden"
+        ]
+      }
+    },
+    {
+      "name": "a pane past the ninth in its tab is reached by nothing, not by its tab's press alone",
+      "why": "The keyboard has nine numbered chords and this tab holds ten panes, so the tenth has no second press. What matters is what it carries instead: nothing at all, rather than the \u23182 that reaches its tab. \u23182 lands on that tab's *first* pane, so a row drawing \u23182 beside the tenth would be a keystroke that looks like it goes there and goes somewhere else - worse than a row with no address, because there is nothing to notice.\n\nThe rule belongs to the chord rather than to either press: a chord with a press missing is not an address. That is also what a pane in a tab past the ninth carries - neither press, because nothing reaches its tab to begin with.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "one"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              },
+              {
+                "id": "w1:t2",
+                "workspace": "w1",
+                "label": "t2"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/p1"
+              },
+              {
+                "id": "w1:p2",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "cwd": "/src/p2"
+              },
+              {
+                "id": "w1:p3",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/p3"
+              },
+              {
+                "id": "w1:p4",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/p4"
+              },
+              {
+                "id": "w1:p5",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/p5"
+              },
+              {
+                "id": "w1:p6",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/p6"
+              },
+              {
+                "id": "w1:p7",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/p7"
+              },
+              {
+                "id": "w1:p8",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/p8"
+              },
+              {
+                "id": "w1:p9",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/p9"
+              },
+              {
+                "id": "w1:p10",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/p10"
+              },
+              {
+                "id": "w1:p11",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/p11"
+              },
+              {
+                "id": "w1:p12",
+                "tab": "w1:t2",
+                "workspace": "w1",
+                "cwd": "/src/p12"
+              }
+            ],
+            "layouts": []
+          }
+        },
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          }
+        ],
+        "regions": [
+          {
+            "daemon": "local",
+            "tab": "w1:t1"
+          }
+        ],
+        "numbered": {
+          "scheme": "tab_then_pane",
+          "press": [
+            2,
+            9
+          ]
+        }
+      },
+      "expect": {
+        "chords": [
+          "w1:t1 \u23181",
+          "  local/w1:p1 \u23181 \u23181",
+          "  local/w1:p2 \u23181 \u23182",
+          "w1:t2 \u23182",
+          "  local/w1:p3 \u23182 \u23181",
+          "  local/w1:p4 \u23182 \u23182",
+          "  local/w1:p5 \u23182 \u23183",
+          "  local/w1:p6 \u23182 \u23184",
+          "  local/w1:p7 \u23182 \u23185",
+          "  local/w1:p8 \u23182 \u23186",
+          "  local/w1:p9 \u23182 \u23187",
+          "  local/w1:p10 \u23182 \u23188",
+          "  local/w1:p11 \u23182 \u23189",
+          "  local/w1:p12 nothing"
+        ],
+        "machines": [
+          "local connected 12 panes"
+        ],
+        "panes": [
+          "local/w1:p1 place=1 tab=w1:t1 label=\"p1\" hidden",
+          "local/w1:p2 place=2 tab=w1:t1 label=\"p2\" hidden",
+          "local/w1:p3 place=3 tab=w1:t2 label=\"p3\" hidden",
+          "local/w1:p4 place=4 tab=w1:t2 label=\"p4\" hidden",
+          "local/w1:p5 place=5 tab=w1:t2 label=\"p5\" hidden",
+          "local/w1:p6 place=6 tab=w1:t2 label=\"p6\" hidden",
+          "local/w1:p7 place=7 tab=w1:t2 label=\"p7\" hidden",
+          "local/w1:p8 place=8 tab=w1:t2 label=\"p8\" hidden",
+          "local/w1:p9 place=9 tab=w1:t2 label=\"p9\" hidden",
+          "local/w1:p10 place=10 tab=w1:t2 label=\"p10\" hidden",
+          "local/w1:p11 place=11 tab=w1:t2 label=\"p11\" hidden",
+          "local/w1:p12 place=12 tab=w1:t2 label=\"p12\" hidden"
+        ],
+        "pressed": [
+          "\u23182 of tabs \u2192 tab w1:t2 landing on local/w1:p3",
+          "\u23189 of panes in w1:t2 \u2192 pane local/w1:p11"
         ],
         "tabs": [
           "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen",
@@ -3269,6 +3495,15 @@
         }
       },
       "expect": {
+        "chords": [
+          "w1:t1 \u23181",
+          "  local/w1:p1 \u23181 \u23181",
+          "  local/w1:p2 \u23181 \u23182",
+          "w1:t2 \u23182",
+          "  local/w1:p3 \u23182 \u23181",
+          "  local/w1:p4 \u23182 \u23182",
+          "  local/w1:p5 \u23182 \u23183"
+        ],
         "machines": [
           "local connected 5 panes"
         ],

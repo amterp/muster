@@ -377,14 +377,21 @@ public final class MusterWindow: NSObject {
     }
   }
 
-  /// Hands every pane on screen the number a chord would reach it by, or zero while none would.
+  /// Hands every pane the press that would reach it now, or zero while none would.
   ///
-  /// The number comes off the roster, which is the same field the agent list draws - so the
-  /// digit over a pane and the digit beside its row are one answer rather than two.
+  /// The press comes off the roster, which is the same field the agent list draws - so the
+  /// digit over a pane and the second digit beside its row are one answer rather than two.
+  ///
+  /// Gated on the tab being armed rather than on the press being non-zero, because a pane row
+  /// carries its whole chord whether or not anything has been pressed. A first press does put
+  /// the tab it named on screen, so in practice the panes with badges are the ones visible -
+  /// but a window that drew badges because a pane happened to carry a number would be one
+  /// closed tab away from drawing them for a gesture nobody made.
   private func drawBadges() {
     for tab in roster.tabs {
+      let reached = badgesShown && tab.armed
       for pane in tab.panes {
-        surfaces.chrome(for: pane.key)?.apply(badge: badgesShown ? pane.number : 0)
+        surfaces.chrome(for: pane.key)?.apply(badge: reached ? pane.press : 0)
       }
     }
   }

@@ -168,16 +168,24 @@ there is spends a press on nothing, so with one tab `cmd+2` reaches the second p
 press. This is not a third scheme: with one tab, a pane's place down the window and its place
 inside that tab are the same number. The moment a second tab appears anywhere in the window -
 you make one, or you attach a machine that brings its own - `cmd+2` means the second tab
-again, and every number in the agent list moves onto the tab captions as it happens. That the
-chord changes meaning under you is the real cost of this, and it is why the numbers are drawn
-where they are: what `cmd+2` will do is something you read rather than remember.
+again, and every row in the agent list grows a second digit as it happens. That the chord
+changes meaning under you is the real cost of this, and it is why the chords are drawn beside
+the rows at all: what reaches an agent is something you read rather than remember.
 
-While it is on, the numbers in the agent list move. At rest they sit on the tab captions, and
-once a chord has named a tab they sit on that tab's panes and nowhere else - so what `cmd+2`
-will reach is something you read rather than something you remember, and only one thing in the
-window carries numbers at any moment. Both kinds of row keep space for a digit whether or not
-they have one, so the list holds still while the numbers move around it, and the numbers you
-can press next are drawn in the accent colour rather than grey.
+**Every row in the agent list shows the whole chord that reaches it.** A pane in the second tab
+reads `2 1`, and pressing those two is how you get there - including when you are looking at
+another tab entirely, which is the case this list exists for. The pane digit is the one that
+varies down a group, so it reads at full weight and the tab digit in front of it stays faint.
+A row nothing reaches shows nothing: a tenth pane in a tab has no second press, and its tab's
+digit alone would be a keystroke that lands on that tab's first pane instead. A tab holding one
+pane is the other way round - reaching the tab is the whole chord, so its pane reads `2` and
+`2 1` would be the first tab.
+
+Nothing in that moves as you type. Press `cmd+2` and the digits stay exactly where they are;
+what changes is that the second digit down that tab's panes turns the accent colour, because
+those are the keystrokes your hand can make while the modifier is still down. Every other row
+stays grey, including the tab captions - so `cmd+2` momentarily not meaning "the second tab" is
+said by where the colour is rather than by taking a digit away.
 
 **The panes say their own numbers too.** Hold the modifier after a first press and each pane in
 the tab draws its number over itself, large and half-transparent, so you pick between the panes

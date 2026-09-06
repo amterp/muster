@@ -12,11 +12,22 @@ public struct Roster: Equatable {
     /// Where this pane sits in the window's whole pane order, counting from one.
     public let place: Int
 
-    /// Which numbered chord reaches this pane right now, or 0 when none does. What the row
-    /// draws. Distinct from `place` above, which is where the row sits whether or not a chord
-    /// gets you there - the two agree for the first nine panes under the scheme Muster ships,
-    /// and part company under `numbered_chords = "tab_then_pane"`.
-    public let number: Int
+    /// The press that names this pane's tab, or 0 when none does - which is every pane under
+    /// the scheme Muster ships, where one press names a pane and no press names a tab.
+    public let tabPress: Int
+
+    /// The press that names this pane: inside its tab under `numbered_chords =
+    /// "tab_then_pane"`, and down the whole window under the scheme Muster ships. 0 when none
+    /// does.
+    ///
+    /// With `tabPress`, the presses that reach this pane in the order a hand makes them, and
+    /// what the row draws. Distinct from `place` above, which is where the row sits whether or
+    /// not anything gets you there.
+    ///
+    /// Both 0 means nothing reaches this pane, and there is no half-reachable state: a pane
+    /// past the ninth in its tab carries neither press rather than a tab press that would land
+    /// on another tab.
+    public let press: Int
 
     /// What to call this pane to somebody who did not open it.
     public let label: String
@@ -32,12 +43,13 @@ public struct Roster: Equatable {
     public let onScreen: Bool
 
     public init(
-      key: PaneKey, place: Int = 0, number: Int = 0, label: String, subtitle: String = "",
-      givenName: String = "", onScreen: Bool
+      key: PaneKey, place: Int = 0, tabPress: Int = 0, press: Int = 0, label: String,
+      subtitle: String = "", givenName: String = "", onScreen: Bool
     ) {
       self.key = key
       self.place = place
-      self.number = number
+      self.tabPress = tabPress
+      self.press = press
       self.label = label
       self.subtitle = subtitle
       self.givenName = givenName
@@ -56,9 +68,20 @@ public struct Roster: Equatable {
     /// the caption of a tab nobody named.
     public let place: Int
 
-    /// Which numbered chord reaches this tab right now, or 0 when none does - which is every
-    /// tab under the scheme Muster ships, where ⌘N names panes. See `Pane.number`.
-    public let number: Int
+    /// The press that names this tab, or 0 when none does - which is every tab under the
+    /// scheme Muster ships, where ⌘N names panes. See `Pane.press`.
+    ///
+    /// It stays drawn while a press is outstanding, even though ⌘N means something else for
+    /// as long as one is. `armed` below is where that is said instead: taking the digit away
+    /// is what used to make the numbers move under somebody reading them.
+    public let press: Int
+
+    /// Whether the next press names a pane inside this tab.
+    ///
+    /// At most one tab carries it, and only under `numbered_chords = "tab_then_pane"` with a
+    /// press outstanding. What the window says in place of moving its numbers - the presses
+    /// the next keystroke can make are this tab's panes', and the list draws those as live.
+    public let armed: Bool
 
     /// What to call this tab to somebody who did not open it.
     public let label: String
@@ -74,13 +97,14 @@ public struct Roster: Equatable {
     public let panes: [Pane]
 
     public init(
-      id: String, daemons: [String] = [], place: Int, number: Int = 0, label: String,
-      onScreen: Bool, givenName: String = "", panes: [Pane]
+      id: String, daemons: [String] = [], place: Int, press: Int = 0, armed: Bool = false,
+      label: String, onScreen: Bool, givenName: String = "", panes: [Pane]
     ) {
       self.id = id
       self.daemons = daemons
       self.place = place
-      self.number = number
+      self.press = press
+      self.armed = armed
       self.label = label
       self.onScreen = onScreen
       self.givenName = givenName
@@ -113,17 +137,18 @@ public struct Roster: Equatable {
     public var worthDrawing: Bool { panes == 0 || state != "connected" }
   }
 
-  /// What the numbered chords are counting, and so whether one is half-typed.
+  /// What a press is counting, and so whether one is half-typed.
   ///
-  /// Not a second answer to which chord reaches which row - that is `number` on the row, and
-  /// this side reads it rather than working it out. What this adds is the question a row
-  /// cannot answer: under `numbered_chords = "tab_then_pane"` a first press leaves the window
-  /// waiting for a second, and three things here need to know it. Panes draw a number over
-  /// themselves only then, the window ends the gesture when the modifier comes up, and the
-  /// list reserves room for a digit that is about to arrive.
+  /// Not a second answer to what reaches which row - that is the presses on the row, and this
+  /// side reads them rather than working them out. What this adds is the question a row cannot
+  /// answer: under `numbered_chords = "tab_then_pane"` a first press leaves the window waiting
+  /// for a second, and three things here need to know it. Panes draw a number over themselves
+  /// only then, the window ends the gesture when the modifier comes up, and the list reserves
+  /// the room a two-press chord takes.
   ///
-  /// Which tab was named is not carried, because nothing needs it: the tab whose panes hold
-  /// the numbers is the tab a press named, and the rows already say that.
+  /// *Which* tab was named is `Tab.armed` rather than anything here. It used to be readable off
+  /// the rows - it was the tab whose panes held the numbers - and once every pane row carries
+  /// its own chord, the rows no longer say it.
   public enum Numbering: Equatable {
     /// Panes, down the whole window. What Muster does.
     case panes
@@ -135,11 +160,11 @@ public struct Roster: Equatable {
     /// Whether a chord is half-typed, waiting for the press that names a pane.
     public var isHalfTyped: Bool { self == .panesInTab }
 
-    /// Whether the numbers can move between tab rows and pane rows in this window.
+    /// Whether reaching a pane in this window takes two presses.
     ///
-    /// What decides whether the list reserves a gutter. Under the settled scheme nothing
-    /// moves, so nothing needs reserving and the caption rows keep sitting where they do.
-    public var movesBetweenRows: Bool { self != .panes }
+    /// What decides how much room the list reserves for a chord. Under the settled scheme one
+    /// press names a pane, tab captions carry nothing, and there is no gutter to reserve.
+    public var takesTwoPresses: Bool { self != .panes }
   }
 
   /// The window's tabs, in the order it walks them.
@@ -192,10 +217,10 @@ public struct Presentation: Equatable {
 public enum SidebarModel {
   /// What one line in the list is.
   public enum Kind: Equatable {
-    /// A tab, over the panes in it, carrying the numbered chord that reaches it or 0.
-    case tab(number: Int)
-    /// A pane, carrying the numbered chord that reaches it or 0.
-    case pane(number: Int)
+    /// A tab, over the panes in it, carrying the press that reaches it or 0.
+    case tab(press: Int)
+    /// A pane, carrying the presses that reach it in order, either or both 0 for none.
+    case pane(tabPress: Int, press: Int)
     /// A machine with something to say its panes cannot: unreachable, or holding nothing.
     case machine
   }
@@ -240,16 +265,17 @@ public enum SidebarModel {
     /// hard to read back against; marking the same pane in both is what joins them.
     public let hasKeyboard: Bool
 
-    /// Whether this row leaves room for a number even when it carries none.
+    /// How many presses this row leaves room for, whether or not it carries them.
     ///
-    /// Under `numbered_chords = "tab_then_pane"` the numbers move between tab rows and pane
-    /// rows as a chord is typed, and a row that only made room when it had a digit would slide
-    /// its label sixteen points sideways every time. The list is what somebody reads to decide
-    /// what to press next, so it has to hold still while they are reading it.
+    /// Two on a pane row and one on a caption under `numbered_chords = "tab_then_pane"`, which
+    /// is what each kind of row can carry. Reserved rather than measured per row because the
+    /// rows that carry nothing are scattered through the list - a pane past the ninth in its
+    /// tab, a tab past the ninth - and labels that lined up only where a chord happened to
+    /// exist would read as a list with a column missing.
     ///
-    /// False under the settled scheme, where nothing moves and a caption reserving space for a
-    /// number no tab will ever carry would be an indent that buys nothing.
-    public let reservesNumber: Bool
+    /// Zero under the settled scheme, where a caption carries nothing and reserving space for a
+    /// press no tab will ever have would be an indent that buys nothing.
+    public let reservedPresses: Int
 
     /// Whether this row says which machine its pane is on.
     ///
@@ -262,12 +288,16 @@ public enum SidebarModel {
     /// is on the devenv (MIP-2).
     public let showsMachine: Bool
 
-    /// Whether this row's number is the second press of a chord already begun.
+    /// Whether this row's pane press is the second press of a chord already begun.
     ///
-    /// Only under `tab_then_pane`, and only once a press has named a tab. Drawn brighter than
-    /// a number at rest, because at that moment it is not a reference - it is the thing the
-    /// hand is about to do, and the window has to say which numbers are live while the
-    /// modifier is still down.
+    /// Only under `tab_then_pane`, and only on the pane rows of the tab a press has named.
+    /// Drawn brighter than a press at rest, because at that moment it is not a reference - it
+    /// is the thing the hand is about to do, and the window has to say which presses are live
+    /// while the modifier is still down.
+    ///
+    /// It is also the whole of what ⌘4 changes in the list. The presses beside the rows do not
+    /// move any more, so the accent arriving down one tab's group is what says which tab was
+    /// named and what the next keystroke will do.
     public let isSecondPress: Bool
 
     public var isHeader: Bool { kind == .machine }
@@ -319,9 +349,10 @@ public enum SidebarModel {
   /// answer and not this one's, and a list that hid one would be worse than a caption nobody
   /// needed.
   ///
-  /// **Which rows carry numbers is the core's answer, not this one's.** Every row arrives with
-  /// the chord that reaches it or with none, so a caption numbered `2` and a ⌘2 that goes
-  /// somewhere else is not a state this side can produce.
+  /// **What reaches a row is the core's answer, not this one's.** Every row arrives with the
+  /// presses that reach it or with none, so a row drawing a chord the core did not give it is
+  /// not a state this side can produce. What this side decides is emphasis: which of those
+  /// presses the very next keystroke can make, from `Tab.armed`.
   ///
   /// **A machine gets a row only when it has something to say**: it is unreachable, or it is
   /// holding no panes at all. A machine that is connected and holding panes says so through its
@@ -335,31 +366,30 @@ public enum SidebarModel {
   public static func rows(roster: Roster, states: [PaneKey: String], keyboard: PaneKey? = nil)
     -> [Row]
   {
-    let captions = roster.tabs.count > 1 || roster.tabs.contains { $0.number > 0 }
-    // Reserved on every tab and pane row together rather than per row, so the gutter is a
-    // property of the window and not of whichever rows happen to be numbered this instant -
-    // which is the whole point of reserving it.
-    let gutter = roster.numbering.movesBetweenRows
-    let second = roster.numbering.isHalfTyped
+    let captions = roster.tabs.count > 1 || roster.tabs.contains { $0.press > 0 }
+    // Reserved from what a kind of row can carry in this window rather than from what each row
+    // happens to carry, so the column is a property of the list - which is the whole point of
+    // reserving it.
+    let twoPress = roster.numbering.takesTwoPresses
     let sayMachine = roster.spansMachines
     var rows: [Row] = []
     for tab in roster.tabs {
       if captions {
         rows.append(
           Row(
-            kind: .tab(number: tab.number), daemon: "", tab: tab.id, pane: nil,
+            kind: .tab(press: tab.press), daemon: "", tab: tab.id, pane: nil,
             label: tab.label, subtitle: "", givenName: tab.givenName, state: "",
-            onScreen: tab.onScreen, hasKeyboard: false, reservesNumber: gutter,
+            onScreen: tab.onScreen, hasKeyboard: false, reservedPresses: twoPress ? 1 : 0,
             showsMachine: false,
-            // A tab carries no number once one of them has been named, so there is no such
-            // thing as a second press onto a caption.
+            // A caption carries the one press that reaches its tab, which is a first press or
+            // none - so there is no such thing as a second press onto a caption.
             isSecondPress: false))
       }
       for pane in tab.panes {
         rows.append(
           Row(
-            kind: .pane(number: pane.number), daemon: pane.key.daemon, tab: tab.id,
-            pane: pane.key, label: pane.label,
+            kind: .pane(tabPress: pane.tabPress, press: pane.press), daemon: pane.key.daemon,
+            tab: tab.id, pane: pane.key, label: pane.label,
             subtitle: pane.subtitle, givenName: pane.givenName,
             // A pane the core has said nothing about is unknown, not idle. An agent we have
             // not heard from is not an agent that finished
@@ -367,9 +397,9 @@ public enum SidebarModel {
             state: states[pane.key] ?? "unknown",
             onScreen: pane.onScreen,
             hasKeyboard: pane.key == keyboard,
-            reservesNumber: gutter,
+            reservedPresses: twoPress ? 2 : 0,
             showsMachine: sayMachine,
-            isSecondPress: second))
+            isSecondPress: tab.armed))
       }
     }
     for machine in roster.machines where machine.worthDrawing {
@@ -377,7 +407,7 @@ public enum SidebarModel {
         Row(
           kind: .machine, daemon: machine.id, tab: "", pane: nil, label: machine.id,
           subtitle: "", givenName: "", state: machine.state, onScreen: false,
-          hasKeyboard: false, reservesNumber: false, showsMachine: false, isSecondPress: false))
+          hasKeyboard: false, reservedPresses: 0, showsMachine: false, isSecondPress: false))
     }
     return rows
   }
@@ -788,14 +818,15 @@ extension SidebarView: NSTableViewDataSource, NSTableViewDelegate {
   }
 }
 
-/// One row: a state dot or a tab number, a name, and whether anything is showing it.
+/// One row: a state dot or the chord that reaches it, a name, and whether anything is showing it.
 @MainActor
 final class SidebarRowView: NSView {
   private let dot = CALayer()
   private let showing = CALayer()
   private let name = NSTextField(labelWithString: "")
   private let subtitle = NSTextField(labelWithString: "")
-  private let number = NSTextField(labelWithString: "")
+  private let tabPress = NSTextField(labelWithString: "")
+  private let press = NSTextField(labelWithString: "")
   private let highlight = CALayer()
   private let indented: Bool
   private let isTab: Bool
@@ -824,6 +855,8 @@ final class SidebarRowView: NSView {
       name.stringValue = row.label.uppercased()
       name.textColor = .secondaryLabelColor
     case .tab(let reached):
+      // Its own press sits in the tab column, drawn as a whole chord rather than as the prefix
+      // to one - a caption is somewhere you go, not a step on the way to a pane.
       // The tab on screen is named in full, and the ones behind it are quieter. This says a
       // different thing from the keyboard highlight on purpose: one is where you are
       // looking, the other is where you are typing, and in a two-region window those are
@@ -831,7 +864,7 @@ final class SidebarRowView: NSView {
       name.font = .systemFont(ofSize: 11, weight: row.onScreen ? .semibold : .regular)
       name.stringValue = row.label
       name.textColor = row.onScreen ? .labelColor : .secondaryLabelColor
-      draw(number: reached, in: row)
+      draw(tabPress: reached, press: 0, in: row)
       // A mark rather than only the weight above: one row in the list is the tab you are
       // looking at, and a font weight is something you compare where a mark is something you
       // see. It answers a narrower question than it used to - the window shows one tab now, so
@@ -845,10 +878,10 @@ final class SidebarRowView: NSView {
         showing.cornerRadius = SidebarRowView.showingSize / 2
         layer?.addSublayer(showing)
       }
-    case .pane(let reached):
+    case .pane(let first, let second):
       name.font = .systemFont(ofSize: 12, weight: .regular)
       name.stringValue = row.label
-      draw(number: reached, in: row)
+      draw(tabPress: first, press: second, in: row)
       // A pane no region is showing is reachable, not absent - dimming it says "not here yet"
       // rather than "gone", which is the difference between a row worth clicking and one that
       // looks broken.
@@ -877,30 +910,65 @@ final class SidebarRowView: NSView {
 
   /// The chord that reaches this row, drawn beside the dot rather than instead of it.
   ///
-  /// The dot is what the row is for and the number is how to get there, so a row wants both.
-  /// Zero draws nothing, which is what a row no chord reaches carries - every tab under the
-  /// scheme Muster ships, and every pane past the ninth.
+  /// The dot is what the row is for and the chord is how to get there, so a row wants both.
+  /// Zero draws nothing, which is what a press a row does not have carries - the tab column
+  /// under the scheme Muster ships, and both columns on a pane nothing reaches.
   ///
-  /// One function for both kinds of row because it is one number meaning one thing. Under
-  /// `numbered_chords = "tab_then_pane"` the numbers move between tab rows and pane rows as
-  /// chords are pressed, and two implementations of "draw the number" would be two chances
-  /// for them to look different depending on which row they landed on.
+  /// One function for every kind of row, because a chord means one thing wherever it lands and
+  /// two implementations of "draw the chord" would be two chances for them to look different
+  /// depending on which row they were on.
   ///
-  /// A row that reserves the gutter still adds the field with nothing in it, which is what
-  /// keeps every label where it was while the numbers move around them.
-  private func draw(number reached: Int, in row: SidebarModel.Row) {
-    let drawn = reached >= 1 && reached <= 9
-    guard drawn || row.reservesNumber else { return }
-    number.stringValue = drawn ? String(reached) : ""
-    // Brighter and heavier while a chord is half-typed, because at that moment these are not a
-    // reference somebody might consult - they are the keystroke about to be made, and the
-    // modifier is still down. At rest they stay quiet: a number beside every row, drawn as
-    // loudly as the name it sits next to, is a list that is harder to read for the sake of
-    // something you already know.
-    number.font = .monospacedDigitSystemFont(
-      ofSize: 10, weight: row.isSecondPress ? .semibold : .regular)
-    number.textColor = row.isSecondPress ? .controlAccentColor : .tertiaryLabelColor
-    addSubview(number)
+  /// **The last press of a chord is the operative one and reads at full weight; a press before
+  /// it is a prefix and stays quiet.** So a caption's own press and the lone press onto a
+  /// one-pane tab both read as loudly as a pane digit does - each is a whole chord - while the
+  /// tab digit repeating down a group of panes recedes, which is the digit that says nothing
+  /// new about the row it is on.
+  ///
+  /// A row reserving a column still adds the field with nothing in it, which is what keeps
+  /// every label in the list on one edge.
+  private func draw(tabPress first: Int, press second: Int, in row: SidebarModel.Row) {
+    let hasFirst = SidebarRowView.pressable(first)
+    let hasSecond = SidebarRowView.pressable(second)
+    if hasFirst || row.reservedPresses >= 1 {
+      tabPress.stringValue = hasFirst ? String(first) : ""
+      style(tabPress, operative: !hasSecond, live: false)
+      addSubview(tabPress)
+    }
+    if hasSecond || row.reservedPresses >= 2 {
+      press.stringValue = hasSecond ? String(second) : ""
+      style(press, operative: true, live: row.isSecondPress)
+      addSubview(press)
+    }
+  }
+
+  /// How loudly one press of a chord is drawn.
+  ///
+  /// `live` is brighter and heavier because at that moment the press is not a reference
+  /// somebody might consult - it is the keystroke about to be made, and the modifier is still
+  /// down. At rest everything stays quiet: a chord beside every row, drawn as loudly as the
+  /// name it sits next to, is a list that is harder to read for the sake of something you
+  /// already know.
+  private func style(_ field: NSTextField, operative: Bool, live: Bool) {
+    field.font = .monospacedDigitSystemFont(
+      ofSize: operative ? 10 : 9, weight: live ? .semibold : .regular)
+    field.textColor =
+      live ? .controlAccentColor : (operative ? .tertiaryLabelColor : .quaternaryLabelColor)
+  }
+
+  /// Whether a press is one of the nine ⌘1 to ⌘9 name.
+  ///
+  /// The core sends nothing else, and this is the shell agreeing rather than deciding: a digit
+  /// drawn beside a row that no key can produce would be worse than an unlabelled row.
+  private static func pressable(_ press: Int) -> Bool {
+    (1...9).contains(press)
+  }
+
+  /// One press's column, centred on the row, advancing the edge the next thing starts from.
+  private func place(_ field: NSTextField, from left: inout CGFloat, width: CGFloat) {
+    let height = min(bounds.height, field.fittingSize.height)
+    field.frame = CGRect(
+      x: left, y: (bounds.height - height) / 2, width: width, height: height)
+    left += width
   }
 
   required init?(coder: NSCoder) {
@@ -913,7 +981,14 @@ final class SidebarRowView: NSView {
   static let showingSize: CGFloat = 4
   static let inset: CGFloat = 8
   static let indent: CGFloat = 10
-  static let numberWidth: CGFloat = 12
+  /// Wide enough for the digit a press is drawn as, at the size an operative press is drawn.
+  static let pressWidth: CGFloat = 12
+  /// Narrower, because a prefix is drawn a point smaller - and because the two columns
+  /// together come off a 200pt list that is already truncating labels.
+  static let prefixWidth: CGFloat = 10
+  /// Between the two presses of one chord: close enough to read as one address rather than as
+  /// two columns that happen to be adjacent.
+  static let pressGap: CGFloat = 3
 
   override func layout() {
     super.layout()
@@ -921,19 +996,21 @@ final class SidebarRowView: NSView {
       highlight.frame = bounds.insetBy(dx: 4, dy: 1)
     }
     let left = SidebarRowView.inset + (indented ? SidebarRowView.indent : 0)
-    // Number, then dot, then label, laid out from a running left edge rather than each from
-    // `left`, because a pane row carries both: the number says how to reach the row and the dot
+    // Chord, then dot, then label, laid out from a running left edge rather than each from
+    // `left`, because a pane row carries both: the chord says how to reach the row and the dot
     // says why you would want to, and they used to be alternatives only because a row was
     // either a caption or a pane. A caption now takes the dot's column too, for the mark saying
     // a region is showing it.
     var textLeft = left
-    if number.superview != nil {
-      let height = min(bounds.height, number.fittingSize.height)
-      number.frame = CGRect(
-        x: textLeft, y: (bounds.height - height) / 2,
-        width: SidebarRowView.numberWidth, height: height)
-      textLeft += SidebarRowView.numberWidth + 4
+    let chorded = tabPress.superview != nil || press.superview != nil
+    if tabPress.superview != nil {
+      place(tabPress, from: &textLeft, width: SidebarRowView.prefixWidth)
+      if press.superview != nil { textLeft += SidebarRowView.pressGap }
     }
+    if press.superview != nil {
+      place(press, from: &textLeft, width: SidebarRowView.pressWidth)
+    }
+    if chorded { textLeft += 4 }
     if dot.superlayer != nil {
       dot.frame = CGRect(
         x: textLeft, y: (bounds.height - SidebarRowView.dotSize) / 2,

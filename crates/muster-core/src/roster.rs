@@ -103,6 +103,20 @@ pub struct RosterTab {
     pub panes: Vec<RosterPane>,
 }
 
+impl RosterTab {
+    /// Whether reaching this tab leaves a press outstanding, under `tab_then_pane`.
+    ///
+    /// A tab holding one pane does not: the press has already landed on the only pane there is,
+    /// so naming it would spend the press after it on a chord that can only miss. Here rather
+    /// than spelled inline where it is needed, because two readers now depend on it and they
+    /// have to agree - [`Landing::named`] decides what a press leaves behind, and
+    /// [`Numbering::chord_on_pane`] decides what the sidebar draws beside the pane. A tab that
+    /// armed by one rule and drew by the other would show a chord that does not reach it.
+    pub fn arms(&self) -> bool {
+        self.panes.len() > 1
+    }
+}
+
 /// One pane, as something to list rather than something to render.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RosterPane {
@@ -156,13 +170,21 @@ pub struct RosterPane {
     pub on_screen: bool,
 }
 
-/// What the numbered chords name right now.
+/// What the next press names.
 ///
 /// One value with three states rather than a scheme plus a flag, because the rule this holds
-/// up is that only one thing may be numbered at a time. Split into two values, a reader would
-/// have to combine them to answer "what does ⌘2 do", and the sidebar and the chord could
-/// combine them differently - which is exactly the disagreement the settled scheme was
-/// designed to make impossible.
+/// up is that a press means exactly one thing at a time. Split into two values, a reader would
+/// have to combine them to answer "what does ⌘2 do", and two readers could combine them
+/// differently - which is exactly the disagreement the settled scheme was designed to make
+/// impossible.
+///
+/// **What a press names and what the sidebar draws are two questions now.** They used to be
+/// one: the numbers sat wherever the next press could reach, so they moved between the tab
+/// rows and a tab's pane rows as a chord was typed. A pane in a tab nobody was looking at
+/// therefore had no readable address at all, which is what kan a_2LSUoy7dd took out. So
+/// [`Numbering::on_tab`] and [`Numbering::on_pane`] answer the press, and
+/// [`Numbering::chord_on_tab`] and [`Numbering::chord_on_pane`] answer the row - the second
+/// pair built out of the first, so the two cannot drift.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum Numbering {
     /// Every pane, counted down the whole window. What Muster does.
@@ -235,6 +257,112 @@ impl Numbering {
             Numbering::PanesIn(key) => (&tab.id == key).then_some(pane.place_in_tab),
         }
     }
+
+    /// The whole chord that reaches this tab, which is one press or none.
+    ///
+    /// Under `tab_then_pane` this is the tab's place whether or not a press is outstanding,
+    /// which is where it parts company with [`Numbering::on_tab`] above. ⌘4 stops meaning tab 4
+    /// for as long as a press is outstanding, and saying so by taking the digit away would
+    /// mean the sidebar's numbers move as a chord is typed - which is the thing kan
+    /// a_2LSUoy7dd took out. What says it instead is [`Numbering::armed_on`], which the shell
+    /// draws as emphasis rather than as position.
+    pub fn chord_on_tab(&self, tab: &RosterTab) -> Chord {
+        match self {
+            Numbering::Panes => Chord::none(),
+            Numbering::Tabs | Numbering::PanesIn(_) => {
+                Chord::naming_tab(Numbering::Tabs.on_tab(tab))
+            }
+        }
+    }
+
+    /// The whole chord that reaches this pane, in the order the presses are made.
+    ///
+    /// Composed from the same two functions [`Roster::numbered`] resolves a press through, one
+    /// numbering at a time, so a chord drawn beside a row is by construction the presses that
+    /// reach it. A second implementation of "what gets you there" is the disagreement the
+    /// numbers exist to prevent.
+    ///
+    /// Nothing here consults what has already been pressed. That is the point: a pane in a tab
+    /// nobody is looking at has a readable address, and the address does not change under
+    /// somebody reading it.
+    pub fn chord_on_pane(&self, tab: &RosterTab, pane: &RosterPane) -> Chord {
+        match self {
+            Numbering::Panes => Chord::naming_pane(Numbering::Panes.on_pane(tab, pane)),
+            Numbering::Tabs | Numbering::PanesIn(_) => {
+                let Chord { tab: Some(first), .. } = self.chord_on_tab(tab) else {
+                    // No press reaches the tab, so no sequence reaches anything inside it. Said
+                    // as nothing at all rather than as a pane press alone: a lone second digit
+                    // is a keystroke that would land somewhere else entirely.
+                    return Chord::none();
+                };
+                if !tab.arms() {
+                    // The press that reaches the tab lands on its only pane and stops, so it is
+                    // the whole chord. Drawing a second digit here would name another tab.
+                    return Chord { tab: Some(first), pane: None };
+                }
+                let second = Numbering::PanesIn(tab.id.clone()).on_pane(tab, pane);
+                Chord::within(first, second)
+            }
+        }
+    }
+
+    /// Whether the next press names a pane inside this tab.
+    ///
+    /// What a window says instead of moving its numbers. True for exactly one tab, and only
+    /// under `tab_then_pane` with a press outstanding.
+    pub fn armed_on(&self, tab: &RosterTab) -> bool {
+        matches!(self, Numbering::PanesIn(key) if key == &tab.id)
+    }
+}
+
+/// The presses that reach one row, in the order a hand makes them.
+///
+/// Two named presses rather than a list, because two is as deep as either scheme goes and a
+/// `Vec` would make every reader handle lengths neither can produce.
+///
+/// **A press outside ⌘1 to ⌘9 is no press at all**, and takes the rest of the chord with it.
+/// Those places exist as positions - a window holds a tenth pane, and the roster numbers it -
+/// but no chord reaches them, and half a chord drawn beside a row is worse than none: it is a
+/// keystroke that looks like it goes there and goes somewhere else.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Chord {
+    /// The press that names the tab, under `tab_then_pane`. None under the settled scheme,
+    /// where one press names a pane and no press names a tab.
+    pub tab: Option<usize>,
+
+    /// The press that names the pane: inside its tab under `tab_then_pane`, and down the whole
+    /// window under the settled scheme.
+    pub pane: Option<usize>,
+}
+
+impl Chord {
+    /// Nothing reaches this row.
+    fn none() -> Chord {
+        Chord::default()
+    }
+
+    /// One press, naming a tab.
+    fn naming_tab(tab: Option<usize>) -> Chord {
+        Chord { tab: tab.filter(|&place| Chord::reachable(place)), pane: None }
+    }
+
+    /// One press, naming a pane.
+    fn naming_pane(pane: Option<usize>) -> Chord {
+        Chord { tab: None, pane: pane.filter(|&place| Chord::reachable(place)) }
+    }
+
+    /// A tab's press and a pane's inside it, where an unreachable second leaves neither.
+    fn within(tab: usize, pane: Option<usize>) -> Chord {
+        match pane.filter(|&place| Chord::reachable(place)) {
+            Some(pane) => Chord { tab: Some(tab), pane: Some(pane) },
+            None => Chord::none(),
+        }
+    }
+
+    /// Whether a place is one of the nine a chord can name.
+    fn reachable(place: usize) -> bool {
+        (1..=9).contains(&place)
+    }
 }
 
 /// Where a numbered chord lands, and what the press after it will name.
@@ -266,14 +394,11 @@ impl Landing<'_> {
     /// second tab, its second pane, and the second tab again, rather than descending into
     /// something with no third level to descend into.
     ///
-    /// `None` too for a tab holding one pane, because there is nothing in it to choose
-    /// between: the press has already landed on the only pane there is. Naming it would leave
-    /// the window in a state whose whole content is one number nobody needs, and would spend
-    /// the press after it on a chord that can only miss.
+    /// `None` too for a tab that does not arm, which is [`RosterTab::arms`] and its reasons.
     pub fn named(&self) -> Option<TabId> {
         match self {
             Landing::Pane(_) => None,
-            Landing::Tab(tab, _) if tab.panes.len() < 2 => None,
+            Landing::Tab(tab, _) if !tab.arms() => None,
             Landing::Tab(tab, _) => Some(tab.id.clone()),
         }
     }

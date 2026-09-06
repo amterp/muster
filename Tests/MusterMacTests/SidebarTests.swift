@@ -15,16 +15,17 @@ struct SidebarTests {
   /// decides it, and a helper that numbered for itself would make these tests agree with a rule
   /// the shell does not follow. Defaults to one, since most cases here are about something else.
   ///
-  /// The chord that reaches it defaults to its place, which is what the core sends under the
-  /// scheme Muster ships. A case about `numbered_chords = "tab_then_pane"` states it instead,
-  /// because that is the whole of what that scheme changes up here.
+  /// The chord that reaches it defaults to one press, its place, which is what the core sends
+  /// under the scheme Muster ships. A case about `numbered_chords = "tab_then_pane"` states
+  /// both presses instead, because that is the whole of what that scheme changes up here.
   private func pane(
-    _ daemon: String, _ id: String, place: Int = 1, number: Int? = nil, label: String? = nil,
-    subtitle: String = "", givenName: String = "", onScreen: Bool = false
+    _ daemon: String, _ id: String, place: Int = 1, tabPress: Int = 0, press: Int? = nil,
+    label: String? = nil, subtitle: String = "", givenName: String = "", onScreen: Bool = false
   ) -> Roster.Pane {
     Roster.Pane(
-      key: PaneKey(daemon: daemon, pane: id), place: place, number: number ?? place,
-      label: label ?? id, subtitle: subtitle, givenName: givenName, onScreen: onScreen)
+      key: PaneKey(daemon: daemon, pane: id), place: place, tabPress: tabPress,
+      press: press ?? place, label: label ?? id, subtitle: subtitle, givenName: givenName,
+      onScreen: onScreen)
   }
 
   /// One tab, numbered as the core would have numbered it.
@@ -32,14 +33,14 @@ struct SidebarTests {
   /// The place is stated rather than counted here, because the core decides it - a helper that
   /// numbered for itself would make these tests agree with a rule the shell does not follow.
   ///
-  /// No chord reaches it unless a case says one does: under the scheme Muster ships the
-  /// numbers are on the panes, and a tab carrying one would be two numberings in one list.
+  /// No press reaches it unless a case says one does: under the scheme Muster ships the presses
+  /// are on the panes, and a tab carrying one would be two numberings in one list.
   private func tab(
-    _ daemon: String, _ id: String = "w1:t1", place: Int = 1, number: Int = 0,
-    label: String? = nil, onScreen: Bool = false, panes: [Roster.Pane]
+    _ daemon: String, _ id: String = "w1:t1", place: Int = 1, press: Int = 0,
+    armed: Bool = false, label: String? = nil, onScreen: Bool = false, panes: [Roster.Pane]
   ) -> Roster.Tab {
     Roster.Tab(
-      id: id, daemons: [daemon], place: place, number: number, label: label ?? id,
+      id: id, daemons: [daemon], place: place, press: press, armed: armed, label: label ?? id,
       onScreen: onScreen, panes: panes)
   }
 
@@ -198,7 +199,7 @@ struct SidebarTests {
     ])
     let rows = SidebarModel.rows(roster: roster, states: [:])
 
-    #expect(rows.map(\.kind) == [.pane(number: 1)])
+    #expect(rows.map(\.kind) == [.pane(tabPress: 0, press: 1)])
   }
 
   @Test("a second tab anywhere in the window gives every tab a caption")
@@ -219,97 +220,99 @@ struct SidebarTests {
     let rows = SidebarModel.rows(roster: roster, states: [:])
 
     let kinds: [SidebarModel.Kind] = [
-      .tab(number: 0), .pane(number: 1), .tab(number: 0), .pane(number: 2),
-      .tab(number: 0), .pane(number: 3),
+      .tab(press: 0), .pane(tabPress: 0, press: 1), .tab(press: 0), .pane(tabPress: 0, press: 2),
+      .tab(press: 0), .pane(tabPress: 0, press: 3),
     ]
     #expect(rows.map(\.kind) == kinds)
     #expect(rows.filter { $0.isTab }.map(\.label) == ["one", "two", "three"])
   }
 
-  @Test("under the prototype the numbers sit on the tabs, and on no pane")
-  func theProtoypeNumbersTabsAtRest() {
-    // What `numbered_chords = "tab_then_pane"` looks like before anything is pressed. The
-    // point of drawing it at all is that a person can read what ⌘2 will do instead of
-    // remembering what they last pressed - and the way that stays honest is that only one
-    // kind of row carries a number at a time.
-    let roster = roster(
+  /// The window both prototype cases below are about, at rest and then one press in.
+  ///
+  /// Stated once because the two cases have to be the *same* window a keystroke apart - that is
+  /// what makes "nothing moved" an assertion rather than two lists that happen to agree. The
+  /// first tab holds one pane, so it does not arm and its pane's chord is the one press onto
+  /// the tab: ⌘1 ⌘1 would be two tab jumps rather than that pane.
+  private func aWindowUnderThePrototype(armed: Bool) -> Roster {
+    roster(
       [
         tab(
-          "local", "w1:t1", place: 1, number: 1, onScreen: true,
-          panes: [pane("local", "w1:p1", place: 1, number: 0)]),
+          "local", "w1:t1", place: 1, press: 1, onScreen: !armed,
+          panes: [pane("local", "w1:p1", place: 1, tabPress: 1, press: 0)]),
         tab(
-          "local", "w1:t2", place: 2, number: 2,
+          "local", "w1:t2", place: 2, press: 2, armed: armed, onScreen: armed,
           panes: [
-            pane("local", "w1:p2", place: 2, number: 0),
-            pane("local", "w1:p3", place: 3, number: 0),
+            pane("local", "w1:p2", place: 2, tabPress: 2, press: 1),
+            pane("local", "w1:p3", place: 3, tabPress: 2, press: 2),
           ]),
-      ], numbering: .tabs)
+      ], numbering: armed ? .panesInTab : .tabs)
+  }
 
-    let rows = SidebarModel.rows(roster: roster, states: [:])
-
-    let kinds: [SidebarModel.Kind] = [
-      .tab(number: 1), .pane(number: 0), .tab(number: 2), .pane(number: 0), .pane(number: 0),
+  /// What every row of that window carries, which is the same before and after a press.
+  private var prototypeChords: [SidebarModel.Kind] {
+    [
+      .tab(press: 1), .pane(tabPress: 1, press: 0),
+      .tab(press: 2), .pane(tabPress: 2, press: 1), .pane(tabPress: 2, press: 2),
     ]
-    #expect(rows.map(\.kind) == kinds)
-    // Every tab and pane row leaves room for a digit, so that the press moving the numbers
-    // inside a tab does not also drag every label in the list sixteen points sideways. This is
-    // the list somebody reads to decide what to press, and it has to hold still while they do.
-    #expect(rows.allSatisfy { $0.reservesNumber })
-    // Nothing is half-typed yet, so the numbers are a reference rather than a live keystroke.
+  }
+
+  @Test("under the prototype every row carries the whole chord that reaches it")
+  func thePrototypeDrawsWholeChords() {
+    // What `numbered_chords = "tab_then_pane"` looks like before anything is pressed. Every
+    // pane says its own address, including the ones in the tab nothing is showing - which is
+    // the case the change was for: knowing what to press to reach an agent used to cost a
+    // press and a second look (kan a_2LSUoy7dd).
+    let rows = SidebarModel.rows(roster: aWindowUnderThePrototype(armed: false), states: [:])
+
+    #expect(rows.map(\.kind) == prototypeChords)
+    // Two columns on a pane row and one on a caption, whether or not the row fills them. The
+    // rows that carry nothing are scattered through a real list - a pane past the ninth in its
+    // tab, a tab past the ninth - and labels lining up only where a chord happened to exist
+    // would read as a column with holes in it.
+    #expect(rows.filter { $0.isPane }.allSatisfy { $0.reservedPresses == 2 })
+    #expect(rows.filter { $0.isTab }.allSatisfy { $0.reservedPresses == 1 })
+    // Nothing is half-typed, so every press is a reference rather than a live keystroke.
     #expect(rows.contains { $0.isSecondPress } == false)
   }
 
-  @Test("once a chord has named a tab, that tab's panes are the numbered rows")
-  func theProtoypeNumbersOneTabsPanes() {
-    // The armed half, which is the same list a moment later: the numbers have moved inside
-    // the tab that was named and left every other row without one. Nothing here decides that -
-    // the core sends which row carries what, and this is the assertion that the list draws the
-    // answer it was given rather than one of its own.
-    let roster = roster(
-      [
-        tab(
-          "local", "w1:t1", place: 1, number: 0,
-          panes: [pane("local", "w1:p1", place: 1, number: 0)]),
-        tab(
-          "local", "w1:t2", place: 2, number: 0, onScreen: true,
-          panes: [
-            pane("local", "w1:p2", place: 2, number: 1),
-            pane("local", "w1:p3", place: 3, number: 2),
-          ]),
-      ], numbering: .panesInTab)
+  @Test("a press names a tab without moving a single number in the list")
+  func thePrototypeMarksTheArmedTabInsteadOfMoving() {
+    // The same window one keystroke later. The numbers used to move here - onto the named
+    // tab's panes and off everything else - which is what left a pane in an unfocused tab with
+    // no readable address and made a digit mean different things depending on what you had
+    // already pressed. What ⌘2 changes now is which presses are live.
+    let rows = SidebarModel.rows(roster: aWindowUnderThePrototype(armed: true), states: [:])
 
-    let rows = SidebarModel.rows(roster: roster, states: [:])
+    #expect(rows.map(\.kind) == prototypeChords)
+    #expect(rows.filter { $0.isPane }.allSatisfy { $0.reservedPresses == 2 })
 
-    let kinds: [SidebarModel.Kind] = [
-      .tab(number: 0), .pane(number: 0), .tab(number: 0), .pane(number: 1), .pane(number: 2),
-    ]
-    #expect(rows.map(\.kind) == kinds)
-    // The gutter is the same one it was a moment ago, which is the whole point of reserving
-    // it: these two cases are one list one keystroke apart, and no label may have moved.
-    #expect(rows.allSatisfy { $0.reservesNumber })
-    // And a pane row's number now says what the very next press does, so it is drawn as the
-    // keystroke it is rather than as something to look up. Captions carry none to emphasise.
-    #expect(rows.filter { $0.isPane }.allSatisfy { $0.isSecondPress })
-    #expect(rows.filter { $0.isTab }.contains { $0.isSecondPress } == false)
+    // The mark is the whole of the replacement: exactly the named tab's panes say that their
+    // second press is the keystroke about to be made, and nothing else in the list does. A
+    // caption never can - its own press is a first press or none.
+    let live = rows.filter(\.isSecondPress)
+    #expect(
+      live.map(\.pane) == [
+        PaneKey(daemon: "local", pane: "w1:p2"), PaneKey(daemon: "local", pane: "w1:p3"),
+      ])
   }
 
   @Test("a numbered tab is drawn even in a window that would hide its caption")
   func oneTabStillShowsACaptionWhenItIsNumbered() {
-    // A number nothing draws is a chord nobody can find, so the rule that a single tab needs
+    // A press nothing draws is a chord nobody can find, so the rule that a single tab needs
     // no caption gives way to a tab that carries one. The core no longer numbers the tab in a
     // window that holds only one - such a window numbers panes under either scheme, because
     // with one tab the two numberings produce the same numbers - so this pins the guard rather
-    // than a state a running window reaches. Which rows carry numbers is the core's answer,
-    // and the list has to draw whatever it is handed.
+    // than a state a running window reaches. What reaches a row is the core's answer, and the
+    // list has to draw whatever it is handed.
     let roster = roster([
       tab(
-        "local", "w1:t1", place: 1, number: 1, onScreen: true,
-        panes: [pane("local", "w1:p1", place: 1, number: 0)])
+        "local", "w1:t1", place: 1, press: 1, onScreen: true,
+        panes: [pane("local", "w1:p1", place: 1, press: 0)])
     ])
 
     let rows = SidebarModel.rows(roster: roster, states: [:])
 
-    #expect(rows.map(\.kind) == [.tab(number: 1), .pane(number: 0)])
+    #expect(rows.map(\.kind) == [.tab(press: 1), .pane(tabPress: 0, press: 0)])
   }
 
   @Test("a row can only be dropped on a pane row belonging to the same daemon")
@@ -374,7 +377,9 @@ struct SidebarTests {
 
     #expect(
       rows.filter { $0.isPane }.map(\.kind)
-        == [.pane(number: 1), .pane(number: 2), .pane(number: 3)])
+        == [
+          .pane(tabPress: 0, press: 1), .pane(tabPress: 0, press: 2), .pane(tabPress: 0, press: 3),
+        ])
   }
 
   @Test("a tab caption says whether a region is showing it")

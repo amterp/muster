@@ -122,8 +122,10 @@ fn one_tab_under_the_prototype_numbers_panes_and_arms_nothing() {
         || format!("the roster holds {:?}", roster().map(|held| places(&held))),
     );
 
-    assert_eq!(numbered_panes(), vec![1, 2], "the chords should be naming panes, not the tab");
-    assert_eq!(numbered_tabs(), Vec::<u32>::new(), "the only tab there is carried a number");
+    // One press each, and it names the pane rather than the tab: a chord of two presses here
+    // would say the window had not collapsed.
+    assert_eq!(chords(), vec![vec![1], vec![2]], "the chords should be naming panes, not the tab");
+    assert_eq!(tab_presses(), Vec::<u32>::new(), "the only tab there is carried a press");
     assert_eq!(
         counting(),
         Counting::Panes,
@@ -164,14 +166,13 @@ fn under_the_prototype_a_tab_is_named_first_and_a_pane_inside_it_second() {
         || format!("the roster holds {:?}", roster().map(|held| places(&held))),
     );
 
-    // At rest the numbers are on the tabs and nowhere else, which is the whole indicator: what
-    // ⌘2 does is answered by reading the list rather than by remembering what you last pressed.
-    assert_eq!(numbered_tabs(), vec![1, 2], "the chords should be naming tabs before any press");
-    assert_eq!(
-        numbered_panes(),
-        Vec::<u32>::new(),
-        "a pane carrying a number while the tabs do would be two numberings in one list"
-    );
+    // Every row's whole address, before anything is pressed. The first tab holds one pane and
+    // so does not arm, which is why its pane's chord is the one press onto the tab: ⌘1 ⌘1 would
+    // be two tab jumps rather than that pane.
+    let addresses = vec![vec![1], vec![2, 1], vec![2, 2]];
+    assert_eq!(tab_presses(), vec![1, 2], "the tabs should be reachable before any press");
+    assert_eq!(chords(), addresses, "a pane in a tab nothing shows should still have an address");
+    assert_eq!(armed_tabs(), Vec::<u32>::new(), "nothing was pressed and a tab is already armed");
 
     let inner_second = named(INNER_SECOND);
     assert_ok(&answer(request::Payload::FocusPaneAt(FocusPaneAt { place: 2 })));
@@ -184,17 +185,16 @@ fn under_the_prototype_a_tab_is_named_first_and_a_pane_inside_it_second() {
         || format!("the view still shows {:?}", shown()),
     );
 
-    // And the numbers have moved inside it, so the second press is legible before it is made.
-    assert_eq!(
-        numbered_tabs(),
-        Vec::<u32>::new(),
-        "the tabs kept their numbers after one was named, so two things are numbered at once"
+    // And nothing has moved. The second press was legible before the first one was made, so
+    // what a press changes is which of those addresses is live, not where they are drawn - the
+    // whole of kan a_2LSUoy7dd in two assertions.
+    until(
+        "the tab the press named to be armed",
+        || armed_tabs() == vec![2],
+        || format!("the armed tabs carry {:?}", armed_tabs()),
     );
-    assert_eq!(
-        numbered_panes(),
-        vec![1, 2],
-        "the named tab's panes should be the numbered ones, and only them"
-    );
+    assert_eq!(tab_presses(), vec![1, 2], "a tab lost its press to a chord being half-typed");
+    assert_eq!(chords(), addresses, "the addresses moved under somebody reading them");
 
     assert_ok(&answer(request::Payload::FocusPaneAt(FocusPaneAt { place: 2 })));
     until(
@@ -232,19 +232,19 @@ fn anything_between_the_two_presses_takes_the_first_one_back() {
     assert_ok(&answer(request::Payload::FocusPaneAt(FocusPaneAt { place: 2 })));
     until(
         "the second tab to be named",
-        || numbered_panes() == vec![1, 2],
-        || format!("the tabs carry {:?} and the panes {:?}", numbered_tabs(), numbered_panes()),
+        || armed_tabs() == vec![2],
+        || format!("the armed tabs carry {:?}", armed_tabs()),
     );
 
     // The window losing focus is one of the ordinary things that happen between two keystrokes,
     // and it stands here for all of them: the rule is that anything which is not a read takes
-    // the arm back. Asserted through the published numbers rather than through where the next
-    // press lands, because the numbers are what a person is reading while deciding to press.
+    // the arm back. Asserted through what the window publishes rather than through where the
+    // next press lands, because that is what a person is reading while deciding to press.
     assert_ok(&answer(request::Payload::WindowFocus(WindowFocus { focused: false })));
     until(
-        "the numbers to go back to the tabs",
-        || numbered_tabs() == vec![1, 2],
-        || format!("the tabs carry {:?} and the panes {:?}", numbered_tabs(), numbered_panes()),
+        "the arm to be taken back",
+        || armed_tabs().is_empty(),
+        || format!("the armed tabs carry {:?}", armed_tabs()),
     );
 
     // So the press that follows is a first press again, and reaches a tab rather than a pane.
@@ -286,12 +286,12 @@ fn letting_go_of_the_modifier_takes_the_first_press_back() {
     );
     // What releasing ⌘ means. Distinct from every other way a chord ends, because it is the one
     // that happens when somebody decides mid-gesture that the tab was all they wanted - and
-    // until this existed, walking away from the keyboard there left the numbers waiting.
+    // until this existed, walking away from the keyboard there left the window waiting.
     assert_ok(&answer(request::Payload::EndNumberedChord(EndNumberedChord {})));
     until(
-        "the numbers to go back to the tabs",
-        || numbered_tabs() == vec![1, 2],
-        || format!("the tabs carry {:?} and the panes {:?}", numbered_tabs(), numbered_panes()),
+        "the arm to be taken back",
+        || armed_tabs().is_empty(),
+        || format!("the armed tabs carry {:?}", armed_tabs()),
     );
     assert_eq!(counting(), Counting::Tabs, "the roster still says a chord is half-typed");
 
@@ -360,8 +360,8 @@ fn turning_the_prototype_off_moves_the_numbers_back_on_the_save() {
     assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
     until(
         "the chords to be naming tabs",
-        || numbered_tabs() == vec![1, 2],
-        || format!("the tabs carry {:?} and the panes {:?}", numbered_tabs(), numbered_panes()),
+        || tab_presses() == vec![1, 2],
+        || format!("the tabs carry {:?} and the panes {:?}", tab_presses(), chords()),
     );
 
     // Written to the same path, which is what saving the file is. Going back to the settled
@@ -375,12 +375,13 @@ fn turning_the_prototype_off_moves_the_numbers_back_on_the_save() {
     // waited would pass whether or not the reload announced anything, and would be pinning the
     // daemon's timing rather than Muster's guarantee.
     assert_eq!(
-        numbered_panes(),
-        vec![1, 2, 3],
-        "the save returned with the numbers still on the tabs, so the sidebar was promising \
-         that ⌘2 reaches the second tab while it had already gone back to the second pane"
+        chords(),
+        vec![vec![1], vec![2], vec![3]],
+        "the save returned with the panes still carrying two-press chords, so the sidebar was \
+         promising that ⌘2 ⌘1 reaches a pane while one press had already gone back to reaching \
+         it"
     );
-    assert_eq!(numbered_tabs(), Vec::<u32>::new(), "the tabs kept numbers the chords do not name");
+    assert_eq!(tab_presses(), Vec::<u32>::new(), "the tabs kept presses the chords do not name");
 
     // And the chords agree with them: ⌘2 is the second pane of the window again, in one press.
     assert_ok(&answer(request::Payload::FocusPaneAt(FocusPaneAt { place: 2 })));
@@ -439,22 +440,39 @@ fn a_session_of_one_tab_holding_two(daemon: &Daemon) {
 const INNER_FIRST: &str = "inner-first";
 const INNER_SECOND: &str = "inner-second";
 
-/// The number on every tab that carries one, in the order the roster lists them.
-fn numbered_tabs() -> Vec<u32> {
+/// The press on every tab that carries one, in the order the roster lists them.
+fn tab_presses() -> Vec<u32> {
     roster()
         .into_iter()
         .flat_map(|roster| roster.tabs)
-        .filter_map(|tab| (tab.number > 0).then_some(tab.number))
+        .filter_map(|tab| (tab.tab_press > 0).then_some(tab.tab_press))
         .collect()
 }
 
-/// The number on every pane that carries one, in the order the roster lists them.
-fn numbered_panes() -> Vec<u32> {
+/// The presses that reach every pane, in the order the roster lists them.
+///
+/// One entry per pane whether or not anything reaches it, unlike the tabs above: what these
+/// tests are about is that the entries do not change as a chord is typed, and a list that
+/// dropped the empty ones would say that by having a different length instead.
+fn chords() -> Vec<Vec<u32>> {
     roster()
         .into_iter()
         .flat_map(|roster| roster.tabs)
         .flat_map(|tab| tab.panes)
-        .filter_map(|pane| (pane.number > 0).then_some(pane.number))
+        .map(|pane| [pane.tab_press, pane.pane_press].into_iter().filter(|&at| at > 0).collect())
+        .collect()
+}
+
+/// The tabs whose panes the next press would name, said as the press that reaches each.
+///
+/// What a window says in place of moving its numbers, and so the observable these tests use for
+/// a first press having landed and not yet been spent.
+fn armed_tabs() -> Vec<u32> {
+    roster()
+        .into_iter()
+        .flat_map(|roster| roster.tabs)
+        .filter(|tab| tab.armed)
+        .map(|tab| tab.tab_press)
         .collect()
 }
 
