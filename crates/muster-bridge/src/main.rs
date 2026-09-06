@@ -126,8 +126,21 @@ fn main() {
         Arc::new(Mutex::new(herdr.stdin.take().expect("herdr was spawned with a piped stdin")));
     let output = herdr.stdout.take().expect("herdr was spawned with a piped stdout");
 
+    // Dialed before the resize watcher starts, because that watcher reports every grid it asks
+    // for and needs somewhere to report it to.
+    let app = arguments.control_socket.as_ref().and_then(|path| dial_the_app(path, &input));
+    // Behind a lock because two threads write whole lines to it - this watcher and the exit
+    // report on the way out - and a line torn in half is a message the app cannot parse.
+    let app = app.map(|socket| Arc::new(Mutex::new(socket)));
+
+    // The grid this bridge asked for, told to the app. Nothing else in the window knows it:
+    // the shell measures a region in points and the daemon is only ever told, so the number
+    // that decides whether a frame of this pane fits is the one passed to herdr right here.
+    tell_the_size(app.as_ref(), columns, rows);
+
     std::thread::spawn({
         let input = input.clone();
+        let app = app.clone();
         move || {
             for () in resizes {
                 let (columns, rows) = pty::terminal_size();
@@ -137,11 +150,10 @@ fn main() {
                 // message that never arrived.
                 log::info("bridge.resize", fields! { "cols" => columns, "rows" => rows });
                 send(&input, &ControlStreamMessage::Resize { columns, rows });
+                tell_the_size(app.as_ref(), columns, rows);
             }
         }
     });
-
-    let app = arguments.control_socket.as_ref().and_then(|path| dial_the_app(path, &input));
 
     pty::make_stdin_raw();
     pump_frames(output, &arguments.pane, app.as_ref());
@@ -387,6 +399,34 @@ fn dial_the_app(path: &str, input: &HerdrInput) -> Option<UnixStream> {
     reporting
 }
 
+/// The app end of the control socket, shared by everything that speaks for the bridge.
+///
+/// Behind a lock because two threads write to it - the resize watcher and the exit report on
+/// the way out - and the app parses newline-delimited JSON, so two writes that interleave are
+/// one line it cannot read followed by the loss of whatever came after.
+type Reporting = Arc<Mutex<UnixStream>>;
+
+/// Says how big a grid this bridge has just asked its daemon for.
+///
+/// Nothing else in the window knows this number. The shell measures a region in points and the
+/// daemon is only ever told, so the grid that decides whether a frame of this pane fits under
+/// herdr's cap is the one passed to herdr from here (kan a_2KHGYMpnK).
+fn tell_the_size(app: Option<&Reporting>, columns: u16, rows: u16) {
+    let message = bridge_report::Grid { columns: u32::from(columns), rows: u32::from(rows) };
+    write_line(app, &message.wire_format());
+}
+
+/// One whole line to the app, or nothing at all.
+///
+/// Failures are dropped on purpose: the app going away is ordinary - sessions outlive the
+/// client - and a bridge that died trying to describe itself would take the pane with it.
+fn write_line(app: Option<&Reporting>, line: &[u8]) {
+    let Some(app) = app else { return };
+    let mut app = poison::lock(app, "the app's control socket");
+    let _ = app.write_all(line);
+    let _ = app.flush();
+}
+
 /// Lines are reassembled here rather than passed on as they arrive, because herdr parses
 /// its stdin as newline-delimited JSON and half a message is a parse error that would
 /// desynchronize everything after it.
@@ -420,7 +460,7 @@ fn relay(socket: UnixStream, input: &HerdrInput) {
 }
 
 /// Pumps decoded frames to the surface, until the stream ends.
-fn pump_frames(mut output: impl Read, pane: &str, app: Option<&UnixStream>) -> ! {
+fn pump_frames(mut output: impl Read, pane: &str, app: Option<&Reporting>) -> ! {
     let mut decoder = FrameDecoder::new();
     let mut pump = Pump::default();
     // Heap rather than stack: a repaint is routinely tens of kilobytes, and this thread
@@ -518,7 +558,7 @@ impl Pump {
     /// bridge is gone either way, from the socket closing behind this; what this adds is
     /// which of the several endings it was, which is what decides whether another bridge is
     /// worth starting.
-    fn finish(&self, pane: &str, reason: Option<&str>, app: Option<&UnixStream>) -> ! {
+    fn finish(&self, pane: &str, reason: Option<&str>, app: Option<&Reporting>) -> ! {
         let why = reason.unwrap_or("herdr gave no reason");
         let ending = bridge_report::ending(reason);
         log::info(
@@ -600,12 +640,10 @@ impl Pump {
     ///
     /// Best effort by design. A write that fails means the app has gone, which is one of the
     /// ordinary ways a bridge outlives its window - and there is nobody left to tell.
-    fn tell(&self, app: Option<&UnixStream>, ending: Ending, reason: Option<&str>) {
-        let Some(mut app) = app else { return };
+    fn tell(&self, app: Option<&Reporting>, ending: Ending, reason: Option<&str>) {
         let message =
             Exiting { ending, reason: reason.map(str::to_string), rendered: self.rendered };
-        let _ = app.write_all(&message.wire_format());
-        let _ = app.flush();
+        write_line(app, &message.wire_format());
     }
 }
 

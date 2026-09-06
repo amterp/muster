@@ -1,0 +1,251 @@
+{
+  "concept": "grid",
+  "source": "authored",
+  "citation": "crates/muster-core/src/grid.rs and kan card a_2KHGYMpnK. The cap being defended against is herdr's and is measured: 2 MiB per client frame (src/protocol/wire.rs, MAX_FRAME_SIZE), against about twenty bytes per cell for a Claude Code screen, which is roughly 105,000 cells. Where Muster's own ceiling sits under that is Muster's call and these cases are where it is written down. The display sizes below were measured on a 3440x1440 screen.",
+  "why": "A pane past what one frame can carry stops updating and nothing says so. herdr renders it, builds the frame, serializes it, finds it over the cap, logs a line on its own machine and throws it away - four times a second, for sixteen minutes in the incident this comes from. Everything Muster shows says the pane is fine: `muster window` reported it `idle`, its bridge went on relaying keystrokes, its client stayed connected. The only evidence was a WARN in a log file on the far machine.\n\nMuster asked for that grid, so both halves are Muster's. The chord that walks a pane there stops at the ceiling, and a pane that gets there another way says so.\n\nWhere the ceiling sits is the whole of the argument. It is at the real cap rather than short of it, because the failure of being too low is worse than the failure of being too high: a person who likes a small font on a wide display reaches 63,030 cells at 10pt and 78,988 at 9pt having pressed nothing at all, and a ceiling under about eighty thousand would refuse their working control and tell them their working pane had stopped. A false alarm that also disables something is worse than the silence this exists to end. Being at the cap costs one press of overshoot instead - the press that takes a pane from just under to just over is allowed, because nothing in the core can predict the next grid: Muster does not know the font size it is offsetting from, which lives on the far side of the renderer seam. Noticing catches that press, and noticing is the better detector anyway.\n\n`sized` is a bridge reporting the grid it has just asked the daemon for. The bridge rather than the window, because the bridge is what actually sets it - it reads its PTY and passes --cols and --rows to herdr - so this is the number that decides whether a frame fits rather than a prediction of it, and it arrives however the pane grew: a font chord, a zoom, a window dragged wider.\n\n`ceiling` is the cells a pane may hold, named by every case rather than assumed, so that these read as rules about a number rather than as facts about one constant - and so that a run can set a ceiling a real 80x24 bridge can cross, which is how the wire under this is proved end to end. Every case here names the number Muster ships with.\n\n`raised` and `cleared` accumulate over every step, spelled as problem keys. `may_shrink` is asked once at the end, about the pane the last step was about unless the case names another in `of`, and is what the font-size chord reads.",
+  "cases": [
+    {
+      "name": "a pane that fits says nothing",
+      "why": "The overwhelmingly common case, and the one that has to stay silent. A full-window pane at the default size on the screen this was measured on is 349 by 95, which is a third of the ceiling.",
+      "given": {
+        "ceiling": 100000,
+        "steps": [
+          {
+            "sized": "devenv/p206y9p61r",
+            "columns": 349,
+            "rows": 95
+          }
+        ]
+      },
+      "expect": {
+        "raised": [],
+        "cleared": [],
+        "may_shrink": true
+      }
+    },
+    {
+      "name": "a small font on a wide display is not accused and may still shrink",
+      "why": "The setup a ceiling chosen for safety margin would have broken. On a 3440x1440 screen one full-window pane is 573 by 110 at 10pt and 637 by 124 at 9pt, with nobody having pressed anything - both comfortably inside 2 MiB, both working. Refusing to shrink here, or saying this pane had stopped updating, would be a false alarm that also disables a control somebody was using.",
+      "given": {
+        "ceiling": 100000,
+        "steps": [
+          {
+            "sized": "local/p1w3r07bsd",
+            "columns": 573,
+            "rows": 110
+          },
+          {
+            "sized": "local/p1w3r07bsd",
+            "columns": 637,
+            "rows": 124
+          }
+        ]
+      },
+      "expect": {
+        "raised": [],
+        "cleared": [],
+        "may_shrink": true
+      }
+    },
+    {
+      "name": "a pane past what a frame carries says so, and stops shrinking",
+      "why": "The measured failure. 698 by 179 is 125k cells and about 2.5 MB, so every frame for this pane is built and skipped - which is the pane freezing while its agent works on. Both halves fire at once because they are one condition: the sentence is what the person needed and did not get, and the chord stopping is what keeps them from walking further in.",
+      "given": {
+        "ceiling": 100000,
+        "steps": [
+          {
+            "sized": "devenv/p206y9p61r",
+            "columns": 698,
+            "rows": 179
+          }
+        ]
+      },
+      "expect": {
+        "raised": [
+          "pane:devenv/p206y9p61r:grid"
+        ],
+        "cleared": [],
+        "may_shrink": false
+      }
+    },
+    {
+      "name": "the press that crosses the ceiling is allowed, and is the last one",
+      "why": "What being at the real cap costs, stated rather than left as a surprise. Nothing here can predict the grid one press from now - Muster offsets a font size it does not know, because that number lives on the far side of the renderer seam - so a pane inside the ceiling may shrink, and the press that takes it outside is the press that gets reported. Every press after it does nothing, which is what stops the runaway: holding the key walked a pane to 231k cells in 0.7 seconds.",
+      "given": {
+        "ceiling": 100000,
+        "steps": [
+          {
+            "sized": "devenv/p206y9p61r",
+            "columns": 637,
+            "rows": 124
+          },
+          {
+            "sized": "devenv/p206y9p61r",
+            "columns": 717,
+            "rows": 140
+          }
+        ]
+      },
+      "expect": {
+        "raised": [
+          "pane:devenv/p206y9p61r:grid"
+        ],
+        "cleared": [],
+        "may_shrink": false
+      }
+    },
+    {
+      "name": "a pane made smaller again starts painting and stops being reported",
+      "why": "The way back, and the reason the sentence names it. Growing the text or unzooming the pane brings the grid under the cap, and the very next frame gets through - so the problem has to go with it, or the roster would carry a row about a pane that has been working for an hour.",
+      "given": {
+        "ceiling": 100000,
+        "steps": [
+          {
+            "sized": "devenv/p206y9p61r",
+            "columns": 931,
+            "rows": 248
+          },
+          {
+            "sized": "devenv/p206y9p61r",
+            "columns": 349,
+            "rows": 95
+          }
+        ]
+      },
+      "expect": {
+        "raised": [
+          "pane:devenv/p206y9p61r:grid"
+        ],
+        "cleared": [
+          "pane:devenv/p206y9p61r:grid"
+        ],
+        "may_shrink": true
+      }
+    },
+    {
+      "name": "the same oversized grid reported twice is not news twice",
+      "why": "A window republishes for its own reasons and a bridge re-reports its size when anything moves, so a problem raised on every arrival would reopen a roster somebody had closed for as long as the pane stayed too big. Keyed by the condition, like every other problem.",
+      "given": {
+        "ceiling": 100000,
+        "steps": [
+          {
+            "sized": "devenv/p206y9p61r",
+            "columns": 698,
+            "rows": 179
+          },
+          {
+            "sized": "devenv/p206y9p61r",
+            "columns": 698,
+            "rows": 179
+          },
+          {
+            "sized": "devenv/p206y9p61r",
+            "columns": 698,
+            "rows": 179
+          }
+        ]
+      },
+      "expect": {
+        "raised": [
+          "pane:devenv/p206y9p61r:grid"
+        ],
+        "cleared": [],
+        "may_shrink": false
+      }
+    },
+    {
+      "name": "a pane walked further past the ceiling says so again",
+      "why": "The exception to the rule above, and the reason the sentence carries the grid. A pane that went from 125k cells to 231k is a different fact about a worse state, and the number is the one thing nothing else in the window shows - so a reader who saw the first sentence and then made it worse should see the second.",
+      "given": {
+        "ceiling": 100000,
+        "steps": [
+          {
+            "sized": "devenv/p206y9p61r",
+            "columns": 698,
+            "rows": 179
+          },
+          {
+            "sized": "devenv/p206y9p61r",
+            "columns": 931,
+            "rows": 248
+          }
+        ]
+      },
+      "expect": {
+        "raised": [
+          "pane:devenv/p206y9p61r:grid",
+          "pane:devenv/p206y9p61r:grid"
+        ],
+        "cleared": [],
+        "may_shrink": false
+      }
+    },
+    {
+      "name": "one oversized pane says nothing about the pane beside it",
+      "why": "Fourteen panes working and one frozen is the case worth reporting precisely, and it is the ordinary shape of this bug: the pane somebody zoomed and shrank is one pane in a window of them. Counted per pane for the same reason a pane that cannot be typed into is.",
+      "given": {
+        "ceiling": 100000,
+        "steps": [
+          {
+            "sized": "devenv/p206y9p61r",
+            "columns": 931,
+            "rows": 248
+          },
+          {
+            "sized": "local/p1w3r07bsd",
+            "columns": 349,
+            "rows": 95
+          }
+        ],
+        "of": "local/p1w3r07bsd"
+      },
+      "expect": {
+        "raised": [
+          "pane:devenv/p206y9p61r:grid"
+        ],
+        "cleared": [],
+        "may_shrink": true
+      }
+    },
+    {
+      "name": "a pane nobody has measured may shrink",
+      "why": "What a window answers between opening a pane and its bridge starting one, which is every pane for the first moment of its life. Refusing a chord on the strength of knowing nothing would disable the control exactly when a window opens, and the pane it would be protecting is one no daemon is drawing yet.",
+      "given": {
+        "ceiling": 100000,
+        "steps": [],
+        "of": "local/p1w3r07bsd"
+      },
+      "expect": {
+        "raised": [],
+        "cleared": [],
+        "may_shrink": true
+      }
+    },
+    {
+      "name": "a pane that closed takes its problem with it",
+      "why": "A problem outliving the pane it is about is a row in the roster naming something nobody can look at, and the pane most likely to be closed is the one that has stopped updating.",
+      "given": {
+        "ceiling": 100000,
+        "steps": [
+          {
+            "sized": "devenv/p206y9p61r",
+            "columns": 931,
+            "rows": 248
+          },
+          {
+            "forgot": "devenv/p206y9p61r"
+          }
+        ]
+      },
+      "expect": {
+        "raised": [
+          "pane:devenv/p206y9p61r:grid"
+        ],
+        "cleared": [
+          "pane:devenv/p206y9p61r:grid"
+        ],
+        "may_shrink": true
+      }
+    }
+  ]
+}

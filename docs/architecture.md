@@ -914,6 +914,23 @@ replacement: only one client may hold a herdr terminal, and the client from befo
 measured still attached 53 minutes after its ssh was gone - so a replacement re-attaches with `--takeover`, which a
 first bridge never does, because the terminal it would take could be one another window is showing.
 
+**A pane can also be too big to be drawn at all, and every layer below reports health while it
+is.** A daemon paints a pane by sending the whole screen as one frame; herdr refuses any client
+frame over 2 MiB and skips a text one with a line in its own log, so a pane past roughly a
+hundred thousand cells - about twenty bytes each - simply stops updating. Nothing downstream
+disagrees: the client stays connected, the bridge goes on relaying keystrokes, the agent goes on
+working, and the pane's state reads `idle`. Sixteen minutes of that was measured, with the only
+evidence a WARN on the far machine (kan a_2KHGYMpnK). Both halves are Muster's, because Muster
+asked for the grid: the font-size chord saturates at the last size that fits, and a pane that
+gets there another way - a zoom, a window dragged wider - raises a problem naming its grid.
+**The number comes from the bridge**, which is the only process that has it: the shell measures a
+region in points, the daemon is only ever told, and the bridge is what reads its PTY and passes
+`--cols` and `--rows` to herdr. It reports every grid it asks for on the control socket it
+already holds, so one report covers every way a pane can grow. The ceiling sits at the real cap
+rather than short of it, because a margin large enough to absorb a keypress would refuse an
+ordinary small font on a wide display - and a false alarm that also disables a working control is
+worse than the silence it would be preventing.
+
 **How the app finds out a bridge has died is Muster's own business, not the renderer's.** libghostty offers a
 `close_surface` callback and it does not arrive: a dead pane sits on libghostty's own "Process exited. Press any
 key" screen, which is the surface being held open rather than the host being asked to close it, so for two releases

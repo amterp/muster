@@ -44,6 +44,13 @@ extern "C" fn note_typeable(bytes: *const u8, len: usize) {
     let bytes = unsafe { std::slice::from_raw_parts(bytes, len) };
     match Event::decode(bytes).ok().and_then(|event| event.payload) {
         Some(event::Payload::PaneTypeable(_)) => TYPEABLE.store(true, Ordering::Relaxed),
+        // The whole list every time, absolute and idempotent, so this is a replacement rather
+        // than an accumulation - a test asking what is wrong now must not be answered by
+        // something that was wrong a moment ago and has been put right.
+        Some(event::Payload::ProblemsChanged(changed)) => {
+            *poison_free(&PROBLEMS) =
+                changed.problems.iter().map(|problem| problem.key.clone()).collect();
+        }
         // Kept because it is where a shell learns what Muster calls a pane. Nothing here can
         // work it out: the daemon's id is in `pane.list` and the name Muster minted for it is
         // only ever spoken by the core, which is the whole point of a minted name.
@@ -71,6 +78,13 @@ static RESTARTS: Mutex<BTreeMap<String, u32>> = Mutex::new(BTreeMap::new());
 /// How many times the last published view says this pane's bridge has been replaced.
 pub(crate) fn restarts(backend: &str) -> Option<u32> {
     poison_free(&RESTARTS).get(backend).copied()
+}
+
+/// Everything the window currently says is wrong, by problem key.
+static PROBLEMS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+pub(crate) fn problems() -> Vec<String> {
+    poison_free(&PROBLEMS).clone()
 }
 
 fn record_names(view: &muster::proto::ViewChanged) {

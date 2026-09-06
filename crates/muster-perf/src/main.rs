@@ -507,7 +507,11 @@ fn bind_pane_socket(index: usize) -> Option<(Arc<PaneControlChannel>, PaneInput)
     let control = Arc::new(
         PaneControlChannel::bind(
             path,
-            Reports { connected: Box::new(|| {}), exited: Box::new(|_| {}) },
+            Reports {
+                connected: Box::new(|| {}),
+                exited: Box::new(|_| {}),
+                sized: Box::new(|_, _| {}),
+            },
         )
         .ok()?,
     );

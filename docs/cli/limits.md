@@ -99,6 +99,21 @@ attached to.
 in the tab in one request, and it reaches any tab the window holds. With no `--tab` it closes the
 tab the keyboard is in, which is what the menu item means.
 
+## Text stops shrinking before a pane gets too big to draw
+
+`muster font smaller` and its chord stop having an effect once a pane's grid reaches what one
+frame can carry - about a hundred thousand cells, which is herdr's 2 MiB frame cap at roughly
+twenty bytes each. Past that the daemon draws the pane and throws every frame away, so it freezes
+while its agent works on and nothing below Muster reports anything wrong. Saturating is the same
+answer the size range already gives at its ends: text that stops changing rather than a refusal
+for a keystroke whose result you cannot see.
+
+One press gets through. Muster offsets a font size it does not know - the renderer owns that
+number - so it cannot tell whether the next press crosses the line, only that the last one did.
+The press that crosses is the one that raises the problem naming the pane's grid; every press
+after it does nothing. `muster font larger` and `muster font reset` always work, including from
+over the line, because they are the way back.
+
 ## Reattaching takes the terminal from whatever is holding it
 
 `muster pane reattach` asks for a bridge, and a bridge asked for after the first one takes the

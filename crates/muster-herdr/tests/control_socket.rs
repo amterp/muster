@@ -1,10 +1,11 @@
 //! What a pane's control socket does across the life of the pane.
 //!
-//! Three properties. Two are about a pane whose surface was thrown away and built again -
+//! Four properties. Two are about a pane whose surface was thrown away and built again -
 //! which happens whenever a window has to rebuild a pane, and used to end with that pane
 //! rendering, painting, and swallowing every keystroke. The third is the other end of the
 //! same connection: it is how the app finds out a bridge has died, which until kan
-//! a_2IRcMjFs0 nothing in the app ever did.
+//! a_2IRcMjFs0 nothing in the app ever did. The fourth shares that reader with a message
+//! that arrives while the bridge is alive rather than as it goes.
 
 use herdr_harness::until;
 use std::io::{Read, Write};
@@ -13,7 +14,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use muster_core::respawn::{Ended, Ending};
-use muster_herdr::bridge_report::Exiting;
+use muster_herdr::bridge_report::{Exiting, Grid};
 use muster_herdr::control_stream::ControlStreamMessage;
 use muster_herdr::{PaneControlChannel, Reports};
 
@@ -120,23 +121,55 @@ fn closing_a_pane_does_not_leave_a_thread_behind() {
     until("the accepting thread stops", || stopped.load(Ordering::Acquire), ());
 }
 
+#[test]
+fn a_grid_is_passed_on_while_the_bridge_is_still_running() {
+    // The two messages a bridge sends share one socket and one reader, and they are read on
+    // opposite schedules: an exit is held until the connection ends, because that is what
+    // decides which of several things "the bridge is gone" meant. A grid must not be, because
+    // a pane too big for a frame has stopped updating now - a report held until the bridge
+    // died would arrive after it stopped mattering (kan a_2KHGYMpnK).
+    let path = socket_path("sized");
+    let watch = Watch::default();
+    let _channel =
+        PaneControlChannel::bind(path.clone(), watch.reports()).expect("the socket binds");
+
+    let mut bridge = UnixStream::connect(&path).expect("the bridge connects");
+    until("the bridge is noticed", || watch.connections() == 1, ());
+
+    for grid in [Grid { columns: 80, rows: 24 }, Grid { columns: 931, rows: 248 }] {
+        bridge.write_all(&grid.wire_format()).expect("the bridge reports its grid");
+    }
+    bridge.flush().expect("the report reaches the app");
+
+    // While it is still connected, and in order, because a pane walked further past the
+    // ceiling is a worse state than the one before it and the sentence names the grid.
+    until("both grids to arrive", || watch.grids().len() == 2, || format!("{:?}", watch.grids()));
+    assert_eq!(watch.grids(), vec![(80, 24), (931, 248)]);
+    assert_eq!(watch.exits(), 0, "a grid is not a bridge that stopped");
+}
+
 /// What a channel told its owner, for a test to read back.
 #[derive(Default)]
 struct Watch {
     connections: Arc<AtomicUsize>,
     exits: Arc<Mutex<Vec<Ended>>>,
+    grids: Arc<Mutex<Vec<(u32, u32)>>>,
 }
 
 impl Watch {
     fn reports(&self) -> Reports {
         let connections = Arc::clone(&self.connections);
         let exits = Arc::clone(&self.exits);
+        let grids = Arc::clone(&self.grids);
         Reports {
             connected: Box::new(move || {
                 connections.fetch_add(1, Ordering::Release);
             }),
             exited: Box::new(move |ended| {
                 exits.lock().expect("a panicking test poisoned the exits").push(ended);
+            }),
+            sized: Box::new(move |columns, rows| {
+                grids.lock().expect("a panicking test poisoned the grids").push((columns, rows));
             }),
         }
     }
@@ -151,6 +184,10 @@ impl Watch {
 
     fn ended(&self) -> Option<Ended> {
         self.exits.lock().expect("a panicking test poisoned the exits").first().cloned()
+    }
+
+    fn grids(&self) -> Vec<(u32, u32)> {
+        self.grids.lock().expect("a panicking test poisoned the grids").clone()
     }
 }
 

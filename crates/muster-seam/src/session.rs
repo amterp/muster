@@ -25,6 +25,7 @@ use muster_core::diagnostics::{clock, log, poison};
 use muster_core::equalize::{self, Evenly};
 use muster_core::fields;
 use muster_core::find::{Found, Needle, Reach};
+use muster_core::grid::{self, Grids};
 use muster_core::input::{Bindings, PaneInput, PaneInputSettings, ScrollDirection};
 use muster_core::intent::{BackendChannel, BackendIntent, MoveDestination, Refusal};
 use muster_core::mirror::backend::{PaneId, PaneText, Snapshot, TabId, Viewport};
@@ -1018,6 +1019,9 @@ pub(crate) struct Session {
     /// laptop changes network.
     respawns: Respawns,
 
+    /// How big each pane's grid is, and which are past what one frame can carry.
+    grids: Grids,
+
     /// The search somebody has open, if anybody has.
     ///
     /// One at a time, because the find bar is one bar over the pane with the keyboard. Held
@@ -1260,6 +1264,7 @@ impl Session {
         let mirror = poison::lock(&backend.mirror, "mirror");
 
         self.composition.reconcile(daemon, &mirror);
+        let stale = &mut self.grids;
         let attached = self.panes.entry(daemon.clone()).or_default();
         attached.retain(|pane, _| {
             let held = mirror.pane(pane).is_some();
@@ -1272,6 +1277,10 @@ impl Session {
                 // And nothing is owed about its bridge either. A window whose panes come and
                 // go all day would otherwise accumulate one entry per pane it ever held.
                 poison::lock(&DARK, "dark-panes").remove(&key);
+                // Nor about its grid. Recorded here and cleared after this lock is released,
+                // for the reason `watchdog` states about the one above: clearing takes
+                // `PROBLEMS` and then `SESSION`, and this runs holding `SESSION`.
+                poison::lock(&STALE_GRIDS, "stale-grids").extend(stale.forget(&key).clear);
             }
             held
         });
@@ -1375,11 +1384,13 @@ impl Session {
         let path = self.next_socket_path();
         let dialed = PaneKey::new(daemon, pane);
         let stopped = dialed.clone();
+        let drawn = dialed.clone();
         let control = PaneControlChannel::bind(
             path.clone(),
             Reports {
                 connected: Box::new(move || typeable(&dialed.daemon, &dialed.pane)),
                 exited: Box::new(move |ended| bridge_ended(&stopped, &ended)),
+                sized: Box::new(move |columns, rows| pane_sized(&drawn, columns, rows)),
             },
         )
         .map_err(|error| {
@@ -1928,6 +1939,84 @@ pub(crate) fn bridge_exited(daemon: &str, pane: &str, process_alive: bool) {
     bridge_ended(&key, &Ended::unsaid());
 }
 
+/// The cells a pane may hold in this run, read from the environment once.
+///
+/// `MUSTER_FRAME_CELLS` overrides it. It is here rather than in `config.toml` for the reason the
+/// typeable deadline is: its reason to exist is the suite. A bridge whose stdout is a pipe falls
+/// back to 80 by 24, so no test can build a pane of a hundred thousand cells - and the wire this
+/// travels on is exactly the part most worth proving end to end. Zero switches the ceiling off.
+static FRAME_CELLS: LazyLock<u32> = LazyLock::new(|| {
+    let Ok(spelled) = std::env::var("MUSTER_FRAME_CELLS") else {
+        return grid::FRAME_CELLS;
+    };
+    match spelled.trim().parse::<u32>() {
+        Ok(0) => u32::MAX,
+        Ok(cells) => {
+            log::info("grid.ceiling.overridden", fields! { "cells" => cells.to_string() });
+            cells
+        }
+        Err(error) => {
+            log::warn(
+                "grid.ceiling.unreadable",
+                fields! {
+                    "value" => spelled,
+                    "detail" => error.to_string(),
+                    "impact" => format!(
+                        "MUSTER_FRAME_CELLS is not a whole number of cells, so the default of {} \
+                         is in force and a pane past it is reported and stops shrinking as usual",
+                        grid::FRAME_CELLS
+                    ),
+                    "check" => "write a count of cells, or 0 to stop watching for it",
+                },
+            );
+            grid::FRAME_CELLS
+        }
+    }
+});
+
+/// A bridge has asked its daemon for a grid this big, and it may be one no frame can carry.
+///
+/// The one number nothing else in the window has. A daemon draws a pane by sending the whole
+/// screen as one frame, herdr refuses any client frame over 2 MiB, and a text frame over it is
+/// skipped with a line in the daemon's own log on the daemon's own machine - so a pane past
+/// about a hundred thousand cells stops updating while its state, its bridge and its client all
+/// report health. Sixteen minutes of that was the incident (kan a_2KHGYMpnK).
+///
+/// Whether this grid is too big is `grid`'s to say; what this does is ask, and raise or clear
+/// what it answers.
+pub(crate) fn pane_sized(pane: &PaneKey, columns: u32, rows: u32) {
+    let reported = {
+        let mut session = poison::lock(&SESSION, "session");
+        if !session.holds(pane) {
+            return;
+        }
+        session.grids.sized(pane, columns, rows, *FRAME_CELLS)
+    };
+    for (key, detail) in reported.raise {
+        log::warn(
+            "pane.grid.oversized",
+            fields! {
+                "pane" => pane.to_string(),
+                "cols" => columns.to_string(),
+                "rows" => rows.to_string(),
+                "detail" => detail.clone(),
+            },
+        );
+        raise_problem(&key, Severity::Error, &detail);
+    }
+    for key in reported.clear {
+        log::info(
+            "pane.grid.fits",
+            fields! {
+                "pane" => pane.to_string(),
+                "cols" => columns.to_string(),
+                "rows" => rows.to_string(),
+            },
+        );
+        clear_problem(&key);
+    }
+}
+
 /// What the daemon calls a pane, which is not what this window calls it.
 ///
 /// Needed by exactly one sentence, and that sentence is the one nobody guesses: releasing a
@@ -1941,6 +2030,26 @@ fn backend_pane_of(pane: &PaneKey) -> String {
         .and_then(|backend| backend.names.backend_pane(&pane.pane).ok())
         .map(|named| named.as_str().to_string())
         .unwrap_or_default()
+}
+
+/// Problems about panes that have gone, waiting to be taken back.
+///
+/// A leaf lock, and the reason it exists is the lock order rather than tidiness: clearing a
+/// problem takes `PROBLEMS` and then `SESSION`, and the pruning that discovers a closed pane
+/// runs holding `SESSION`. So the discovery records here and `publish` does the clearing,
+/// which is the same shape `watchdog` uses for the other problem a closed pane can leave
+/// behind.
+static STALE_GRIDS: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
+
+/// Takes back what was said about panes that have since closed.
+///
+/// A problem outliving its pane is a row in the roster naming something nobody can look at,
+/// and the pane most likely to be closed is the one that had stopped updating.
+fn clear_stale_grid_problems() {
+    let stale = std::mem::take(&mut *poison::lock(&STALE_GRIDS, "stale-grids"));
+    for key in stale {
+        clear_problem(&key);
+    }
 }
 
 /// A pane's bridge has stopped, said in its own words on the socket the app bound for it.
@@ -3590,6 +3699,11 @@ fn publish() {
         (view, roster, numbering, noticed)
     };
 
+    // The first thing done outside that lock, because it is the only thing here that has been
+    // waiting for it: the reconciles above are what discover a pane has closed, and taking back
+    // what was said about one needs `PROBLEMS` before `SESSION`.
+    clear_stale_grid_problems();
+
     // The shape, not the fact. "the view changed" is useless in a bug report and what it
     // changed to is the whole answer - a window rendering the wrong thing and a window
     // rendering nothing are one line apart here (`architecture.md`, the diagnostic log).
@@ -4358,6 +4472,20 @@ pub(crate) fn adjust_font_size(change: FontSizeChange) -> Result<(), String> {
         };
         let Some(pane) = region.pane.clone() else { return Err(no_pane_to_size()) };
         let pane = PaneKey::new(&region.daemon, &pane);
+        // Smaller text is more cells, and past a point a frame of them stops fitting through
+        // the daemon's cap - which costs the pane every frame after it, silently. Saturated
+        // rather than refused, on the same terms as the end of the offset's own range: the
+        // honest answer to a key held down is text that stops shrinking.
+        if change == FontSizeChange::Smaller && !session.grids.may_shrink(&pane, *FRAME_CELLS) {
+            log::info(
+                "pane.font_size.floor",
+                fields! {
+                    "pane" => pane.to_string(),
+                    "offset" => session.font_sizes.offset(&pane).to_string(),
+                },
+            );
+            return Ok(());
+        }
         let offset = session.font_sizes.adjust(&pane, change);
         (pane, offset)
     };

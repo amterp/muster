@@ -34,7 +34,7 @@ use muster_core::diagnostics::{log, poison};
 use muster_core::fields;
 use muster_core::respawn::Ended;
 
-use crate::bridge_report::Exiting;
+use crate::bridge_report::{Exiting, Grid};
 use crate::control_stream::ControlStreamMessage;
 
 /// Why a channel could not be opened.
@@ -69,13 +69,19 @@ pub struct Reports {
     /// The bridge that was on the other end has stopped. Runs on that connection's own reader
     /// thread, at most once per connection.
     pub exited: Box<dyn Fn(Ended) + Send + Sync>,
+
+    /// The bridge has asked its daemon for a grid this big. Runs on that connection's reader
+    /// thread, once per resize, and unlike `exited` it fires as the line arrives rather than
+    /// when the connection ends - a pane too big to draw has stopped updating *now*, and a
+    /// report held until the bridge died would arrive after it stopped mattering.
+    pub sized: Box<dyn Fn(u32, u32) + Send + Sync>,
 }
 
 impl std::fmt::Debug for Reports {
     /// Closures have nothing to say about themselves, and a channel's `Debug` should not stop
     /// existing because it holds two.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("Reports { connected, exited }")
+        f.write_str("Reports { connected, exited, sized }")
     }
 }
 
@@ -289,8 +295,16 @@ fn watch(
                 Ok(0) | Err(_) => break,
                 Ok(_) => {}
             }
-            if let Some(exiting) = Exiting::parse(line.strip_suffix(b"\n").unwrap_or(&line)) {
+            let said_line = line.strip_suffix(b"\n").unwrap_or(&line);
+            if let Some(exiting) = Exiting::parse(said_line) {
                 said = Some(exiting);
+                continue;
+            }
+            // Passed on as it arrives, not held like the exit above. A grid too big to draw is
+            // a pane that has stopped updating right now, and the window has to be able to say
+            // so while somebody is still looking at it.
+            if let Some(grid) = Grid::parse(said_line) {
+                (reports.sized)(grid.columns, grid.rows);
             }
         }
 
