@@ -140,6 +140,27 @@ struct FindTests {
   }
 
   @MainActor
+  @Test("a step and an end reach the core the bar was given, not the one the process holds")
+  func theBarSendsThroughItsOwnCore() {
+    // The coupling kan a_2LMRCjcSV names: a view handed a dispatcher, reaching past it to the
+    // process global for the half of its traffic that does not go through the sender. Both
+    // halves have to land in the same place, or a test can be handed a core, watch its needle
+    // arrive, and have its step answered by whatever another test installed.
+    let elsewhere = seam(FindingDispatcher(total: 9, selected: 9))
+    let mine = FindingDispatcher(total: 3, selected: 2)
+    let bar = FindBar(dispatcher: mine)
+    bar.show(over: chrome(RecordingSurface(), dispatcher: mine))
+
+    bar.step(forward: true)
+    bar.close()
+
+    #expect(mine.steps() == ["next"])
+    #expect(elsewhere.steps().isEmpty, "the step went to the process global, not the bar's core")
+    #expect(mine.endedFinds == 1)
+    #expect(elsewhere.endedFinds == 0, "the end went to the process global, not the bar's core")
+  }
+
+  @MainActor
   @Test("closing tells the core to forget, and takes the marks off the pane")
   func closingForgets() {
     // Both halves matter and they fail differently. A core still holding a search answers a
