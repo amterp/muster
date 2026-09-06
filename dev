@@ -364,6 +364,69 @@ fn fail_empty_suite(language, cure):
     print_err(cure)
     exit(1)
 
+// What the default gate is expected to skip, and what runs it instead.
+//
+// A suite that stops running is invisible in a count, which makes it worse than a red one:
+// `swift test` reports the same total whether ClickRedriveTests is there and skipping or has
+// been deleted, and cargo keeps its ignored tests in a per-binary line nothing reads. So the
+// whole of what said ClickRedriveTests still existed was one hand-written print - a second
+// such suite needed a second line, and the day somebody wrote neither, a suite would stop
+// running behind a green gate.
+//
+// Counted rather than listed test by test, because a count is what moves in both directions
+// that matter: a suite deleted takes its skips with it, and an `#[ignore]` on a test that
+// should be running adds one. The check prints the names it actually found when the number
+// disagrees, so what moved is on screen rather than in somebody's head.
+//
+// The two languages are asked differently because they answer differently. cargo will say what
+// it is going to skip before it runs, so Rust is asked up front. swift will not - its list and
+// its run both report 319 whether or not a suite skipped itself, which is the observation this
+// card was raised on - so Swift is asked twice instead: discovery says the suite still exists,
+// and the run's own skip records say it actually skipped.
+// The doctest row is the check earning its place on the day it was written: it was drafted
+// from a count of `#[ignore]` in the tree, and the runner answered with one more than that.
+// A ```ignore example is skipped too, and no grep of the source would have said so.
+SKIPPED_SUITES = [
+    { "language": "Rust", "suite": "muster-ssh's devenv tests", "skipped": 7,
+      "note": "need the devenv container; ./dev --ssh runs them" },
+    { "language": "Rust", "suite": "muster-herdr's devenv test", "skipped": 1,
+      "note": "needs the devenv container; ./dev --ssh runs it" },
+    { "language": "Rust", "suite": "fresh_session's doc example", "skipped": 1,
+      "note": "an illustration in a doc comment rather than a test, so nothing runs it" },
+    { "language": "Swift", "suite": "ClickRedriveTests", "skipped": 1,
+      "note": "needs a logged-in session; ./dev --contract runs it" },
+]
+
+// How many tests this language's entries in the manifest account for.
+fn expected_skips(language):
+    total = 0
+    for row in SKIPPED_SUITES:
+        if row.language == language:
+            total = total + row.skipped
+    return total
+
+// Holds the manifest to what the run actually left out.
+//
+// `found` is the names when the runner will give them and an empty list when it will only give
+// a number, which is the difference between the two languages here rather than a preference.
+fn check_skipped(language, skipped, found, cure):
+    expected = expected_skips(language)
+    if skipped == expected:
+        for row in SKIPPED_SUITES:
+            if row.language == language:
+                print(dim("skipped: {row.suite} - {row.note}"))
+        return
+    print_err(red("The {language} suite left out {skipped} test(s); ./dev's manifest expects {expected}."))
+    print_err("One of the two is wrong, and until it is settled the gate is reporting on a")
+    print_err("suite whose size it cannot account for - which is the shape a suite that")
+    print_err("silently stopped running has.")
+    if len(found) > 0:
+        print_err("What it actually left out:")
+        for name in found:
+            print_err("  {name}")
+    print_err(cure)
+    exit(1)
+
 // Exit 2 means the run could not judge itself - no baseline, no corpus - and exit 1 means
 // it judged and the answer was no. Collapsing the two would send someone hunting a
 // regression that never happened.
@@ -1545,6 +1608,18 @@ if test:
         fail_empty_suite("Rust", "Usual causes: a crate dropped out of the workspace members, or a tests/ file was renamed. Try: cargo test --workspace -- --list")
 
     print(dim("{len(rust_tests)} Rust test(s) discovered"))
+
+    // What the run below will leave out, asked before it runs rather than counted after.
+    // `--list --ignored` names exactly the tests `cargo test` will skip, so this needs no
+    // parsing of a streaming run and the run keeps printing as it goes.
+    stdout, stderr, code = $`cargo test --workspace -- --list --ignored` catch:
+        print_err(red("Rust could not say which tests it will skip."))
+        print_err(stderr.trim())
+        exit(1)
+    rust_ignored = stdout.split_lines().filter(fn(line) line.ends_with(": test"))
+    check_skipped("Rust", len(rust_ignored), rust_ignored,
+        "Add or remove the row in SKIPPED_SUITES above, or take the #[ignore] off. Try: cargo test --workspace -- --list --ignored")
+
     // Handed down rather than looked up: a test that found its own herdr could find a
     // different one than the run verified, and would report on a daemon nobody pinned.
     $`MUSTER_HERDR={herdr} cargo test --workspace`
@@ -1564,11 +1639,37 @@ if test:
         fail_empty_suite("Swift", "Usual causes: a test target dropped out of Package.swift, or tests moved out of Tests/. Try: swift test list")
 
     print(dim("{len(tests)} Swift test(s) discovered"))
-    $`swift test`
-    // Said out loud, because a suite that skips itself is otherwise missing rather than
-    // skipped: the run's own count does not include it, so nobody reading a green gate can
-    // tell it exists.
-    print(dim("skipped: ClickRedriveTests needs a logged-in session - ./dev --contract runs it"))
+
+    // Named in the manifest and gone from the tree is the failure this whole check exists for,
+    // and it is the cheap half: discovery above already lists every test whether or not a
+    // trait will disable it, so a suite that was deleted or renamed is a lookup away.
+    for row in SKIPPED_SUITES:
+        if row.language == "Swift":
+            present = tests.filter(fn(line) matches(line, row.suite, partial=true))
+            if len(present) == 0:
+                print_err(red("./dev expects {row.suite} to skip itself, and swift test list has never heard of it."))
+                print_err("Either it was deleted or renamed, in which case the row in")
+                print_err("SKIPPED_SUITES needs the same edit, or a whole target has dropped")
+                print_err("out of Package.swift and rather more than this suite is missing.")
+                exit(1)
+
+    // Then what the run actually left out, read off its own skip records. Counting was tried
+    // first and cannot work: `swift test list` says 319 and a run that skips a suite also says
+    // 319, which is the observation the card was raised on. `--xunit-output` writes nothing at
+    // all for a swift-testing run, so the transcript is the only place the fact exists.
+    //
+    // Captured rather than streamed, so the exit code stays swift test's own - a `| tee` would
+    // hand the gate tee's success and a red suite would pass. The output is printed either way
+    // and the tests themselves take under a second; what is silent is the test-target build,
+    // which `swift test list` above already spends without printing.
+    stdout, stderr, code = $`swift test` catch:
+        print(stdout)
+        print_err(stderr.trim())
+        exit(1)
+    print(stdout)
+    swift_skipped = stdout.split_lines().filter(fn(line) matches(line, "Test \".*\" skipped:", partial=true))
+    check_skipped("Swift", len(swift_skipped), swift_skipped,
+        "Add or remove the row in SKIPPED_SUITES above, or take the .enabled(if:) off the suite.")
 
 if contract:
     announce("contract")
