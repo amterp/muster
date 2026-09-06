@@ -76,6 +76,23 @@ Newlines are safe to send. Muster hands the text to the daemon on the verb it en
 the pane's live modes, so a multi-line message reaches a harness fenced as one paste rather
 than as a submission per line.
 
+## A non-zero exit does not always mean nothing happened
+
+Exit 4 is a window that took the request and never answered. The bytes are on its side of the
+socket, so whatever was asked for may already have happened and only the reply went missing -
+which is why it is a code of its own rather than filed under 3, "there was no window to ask".
+Retrying a 4 is how a pane receives the same instruction twice, and it has: an agent driving
+other agents got one timeout on a message that had arrived, resent, and left the receiving
+harness with six copies of one instruction to reconcile.
+
+What to do instead of sending it again: `muster pane read --pane X` shows what is on the pane,
+and `pane send --confirm` asks the window to read it back rather than deciding out here. What
+proves it did *not* happen is only exit 3, where nothing was dialled at all.
+
+A window is slow to answer for reasons that have nothing to do with the request - `pane new
+--run` waits on a shell drawing its prompt, and a loaded machine makes every one of them
+slower - so a 4 says more about the moment than about the command.
+
 ## There is no search
 
 `muster` cannot search a pane. The window can, from `cmd+f`, and reading only the last thousand

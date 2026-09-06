@@ -25,6 +25,11 @@ panes and instructing what runs in them, and `muster docs limits` is what this c
 `muster` is on your `PATH` only if a Muster window put it there. Check with `muster window`: exit
 3 means there is no window to talk to, and then nothing here applies.
 
+**Do not retry on exit 4.** It means a window took the request and never answered, so whatever
+you asked for may already have happened - sending it again is how another agent ends up with
+your instruction twice. Only 3 is safe to repeat. After a 4, read the pane
+(`muster pane read --pane X`) before deciding anything.
+
 ## What is worth knowing that reference docs will not tell you
 
 **Read `muster window` before you act.** You have no eyes. A pane you remember making may have

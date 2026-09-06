@@ -112,7 +112,8 @@ machine. Otherwise muster looks for a listening window under ~/.muster/state, an
 rather than guessing if more than one answers.
 
 Exit codes: 0 it happened, 1 the window refused, 2 the command line was wrong, 3 there was
-no window to ask.
+no window to ask, 4 a window took it and never answered. Send it again after 3, never after
+4 - the request landed, and doing it twice is on you.
 ";
 
 #[derive(Debug, Parser)]

@@ -80,24 +80,34 @@ fn exchange(
     let _ = stream.set_read_timeout(Some(patience));
     let _ = stream.set_write_timeout(Some(patience));
 
+    // Unreachable rather than unanswered, and the difference is the frame: a write that did not
+    // finish leaves a length the window will wait out and discard, so the request was not carried
+    // out and sending it again costs nothing.
     write_frame(&mut stream, &request.encode_to_vec()).map_err(|error| {
         Trouble::Unreachable(format!(
             "the window at {path} accepted a connection and then would not take the request \
              ({error}). Either it is shutting down, or something else is listening on that path."
         ))
     })?;
+    // Everything below here is unanswered rather than refused or unreachable. The request is on
+    // the window's side of the socket, so whatever it asks for may already have happened, and a
+    // caller that reads this as a failure and sends it again is asking for it twice.
     let reply = read_frame(&mut stream, LARGEST_MESSAGE).map_err(|detail| {
-        Trouble::Unreachable(format!(
+        Trouble::Unanswered(format!(
             "the window at {path} took the request and never answered ({detail}). Whatever was \
-             asked for may well have happened - this is the answer going missing, not the action."
+             asked for may well have happened - this is the answer going missing, not the \
+             action - so send it again only if doing it twice is harmless. `muster pane read` \
+             says what a pane has on it."
         ))
     })?;
 
     Response::decode(reply.as_slice()).map_err(|error| {
-        Trouble::Refused(format!(
+        Trouble::Unanswered(format!(
             "the window at {path} answered with something this muster cannot read ({error}). The \
              two were built from different schemas, so the app and the `muster` on this PATH come \
-             from different versions."
+             from different versions. It answered, so whatever was asked for may well have \
+             happened; reach the running app's own copy at ~/.muster/bin/muster rather than \
+             sending this again."
         ))
     })
 }

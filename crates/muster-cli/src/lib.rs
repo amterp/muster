@@ -22,15 +22,19 @@ pub mod render;
 
 /// Why a run ended without an answer.
 ///
-/// Kept apart because a caller does different things about them: a refusal means the request was
-/// understood and will not happen, and an unreachable window means nobody was asked. Retrying
-/// helps with exactly one of those.
+/// Kept apart because a caller does different things about them, and the difference is about
+/// whether the request happened rather than about what went wrong. Nobody was asked, so sending
+/// it again costs nothing. It was refused, so sending it again earns the same refusal. Or it
+/// landed and what came of it is unknown - and that is the one where sending it again is how a
+/// pane receives the same instruction twice.
 #[derive(Debug)]
 pub enum Trouble {
     /// This CLI or the window said no.
     Refused(String),
     /// There was no window to ask.
     Unreachable(String),
+    /// A window took the request and this command cannot say what came of it.
+    Unanswered(String),
 }
 
 impl Trouble {
@@ -44,12 +48,15 @@ impl Trouble {
         match self {
             Trouble::Refused(_) => 1,
             Trouble::Unreachable(_) => 3,
+            Trouble::Unanswered(_) => 4,
         }
     }
 
     pub fn detail(&self) -> &str {
         match self {
-            Trouble::Refused(detail) | Trouble::Unreachable(detail) => detail,
+            Trouble::Refused(detail)
+            | Trouble::Unreachable(detail)
+            | Trouble::Unanswered(detail) => detail,
         }
     }
 }
