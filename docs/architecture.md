@@ -740,6 +740,13 @@ chords before the pane sees them would take shortcuts the user rebound in System
 something else, and would hide from every menu what the app can do. So the menu is where Muster's own actions live,
 and each item does nothing but dispatch.
 
+The menu is therefore also where a press is written down. A chord Muster consumes never reaches a pane, so
+`input.key` has nothing to record and the action's own effect is the only trace it leaves. Eight `pane.font_size`
+records 100 ms apart read as a replay bug for an evening; they were one person holding ⌘+. So a dispatch writes
+`input.bound.action` before it dispatches: the action's name, the chord as it was actually pressed, whether the key
+repeated, and whether it arrived as a shortcut or as a menu somebody picked. A reader then has the cause in front of
+the effect rather than inferring it from the spacing.
+
 **The intent is parameterized; the action is not.** `CreateTab { workspace, cwd }` takes arguments, and `new_tab` is
 a parameterless name that dispatches it with defaults. That split falls out of the menu: an item has exactly one key
 equivalent, and that is also the handle System Settings needs to rebind it, so an action name has nowhere to put an
