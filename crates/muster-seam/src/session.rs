@@ -1424,7 +1424,7 @@ impl Session {
         );
         // The socket is bound and the shell has not been told about it yet, so this is the
         // earliest moment the wait for a bridge can be said to have started.
-        watchdog::opened(PaneKey::new(daemon, pane));
+        watchdog::opened(PaneKey::new(daemon, pane), backend_pane.as_str().to_string());
         Ok(())
     }
 
@@ -1919,13 +1919,28 @@ pub(crate) fn bridge_exited(daemon: &str, pane: &str, process_alive: bool) {
         // built again, so the replacement bridge has to dial too - and a replacement that never
         // arrives is the same deaf pane, which is the case `control_socket.rs` names as the
         // reason its accept loop runs more than once.
-        watchdog::opened(key.clone());
+        watchdog::opened(key.clone(), backend_pane_of(&key));
         resnapshot(&daemon, &format!("nothing is painting {pane} any more"));
         return;
     }
     // Nothing to add about how it ended: this arrival says only that a surface's command is
     // gone, which is `Ended::unsaid` by definition.
     bridge_ended(&key, &Ended::unsaid());
+}
+
+/// What the daemon calls a pane, which is not what this window calls it.
+///
+/// Needed by exactly one sentence, and that sentence is the one nobody guesses: releasing a
+/// terminal a dead client is still holding means matching a herdr process's command line, and
+/// the bridge spells the pane the backend's way when it starts one. Empty for a pane no mirror
+/// here holds, which is a pane nothing is about to say anything about anyway.
+fn backend_pane_of(pane: &PaneKey) -> String {
+    poison::lock(&SESSION, "session")
+        .backends
+        .get(&pane.daemon)
+        .and_then(|backend| backend.names.backend_pane(&pane.pane).ok())
+        .map(|named| named.as_str().to_string())
+        .unwrap_or_default()
 }
 
 /// A pane's bridge has stopped, said in its own words on the socket the app bound for it.
@@ -2001,7 +2016,7 @@ fn replace_bridge(pane: &PaneKey, ending: Ending) {
             fields! {
                 "pane" => pane.to_string(),
                 "tried" => tried.to_string(),
-                "detail" => respawn::gave_up(pane, tried),
+                "detail" => respawn::gave_up(pane, tried, &backend_pane_of(pane)),
             },
         ),
         // Not a warning. Everything worked: somebody asked for this pane in another window and

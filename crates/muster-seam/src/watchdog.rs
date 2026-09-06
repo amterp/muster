@@ -87,8 +87,12 @@ static KNOCK: Condvar = Condvar::new();
 static WATCHING: AtomicBool = AtomicBool::new(false);
 
 /// A pane's socket is bound, so its bridge is expected from now.
-pub(crate) fn opened(pane: PaneKey) {
-    poison::lock(&WAITING, "typeable").opened(pane, clock::monotonic_now());
+///
+/// `backend` is what the daemon calls this pane, taken here because this is where the seam has
+/// it. The one remedy that is about a herdr process rather than about Muster is matched against
+/// that client's command line, and a pattern built from the name in this window matches nothing.
+pub(crate) fn opened(pane: PaneKey, backend: String) {
+    poison::lock(&WAITING, "typeable").opened(pane, clock::monotonic_now(), backend);
     start();
 }
 

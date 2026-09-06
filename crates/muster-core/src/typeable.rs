@@ -78,6 +78,15 @@ struct Wait {
     /// file. `None` is a pane whose first bridge has not arrived, which is the launch case and
     /// has nothing to explain beyond the wait itself.
     last: Option<Ended>,
+
+    /// What the backend calls this pane, for the one sentence that is not about Muster.
+    ///
+    /// Carried rather than derived because this module has no registry and the difference is
+    /// invisible from here: `PaneKey` spells the pane the way everything above the adapter
+    /// does, and the remedy for a held terminal is matched against a herdr client's command
+    /// line, which spells it the backend's way. Empty is a pane whose channel was never
+    /// opened, and the sentence says to look the name up rather than naming the wrong one.
+    backend: String,
 }
 
 /// Every pane whose socket is bound and whose bridge has not dialed.
@@ -111,8 +120,8 @@ impl Waiting {
     /// and built again, so a bridge that exited is a bridge whose replacement has to dial
     /// too - and that second wait is the one `control_socket.rs` calls out as the exact
     /// failure the accept loop exists to prevent.
-    pub fn opened(&mut self, pane: PaneKey, at: u64) {
-        self.waits.insert(pane, Wait { since: at, asked: at, last: None });
+    pub fn opened(&mut self, pane: PaneKey, at: u64, backend: String) {
+        self.waits.insert(pane, Wait { since: at, asked: at, last: None, backend });
     }
 
     /// A bridge for this pane has ended, so the wait starts again knowing why.
@@ -123,7 +132,10 @@ impl Waiting {
     /// bridge, and a pane that stays dark for five seconds after a refused attach has a remedy
     /// where a pane at launch has only a deadline.
     pub fn ended(&mut self, pane: PaneKey, at: u64, ended: Ended) {
-        self.waits.insert(pane, Wait { since: at, asked: at, last: Some(ended) });
+        // The backend's name for the pane is carried over rather than asked for again: a
+        // bridge ending is a bridge that had a channel, so the wait this replaces knows it.
+        let backend = self.waits.get(&pane).map(|wait| wait.backend.clone()).unwrap_or_default();
+        self.waits.insert(pane, Wait { since: at, asked: at, last: Some(ended), backend });
     }
 
     /// A bridge dialed in, so this pane can be typed into.
@@ -202,8 +214,9 @@ impl Waiting {
             raise: overdue
                 .difference(&self.reported)
                 .map(|pane| {
-                    let last = self.waits.get(pane).and_then(|wait| wait.last.as_ref());
-                    (key(pane), detail(pane, deadline, last))
+                    let wait = self.waits.get(pane);
+                    let backend = wait.map_or("", |wait| wait.backend.as_str());
+                    (key(pane), detail(pane, deadline, wait.and_then(|w| w.last.as_ref()), backend))
                 })
                 .collect(),
             clear: self.reported.difference(&overdue).map(key).collect(),
@@ -284,8 +297,9 @@ pub fn key(pane: &PaneKey) -> String {
 /// thing to do differs in every one. Until this, every one of them read as "look in the run
 /// log", which is a file nobody has open at the moment their pane stops answering - and the
 /// run log itself had the impact and the remedy on the same line all along.
-fn detail(pane: &PaneKey, deadline: u64, last: Option<&Ended>) -> String {
+fn detail(pane: &PaneKey, deadline: u64, last: Option<&Ended>, backend_pane: &str) -> String {
     let waited = describe(deadline);
+    let reattach = respawn::reattach_command(pane);
     match last.map(|ended| ended.ending) {
         // Never had a bridge. The launch case, and the three bugs this watch was written for:
         // the bridge failed to dial, the socket path had moved, the channel could not be
@@ -295,9 +309,9 @@ fn detail(pane: &PaneKey, deadline: u64, last: Option<&Ended>) -> String {
              it - the bridge carrying this pane's keystrokes either never started or cannot \
              reach the socket. Everything typed into this pane is discarded and it goes on \
              rendering, so it looks frozen rather than broken; every other pane in the window \
-             is unaffected. The run log has the cause: look for `channel.accept.failed`, \
-             `bridge.exited.reported` and `pane.channel.unavailable`. Closing this pane and \
-             opening it again starts a new bridge."
+             is unaffected. Muster is asking for another bridge every {waited} and will keep \
+             asking; {reattach} asks now. The run log has the cause: look for \
+             `channel.accept.failed`, `bridge.exited.reported` and `pane.channel.unavailable`."
         ),
 
         // Somebody else has it, and Muster left it to them on purpose.
@@ -312,9 +326,8 @@ fn detail(pane: &PaneKey, deadline: u64, last: Option<&Ended>) -> String {
              hold a herdr terminal, and one whose connection died goes on holding it without \
              noticing - most often a previous Muster's client, still on the far machine. The \
              agent behind this pane is untouched and every other pane in the window is \
-             unaffected. {} releases it, and closing this pane and opening it again then starts \
-             a bridge that attaches.",
-            respawn::release_command(pane),
+             unaffected. {} releases it, and {reattach} then asks for a bridge that attaches.",
+            respawn::release_command(backend_pane),
         ),
 
         // The connection went, Muster started another bridge, and that one has not dialed
@@ -325,8 +338,8 @@ fn detail(pane: &PaneKey, deadline: u64, last: Option<&Ended>) -> String {
              {waited}. It shows what it last painted and takes no keystrokes; the agent behind \
              it is untouched, and panes on other machines in this window are unaffected. Check \
              that the machine holding it is reachable - the run log says `tunnel.down` when the \
-             connection is the reason, and Muster keeps trying. Closing this pane and opening \
-             it again starts a fresh bridge."
+             connection is the reason, and Muster keeps asking for a bridge until one dials. \
+             {reattach} asks now, once the machine is back."
         ),
     }
 }

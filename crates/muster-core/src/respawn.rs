@@ -317,8 +317,9 @@ pub fn yielded(pane: &PaneKey) -> String {
          machine. Only one client may hold a herdr terminal, so nothing here can show it while \
          that one does; the agent itself is untouched and every other pane in this window is \
          unaffected. Whichever window is showing it now is the one to type into. To bring it \
-         back here instead, close this pane and open it again - the fresh bridge takes the \
-         terminal the way that one did.",
+         back here instead, run {} - that asks for a bridge, and a bridge after the first takes \
+         the terminal the way the other window's did.",
+        reattach_command(pane),
     )
 }
 
@@ -333,17 +334,19 @@ pub fn yielded(pane: &PaneKey) -> String {
 /// The roster is not told here, and does not need to be. The typeable watch restarts whenever a
 /// bridge exits, so a pane nothing is dialing says so on its own row five seconds later - and
 /// since it is told how the last bridge ended, it says this much there too.
-pub fn gave_up(pane: &PaneKey, tried: u32) -> String {
+pub fn gave_up(pane: &PaneKey, tried: u32, backend_pane: &str) -> String {
     format!(
         "Muster started {tried} bridges for the pane {pane} and each one ended within \
          {} seconds, so it has stopped. This pane shows what it last painted and takes no \
          keystrokes; every other pane in the window is unaffected. The run log says why each \
          one ended - a `bridge.attach.failed` there means the pane's terminal is still held by \
          a client from before, most often one on the far machine whose ssh died with the \
-         network, and {} releases it. \
-         Closing this pane and opening it again starts a fresh bridge.",
+         network, and {} releases it. Then {} asks for another bridge, which is the way back \
+         that keeps the agent - closing the pane also gets a fresh bridge, by ending what is \
+         running in it.",
         SETTLED_NS / 1_000_000_000,
-        release_command(pane),
+        release_command(backend_pane),
+        reattach_command(pane),
     )
 }
 
@@ -352,6 +355,29 @@ pub fn gave_up(pane: &PaneKey, tried: u32) -> String {
 /// One home, because two sentences carry it - the run log's and the roster's - and a command
 /// somebody is going to paste has to be right in both. `pkill -f` matches the client and not
 /// its own ssh session, since the pattern names the pane and the ssh command line does not.
-pub fn release_command(pane: &PaneKey) -> String {
-    format!("`ssh <host> 'pkill -f \"terminal session control {}\"'`", pane.pane)
+///
+/// **The backend's name for the pane, not Muster's.** What is being matched is a herdr client's
+/// command line, and the bridge spells the pane the backend's way when it runs one - so a
+/// pattern built from the name in this window matches nothing at all, which is the worst
+/// possible outcome for a remedy: it runs, it exits, and the terminal is still held.
+pub fn release_command(backend_pane: &str) -> String {
+    if backend_pane.is_empty() {
+        // Nothing here holds a channel for this pane, so the name the pattern needs is not
+        // known. Saying so beats emitting a pattern with a hole in it, which would match every
+        // client on the machine - a remedy that costs somebody else's pane is worse than one
+        // that asks for a lookup.
+        return "an ssh `pkill -f` against the client holding it, matched on the daemon's own \
+                name for the pane - which `muster window --json` gives as `backend_pane_id`"
+            .to_string();
+    }
+    format!("`ssh <host> 'pkill -f \"terminal session control {backend_pane}\"'`")
+}
+
+/// How to ask this window for another bridge, as somebody would type it.
+///
+/// Muster's name for the pane, which is the opposite of [`release_command`] and for the same
+/// reason: this one is read by the CLI, which speaks Muster's vocabulary, and that one is
+/// matched against a herdr process, which does not.
+pub fn reattach_command(pane: &PaneKey) -> String {
+    format!("`muster pane reattach --pane {}`", pane.pane)
 }
