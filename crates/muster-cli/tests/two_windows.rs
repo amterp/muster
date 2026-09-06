@@ -206,7 +206,9 @@ fn run(argv: &[&str], home: &Path, in_a_pane: Option<&str>) -> (i32, String, Str
     let argv: Vec<String> = argv.iter().map(|word| (*word).to_string()).collect();
     let mut out = Vec::new();
     let mut errors = Vec::new();
-    let code = muster_cli::run(&argv, &environment, &mut out, &mut errors);
+    // No directory: nothing here names one, and which window a command is about is decided
+    // before any path is read.
+    let code = muster_cli::run(&argv, &environment, None, &mut out, &mut errors);
     (
         code,
         String::from_utf8_lossy(&out).into_owned(),

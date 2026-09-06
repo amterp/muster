@@ -1031,6 +1031,182 @@
       }
     },
     {
+      "name": "a relative directory is resolved where the command was run",
+      "why": "The whole of what a caller means by `../muster-1`, and the one thing nothing on the far side can work out. The window is another process in another directory and the daemon is a third, so a relative path that travels as typed is resolved against a directory nobody chose - which is how three panes meant for sibling worktrees all opened in `$HOME` while every command reported success. Resolved here for the same reason an omitted `--pane` is: this is the only process that knows where the caller is standing.",
+      "given": {
+        "argv": [
+          "pane",
+          "new",
+          "--cwd",
+          "../muster-1"
+        ],
+        "cwd": "/src/muster"
+      },
+      "expect": {
+        "request": {
+          "split_pane": {
+            "side": "right",
+            "cwd": "/src/muster-1"
+          }
+        }
+      }
+    },
+    {
+      "name": "a directory that is already absolute is not touched",
+      "why": "Where the caller is standing is what a relative path is missing, so a path that is not missing it is not improved by knowing. This also pins that resolution is not silently re-rooting somebody's absolute path against the cwd.",
+      "given": {
+        "argv": [
+          "pane",
+          "new",
+          "--cwd",
+          "/opt/work"
+        ],
+        "cwd": "/src/muster"
+      },
+      "expect": {
+        "request": {
+          "split_pane": {
+            "side": "right",
+            "cwd": "/opt/work"
+          }
+        }
+      }
+    },
+    {
+      "name": "the steps in a path are worked out rather than passed on",
+      "why": "`/src/muster/../muster-1` reaches the same directory and is what a person reads in `muster window` afterwards, so the tidying is worth doing. Lexically, without asking the filesystem: this parser is pure, the answer has to be the same on a machine that has never had these directories, and a path bound for another machine cannot be checked here at all. It is also what a shell's own `cd ..` does, so the two agree about what `..` means.",
+      "given": {
+        "argv": [
+          "pane",
+          "new",
+          "--cwd",
+          "/src/muster/../muster-1"
+        ],
+        "cwd": "/src/muster"
+      },
+      "expect": {
+        "request": {
+          "split_pane": {
+            "side": "right",
+            "cwd": "/src/muster-1"
+          }
+        }
+      }
+    },
+    {
+      "name": "an empty directory is not a directory",
+      "why": "The empty string is what the schema reads as `the directory the pane being split is in`, which is what a split with no `--cwd` means and what the chord does. So `--cwd ''` has to stay empty rather than become the caller's own directory - resolving it would quietly move every pane made that way.",
+      "given": {
+        "argv": [
+          "pane",
+          "new",
+          "--cwd",
+          ""
+        ],
+        "cwd": "/src/muster"
+      },
+      "expect": {
+        "request": {
+          "split_pane": {
+            "side": "right"
+          }
+        }
+      }
+    },
+    {
+      "name": "a machine is not somewhere this command can resolve a relative path against",
+      "why": "`--daemon` is the way to say `over there`, and over there is a machine whose filesystem this command cannot see - very often not even the same operating system. Resolving `../muster-1` against the caller's own directory would send a path that machine has never had, and the daemon would fall back to a home directory exactly as it does today. Refused rather than guessed, because a refusal is the one answer that cannot put a pane somewhere nobody asked for.",
+      "given": {
+        "argv": [
+          "pane",
+          "new",
+          "--daemon",
+          "devenv",
+          "--cwd",
+          "../muster-1"
+        ],
+        "cwd": "/src/muster"
+      },
+      "expect": {
+        "refused": "`muster pane new --daemon devenv` puts the pane on another machine, and `--cwd ../muster-1` is relative to this one - so there is nothing here to resolve it against. Say where it should start in that machine's own terms: an absolute path. `muster window` lists the panes devenv already holds, and each one's directory is a place a path can be written from."
+      }
+    },
+    {
+      "name": "a machine still takes an absolute directory",
+      "why": "The other half of the refusal above, and the reason it is about the path rather than about `--daemon`: a caller that says where on that machine to start is saying something this command can carry, and carrying it is the only way to open a first pane on a devenv in a particular directory.",
+      "given": {
+        "argv": [
+          "pane",
+          "new",
+          "--daemon",
+          "devenv",
+          "--cwd",
+          "/opt/work"
+        ],
+        "cwd": "/src/muster"
+      },
+      "expect": {
+        "request": {
+          "split_pane": {
+            "daemon_id": "devenv",
+            "side": "right",
+            "cwd": "/opt/work"
+          }
+        }
+      }
+    },
+    {
+      "name": "a tilde the shell did not expand is refused",
+      "why": "Expanding `~` is the shell's job, so one that arrives here arrives because it was quoted - and joining it to the caller's directory produces `/src/muster/~/x`, a path nobody has. Refused rather than sent, because the daemon's answer to a directory it cannot use is the home directory, which is the silent substitution this whole card is about.",
+      "given": {
+        "argv": [
+          "pane",
+          "new",
+          "--cwd",
+          "~/src/muster-1"
+        ],
+        "cwd": "/src/muster"
+      },
+      "expect": {
+        "refused": "`--cwd ~/src/muster-1` still has its tilde, so the shell did not expand it - quoting is what usually does that. Muster does not expand one either, because `~` is the shell's own spelling of your home directory and a command that guessed at it would be guessing for whoever is on the far side. Write the path out, or leave it unquoted so the shell expands it first."
+      }
+    },
+    {
+      "name": "a relative directory with nothing to resolve it against is refused",
+      "why": "A case with no `cwd` is a command whose own working directory could not be read, which happens when the directory a shell is sitting in has been deleted underneath it. Nothing here can be resolved, and the honest answer is to say so - a path sent unresolved is the bug, and a path resolved against a guess is worse.",
+      "given": {
+        "argv": [
+          "pane",
+          "new",
+          "--cwd",
+          "../muster-1"
+        ]
+      },
+      "expect": {
+        "refused": "`--cwd ../muster-1` is relative and this command cannot tell what directory it is running in, so there is nothing to resolve it against. The usual cause is a shell whose working directory has been deleted or unmounted underneath it. Give an absolute path, or `cd` somewhere that exists and try again."
+      }
+    },
+    {
+      "name": "a tab starts where a split does",
+      "why": "`tab new` takes `--cwd` on the same terms `pane new` does and is the other verb that makes a pane, so a rule that held for one and not the other would be a rule nobody could remember. One helper answers both.",
+      "given": {
+        "argv": [
+          "tab",
+          "new",
+          "--cwd",
+          "../muster-1"
+        ],
+        "cwd": "/src/muster"
+      },
+      "expect": {
+        "request": {
+          "create_tab": {
+            "cwd": "/src/muster-1"
+          }
+        }
+      }
+    },
+    {
       "name": "a pane is grown by the window's own step",
       "why": "What a resize chord means, said from a script. No amount travels, because zero is what the window reads as `your own step` - so a caller with nothing particular in mind gets what the keyboard gets rather than a distance this CLI invented.",
       "given": {

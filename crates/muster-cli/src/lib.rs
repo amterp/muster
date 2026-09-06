@@ -12,6 +12,7 @@
 
 use std::collections::BTreeMap;
 use std::io::Write;
+use std::path::Path;
 
 pub mod args;
 pub mod dial;
@@ -63,18 +64,19 @@ impl Trouble {
 
 /// One run of the command, start to finish.
 ///
-/// Takes its argv, its environment and both streams rather than reaching for them, so that a test
-/// says what it is testing - and so the one place that touches the process is `main`. The
-/// exception is a command line clap refused: clap renders those itself, to the stream and in the
-/// shape its own conventions call for, and re-rendering them here would be a worse version of a
-/// good error.
+/// Takes its argv, its environment, the directory it was run in and both streams rather than
+/// reaching for them, so that a test says what it is testing - and so the one place that touches
+/// the process is `main`. The exception is a command line clap refused: clap renders those
+/// itself, to the stream and in the shape its own conventions call for, and re-rendering them
+/// here would be a worse version of a good error.
 pub fn run(
     argv: &[String],
     environment: &BTreeMap<String, String>,
+    here: Option<&Path>,
     out: &mut impl Write,
     errors: &mut impl Write,
 ) -> i32 {
-    let invocation = match args::parse(argv, environment) {
+    let invocation = match args::parse(argv, environment, here) {
         Ok(invocation) => invocation,
         Err(args::Failure::Usage(error)) => {
             let _ = error.print();

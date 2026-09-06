@@ -12,6 +12,7 @@
 //! swallowed" is the contract.
 
 use std::collections::BTreeMap;
+use std::path::Path;
 
 use conformance::{CaseError, Conformance, fields};
 use muster_cli::args::{self, Asking};
@@ -31,8 +32,9 @@ fn cli_conformance() {
             .map(|word| word.as_str().unwrap_or_default().to_string())
             .collect();
         let environment = environment(given);
+        let here = given.get("cwd").and_then(Value::as_str).map(Path::new);
 
-        Ok(match args::parse(&argv, &environment) {
+        Ok(match args::parse(&argv, &environment, here) {
             Err(args::Failure::Usage(error)) => json!({ "usage": format!("{:?}", error.kind()) }),
             Err(args::Failure::Refused(refusal)) => json!({ "refused": refusal }),
             Ok(invocation) => fields([
@@ -76,8 +78,9 @@ fn cli_conformance() {
 /// generated zsh function would be pinning clap_complete rather than anything Muster decides.
 #[test]
 fn a_shell_can_be_told_how_to_complete_this() {
-    let invocation = args::parse(&["completions".to_string(), "zsh".to_string()], &BTreeMap::new())
-        .expect("zsh is a shell clap_complete knows");
+    let invocation =
+        args::parse(&["completions".to_string(), "zsh".to_string()], &BTreeMap::new(), None)
+            .expect("zsh is a shell clap_complete knows");
     let Asking::Print(script) = invocation.asking else {
         panic!("a completion script is printed, not asked of a window - nothing about it needs one")
     };
@@ -90,6 +93,11 @@ fn a_shell_can_be_told_how_to_complete_this() {
     }
 }
 
+/// The directory a case was typed in, for the one field whose meaning depends on it.
+///
+/// Beside `env` rather than in it: a working directory is a fact about the process rather than
+/// something somebody exported, and a case that leaves it out is a command run somewhere its
+/// own shell could not name.
 fn environment(given: &Value) -> BTreeMap<String, String> {
     given
         .get("env")

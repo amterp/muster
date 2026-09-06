@@ -15,6 +15,7 @@
 //! when nothing named one, and why there might be no answer to that.
 
 use std::collections::BTreeMap;
+use std::path::Path;
 
 use clap::{ArgGroup, CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::Shell;
@@ -567,9 +568,15 @@ enum WithTab {
 }
 
 /// Reads a command line, or says why it cannot be one.
+///
+/// `here` is the directory the command was run in, which is what a relative path on it means.
+/// Passed rather than read, like the environment beside it: the one place that touches the
+/// process is `main`, and a corpus case can then say where a command line was typed.
+#[expect(unused_variables, reason = "read by the commit that resolves a relative --cwd against it")]
 pub fn parse(
     argv: &[String],
     environment: &BTreeMap<String, String>,
+    here: Option<&Path>,
 ) -> Result<Invocation, Failure> {
     // The program name clap expects at argv[0], supplied here rather than taken from the process:
     // a caller reached through a symlink or a wrapper would otherwise see that name in its own
