@@ -22,6 +22,10 @@ use super::{Key, Modifiers};
 ///
 /// Named for what a person is asking for. The list is the vocabulary a config file binds and
 /// a shell dispatches, so adding one is one entry here and one place in each shell.
+///
+/// This is the `Action` the rest of Muster means. `keymap::KeymapAction` is a different and
+/// empty thing: a placeholder for operations the core would carry out on the keystroke path,
+/// which nothing does today.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Action {
     /// Opens another window, which means another Muster.

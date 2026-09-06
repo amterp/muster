@@ -134,10 +134,12 @@ impl PaneInput {
                 self.send_server_encoded(&name, key);
                 return;
             }
-            // Unreachable while [`super::Action`] has no variants, which is deliberate and not
-            // this arm's doing. So no bound action is logged here, and looking for one here is
-            // how an evening went missing: on macOS a chord is dispatched by a menu item's key
-            // equivalent, and `input.bound.action` is written where that happens, in the shell
+            // Unreachable while `keymap::KeymapAction` has no variants, which is deliberate and
+            // not this arm's doing. Note which type that is: `super::Action` is the window's
+            // own 44-item vocabulary and is a different thing entirely (kan a_2LMRCWP00). So no
+            // bound action is logged here, and looking for one here is how an evening went
+            // missing: on macOS a chord is dispatched by a menu item's key equivalent, and
+            // `input.bound.action` is written where that happens, in the shell
             // (`AppMenu.swift`, kan a_2KHGYh7xD).
             Resolution::Action(_) => {
                 log::debug(

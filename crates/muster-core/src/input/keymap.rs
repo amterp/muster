@@ -29,19 +29,24 @@ impl Binding {
     }
 }
 
-/// The operations a chord can be bound to.
+/// The operations the keymap itself carries out, of which there are none yet.
 ///
 /// Empty until there is something to bind. Kept as a type rather than a comment so the
 /// dispatcher has somewhere to grow, and so `Resolution` is not a lie about a shape that
 /// does not exist.
+///
+/// **Not [`super::Action`]**, which is the window's own 44-item vocabulary in `bindings.rs` -
+/// splitting, focusing, resizing - dispatched on macOS by a menu item's key equivalent rather
+/// than from here. The two were both called `Action` and one reader lost an evening to it
+/// (kan a_2LMRCWP00), so the placeholder carries the module it belongs to in its name.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Action {}
+pub enum KeymapAction {}
 
 /// What a chord resolves to.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Resolution {
     /// Muster handles it; the pane never sees it.
-    Action(Action),
+    Action(KeymapAction),
     /// Muster substitutes these bytes for whatever the encoder would have produced.
     Text(Vec<u8>),
     /// The backend encodes this one, under this name.
