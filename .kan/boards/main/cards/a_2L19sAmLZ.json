@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "all-three-respawn",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "next",
+  "created_at_millis": 1788654050047,
+  "creator": "Alexander Terp",
+  "description": "The `muster-seam` `respawn` binary fails intermittently on a loaded machine, and it is\nwhichever of its three tests loses that particular run:\n\n- `a_bridge_that_died_on_a_pane_the_daemon_still_holds_is_replaced`\n  (`herdr-harness/src/until.rs:81`, \"timed out after 20s waiting for the core to\n  publish the pane on its first replacement\")\n- `a_surface_muster_tore_down_gets_no_replacement` (`respawn.rs:55`, `respawn.rs:243`)\n- `a_bridge_that_keeps_dying_is_given_up_on` (`respawn.rs:92`)\n\nCI hit the first one on run 33999501888. Re-running the same commit passed, and the\nlast fifteen gate runs carry four failures on four different tests - the other three\nbeing exactly the ones `a_2KCtOvgbo` fixed. This is a fourth member of that family.\n\n## It predates the fix that exposed it\n\nMeasured while checking whether `a_2J1KZe2ws` caused it. 96 runs of the whole binary at\neach of two commits, alternating in blocks of six under one continuous CPU load so drift\nhit both sides equally:\n\n|  | `3544fc5` (before) | `5b421e5` (after) |\n|---|---|---|\n| runs failing | 3 of 96 | 4 of 96 |\n| the CI signature specifically | 2 | 0 |\n\nThree against four is one occurrence apart and says nothing. The signature line answers\nit: the exact CI failure happened twice at the earlier commit and never at the later one.\n\n## How to reproduce\n\nIt does not appear on a quiet machine - 20 serial runs, 32 runs at 6-way concurrency and\n24 runs of the whole binary all passed with nothing else happening. With 16-20 CPU\nburners alongside it shows up within about 30 runs.\n\nRunning the one failing test with `--exact` never reproduces it. The failure needs the\nwhole binary, which is what says it is cross-test rather than a broken replacement path.\n\n## A place to look, unverified\n\n`bridge_ended` calls `resnapshot` before `replace_bridge`, and `replace_bridge` opens\nwith `if !session.holds(pane) { respawns.forget(pane); return; }`. `resnapshot` rebuilds\nthe whole mirror from a fresh fetch. If the pane is absent from the mirror at the instant\n`holds` is asked, the replacement is dropped and nothing retries - which matches the\nobserved shape exactly, a view stuck at `bridge_restarts: 0` for the whole 20 seconds\nrather than arriving late or arriving wrong.\n\nNobody has confirmed the mirror is ever actually empty there. Treat it as where to start,\nnot as the diagnosis.\n\n## Reproducing the A/B itself\n\nComparing two commits needs both binaries runnable at once. Building the base into a\nsecond `CARGO_TARGET_DIR` works, but the test binary loads `@rpath/libghostty-vt.dylib`\nby a path relative to the target dir, so it aborts on exec until `deps/ghostty` is\nsymlinked beside the scratch target dir. Copying the binary elsewhere fails the same way.\nThe abort is dyld, not a signature.",
+  "id": "a_2L19sAmLZ",
+  "position": "!QU",
+  "title": "🎲 All three respawn tests are flaky under load, one per run",
+  "type": "bug",
+  "updated_at_millis": 1788654050047,
+  "history": [
+    {"field":"column","value":"next","at":1788654050047}
+  ]
+}
