@@ -695,20 +695,28 @@ public enum Core {
   }
 
   /// Goes to the next match, or the previous one, and lands on it.
-  public static func stepFind(forward: Bool) -> Findings? {
+  /// `through` rather than the global, because the caller is a view that was handed a
+  /// dispatcher at construction and reaching past it for a step was the whole of what made a
+  /// find test race the suite: one half of the same view's traffic went where it was told and
+  /// the other half went wherever the process global happened to be pointing (kan a_2LMRCjcSV).
+  /// Defaulted, on the same terms as every other seam in this shell, so a caller with no
+  /// opinion still gets the one core there is.
+  public static func stepFind(forward: Bool, through dispatcher: Dispatcher = Core.dispatcher)
+    -> Findings?
+  {
     var step = Muster_FindStep()
     step.direction = forward ? "next" : "previous"
     var request = Muster_Request()
     request.findStep = step
-    guard case .findings(let answer) = send(request) else { return nil }
+    guard case .findings(let answer) = send(request, through: dispatcher) else { return nil }
     return read(answer)
   }
 
   /// Forgets the search, which is what closing the find bar means.
-  public static func endFind() {
+  public static func endFind(through dispatcher: Dispatcher = Core.dispatcher) {
     var request = Muster_Request()
     request.endFind = Muster_EndFind()
-    send(request)
+    send(request, through: dispatcher)
   }
 
   static func read(_ answer: Muster_Findings) -> Findings {
@@ -917,6 +925,18 @@ public enum Core {
   /// that failure into the log would be reporting it into the void.
   @discardableResult
   private static func send(_ request: Muster_Request) -> Muster_Response.OneOf_Payload? {
+    send(request, through: dispatcher)
+  }
+
+  /// The same, addressed to one core rather than to whichever the global names.
+  ///
+  /// Taken as an argument so that a view holding a dispatcher can send through the one it was
+  /// given. Everything else calls the overload above and gets the global, which is the only
+  /// core a shipped window ever has.
+  @discardableResult
+  private static func send(_ request: Muster_Request, through dispatcher: Dispatcher)
+    -> Muster_Response.OneOf_Payload?
+  {
     guard let encoded = try? request.serializedBytes() as [UInt8] else {
       FileHandle.standardError.write(
         Data("muster: a request could not be encoded, so the core never saw it.\n".utf8))

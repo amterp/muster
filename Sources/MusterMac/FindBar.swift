@@ -328,7 +328,17 @@ public final class FindBar {
   /// a dead pane alive would keep a libghostty surface alive with it.
   private weak var chrome: PaneChrome?
 
+  /// The core this bar talks to, held as well as handed to the sender.
+  ///
+  /// A step and an end are one keypress each rather than one per character, so they go straight
+  /// rather than through the coalescing sender - and going straight used to mean going to the
+  /// process global instead of here. One view reaching the core two ways is how a test could be
+  /// handed a recorder, watch its needle arrive, and have its step answered by a different
+  /// test's core (kan a_2LMRCjcSV).
+  private let dispatcher: Dispatcher
+
   public init(dispatcher: Dispatcher = Core.dispatcher) {
+    self.dispatcher = dispatcher
     sender = FindSender(dispatcher: dispatcher)
     sender.onFindings = { [weak self] findings in
       self?.landed(findings)
@@ -361,7 +371,8 @@ public final class FindBar {
   /// Sent straight rather than through the sender, because a step is one keypress rather than
   /// one per character - there is nothing to coalesce, and the answer is wanted now.
   public func step(forward: Bool) {
-    guard isShown, let findings = Core.stepFind(forward: forward) else { return }
+    guard isShown, let findings = Core.stepFind(forward: forward, through: dispatcher)
+    else { return }
     landed(findings)
   }
 
@@ -387,7 +398,7 @@ public final class FindBar {
     chrome = nil
     hosting.removeFromSuperview()
     state.findings = .none
-    Core.endFind()
+    Core.endFind(through: dispatcher)
   }
 
   /// Asks the renderer to mark what is on screen.
