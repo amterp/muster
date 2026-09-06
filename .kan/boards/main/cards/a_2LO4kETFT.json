@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "a-snapshot-that",
+  "alias_explicit": false,
+  "area": [
+    "backend",
+    "testing"
+  ],
+  "column": "in-progress",
+  "created_at_millis": 1788708668373,
+  "creator": "Alexander Terp",
+  "description": "Muster opens a window by asking its daemon for a snapshot under a 500ms client timeout. On timeout it does not fail - it attaches whatever daemon answers the configured daemon id, which on a developer machine is the herdr that developer runs for their own work.\n\nFound by slot 1 on 2026-09-06 while measuring the daemon-backed test flakes (a_2LMQSW9A8). The flake family turned out not to be deadline-bound at all - the waits have 19.9s of margin against a 20s allowance - and this is what was actually failing them.\n\n## Why this is more than a flake\n\nCLAUDE.md states the isolation guarantee plainly: the pinned daemon is deliberately not your PATH, and deliberately not the socket your own herdr uses, because a Muster talking to a daemon its corpus was never recorded against is a window whose every behaviour is unverified. A silent fallback to the developer daemon breaks exactly that, and breaks it quietly - the run goes green or red for reasons that have nothing to do with the code under test.\n\nTwo consequences worth separating:\n\n- The suite lies. A test that reached the wrong daemon is not testing the pinned one, so a green run proves nothing about the version the corpus was recorded against. That is the half that produced four flake cards arguing from anecdote.\n- A test run can reach live work. The developer daemon is the one holding their real agent panes. A test that creates, renames, resizes or closes panes against it is acting on somebody actual session. Nothing observed has done damage that we know of, but the reach exists and that is enough.\n\n## What to fix\n\nA timeout is not an answer. Failing loudly is the floor: say which daemon id was asked, how long it waited, and that no verified daemon answered. Whether 500ms is also too tight is a second question and probably yes on a loaded machine, but raising it without removing the silent fallback leaves the same bug further away.\n\nWorth checking whether the same fallback exists on any other path that resolves a daemon id, rather than only the window-opening snapshot.",
+  "id": "a_2LO4kETFT",
+  "position": "E",
+  "title": "A snapshot that times out silently attaches the developer own herdr",
+  "type": "bug",
+  "updated_at_millis": 1788708668373,
+  "history": [
+    {"field":"column","value":"in-progress","at":1788708668373}
+  ]
+}
