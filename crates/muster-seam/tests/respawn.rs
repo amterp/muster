@@ -160,9 +160,15 @@ fn open_a_window(daemon: &Daemon) -> Pane {
         ..Startup::default()
     })));
     assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    // The socket, not just the pane. Two of these tests dial the pane's control socket, and a
+    // wait that stopped at "a view names a pane" was answered by a view that had not got round
+    // to naming its socket yet - so `dial_a_bridge` unwrapped a `None` about a pane that was
+    // fine, once in thirty runs on a loaded machine. Waiting for what the test goes on to use
+    // is the fix; whether a published view may name a pane with no socket at all is
+    // `cold_start.rs`'s question, and it says no.
     until(
-        "the window to open onto a workspace",
-        || first_pane().is_some(),
+        "the window to open onto a workspace with a socket its bridge can dial",
+        || first_pane().is_some_and(|pane| socket_of(&pane).is_some()),
         || format!("the last view the core published: {:?}", latest_view()),
     );
     first_pane().expect("just waited for it")
