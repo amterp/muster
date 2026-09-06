@@ -388,6 +388,45 @@
       }
     },
     {
+      "name": "reattaching a pane names the pane and nothing else",
+      "why": "The way back from a pane the window has stopped drawing while its agent is still running. Every other way back ends the agent - `pane close` by design, quitting the app for every pane at once - so this asks for the one thing a dark pane needs, and the request carries nothing but which pane, because there is nothing else to say about it.",
+      "given": {
+        "argv": [
+          "pane",
+          "reattach",
+          "--pane",
+          "p1w3r07bsd"
+        ]
+      },
+      "expect": {
+        "request": {
+          "reattach_pane": {
+            "pane_id": "p1w3r07bsd"
+          }
+        }
+      }
+    },
+    {
+      "name": "reattaching with nothing named reattaches the pane this is running in",
+      "why": "The same fallback every pane verb has, and the one that matters most here: an agent watching its own pane go dark cannot name it from inside, and a person typing this is usually already in the window it is about.",
+      "given": {
+        "argv": [
+          "pane",
+          "reattach"
+        ],
+        "env": {
+          "MUSTER_PANE": "p1w3r07bsd"
+        }
+      },
+      "expect": {
+        "request": {
+          "reattach_pane": {
+            "pane_id": "p1w3r07bsd"
+          }
+        }
+      }
+    },
+    {
       "name": "focus with nothing named goes to the pane this is running in",
       "why": "An agent asking to be looked at, which is the one thing in this vocabulary that reaches for a person's attention rather than for a pane.",
       "given": {

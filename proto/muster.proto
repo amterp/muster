@@ -70,6 +70,7 @@ message Request {
     CloseTab close_tab = 43;
     ReadViewport read_viewport = 44;
     ReadDaemons read_daemons = 45;
+    ReattachPane reattach_pane = 46;
     EqualizePanes equalize_panes = 47;
   }
 }
@@ -765,6 +766,28 @@ message CreateTab {
 message ClosePane {
   string daemon_id = 2;
   string pane_id = 1;
+}
+
+// Asks for a bridge for a pane that has none.
+//
+// The way back from a pane the window cannot draw while its agent is still running. A bridge
+// is a surface's command, and the only thing that makes a window build a surface is
+// ViewPane.bridge_restarts moving - so a pane whose bridge ended and whose replacement never
+// started has nothing that can ask for one. Muster asks on its own now, a deadline after
+// nothing dials, and this is the same ask from the keyboard: for a pane whose bridges are
+// starting and dying on sight, which the window has stopped rebuilding on purpose, somebody
+// who has just killed the client holding its terminal is the only one who knows to try again.
+//
+// Deliberately not ClosePane, which is the other thing that gets a pane a fresh bridge and
+// ends the agent to do it.
+//
+// Nothing here reaches a daemon. The window counts the bridge and publishes, exactly as it
+// does for one that ended, and whether the pane still exists is answered from the mirror.
+message ReattachPane {
+  string daemon_id = 1;
+
+  // Empty means the pane the keyboard is on, which is what every pane verb's empty ref means.
+  string pane_id = 2;
 }
 
 // Points this window's keyboard at a pane, and tells the daemon somebody looked.

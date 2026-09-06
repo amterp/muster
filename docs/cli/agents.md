@@ -129,6 +129,28 @@ looking.
 share of the window, and `regions[].layout` says how the tab splits - `muster docs window` has
 both.
 
+## A pane that has gone dark
+
+A pane draws what a bridge feeds it, and a bridge dies with the connection carrying it. Muster
+starts another one, and starts another after that if nothing dials - but it stops after a run of
+bridges that each die on sight, because at that point something outside Muster is in the way and
+spawning processes at it does not help. What is left is a pane that shows what it last painted,
+takes no keystrokes, and has an agent running behind it perfectly happily:
+
+    muster pane reattach --pane p1w3r07bsd
+
+That asks for a bridge, and it is the only way back that keeps the agent. `muster pane close` also
+gets the pane a fresh start, by ending what is running in it, which is rarely what somebody staring
+at a stuck agent wants - and quitting Muster does the same thing to every pane at once.
+
+The usual thing in the way is a herdr client from before: only one client may hold a terminal, and
+one whose ssh died goes on holding it without noticing. The window says so on the pane's row in the
+roster, with the command that releases it. Kill that, then reattach.
+
+`--pane` is the pane the command is running in when you leave it out, so this also works typed into
+a pane whose neighbour has gone quiet. It is safe on a pane that is working: the window builds a
+fresh surface and the pane repaints.
+
 ## Moving around without a name
 
     muster focus --next

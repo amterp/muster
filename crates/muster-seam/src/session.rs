@@ -2014,6 +2014,33 @@ fn replace_bridge(pane: &PaneKey, ending: Ending) {
     }
 }
 
+/// Gives a pane a bridge because somebody asked for one, and says whether there was a pane.
+///
+/// A person asking is not a retry, so the run of failures starts over rather than continuing.
+/// Whoever ran this has usually just done something about the cause - killed the client still
+/// holding the terminal on the far machine, or brought the machine back - and it is also the
+/// only way back for a pane the limit has stopped rebuilding, which is what makes stopping
+/// affordable at all.
+///
+/// `false` is a pane no mirror in this window holds. Not an error here: the caller phrases it,
+/// because the same answer reaches a person typing a name and a menu item that read one off
+/// the view it was drawn from.
+pub(crate) fn reattach(pane: &PaneKey) -> bool {
+    let restarts = {
+        let mut session = poison::lock(&SESSION, "session");
+        if !session.holds(pane) {
+            return false;
+        }
+        session.respawns.asked(pane, clock::monotonic_now())
+    };
+    log::info(
+        "bridge.reattach.asked",
+        fields! { "pane" => pane.to_string(), "restarts" => restarts.to_string() },
+    );
+    publish();
+    true
+}
+
 /// Asks for a bridge for a pane nothing has dialed, because nothing else is going to.
 ///
 /// The other door into [`replace_bridge`]'s one mechanism, and the reason it exists: that one

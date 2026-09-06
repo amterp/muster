@@ -966,6 +966,7 @@ public enum Core {
     case .scroll: return "scroll"
     case .splitPane: return "split_pane"
     case .closePane: return "close_pane"
+    case .reattachPane: return "reattach_pane"
     case .focusPane: return "focus_pane"
     case .focusRelative: return "focus_relative"
     case .setSplitRatio: return "set_split_ratio"

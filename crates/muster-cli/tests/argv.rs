@@ -170,6 +170,9 @@ fn described_pane_or_window(payload: &request::Payload) -> Value {
                 ("confirm", send.confirm.then_some(json!(true))),
             ])
         }),
+        request::Payload::ReattachPane(reattach) => json!({
+            "reattach_pane": fields([("pane_id", said(&reattach.pane_id))])
+        }),
         request::Payload::ClosePane(close) => json!({
             "close_pane": fields([("pane_id", said(&close.pane_id))])
         }),

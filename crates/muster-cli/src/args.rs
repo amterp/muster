@@ -21,8 +21,8 @@ use clap_complete::Shell;
 use muster_proto::{
     AdjustFontSize, ArrangePane, ClosePane, CloseTab, CreateTab, EqualizePanes, FocusPane,
     FocusPaneAt, FocusRelative, FocusTab, FocusTabRelative, ReadDaemons, ReadPane, ReadWindow,
-    ReloadConfig, RenamePane, RenameTab, Request, ResizePane, SendToPane, SplitPane, ToggleSidebar,
-    ZoomPane, request,
+    ReattachPane, ReloadConfig, RenamePane, RenameTab, Request, ResizePane, SendToPane, SplitPane,
+    ToggleSidebar, ZoomPane, request,
 };
 
 use crate::{docs, environment};
@@ -149,7 +149,7 @@ enum What {
         doing: Option<AboutWindows>,
     },
 
-    /// Make a pane, name one, read it, type into one, move it, resize it, or close it
+    /// Make a pane, name one, read it, type into one, move it, resize it, reattach it, or close it
     Pane {
         #[command(subcommand)]
         doing: Doing,
@@ -375,6 +375,18 @@ enum Doing {
         rows: Option<u32>,
     },
 
+    /// Give a pane a bridge, for one the window has stopped drawing while its agent runs on
+    //
+    // The verb that was missing when a pane went dark. Every other way back ends the agent:
+    // `close` does by design, and quitting the app does to every pane at once. This asks for
+    // the one thing a dark pane actually needs, which is a bridge - and it is the same ask
+    // the window makes on its own a few seconds after nothing dials one.
+    Reattach {
+        /// The pane to reattach, or the one this is running in
+        #[arg(long, value_name = "REF")]
+        pane: Option<String>,
+    },
+
     /// Close a pane, which ends what is running in it
     Close {
         /// The pane to close, or the one this is running in - which ends this command's own shell
@@ -476,8 +488,9 @@ enum Doing {
 
 /// What `muster tab` can do.
 ///
-/// Three verbs rather than the pane's six. There is no `close`, because a tab closes when its
-/// last pane does; and nothing types into a tab, or moves one.
+/// Far fewer verbs than a pane has, and the gaps are the point. There is no `close`, because a
+/// tab closes when its last pane does; and nothing types into a tab, moves one, or gives one a
+/// bridge - those are all things you do to the pane inside it.
 #[derive(Debug, Subcommand)]
 enum WithTab {
     /// Make a tab, and print the name of the pane that appears in it
@@ -669,6 +682,10 @@ fn pane(doing: &Doing, environment: &BTreeMap<String, String>) -> Asking {
             // everything are the same request.
             rows: rows.unwrap_or_default(),
             ..ReadPane::default()
+        })),
+        Doing::Reattach { pane } => send(request::Payload::ReattachPane(ReattachPane {
+            pane_id: pane_ref(pane.as_ref(), environment),
+            ..ReattachPane::default()
         })),
         Doing::Close { pane } => send(request::Payload::ClosePane(ClosePane {
             pane_id: pane_ref(pane.as_ref(), environment),

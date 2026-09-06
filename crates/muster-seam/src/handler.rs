@@ -18,6 +18,7 @@ use muster_core::input::{CompositionOutcome, Modifiers, ScrollDirection, composi
 use muster_core::intent::Refusal;
 use muster_core::intent::{BackendIntent, Branch, Side};
 use muster_core::mirror::backend::{PaneId, TabId};
+use muster_core::PaneKey;
 use muster_core::problems::Severity;
 use muster_core::roster::TabStep;
 
@@ -116,6 +117,9 @@ fn route(payload: request::Payload) -> Response {
             Response::ok()
         }),
         request::Payload::SplitPane(split) => split_pane(&split),
+        request::Payload::ReattachPane(reattach) => {
+            reattach_pane(&reattach.daemon_id, &reattach.pane_id)
+        }
         request::Payload::ClosePane(close) => {
             act(&close.daemon_id, &close.pane_id, Keyboard::Follows, |pane| {
                 BackendIntent::ClosePane { pane }
@@ -642,6 +646,34 @@ fn with_pane(what: &str, act: impl FnOnce(&AttachedPane) -> Response) -> Respons
              and that is the event worth reading."
         )),
     }
+}
+
+/// Gives a pane a bridge, for somebody looking at one the window has stopped drawing.
+///
+/// Nothing is sent to a daemon and nothing is spawned here, which is what makes this different
+/// from every other pane verb. A bridge is a surface's command and the shell owns the
+/// surfaces, so asking for one is counting it and publishing - the same mechanism a bridge
+/// that ended goes through, reached by the other door.
+///
+/// Refused for a pane no mirror in this window holds, rather than counted and published for a
+/// name that reaches nothing. Unlike the verbs that go to a daemon, there is no request on its
+/// way that could make an unknown name right a moment later: this acts on what this window
+/// already knows, so what it knows is the answer.
+fn reattach_pane(daemon_id: &str, pane_id: &str) -> Response {
+    let target = match target(daemon_id, pane_id) {
+        Ok(target) => target,
+        Err(refusal) => return *refusal,
+    };
+    let Some(pane) = target.pane.clone() else {
+        return nothing_to_act_on(&target.daemon);
+    };
+    let key = PaneKey::new(&target.daemon, &pane);
+    if !session::reattach(&key) {
+        return Response::failure(format!(
+            "no machine this window is following holds the pane {key}, so there was nothing to              give a bridge to and nothing happened. `muster window` lists the panes this              window has, with the name to use here; a pane closed from somewhere else is gone              rather than dark, and its agent went with it."
+        ));
+    }
+    Response::ok()
 }
 
 /// Builds an intent about a pane and asks for it.

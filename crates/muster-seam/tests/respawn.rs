@@ -15,8 +15,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use herdr_harness::{Daemon, until};
 use muster::proto::{
-    BridgeExited, Event, OpenWindow, Request, Response, Startup, ViewChanged, ViewNode, event,
-    request, response, view_node,
+    BridgeExited, Event, OpenWindow, ReattachPane, Request, Response, Startup, ViewChanged,
+    ViewNode, event, request, response, view_node,
 };
 use prost::Message;
 
@@ -81,6 +81,57 @@ fn a_bridge_that_keeps_dying_is_given_up_on() {
     // Three, not five. Every exit here lands within milliseconds of the last, so none of the
     // bridges counted as having worked.
     assert_eq!(restarts(&pane), Some(3));
+}
+
+#[test]
+fn a_person_asking_gets_a_bridge_for_a_pane_the_window_gave_up_on() {
+    // What makes giving up affordable. Without a way back, a pane the limit stopped is dead
+    // until the app is relaunched - and relaunching ends every agent in the window, which is
+    // the cost this whole policy exists to avoid paying.
+    let _turn = muster::testing::fresh_session();
+    let daemon = Daemon::start();
+    let pane = open_a_window(&daemon);
+    for _ in 0..5 {
+        let dialed = dial_a_bridge(&pane);
+        report_exited(&pane, false);
+        drop(dialed);
+    }
+    assert_eq!(restarts(&pane), Some(3), "the window should have stopped rebuilding by now");
+
+    assert_ok(&answer(request::Payload::ReattachPane(ReattachPane {
+        daemon_id: pane.daemon.clone(),
+        pane_id: pane.pane.clone(),
+    })));
+
+    // Four, and published. The number climbing is the whole of the request: a bridge is a
+    // surface's command, and a number the shell has not seen for this pane is what makes it
+    // build one.
+    until(
+        "the core to publish the bridge somebody asked for",
+        || restarts(&pane) == Some(4),
+        || format!("the last view the core published: {:?}", latest_view()),
+    );
+}
+
+#[test]
+fn asking_for_a_pane_no_machine_here_holds_is_refused() {
+    // The quiet failure worth having an exit code for. This verb reaches no daemon, so unlike
+    // every other pane verb there is no request on its way that could make an unknown name
+    // right a moment later - and a window answering "ok" would be telling a script it had
+    // rescued a pane that does not exist.
+    let _turn = muster::testing::fresh_session();
+    let daemon = Daemon::start();
+    let pane = open_a_window(&daemon);
+
+    let refused = answer(request::Payload::ReattachPane(ReattachPane {
+        daemon_id: pane.daemon.clone(),
+        pane_id: "w9:p9".to_string(),
+    }));
+
+    assert!(
+        matches!(refused.payload, Some(response::Payload::Failure(_))),
+        "asking about a pane no mirror holds should be refused, and answered {refused:?}"
+    );
 }
 
 /// Connects to the pane's control socket the way a bridge starting would, and waits for the

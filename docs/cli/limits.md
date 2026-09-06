@@ -99,6 +99,23 @@ attached to.
 in the tab in one request, and it reaches any tab the window holds. With no `--tab` it closes the
 tab the keyboard is in, which is what the menu item means.
 
+## Reattaching takes the terminal from whatever is holding it
+
+`muster pane reattach` asks for a bridge, and a bridge asked for after the first one takes the
+pane's terminal over rather than being refused. That is the whole point when the thing holding it
+is a herdr client whose ssh died - which is the usual case, and the one nobody guesses. But herdr
+allows one client per terminal and does not distinguish, so if a *second Muster window* is
+legitimately showing that pane, this takes it from that window. The other window says so and stops
+drawing it; nothing is lost, and it is not the outcome somebody reattaching a stuck pane expects.
+
+What it cannot do is anything about the machine. It asks this window for a bridge and reaches no
+daemon, so a pane on a devenv you cannot currently reach gets a bridge that fails the same way the
+last one did. It also does not restart an agent: a pane whose program exited is showing an ended
+process, not a dead bridge, and a fresh bridge draws exactly the same thing.
+
+A pane no machine this window follows holds is refused rather than counted, because there is no
+request on its way that could make the name right a moment later.
+
 ## Only the last window you closed comes back
 
 `muster window reopen`, and Reopen Closed Window in the menu, bring back the most recent window
