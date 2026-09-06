@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "muster-attaches-a",
+  "alias_explicit": false,
+  "area": [
+    "shell",
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1788705640303,
+  "creator": "Alexander Terp",
+  "description": "Muster keeps a herdr client attached to every pane in the window, including panes behind other tabs. herdr renders every attached client in full on each pass, on one thread, and answers API requests from that same thread - so panes nobody is looking at cost render time that everything else waits behind.\n\nThis is the half of a_2KHGXkKSc that is ours. That card measured the cost and stays as the upstream ask about herdr render loop itself; this one is the lever Muster holds without touching herdr.\n\n## What it cost, measured\n\nFrom a_2KHGXkKSc, 2026-09-04, ten panes in four tabs, three agents working: herdr main thread sustained 53-68% of a core, pane.send_input round trip median 120ms p90 178ms on a 2ms link, herdr rendering seven panes nobody could see.\n\nAgain on 2026-09-06 during a four-worktree parallel round: one daemon holding 18 panes at 50% of a core for hours, and a cargo test --workspace -- --list against it took twenty minutes. The cost is not confined to the window - it reaches anything on the box that talks to that daemon.\n\n## The awkward part\n\nDetaching is not free and the card should not pretend otherwise. A pane behind a tab still owes its scrollback when you switch to it, so a detached pane costs latency on tab switch, and how much is unmeasured.\n\nAgent state is the sharper constraint: every pane shows working/blocked/done/idle at a glance is the projects first desideratum, and it must keep holding for panes behind other tabs. Whether the frame stream can be dropped while agent state keeps arriving depends on those being separable subscriptions - see a_27N6pklkl, which says agent state needs a subscription per pane. Settle that before building, because a fix that makes hidden panes go stale in the sidebar is worse than the latency it saves.",
+  "id": "a_2LMnyDJU0",
+  "position": "!!!!E",
+  "title": "Muster attaches a client to every pane, including ones nobody can see",
+  "type": "enhancement",
+  "updated_at_millis": 1788705640303,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1788705640303}
+  ]
+}
