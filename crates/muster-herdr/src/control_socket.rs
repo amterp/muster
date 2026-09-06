@@ -34,7 +34,7 @@ use muster_core::diagnostics::{log, poison};
 use muster_core::fields;
 use muster_core::respawn::Ended;
 
-use crate::bridge_report::{Exiting, Grid};
+use crate::bridge_report::{Exiting, Grid, Painted};
 use crate::control_stream::ControlStreamMessage;
 
 /// Why a channel could not be opened.
@@ -58,9 +58,9 @@ impl std::error::Error for Failure {}
 
 /// What a channel tells its owner about the bridge on the other end.
 ///
-/// A struct rather than two arguments, because both are closures of nearly the same shape and
-/// a caller that swapped them would compile. The same trap cost `View::of` its fourth closure
-/// (kan a_2HrmSyRAQ), and named fields are what stop it happening twice.
+/// A struct rather than positional arguments, because several are closures of nearly the same
+/// shape and a caller that swapped two would compile. The same trap cost `View::of` its fourth
+/// closure (kan a_2HrmSyRAQ), and named fields are what stop it happening twice.
 pub struct Reports {
     /// A bridge dialed in. Runs on the accepting thread, each time - a pane keeps its channel
     /// while its surface is thrown away and built again, so a replacement dials too.
@@ -75,13 +75,22 @@ pub struct Reports {
     /// when the connection ends - a pane too big to draw has stopped updating *now*, and a
     /// report held until the bridge died would arrive after it stopped mattering.
     pub sized: Box<dyn Fn(u32, u32) + Send + Sync>,
+
+    /// The bridge has painted. Runs on that connection's reader thread, at most four times a
+    /// second while frames are arriving and not at all while none are.
+    ///
+    /// The one fact about a pane nothing above this can observe: frames go from the bridge's
+    /// stdout into a surface's command, so the app never sees one and cannot tell a pane that
+    /// stopped painting from a pane whose agent has nothing to say. What is done with it is
+    /// `muster_core::painting`'s (kan a_2LMRCug0P).
+    pub painted: Box<dyn Fn() + Send + Sync>,
 }
 
 impl std::fmt::Debug for Reports {
     /// Closures have nothing to say about themselves, and a channel's `Debug` should not stop
-    /// existing because it holds two.
+    /// existing because it holds four.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("Reports { connected, exited, sized }")
+        f.write_str("Reports { connected, exited, sized, painted }")
     }
 }
 
@@ -305,6 +314,13 @@ fn watch(
             // so while somebody is still looking at it.
             if let Some(grid) = Grid::parse(said_line) {
                 (reports.sized)(grid.columns, grid.rows);
+                continue;
+            }
+            // The same reason as the grid above and rather more so: what this answers is
+            // whether the pane reacted to what somebody just typed, which is a question that
+            // stops being worth asking the moment they give up on it.
+            if Painted::parse(said_line).is_some() {
+                (reports.painted)();
             }
         }
 

@@ -30,6 +30,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::composition::PaneKey;
+use crate::diagnostics::clock::describe;
 use crate::respawn::{self, Ended, Ending};
 
 /// How many deadlines a pane waits before a bridge is asked for, rather than only reported.
@@ -360,14 +361,4 @@ fn detail(pane: &PaneKey, deadline: u64, last: Option<&Ended>, backend_pane: &st
              {reattach} asks now, once the machine is back."
         ),
     }
-}
-
-/// A duration in nanoseconds, as somebody reading a sentence would say it.
-///
-/// Whole units only, and no unit smaller than a millisecond: this appears in one sentence
-/// about a pane that has stopped answering, where "5s" is the whole of what a reader needs
-/// and "5.002s" would be precision about the wrong thing.
-fn describe(nanos: u64) -> String {
-    let millis = nanos / 1_000_000;
-    if millis.is_multiple_of(1000) { format!("{}s", millis / 1000) } else { format!("{millis}ms") }
 }

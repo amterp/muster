@@ -428,6 +428,29 @@ impl Bridge {
         self.process.try_wait().is_ok_and(|exited| exited.is_some())
     }
 
+    /// Stops this bridge where it stands, without ending it.
+    ///
+    /// The shape of the failure a frozen pane actually has, which nothing else here can
+    /// produce: the process is alive, its control socket is connected, input still leaves the
+    /// app and reaches the buffer, and not one frame comes back. Every layer below reports
+    /// perfect health, which is the whole reason the window had nothing to say about it.
+    pub(crate) fn freeze(&self) {
+        self.signal(libc::SIGSTOP);
+    }
+
+    /// Lets it go again, which is what a pane recovering looks like.
+    pub(crate) fn thaw(&self) {
+        self.signal(libc::SIGCONT);
+    }
+
+    fn signal(&self, signal: libc::c_int) {
+        let pid = i32::try_from(self.process.id()).expect("a pid fits an i32");
+        // SAFETY: kill(2) on a pid this process owns and has not reaped, with a signal number
+        // from libc. It touches nothing in this address space.
+        let sent = unsafe { libc::kill(pid, signal) };
+        assert_eq!(sent, 0, "the bridge should still be running to be signalled");
+    }
+
     /// Ends this bridge the way a machine going away would, and waits for it to be gone.
     ///
     /// A signal rather than a clean exit, deliberately: what is being proven is that the app

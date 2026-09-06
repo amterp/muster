@@ -3,7 +3,7 @@
 //! The other direction of `control_stream.rs`, and a different kind of message. What the app
 //! sends a bridge is herdr's own JSON, copied through untouched, so the bridge stays a relay
 //! with no vocabulary of its own. What comes back is the bridge speaking for itself, in Muster's
-//! words, about the two things only it knows.
+//! words, about the three things only it knows.
 //!
 //! **Why the pane went dark.** The bridge is the only process that ever sees herdr's closing
 //! frame, and it used to write the reason to a log file and exit. The socket closing says a
@@ -15,6 +15,11 @@
 //! exists nowhere but here. `Grid` carries it, on every resize rather than only when it looks
 //! bad - what counts as bad is Muster's rule and belongs above this seam, and a bridge that only
 //! reported trouble could never say the trouble was over.
+//!
+//! **That it is painting at all.** Frames run from this process's stdout into a surface and never
+//! pass the app, so nothing above knows whether a pane answered what was typed into it - and a
+//! pane that stopped answering looks exactly like one nobody has touched. `Painted` says a frame
+//! arrived, on the same terms as `Grid`: the fact, not a verdict about it.
 
 use muster_core::respawn::Ending;
 use serde_json::Value;
@@ -64,6 +69,70 @@ impl Grid {
         Some(Grid {
             columns: u32::try_from(object.get("cols")?.as_u64()?).ok()?,
             rows: u32::try_from(object.get("rows")?.as_u64()?).ok()?,
+        })
+    }
+}
+
+/// That a bridge has painted, and how much of it since it last said so.
+///
+/// The third thing a bridge speaks for itself about, and the one nothing above it can observe.
+/// Frames go from this process's stdout into a surface's command, so the app never sees one - and
+/// a pane that has stopped painting is indistinguishable from a pane whose agent has nothing to
+/// say. Joined above this seam with the one fact the app does have, which is what it delivered,
+/// that difference becomes a pane that was asked for something and answered nothing
+/// (kan a_2LMRCug0P).
+///
+/// Sent at most every [`PAINTED_INTERVAL_NS`] and only when a frame arrived, which is the whole
+/// of what makes it affordable: a quiet pane costs nothing, a pane painting flat out costs four
+/// small lines a second, and either way the app learns "it painted" rather than a per-frame
+/// stream it would have to summarize itself.
+///
+/// The counts are carried because they cost nothing and make the line worth reading in a log -
+/// a bridge sending frames of zero bytes is a different bug from one sending none. Nothing above
+/// reads them to decide anything.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Painted {
+    pub frames: u64,
+    pub bytes: u64,
+}
+
+/// How often a bridge says it is painting, in nanoseconds.
+///
+/// Its own interval rather than the one the log summary runs on, because the two have different
+/// readers. A second is right for a person reading repaint counts, and a quarter of one is what
+/// bounds the window in which a keystroke can land inside a burst of painting and be recorded as
+/// unanswered - the last frames of a burst are only reported by the next line, and there is no
+/// next line when the burst was the end of it.
+pub const PAINTED_INTERVAL_NS: u64 = 250_000_000;
+
+impl Painted {
+    /// The message as the line that crosses the socket, framed like the two beside it.
+    pub fn wire_format(&self) -> Vec<u8> {
+        let object = serde_json::json!({
+            "type": "bridge.painted",
+            "frames": self.frames,
+            "bytes": self.bytes,
+        });
+        let mut out = object.to_string().into_bytes();
+        out.push(b'\n');
+        out
+    }
+
+    /// One line back, or nothing.
+    ///
+    /// A line this cannot read is skipped rather than fatal, on the same terms as the two beside
+    /// it: the app and the bridge are separate binaries and a mixed pair is an ordinary state
+    /// during an upgrade. An older bridge sends none of these, and a window reading none of them
+    /// behaves exactly as it did before they existed - no accusation, and no false reassurance
+    /// either, because the watch above is driven by what a bridge says rather than by its silence.
+    pub fn parse(line: &[u8]) -> Option<Painted> {
+        let object: Value = serde_json::from_slice(line).ok()?;
+        if object.get("type")?.as_str()? != "bridge.painted" {
+            return None;
+        }
+        Some(Painted {
+            frames: object.get("frames")?.as_u64()?,
+            bytes: object.get("bytes")?.as_u64()?,
         })
     }
 }
@@ -176,14 +245,35 @@ mod tests {
         assert_eq!(Grid::parse(&wire[..wire.len() - 1]), Some(sent));
     }
 
-    /// The two messages share one socket and one reader, so each has to refuse the other's
-    /// lines rather than half-reading them - a grid taken for an exit would end a pane that
-    /// was only resized.
     #[test]
-    fn the_two_messages_do_not_answer_for_each_other() {
+    fn a_paint_survives_the_round_trip() {
+        let sent = Painted { frames: 12, bytes: 48_120 };
+        let wire = sent.wire_format();
+        assert_eq!(wire.last(), Some(&b'\n'));
+        assert_eq!(Painted::parse(&wire[..wire.len() - 1]), Some(sent));
+    }
+
+    /// The three messages share one socket and one reader, so each has to refuse the others'
+    /// lines rather than half-reading them - a grid taken for an exit would end a pane that
+    /// was only resized, and a paint taken for either would do it four times a second.
+    #[test]
+    fn the_messages_do_not_answer_for_each_other() {
         let grid = Grid { columns: 80, rows: 24 }.wire_format();
-        assert_eq!(Exiting::parse(&grid[..grid.len() - 1]), None);
+        let painted = Painted { frames: 1, bytes: 2 }.wire_format();
         let exiting = Exiting { ending: Ending::Lost, reason: None, rendered: true }.wire_format();
-        assert_eq!(Grid::parse(&exiting[..exiting.len() - 1]), None);
+        for line in [&grid, &painted, &exiting] {
+            let line = &line[..line.len() - 1];
+            let taken = [
+                Grid::parse(line).is_some(),
+                Painted::parse(line).is_some(),
+                Exiting::parse(line).is_some(),
+            ];
+            assert_eq!(
+                taken.iter().filter(|read| **read).count(),
+                1,
+                "exactly one reader should take {}, and {taken:?} did",
+                String::from_utf8_lossy(line),
+            );
+        }
     }
 }

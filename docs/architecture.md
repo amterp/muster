@@ -931,6 +931,21 @@ rather than short of it, because a margin large enough to absorb a keypress woul
 ordinary small font on a wide display - and a false alarm that also disables a working control is
 worse than the silence it would be preventing.
 
+**Under that ceiling is a wider net: a pane that was asked for something and painted nothing.**
+The ceiling names one cause and can say what to do about it. Every other way a pane stops
+painting - a wedged bridge, a transport that dropped without closing, a daemon still answering
+requests while one of its terminals went quiet - leaves the same picture and nothing to read it
+by (kan a_2LMRCug0P). The trigger is an intent that actually reached the pane rather than silence
+itself, because an idle agent paints nothing all afternoon and is perfectly healthy: what makes
+quiet wrong is that somebody typed. Neither process knows both halves, which is why this is
+joined above the seam - the app is the sender, and the bridge is the only thing that sees a
+frame, so it says it painted on the control socket it already holds, at most four times a second
+and not at all while nothing is arriving. Three guards keep the sentence true: only while the
+window is drawing the pane, only while its daemon is answering, and never when the ceiling has
+already named the silence, because two rows about one frozen pane send the reader to the one
+without the remedy in it. It is a warning rather than an error - it may clear by itself, and a
+program that turned echo off for a password looks exactly like this until it paints again.
+
 **How the app finds out a bridge has died is Muster's own business, not the renderer's.** libghostty offers a
 `close_surface` callback and it does not arrive: a dead pane sits on libghostty's own "Process exited. Press any
 key" screen, which is the surface being held open rather than the host being asked to close it, so for two releases

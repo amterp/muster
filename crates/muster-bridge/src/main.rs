@@ -20,7 +20,7 @@ use muster_core::diagnostics::log::{self, LogLevel};
 use muster_core::diagnostics::poison;
 use muster_core::fields;
 use muster_core::respawn::Ending;
-use muster_herdr::bridge_report::{self, Exiting};
+use muster_herdr::bridge_report::{self, Exiting, PAINTED_INTERVAL_NS, Painted};
 use muster_herdr::{ControlStreamMessage, FrameDecoder, PaneStreamEvent};
 use muster_ssh::quoted;
 
@@ -481,7 +481,7 @@ fn pump_frames(mut output: impl Read, pane: &str, app: Option<&Reporting>) -> ! 
 
         for event in decoder.consume(&chunk[..read]) {
             match event {
-                PaneStreamEvent::Frame(frame) => pump.render(&frame.bytes),
+                PaneStreamEvent::Frame(frame) => pump.render(&frame.bytes, app),
                 PaneStreamEvent::Closed { reason } => pump.finish(pane, reason.as_deref(), app),
             }
         }
@@ -503,12 +503,23 @@ struct Pump {
     frames_since_summary: u64,
     bytes_since_summary: usize,
     last_summary: u64,
+
+    /// The same two counts for the app, on a clock of their own.
+    ///
+    /// Separate from the summary above because the two have different readers and neither
+    /// interval is right for the other. A person reading repaint counts wants one line a second;
+    /// the app is answering "did this pane react to what was typed into it", and the last frames
+    /// of a burst are only ever reported by the next line - so the interval is what bounds how
+    /// long a keystroke landing inside a burst can look unanswered.
+    frames_since_report: u64,
+    bytes_since_report: usize,
+    last_report: u64,
 }
 
 const SUMMARY_INTERVAL_NS: u64 = 1_000_000_000;
 
 impl Pump {
-    fn render(&mut self, bytes: &[u8]) {
+    fn render(&mut self, bytes: &[u8], app: Option<&Reporting>) {
         // An attach opens with a full repaint, so a surface never has to have seen the
         // start of the stream.
         if !self.rendered {
@@ -521,7 +532,10 @@ impl Pump {
         }
         self.frames_since_summary += 1;
         self.bytes_since_summary += bytes.len();
+        self.frames_since_report += 1;
+        self.bytes_since_report += bytes.len();
         self.summarize_if_due();
+        self.tell_the_app_if_due(app);
 
         let mut out = std::io::stdout().lock();
         let _ = out.write_all(bytes);
@@ -544,6 +558,30 @@ impl Pump {
         self.frames_since_summary = 0;
         self.bytes_since_summary = 0;
         self.last_summary = muster_core::diagnostics::monotonic_now();
+    }
+
+    /// Tells the app this pane is painting, at most four times a second.
+    ///
+    /// The one fact about a pane the app cannot observe: frames go from here into a surface's
+    /// command and never pass through it, so a pane that has stopped painting looks exactly like
+    /// a pane whose agent has nothing to say. Joined up there with what the app delivered, the
+    /// difference is a pane that was asked for something and answered nothing (kan a_2LMRCug0P).
+    ///
+    /// A pane painting nothing sends nothing, which is the point: silence costs a quiet window
+    /// no traffic at all, and the app's rule is driven by what a bridge says rather than by how
+    /// long it has been since one said anything.
+    fn tell_the_app_if_due(&mut self, app: Option<&Reporting>) {
+        if app.is_none()
+            || muster_core::diagnostics::monotonic_since(self.last_report) < PAINTED_INTERVAL_NS
+        {
+            return;
+        }
+        let painted =
+            Painted { frames: self.frames_since_report, bytes: self.bytes_since_report as u64 };
+        write_line(app, &painted.wire_format());
+        self.frames_since_report = 0;
+        self.bytes_since_report = 0;
+        self.last_report = muster_core::diagnostics::monotonic_now();
     }
 
     /// Reports why the stream ended, and exits.

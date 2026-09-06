@@ -1385,12 +1385,15 @@ impl Session {
         let dialed = PaneKey::new(daemon, pane);
         let stopped = dialed.clone();
         let drawn = dialed.clone();
+        let painting = dialed.clone();
+        let asked = dialed.clone();
         let control = PaneControlChannel::bind(
             path.clone(),
             Reports {
                 connected: Box::new(move || typeable(&dialed.daemon, &dialed.pane)),
                 exited: Box::new(move |ended| bridge_ended(&stopped, &ended)),
                 sized: Box::new(move |columns, rows| pane_sized(&drawn, columns, rows)),
+                painted: Box::new(move || watchdog::painted(&painting)),
             },
         )
         .map_err(|error| {
@@ -1427,7 +1430,12 @@ impl Session {
                     Some(Arc::new(server) as Arc<_>),
                     Arc::new(encoder),
                     &settings,
-                ),
+                )
+                // Hung on the input path rather than on its six call sites, and on delivery
+                // rather than on intent: something reached this pane, so a frame is owed and
+                // the window can tell a pane that stopped painting from one whose agent has
+                // nothing to say (kan a_2LMRCug0P).
+                .delivering_to(Arc::new(move || watchdog::typed(&asked))),
                 control_socket_path: path,
                 backend_pane_id: backend_pane.as_str().to_string(),
                 _control: control,
@@ -2003,6 +2011,10 @@ pub(crate) fn pane_sized(pane: &PaneKey, columns: u32, rows: u32) {
             },
         );
         raise_problem(&key, Severity::Error, &detail);
+        // And this pane's silence now has a name, so the wider net leaves it alone. Two rows
+        // about one frozen pane would put the sentence with the remedy in it beside one saying
+        // only that the pane stopped, and send the reader to the second.
+        watchdog::explained(pane, true);
     }
     for key in reported.clear {
         log::info(
@@ -2014,6 +2026,7 @@ pub(crate) fn pane_sized(pane: &PaneKey, columns: u32, rows: u32) {
             },
         );
         clear_problem(&key);
+        watchdog::explained(pane, false);
     }
 }
 
@@ -4772,6 +4785,11 @@ pub(crate) fn window_focused(focused: bool) {
 /// two answers, and one of them going stale says nothing about the other - so a single
 /// window-wide state would let a dropped VPN read as though every session had gone.
 fn health(daemon: &DaemonId, state: &str, detail: &str) {
+    // Here rather than at each call site, so that every path which tells the shell a machine
+    // has gone tells the watch too. A stale daemon takes its panes' frames with it and
+    // says so once, naming the machine; eight more rows saying each of its panes stopped
+    // painting would bury the one that names the cause.
+    watchdog::daemon_away(daemon, state == "stale");
     ffi::emit(&Event {
         payload: Some(event::Payload::BackendHealth(BackendHealth {
             daemon_id: daemon.to_string(),

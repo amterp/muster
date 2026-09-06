@@ -69,3 +69,17 @@ fn civil_from_days(days: i64) -> (i64, i64, i64) {
     let year = year_of_era + era * 400 + i64::from(month <= 2);
     (year, month, day)
 }
+
+/// A duration in nanoseconds, as somebody reading a sentence would say it.
+///
+/// Whole units only, and no unit smaller than a millisecond: this appears in sentences about a
+/// pane that has stopped answering, where "5s" is the whole of what a reader needs and "5.002s"
+/// would be precision about the wrong thing.
+///
+/// Here rather than beside either of the two watches that write those sentences, because the two
+/// must not drift: one deadline is a multiple of the other, and a reader comparing "5s" against
+/// "10000ms" on two rows of the same list would have to do arithmetic to see it.
+pub fn describe(nanos: u64) -> String {
+    let millis = nanos / 1_000_000;
+    if millis.is_multiple_of(1000) { format!("{}s", millis / 1000) } else { format!("{millis}ms") }
+}

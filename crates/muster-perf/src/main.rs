@@ -511,6 +511,7 @@ fn bind_pane_socket(index: usize) -> Option<(Arc<PaneControlChannel>, PaneInput)
                 connected: Box::new(|| {}),
                 exited: Box::new(|_| {}),
                 sized: Box::new(|_, _| {}),
+                painted: Box::new(|| {}),
             },
         )
         .ok()?,

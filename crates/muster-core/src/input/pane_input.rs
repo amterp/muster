@@ -42,6 +42,19 @@ pub struct PaneInput {
     /// The one-shot warning lives inside the same lock because it is written on exactly the
     /// path this serializes.
     outbound: Mutex<Outbound>,
+
+    /// Run after each intent that actually reached the pane.
+    ///
+    /// Here rather than at the six call sites above this, because what it records is a fact
+    /// about the path rather than about any one of them: something reached this pane and a
+    /// frame is now owed. A call site that forgot would be a pane the window never notices has
+    /// frozen, which is a silence rather than a failure and so is never found.
+    ///
+    /// On delivery rather than on intent, and that is the whole of where it sits: input that
+    /// went nowhere is a pane that cannot be typed into, which `typeable` already reports with
+    /// a sentence naming its own cause. Counting it here would accuse the pane of not painting
+    /// an answer to something it was never asked.
+    delivered: Option<Arc<dyn Fn() + Send + Sync>>,
 }
 
 struct Typing {
@@ -88,7 +101,19 @@ impl PaneInput {
                 settings: settings.clone(),
             }),
             outbound: Mutex::new(Outbound::default()),
+            delivered: None,
         }
+    }
+
+    /// Says what to run after each intent that reaches the pane.
+    ///
+    /// A step after construction rather than another argument, because the two callers who do
+    /// not want one - a benchmark and a test of the encoding - would otherwise carry an empty
+    /// closure apiece to say so.
+    #[must_use]
+    pub fn delivering_to(mut self, watcher: Arc<dyn Fn() + Send + Sync>) -> PaneInput {
+        self.delivered = Some(watcher);
+        self
     }
 
     /// Points this pane at a config file that has been read again.
@@ -302,6 +327,7 @@ impl PaneInput {
     ) {
         let mut outbound = poison::lock(&self.outbound, "pane-outbound");
         if target.deliver(intent) {
+            self.arrived();
             return;
         }
         if let Some(fallback) = fallback.filter(|f| *f != intent) {
@@ -313,10 +339,22 @@ impl PaneInput {
                 },
             );
             if self.channel.deliver(fallback) {
+                self.arrived();
                 return;
             }
         }
         report_dropped(target, &mut outbound);
+    }
+
+    /// Something reached the pane, so a frame is owed.
+    ///
+    /// Called while `outbound` is held, which is deliberate: this runs on exactly the path that
+    /// lock serializes, and a watcher told out of order would record a pane as owing a frame it
+    /// had already been given.
+    fn arrived(&self) {
+        if let Some(delivered) = self.delivered.as_ref() {
+            delivered();
+        }
     }
 }
 

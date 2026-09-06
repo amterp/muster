@@ -1,0 +1,169 @@
+{
+  "concept": "painting",
+  "source": "authored",
+  "citation": "crates/muster-core/src/painting.rs and kan card a_2LMRCug0P, which raises the general form of the frozen pane that a_2KHGYMpnK put a grid ceiling under. The measured incident behind both is sixteen minutes of a pane that had stopped updating while `muster window` reported it `idle`, its bridge went on relaying keystrokes and its client stayed connected.",
+  "why": "A pane can stop painting for reasons Muster cannot name - a wedged bridge, a transport that dropped without closing, a daemon still answering requests while one of its terminals went quiet - and every one of them looks identical from the window: the last screen, still drawn, with every layer below reporting health. The grid ceiling names one cause and can say what to do about it. This is the net under the rest.\n\nThe rule is not silence. An idle agent paints nothing all afternoon and is perfectly healthy, so a watch on quiet alone would accuse most of a window most of the time. What makes silence wrong is that something was asked of the pane and nothing came back: an intent that actually reached it - a keystroke, a paste, a scroll - with no frame after it. The app knows the first half because it is the sender; the bridge knows the second because frames go from its stdout into a surface and never past the app. These cases are the rule that joins them.\n\nThree guards decide whether owing a frame is worth saying anything about, and each is here because the sentence would otherwise be false. A pane nothing is drawing paints nothing and cannot be typed into. A daemon that has gone away already says so once, naming the machine, and accusing each of its panes as well is nagging. And a pane whose silence something else has already explained - the grid ceiling is the one that does today - would get a second row sending its reader away from the remedy they already had.\n\n`deadline` is in milliseconds and is named by every case rather than assumed, so these read as rules about a number rather than facts about one constant. The shipped default is 10s, chosen by the false alarm rather than by the healthy case: a working pane answers a keystroke in milliseconds, so what sets the floor is the longest an honest pane can paint nothing after input, which is a program that turned echo off and is waiting for a password.\n\n`steps` run in order against one clock that only `tick` moves, and every step is followed by a reconcile - which is what the thread holding the real clock does, since every one of these facts knocks on it. `raised` and `cleared` accumulate over all of them, spelled as problem keys.",
+  "cases": [
+    {
+      "name": "a pane that answers what reached it says nothing",
+      "why": "The overwhelmingly common case and the one that has to stay silent: something is typed, the pane paints, and nobody hears about it however long the pane is quiet afterwards. The long tick at the end is an idle agent, which is most panes most of the time - and a watch that accused one would be unusable rather than merely noisy.",
+      "given": {
+        "deadline": 10000,
+        "steps": [
+          { "typed": "local/p1w3r07bsd" },
+          { "tick": 20 },
+          { "painted": "local/p1w3r07bsd" },
+          { "tick": 600000 }
+        ]
+      },
+      "expect": { "raised": [], "cleared": [] }
+    },
+    {
+      "name": "a pane that answers nothing says so once the deadline passes",
+      "why": "The measured failure. Input reached the pane, no frame followed, and every layer below goes on reporting health - so this sentence is the only thing in the window that disagrees with a pane that looks fine. Said once rather than on every reading: the watch asks repeatedly about a condition that stays true, and a raise per reading would republish the roster and reopen a sidebar somebody just closed for as long as the pane stayed quiet.",
+      "given": {
+        "deadline": 10000,
+        "steps": [
+          { "typed": "local/p1w3r07bsd" },
+          { "tick": 9999 },
+          { "tick": 1 },
+          { "tick": 60000 }
+        ]
+      },
+      "expect": { "raised": ["pane:local/p1w3r07bsd:painting"], "cleared": [] }
+    },
+    {
+      "name": "and takes it back the moment the pane paints",
+      "why": "A problem is a condition rather than a message, so the pane painting again is what ends it - and watching the row disappear is the confirmation that whatever was wrong is over. Without this the window would accumulate a permanent accusation against a pane that recovered on its own, which is the common ending: a transport comes back, a bridge is replaced, the daemon gets round to it.",
+      "given": {
+        "deadline": 10000,
+        "steps": [
+          { "typed": "local/p1w3r07bsd" },
+          { "tick": 10000 },
+          { "painted": "local/p1w3r07bsd" }
+        ]
+      },
+      "expect": {
+        "raised": ["pane:local/p1w3r07bsd:painting"],
+        "cleared": ["pane:local/p1w3r07bsd:painting"]
+      }
+    },
+    {
+      "name": "the clock runs from the first unanswered keystroke, not the last",
+      "why": "What somebody does to a pane that has frozen is type into it again, and again. A clock restarted by each keystroke is a deadline that is never reached, so the pane most likely to be frozen would be the one this never reports - and holding a key down would guarantee it. The first thing it did not answer is when it stopped answering.",
+      "given": {
+        "deadline": 10000,
+        "steps": [
+          { "typed": "local/p1w3r07bsd" },
+          { "tick": 4000 },
+          { "typed": "local/p1w3r07bsd" },
+          { "tick": 4000 },
+          { "typed": "local/p1w3r07bsd" },
+          { "tick": 2000 }
+        ]
+      },
+      "expect": { "raised": ["pane:local/p1w3r07bsd:painting"], "cleared": [] }
+    },
+    {
+      "name": "a pane nothing is drawing is not accused, and is not accused for the silence that followed",
+      "why": "The same guard the typeable watch runs under, and the same reason: a pane the window is not drawing has had its surface thrown away, so nothing paints it and nothing can be typed into it. What it owed when it left the screen it owes nobody. Three false alarms at a time on every launch onto a zoomed tab is where this was noticed for the other watch; here it would be a row about a pane somebody cannot even look at.",
+      "given": {
+        "deadline": 10000,
+        "steps": [
+          { "showing": ["local/p1w3r07bsd", "local/p206y9p61r"] },
+          { "typed": "local/p206y9p61r" },
+          { "showing": ["local/p1w3r07bsd"] },
+          { "tick": 60000 },
+          { "showing": ["local/p1w3r07bsd", "local/p206y9p61r"] },
+          { "tick": 60000 }
+        ]
+      },
+      "expect": { "raised": [], "cleared": [] }
+    },
+    {
+      "name": "a pane on a machine that has gone away is not accused for it",
+      "why": "A daemon that stops answering takes every one of its panes' frames with it, and the window already says so once, naming the machine and saying it may come back. Eight more rows saying each pane stopped painting would bury the one row that names the cause. When the machine comes back the panes are asked again, and one that is still silent then is silent on its own account.",
+      "given": {
+        "deadline": 10000,
+        "steps": [
+          { "typed": "devenv/p206y9p61r" },
+          { "away": "devenv" },
+          { "tick": 60000 },
+          { "back": "devenv" },
+          { "tick": 60000 }
+        ]
+      },
+      "expect": { "raised": [], "cleared": [] }
+    },
+    {
+      "name": "a pane whose grid already explains its silence is not accused twice",
+      "why": "A pane past what one frame can carry has stopped painting for a reason that carries its own remedy - make the text bigger, or the pane smaller - and that sentence is already on the roster. A second row beside it saying only that the pane stopped painting would send its reader looking for a broken bridge instead of at the answer they already had. The specific beats the general wherever both are true.",
+      "given": {
+        "deadline": 10000,
+        "steps": [
+          { "explained": "local/p1w3r07bsd" },
+          { "typed": "local/p1w3r07bsd" },
+          { "tick": 60000 }
+        ]
+      },
+      "expect": { "raised": [], "cleared": [] }
+    },
+    {
+      "name": "and is accused once nothing else explains it",
+      "why": "The other half of the case above: the grid comes back under the ceiling, its problem is taken back, and this pane is now silent with nothing said about why. Somebody who made the text bigger and got no picture back has a pane that is still frozen for a second reason, and that is exactly the state the wider net exists for.",
+      "given": {
+        "deadline": 10000,
+        "steps": [
+          { "explained": "local/p1w3r07bsd" },
+          { "typed": "local/p1w3r07bsd" },
+          { "tick": 60000 },
+          { "fits": "local/p1w3r07bsd" }
+        ]
+      },
+      "expect": { "raised": ["pane:local/p1w3r07bsd:painting"], "cleared": [] }
+    },
+    {
+      "name": "a pane that closes takes its problem with it",
+      "why": "A problem outliving its pane is a row in the roster naming something nobody can look at - and the pane most likely to be closed is the one that had stopped painting, so this is the ordinary ending rather than an edge of one.",
+      "given": {
+        "deadline": 10000,
+        "steps": [
+          { "typed": "local/p1w3r07bsd" },
+          { "tick": 10000 },
+          { "closed": "local/p1w3r07bsd" }
+        ]
+      },
+      "expect": {
+        "raised": ["pane:local/p1w3r07bsd:painting"],
+        "cleared": ["pane:local/p1w3r07bsd:painting"]
+      }
+    },
+    {
+      "name": "one frozen pane is named, and the ones beside it are left alone",
+      "why": "The shape of the condition, and why the key is per pane rather than per window. Fifteen agents with one frozen is the case worth reporting precisely; a window-wide answer would either accuse fourteen working panes or say nothing while one of them sat dead on screen.",
+      "given": {
+        "deadline": 10000,
+        "steps": [
+          { "typed": "local/p1w3r07bsd" },
+          { "typed": "devenv/p206y9p61r" },
+          { "tick": 5000 },
+          { "painted": "devenv/p206y9p61r" },
+          { "tick": 5000 }
+        ]
+      },
+      "expect": { "raised": ["pane:local/p1w3r07bsd:painting"], "cleared": [] }
+    },
+    {
+      "name": "a deadline of zero switches the watch off",
+      "why": "The honest answer for a run with no frames to wait for, and the same knob the typeable watch and the grid ceiling carry. A watch that cannot be switched off is one that has to be right everywhere before it can ship anywhere.",
+      "given": {
+        "deadline": 0,
+        "steps": [
+          { "typed": "local/p1w3r07bsd" },
+          { "tick": 600000 }
+        ]
+      },
+      "expect": { "raised": [], "cleared": [] }
+    }
+  ]
+}

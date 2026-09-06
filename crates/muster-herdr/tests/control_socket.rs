@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use muster_core::respawn::{Ended, Ending};
-use muster_herdr::bridge_report::{Exiting, Grid};
+use muster_herdr::bridge_report::{Exiting, Grid, Painted};
 use muster_herdr::control_stream::ControlStreamMessage;
 use muster_herdr::{PaneControlChannel, Reports};
 
@@ -148,12 +148,41 @@ fn a_grid_is_passed_on_while_the_bridge_is_still_running() {
     assert_eq!(watch.exits(), 0, "a grid is not a bridge that stopped");
 }
 
+#[test]
+fn a_paint_is_passed_on_while_the_bridge_is_still_running() {
+    // On the same schedule as a grid and for a sharper version of the same reason: what a paint
+    // answers is whether the pane reacted to what somebody just typed, which stops being worth
+    // asking the moment they give up on it. Held until the connection ended, it would only ever
+    // arrive about panes whose bridge had already gone (kan a_2LMRCug0P).
+    let path = socket_path("painted");
+    let watch = Watch::default();
+    let _channel =
+        PaneControlChannel::bind(path.clone(), watch.reports()).expect("the socket binds");
+
+    let mut bridge = UnixStream::connect(&path).expect("the bridge connects");
+    until("the bridge is noticed", || watch.connections() == 1, ());
+
+    let painted = Painted { frames: 3, bytes: 4_096 }.wire_format();
+    bridge.write_all(&painted).expect("the bridge reports that it painted");
+    bridge.write_all(&painted).expect("and again");
+    bridge.flush().expect("the reports reach the app");
+
+    until(
+        "both paints to arrive",
+        || watch.paints() == 2,
+        || format!("{} arrived", watch.paints()),
+    );
+    assert_eq!(watch.exits(), 0, "a paint is not a bridge that stopped");
+    assert!(watch.grids().is_empty(), "a paint is not a resize");
+}
+
 /// What a channel told its owner, for a test to read back.
 #[derive(Default)]
 struct Watch {
     connections: Arc<AtomicUsize>,
     exits: Arc<Mutex<Vec<Ended>>>,
     grids: Arc<Mutex<Vec<(u32, u32)>>>,
+    paints: Arc<AtomicUsize>,
 }
 
 impl Watch {
@@ -161,6 +190,7 @@ impl Watch {
         let connections = Arc::clone(&self.connections);
         let exits = Arc::clone(&self.exits);
         let grids = Arc::clone(&self.grids);
+        let paints = Arc::clone(&self.paints);
         Reports {
             connected: Box::new(move || {
                 connections.fetch_add(1, Ordering::Release);
@@ -170,6 +200,9 @@ impl Watch {
             }),
             sized: Box::new(move |columns, rows| {
                 grids.lock().expect("a panicking test poisoned the grids").push((columns, rows));
+            }),
+            painted: Box::new(move || {
+                paints.fetch_add(1, Ordering::Release);
             }),
         }
     }
@@ -188,6 +221,10 @@ impl Watch {
 
     fn grids(&self) -> Vec<(u32, u32)> {
         self.grids.lock().expect("a panicking test poisoned the grids").clone()
+    }
+
+    fn paints(&self) -> usize {
+        self.paints.load(Ordering::Acquire)
     }
 }
 
