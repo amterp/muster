@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "a-500ms-client",
+  "alias_explicit": false,
+  "area": [
+    "backend",
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1788709165058,
+  "creator": "Alexander Terp",
+  "description": "HerdrClient::DEFAULT_TIMEOUT is 500ms (crates/muster-herdr/src/client.rs:55). It is the Muster to herdr seam wide, and a timeout there is not treated as \"I do not know\" - it is turned into an answer, and which wrong answer you get depends on the path.\n\n- **The snapshot path** attaches whatever daemon answers the configured id rather than failing. On a developer machine that is their own herdr, holding their own agent panes. Filed as a_2LO4kETFT.\n- **The mutation path** reports a refusal. handler.rs:1360 renders it as \"the daemon did not make that change: {detail} Nothing about the session moved\", which is a flat claim that nothing happened - false when the request landed and only the answer was lost.\n\n## How the second one was seen\n\nDuring a parallel round on 2026-09-06, an integrator sent a pane message to a worker. `muster pane send` exited 1 with the refusal above. The message had arrived: the worker read it and replied about it. The bug was reported by the very command that demonstrated it.\n\nThat is the same contract break as a_2L1AEIpIY one seam further in. a_2I7Acusq4 established that exit 0 without submitting is a bug because the exit code is the only thing a script can read; a_2L1AEIpIY is a lost answer at CLI to window; this is a lost answer at Muster to herdr, and it is worse than either because it does not merely fail to confirm - it asserts the negative.\n\n## What to fix, and the cost\n\nA timeout must be its own outcome, distinct from a refusal, everywhere this constant is used. The daemon said nothing is not the daemon said no.\n\nThe cost is real and worth stating: this gives the seam its first failure a caller can branch on, so every current caller of a request that can time out has to decide what it now does with a third case. That is why it is a card rather than a patch, and why the slot that found it did not take it.\n\nWhether 500ms is also too tight is a separate and probably yes question. Raising it without separating the outcomes leaves the same bug, less often.",
+  "id": "a_2LOHfLmsL",
+  "position": "!!!!6",
+  "title": "A 500ms client timeout is reported as an answer, in two different wrong ways",
+  "type": "bug",
+  "updated_at_millis": 1788709165058,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1788709165058}
+  ]
+}
