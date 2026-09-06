@@ -94,6 +94,15 @@ Muster's principles, adapted to that evidence:
   its reason at the call site, which is the one place a reader can check it. Every wait also carries a slot for what
   was true instead, because a timeout saying only that a condition never came true sends whoever hit it back to add
   exactly that and run again.
+
+  **The distribution is measurable, so argue from it.** Four cards accumulated arguing whether daemon-backed tests
+  wedge or run out of room, and each argued from a stopwatch held around `cargo test` - which times the build, the
+  process start and the wait together. On a loaded machine that is almost all process start: the measurement that
+  read as 2.4 seconds of headroom under a 20-second deadline was a 12 ms wait inside a 10-second invocation.
+  `MUSTER_WAIT_LOG=1` makes every wait record what it cost and `tools/wait-margins.py` reads them back, and the
+  answer that ended the argument was that the whole family had over 19 seconds of margin and was failing on a
+  **500 ms** socket timeout three layers down, which is why four rounds of looking at deadlines never found it. A
+  deadline here is not a suspect until the numbers make it one.
 - **Tiered by what a tier can reach, not by what it fakes.** Most of the core is pure - a keymap, a fold over
   events, a byte-stream parser - and needs no daemon in any tier, so those stay microseconds. Tests that need a
   daemon spawn one and stay in the default gate, because 25 ms is not a tier boundary. What remains genuinely out
