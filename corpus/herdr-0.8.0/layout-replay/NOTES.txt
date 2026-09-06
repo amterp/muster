@@ -1,3 +1,4 @@
-[  4360ms] splitting a two-pane tab published [['w1:p1', 'w1:p2', 'w1:p3']]
-[  6862ms] a fresh subscription against a settled 3-pane tab replayed [['w1:p1'], ['w1:p1', 'w1:p2'], ['w1:p1', 'w1:p2', 'w1:p3']]
-[  6864ms] the pane list said ['w1:p1', 'w1:p3', 'w1:p2'] throughout
+[  4536ms] splitting a two-pane tab published [['w1:p1', 'w1:p2', 'w1:p3']]
+[  7154ms] a fresh subscription against a settled 3-pane tab replayed [['w1:p1'], ['w1:p1', 'w1:p2'], ['w1:p1', 'w1:p2', 'w1:p3']]
+[ 11296ms] a fresh subscription against a zoomed 3-pane tab replayed [False, False, False, True] as its zoom flags
+[ 11300ms] the pane list said ['w1:p1', 'w1:p3', 'w1:p2'] throughout

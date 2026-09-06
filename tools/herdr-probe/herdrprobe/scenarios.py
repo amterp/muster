@@ -2210,11 +2210,14 @@ def layout_replay(daemon, rec: Recorder) -> None:
     built up to a fixed shape and several checked-in cases are that shape - adding splits to
     it would move an oracle for the sake of an unrelated question.
 
-    Two ways an arrangement can be behind, recorded separately because they are answered
+    Three ways an arrangement can be behind, recorded separately because they are answered
     differently. A split lands while a subscription is already open: whether anything
-    intermediate is broadcast decides whether a client has to recognise one. And a
-    subscription opens against a tab that settled long ago: what it replays before it is
-    current is not a race a client can wait out, because it arrives as ordinary events.
+    intermediate is broadcast decides whether a client has to recognise one. A subscription
+    opens against a tab that settled long ago: what it replays before it is current is not a
+    race a client can wait out, because it arrives as ordinary events. And the same, against
+    a tab that is zoomed: the pane list rejects an arrangement from before the tab's last
+    pane appeared and nothing since, so a zoom taken after that split leaves two arrangements
+    it accepts equally, differing only in a flag.
     """
     client = RecordingClient(daemon.client(), rec)
     _new_workspace(client)
@@ -2259,6 +2262,38 @@ def layout_replay(daemon, rec: Recorder) -> None:
                  any(len(a) < settled for a in replayed))
         rec.note(f"a fresh subscription against a settled {settled}-pane tab replayed "
                  f"{replayed}")
+
+        # And the same replay against a tab that is zoomed, which is the case the pane list
+        # cannot settle at all. Every arrangement a tab has had since its last pane appeared
+        # names exactly the panes it holds, so a zoom that came after that split replays as
+        # the unzoomed tree and then the zoomed one, and the pane list accepts both. A client
+        # applying them in order draws every pane before it draws the one.
+        #
+        # Recorded because Muster's bootstrap holds its snapshot's arrangement until the
+        # replay states it, counting the tree and the zoom together (kan a_2KyXfzZvm), and
+        # that rule was written against this sequence inferred from two facts rather than
+        # watched. The zoom goes on the pane the last split created, so what moves between
+        # the two arrangements is the zoom and the focus, and not the tree.
+        client.request("pane.zoom", {"pane_id": "w1:p3", "mode": "on"})
+        time.sleep(1.5)
+        with daemon.client().subscribe(STRUCTURE_SUBSCRIPTIONS) as zoomed_fresh:
+            time.sleep(2.5)
+            zoom_replay = [e for e in zoomed_fresh.snapshot()
+                           if e.get("event") == "layout_updated"]
+        rec.write_text("zoomed-bootstrap.events.ndjson",
+                       "".join(json.dumps(e, sort_keys=True) + "\n" for e in zoom_replay))
+        replayed_zoomed = [{"panes": _arrangement(e["data"]["layout"]),
+                            "zoomed": bool(e["data"]["layout"].get("zoomed"))}
+                           for e in zoom_replay]
+        current = [a for a in replayed_zoomed if len(a["panes"]) == settled]
+        rec.fact("arrangements_a_fresh_subscription_replays_for_a_zoomed_tab", replayed_zoomed)
+        rec.fact("a_zoomed_tab_replays_unzoomed_and_then_zoomed_naming_the_same_panes",
+                 len(current) > 1
+                 and not current[0]["zoomed"]
+                 and current[-1]["zoomed"]
+                 and all(a["panes"] == current[0]["panes"] for a in current))
+        rec.note(f"a fresh subscription against a zoomed {settled}-pane tab replayed "
+                 f"{[a['zoomed'] for a in replayed_zoomed]} as its zoom flags")
 
         # What the tab actually held throughout, from the pane list rather than from any
         # tree. It is the oracle for every arrangement above: a published tree naming fewer

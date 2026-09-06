@@ -737,9 +737,12 @@ tab's last pane appeared and none of the ones since, so a zoom, an unzoom or a d
 replays past it naming exactly the panes the tab holds. `layout_updated` carries a `zoomed` flag -
 both values appear across `layout/events.ndjson` - which makes a tab zoomed after its last split
 replay as unzoomed and then zoomed, both passing that check, and a window opening onto it draws
-all its panes before settling on the one (kan a_2KyXfzZvm, measured at about 110ms). What is
-*not* recorded is a replayed zoom: `layout-replay` never zooms, so that sequence is what the two
-facts above imply rather than a transcript anybody has. Muster holds onto the arrangement its
+all its panes before settling on the one (kan a_2KyXfzZvm, measured at about 110ms). That
+sequence is a transcript rather than an inference: a three-pane tab zoomed after its last split,
+subscribed to fresh, replayed one pane, then two, then all three unzoomed, then all three zoomed.
+The last two name exactly the panes the tab holds and differ in the flag alone, so nothing short
+of reading the flag tells them apart. The focused pane moved with the zoom, which is why the rule
+below compares the tree and the zoom and not the focus. Muster holds onto the arrangement its
 snapshot gave until the replay states it, counting the tree and the zoom together as one
 arrangement (`crates/muster-core/src/mirror/state.rs`, `still_replaying`).
 
@@ -753,9 +756,10 @@ intermediate arrangement during a split. The pair in section 14 is the exception
 different mechanism: two requests, two real arrangements, both true when they were sent.
 
 Evidence: `corpus/herdr-0.8.0/layout/`, recorded with `tools/herdr-probe/probe layout`. The
-last two are `corpus/herdr-0.8.0/layout-replay/`, recorded with
+last three are `corpus/herdr-0.8.0/layout-replay/`, recorded with
 `tools/herdr-probe/probe layout-replay` - a scenario of its own because it builds a tab rather
-than reading the fixed one above. `bootstrap.events.ndjson` is the replay verbatim.
+than reading the fixed one above. `bootstrap.events.ndjson` is the replay verbatim, and
+`zoomed-bootstrap.events.ndjson` the same replay against a tab that is zoomed.
 
 ## 14. There is no splitting leftward, and the pair that builds one is announced twice
 

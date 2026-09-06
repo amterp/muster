@@ -1,8 +1,8 @@
 {
   "concept": "mirror.apply",
   "source": "recorded",
-  "regenerate": "tools/herdr-probe/probe lifecycle snapshot",
-  "citation": "corpus/herdr-0.8.0/lifecycle/ and corpus/herdr-0.8.0/snapshot/; read out in docs/observations/herdr-0.8.0.md sections 1 and 10",
+  "regenerate": "tools/herdr-probe/probe lifecycle snapshot layout-replay",
+  "citation": "corpus/herdr-0.8.0/lifecycle/, corpus/herdr-0.8.0/snapshot/ and corpus/herdr-0.8.0/layout-replay/; read out in docs/observations/herdr-0.8.0.md sections 1, 10 and 13",
   "why": "The mirror is the core's picture of daemon truth, and every desideratum above it reads from that picture: which panes exist, what each agent is doing, which one has focus. Its failures are not display bugs. A pane that never disappears is a surface the user cannot close; an agent transition dropped on the floor is the product's whole reason for existing, silently absent. These cases come from a real daemon's recorded event stream rather than from what herdr's docs imply, because three of them describe behavior nobody would have guessed: closing a tab removes its panes with no pane event at all, a pane whose program exits is announced differently from one a client closed, and subscribing replays the entire session as fresh creations. Each case states the whole resulting picture rather than the part it is about, so a change with a side effect somewhere else fails here rather than somewhere later.",
   "cases": [
     {

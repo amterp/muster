@@ -1,7 +1,7 @@
 {
   "herdr_protocol": 19,
   "herdr_version": "0.8.0",
-  "platform": "Darwin/arm64",
-  "recorded_at": "2026-09-06T15:41:24Z",
+  "platform": "Linux/aarch64",
+  "recorded_at": "2026-09-06T15:47:56Z",
   "scenario": "layout-replay"
 }
