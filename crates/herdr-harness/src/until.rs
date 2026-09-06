@@ -11,6 +11,7 @@
 //! this one, which is what makes there being exactly one of these cheap.
 
 use std::path::Path;
+use std::sync::LazyLock;
 use std::time::{Duration, Instant};
 
 /// How long a wait may take before it counts as never happening.
@@ -28,6 +29,34 @@ pub const PATIENCE: Duration = Duration::from_secs(20);
 /// How often the condition is asked. Not a wait: what the test waits for is the condition, and
 /// the deadline decides only how long it takes to fail (`docs/testing.md`).
 const INTERVAL: Duration = Duration::from_millis(10);
+
+/// Whether this run is being asked how long its waits take.
+static REPORTING: LazyLock<bool> = LazyLock::new(|| std::env::var_os("MUSTER_WAIT_LOG").is_some());
+
+/// Says how long a wait took, when somebody asked.
+///
+/// Four cards have argued about whether a daemon-backed test is wedging or merely running out of
+/// room, and every one of them argued from a stopwatch held around `cargo test` - which times the
+/// build, the daemon and the wait together and cannot tell them apart. The number that settles it
+/// is here and was being thrown away.
+///
+/// Off unless `MUSTER_WAIT_LOG` is set, because what makes it evidence is many runs rather than
+/// one, and a line per wait on every gate run is noise nobody reads. `tools/wait-margins.py`
+/// turns the lines into the distribution `docs/testing.md` asks for: a wedge shows as successes
+/// in milliseconds and failures at exactly the allowance, and a deadline that is genuinely too
+/// tight shows as a tail creeping up to it.
+///
+/// Tab-separated, and the description last, because it is the only field that can contain a
+/// space. Its own tabs and newlines are flattened rather than escaped - what a reader needs from
+/// it is which wait this was.
+fn note(what: &str, waited: Duration, allowance: Duration) {
+    if !*REPORTING {
+        return;
+    }
+    let flat: String =
+        what.chars().map(|c| if c.is_control() || c == '\t' { ' ' } else { c }).collect();
+    eprintln!("wait\t{}\t{}\t{flat}", waited.as_millis(), allowance.as_millis());
+}
 
 /// What was true instead, said at the moment the wait gives up.
 ///
@@ -69,13 +98,16 @@ pub fn until_within(
     mut ready: impl FnMut() -> bool,
     detail: impl Detail,
 ) {
-    let deadline = Instant::now() + allowance;
+    let started = Instant::now();
+    let deadline = started + allowance;
     while Instant::now() < deadline {
         if ready() {
+            note(what, started.elapsed(), allowance);
             return;
         }
         std::thread::sleep(INTERVAL);
     }
+    note(what, started.elapsed(), allowance);
     let detail = detail.detail();
     let said = if detail.is_empty() { String::new() } else { format!("\n  {detail}") };
     panic!("timed out after {allowance:?} waiting for {what}.{said}");
@@ -87,13 +119,16 @@ pub fn until_within(
 /// daemon just made - so that a caller does not have to ask twice and explain to the reader why
 /// the second ask cannot fail.
 pub fn until_some<T>(what: &str, mut ready: impl FnMut() -> Option<T>) -> T {
-    let deadline = Instant::now() + PATIENCE;
+    let started = Instant::now();
+    let deadline = started + PATIENCE;
     while Instant::now() < deadline {
         if let Some(answer) = ready() {
+            note(what, started.elapsed(), PATIENCE);
             return answer;
         }
         std::thread::sleep(INTERVAL);
     }
+    note(what, started.elapsed(), PATIENCE);
     panic!("timed out after {PATIENCE:?} waiting for {what}, which never arrived");
 }
 
