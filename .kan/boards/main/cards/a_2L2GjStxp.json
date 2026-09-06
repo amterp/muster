@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "two-contract-tier",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1788656697004,
+  "creator": "Alexander Terp",
+  "description": "`./dev --doctor` shows two `scratch` daemons from the contract tier's smoke fixture\nstill running, one per smoke path, each holding one pane:\n\n    60915  01-22:57:59  /private/tmp/muster-smoke/driving/config/herdr/...   scratch  1 pane\n    61073  01-22:57:58  /private/tmp/muster-smoke/problems/config/herdr/...  scratch  1 pane\n\nTwo daemons, one per run of the tier, is exactly the shape `a_2I7ASgulK` describes and\nwas closed by `2a9c546`, \"the contract tier ends every daemon it starts\".\n\n## The timing is what makes this worth filing\n\n    fix committed      2026-09-03 08:17:43\n    daemons started    2026-09-03 21:06:02\n\nThirteen hours after. So either the fix does not cover the path that run took, or that\nrun was made from a checkout without it.\n\n## What has not been established\n\nNobody has reproduced it. Three explanations fit and they want different fixes:\n\n- The tier was run from a worktree or checkout predating `2a9c546`. Would make this a\n  non-issue, and is the first thing to rule out.\n- The teardown runs on a normal exit and is skipped when the run is interrupted. A tier\n  that needs a GUI session is one people stop with ctrl+c, so this is the explanation\n  worth taking seriously.\n- The teardown misses these two specifically. `driving` and `problems` are the smoke\n  fixture's own paths rather than daemons the harness spawns, and the doctor's own note\n  says what accumulates is \"what a person or a fixture started outside\" the harness.\n\n## Cost, and why it is low priority\n\nTwenty daemons together drew 0.1% CPU (`a_2I7ASgulK`), so this is not about speed. It is\nthat a stray daemon holding a live agent looks identical to one holding nothing, which is\nthe whole reason `./dev --doctor` exists. Every leak makes that list harder to read.\n\nThe two above are still running and safe to end - they hold one pane each in a temp home\nunder `/private/tmp/muster-smoke/`, not anybody's work.",
+  "id": "a_2L2GjStxp",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "title": "🧟 Two contract-tier daemons outlived the fix that was meant to end them",
+  "type": "bug",
+  "updated_at_millis": 1788656697004,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1788656697004}
+  ]
+}
