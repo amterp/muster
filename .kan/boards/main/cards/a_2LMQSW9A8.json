@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "daemon-backed-tests",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "next",
+  "created_at_millis": 1788704736506,
+  "creator": "Alexander Terp",
+  "description": "A fifth test joined this family during a parallel round: `a_program_that_discards_what_it_was_typed_early_still_gets_what_muster_asked_for` (`crates/muster-herdr/tests/pane_equipping.rs`), failing at `96e0573` with no Rust changes in the tree.\n\nFour cards already describe the same failure at four sites:\n\n    a_29eAVr11v  subscription.rs  dropping_the_handle_stops_the_thread  10s bootstrap\n    a_2L19sAmLZ  muster-seam      three respawn tests, one per run      20s until.rs:81\n    a_2JrwN625w  contract tier    three paint checks                    measured x5\n    a_2KCtOvgbo  gate             three flakes (done)\n\n## The measurement that reframes it\n\nTwo slots timed the same test independently on 2026-09-06:\n\n- `muster-bridge`'s `bridge_death` times out at **20s** and succeeds in **17.62s**.\n- `a_bridge_that_dies_is_noticed_and_replaced` timed out at 20s, passed on retry in **17.5s**.\n\nThat is 2.4s of headroom. These may not be tests only a loaded machine can break - they may be tests sized about two seconds above what they need, in which case the answer is per-test deadlines rather than harness scheduling. Worth measuring the margin on each member before choosing.\n\n## Why it matters more than a re-run\n\n`docs/testing.md` rests the project's confidence on a green suite, on the grounds that Muster is built largely by AI agents. A flake spends that: `a_29eAVr11v` already observes it teaches whoever hits it to re-run rather than to read. In one parallel round it cost three agents a diagnosis each, and running several worktrees at once makes it systematically worse by putting several daemons on one machine.\n\n## Open\n\nWhether each site can wait on something deterministic (the daemon answering ping) or genuinely needs a duration. `a_2JrwN625w` is the awkward case: its failures land at three different points of one sequence, so what it waits on may not be a single event.",
+  "id": "a_2LMQSW9A8",
+  "position": "!QUUU",
+  "title": "🎲 Daemon-backed tests time out about two seconds above what they need",
+  "type": "chore",
+  "updated_at_millis": 1788704736506,
+  "history": [
+    {"field":"column","value":"next","at":1788704736506}
+  ]
+}

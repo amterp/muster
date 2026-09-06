@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "respawn-json-spells",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1788704791637,
+  "creator": "Alexander Terp",
+  "description": "`corpus/conformance/respawn.json` uses `local/w1:p1` where the code's keys are Muster-minted (`local/p206y9p61r`). Harmless in that file, since the counting rules treat them as opaque strings.\n\nIt became misleading in `a_2KIPfvt7L`, which fixed a remedy that broke precisely because the two id spaces were confused, and which now spells them differently in every `typeable.json` case so a swap fails. A corpus file next door still spelling one the other way invites the confusion back. Cheap tidy-up.",
+  "id": "a_2LMRtQoFy",
+  "position": "UUUUUUUUUUUU",
+  "title": "🗝️ respawn.json spells pane keys the daemon's way",
+  "type": "chore",
+  "updated_at_millis": 1788704791637,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1788704791637}
+  ]
+}

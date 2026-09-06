@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "no-chord-evens-out-a",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1788704791470,
+  "creator": "Alexander Terp",
+  "description": "`muster pane resize --equalize` landed in `a_2KIH8WAnU` with no keybinding, deliberately: Muster has no chord that moves a divider either - that is the drag - and a chord means an `Action` variant, the hardcoded `Action::ALL` length bumped, a menu item, a default chord and a line in `docs/configuration.md`.\n\nWorth doing if evening a tab turns out to be something you reach for while your hands are on the keyboard. Raised so the decision is visible rather than lost in the verb's commit.",
+  "id": "a_2LMRt9isZ",
+  "position": "UUUUUUUUUUU",
+  "title": "🎹 No chord evens out a tab",
+  "type": "feature",
+  "updated_at_millis": 1788704791470,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1788704791470}
+  ]
+}

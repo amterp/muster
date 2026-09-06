@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-first-bridge-after",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "uncommitted",
+  "created_at_millis": 1788704765394,
+  "creator": "Alexander Terp",
+  "description": "Partly answered by `a_2KIPfvt7L`: a pane whose first bridge never dials now gets a second after the deadline, and a second bridge carries `--takeover`, so an orphaned client no longer needs killing by hand.\n\nWhat is still true is that the *first* bridge of a relaunch never takes over, so a window adopting its own saved panes is dark for three deadlines before it recovers.\n\nWhether a relaunch adopting panes from its own saved state should take over immediately is a real decision with a real risk - taking a terminal from a client that is alive and simply slow is worse than waiting - and wants deciding rather than building.",
+  "id": "a_2LMRD72sG",
+  "position": "UUUUUUUUUUU",
+  "title": "🔁 A first bridge after a relaunch never takes a terminal back",
+  "type": "chore",
+  "updated_at_millis": 1788704765394,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1788704765394}
+  ]
+}

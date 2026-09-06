@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-test-suite-that",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "next",
+  "created_at_millis": 1788704736602,
+  "creator": "Alexander Terp",
+  "description": "`swift test` reports 319 tests either way, so nothing but a hand-written line says `ClickRedriveTests` still exists after it was moved out of the default gate (`a_2Jrhh1dkA`).\n\n`./dev` prints that line today. It does not generalise: a second such suite needs a second hand-written line, and the day somebody forgets, a suite silently stops running and the gate stays green.\n\nThe script already fails a suite that discovers zero tests. Something similar for \"declared but not run\" would close the gap - a manifest of suites expected to be skipped, checked against what actually skipped, so the count and the reality cannot drift.",
+  "id": "a_2LMQSghHe",
+  "position": "!QUUUU",
+  "title": "🙈 A test suite that skips itself is invisible in the run count",
+  "type": "chore",
+  "updated_at_millis": 1788704736602,
+  "history": [
+    {"field":"column","value":"next","at":1788704736602}
+  ]
+}

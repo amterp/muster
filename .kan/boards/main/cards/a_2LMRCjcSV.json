@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "every-parallel-swift",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1788704765158,
+  "creator": "Alexander Terp",
+  "description": "`FindBar` reaches the core two ways: its needle goes through the injected dispatcher and its step goes through the `Core.dispatcher` global. That is how `Core.*` statics work throughout the shell, so it is not one view's bug.\n\nIt made a test in `a_2JrhrSBOx` flaky until the author stopped awaiting between setting the global and using it. Every parallel test in the Swift suite is exposed to the same race, and the symptom is a flake that looks like the feature under test.\n\nWorth a card about the pattern rather than about `FindBar`: either the statics get a per-test scope, or the suite says which tests may not run in parallel.",
+  "id": "a_2LMRCjcSV",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "title": "🧵 Every parallel Swift test races the Core.* statics",
+  "type": "chore",
+  "updated_at_millis": 1788704765158,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1788704765158}
+  ]
+}

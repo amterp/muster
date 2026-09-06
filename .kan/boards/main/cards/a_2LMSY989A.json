@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "the-layout-replay",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1788704816879,
+  "creator": "Alexander Terp",
+  "description": "a_2KyXfzZvm was fixed on an inference rather than a transcript, and the fix is right only if the inference is. Recorded: a fresh subscription replays every arrangement a tab has outgrown, and layout_updated carries a zoomed flag taking both values. Inferred: a tab zoomed after its last split replays unzoomed-then-zoomed and both pass arranges. No transcript shows a replayed zoom, because the probe scenario never zooms. Teach the layout-replay probe to zoom and re-record both platforms; it needs --corpus-linux, and a one-sided re-record breaks that workflow. Related: a_29qxvebDg.",
+  "id": "a_2LMSY989A",
+  "position": "!!!!U",
+  "title": "The layout-replay probe never zooms, so the replayed zoom is inferred",
+  "type": "chore",
+  "updated_at_millis": 1788704816879,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1788704816879}
+  ]
+}

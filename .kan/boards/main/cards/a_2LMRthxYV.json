@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "upstream-herdr-a",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "uncommitted",
+  "created_at_millis": 1788704791796,
+  "creator": "Alexander Terp",
+  "description": "herdr refuses any client frame over 2 MiB (`MAX_FRAME_SIZE`) and skips it with a WARN, so an attached client receives nothing for that render pass and the pane freezes (`a_2KHGYMpnK`).\n\nherdr already degrades oversized *graphics* frames - \"dropping graphics from oversized frame\". Text has no fallback, though a text frame that will not fit could be sent as a partial or a damaged region rather than dropped whole.\n\nMuster's side is now a ceiling that stops a pane reaching that size (`a_2KHGYMpnK`), which is prevention rather than a fix. The daemon dropping a frame and telling nobody is herdr's to answer.",
+  "id": "a_2LMRthxYV",
+  "position": "UUUUUUUUUUUU",
+  "title": "⬆️ Upstream herdr: a text frame over the cap could degrade rather than be skipped",
+  "type": "chore",
+  "updated_at_millis": 1788704791796,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1788704791796}
+  ]
+}
