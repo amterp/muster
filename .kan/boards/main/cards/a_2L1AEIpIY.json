@@ -6,6 +6,14 @@
     "shell"
   ],
   "column": "next",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "A second instance, and not on `pane send`: closing a pane by hand on 2026-09-06 logged\n\n```\nintent.submitted  ClosePane { pane: \"p21ep311we\" }  refused: \"timed out\"\ncore.refused      \"the daemon did not make that change: timed out ...\"\n```\n\nand herdr had in fact closed the terminal - the bridge died a fraction of a second later\nsaying that terminal is not found, and the pane is gone from `muster window`. It happened\ntwice in three seconds, on two panes closed in a row, with 15 panes on the daemon.\n\nThat puts the fault below `pane send`: every intent goes through\n`IntentSubmitter::submit` -\u003e `HerdrClient::request`, which is the 500ms\n`DEFAULT_TIMEOUT`. So the contract question this card asks - what an exit code means when\nthe daemon did the work and the acknowledgement did not arrive in time - is the same\nquestion for `pane.close`, and answering it only for `pane.send_input` would leave the\nwindow itself reporting refusals for changes it made.\n\n`a_2LMpvavhA` covers what the close's misreported failure then triggered.",
+      "created_at_millis": 1788705724561,
+      "id": "c_2LMqACF1X"
+    }
+  ],
   "created_at_millis": 1788654063762,
   "creator": "Alexander Terp",
   "description": "`muster pane send` reported a timeout and the message had in fact arrived. The caller\ndid what a caller does with a reported failure - retried - and the receiving pane got\nthe same message six times.\n\nSeen during a parallel-work round, one agent messaging another agent's pane. The\nreceiving agent had to work out for itself that six identical instructions were one\ninstruction, and said so.\n\n## Why this is worse than a noisy log line\n\n`a_2I7Acusq4` established that `pane send --enter` exiting 0 without submitting is a\nbug, because the exit code is the only thing a script can read. This is the same\ncontract broken the other way: a non-zero exit on a message that landed. Both leave a\ncaller unable to tell what happened, and this direction is the one that causes damage\nrather than silence, because the obvious response to a failed send is to send again.\n\nIt reaches further than one agent talking to another. `muster pane send` is the CLI\nsurface Muster offers agents for driving a window, and an agent that cannot trust the\nexit code cannot safely retry anything. Instructions delivered several times are not a\ncosmetic problem when the instruction is \"commit\" or \"run the tier\".\n\n## What is not known\n\nWhether the timeout is the send itself waiting too long for something downstream, or\nwhether the message is delivered and the acknowledgement is what goes missing. Nobody\nhas looked at where the wait actually is. Also unknown is how reproducible it is - it\nappeared under a machine load average around 230, and nothing has tried it quiet.\n\n## What a fix has to decide\n\nWhat the exit code means when the pane received the bytes but nothing came back to say\nso. A send that cannot confirm delivery is not the same as a send that failed, and the\ncaller needs those distinguished - either as separate exit codes, or by making the\nacknowledgement reliable enough that a timeout really does mean nothing arrived.",
@@ -13,7 +21,7 @@
   "position": "!QUU",
   "title": "📮 pane send reports a timeout on a message it delivered, so a caller retries into duplicates",
   "type": "bug",
-  "updated_at_millis": 1788654063762,
+  "updated_at_millis": 1788705724561,
   "history": [
     {"field":"column","value":"next","at":1788654063762}
   ]
