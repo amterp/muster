@@ -2,55 +2,130 @@
   "concept": "respawn",
   "source": "authored",
   "citation": "crates/muster-core/src/respawn.rs and kan card a_2HrmSyRAQ. There is no oracle above these: how many times Muster rebuilds a pane's bridge before giving up, and how long one must last to count as having worked, are Muster's calls and these cases are where they are written down. The measurement behind the thirty seconds is on the card - a remote bridge needs several hundred milliseconds to start, attach and paint, of which about 400ms is the far machine opening an ssh session.",
-  "why": "Unplugging ethernet and picking up wifi kills the ssh under every devenv pane, and nothing replaced the bridges. The panes stayed on screen showing a dead terminal until Muster was relaunched, and every network change left another one. Rebuilding them is the fix; rebuilding them without a limit is a process spawned every few hundred milliseconds at a pane nobody can rescue, which is worse.\n\nWhat separates the two is how long the last bridge lasted, and not whether the daemon still holds the pane - after a network change it does, and the far machine refuses the attach anyway because the herdr client from before the change is still holding the terminal. It is not whether the bridge dialed back either: a bridge whose attach is refused dials the app first and reports the refusal afterwards, so a rule that reset on a dial would reset on exactly the failure it exists to stop.\n\nEvery `ended` step names how the bridge ended, because that decides whether attaching again is the right answer at all: a connection that went and a terminal held by a client that has not noticed its transport died are both recovered by attaching again, and a terminal handed to another client is not - taking that one back would be answered the same way from the other side, and two windows would trade one terminal until both ran out of tries.\n\nTimes are nanoseconds, matching the monotonic clock the seam counts in. `decisions` accumulates one entry per `ended` step, spelled `start:N` for a replacement, `give_up:N` for a refusal, and `yield` for a terminal left to whoever now has it, where N is the count each carries. `count` is asked once at the end and is what the view publishes: the shell builds a new surface whenever it changes, and passes herdr's --takeover when it is not zero.",
+  "why": "Unplugging ethernet and picking up wifi kills the ssh under every devenv pane, and nothing replaced the bridges. The panes stayed on screen showing a dead terminal until Muster was relaunched, and every network change left another one. Rebuilding them is the fix; rebuilding them without a limit is a process spawned every few hundred milliseconds at a pane nobody can rescue, which is worse.\n\nWhat separates the two is how long the last bridge lasted, and not whether the daemon still holds the pane - after a network change it does, and the far machine refuses the attach anyway because the herdr client from before the change is still holding the terminal. It is not whether the bridge dialed back either: a bridge whose attach is refused dials the app first and reports the refusal afterwards, so a rule that reset on a dial would reset on exactly the failure it exists to stop.\n\nEvery `ended` step names how the bridge ended, because that decides whether attaching again is the right answer at all: a connection that went and a terminal held by a client that has not noticed its transport died are both recovered by attaching again, and a terminal handed to another client is not - taking that one back would be answered the same way from the other side, and two windows would trade one terminal until both ran out of tries.\n\nTimes are nanoseconds, matching the monotonic clock the seam counts in. `decisions` accumulates one entry per step. An `ended` step spells `start:N` for a replacement, `give_up:N` for a refusal and `yield` for a terminal left to whoever now has it, where N is which attempt in the current run of failures - which is what the limit counts. A `stalled` or `asked` step spells `ask:N` or `left`, where N is `restarts`, because neither spends an attempt.\n\n`restarts` is asked once at the end and is what the view publishes: how many bridges the pane has been given, ever. Two numbers rather than one, and they were one until a pane paid for it. The shell builds a new surface when the published number *changes*, so a run of failures starting over at one is a number the shell has already seen and a surface it therefore reuses - and a bridge is a surface's command, so the pane never gets another. It also passes herdr's --takeover whenever the number is not zero, which reads the same under either meaning.\n\nThe last two steps are the ones that ask for a bridge with none having ended, which nothing could do until a pane sat unreachable for ninety minutes with its agent still running (kan a_2KIPfvt7L). `stalled` is the watch on panes nothing is dialing, and it declines a pane whose bridges are ending on their own because the rules above have already answered for that one. `asked` is a person running `muster pane reattach`, which always asks and starts the run of failures over.",
   "cases": [
     {
       "name": "the first bridge to end is replaced",
       "why": "The base case, and the whole of the bug: before this the pane went on showing a dead terminal until somebody relaunched Muster. The count comes back as one, which is what tells the shell to build a new surface and tells its bridge it is re-attaching a pane this window already had.",
       "given": {
-        "steps": [{ "ended": "devenv/w1:p1", "at": 0, "ending": "lost" }]
+        "steps": [
+          {
+            "ended": "devenv/w1:p1",
+            "at": 0,
+            "ending": "lost"
+          }
+        ]
       },
-      "expect": { "decisions": ["start:1"], "count": 1 }
+      "expect": {
+        "decisions": [
+          "start:1"
+        ],
+        "restarts": 1
+      }
     },
     {
       "name": "a bridge that ran for a while starts the run of failures over, and still asks for a new surface",
       "why": "The case the whole rule is for. A laptop that changes network twice in an afternoon must get its panes back both times, and a pane whose bridge worked for half an hour has proved that rebuilding it works.\n\nTwo numbers, and this case is where they come apart. The run of failures starts over, so the second ending is `start:1` like the first - that is what the limit is about. The published count does not, because the shell rebuilds a surface when that number *changes* and a second `1` is a number it has already seen. It read 1, it reads 1, it reuses the surface, and the pane the daemon is still holding never gets its second bridge. So the published number counts every bridge this pane has been given, and only ever climbs.",
       "given": {
         "steps": [
-          { "ended": "devenv/w1:p1", "at": 0, "ending": "lost" },
-          { "ended": "devenv/w1:p1", "at": 1800000000000, "ending": "lost" }
+          {
+            "ended": "devenv/w1:p1",
+            "at": 0,
+            "ending": "lost"
+          },
+          {
+            "ended": "devenv/w1:p1",
+            "at": 1800000000000,
+            "ending": "lost"
+          }
         ]
       },
-      "expect": { "decisions": ["start:1", "start:1"], "count": 2 }
+      "expect": {
+        "decisions": [
+          "start:1",
+          "start:1"
+        ],
+        "restarts": 2
+      }
     },
     {
       "name": "three bridges dying on sight is the last one tried",
       "why": "A bridge that cannot attach ends in a fraction of a second, so without a limit this is a process every few hundred milliseconds for as long as the window is open. Three, because the case worth surviving is a network back within seconds and the case worth stopping is one that never will.",
       "given": {
         "steps": [
-          { "ended": "devenv/w1:p1", "at": 0, "ending": "lost" },
-          { "ended": "devenv/w1:p1", "at": 400000000, "ending": "lost" },
-          { "ended": "devenv/w1:p1", "at": 900000000, "ending": "lost" },
-          { "ended": "devenv/w1:p1", "at": 1300000000, "ending": "lost" }
+          {
+            "ended": "devenv/w1:p1",
+            "at": 0,
+            "ending": "lost"
+          },
+          {
+            "ended": "devenv/w1:p1",
+            "at": 400000000,
+            "ending": "lost"
+          },
+          {
+            "ended": "devenv/w1:p1",
+            "at": 900000000,
+            "ending": "lost"
+          },
+          {
+            "ended": "devenv/w1:p1",
+            "at": 1300000000,
+            "ending": "lost"
+          }
         ]
       },
-      "expect": { "decisions": ["start:1", "start:2", "start:3", "give_up:3"], "count": 3 }
+      "expect": {
+        "decisions": [
+          "start:1",
+          "start:2",
+          "start:3",
+          "give_up:3"
+        ],
+        "restarts": 3
+      }
     },
     {
       "name": "a pane that gave up stays given up while it keeps failing",
       "why": "The refusal is not a one-off. Something else may start a bridge for this pane - a surface rebuilt for another reason - and if that one dies immediately too, the answer is still no. Counting from one again here is how the loop comes back with an extra step in it.",
       "given": {
         "steps": [
-          { "ended": "devenv/w1:p1", "at": 0, "ending": "lost" },
-          { "ended": "devenv/w1:p1", "at": 100000000, "ending": "lost" },
-          { "ended": "devenv/w1:p1", "at": 200000000, "ending": "lost" },
-          { "ended": "devenv/w1:p1", "at": 300000000, "ending": "lost" },
-          { "ended": "devenv/w1:p1", "at": 400000000, "ending": "lost" }
+          {
+            "ended": "devenv/w1:p1",
+            "at": 0,
+            "ending": "lost"
+          },
+          {
+            "ended": "devenv/w1:p1",
+            "at": 100000000,
+            "ending": "lost"
+          },
+          {
+            "ended": "devenv/w1:p1",
+            "at": 200000000,
+            "ending": "lost"
+          },
+          {
+            "ended": "devenv/w1:p1",
+            "at": 300000000,
+            "ending": "lost"
+          },
+          {
+            "ended": "devenv/w1:p1",
+            "at": 400000000,
+            "ending": "lost"
+          }
         ]
       },
       "expect": {
-        "decisions": ["start:1", "start:2", "start:3", "give_up:3", "give_up:3"],
-        "count": 3
+        "decisions": [
+          "start:1",
+          "start:2",
+          "start:3",
+          "give_up:3",
+          "give_up:3"
+        ],
+        "restarts": 3
       }
     },
     {
@@ -58,30 +133,80 @@
       "why": "The boundary, stated rather than left to whichever comparison got written. Inclusive on the near side: thirty seconds of a pane rendering is a pane that was working, and the alternative is a window that gives up on a machine one nanosecond slower than the rule. Four bridges were asked for, so the published count is four however many runs of failures they fell into.",
       "given": {
         "steps": [
-          { "ended": "devenv/w1:p1", "at": 0, "ending": "lost" },
-          { "ended": "devenv/w1:p1", "at": 100000000, "ending": "lost" },
-          { "ended": "devenv/w1:p1", "at": 200000000, "ending": "lost" },
-          { "ended": "devenv/w1:p1", "at": 30200000000, "ending": "lost" }
+          {
+            "ended": "devenv/w1:p1",
+            "at": 0,
+            "ending": "lost"
+          },
+          {
+            "ended": "devenv/w1:p1",
+            "at": 100000000,
+            "ending": "lost"
+          },
+          {
+            "ended": "devenv/w1:p1",
+            "at": 200000000,
+            "ending": "lost"
+          },
+          {
+            "ended": "devenv/w1:p1",
+            "at": 30200000000,
+            "ending": "lost"
+          }
         ]
       },
-      "expect": { "decisions": ["start:1", "start:2", "start:3", "start:1"], "count": 4 }
+      "expect": {
+        "decisions": [
+          "start:1",
+          "start:2",
+          "start:3",
+          "start:1"
+        ],
+        "restarts": 4
+      }
     },
     {
       "name": "one pane failing says nothing about the pane beside it",
       "why": "A window holds panes on two machines, and a devenv behind a dropped connection must not spend the local panes' attempts. Counted per pane for the same reason health is counted per daemon.",
       "given": {
         "steps": [
-          { "ended": "devenv/w1:p1", "at": 0, "ending": "lost" },
-          { "ended": "devenv/w1:p1", "at": 100000000, "ending": "lost" },
-          { "ended": "devenv/w1:p1", "at": 200000000, "ending": "lost" },
-          { "ended": "devenv/w1:p1", "at": 300000000, "ending": "lost" },
-          { "ended": "local/w1:p1", "at": 400000000, "ending": "lost" }
+          {
+            "ended": "devenv/w1:p1",
+            "at": 0,
+            "ending": "lost"
+          },
+          {
+            "ended": "devenv/w1:p1",
+            "at": 100000000,
+            "ending": "lost"
+          },
+          {
+            "ended": "devenv/w1:p1",
+            "at": 200000000,
+            "ending": "lost"
+          },
+          {
+            "ended": "devenv/w1:p1",
+            "at": 300000000,
+            "ending": "lost"
+          },
+          {
+            "ended": "local/w1:p1",
+            "at": 400000000,
+            "ending": "lost"
+          }
         ],
-        "count": "local/w1:p1"
+        "of": "local/w1:p1"
       },
       "expect": {
-        "decisions": ["start:1", "start:2", "start:3", "give_up:3", "start:1"],
-        "count": 1
+        "decisions": [
+          "start:1",
+          "start:2",
+          "start:3",
+          "give_up:3",
+          "start:1"
+        ],
+        "restarts": 1
       }
     },
     {
@@ -89,46 +214,298 @@
       "why": "A pane id belongs to one pane, but a window that gave up on one and then had it closed should not carry the refusal in a map for as long as it is open. Forgetting is also the way back: closing the pane and opening another is what the roster tells somebody to do.",
       "given": {
         "steps": [
-          { "ended": "devenv/w1:p1", "at": 0, "ending": "lost" },
-          { "ended": "devenv/w1:p1", "at": 100000000, "ending": "lost" },
-          { "forgot": "devenv/w1:p1" }
+          {
+            "ended": "devenv/w1:p1",
+            "at": 0,
+            "ending": "lost"
+          },
+          {
+            "ended": "devenv/w1:p1",
+            "at": 100000000,
+            "ending": "lost"
+          },
+          {
+            "forgot": "devenv/w1:p1"
+          }
         ]
       },
-      "expect": { "decisions": ["start:1", "start:2"], "count": 0 }
+      "expect": {
+        "decisions": [
+          "start:1",
+          "start:2"
+        ],
+        "restarts": 0
+      }
     },
     {
       "name": "a terminal taken by another client is left to it",
       "why": "The property the plain first attach was written to protect, kept once a refused attach reaches this policy at all. herdr hands a terminal to whoever asks with --takeover and tells the client it displaced; a window that answered by taking it back would be displacing a window that would answer the same way. Nothing is counted and nothing is published, because the count is what makes the shell build a new surface and a new surface is a new bridge.",
       "given": {
-        "steps": [{ "ended": "devenv/w1:p1", "at": 0, "ending": "taken_over" }]
+        "steps": [
+          {
+            "ended": "devenv/w1:p1",
+            "at": 0,
+            "ending": "taken_over"
+          }
+        ]
       },
-      "expect": { "decisions": ["yield"], "count": 0 }
+      "expect": {
+        "decisions": [
+          "yield"
+        ],
+        "restarts": 0
+      }
     },
     {
       "name": "yielding does not spend what a pane had already tried",
       "why": "A pane that lost its connection twice and then had its terminal taken is on two tries, not three and not zero. Yielding is neither an attempt nor a fresh start: if the window it went to closes and this one is asked for the pane again, the run of failures it was already in is still the truth about it.",
       "given": {
         "steps": [
-          { "ended": "devenv/w1:p1", "at": 0, "ending": "lost" },
-          { "ended": "devenv/w1:p1", "at": 100000000, "ending": "lost" },
-          { "ended": "devenv/w1:p1", "at": 200000000, "ending": "taken_over" }
+          {
+            "ended": "devenv/w1:p1",
+            "at": 0,
+            "ending": "lost"
+          },
+          {
+            "ended": "devenv/w1:p1",
+            "at": 100000000,
+            "ending": "lost"
+          },
+          {
+            "ended": "devenv/w1:p1",
+            "at": 200000000,
+            "ending": "taken_over"
+          }
         ]
       },
-      "expect": { "decisions": ["start:1", "start:2", "yield"], "count": 2 }
+      "expect": {
+        "decisions": [
+          "start:1",
+          "start:2",
+          "yield"
+        ],
+        "restarts": 2
+      }
     },
     {
       "name": "a refused attach is replaced, because whoever holds it may be nobody",
       "why": "What a relaunch after a network change looks like: the previous app's herdr client is still holding the terminal on the far machine and will hold it forever (kan a_2I76eCrjw). The replacement carries --takeover, which is the whole of the recovery - without it every remote pane in the window stays dark until somebody kills three processes over ssh.",
       "given": {
-        "steps": [{ "ended": "devenv/w1:p1", "at": 0, "ending": "refused" }]
+        "steps": [
+          {
+            "ended": "devenv/w1:p1",
+            "at": 0,
+            "ending": "refused"
+          }
+        ]
       },
-      "expect": { "decisions": ["start:1"], "count": 1 }
+      "expect": {
+        "decisions": [
+          "start:1"
+        ],
+        "restarts": 1
+      }
     },
     {
-      "name": "a pane nobody has replaced is on count zero",
-      "why": "What every pane publishes until something goes wrong, and the reason the count is the same field the shell reads for --takeover: zero means this window has never had a bridge for this pane end, so its first one attaches plainly rather than taking a terminal some other window is legitimately showing.",
-      "given": { "steps": [] },
-      "expect": { "decisions": [], "count": 0 }
+      "name": "a pane nobody has replaced is on zero",
+      "why": "What every pane publishes until something goes wrong, and the reason the number is the same field the shell reads for --takeover: zero means this window has never been given a second bridge for this pane, so its first one attaches plainly rather than taking a terminal some other window is legitimately showing.",
+      "given": {
+        "steps": []
+      },
+      "expect": {
+        "decisions": [],
+        "restarts": 0
+      }
+    },
+    {
+      "name": "a replacement that never started is asked for again",
+      "why": "The whole of kan a_2KIPfvt7L. The core decided to replace the bridge and said so in the run log; nothing started one, so nothing ended, so nothing here was ever asked a second time - and the pane had no bridge for the life of the app process with its agent still running behind it. The ask is what the watch on panes nothing is dialing produces five seconds later, and the number climbing is what makes the shell build the surface a bridge is the command of.",
+      "given": {
+        "steps": [
+          {
+            "ended": "devenv/w1:p1",
+            "at": 0,
+            "ending": "lost"
+          },
+          {
+            "stalled": "devenv/w1:p1",
+            "at": 5000000000
+          }
+        ]
+      },
+      "expect": {
+        "decisions": [
+          "start:1",
+          "ask:2"
+        ],
+        "restarts": 2
+      }
+    },
+    {
+      "name": "a pane nothing ever dialed is asked for without a bridge having ended",
+      "why": "The launch half, and the one no rule here could reach before: a first bridge that never started leaves nothing to end, so the replacement policy had never heard of the pane at all. Asking is also what earns it --takeover, which a first bridge never carries - so a herdr client left holding the terminal by a previous app stops being a pane somebody has to rescue by hand over ssh.",
+      "given": {
+        "steps": [
+          {
+            "stalled": "devenv/w1:p1",
+            "at": 5000000000
+          }
+        ]
+      },
+      "expect": {
+        "decisions": [
+          "ask:1"
+        ],
+        "restarts": 1
+      }
+    },
+    {
+      "name": "asking again costs nothing from the run of failures",
+      "why": "The limit exists because a bridge that cannot attach ends in a fraction of a second, so replacing it without one is a process spawned every few hundred milliseconds. A bridge that never started spawned nothing, and the watch that notices paces itself at one deadline - so there is no storm to guard against, and spending an attempt here would stop a pane recovering for a reason that never applied to it. Three asks and the pane is still on its first attempt.",
+      "given": {
+        "steps": [
+          {
+            "stalled": "devenv/w1:p1",
+            "at": 5000000000
+          },
+          {
+            "stalled": "devenv/w1:p1",
+            "at": 10000000000
+          },
+          {
+            "stalled": "devenv/w1:p1",
+            "at": 15000000000
+          },
+          {
+            "ended": "devenv/w1:p1",
+            "at": 15100000000,
+            "ending": "lost"
+          }
+        ]
+      },
+      "expect": {
+        "decisions": [
+          "ask:1",
+          "ask:2",
+          "ask:3",
+          "start:1"
+        ],
+        "restarts": 4
+      }
+    },
+    {
+      "name": "a pane the limit stopped is left alone",
+      "why": "The rule that keeps the limit meaning what it says. Bridges for this pane are starting and dying on sight, which is the case the limit exists for, and it has stopped. The watch cannot tell that pane apart from one whose bridge never started - both are dark with nothing dialing - so the difference has to be recorded here: a pane whose last ask ended has already been answered, and asking again would restart a ladder that just stopped and spawn a process every deadline forever.",
+      "given": {
+        "steps": [
+          {
+            "ended": "devenv/w1:p1",
+            "at": 0,
+            "ending": "refused"
+          },
+          {
+            "ended": "devenv/w1:p1",
+            "at": 100000000,
+            "ending": "refused"
+          },
+          {
+            "ended": "devenv/w1:p1",
+            "at": 200000000,
+            "ending": "refused"
+          },
+          {
+            "ended": "devenv/w1:p1",
+            "at": 300000000,
+            "ending": "refused"
+          },
+          {
+            "stalled": "devenv/w1:p1",
+            "at": 5300000000
+          }
+        ]
+      },
+      "expect": {
+        "decisions": [
+          "start:1",
+          "start:2",
+          "start:3",
+          "give_up:3",
+          "left"
+        ],
+        "restarts": 3
+      }
+    },
+    {
+      "name": "a terminal left to another window is not taken back by the watch",
+      "why": "The property yielding exists to protect, from the one direction that could still break it. The pane is dark and nothing is dialing it, which is exactly what the watch looks for - so without this the window that yielded would ask for a bridge five seconds later, take the terminal back with --takeover, and be answered the same way from the other side until both ran out of tries. Yielding records that this pane's bridge has ended for precisely this reason.",
+      "given": {
+        "steps": [
+          {
+            "ended": "devenv/w1:p1",
+            "at": 0,
+            "ending": "taken_over"
+          },
+          {
+            "stalled": "devenv/w1:p1",
+            "at": 5000000000
+          }
+        ]
+      },
+      "expect": {
+        "decisions": [
+          "yield",
+          "left"
+        ],
+        "restarts": 0
+      }
+    },
+    {
+      "name": "a person asking gets a bridge for a pane that gave up",
+      "why": "What `muster pane reattach` is for, and what makes stopping affordable. Somebody looking at a dead pane has usually just done something about the cause - killed the client still holding the terminal on the far machine, or brought the machine back - so their ask is not the fourth try in a run of failures, it is the first try in a new one. Without a way back, a pane the limit stopped is dead until the app is relaunched, agent and all.",
+      "given": {
+        "steps": [
+          {
+            "ended": "devenv/w1:p1",
+            "at": 0,
+            "ending": "refused"
+          },
+          {
+            "ended": "devenv/w1:p1",
+            "at": 100000000,
+            "ending": "refused"
+          },
+          {
+            "ended": "devenv/w1:p1",
+            "at": 200000000,
+            "ending": "refused"
+          },
+          {
+            "ended": "devenv/w1:p1",
+            "at": 300000000,
+            "ending": "refused"
+          },
+          {
+            "asked": "devenv/w1:p1",
+            "at": 400000000
+          },
+          {
+            "ended": "devenv/w1:p1",
+            "at": 500000000,
+            "ending": "refused"
+          }
+        ]
+      },
+      "expect": {
+        "decisions": [
+          "start:1",
+          "start:2",
+          "start:3",
+          "give_up:3",
+          "ask:4",
+          "start:1"
+        ],
+        "restarts": 5
+      }
     }
   ]
 }

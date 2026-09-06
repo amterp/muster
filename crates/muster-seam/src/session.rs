@@ -1568,7 +1568,7 @@ impl Session {
                         .and_then(|backend| backend.names.backend_pane(pane).ok())
                         .map(|named| named.as_str().to_string()),
                     font_size_offset: self.font_sizes.offset(&key),
-                    bridge_restarts: self.respawns.count(&key),
+                    bridge_restarts: self.respawns.restarts(&key),
                 }
             },
         )
@@ -2012,6 +2012,41 @@ fn replace_bridge(pane: &PaneKey, ending: Ending) {
             fields! { "pane" => pane.to_string(), "detail" => respawn::yielded(pane) },
         ),
     }
+}
+
+/// Asks for a bridge for a pane nothing has dialed, because nothing else is going to.
+///
+/// The other door into [`replace_bridge`]'s one mechanism, and the reason it exists: that one
+/// runs when a bridge *ends*, and a replacement that was decided on and never started has no
+/// exit to run it. Everything downstream is identical - count it and publish, and the view
+/// carrying a number the shell has not seen is what makes it build the surface a bridge is the
+/// command of.
+///
+/// Called from the watch that already knows which panes nothing is dialing, so this is told
+/// when rather than deciding it. Whether asking is right at all is `respawn`'s.
+pub(crate) fn bridge_stalled(pane: &PaneKey, deadline: u64) {
+    let asked = {
+        let mut session = poison::lock(&SESSION, "session");
+        if !session.holds(pane) {
+            session.respawns.forget(pane);
+            return;
+        }
+        session.respawns.stalled(pane, clock::monotonic_now())
+    };
+
+    // `None` is a pane whose bridges are ending on their own, so the replacement policy has
+    // already answered for it - it started another, or it stopped, or it left the terminal to
+    // the window that took it. Asking here would restart a ladder that has just stopped.
+    let Some(restarts) = asked else { return };
+    log::info(
+        "bridge.stalled",
+        fields! {
+            "pane" => pane.to_string(),
+            "restarts" => restarts.to_string(),
+            "quiet_for_ms" => (deadline / 1_000_000).to_string(),
+        },
+    );
+    publish();
 }
 
 /// Asks a daemon what it actually holds, and shows that instead.

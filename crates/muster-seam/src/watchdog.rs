@@ -1,9 +1,16 @@
-//! The one thread that notices a pane nobody ever dialed.
+//! The one thread that notices a pane nobody ever dialed, and asks for a bridge for it.
 //!
 //! `muster_core::typeable` decides which panes have waited too long; this holds the clock and
-//! the thread that asks it, and turns the answer into problems the roster draws. Split that
-//! way because the deadline is the only part of this a case cannot reach: a fold over (pane,
-//! when it started, what time it is now) is testable, and a thread parked on a condvar is not.
+//! the thread that asks it, and turns the answer into problems the roster draws and bridges
+//! the shell builds surfaces for. Split that way because the deadline is the only part of this
+//! a case cannot reach: a fold over (pane, when it started, what time it is now) is testable,
+//! and a thread parked on a condvar is not.
+//!
+//! The asking is here rather than beside the replacement policy because this is the only thing
+//! in the process that knows a bridge never arrived. Everything else that asks for one is
+//! driven by a bridge *ending*, and a replacement decided on and never started has no exit -
+//! so before this, a pane in that state had no bridge for the life of the app process with its
+//! agent still running behind it (kan a_2KIPfvt7L).
 //!
 //! **Only this module raises or clears a pane's problem.** The call sites in `session.rs` do
 //! nothing but record into `WAITING` and knock, and that is a lock rule rather than a style
@@ -155,6 +162,11 @@ fn watch() {
         }
         for key in reported.clear {
             session::clear_problem(&key);
+        }
+        // Outside the lock, like the two above and for the same reason: this reaches `SESSION`
+        // and publishes, and publishing comes back through `showing` for `WAITING`.
+        for pane in reported.stalled {
+            session::bridge_stalled(&pane, deadline);
         }
 
         // Asked again under the guard this waits on, rather than reused from above. A pane

@@ -23,6 +23,7 @@ fn typeable_conformance() {
         let deadline = number(given, "deadline")?;
         let mut waiting = Waiting::new();
         let (mut raised, mut cleared, mut details) = (Vec::new(), Vec::new(), Vec::new());
+        let mut asked: Vec<Value> = Vec::new();
         let mut last_read = 0;
 
         for step in given.get("steps").and_then(Value::as_array).into_iter().flatten() {
@@ -46,6 +47,7 @@ fn typeable_conformance() {
                     details.push(detail);
                 }
                 cleared.extend(reported.clear.into_iter().map(Value::String));
+                asked.extend(reported.stalled.iter().map(|pane| json!(pane.to_string())));
             } else {
                 return Err(CaseError::new(format!("the step does nothing: {step}")));
             }
@@ -58,6 +60,7 @@ fn typeable_conformance() {
         Ok(fields([
             ("raised", Some(Value::Array(raised))),
             ("cleared", Some(Value::Array(cleared))),
+            ("asked", Some(Value::Array(asked))),
             ("next_wake", Some(json!(waiting.next_wake(now, deadline)))),
             // Only where a case asks for it. One sentence pinned once beats the same
             // paragraph restated in thirteen cases that are about something else.

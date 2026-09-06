@@ -15,9 +15,17 @@
 //! drawing renders nothing - so a wait is only counted while the window is showing that pane,
 //! and a pane that comes back waits again from the moment it is drawn.
 //!
+//! **What waits here also asks.** Saying so was the whole of this at first, and saying so was
+//! not enough: a pane whose bridge was decided on and never started has nothing that can ask
+//! for another, because everything that asks is driven by a bridge ending and this one never
+//! began. Two agents sat unreachable for ninety minutes that way (kan a_2KIPfvt7L). The
+//! condition was already computed here, exactly - socket bound, nothing dialed, the window
+//! drawing it, the deadline passed - so this says which panes to ask for as well as which to
+//! report, and `respawn` decides whether asking is the right answer for each.
+//!
 //! Pure - no clock, no thread, no socket. Time arrives as a number, so every rule here is
-//! driven by a recorded case: whose deadline has passed, what to say about it, and what to
-//! take back when a bridge turns up late.
+//! driven by a recorded case: whose deadline has passed, what to say about it, which to ask a
+//! bridge for, and what to take back when one turns up late.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -38,6 +46,14 @@ pub struct Reported {
 
     /// Keys that were raised and are no longer true.
     pub clear: Vec<String>,
+
+    /// Panes that should be asked for a bridge, because nothing has dialed them.
+    ///
+    /// Every overdue pane whose last ask is a whole deadline old, not only the ones that have
+    /// just fallen overdue - which is the difference between this and `raise`. Saying a thing
+    /// twice is nagging; asking twice is the recovery, because the first ask is exactly what
+    /// may have produced nothing.
+    pub stalled: Vec<PaneKey>,
 }
 
 /// One pane's wait, and what is known about why it is waiting.
@@ -45,6 +61,16 @@ pub struct Reported {
 struct Wait {
     /// When this wait started, on whatever monotonic scale the caller counts in.
     since: u64,
+
+    /// When a bridge for this pane was last asked for.
+    ///
+    /// Separate from `since` because the two answer different questions and must not move
+    /// together. How long the pane has been deaf is what the sentence is about, and it has to
+    /// keep climbing or a problem raised would clear itself and be raised again every
+    /// deadline - the nagging that keying a problem by its condition exists to end. How long
+    /// ago somebody asked is what paces the asking, and that has to restart on every ask or
+    /// the pane would be asked for on every tick.
+    asked: u64,
 
     /// How the last bridge for this pane ended, when there was one.
     ///
@@ -86,7 +112,7 @@ impl Waiting {
     /// too - and that second wait is the one `control_socket.rs` calls out as the exact
     /// failure the accept loop exists to prevent.
     pub fn opened(&mut self, pane: PaneKey, at: u64) {
-        self.waits.insert(pane, Wait { since: at, last: None });
+        self.waits.insert(pane, Wait { since: at, asked: at, last: None });
     }
 
     /// A bridge for this pane has ended, so the wait starts again knowing why.
@@ -97,7 +123,7 @@ impl Waiting {
     /// bridge, and a pane that stays dark for five seconds after a refused attach has a remedy
     /// where a pane at launch has only a deadline.
     pub fn ended(&mut self, pane: PaneKey, at: u64, ended: Ended) {
-        self.waits.insert(pane, Wait { since: at, last: Some(ended) });
+        self.waits.insert(pane, Wait { since: at, asked: at, last: Some(ended) });
     }
 
     /// A bridge dialed in, so this pane can be typed into.
@@ -136,6 +162,7 @@ impl Waiting {
             let drawn = self.visible.as_ref().is_none_or(|held| held.contains(pane));
             if !drawn && visible.contains(pane) {
                 wait.since = at;
+                wait.asked = at;
             }
         }
         self.visible = Some(visible);
@@ -157,6 +184,20 @@ impl Waiting {
                 .collect()
         };
 
+        // Every overdue pane whose last ask is a deadline old, which is what paces the asking.
+        // Taken before `asked` is restamped below, and separately from `raise`, because the
+        // two are opposite rules on purpose: a condition that stays true is said once, and a
+        // bridge that never arrived is asked for again.
+        let stalled: Vec<PaneKey> = overdue
+            .iter()
+            .filter(|pane| {
+                self.waits
+                    .get(*pane)
+                    .is_some_and(|wait| now.saturating_sub(wait.asked) >= deadline)
+            })
+            .cloned()
+            .collect();
+
         let reported = Reported {
             raise: overdue
                 .difference(&self.reported)
@@ -166,7 +207,13 @@ impl Waiting {
                 })
                 .collect(),
             clear: self.reported.difference(&overdue).map(key).collect(),
+            stalled: stalled.clone(),
         };
+        for pane in &stalled {
+            if let Some(wait) = self.waits.get_mut(pane) {
+                wait.asked = now;
+            }
+        }
         self.reported = overdue;
         reported
     }
@@ -177,11 +224,16 @@ impl Waiting {
     /// window costs no wakeups at all.
     ///
     /// Two answers are worth stating because they are the two ways a loop around this goes
-    /// wrong. An overdue pane that has *already* been reported is not counted, or the answer
-    /// would be zero forever and the loop would spin. An overdue pane that has *not* been
-    /// reported answers zero, because a pane that fell overdue while the caller was busy
-    /// elsewhere must not be slept through - and on a quiet window nothing else would ever
-    /// wake it.
+    /// wrong. An overdue pane that has *already* been reported is not counted for the saying
+    /// of it, or the answer would be zero forever and the loop would spin. An overdue pane
+    /// that has *not* been reported answers zero, because a pane that fell overdue while the
+    /// caller was busy elsewhere must not be slept through - and on a quiet window nothing
+    /// else would ever wake it.
+    ///
+    /// The asking answers separately, and is why a stalled pane does not simply go quiet. A
+    /// pane nothing has dialed is asked for again a deadline after the last ask, whether or
+    /// not anybody has been told about it - so the loop keeps waking for as long as the pane
+    /// is dark, rather than sleeping forever the moment its problem is raised.
     pub fn next_wake(&self, now: u64, deadline: u64) -> Option<u64> {
         if deadline == 0 {
             return None;
@@ -189,13 +241,15 @@ impl Waiting {
         self.waits
             .iter()
             .filter(|(pane, _)| self.drawn(pane))
-            .filter_map(|(pane, wait)| {
+            .map(|(pane, wait)| {
                 let waited = now.saturating_sub(wait.since);
-                if waited < deadline {
+                let to_say = if waited < deadline {
                     Some(deadline - waited)
                 } else {
                     (!self.reported.contains(pane)).then_some(0)
-                }
+                };
+                let to_ask = deadline.saturating_sub(now.saturating_sub(wait.asked));
+                to_say.map_or(to_ask, |say| say.min(to_ask))
             })
             .min()
     }
