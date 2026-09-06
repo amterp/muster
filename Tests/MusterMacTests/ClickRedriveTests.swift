@@ -13,10 +13,16 @@ import Testing
 // and trusting the click counter to land on two rather than three. Whether it does is a
 // question about libghostty, and this asks libghostty.
 //
-// One test with a real surface, and the only one here that has one: no window and no GPU
-// needed, but a real runtime and a real command behind a pty, and two runtimes in one process
-// hang. It is worth what it costs, because the alternative is a feature that takes a whole line
-// every so often and nobody knows why.
+// One test with a real surface, and the only one in this suite that has one: a real runtime, a
+// real command behind a pty, and a Metal layer on a view. Two runtimes in one process hang, so
+// it is one test rather than several.
+//
+// **Out of the default gate**, for the reason `--contract` is: a Metal layer wants a logged-in
+// session, and the gate is not allowed to need one (docs/testing.md). `./dev --contract` sets
+// `MUSTER_GUI_TESTS` and runs it; without that it skips, and an ordinary gate run lists it as
+// skipped so that a reader can tell it exists. Whether it strictly needs a session has not been
+// measured - it has only ever run on a machine that has one - so it sits on the safe side of
+// that line rather than on a guess. If it turns out to run headless it belongs back in the gate.
 
 /// Two rows of known words, and the column each one starts at.
 ///
@@ -30,7 +36,10 @@ private let sharedColumn = 8
 private let gamma = 11
 private let alpha = 0
 
-@Suite("a double click Muster drives")
+/// Set by `./dev --contract`, which is the tier that has a session to draw in.
+private let hasGUISession = ProcessInfo.processInfo.environment["MUSTER_GUI_TESTS"] == "1"
+
+@Suite("a double click Muster drives", .enabled(if: hasGUISession, "needs a logged-in session"))
 struct ClickRedriveTests {
   @MainActor
   @Test("it selects the word under it, unless it lands where the last one did")

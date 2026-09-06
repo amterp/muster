@@ -1565,6 +1565,10 @@ if test:
 
     print(dim("{len(tests)} Swift test(s) discovered"))
     $`swift test`
+    // Said out loud, because a suite that skips itself is otherwise missing rather than
+    // skipped: the run's own count does not include it, so nobody reading a green gate can
+    // tell it exists.
+    print(dim("skipped: ClickRedriveTests needs a logged-in session - ./dev --contract runs it"))
 
 if contract:
     announce("contract")
@@ -1577,6 +1581,12 @@ if contract:
         print_err(stderr.trim())
         exit(1)
     print(stdout.trim())
+
+    // And the Swift tests that need a real libghostty surface, which is a Metal layer on a
+    // view and so wants the same logged-in session the launch above does. They are ordinary
+    // tests otherwise, and they skip themselves without this variable rather than failing -
+    // the default gate lists them as skipped, which is how a reader knows they exist.
+    $`MUSTER_GUI_TESTS=1 swift test --filter ClickRedriveTests`
 
 if ssh:
     announce("ssh")
