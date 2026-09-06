@@ -15,7 +15,7 @@
 //! when nothing named one, and why there might be no answer to that.
 
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 
 use clap::{ArgGroup, CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::Shell;
@@ -572,7 +572,6 @@ enum WithTab {
 /// `here` is the directory the command was run in, which is what a relative path on it means.
 /// Passed rather than read, like the environment beside it: the one place that touches the
 /// process is `main`, and a corpus case can then say where a command line was typed.
-#[expect(unused_variables, reason = "read by the commit that resolves a relative --cwd against it")]
 pub fn parse(
     argv: &[String],
     environment: &BTreeMap<String, String>,
@@ -592,8 +591,8 @@ pub fn parse(
         What::Window { doing: Some(AboutWindows::List) } => Asking::Survey,
         What::Window { doing: Some(AboutWindows::New) } => Asking::MakeWindow,
         What::Window { doing: Some(AboutWindows::Reopen) } => Asking::ReopenWindow,
-        What::Pane { doing } => pane(doing, environment),
-        What::Tab { doing } => tab(doing, environment),
+        What::Pane { doing } => pane(doing, environment, here)?,
+        What::Tab { doing } => tab(doing, environment, here)?,
         What::Focus { pane, next, previous, left, right, up, down, place } => {
             // A direction and a place are answers on their own, so they are read before the
             // pane is - and clap has already refused any two of the three together.
@@ -645,8 +644,12 @@ pub fn parse(
     Ok(Invocation { asking, json: cli.json, socket: cli.socket })
 }
 
-fn pane(doing: &Doing, environment: &BTreeMap<String, String>) -> Asking {
-    match doing {
+fn pane(
+    doing: &Doing,
+    environment: &BTreeMap<String, String>,
+    here: Option<&Path>,
+) -> Result<Asking, Failure> {
+    Ok(match doing {
         Doing::New { left, right, up, down, pane, daemon, cwd, run, name, focus } => {
             // The same four words the schema uses, and the same words a `muster window --json`
             // answer carries, rather than English ones like `below`: a caller that reads a side out
@@ -662,7 +665,7 @@ fn pane(doing: &Doing, environment: &BTreeMap<String, String>) -> Asking {
                 pane_id,
                 daemon_id,
                 side: side.to_string(),
-                cwd: cwd.clone().unwrap_or_default(),
+                cwd: directory(cwd.as_ref(), daemon.as_ref(), here)?,
                 run: run.clone().unwrap_or_default(),
                 name: name.clone().unwrap_or_default(),
                 take_focus: *focus,
@@ -713,7 +716,7 @@ fn pane(doing: &Doing, environment: &BTreeMap<String, String>) -> Asking {
         Doing::Resize { left, right, up, down, equalize, row, column, pane, by } => {
             let pane_id = pane_ref(pane.as_ref(), environment);
             if *equalize {
-                return send(request::Payload::EqualizePanes(EqualizePanes {
+                return Ok(send(request::Payload::EqualizePanes(EqualizePanes {
                     pane_id,
                     // Empty is the whole tab, which is what the schema reads it as, so a caller
                     // that narrowed nothing sends nothing. clap holds the two narrower scopes in
@@ -722,7 +725,7 @@ fn pane(doing: &Doing, environment: &BTreeMap<String, String>) -> Asking {
                         .unwrap_or_default()
                         .to_string(),
                     ..EqualizePanes::default()
-                }));
+                })));
             }
             // The group above is required and `--equalize` is in it and handled, so exactly one
             // of the four is true here.
@@ -742,7 +745,7 @@ fn pane(doing: &Doing, environment: &BTreeMap<String, String>) -> Asking {
                 ..ResizePane::default()
             }))
         }
-    }
+    })
 }
 
 /// No environment, unlike [`pane`] beside it.
@@ -750,15 +753,19 @@ fn pane(doing: &Doing, environment: &BTreeMap<String, String>) -> Asking {
 /// A tab name is not in any pane's environment - nothing has to tell a tab which tab it is - so
 /// there is nothing here to fall back to. `focus` demands one; `rename` leaves the field empty,
 /// which the schema already reads as the tab the keyboard's pane is in.
-fn tab(doing: &WithTab, environment: &BTreeMap<String, String>) -> Asking {
-    match doing {
+fn tab(
+    doing: &WithTab,
+    environment: &BTreeMap<String, String>,
+    here: Option<&Path>,
+) -> Result<Asking, Failure> {
+    Ok(match doing {
         WithTab::New { pane, daemon, cwd, run, name, focus } => {
             let (pane_id, daemon_id) =
                 pane_and_machine(pane.as_ref(), daemon.as_ref(), environment);
             send(request::Payload::CreateTab(CreateTab {
                 pane_id,
                 daemon_id,
-                cwd: cwd.clone().unwrap_or_default(),
+                cwd: directory(cwd.as_ref(), daemon.as_ref(), here)?,
                 run: run.clone().unwrap_or_default(),
                 name: name.clone().unwrap_or_default(),
                 take_focus: *focus,
@@ -787,7 +794,7 @@ fn tab(doing: &WithTab, environment: &BTreeMap<String, String>) -> Asking {
             name: name.join(" "),
             ..RenameTab::default()
         })),
-    }
+    })
 }
 
 /// The first of these words whose flag was given.
@@ -798,6 +805,93 @@ fn tab(doing: &WithTab, environment: &BTreeMap<String, String>) -> Asking {
 /// group, so at most one is ever true and the order here only decides what a bug would look like.
 fn chosen(among: &[(bool, &'static str)]) -> Option<&'static str> {
     among.iter().find(|(said, _)| *said).map(|(_, word)| *word)
+}
+
+/// Where a pane a command makes should start, as a path the far side can act on.
+///
+/// The one field whose meaning depends on where the command was typed, and the one this CLI has
+/// to resolve rather than carry: a relative path is relative to the caller, and the caller is
+/// the only thing in this picture that knows where that is. The window is another process in
+/// another directory, and the daemon is a third - so `../muster-1` sent as typed is resolved
+/// against a directory nobody chose, which is a pane in a home directory and an exit code of 0
+/// (kan a_2LMRCLaap). The same reason [`pane_ref`] reads `$MUSTER_PANE` here rather than leaving
+/// the window to guess which pane somebody meant.
+///
+/// Three paths are refused rather than resolved, because for each of them every available answer
+/// would be somebody's guess:
+///
+/// - A tilde, which the shell expands and this does not. One that arrives here arrives quoted,
+///   and joining it produces a directory nobody has.
+/// - A relative path beside `--daemon`, which names a machine whose filesystem this command
+///   cannot see and often is not even the same operating system as.
+/// - A relative path with no working directory to resolve it against, which is a shell whose own
+///   directory has been deleted underneath it.
+///
+/// Empty stays empty. That is what the schema reads as the directory of the pane being split,
+/// which is what a split with no `--cwd` means and what the chord does.
+fn directory(
+    named: Option<&String>,
+    daemon: Option<&String>,
+    here: Option<&Path>,
+) -> Result<String, Failure> {
+    let Some(named) = named.filter(|path| !path.is_empty()) else { return Ok(String::new()) };
+
+    if named.starts_with('~') {
+        return Err(Failure::Refused(format!(
+            "`--cwd {named}` still has its tilde, so the shell did not expand it - quoting is \
+             what usually does that. Muster does not expand one either, because `~` is the \
+             shell's own spelling of your home directory and a command that guessed at it would \
+             be guessing for whoever is on the far side. Write the path out, or leave it \
+             unquoted so the shell expands it first."
+        )));
+    }
+
+    let named = Path::new(named);
+    if !named.is_absolute() {
+        if let Some(daemon) = daemon {
+            return Err(Failure::Refused(format!(
+                "`muster pane new --daemon {daemon}` puts the pane on another machine, and \
+                 `--cwd {}` is relative to this one - so there is nothing here to resolve it \
+                 against. Say where it should start in that machine's own terms: an absolute \
+                 path. `muster window` lists the panes {daemon} already holds, and each one's \
+                 directory is a place a path can be written from.",
+                named.display()
+            )));
+        }
+        let Some(here) = here else {
+            return Err(Failure::Refused(format!(
+                "`--cwd {}` is relative and this command cannot tell what directory it is \
+                 running in, so there is nothing to resolve it against. The usual cause is a \
+                 shell whose working directory has been deleted or unmounted underneath it. \
+                 Give an absolute path, or `cd` somewhere that exists and try again.",
+                named.display()
+            )));
+        };
+        return Ok(settled(&here.join(named)));
+    }
+
+    Ok(settled(named))
+}
+
+/// An absolute path with its `.` and `..` worked out, without asking the filesystem.
+///
+/// Lexical on purpose, three times over: [`parse`] is pure and a corpus case has to mean the
+/// same thing on a machine that has never had these directories; the path may be bound for
+/// another machine, where nothing here could check it anyway; and a shell's own `cd ..` is
+/// lexical too, so this agrees with what somebody typing it saw last.
+fn settled(path: &Path) -> String {
+    let mut settled = PathBuf::new();
+    for part in path.components() {
+        match part {
+            // Popping the root leaves the root, which is what `/..` means.
+            Component::ParentDir => {
+                settled.pop();
+            }
+            Component::CurDir => {}
+            named => settled.push(named),
+        }
+    }
+    settled.to_string_lossy().into_owned()
 }
 
 /// Which pane a command is about: the one named, then the one it is running in, then the window's

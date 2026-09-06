@@ -93,6 +93,23 @@ A window is slow to answer for reasons that have nothing to do with the request 
 --run` waits on a shell drawing its prompt, and a loaded machine makes every one of them
 slower - so a 4 says more about the moment than about the command.
 
+## A directory for a pane on another machine has to be spelled out
+
+`--cwd` takes a relative path and resolves it against the directory `muster` is running in,
+which is a directory on this machine. So `--cwd ../other` beside `--daemon devenv` is refused
+rather than resolved: the pane is going somewhere this command cannot see the filesystem of, and
+often somewhere running another operating system. Give that machine's own absolute path.
+
+The gap this leaves is `--pane`, which addresses a pane by name and does not say which machine
+holds it - working that out would cost a round trip before the request. So a relative `--cwd`
+beside a `--pane` that lives on a devenv is resolved against a local directory the far machine
+has never had, and herdr answers a directory it cannot use with the home directory. Name the
+directory absolutely whenever the pane is not on this machine.
+
+A path is tidied lexically, so `..` steps are worked out without asking the filesystem. That
+matches what a shell's own `cd ..` does, and differs from `realpath` where a symlink is in the
+way.
+
 ## There is no search
 
 `muster` cannot search a pane. The window can, from `cmd+f`, and reading only the last thousand

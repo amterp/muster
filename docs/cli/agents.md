@@ -22,6 +22,11 @@ for it.
 starting up does not miss the command. The wait belongs to the window rather than to the caller,
 which is why the command travels with the split instead of arriving as a `pane send` afterwards.
 
+`--cwd` says where the new pane starts, and a relative path means what it means everywhere else:
+relative to the directory `muster` is running in. `muster pane new --cwd ../other-worktree` from
+one worktree opens a pane in its sibling. With no `--cwd` the pane starts where the pane being
+split is, which is what the chord does.
+
 ## Watching what they do
 
     muster window --json | jq -r '.panes[] | select(.state == "blocked") | "\(.pane) \(.label)"'
