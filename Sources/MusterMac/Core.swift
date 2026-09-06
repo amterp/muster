@@ -628,9 +628,17 @@ public enum Core {
     public let rowsSearched: UInt32
     public let reach: Reach
 
+    /// Whether landing on the selected match moved the pane.
+    ///
+    /// A wheel is this window's own gesture, so it knows the pane moved. A landing is written
+    /// onto the pane's channel by the core, so without this the window would never hear - and
+    /// a selection made before the search would sit over the wrong text until the next notch
+    /// (kan a_2JrhrSBOx).
+    public let scrolled: Bool
+
     /// Nothing typed, so nothing found. What an empty field shows.
     public static let none = Findings(
-      total: 0, selected: 0, rowsSearched: 0, reach: .whole)
+      total: 0, selected: 0, rowsSearched: 0, reach: .whole, scrolled: false)
   }
 
   /// Where a pane is looking, and how much history it holds.
@@ -715,7 +723,7 @@ public enum Core {
       }
     return Findings(
       total: answer.total, selected: answer.selected,
-      rowsSearched: answer.rowsSearched, reach: reach)
+      rowsSearched: answer.rowsSearched, reach: reach, scrolled: answer.scrolled)
   }
 
   /// Points this window's keyboard at a pane, and tells the daemon somebody looked.

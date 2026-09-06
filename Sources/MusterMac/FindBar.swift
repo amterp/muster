@@ -331,9 +331,7 @@ public final class FindBar {
   public init(dispatcher: Dispatcher = Core.dispatcher) {
     sender = FindSender(dispatcher: dispatcher)
     sender.onFindings = { [weak self] findings in
-      guard let self else { return }
-      state.findings = findings
-      mark()
+      self?.landed(findings)
     }
   }
 
@@ -364,9 +362,21 @@ public final class FindBar {
   /// one per character - there is nothing to coalesce, and the answer is wanted now.
   public func step(forward: Bool) {
     guard isShown, let findings = Core.stepFind(forward: forward) else { return }
+    landed(findings)
+  }
+
+  /// Draws what the core answered, and tells the pane's chrome if the answer moved it.
+  ///
+  /// One method for both ways an answer arrives - a needle typed, and a step - because both
+  /// land on a match and both scroll. The chrome has to be told: a landing is written onto the
+  /// pane's own channel by the core, so nothing else in this window hears about it, and a
+  /// selection made before the search would stay over text that has moved (kan a_2JrhrSBOx).
+  private func landed(_ findings: Core.Findings) {
     state.findings = findings
-    // Marked again after the step, because the step scrolled the pane: the marks are drawn
-    // over what is on screen, and what is on screen has just changed.
+    if findings.scrolled { chrome?.paneScrolled() }
+    // Marked after the answer rather than with the request, because the core scrolls the pane
+    // onto a match as part of answering: the marks are drawn over what is on screen, and what
+    // is on screen has just changed.
     mark()
   }
 
@@ -381,10 +391,6 @@ public final class FindBar {
   }
 
   /// Asks the renderer to mark what is on screen.
-  ///
-  /// After the answer rather than with the request, because the core scrolls the pane onto a
-  /// match as part of answering - so marking before that would be marking the screen the
-  /// person was looking at rather than the one they are about to.
   private func mark() {
     guard let chrome else { return }
     let refused = chrome.surface.highlight(state.needle.isEmpty ? nil : state.needle)

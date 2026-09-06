@@ -366,6 +366,7 @@ fn found(answer: Result<session::Findings, String>) -> Response {
                     // Zero for the other two, since "of 0 rows" is not a sentence to draw.
                     _ => 0,
                 },
+                scrolled: findings.scrolled,
             })),
         },
         Err(reason) => Response::failure(reason),

@@ -300,11 +300,8 @@ public final class PaneChrome: NSView {
     }
     surface.onScroll = { [weak self] direction, delta in
       guard let self, let paneID = self.paneID else { return }
-      self.scrolls += 1
       self.onScrollRequested?(paneID, direction, delta)
-      // Only while something is selected, so an ordinary scroll costs the round trip it
-      // always cost and nothing more.
-      if self.surface.isTrackingSelection { self.askWhereThePaneIsLooking() }
+      self.paneScrolled()
     }
     // A drag has ended, and the cells it covered are screen cells until they are counted from
     // the bottom of the pane instead. That needs the pane's own position, which is a round
@@ -327,6 +324,20 @@ public final class PaneChrome: NSView {
 
   required init?(coder: NSCoder) {
     fatalError("muster builds its views in code")
+  }
+
+  /// Takes the news that this pane is looking somewhere else now.
+  ///
+  /// Two things move a pane and only one of them goes through this window. A wheel does, and
+  /// calls this on its way out. A find's landing does not - the core works out where the match
+  /// is and writes the scroll onto the pane's own channel - so the find bar calls this when the
+  /// answer says the pane moved (kan a_2JrhrSBOx). One method rather than the same two lines
+  /// twice, because the fact is the same fact.
+  public func paneScrolled() {
+    scrolls += 1
+    // Only while something is selected, so an ordinary scroll costs the round trip it always
+    // cost and nothing more.
+    if surface.isTrackingSelection { askWhereThePaneIsLooking() }
   }
 
   private func askWhereThePaneIsLooking() {

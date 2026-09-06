@@ -3769,6 +3769,14 @@ pub(crate) struct Findings {
     /// The core's own answer rather than a word, so the three cases stay a thing the compiler
     /// checks and only the one place that has to spell them for the shell does.
     pub(crate) reach: Reach,
+
+    /// Whether landing on the selected match moved the pane.
+    ///
+    /// The window cannot work this out for itself. A wheel goes through the window, so it knows
+    /// the pane moved; a landing is written onto the pane's own channel from here, so the window
+    /// hears nothing and a selection made before the search stays over text that has scrolled
+    /// out from under it (kan a_2JrhrSBOx).
+    pub(crate) scrolled: bool,
 }
 
 impl Default for Findings {
@@ -3776,7 +3784,7 @@ impl Default for Findings {
     /// other two, so a bar with an empty field draws no caveat about a search that has not
     /// happened.
     fn default() -> Findings {
-        Findings { total: 0, selected: 0, rows_searched: 0, reach: Reach::Whole }
+        Findings { total: 0, selected: 0, rows_searched: 0, reach: Reach::Whole, scrolled: false }
     }
 }
 
@@ -3803,8 +3811,7 @@ pub(crate) fn find(daemon: &DaemonId, pane: &PaneId, needle: &Needle) -> Result<
     // in which it could print and shift what the offsets mean.
     let viewport = found.viewport;
     let search = Search { daemon: daemon.clone(), pane: pane.clone(), found, selected };
-    let findings = search.findings();
-    land(&search, Some(viewport));
+    let findings = search.findings(land(&search, Some(viewport)));
     poison::lock(&SESSION, "session").search = Some(search);
     Ok(findings)
 }
@@ -3823,14 +3830,13 @@ pub(crate) fn step_find(forward: bool) -> Result<Findings, String> {
     };
     let total = search.found.hits.len();
     if total == 0 {
-        return Ok(search.findings());
+        return Ok(search.findings(false));
     }
     search.selected = Some(match (search.selected, forward) {
         (Some(at), true) => (at + 1) % total,
         (Some(at), false) => (at + total - 1) % total,
         (None, _) => 0,
     });
-    let findings = search.findings();
     // Taken out from under the lock, because landing is a round trip and holding the session
     // across one stalls every event arriving from every other daemon.
     let landing = Search {
@@ -3840,8 +3846,7 @@ pub(crate) fn step_find(forward: bool) -> Result<Findings, String> {
         selected: search.selected,
     };
     drop(session);
-    land(&landing, None);
-    Ok(findings)
+    Ok(landing.findings(land(&landing, None)))
 }
 
 /// Forgets the search, which is what closing the find bar means.
@@ -3850,17 +3855,22 @@ pub(crate) fn end_find() {
 }
 
 impl Search {
-    fn findings(&self) -> Findings {
+    /// What the bar draws, given whether landing on the selected match moved the pane.
+    ///
+    /// Taken as an argument rather than filled in afterwards, so a caller that lands cannot
+    /// answer without saying what the landing did.
+    fn findings(&self, scrolled: bool) -> Findings {
         Findings {
             total: u32::try_from(self.found.hits.len()).unwrap_or(u32::MAX),
             selected: self.selected.map_or(0, |at| u32::try_from(at + 1).unwrap_or(u32::MAX)),
             rows_searched: self.found.rows_searched,
             reach: self.found.reach(),
+            scrolled,
         }
     }
 }
 
-/// Puts the selected match on screen.
+/// Puts the selected match on screen, and says whether the pane had to move.
 ///
 /// A scroll against where the pane is looking, because herdr scrolls by steps rather than to a
 /// place: the difference between here and there is what gets sent
@@ -3874,23 +3884,24 @@ impl Search {
 ///
 /// Nothing here fails loudly. The count is already right and already on screen; a landing that
 /// did not happen costs a scroll somebody can do themselves, and a refusal per keystroke in the
-/// log would bury the one that mattered.
-fn land(search: &Search, known: Option<Viewport>) {
+/// log would bury the one that mattered. Every one of those paths answers `false`, which is the
+/// truth the window needs either way: the pane is where it was.
+fn land(search: &Search, known: Option<Viewport>) -> bool {
     let Some(hit) = search.selected.and_then(|at| search.found.hits.get(at)) else {
-        return;
+        return false;
     };
     let Ok(channel) = channel(&search.daemon) else {
-        return;
+        return false;
     };
     let viewport = match known {
         Some(viewport) => viewport,
         None => match channel.viewport(&search.pane) {
             Ok(viewport) => viewport,
-            Err(_) => return,
+            Err(_) => return false,
         },
     };
     if viewport.shows(hit.rows_from_bottom) {
-        return;
+        return false;
     }
     let Some(attached) = attached_pane(&search.daemon, &search.pane) else {
         // A pane with no bridge is one no region is showing, which a find bar over the
@@ -3904,7 +3915,7 @@ fn land(search: &Search, known: Option<Viewport>) {
                 "impact" => "the match was found and counted, and the pane did not move to it.",
             },
         );
-        return;
+        return false;
     };
 
     let wanted = viewport.centred_on(hit.rows_from_bottom);
@@ -3913,9 +3924,11 @@ fn land(search: &Search, known: Option<Viewport>) {
     } else {
         (ScrollDirection::Down, viewport.rows_from_bottom - wanted)
     };
-    if rows > 0 {
-        attached.input.scroll(direction, u16::try_from(rows).unwrap_or(u16::MAX));
+    if rows == 0 {
+        return false;
     }
+    attached.input.scroll(direction, u16::try_from(rows).unwrap_or(u16::MAX));
+    true
 }
 
 /// Says where a pane is looking, and changes nothing.

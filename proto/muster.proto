@@ -1143,6 +1143,13 @@ message Findings {
   // How many rows the pane holds in all. Set only for `capped`, where it is the other half
   // of the sentence; zero otherwise, since "of 0 rows" is not something to draw.
   uint32 rows_held = 5;
+
+  // Whether landing on the selected match moved the pane.
+  //
+  // A wheel goes through the window, so a shell knows about that scroll. A landing is written
+  // onto the pane's own channel by the core, so a shell hears nothing - and anything it is
+  // drawing over the pane's text is over the wrong text until the next wheel notch.
+  bool scrolled = 6;
 }
 
 // Where a pane is looking, in the rows the daemon scrolls in.

@@ -45,6 +45,7 @@ fn a_needle_is_counted_and_the_pane_lands_on_what_it_found() {
     let empty = findings(request::Payload::Find(Find::default()));
     assert_eq!(empty.total, 0, "an empty needle matched something");
     assert_eq!(empty.selected, 0, "an empty needle selected something");
+    assert!(!empty.scrolled, "a search that never happened moved the pane");
 
     // Every row, so the count is a number this test knows rather than one it reads back.
     let all = findings(find("ruler-0"));
@@ -59,6 +60,10 @@ fn a_needle_is_counted_and_the_pane_lands_on_what_it_found() {
     let wanted = "ruler-00042";
     let found = findings(find(wanted));
     assert_eq!(found.total, 1, "exactly one row carries that number");
+    // The window is told, because it cannot see this happen: the scroll below goes onto the
+    // pane's own channel rather than through the window, so anything the window is drawing over
+    // the pane's text - a selection - is over the wrong text until it hears (kan a_2JrhrSBOx).
+    assert!(found.scrolled, "the pane moved to the match and the answer did not say so");
     until(
         &format!("the pane to land on {wanted}"),
         || typing.bridge.lines().iter().any(|line| line.contains(wanted)),
@@ -68,6 +73,13 @@ fn a_needle_is_counted_and_the_pane_lands_on_what_it_found() {
                  right about a screen showing something else",
             )
         },
+    );
+
+    // A match already on screen is left alone, so the answer says nothing moved and a window
+    // spends no round trip going to look.
+    assert!(
+        !findings(find(wanted)).scrolled,
+        "landing on the match the pane is already showing reported a scroll"
     );
 
     // Walking wraps, because a list somebody is stepping through has no reason to stop at one

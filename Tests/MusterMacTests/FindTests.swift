@@ -21,7 +21,7 @@ private final class FindingDispatcher: Dispatcher, @unchecked Sendable {
 
   init(
     total: UInt32 = 0, selected: UInt32 = 0, rows: UInt32 = 0, reach: String = "whole",
-    rowsHeld: UInt32 = 0
+    rowsHeld: UInt32 = 0, scrolled: Bool = false
   ) {
     var findings = Muster_Findings()
     findings.total = total
@@ -29,6 +29,7 @@ private final class FindingDispatcher: Dispatcher, @unchecked Sendable {
     findings.rowsSearched = rows
     findings.reach = reach
     findings.rowsHeld = rowsHeld
+    findings.scrolled = scrolled
     answer = findings
   }
 
@@ -58,17 +59,70 @@ private final class FindingDispatcher: Dispatcher, @unchecked Sendable {
   var endedFinds: Int {
     requests.filter { if case .endFind = $0.payload { true } else { false } }.count
   }
+
+  var viewportReads: Int {
+    requests.filter { if case .readViewport = $0.payload { true } else { false } }.count
+  }
 }
 
 @MainActor
-private func chrome(_ surface: RecordingSurface) -> PaneChrome {
+private func chrome(_ surface: RecordingSurface, dispatcher: Dispatcher = Core.dispatcher)
+  -> PaneChrome
+{
   let view = SurfaceView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
   view.attach(surface, typeable: true)
-  return PaneChrome(frame: NSRect(x: 0, y: 0, width: 400, height: 300), surface: view)
+  let chrome = PaneChrome(
+    frame: NSRect(x: 0, y: 0, width: 400, height: 300), surface: view, dispatcher: dispatcher)
+  chrome.attach(paneID: "w1:p1")
+  return chrome
+}
+
+/// A chrome whose surface has a selection pinned to the pane, made the way a drag makes one.
+@MainActor
+private func chromeHoldingASelection(_ surface: RecordingSurface, dispatcher: Dispatcher)
+  -> PaneChrome
+{
+  surface.cellPixelSize = (width: 20, height: 40)
+  let held = chrome(surface, dispatcher: dispatcher)
+  held.surface.mouseDown(with: mouse(.leftMouseDown, at: NSPoint(x: 10, y: 290)))
+  held.surface.mouseDragged(with: mouse(.leftMouseDragged, at: NSPoint(x: 50, y: 240)))
+  held.surface.mouseUp(with: mouse(.leftMouseUp, at: NSPoint(x: 50, y: 240)))
+  return held
+}
+
+private func mouse(_ type: NSEvent.EventType, at point: NSPoint) -> NSEvent {
+  NSEvent.mouseEvent(
+    with: type, location: point, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil,
+    eventNumber: 0, clickCount: 1, pressure: 1)!
 }
 
 @Suite("find")
 struct FindTests {
+  @MainActor
+  @Test("a landing that moved the pane sends the selection after it")
+  func aLandingMovesTheSelection() async {
+    // The pane is scrolled from the other side: the core works out where the match is and
+    // writes the scroll onto the pane's own channel, so nothing in this window hears about it.
+    // Without this the selection sits over whatever text has arrived under it until somebody
+    // touches the wheel (kan a_2JrhrSBOx).
+    //
+    // Nothing is awaited until the step has been taken. `Core.dispatcher` is one global for the
+    // whole process and a step reaches the core through it, so a suspension between setting it
+    // and using it lets another test's core answer this one's step.
+    let core = FindingDispatcher(total: 1, selected: 1, scrolled: true)
+    Core.dispatcher = core
+    let held = chromeHoldingASelection(RecordingSurface(), dispatcher: core)
+    let bar = FindBar(dispatcher: core)
+    bar.show(over: held)
+
+    bar.step(forward: true)
+
+    // Two reads: the one the drag asked for, so its cells could be counted from the bottom of
+    // the pane rather than from the top of the screen, and the one the landing asked for
+    // because the pane has moved under them.
+    await until("the landing to ask where the pane is looking") { core.viewportReads == 2 }
+  }
+
   @MainActor
   @Test("a step names its direction, and does nothing with no bar up")
   func aStepNamesItsDirection() {
