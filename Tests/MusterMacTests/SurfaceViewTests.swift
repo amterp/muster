@@ -14,13 +14,13 @@ import Testing
 
 @MainActor
 private func view(_ recorder: RecordingDispatcher) -> SurfaceView {
-  Core.dispatcher = recorder
+  seam(recorder)
   let surface = SurfaceView(frame: NSRect(x: 0, y: 0, width: 100, height: 100))
   surface.attach(typeable: true)
   return surface
 }
 
-@Test @MainActor func aTypedCharacterCrossesTheSeamExactlyOnce() {
+@Test(.ownsTheSeam) @MainActor func aTypedCharacterCrossesTheSeamExactlyOnce() {
   let recorder = RecordingDispatcher()
   view(recorder).keyDown(with: key("h", keyCode: 0x04))
 
@@ -31,7 +31,7 @@ private func view(_ recorder: RecordingDispatcher) -> SurfaceView {
   #expect(recorder.requests.first?.keyDown.key.action == "press")
 }
 
-@Test @MainActor func typingAWordSendsThatWordAndNoMore() {
+@Test(.ownsTheSeam) @MainActor func typingAWordSendsThatWordAndNoMore() {
   // `hello` became `hheelllloo`, so spell it out: the failure was only visible in
   // aggregate, and a single-character case can pass while this one fails.
   let recorder = RecordingDispatcher()
@@ -43,7 +43,7 @@ private func view(_ recorder: RecordingDispatcher) -> SurfaceView {
   #expect(recorder.requests.map { $0.keyDown.key.text }.joined() == "hello")
 }
 
-@Test @MainActor func aKeyPressCarriesTheCompositionSignalsRatherThanResolvingThem() {
+@Test(.ownsTheSeam) @MainActor func aKeyPressCarriesTheCompositionSignalsRatherThanResolvingThem() {
   // The dead-key shape: a preedit is open and the next press resolves it. What the pane
   // must receive is the composed character rather than the key that finished it - and the
   // shell's job is to report all three signals, not to pick between them.
@@ -62,7 +62,7 @@ private func view(_ recorder: RecordingDispatcher) -> SurfaceView {
   #expect(!surface.hasMarkedText())
 }
 
-@Test @MainActor func committedTextFromOutsideAKeystrokeIsStillSent() {
+@Test(.ownsTheSeam) @MainActor func committedTextFromOutsideAKeystrokeIsStillSent() {
   // A character picker or a service commits text with no key press behind it. Nothing else
   // is going to send that, so the view must.
   let recorder = RecordingDispatcher()
@@ -71,7 +71,7 @@ private func view(_ recorder: RecordingDispatcher) -> SurfaceView {
   #expect(recorder.requests.map { $0.sendText.text } == ["→"])
 }
 
-@Test @MainActor func aWheelIsReportedRatherThanSent() {
+@Test(.ownsTheSeam) @MainActor func aWheelIsReportedRatherThanSent() {
   // The device's own delta, unscaled and unrounded. How many lines that is worth depends on
   // `scroll_multiplier`, so the core decides it - a shell that turned a delta into lines here
   // would be a second place that answer lives, and the two would drift.
@@ -89,7 +89,7 @@ private func view(_ recorder: RecordingDispatcher) -> SurfaceView {
   #expect(asked.map(\.1) == [3])
 }
 
-@Test @MainActor func aCellIsReportedInPointsRatherThanBackingPixels() {
+@Test(.ownsTheSeam) @MainActor func aCellIsReportedInPointsRatherThanBackingPixels() {
   // libghostty measures in backing pixels and every dimension a config file names is points,
   // so somebody who wrote `resize_step = "16px"` on a retina display means two cells here, not
   // one. Converted in the view because that is where AppKit keeps the scale factor.
@@ -104,7 +104,7 @@ private func view(_ recorder: RecordingDispatcher) -> SurfaceView {
   #expect(cell?.height == 17)
 }
 
-@Test @MainActor func aSurfaceNothingHasSizedYetReportsNoCellRatherThanZero() {
+@Test(.ownsTheSeam) @MainActor func aSurfaceNothingHasSizedYetReportsNoCellRatherThanZero() {
   // Zero would reach the core as a cell of no width and be divided by. Nil says "could not
   // measure", which the core answers with the daemon's own step.
   let surface = view(surface: RecordingSurface(), clipboard: NSPasteboard.general)
@@ -112,7 +112,7 @@ private func view(_ recorder: RecordingDispatcher) -> SurfaceView {
   #expect(surface.cellPointSize == nil)
 }
 
-@Test @MainActor func aWheelOverAPaneNeverAsksForTheKeyboard() {
+@Test(.ownsTheSeam) @MainActor func aWheelOverAPaneNeverAsksForTheKeyboard() {
   // The whole point of the feature: reading one agent's output while typing into another. A
   // scroll that also focused would make that impossible in exactly the case it exists for.
   let surface = view(recorder())
@@ -125,11 +125,11 @@ private func view(_ recorder: RecordingDispatcher) -> SurfaceView {
   #expect(focused == false)
 }
 
-@Test @MainActor func aViewWithNoPaneSendsNothingRatherThanRefusalsPerKeystroke() {
+@Test(.ownsTheSeam) @MainActor func aViewWithNoPaneSendsNothingRatherThanRefusalsPerKeystroke() {
   // A bare `muster` is the renderer check, and every key it swallows is expected. Sending
   // them anyway would fill the log with a refusal per keystroke for a state that is normal.
   let recorder = RecordingDispatcher()
-  Core.dispatcher = recorder
+  seam(recorder)
   let surface = SurfaceView(frame: NSRect(x: 0, y: 0, width: 100, height: 100))
   surface.attach(typeable: false)
 
@@ -147,7 +147,7 @@ private func view(
   surface: RecordingSurface, clipboard: NSPasteboard,
   recorder: RecordingDispatcher = RecordingDispatcher()
 ) -> SurfaceView {
-  Core.dispatcher = recorder
+  seam(recorder)
   let view = SurfaceView(frame: NSRect(x: 0, y: 0, width: 100, height: 100))
   view.pasteboard = clipboard
   view.attach(surface, typeable: true)
@@ -162,7 +162,7 @@ private func scratchClipboard(_ name: String) -> NSPasteboard {
   return board
 }
 
-@Test @MainActor func aDragArrivesInTheSurfacesOwnCoordinates() {
+@Test(.ownsTheSeam) @MainActor func aDragArrivesInTheSurfacesOwnCoordinates() {
   // The y flip, which is the whole of what this view decides about a drag. Unflipped, a
   // selection is the mirror image of the one that was dragged - visible instantly in the app
   // and invisible in every green test, which is why it is asserted here.
@@ -181,7 +181,7 @@ private func scratchClipboard(_ name: String) -> NSPasteboard {
   #expect(surface.buttons == [true, false])
 }
 
-@Test @MainActor func aPressCarriesThePointerBeforeTheButton() {
+@Test(.ownsTheSeam) @MainActor func aPressCarriesThePointerBeforeTheButton() {
   // libghostty holds the pointer position separately from the button, so a press reported
   // without one starts the selection wherever the pointer was last seen - which after a click
   // in another pane is somewhere else entirely.
@@ -194,7 +194,7 @@ private func scratchClipboard(_ name: String) -> NSPasteboard {
   #expect(surface.buttons.count == 1)
 }
 
-@Test @MainActor func copyPutsTheSelectionOnTheClipboard() {
+@Test(.ownsTheSeam) @MainActor func copyPutsTheSelectionOnTheClipboard() {
   let clipboard = scratchClipboard("copy")
   let pane = view(surface: RecordingSurface(selection: "error: no such file"), clipboard: clipboard)
 
@@ -203,7 +203,7 @@ private func scratchClipboard(_ name: String) -> NSPasteboard {
   #expect(clipboard.string(forType: .string) == "error: no such file")
 }
 
-@Test @MainActor func copyingNothingLeavesTheClipboardAlone() {
+@Test(.ownsTheSeam) @MainActor func copyingNothingLeavesTheClipboardAlone() {
   // What every other terminal does, and what somebody who mistyped the chord expects. Clearing
   // it would lose whatever they copied a moment ago, from a keystroke that did nothing else.
   let clipboard = scratchClipboard("empty")
@@ -215,7 +215,7 @@ private func scratchClipboard(_ name: String) -> NSPasteboard {
   #expect(clipboard.string(forType: .string) == "kept")
 }
 
-@Test @MainActor func theEditMenuGreysOutWhatWouldDoNothing() {
+@Test(.ownsTheSeam) @MainActor func theEditMenuGreysOutWhatWouldDoNothing() {
   // AppKit enables an item as soon as anything in the responder chain implements it, so
   // without this Copy looks available in a pane with nothing selected and then does nothing.
   let clipboard = scratchClipboard("validate")
@@ -234,7 +234,7 @@ private func scratchClipboard(_ name: String) -> NSPasteboard {
   #expect(selected.validateMenuItem(pasteItem))
 }
 
-@Test @MainActor func aPaneWhoseBridgeDiedStopsTakingKeystrokes() {
+@Test(.ownsTheSeam) @MainActor func aPaneWhoseBridgeDiedStopsTakingKeystrokes() {
   // The dead square: libghostty paints its own "press any key to close the window" over a
   // surface whose command exited, and no key here will ever reach that - so a view that kept
   // sending them would put one refusal per keystroke into the log for a pane nobody can
@@ -254,7 +254,7 @@ private func scratchClipboard(_ name: String) -> NSPasteboard {
   #expect(keys.isEmpty)
 }
 
-@Test @MainActor func aBridgeThatDiesTwiceIsReportedOnce() {
+@Test(.ownsTheSeam) @MainActor func aBridgeThatDiesTwiceIsReportedOnce() {
   // libghostty may call this more than once for one surface, and a window that asked the
   // daemon to re-read its whole session per call would turn one dead pane into a round trip
   // per callback.
@@ -269,7 +269,7 @@ private func scratchClipboard(_ name: String) -> NSPasteboard {
   #expect(reported == 1)
 }
 
-@Test @MainActor func pasteSendsWhatIsOnTheClipboardAndNothingWhenItIsEmpty() {
+@Test(.ownsTheSeam) @MainActor func pasteSendsWhatIsOnTheClipboardAndNothingWhenItIsEmpty() {
   let recorder = RecordingDispatcher()
   let clipboard = scratchClipboard("paste")
   let pane = view(surface: RecordingSurface(), clipboard: clipboard, recorder: recorder)
@@ -310,7 +310,7 @@ private func mouse(_ type: NSEvent.EventType, at point: NSPoint) -> NSEvent {
 // Sizing the text, which is a Muster action rather than a terminal setting - so it is
 // rebindable, in the menu, and remembered across a launch like the sidebar it sits beside.
 
-@Test @MainActor func sizingTheTextReachesWhateverIsRenderingThePane() {
+@Test(.ownsTheSeam) @MainActor func sizingTheTextReachesWhateverIsRenderingThePane() {
   let surface = RecordingSurface()
   let view = view(surface: surface, clipboard: scratchClipboard("fontsize"))
 
@@ -320,7 +320,7 @@ private func mouse(_ type: NSEvent.EventType, at point: NSPoint) -> NSEvent {
   #expect(surface.fontSizeOffsets == [3, 0])
 }
 
-@Test @MainActor func aPaneWithNothingRenderingItYetIsNotAnError() {
+@Test(.ownsTheSeam) @MainActor func aPaneWithNothingRenderingItYetIsNotAnError() {
   // The ordinary case at launch: the window applies the offset to every pane it holds, and a
   // pane whose bridge has not started has no surface to apply it to. Silently nothing, because
   // `attach` sizes it the moment one arrives.

@@ -96,7 +96,7 @@ private func mouse(_ type: NSEvent.EventType, at point: NSPoint) -> NSEvent {
     eventNumber: 0, clickCount: 1, pressure: 1)!
 }
 
-@Suite("find")
+@Suite("find", .ownsTheSeam)
 struct FindTests {
   @MainActor
   @Test("a landing that moved the pane sends the selection after it")
@@ -105,12 +105,8 @@ struct FindTests {
     // writes the scroll onto the pane's own channel, so nothing in this window hears about it.
     // Without this the selection sits over whatever text has arrived under it until somebody
     // touches the wheel (kan a_2JrhrSBOx).
-    //
-    // Nothing is awaited until the step has been taken. `Core.dispatcher` is one global for the
-    // whole process and a step reaches the core through it, so a suspension between setting it
-    // and using it lets another test's core answer this one's step.
     let core = FindingDispatcher(total: 1, selected: 1, scrolled: true)
-    Core.dispatcher = core
+    seam(core)
     let held = chromeHoldingASelection(RecordingSurface(), dispatcher: core)
     let bar = FindBar(dispatcher: core)
     bar.show(over: held)
@@ -130,7 +126,7 @@ struct FindTests {
     // the pane. Which means they can be pressed with no bar at all, and that has to cost
     // nothing rather than ask the core to walk a search it is not holding.
     let core = FindingDispatcher(total: 3, selected: 2)
-    Core.dispatcher = core
+    seam(core)
     let bar = FindBar(dispatcher: core)
 
     bar.step(forward: true)
@@ -150,7 +146,7 @@ struct FindTests {
     // later step about a pane nobody is looking at; a pane still marked is a terminal with
     // yellow text in it and nothing on screen explaining why.
     let core = FindingDispatcher()
-    Core.dispatcher = core
+    seam(core)
     let surface = RecordingSurface()
     let bar = FindBar(dispatcher: core)
     bar.show(over: chrome(surface))
@@ -168,7 +164,7 @@ struct FindTests {
     // The find bar follows the keyboard, because a find is about a pane. Without this the
     // pane left behind stays marked, so two panes look searched and only one is counted.
     let core = FindingDispatcher()
-    Core.dispatcher = core
+    seam(core)
     let first = RecordingSurface()
     let second = RecordingSurface()
     let bar = FindBar(dispatcher: core)

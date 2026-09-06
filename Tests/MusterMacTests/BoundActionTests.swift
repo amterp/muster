@@ -11,7 +11,7 @@ import Testing
 // (kan a_2KHGYh7xD). So what these assert is not the wording - it is that the cause is written,
 // that it says which of the two ways it arrived, and that it lands *before* the effect.
 
-@Suite("a bound action's press")
+@Suite("a bound action's press", .ownsTheSeam)
 struct BoundActionTests {
   @MainActor
   @Test("a chord says which keystroke asked, and that it was a chord")

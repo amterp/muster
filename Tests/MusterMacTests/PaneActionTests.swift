@@ -17,7 +17,7 @@ private func ratios(_ recorder: RecordingDispatcher, since mark: Int) -> [Muster
   }
 }
 
-@Suite("pane actions cross the seam")
+@Suite("pane actions cross the seam", .ownsTheSeam)
 struct PaneActionTests {
   @MainActor
   @Test("a new tab names neither a pane nor a directory, and means both")
@@ -233,7 +233,7 @@ struct PaneActionTests {
   }
 }
 
-@Suite("the menu is where a macOS keybinding lives")
+@Suite("the menu is where a macOS keybinding lives", .ownsTheSeam)
 struct AppMenuTests {
   /// What the core publishes, as it publishes it.
   ///

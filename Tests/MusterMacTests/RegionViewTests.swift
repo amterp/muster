@@ -83,7 +83,7 @@ private func contents(
     backendSocket: backendSocket)
 }
 
-@Suite("a region renders a tree")
+@Suite("a region renders a tree", .ownsTheSeam)
 struct RegionViewTests {
   @MainActor
   @Test("a pane that survives a change keeps its surface")

@@ -128,6 +128,15 @@ Muster's principles, adapted to that evidence:
   two runs were measured under conditions that resemble each other at all. `./dev --doctor` is the other half:
   load says the machine is busy, and the doctor says what is on it - the daemons and containers this repo's own
   tooling leaves behind, and what is currently eating the CPU.
+- **A Swift test that points the seam somewhere holds it while it does.** `Core.dispatcher` is one mutable global
+  for the process, so a test that swaps it is writing where every other test reads. These tests all run on the main
+  actor and so are never truly concurrent - but a test that awaits gives the actor up, and another test's recorder
+  can be installed underneath it before it comes back. A find test stayed flaky that way until its author stopped
+  awaiting between setting the global and using it, and the failure read as the feature under test being broken
+  (kan a_2LMRCjcSV). So `@Test(.ownsTheSeam)` - or one annotation on the suite - holds the seam for the length of
+  one test and puts back what it found, and `seam(_:)` is the only door: it reports a test that swaps the global
+  without holding it, rather than leaving the next flake to say so. What that gives up is interleaving rather than
+  parallelism, which is the bug rather than the throughput.
 - **The suite proves itself.** A bug fix lands as a failing test first, then the fix - two commits, so CI shows red
   then green (cmux's discipline). Guard against silently skipped tests. Performance is measured against cardinality
   budgets separately; a functional green is never a performance claim.

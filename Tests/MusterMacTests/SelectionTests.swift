@@ -23,7 +23,7 @@ import Testing
 /// cell's centre lands on a whole number in both directions.
 @MainActor
 private func pane(_ surface: RecordingSurface) -> SurfaceView {
-  Core.dispatcher = RecordingDispatcher()
+  seam(RecordingDispatcher())
   surface.cellPixelSize = (width: 20, height: 40)
   let view = SurfaceView(frame: NSRect(x: 0, y: 0, width: 100, height: 100))
   view.attach(surface, typeable: true)
@@ -54,7 +54,7 @@ private func looking(at rowsFromBottom: UInt32) -> Core.Viewport {
   Core.Viewport(rowsFromBottom: rowsFromBottom, rows: 5, deepest: 100)
 }
 
-@Suite("selection follows its text")
+@Suite("selection follows its text", .ownsTheSeam)
 struct SelectionTests {
   @MainActor
   @Test("a drag asks where the pane is looking, so its cells can be counted from the bottom")
@@ -176,7 +176,7 @@ struct SelectionTests {
   }
 }
 
-@Suite("a scrolled pane asks where it is looking")
+@Suite("a scrolled pane asks where it is looking", .ownsTheSeam)
 struct SelectionViewportTests {
   // Which pane a selection belongs to is the chrome's to know, so the round trip is the
   // chrome's to make. What is worth pinning is when it makes one: a wheel over a pane with
@@ -186,7 +186,7 @@ struct SelectionViewportTests {
   @Test("a scroll over a pane with a selection asks, and one without does not")
   func onlyASelectionCostsARoundTrip() async {
     let core = RecordingDispatcher()
-    Core.dispatcher = core
+    seam(core)
     let surface = RecordingSurface()
     surface.cellPixelSize = (width: 20, height: 40)
     let view = SurfaceView(frame: NSRect(x: 0, y: 0, width: 100, height: 100))

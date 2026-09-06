@@ -90,7 +90,6 @@ extension RecordingDispatcher {
   }
 }
 
-/// Points the seam at a fresh recorder.
 /// A window's worth of pane surfaces, parked nowhere in particular.
 ///
 /// Here rather than in one suite because both the region suite and the pane-action suite build
@@ -104,11 +103,10 @@ func paneSurfaces(
   PaneSurfaces(parkedIn: NSView(frame: .zero), startPane: startPane)
 }
 
+/// Points the seam at a fresh recorder, for the length of this test.
 @MainActor
 func recorder() -> RecordingDispatcher {
-  let recorder = RecordingDispatcher()
-  Core.dispatcher = recorder
-  return recorder
+  seam(RecordingDispatcher())
 }
 
 /// Waits for something the main thread will do on its own, or says what it was waiting for.
@@ -142,4 +140,142 @@ func wheel(deltaY: CGFloat, at location: NSPoint = .zero) -> NSEvent? {
   event.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1, value: Double(deltaY))
   event.location = CGPoint(x: location.x, y: location.y)
   return NSEvent(cgEvent: event)
+}
+
+/// One test at a time may point the seam somewhere.
+///
+/// `Core.dispatcher` is one mutable global for the process, so a test that swaps it is writing
+/// where every other test reads. On the face of it these tests are all `@MainActor` and so never
+/// truly concurrent - but swift-testing runs them as tasks, and a task that awaits gives the
+/// actor up, so a test with a single `await` in it can have another test's recorder installed
+/// underneath it and go on asserting against the wrong core. That is what made the find test in
+/// kan a_2JrhrSBOx flaky, and its symptom is the expensive kind: a failure that reads as the
+/// feature under test being broken (kan a_2LMRCjcSV).
+///
+/// A gate rather than a per-task value, because the value is not the only thing that has to be
+/// exclusive: what a test drives reaches the global from background queues and from views that
+/// took it as a default argument long before, and none of those inherit a task-local. What is
+/// held is the seam itself, for the length of one test.
+///
+/// Not an actor, because releasing has to be callable from a `defer` - which cannot await - so
+/// that a test which throws still hands the seam back.
+///
+/// The cost is nothing that was really being spent. These tests share one actor already, so
+/// what serializing takes away is interleaving at suspension points rather than parallelism -
+/// and interleaving is the bug rather than the throughput.
+private final class SeamGate: @unchecked Sendable {
+  static let shared = SeamGate()
+
+  private let lock = NSLock()
+  private var held = false
+  private var waiting: [CheckedContinuation<Void, Never>] = []
+
+  func acquire() async {
+    await withCheckedContinuation { continuation in
+      lock.lock()
+      if held {
+        waiting.append(continuation)
+        lock.unlock()
+      } else {
+        held = true
+        lock.unlock()
+        continuation.resume()
+      }
+    }
+  }
+
+  /// Synchronous, so the trait below can release from a `defer` and a test that throws still
+  /// hands the seam back.
+  func release() {
+    lock.lock()
+    if waiting.isEmpty {
+      held = false
+      lock.unlock()
+      return
+    }
+    let next = waiting.removeFirst()
+    lock.unlock()
+    next.resume()
+  }
+}
+
+/// Whether this test holds the seam, which is what `seam(_:)` refuses without.
+///
+/// A task-local rather than a flag on the gate, so the answer is about *this* test rather than
+/// about whether some test somewhere is inside a scope.
+enum SeamScope {
+  @TaskLocal static var held = false
+}
+
+/// Gives one test the seam to itself, and puts back whatever was there before.
+///
+/// Applied as `@Test(.ownsTheSeam)`, or once on a suite whose tests all point the seam
+/// somewhere. Restoring matters as much as the exclusion: outside every scope the global is the
+/// real core again, so a test that reaches the seam without meaning to talks to the core rather
+/// than to some other test's recorder and its assertions about "what was sent" stay its own.
+struct OwnsTheSeam: TestTrait, SuiteTrait, TestScoping {
+  /// So one annotation on a suite covers the suites inside it.
+  var isRecursive: Bool { true }
+
+  /// Nothing is scoped around a suite as a whole - only around each test in it. A suite-level
+  /// scope would hold the gate for the length of the suite and then be asked for again by every
+  /// test inside it, which is one test waiting on itself.
+  func scopeProvider(for test: Test, testCase: Test.Case?) -> Self? {
+    testCase == nil ? nil : self
+  }
+
+  func provideScope(
+    for test: Test, testCase: Test.Case?, performing function: @Sendable () async throws -> Void
+  ) async throws {
+    try await withTheSeam { try await function() }
+  }
+}
+
+extension Trait where Self == OwnsTheSeam {
+  static var ownsTheSeam: Self { OwnsTheSeam() }
+}
+
+/// Runs something with the seam to itself, and puts back what it found.
+///
+/// What the trait above is made of, called directly only by the tests about the mechanism.
+///
+/// Reentrant, because an annotation on a suite and on a test inside it is an ordinary thing to
+/// write and one test waiting for itself is not an ordinary thing to debug. The inner run skips
+/// the gate - the same task is already holding it - and still puts back what it found, so a
+/// scope always ends where it started however many it is inside.
+func withTheSeam<Answer>(_ body: @Sendable () async throws -> Answer) async rethrows -> Answer {
+  let alreadyHeld = SeamScope.held
+  if !alreadyHeld {
+    await SeamGate.shared.acquire()
+  }
+  let found = Core.dispatcher
+  defer {
+    Core.dispatcher = found
+    if !alreadyHeld {
+      SeamGate.shared.release()
+    }
+  }
+  return try await SeamScope.$held.withValue(true) { try await body() }
+}
+
+/// Points the seam at this core for the rest of the test.
+///
+/// The one door, so that a test which swaps the global without saying so is found by the suite
+/// rather than by a flake three weeks later. Recorded as an issue rather than trapped: the test
+/// that forgot is the one that should fail, and taking the process down with it would destroy
+/// every other test's output as well.
+@MainActor
+@discardableResult
+func seam<Sender: Dispatcher>(_ sender: Sender) -> Sender {
+  if !SeamScope.held {
+    Issue.record(
+      """
+      This test points `Core.dispatcher` somewhere without holding the seam, so another test \
+      running beside it can replace what it installed - and what fails then is whichever test \
+      loses the race, reading as a broken feature rather than as a broken suite (kan \
+      a_2LMRCjcSV). Add `.ownsTheSeam` to this test, or to the suite it is in.
+      """)
+  }
+  Core.dispatcher = sender
+  return sender
 }
