@@ -37,10 +37,17 @@ private func dragged(_ view: SurfaceView, from: NSPoint, to: NSPoint) {
   view.mouseUp(with: mouse(.leftMouseUp, at: to))
 }
 
-private func mouse(_ type: NSEvent.EventType, at point: NSPoint) -> NSEvent {
+/// A click of the given count, which is what AppKit reports for a double or triple click.
+@MainActor
+private func clicked(_ view: SurfaceView, at point: NSPoint, times: Int) {
+  view.mouseDown(with: mouse(.leftMouseDown, at: point, clickCount: times))
+  view.mouseUp(with: mouse(.leftMouseUp, at: point, clickCount: times))
+}
+
+private func mouse(_ type: NSEvent.EventType, at point: NSPoint, clickCount: Int = 1) -> NSEvent {
   NSEvent.mouseEvent(
     with: type, location: point, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil,
-    eventNumber: 0, clickCount: 1, pressure: 1)!
+    eventNumber: 0, clickCount: clickCount, pressure: 1)!
 }
 
 private func looking(at rowsFromBottom: UInt32) -> Core.Viewport {
@@ -64,11 +71,10 @@ struct SelectionTests {
   }
 
   @MainActor
-  @Test("a click that never drags pins nothing")
+  @Test("a single click pins nothing, because it selected nothing")
   func aClickPinsNothing() {
-    // libghostty may still have selected something - a double click takes the word under it -
-    // and there is no way to read back which cells that covered. Pinning the one cell that was
-    // clicked would replace a word selection with a single cell on the first scroll.
+    // One press selects nothing in libghostty's own handling - it is what clears a selection -
+    // so there is nothing to put back anywhere.
     let surface = RecordingSurface()
     let view = pane(surface)
     var asked = 0
@@ -100,8 +106,9 @@ struct SelectionTests {
     // middle of a 10 by 20 cell in the third row down. The other end has gone off the bottom
     // and is asked for past it, which a renderer clamps to the last row.
     #expect(surface.selections.count == 1)
-    #expect(surface.selections.last??.from == CGPoint(x: 15, y: 50))
-    #expect(surface.selections.last??.to == CGPoint(x: 55, y: 110))
+    #expect(
+      surface.selections.last ?? nil
+        == .dragged(from: CGPoint(x: 15, y: 50), to: CGPoint(x: 55, y: 110)))
   }
 
   @MainActor
@@ -121,8 +128,9 @@ struct SelectionTests {
 
     view.applyViewport(looking(at: 0))
 
-    #expect(surface.selections.last??.from == CGPoint(x: 15, y: 10))
-    #expect(surface.selections.last??.to == CGPoint(x: 55, y: 70))
+    #expect(
+      surface.selections.last ?? nil
+        == .dragged(from: CGPoint(x: 15, y: 10), to: CGPoint(x: 55, y: 70)))
   }
 
   @MainActor
@@ -196,6 +204,76 @@ struct SelectionViewportTests {
 
     await until("the chrome to ask where its pane is looking") { !viewportReads(core).isEmpty }
     #expect(viewportReads(core).allSatisfy { $0 == "p1" }, "the read named another pane")
+  }
+
+  @MainActor
+  @Test("a double click is pinned, though its cells cannot be read back")
+  func aDoubleClickIsPinned() {
+    // The word libghostty selected is not knowable - `ghostty_surface_read_selection` hands
+    // over the text and nothing hands over the bounds - so what is kept is the gesture and the
+    // cell it was made at, which is enough to make the same word again wherever it goes.
+    let surface = RecordingSurface()
+    let view = pane(surface)
+    var asked = 0
+    view.onSelectionMade = { asked += 1 }
+
+    clicked(view, at: NSPoint(x: 10, y: 90), times: 2)
+
+    #expect(asked == 1)
+    #expect(view.isTrackingSelection)
+  }
+
+  @MainActor
+  @Test("a scrolled pane is clicked again where the word went")
+  func aScrollRedrivesTheClick() {
+    // The bug. A drag has been re-placed since a_2ADMeD8nM and a double click has not, so a
+    // word selection drifted off its word on the first scroll (kan a_2Jrhh1dkA).
+    let surface = RecordingSurface()
+    let view = pane(surface)
+
+    clicked(view, at: NSPoint(x: 10, y: 90), times: 2)
+    view.applyViewport(looking(at: 0))
+    #expect(surface.selections.isEmpty, "pinning a click should not redraw it")
+
+    view.applyViewport(looking(at: 2))
+
+    // The click was on the top row of a five-row grid; two rows of scrolling put that text two
+    // rows further down, and the click is driven at the middle of the 10 by 20 cell it landed in.
+    #expect(surface.selections.last ?? nil == .clicked(at: CGPoint(x: 15, y: 50), times: 2))
+  }
+
+  @MainActor
+  @Test("a pane that has not moved is not clicked a second time")
+  func aStillPaneIsNotRedriven() {
+    // Not a saving - a correctness rule. libghostty counts a second press near the last one as
+    // the next click of the same gesture, so driving twice at a cell it has just used is a
+    // triple click and takes the whole line. `ClickRedriveTests` measures both outcomes.
+    let surface = RecordingSurface()
+    let view = pane(surface)
+
+    clicked(view, at: NSPoint(x: 10, y: 90), times: 2)
+    view.applyViewport(looking(at: 0))
+    view.applyViewport(looking(at: 2))
+    let once = surface.selections.count
+
+    view.applyViewport(looking(at: 2))
+
+    #expect(surface.selections.count == once, "the same cell was clicked twice running")
+  }
+
+  @MainActor
+  @Test("a triple click puts a line back, not a word")
+  func aTripleClickKeepsItsCount() {
+    // The count is the gesture. Replaying two presses where three were made would swap the
+    // person's line selection for a word the first time they scrolled.
+    let surface = RecordingSurface()
+    let view = pane(surface)
+
+    clicked(view, at: NSPoint(x: 10, y: 90), times: 3)
+    view.applyViewport(looking(at: 0))
+    view.applyViewport(looking(at: 2))
+
+    #expect(surface.selections.last ?? nil == .clicked(at: CGPoint(x: 15, y: 50), times: 3))
   }
 
   private func viewportReads(_ core: RecordingDispatcher) -> [String] {

@@ -358,7 +358,7 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
       return
     }
     surface?.select(
-      SurfaceSelection(
+      .dragged(
         from: point(of: pinned.from, offset: offset, rows: rows, cellSize: cellSize),
         to: point(of: pinned.to, offset: offset, rows: rows, cellSize: cellSize)))
   }

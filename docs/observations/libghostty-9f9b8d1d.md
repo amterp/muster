@@ -426,3 +426,39 @@ answer is the daemon.
 Evidence for the frame-stream half: `corpus/herdr-0.8.0/frames/`, where the same six
 mode-setting sequences were emitted and none reached the stream. The rest is source, at the
 lines named above, in `deps/ghostty` at the commit `deps/ghostty.pin` names.
+
+## 13. A driven double click selects the word, unless it lands where the last press did
+
+Measured 2026-09-06, deciding whether a word selection can be put back after a pane scrolls
+(kan a_2Jrhh1dkA). Section 12 is the constraint this works around: a selection's cells cannot
+be read back, so the only way to select the same word again is to click on it again.
+
+**libghostty counts a repeat by distance and by time, and starts over past either.**
+`SelectionGesture.press` raises `left_click_count` when a press falls inside `repeat_interval`
+of the last one and inside `max_distance` of it, capping at three, and the count picks what is
+selected: one takes nothing, two the word, three the line
+(`src/terminal/SelectionGesture.zig`). `Surface.zig:4011` passes **one cell width** as
+`max_distance`, and `click-repeat-interval` as the interval - which is the OS double-click
+speed, or 500 ms where the OS has none (`Config.zig:4780`).
+
+**So two presses driven back to back take the word under them, as long as the press before was
+somewhere else.** That is the case a re-drive is always in: a pane scrolls by whole rows, so the
+cell a word moves to is at least one cell *height* from the last press, and a height is more
+than a width. The count resets to one, and the second press of the pair makes two. Driving the
+pair costs no timing care at all, because the interval that has to be short is the one between
+them.
+
+**Two more at the same cell take the line instead**, for the same reason: nothing has reset the
+count, so they are the third press and the third behaviour. A caller that re-drives on every
+scroll rather than on every *move* produces exactly that, which is why `SurfaceView` remembers
+the cell it last drove at.
+
+The other way the count can end is by expiring, and it gives the word too: a re-drive a second
+after the last press starts over on time rather than on distance, and lands on two.
+
+Evidence: `Tests/MusterMacTests/ClickRedriveTests.swift` is the measurement kept as a test. It
+stands up a real surface - no window and no GPU, but a real runtime and a real command behind a
+pty - prints two rows of known words, and reads back what each drive selected: a word for a new
+column, a word for the same column one row down, the whole line for the same cell twice, and a
+word again after the interval expires. The rest is source, at the lines named above, in
+`deps/ghostty` at the commit `deps/ghostty.pin` names.

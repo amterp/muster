@@ -416,6 +416,13 @@ public final class Surface {
   /// within the repeat interval and within a cell's width of each other would be a double
   /// click, and would select the word there rather than nothing.
   ///
+  /// **A click gesture is driven at one point and counts on libghostty starting over.** Its
+  /// presses go in back to back, which is well inside the repeat interval, so the second is
+  /// counted as a repeat and takes the word. What makes it the *second* rather than the third
+  /// is that the press before it was somewhere else: libghostty starts the count over past one
+  /// cell's width (`Surface.zig`, max_distance), and the caller must not ask for the same point
+  /// twice running - see `ClickRedriveTests`, which measures both outcomes.
+  ///
   /// A point outside the surface is deliberate rather than a caller's mistake: libghostty
   /// clamps a position to its grid, so an end scrolled off the top is asked for above the top
   /// and lands on the first cell of the first row - which is where a selection continuing from
@@ -424,17 +431,24 @@ public final class Surface {
   /// Points measured from the top left, on the same terms as `mouseMoved`: whoever owns the
   /// view owns the conversion, because that is where AppKit's flipped coordinates are.
   public func select(_ selection: SurfaceSelection?) {
-    guard let selection else {
+    switch selection {
+    case .none:
       guard ghostty_surface_has_selection(surface) else { return }
       mouseMoved(to: .zero, modifiers: [])
       leftMouse(pressed: true, modifiers: [])
       leftMouse(pressed: false, modifiers: [])
-      return
+    case .dragged(let from, let to):
+      mouseMoved(to: from, modifiers: [])
+      leftMouse(pressed: true, modifiers: [])
+      mouseMoved(to: to, modifiers: [])
+      leftMouse(pressed: false, modifiers: [])
+    case .clicked(let at, let times):
+      mouseMoved(to: at, modifiers: [])
+      for _ in 0..<times {
+        leftMouse(pressed: true, modifiers: [])
+        leftMouse(pressed: false, modifiers: [])
+      }
     }
-    mouseMoved(to: selection.from, modifiers: [])
-    leftMouse(pressed: true, modifiers: [])
-    mouseMoved(to: selection.to, modifiers: [])
-    leftMouse(pressed: false, modifiers: [])
   }
 
   /// What is selected in this pane, or nil when nothing is.
@@ -452,19 +466,25 @@ public final class Surface {
   }
 }
 
-/// A selection, as the drag that would have made it.
+/// A selection, as the gesture that would have made it.
 ///
-/// Two points rather than two cells, because a cell is a fact about a grid whose size only the
-/// renderer knows and a point is what the surface API takes. Either point may be outside the
-/// surface, which libghostty clamps to its grid - see `Surface.select`.
-public struct SurfaceSelection: Equatable, Sendable {
-  public let from: CGPoint
-  public let to: CGPoint
+/// The gesture rather than the cells, because libghostty exports no way to set a selection and
+/// the mouse is the only lever an embedder has (`observations/libghostty-9f9b8d1d.md` section
+/// 12). Which gesture matters: a drag covers what lies between two points, and a repeated click
+/// covers the word or line under one, which is a thing no pair of points can ask for.
+///
+/// Points rather than cells, because a cell is a fact about a grid whose size only the renderer
+/// knows and a point is what the surface API takes. A point may be outside the surface, which
+/// libghostty clamps to its grid - see `Surface.select`.
+public enum SurfaceSelection: Equatable, Sendable {
+  /// Everything between two points, as a press, a move and a release make it.
+  case dragged(from: CGPoint, to: CGPoint)
 
-  public init(from: CGPoint, to: CGPoint) {
-    self.from = from
-    self.to = to
-  }
+  /// The word or line under one point, as clicking there twice or three times makes it.
+  ///
+  /// The count is the gesture rather than a granularity, because libghostty has no name for
+  /// "the word here" that an embedder can say - only a click counter it keeps itself.
+  case clicked(at: CGPoint, times: Int)
 }
 
 /// Puts the derived config where libghostty can read it, and says whether it got there.
