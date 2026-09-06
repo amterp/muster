@@ -39,10 +39,10 @@ fn layout_export_conformance() {
 /// export. So agreement here is two independent paths landing on one answer, rather than a
 /// second copy of either one's code.
 ///
-/// The root ratio is the one thing that differs, and it is the drag: the flat recording is the
-/// tab at rest and the tree is what `layout.set_split_ratio` answered after moving the root
-/// divider to 0.3. Compared with that difference named rather than papered over, because a
-/// comparison that ignored ratios would pass on a reader that dropped them entirely.
+/// The two recordings are one moment, not two that resemble each other: the layout scenario asks
+/// for `session.snapshot` and `layout.export` back to back with nothing in between. So the trees
+/// are compared whole, ratios and all, which a pairing across two moments could not do - and a
+/// reader that drops ratios is one of the ways to be wrong here.
 #[test]
 fn the_two_readers_describe_the_same_tab_the_same_way() {
     let flat = Conformance::load("layout-reconstruction.json");
@@ -57,29 +57,21 @@ fn the_two_readers_describe_the_same_tab_the_same_way() {
     let tree = tree
         .cases
         .iter()
-        .find(|case| case.name == "a divider drag answers with the arrangement it settled on")
-        .expect("the export corpus carries the drag");
+        .find(|case| case.name == "five panes at three levels, stated rather than rebuilt")
+        .expect("the export corpus carries the same arrangement");
     let read = read_exported_layout(&tree.given, &names()).expect("the exported case reads");
 
     assert_eq!(read.tab, rebuilt.tab, "the two recordings are of different tabs");
     assert_eq!(read.focused, rebuilt.focused);
     assert_eq!(
-        with_root_ratio(&read.root.to_string()),
-        with_root_ratio(&rebuilt.root.to_string()),
+        read.root.to_string(),
+        rebuilt.root.to_string(),
         "the rectangles and the tree describe different arrangements of one tab.\n  Impact: one \
-         of the two readers is wrong, and which one decides whether a drag or everything else \
-         renders panes in the wrong places.\n  rectangles: {}\n  tree:       {}",
+         of the two readers is wrong, so a tab renders differently depending on which verb \
+         described it.\n  rectangles: {}\n  tree:       {}",
         rebuilt.root,
         read.root,
     );
-}
-
-/// The tree with its root ratio taken off, which is the only thing the drag changed.
-fn with_root_ratio(rendered: &str) -> String {
-    match rendered.rfind('@') {
-        Some(at) => rendered[..at].to_string(),
-        None => rendered.to_string(),
-    }
 }
 
 /// The recordings, not hand-made copies of them.
@@ -103,7 +95,7 @@ fn the_recorded_cases_are_what_herdr_answered() {
 
     for name in [
         "a divider drag answers with the arrangement it settled on",
-        "the same tab a split deeper",
+        "five panes at three levels, stated rather than rebuilt",
         "sixteen panes at every depth the recording reached",
     ] {
         let case = corpus

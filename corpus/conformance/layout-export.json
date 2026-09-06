@@ -6,68 +6,7 @@
   "cases": [
     {
       "name": "a divider drag answers with the arrangement it settled on",
-      "why": "The case this reader exists for. `layout.set_split_ratio` answers with the whole tree and broadcasts the same tree about a hundred milliseconds later, so a client that reads its own answer is a hundred milliseconds ahead of one that waits - and a drag is the highest-frequency arrangement change there is. This is the answer to a drag that set the root divider to 0.3, and the 0.3 in the tree is that request having landed.",
-      "given": {
-        "focused_pane_id": "w1:p1",
-        "root": {
-          "direction": "right",
-          "first": {
-            "direction": "down",
-            "first": {
-              "cwd": "/private/tmp",
-              "pane_id": "w1:p1",
-              "type": "pane"
-            },
-            "ratio": 0.5,
-            "second": {
-              "direction": "right",
-              "first": {
-                "cwd": "/private/tmp",
-                "pane_id": "w1:p3",
-                "type": "pane"
-              },
-              "ratio": 0.5,
-              "second": {
-                "cwd": "/private/tmp",
-                "pane_id": "w1:p4",
-                "type": "pane"
-              },
-              "type": "split"
-            },
-            "type": "split"
-          },
-          "ratio": 0.3,
-          "second": {
-            "direction": "down",
-            "first": {
-              "cwd": "/private/tmp",
-              "pane_id": "w1:p2",
-              "type": "pane"
-            },
-            "ratio": 0.5,
-            "second": {
-              "cwd": "/private/tmp",
-              "pane_id": "w1:p5",
-              "type": "pane"
-            },
-            "type": "split"
-          },
-          "type": "split"
-        },
-        "tab_id": "w1:t1",
-        "workspace_id": "w1",
-        "zoomed": false
-      },
-      "expect": {
-        "read": true,
-        "tab": "w1:t1",
-        "tree": "columns(rows(w1:p1, columns(w1:p3, w1:p4@0.5)@0.5), rows(w1:p2, w1:p5@0.5)@0.3)",
-        "focused": "w1:p1"
-      }
-    },
-    {
-      "name": "the same tab a split deeper",
-      "why": "The other arrangement the same session was recorded in, so the reader is judged on more than one shape from the run that matters. Six panes, and the extra split is nested under a first child along the axis it is already split on - which is the shape that makes rebuilding from rectangles hard, and which costs this reader nothing, because herdr states the parent and child links outright.",
+      "why": "The case this reader exists for. `layout.set_split_ratio` answers with the whole tree and broadcasts the same tree about a hundred milliseconds later, so a client that reads its own answer is a hundred milliseconds ahead of one that waits - and a drag is the highest-frequency arrangement change there is. This is the answer to a drag that set the root divider to 0.3, and the 0.3 in the tree is that request having landed.\n\nSix panes, because the scenario drags after the split that nests along an axis already split. So the shape that makes rebuilding from rectangles ambiguous is in the tree this reader is judged on too, and costs it nothing, because herdr states the parent and child links outright.",
       "given": {
         "focused_pane_id": "w1:p1",
         "root": {
@@ -133,6 +72,67 @@
         "read": true,
         "tab": "w1:t1",
         "tree": "columns(rows(w1:p1, columns(columns(w1:p3, w1:p6@0.5), w1:p4@0.5)@0.5), rows(w1:p2, w1:p5@0.5)@0.3)",
+        "focused": "w1:p1"
+      }
+    },
+    {
+      "name": "five panes at three levels, stated rather than rebuilt",
+      "why": "The same tab the rectangles corpus carries, stated as a tree rather than rebuilt from rectangles. One `session.snapshot` and one `layout.export`, taken back to back with nothing in between, so the two readers are compared on one arrangement rather than on two that resemble each other - which is what `the_two_readers_describe_the_same_tab_the_same_way` does with this case. Five panes at three levels, with splits under both sides of the root and one nested under a `first` child, which is the shape a reader written against the shallower recordings gets wrong.",
+      "given": {
+        "focused_pane_id": "w1:p1",
+        "root": {
+          "direction": "right",
+          "first": {
+            "direction": "down",
+            "first": {
+              "cwd": "/private/tmp",
+              "pane_id": "w1:p1",
+              "type": "pane"
+            },
+            "ratio": 0.5,
+            "second": {
+              "direction": "right",
+              "first": {
+                "cwd": "/private/tmp",
+                "pane_id": "w1:p3",
+                "type": "pane"
+              },
+              "ratio": 0.5,
+              "second": {
+                "cwd": "/private/tmp",
+                "pane_id": "w1:p4",
+                "type": "pane"
+              },
+              "type": "split"
+            },
+            "type": "split"
+          },
+          "ratio": 0.5,
+          "second": {
+            "direction": "down",
+            "first": {
+              "cwd": "/private/tmp",
+              "pane_id": "w1:p2",
+              "type": "pane"
+            },
+            "ratio": 0.5,
+            "second": {
+              "cwd": "/private/tmp",
+              "pane_id": "w1:p5",
+              "type": "pane"
+            },
+            "type": "split"
+          },
+          "type": "split"
+        },
+        "tab_id": "w1:t1",
+        "workspace_id": "w1",
+        "zoomed": false
+      },
+      "expect": {
+        "read": true,
+        "tab": "w1:t1",
+        "tree": "columns(rows(w1:p1, columns(w1:p3, w1:p4@0.5)@0.5), rows(w1:p2, w1:p5@0.5)@0.5)",
         "focused": "w1:p1"
       }
     },
@@ -227,7 +227,7 @@
               "ratio": 0.5,
               "second": {
                 "cwd": "/private/tmp",
-                "pane_id": "w1:pC",
+                "pane_id": "w1:pD",
                 "type": "pane"
               },
               "type": "split"
@@ -243,7 +243,7 @@
               "ratio": 0.5,
               "second": {
                 "cwd": "/private/tmp",
-                "pane_id": "w1:pD",
+                "pane_id": "w1:p6",
                 "type": "pane"
               },
               "type": "split"
@@ -275,7 +275,7 @@
                 "ratio": 0.5,
                 "second": {
                   "cwd": "/private/tmp",
-                  "pane_id": "w1:p8",
+                  "pane_id": "w1:p9",
                   "type": "pane"
                 },
                 "type": "split"
@@ -287,7 +287,7 @@
                   "direction": "down",
                   "first": {
                     "cwd": "/private/tmp",
-                    "pane_id": "w1:p6",
+                    "pane_id": "w1:p7",
                     "type": "pane"
                   },
                   "ratio": 0.5,
@@ -301,7 +301,7 @@
                 "ratio": 0.5,
                 "second": {
                   "cwd": "/private/tmp",
-                  "pane_id": "w1:p9",
+                  "pane_id": "w1:pA",
                   "type": "pane"
                 },
                 "type": "split"
@@ -331,7 +331,7 @@
                 "ratio": 0.5,
                 "second": {
                   "cwd": "/private/tmp",
-                  "pane_id": "w1:pA",
+                  "pane_id": "w1:pB",
                   "type": "pane"
                 },
                 "type": "split"
@@ -343,7 +343,7 @@
                   "direction": "down",
                   "first": {
                     "cwd": "/private/tmp",
-                    "pane_id": "w1:p7",
+                    "pane_id": "w1:p8",
                     "type": "pane"
                   },
                   "ratio": 0.5,
@@ -357,7 +357,7 @@
                 "ratio": 0.5,
                 "second": {
                   "cwd": "/private/tmp",
-                  "pane_id": "w1:pB",
+                  "pane_id": "w1:pC",
                   "type": "pane"
                 },
                 "type": "split"
@@ -375,7 +375,7 @@
       "expect": {
         "read": true,
         "tab": "w1:t1",
-        "tree": "columns(rows(columns(w1:p1, w1:pC@0.5), columns(w1:p3, w1:pD@0.5)@0.5), rows(columns(columns(rows(w1:p2, w1:pE@0.5), w1:p8@0.5), columns(rows(w1:p6, w1:pF@0.5), w1:p9@0.5)@0.5), columns(columns(rows(w1:p5, w1:pG@0.5), w1:pA@0.5), columns(rows(w1:p7, w1:pH@0.5), w1:pB@0.5)@0.5)@0.5)@0.3)",
+        "tree": "columns(rows(columns(w1:p1, w1:pD@0.5), columns(w1:p3, w1:p6@0.5)@0.5), rows(columns(columns(rows(w1:p2, w1:pE@0.5), w1:p9@0.5), columns(rows(w1:p7, w1:pF@0.5), w1:pA@0.5)@0.5), columns(columns(rows(w1:p5, w1:pG@0.5), w1:pB@0.5), columns(rows(w1:p8, w1:pH@0.5), w1:pC@0.5)@0.5)@0.5)@0.3)",
         "focused": "w1:p2"
       }
     },
