@@ -447,6 +447,12 @@ codegen - a surface that cannot express an action is a missing message, visible 
   order, and one that disagrees is withheld rather than repaired. Repairing means inventing a place for a pane
   nobody placed; publishing it drops every pane it omits, and a dropped pane costs its surface and the bridge that
   feeds it. Withheld is a state the shell already answers correctly, by leaving what it is showing alone.
+  **The pane list settles less than that makes it sound**, and the rest is the mirror's to close rather than the
+  view's. It rejects every arrangement from before the tab's last pane appeared and none of the ones since, so a
+  zoom or a dragged divider replays past it naming exactly the right panes and is drawn in turn. So a bootstrap
+  holds onto the arrangement its snapshot gave until the stream states it, counting the tree and what is zoomed over
+  it as one arrangement - and gives up rather than waiting forever, because a tab frozen at a shape it has left is a
+  worse thing than the tenth of a second of flicker it was written to stop.
 - **Geometry follows the controller.** Pane cell dimensions are daemon truth; the shell converts pixels to cells
   and sends resize intents. While Muster controls a pane, the pane's PTY is held at Muster's geometry. Other clients
   are not dragged to that size - the daemon re-renders the screen into each viewer's own requested viewport - so

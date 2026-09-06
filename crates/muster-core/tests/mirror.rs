@@ -378,6 +378,83 @@ mod suppression_is_bounded {
         // Which puts the tab back where that broadcast said, since nothing is suppressing it.
         assert_eq!(mirror.layout(&TabId::new("w1:t1")), Some(&oldest));
     }
+
+    /// The same session with the daemon's own arrangement in the snapshot, which is what a real
+    /// bootstrap looks like. `session()` above describes a tab whose tree the daemon had not
+    /// published yet, and there is no replay to wait for on a tab nothing described.
+    fn a_snapshotted_tab() -> Mirror {
+        let mut mirror = Mirror::new();
+        mirror.bootstrap(read_snapshot(&json!({
+            "workspaces": [{ "id": "w1", "label": "tmp" }],
+            "tabs": [{ "id": "w1:t1", "workspace": "w1", "label": "1" }],
+            "panes": [
+                { "id": "w1:p1", "tab": "w1:t1", "workspace": "w1", "agentState": "idle" },
+                { "id": "w1:p2", "tab": "w1:t1", "workspace": "w1", "agentState": "idle" },
+            ],
+            "layouts": [{
+                "tab": "w1:t1",
+                "root": { "axis": "columns", "ratio": 0.5, "first": "w1:p1", "second": "w1:p2" },
+            }],
+        })));
+        mirror
+    }
+
+    #[test]
+    fn a_replay_that_never_arrives_stops_being_waited_for() {
+        // The way out that has to exist. A snapshot's arrangement is held onto until the stream
+        // states it, and a stream that never does - truncated, or a divider dragged in the gap
+        // so that the pane list never moves - would otherwise hold a tab at a shape it has left
+        // for as long as the process runs. That is a far worse thing than the tenth of a second
+        // of flicker the guard exists to prevent, so being wrong here has to cost a run of
+        // dropped arrangements and then stop.
+        //
+        // Deliberately not written against the bound's own number, like the test above it: what
+        // has to hold is that there is one.
+        let mut mirror = a_snapshotted_tab();
+        // Never the position the snapshot itself described, or the guard would clear by being
+        // caught up with - which is the outcome this is not about. By bits, because these are
+        // exact binary fractions and what is being excluded is one of them rather than a
+        // neighbourhood around it.
+        let described = 0.5_f32.to_bits();
+        let never_arriving: Vec<f32> =
+            positions(1_000).into_iter().filter(|ratio| ratio.to_bits() != described).collect();
+
+        let gave_up = never_arriving
+            .iter()
+            .position(|ratio| !mirror.apply(BackendEvent::LayoutUpserted(at(*ratio))).is_empty());
+        assert!(
+            gave_up.is_some(),
+            "a thousand arrangements were dropped waiting for one the stream is never going to \
+             send, so this tab is held at the snapshot's shape for good"
+        );
+
+        // And once it has given up it stays given up, rather than dropping every other one.
+        let last = *never_arriving.last().expect("a thousand positions");
+        assert!(
+            !mirror.apply(BackendEvent::LayoutUpserted(at(last))).is_empty(),
+            "the tab is being guarded again after the guard was spent"
+        );
+        assert_eq!(mirror.layout(&TabId::new("w1:t1")), Some(&at(last)));
+    }
+
+    #[test]
+    fn asking_for_an_arrangement_stops_the_snapshots_being_waited_for() {
+        // A window that acts on a tab has said what it wants that tab to look like, so what the
+        // last snapshot said is no longer the thing to wait for. Left armed, the guard would
+        // drop the daemon's broadcast of the very change that was just made - and that
+        // broadcast is the only word there will be.
+        let mut mirror = a_snapshotted_tab();
+        let asked = at(0.25);
+        mirror.settle(SettledLayout { layout: asked.clone(), stale: None });
+
+        let echoed = mirror.apply(BackendEvent::LayoutUpserted(at(0.75)));
+        assert!(
+            !echoed.is_empty(),
+            "an arrangement asked for after the snapshot left the tab still waiting for the \
+             snapshot's own, so nothing the daemon says about it lands"
+        );
+        assert_eq!(mirror.layout(&TabId::new("w1:t1")), Some(&at(0.75)));
+    }
 }
 
 #[test]

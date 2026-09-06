@@ -37,6 +37,37 @@ use crate::mirror::event::{BackendEvent, Change};
 /// dragging.
 const SUPERSEDED_LIMIT: usize = 32;
 
+/// A tab as its daemon's last snapshot described it, while a replay walks up to it.
+#[derive(Debug, Clone, PartialEq)]
+struct Replaying {
+    /// The arrangement and what is covering it - the two things that decide what gets drawn.
+    ///
+    /// The focused pane is left out on the reasoning [`Mirror::superseded`] already gives for
+    /// leaving cursors out: they move on their own terms, so a guard that waited for one to
+    /// agree would be waiting for something that need never happen. The zoom is not a cursor
+    /// even though a backend spells it beside one - it decides whether a tab is drawn as one
+    /// pane or as four, which is the whole of what this exists to stop flickering.
+    root: LayoutNode,
+    zoomed: Option<PaneId>,
+    /// The panes that arrangement named, for telling a stream that is behind from a tab that
+    /// has moved on.
+    panes: BTreeSet<PaneId>,
+    /// How many arrangements have been dropped against it, so that a replay which never
+    /// arrives stops being waited for.
+    dropped: usize,
+}
+
+impl Replaying {
+    fn of(layout: &Layout) -> Replaying {
+        Replaying {
+            root: layout.root.clone(),
+            zoomed: layout.zoomed.clone(),
+            panes: layout.root.panes().into_iter().cloned().collect(),
+            dropped: 0,
+        }
+    }
+}
+
 /// Entities a backend said were removed before it said they were created.
 ///
 /// A replay is not ordered by cause. A pane created and closed before the subscription
@@ -112,6 +143,28 @@ pub struct Mirror {
     /// returns to that shape by closing a pane has its broadcast dropped, leaving a pane on
     /// screen that the daemon no longer holds.
     awaiting_echo: BTreeMap<TabId, LayoutNode>,
+    /// What a daemon's own snapshot said a tab is arranged as, until its stream catches up.
+    ///
+    /// A subscription is snapshotted and then read, and the stream opens with the session
+    /// replayed as fresh events - so the first thing a tab hears after being described is how it
+    /// came to be the way it is, one arrangement at a time, with nothing marking any of them
+    /// historical (`observations/herdr-0.8.0.md` section 13). Applied in order they walk the tab
+    /// backwards through shapes it left minutes ago.
+    ///
+    /// The pane list catches only part of that and is why this is here rather than left to the
+    /// view: a tree naming fewer panes than its tab holds is already withheld, and every
+    /// arrangement the tab has had *since its last pane appeared* names exactly the right ones.
+    /// A tab zoomed after its last split replays unzoomed and then zoomed, both passing, so a
+    /// window opening onto it paints every pane and corrects itself (kan a_2KyXfzZvm).
+    ///
+    /// [`Mirror::superseded`] is the same idea armed from the other end, and cannot reach this:
+    /// it lists the arrangements to drop, and at a bootstrap what would have to be listed is a
+    /// history nothing has seen yet. So this holds the one arrangement to keep instead.
+    ///
+    /// Suppression with no way out would be far worse than the flash it prevents - a tab frozen
+    /// for the life of the process against a tenth of a second - so there are three, in
+    /// [`Mirror::still_replaying`].
+    replaying: BTreeMap<TabId, Replaying>,
     /// Names given to panes the backend has not described yet.
     ///
     /// The other half of the rule below that a name is never taken from an event: the reply to
@@ -186,6 +239,14 @@ impl Mirror {
         // out of the stream that follows.
         self.superseded.clear();
         self.awaiting_echo.clear();
+        // And armed here, because this is the one moment the whole world arrives at once: what
+        // the stream says next about a tab this snapshot described is either the arrangement it
+        // just gave or one the tab had before it.
+        self.replaying = self
+            .layouts
+            .values()
+            .map(|layout| (layout.tab.clone(), Replaying::of(layout)))
+            .collect();
         self.gone_before_known.clear();
         // Same reasoning, one step further: a snapshot describing the pane carries the backend's
         // own label for it, which is what the rename produced. Holding the wish past that would
@@ -367,8 +428,55 @@ impl Mirror {
         }
 
         self.awaiting_echo.insert(tab.clone(), layout.root.clone());
+        // Whatever the last snapshot said this tab looked like, it has been asked to look like
+        // something else since, so there is no longer a replay to wait for - and a guard left
+        // armed would drop the broadcast of the change that has just been made.
+        self.replaying.remove(&tab);
         self.layouts.insert(tab.clone(), layout);
         vec![Change::LayoutChanged(tab)]
+    }
+
+    /// Whether this arrangement is one a bootstrap's replay has not caught up to yet.
+    ///
+    /// Everything a replay states about a tab the snapshot described is either the arrangement
+    /// the snapshot gave or one the tab had before it, so until the first of those arrives the
+    /// rest are history and are dropped. What counts as the same arrangement is the tree and
+    /// the zoom together - see [`Replaying`] for why the zoom and not the focused pane.
+    ///
+    /// Three ways out, and this is the part worth reading twice: a guard with none would hold a
+    /// tab at a shape it has left for the life of the process, which is a far worse thing than
+    /// the flicker it exists to prevent.
+    ///
+    /// - The arrangement arrives. Ordinary, and the guard is spent - drained on first match,
+    ///   like [`Mirror::already_moved_past`] beside it.
+    /// - The tab moved on. A replay only ever states arrangements naming panes the tab already
+    ///   held, so one naming a pane the snapshot's did not is a split since - and one naming
+    ///   exactly what the tab holds now, when the snapshot's arrangement does not, is a close
+    ///   since. Either way there is nothing left to wait for and the arrangement is the newer
+    ///   of the two, so it is applied rather than dropped.
+    /// - Neither, often enough. A replay that is truncated, or a divider dragged in the gap so
+    ///   that the pane list never moves, would otherwise wait forever. The bound is the one
+    ///   [`Mirror::superseded`] uses; what has to hold is that there is one, and being wrong
+    ///   costs a bounded run of dropped arrangements that heals itself.
+    fn still_replaying(&mut self, layout: &Layout) -> bool {
+        if !self.replaying.contains_key(&layout.tab) {
+            return false;
+        }
+        let named: BTreeSet<PaneId> = layout.root.panes().into_iter().cloned().collect();
+        let holds: BTreeSet<PaneId> =
+            self.panes_in_tab(&layout.tab).map(|pane| pane.id.clone()).collect();
+        let Some(held) = self.replaying.get(&layout.tab) else { return false };
+
+        let caught_up = held.root == layout.root && held.zoomed == layout.zoomed;
+        let moved_on = !named.is_subset(&held.panes) || (named == holds && held.panes != holds);
+        if caught_up || moved_on || held.dropped >= SUPERSEDED_LIMIT {
+            self.replaying.remove(&layout.tab);
+            return false;
+        }
+        if let Some(held) = self.replaying.get_mut(&layout.tab) {
+            held.dropped += 1;
+        }
+        true
     }
 
     /// Whether this arrangement is one its tab has already been told it left.
@@ -543,6 +651,12 @@ impl Mirror {
             // tree dropped for arriving early would be replaced by nothing until the next
             // pane change, which on a quiet tab is never.
             BackendEvent::LayoutUpserted(layout) => {
+                // Ahead of the arming below, because the two catch different halves of the
+                // same defect and only one of them is armed here: this is a bootstrap's replay
+                // walking through a tab's history, and nothing Muster asked for is involved.
+                if self.still_replaying(&layout) {
+                    return Vec::new();
+                }
                 // Before the comparison below rather than after it, because the two say
                 // different things: this one is an arrangement the daemon has already told
                 // Muster it left, arriving late, and applying it would walk a tab backwards.
@@ -654,6 +768,7 @@ impl Mirror {
         self.layouts.remove(id);
         self.superseded.remove(id);
         self.awaiting_echo.remove(id);
+        self.replaying.remove(id);
         let orphaned: Vec<PaneId> = self
             .panes
             .values()

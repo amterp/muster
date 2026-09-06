@@ -732,6 +732,17 @@ the thing that stayed true throughout, which is why Muster's composition takes i
 authority and the tree as an ordering only (`corpus/conformance/composition.json`, "a tree
 that has not caught up does not move the keyboard").
 
+**And the pane list settles less than it looks.** It rejects every arrangement from before the
+tab's last pane appeared and none of the ones since, so a zoom, an unzoom or a dragged divider
+replays past it naming exactly the panes the tab holds. `layout_updated` carries a `zoomed` flag -
+both values appear across `layout/events.ndjson` - which makes a tab zoomed after its last split
+replay as unzoomed and then zoomed, both passing that check, and a window opening onto it draws
+all its panes before settling on the one (kan a_2KyXfzZvm, measured at about 110ms). What is
+*not* recorded is a replayed zoom: `layout-replay` never zooms, so that sequence is what the two
+facts above imply rather than a transcript anybody has. Muster holds onto the arrangement its
+snapshot gave until the replay states it, counting the tree and the zoom together as one
+arrangement (`crates/muster-core/src/mirror/state.rs`, `still_replaying`).
+
 **A split seen by a subscription that is already open publishes one arrangement, not two.**
 Splitting a settled two-pane tab broadcast the three-pane tree and nothing before it. Worth
 recording because the opposite was assumed from a test log: the shorter-timescale transient

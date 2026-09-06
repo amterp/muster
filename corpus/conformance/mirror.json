@@ -2649,6 +2649,415 @@
       }
     },
     {
+      "name": "an arrangement the tab has outgrown does not replace the one the snapshot gave",
+      "why": "A subscription is snapshotted and then read, and the stream opens with the session replayed as fresh events - so the first thing a tab hears after being described is how it got to be the way it is, one arrangement at a time and nothing marking any of them historical. Applied in order they walk the tab backwards through shapes it left minutes ago, and a window opening onto it paints every one of them.\n\nThe pane list catches only some of that, which is why this is here rather than left to the view: it rejects an arrangement naming fewer panes than the tab holds, and every arrangement the tab has had since its last pane appeared names exactly the right ones. So the snapshot's own arrangement is held onto until the replay reaches it.",
+      "given": {
+        "snapshot": {
+          "workspaces": [
+            {
+              "id": "w1",
+              "label": "tmp"
+            }
+          ],
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            },
+            {
+              "id": "w1:p2",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            },
+            {
+              "id": "w1:p3",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ],
+          "layouts": [
+            {
+              "tab": "w1:t1",
+              "root": {
+                "axis": "columns",
+                "ratio": 0.5,
+                "first": "w1:p1",
+                "second": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p2",
+                  "second": "w1:p3"
+                }
+              }
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "layoutUpserted",
+            "tab": "w1:t1",
+            "root": "w1:p1"
+          },
+          {
+            "kind": "layoutUpserted",
+            "tab": "w1:t1",
+            "root": {
+              "axis": "columns",
+              "ratio": 0.5,
+              "first": "w1:p1",
+              "second": "w1:p2"
+            }
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1",
+          "w1:p2",
+          "w1:p3"
+        ],
+        "tabs": [
+          "w1:t1"
+        ],
+        "workspaces": [
+          "w1"
+        ],
+        "agentStates": {
+          "w1:p1": "idle",
+          "w1:p2": "idle",
+          "w1:p3": "idle"
+        },
+        "tabLabels": {
+          "w1:t1": "1"
+        },
+        "layouts": {
+          "w1:t1": "columns(w1:p1, columns(w1:p2, w1:p3@0.5)@0.5)"
+        },
+        "focus": {},
+        "health": "connected",
+        "changes": []
+      }
+    },
+    {
+      "name": "the same arrangement with the zoom off is a stale one too",
+      "why": "The case this was written for. Opening a window onto a zoomed tab drew it unzoomed for about a tenth of a second and then corrected itself, and nothing in the tree explained why: the replayed arrangement named exactly the panes the tab holds and had exactly the shape it has, so every check there was passed it. What it did not have was the zoom, and the zoom is the whole of what a person sees.\n\nSo what counts as the same arrangement here is the tree and what is covering it, and not the focused pane beside them. A cursor moves on its own terms and disagreeing about one is ordinary - the arrangement it sits in is what gets drawn.",
+      "given": {
+        "snapshot": {
+          "workspaces": [
+            {
+              "id": "w1",
+              "label": "tmp"
+            }
+          ],
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            },
+            {
+              "id": "w1:p2",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            },
+            {
+              "id": "w1:p3",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ],
+          "layouts": [
+            {
+              "tab": "w1:t1",
+              "root": {
+                "axis": "columns",
+                "ratio": 0.5,
+                "first": "w1:p1",
+                "second": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p2",
+                  "second": "w1:p3"
+                }
+              },
+              "zoomed": "w1:p2"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "layoutUpserted",
+            "tab": "w1:t1",
+            "root": {
+              "axis": "columns",
+              "ratio": 0.5,
+              "first": "w1:p1",
+              "second": {
+                "axis": "columns",
+                "ratio": 0.5,
+                "first": "w1:p2",
+                "second": "w1:p3"
+              }
+            }
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1",
+          "w1:p2",
+          "w1:p3"
+        ],
+        "tabs": [
+          "w1:t1"
+        ],
+        "workspaces": [
+          "w1"
+        ],
+        "agentStates": {
+          "w1:p1": "idle",
+          "w1:p2": "idle",
+          "w1:p3": "idle"
+        },
+        "tabLabels": {
+          "w1:t1": "1"
+        },
+        "layouts": {
+          "w1:t1": "columns(w1:p1, columns(w1:p2, w1:p3@0.5)@0.5) zoomed=w1:p2"
+        },
+        "focus": {},
+        "health": "connected",
+        "changes": []
+      }
+    },
+    {
+      "name": "the arrangement the snapshot described lets the stream through again",
+      "why": "What keeps the case above from being a tab nobody can change. The replay ends at the arrangement the tab is actually in, which is the one the snapshot named, so hearing it is the signal that the history is over - and everything after it is news, including a shape the same stream would have been refused a moment earlier. Here the second event is exactly the one the first case dropped, and this time it lands.",
+      "given": {
+        "snapshot": {
+          "workspaces": [
+            {
+              "id": "w1",
+              "label": "tmp"
+            }
+          ],
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            },
+            {
+              "id": "w1:p2",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            },
+            {
+              "id": "w1:p3",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ],
+          "layouts": [
+            {
+              "tab": "w1:t1",
+              "root": {
+                "axis": "columns",
+                "ratio": 0.5,
+                "first": "w1:p1",
+                "second": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p2",
+                  "second": "w1:p3"
+                }
+              }
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "layoutUpserted",
+            "tab": "w1:t1",
+            "root": {
+              "axis": "columns",
+              "ratio": 0.5,
+              "first": "w1:p1",
+              "second": {
+                "axis": "columns",
+                "ratio": 0.5,
+                "first": "w1:p2",
+                "second": "w1:p3"
+              }
+            }
+          },
+          {
+            "kind": "layoutUpserted",
+            "tab": "w1:t1",
+            "root": "w1:p1"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1",
+          "w1:p2",
+          "w1:p3"
+        ],
+        "tabs": [
+          "w1:t1"
+        ],
+        "workspaces": [
+          "w1"
+        ],
+        "agentStates": {
+          "w1:p1": "idle",
+          "w1:p2": "idle",
+          "w1:p3": "idle"
+        },
+        "tabLabels": {
+          "w1:t1": "1"
+        },
+        "layouts": {
+          "w1:t1": "w1:p1"
+        },
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "layoutChanged:w1:t1"
+        ]
+      }
+    },
+    {
+      "name": "a tab that has been split since the snapshot is not waited for",
+      "why": "The way out that matters most, because without it a tab could be held at a shape it has left for as long as the process runs. A tab split between the snapshot being taken and the stream catching up ends its replay somewhere the snapshot never described, so waiting for that arrangement would be waiting for something that is never coming.\n\nA pane the snapshot's own arrangement did not name is the evidence, and it is evidence a replay cannot fake: every arrangement a tab has outgrown named panes it already held, so naming a new one means the world moved rather than that the stream is behind.",
+      "given": {
+        "snapshot": {
+          "workspaces": [
+            {
+              "id": "w1",
+              "label": "tmp"
+            }
+          ],
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            },
+            {
+              "id": "w1:p2",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            },
+            {
+              "id": "w1:p3",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ],
+          "layouts": [
+            {
+              "tab": "w1:t1",
+              "root": {
+                "axis": "columns",
+                "ratio": 0.5,
+                "first": "w1:p1",
+                "second": "w1:p2"
+              }
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "layoutUpserted",
+            "tab": "w1:t1",
+            "root": {
+              "axis": "columns",
+              "ratio": 0.5,
+              "first": "w1:p1",
+              "second": {
+                "axis": "columns",
+                "ratio": 0.5,
+                "first": "w1:p2",
+                "second": "w1:p3"
+              }
+            }
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1",
+          "w1:p2",
+          "w1:p3"
+        ],
+        "tabs": [
+          "w1:t1"
+        ],
+        "workspaces": [
+          "w1"
+        ],
+        "agentStates": {
+          "w1:p1": "idle",
+          "w1:p2": "idle",
+          "w1:p3": "idle"
+        },
+        "tabLabels": {
+          "w1:t1": "1"
+        },
+        "layouts": {
+          "w1:t1": "columns(w1:p1, columns(w1:p2, w1:p3@0.5)@0.5)"
+        },
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "layoutChanged:w1:t1"
+        ]
+      }
+    },
+    {
       "name": "a state read after subscribing fills in what the stream never delivered",
       "why": "herdr delivers agent state only to a subscriber that names the pane, and a watcher has to be told the pane exists before it can name it - so between a pane appearing and its watcher connecting there is a window, and herdr has no replay for what falls in it. A pane whose agent moved in that window keeps its old state and looks calm, which is this project's whole reason for existing failing silently at the moment it matters most: right after a split, with something new started in the pane. So the watcher subscribes and then asks.",
       "given": {
