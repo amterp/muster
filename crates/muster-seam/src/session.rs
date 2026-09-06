@@ -3150,13 +3150,56 @@ fn reopen_what_was_left() {
 ///
 /// Recorded as the wish that produced it - Muster's own daemon, wherever that turns out to be
 /// - rather than as the path that answered today.
+///
+/// A config that named daemons is answered here even when none of them could be reached, and
+/// the answer is a refusal rather than a substitute. Standing in for a daemon somebody named
+/// is not a lesser version of showing it: the window renders another session's panes under the
+/// configured daemon's id, and nothing on screen says which session it is looking at. Under
+/// load that is how the suite's own tests reached a developer's live herdr (kan a_2L19sAmLZ),
+/// and a person whose devenv is briefly slow would get the same window with no way to tell.
+///
+/// `follow_configured` still skips a daemon that will not attach, and for the reason it gives:
+/// one unreachable devenv should cost its own panes and nothing else. This is the case it does
+/// not cover - *every* named daemon failing - where there are no other panes for it to be
+/// costing nothing.
 fn follow_implicitly_if_nothing_else() -> Result<(), String> {
     if following_anything() {
         return Ok(());
     }
+    let named = named_daemons();
+    if !named.is_empty() {
+        return Err(format!(
+            "none of the daemons the config named is answering: {}. This window has no session \
+             behind it, so it renders nothing and ignores the keyboard. A `daemon.unavailable` \
+             record in the run log says what each one refused with; the usual causes are a \
+             daemon that is not running, a socket path that has moved, and an ssh host that is \
+             not reachable.",
+            named.join(", ")
+        ));
+    }
     let implicit =
         Daemon { id: DaemonId::new(LOCAL), endpoint: Endpoint::Local { socket_path: None } };
     attach_daemon(&implicit)
+}
+
+/// Every daemon a config file named, said the way the file named it.
+///
+/// The endpoint rather than the id, because the id is the reader's own word and the endpoint is
+/// the part they can check.
+fn named_daemons() -> Vec<String> {
+    let configured = poison::lock(&CONFIGURED_DAEMONS, "settings");
+    configured
+        .as_deref()
+        .unwrap_or_default()
+        .iter()
+        .map(|daemon| match &daemon.endpoint {
+            Endpoint::Local { socket_path: None } => {
+                format!("{} on this machine", daemon.id)
+            }
+            Endpoint::Local { socket_path: Some(path) } => format!("{} at {path}", daemon.id),
+            Endpoint::Ssh { host, .. } => format!("{} on {host}", daemon.id),
+        })
+        .collect()
 }
 
 /// Asks for one workspace when this window has no tab it may open onto.

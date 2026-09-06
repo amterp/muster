@@ -27,7 +27,7 @@ use serde_json::{Value, json};
 
 use crate::client::{Failure, HerdrClient};
 use crate::events::EventDecoder;
-use crate::snapshot::fetch_snapshot_within;
+use crate::snapshot::{SESSION_ALLOWANCE, fetch_snapshot_within};
 
 /// What the subscription tells its owner, as it happens.
 ///
@@ -371,20 +371,6 @@ fn read_line(stream: &mut UnixStream) -> Option<Vec<u8>> {
     }
     Some(line)
 }
-
-/// How long the session is worth waiting for before the attempt counts as failed.
-///
-/// Not the client's own default, which is 500ms because that client sits on the input path and
-/// a wedged daemon must not take the keyboard with it. Nothing renders until this call answers,
-/// so giving up on a daemon that is merely busy costs the whole window rather than one
-/// keystroke - and giving up used to cost it permanently.
-///
-/// Five seconds against a snapshot measured at 0.7ms (`docs/testing.md`). The bound it has to
-/// clear is a machine under load rather than a daemon under load, which is why it is nowhere
-/// near the measurement: the harness allows twenty seconds for a daemon's first ping and
-/// `client_connection.rs` spends ten on a call that waits for something to happen. Past five
-/// the retry below is the better answer anyway, because by then the window has been told.
-const SESSION_ALLOWANCE: Duration = Duration::from_secs(5);
 
 /// Rebuilds the mirror from the daemon's own answer, so events have a world to describe.
 ///

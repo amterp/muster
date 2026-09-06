@@ -28,15 +28,31 @@ use crate::layout::{PaneCells, read_layout, unattached_sizes};
 /// Asking twice costs nothing. Bootstrap replaces rather than merges, and replacing a
 /// picture with the same picture reports no changes at all.
 pub fn fetch_snapshot(socket_path: &str, names: &Names) -> Result<(Snapshot, usize), Failure> {
-    fetch_snapshot_within(socket_path, names, HerdrClient::DEFAULT_TIMEOUT)
+    fetch_snapshot_within(socket_path, names, SESSION_ALLOWANCE)
 }
 
-/// The same, for a caller that can say how long the answer is worth waiting for.
+/// How long a daemon gets to describe its session before it counts as not answering.
 ///
-/// The default above is the client's, which is short because that client sits on the input
-/// path and a wedged daemon must not take the keyboard with it. A caller for whom nothing
-/// renders until this answers is not on the input path and should not be held to a keystroke's
-/// budget - the subscription's bootstrap is the one that is not, and it says why.
+/// Not the client's default, and the difference is the whole of kan a_2L19sAmLZ. That default
+/// is half a second because the client sits on the input path and a wedged daemon must not
+/// take the keyboard with it. Nobody asking this question is on the input path: nothing
+/// renders until it answers, so giving up on a daemon that is merely busy costs the whole
+/// window rather than one keystroke - and what the window does instead of showing it is worse
+/// than showing nothing. It attaches whatever daemon this machine has under the configured
+/// daemon's id.
+///
+/// Five seconds against a snapshot measured at 0.7ms (`docs/testing.md`). The bound it has to
+/// clear is a machine under load rather than a daemon under load, which is why it is nowhere
+/// near the measurement: the harness allows twenty seconds for a daemon's first ping and
+/// `client_connection.rs` spends ten on a call that waits for something to happen. Past five
+/// the subscription's retry is the better answer anyway, because by then the window has been
+/// told.
+///
+/// One number for every caller, for the reason `until::PATIENCE` is one number: this was two,
+/// and the one that kept the keystroke budget is the one that had never been argued for.
+pub const SESSION_ALLOWANCE: Duration = Duration::from_secs(5);
+
+/// The same, for a caller that can say how long the answer is worth waiting for.
 pub fn fetch_snapshot_within(
     socket_path: &str,
     names: &Names,
