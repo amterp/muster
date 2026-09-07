@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "pane-send-takes-its",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1788821620266,
+  "creator": "Alexander Terp",
+  "description": "`pane send` takes its text as an argument, so quoting is the caller's problem across every shell between the caller and the pane.\n\nMeasured 2026-09-04: every message to a worker crossed two shells, the caller's and the login shell `laptop run` opens on the laptop, because the caller sat on the devenv (a_29e9be7aQ). An apostrophe would have closed the outer quotes, so briefs were written \"slot 8s\" and \"slot 7s\", and anything longer than a paragraph went to a file with a one-line pointer: \"read \u003cpath\u003e and follow it\". Some thirty messages, all of that shape.\n\n`muster docs limits` says a multi-line send arrives as one paste, so the paste itself is not the problem. Getting the text into the argument is what costs, and it costs anyone whose text has quotes or newlines, remote or not.\n\nDone when `pane send` reads its text from a file (`--file PATH`) and from stdin (`-`), beside the positional argument. Both: under `laptop run` the command itself travels over stdin, so only `--file` would have helped there, and a caller holding the text in a pipe wants the other.\n\nMinor. The file-and-pointer workaround works, and a far-side `muster` removes the outer shell.",
+  "id": "a_2M9T8iOgk",
+  "position": "UUUUUUUUUUUUU",
+  "title": "📎 pane send takes its text from the command line only",
+  "type": "enhancement",
+  "updated_at_millis": 1788821620266,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1788821620266}
+  ]
+}

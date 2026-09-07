@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "a-read-cannot-be",
+  "alias_explicit": false,
+  "area": [
+    "backend",
+    "shell"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1788821620166,
+  "creator": "Alexander Terp",
+  "description": "`muster pane read --rows N` makes the caller guess N, and what the caller wants - the rows the agent printed in its last turn - has a boundary Muster already knows.\n\nMeasured 2026-09-04: collecting nine agents' reports took 42 reads, with fifteen different `--rows` values between 8 and 70. The caller wants the report and cannot know how long it is. Too few rows cut off its top; too many pull in the previous turn's tail and the brief the caller itself sent, which the harness echoes. Every read then went through the same three filters to drop blank rows, separator rules, and the harness's status and mode lines, so one pipeline was pasted 42 times.\n\nEach time the caller wanted one of two things: the rows since the agent last went `working`, or the rows since the caller last read. Muster knows the first moment, since it is the transition the window paints. The second is the caller's own. Whether the daemon can place rows against a moment is the open question; if it cannot, a cursor does the same job: `--json` returns one, and `--since CURSOR` reads from it.\n\nDone when a read can be scoped to the last turn (`--turn`) or to a cursor, so a caller reads what is new and nothing else. Stripping blank and separator rows is not this: it is harness-specific, and the turn boundary is the neutral fact. The thousand-row ceiling still applies, and `truncated` already says when it applied.",
+  "id": "a_2M9T8Y3O2",
+  "position": "UUUUUUUUUUUU",
+  "title": "📖 A read cannot be scoped to what the agent printed in its last turn",
+  "type": "enhancement",
+  "updated_at_millis": 1788821620166,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1788821620166}
+  ]
+}

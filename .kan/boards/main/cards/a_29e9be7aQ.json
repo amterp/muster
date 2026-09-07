@@ -9,6 +9,12 @@
       "body": "Not closed in the devenv round (2026-08-18), and the reason is a prerequisite the card does not name. Forwarding the endpoint over the ssh master is the half this card anticipated; the other half is that something on the far machine has to receive it, and the `muster` command is built from this repo with nothing shipping a Linux one. So closing this needs a remote `muster` alongside the remote daemon - which the same round just built the machinery for: the pin, the platform probe, the cache, and placing a file over the master all exist now.\n\nCorrected while here: the limits entry claimed a devenv pane is told nothing, understating what works. `$MUSTER_PANE` is set over there and always has been, so such a pane knows which pane it is and only lacks a socket to say so. docs/cli/limits.md now says which is which.",
       "created_at_millis": 1787034116086,
       "id": "c_2A3RzUTr1"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Another instance, 2026-09-04: a parallel-work round with the integrator on the devenv, where its nine worktrees were, and the window on the laptop. All 98 `muster` calls went through `laptop run '~/.muster/bin/muster ...'`, the path spelled out because a login shell on the laptop does not have `~/.muster/bin` on `PATH`. One ssh round trip each, including some forty `window --json` polls standing in for a wait (a_2M9T8O6dL). It worked: zero errors from `muster` itself across the round.\n\nTwo things for the design. The premise that the integrator is local did not hold: the integrator wants to sit where the worktrees and the repo's tools are, and here that was the far machine. And on 2026-09-07 the laptop's reverse tunnel to the devenv went stale - the devenv still accepted on port 2222 and ssh got no banner - which would have severed a far-side `muster` riding that tunnel. Carrying the endpoint over Muster's own ssh master, which Muster already supervises and reopens, avoids that for the same reason.",
+      "created_at_millis": 1788821630490,
+      "id": "c_2M9TPFgQU"
     }
   ],
   "created_at_millis": 1786973827397,
@@ -22,7 +28,7 @@
   ],
   "title": "🛰️ A devenv pane cannot drive the window it is drawn in",
   "type": "feature",
-  "updated_at_millis": 1787034116086,
+  "updated_at_millis": 1788821630490,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786973827397}
   ]

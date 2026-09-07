@@ -12,6 +12,12 @@
       "body": "**Done, with one of the four things this card floats deliberately not built.**\n\n**`muster pane send --confirm`** reads the pane back after the send and refuses if what was sent is not on it. It is a field on the request and the check runs in the core, not in the CLI - the CLI holds no logic, and a chord or an API client wanting the same certainty has to get the same answer. The match is whitespace-insensitive against the last 120 characters of the message: a terminal reflows, so comparing rows would report a message that arrived perfectly as missing, and the tail rather than the head because a long message scrolls its opening off and because the tail is what a cut send loses.\n\n**What it proves is arrival, not submission**, and that is the part of this card I could not close. Nothing in a pane's rendered rows separates a submitted prompt from one sitting in an input box - both draw the text - and every way I could find of guessing is a claim about one harness's layout. So \"exits non-zero if the text is still sitting in the input unsubmitted\" is not built. What `--confirm` does catch is the send that arrived nowhere, which is the failure a_2ImLVumEP turned out to be about: a canonical-mode terminal discards a line over 1024 bytes whole and says nothing.\n\n**The help text no longer promises submission.** `--enter` now reads \"Press Return afterwards. Whether that submits is the harness's to decide.\"\n\n**`muster docs limits` has the section**, under \"A send that exits 0 was taken, not necessarily received\". It names both ways a send and a receipt come apart - the canonical-mode discard and the paste placeholder - says what `--confirm` catches and what it does not, and repeats the 1583-byte Claude Code measurement from this card.\n\n**Not done, and still open: the threshold.** This card asks where a harness starts treating a send as a paste, and whether it is length at all rather than arrival rate. Nothing here tested that, and it is still the interesting question - a send small enough to submit, against a harness that is not Claude Code, would say whether this is about length, about paste detection, or about one harness.\n\nOne thing the fix for a_2ImLVumEP changes here: `pane send` now goes out on `pane.send_input`, so the daemon fences it as a bracketed paste when the pane has asked for one. That does not change whether Return submits, but it does mean the receiving harness is being handed a paste deliberately rather than by accident of arrival rate.",
       "created_at_millis": 1788484492523,
       "id": "c_2Js0uKeNb"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Instance, 2026-09-04, Claude Code (Fable 5.1 through `ict`), nine receiving panes. About thirty sends of 150 to 600 bytes, one line each, no newlines, none with `--enter` on the text itself. Each went as two requests from the caller: the text without `--enter`, `sleep 3`, then `\"\" --enter`. Every one submitted, and no pane was ever found sitting on a paste placeholder.\n\nThat is the \"send Return as its own request after a beat\" option this card floated, done from the caller's side, and it held for the whole round. No one-step `--enter` was tried, so this says nothing about the threshold. The three seconds were a guess, and from the devenv each cost an extra ssh round trip.",
+      "created_at_millis": 1788821630541,
+      "id": "c_2M9TPKGiL"
     }
   ],
   "created_at_millis": 1788225088618,
@@ -21,7 +27,7 @@
   "position": "!!!!!!!!!!!!!!!!!!!!!!!!!!!U",
   "title": "📋 pane send --enter exits 0 without submitting, when the harness reads it as a paste",
   "type": "bug",
-  "updated_at_millis": 1788484492523,
+  "updated_at_millis": 1788821630541,
   "history": [
     {"field":"column","value":"uncommitted","at":1788225088618},
     {"field":"column","value":"in-progress","at":1788439847140},
