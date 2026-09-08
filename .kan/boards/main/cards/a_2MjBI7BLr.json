@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "a-displaced-pane",
+  "alias_explicit": false,
+  "area": [
+    "shell",
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1788906732268,
+  "creator": "Alexander Terp",
+  "description": "A pane whose terminal was taken by another window shows two remedies at once, and they contradict each other. The pane body says to close the pane; the toast beside it says to run `muster pane reattach`. Closing the pane ends the agent, which is what `4aaec46` (kan `a_2KIPfvt7L`) went through the codebase to stop the app advising.\n\nSeen on 0.7.0, 2026-09-08, driving two windows on one home. The devenv pane `p224xypzs3` was showing in window A; window B was navigated onto the same tab and took the terminal. Window A then drew:\n\n    muster-bridge: pane w5:p1 is now being shown somewhere else, so this\n    window has stopped drawing it.\n    Only one client may hold a herdr terminal. The agent is untouched;\n    close this pane and open it again to bring it back here.\n\n    Process exited. Press any key to close the terminal.\n\nand, in the toast at the same moment, the sentence `respawn.rs::yielded` builds: \"Whichever window is showing it now is the one to type into. To bring it back here instead, run `muster pane reattach --pane p224xypzs3`.\"\n\n`4aaec46` fixed exactly this defect - its message says so: \"The advice destroyed what it was recovering. 'Closing this pane and opening it again starts a fresh bridge' is true and it ends the agent.\" It rewrote `typeable.rs`, `respawn.rs`, `session.rs` and `watchdog.rs`. It did not touch `crates/muster-bridge/src/main.rs:620`, which is the takeover branch and the one a person reads first, because it is printed into the pane at full width rather than into a box in the corner.\n\n`ClosePane` goes to the daemon (`handler.rs:123`), so following the pane's advice on a pane running an agent ends that agent. The reader is under exactly the pressure `a_2KIPfvt7L` describes: their pane just went dark and the big text tells them to close it.\n\nTwo smaller things in the same view, neither the point of this card:\n\n- \"Press any key to close the terminal\" is libghostty's own held-open screen and no key reaches it (`SurfaceView.swift:140`), so the line is inert rather than dangerous. It still sits under advice that says to close the pane, which makes it read as the way to do that.\n- The takeover case does not need a remedy sentence of its own at all. `muster pane reattach` exists now; before it, closing and reopening was the only way back, which is why this sentence was written.\n\n## Directions\n\n- Say what the toast says, from the same builder. `respawn.rs::reattach_command` already formats it and the bridge has the pane key.\n- Or say nothing in the pane and let the toast carry it, since the toast is correct and the pane text cannot be dismissed.\n- Either way the sentence \"close this pane and open it again\" should not exist anywhere in the tree.\n\n## Validating a fix\n\n- Two windows on one machine, both onto one pane. The displaced window's pane text names `muster pane reattach` and no text anywhere advises closing the pane.\n- `rg 'close this pane'` over the tree finds nothing.",
+  "id": "a_2MjBI7BLr",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "title": "☠️ A displaced pane still advises closing itself, which ends the agent",
+  "type": "bug",
+  "updated_at_millis": 1788906732268,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1788906732268}
+  ]
+}
