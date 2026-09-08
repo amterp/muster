@@ -1,0 +1,23 @@
+{
+  "_v": 3,
+  "alias": "muster-window-new",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1788903223319,
+  "creator": "Alexander Terp",
+  "description": "A window somebody asks for claims a fresh workspace on every attached machine (`a_2IZ5TL6DQ`: \"No `--daemon` flag was added\"). With two machines attached that is a new shell on the laptop and a new ssh shell on the devenv, and a person who wanted a laptop window closes the devenv one. There is no way to open a window onto a tab that already exists, and `muster window reopen` takes the most recently written free arrangement rather than a named one.\n\nWhat it took on 2026-09-08 to get one window on a laptop tab and one on a devenv tab from one home, after a full quit:\n\n1. `open -a Muster`, which took the most recent arrangement, the laptop one.\n2. `muster window reopen`, which took the other arrangement. It also pointed at the laptop tab, so both windows opened onto it and raced for its terminal.\n3. `muster tab new --daemon devenv --socket \u003csecond\u003e`, to give the second window a devenv tab to show.\n4. `muster pane reattach --pane \u003claptop pane\u003e --socket \u003cfirst\u003e`, because the second window's takeover had left the first window dark.\n\nEarlier the same day, bringing back a laptop window whose arrangement had drifted onto a devenv tab meant editing `showing` in `state/windows/window-2.toml` by hand before `reopen`.\n\n## Directions\n\n- `muster window new --daemon \u003cid\u003e`: a fresh window with a workspace on that machine only. `pane new` and `tab new` already take the flag with this meaning.\n- `muster window new --tab \u003ct\u003e`: a window opened onto an existing tab, which moves into it. Depends on a tab belonging to one window (the card on two windows sharing one tab list).\n- `muster window reopen \u003cname\u003e` and a listing of closed windows, which `a_2KAFWbZBa` already asks for.\n\n## Validating a fix\n\n- `muster window new --daemon local` opens a window with one tab, on the laptop, and asks nothing of the devenv.\n- After a quit, two `reopen`s by name bring each window back onto its own tabs with no bridge refused.",
+  "id": "a_2Mhi0XFTz",
+  "labels": [
+    "ai-lo"
+  ],
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "title": "🧭 muster window new cannot say which machine or which tab the window is for",
+  "type": "feature",
+  "updated_at_millis": 1788903223319,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1788903223319}
+  ]
+}
