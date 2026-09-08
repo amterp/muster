@@ -66,7 +66,9 @@ Return. Muster cannot fix that from here and will not special-case one harness.
 
 `--confirm` is what to reach for when it matters. It reads the pane back after the send and
 exits non-zero if what was sent is not on it, so a discarded line becomes a refusal rather than
-a success. It costs a round trip, and what it proves is **arrival, not submission**: a pane
+a success. A send is taken before the pane can have drawn it, so the read is retried for up to
+a second rather than taken once: a pane that has already drawn the text answers immediately,
+and only a genuine miss waits the second out. What it proves is **arrival, not submission**: a pane
 draws the text whether it has been submitted or is sitting in an input box, so nothing readable
 from out here separates those. A harness that folds a long paste into a placeholder draws
 neither, which reads as unconfirmed - the honest answer, since a caller that cannot see its

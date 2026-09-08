@@ -1550,17 +1550,39 @@ fn send_to_pane(send: &proto::SendToPane) -> Response {
     confirm_it_arrived(send)
 }
 
-/// Reads the pane back and refuses if the message that was just sent is not on it.
+/// Reads the pane back and refuses if the message that was just sent does not appear on it.
 ///
 /// Here rather than in the CLI, for the reason the CLI holds no logic at all: a second caller
 /// asking for the same certainty - a chord, an API client - would otherwise get a different
-/// answer, or none. It is two requests to the daemon and one act to whoever asked.
+/// answer, or none.
+///
+/// Reading until [`CONFIRM_WITHIN`] runs out rather than once, because a send is accepted before
+/// the pane can have drawn it. A pane that has drawn it answers on the first read, so the cost
+/// falls on the miss.
 ///
 /// **Refusal rather than a field on the answer**, because an exit code is the only part of this
 /// a script branches on without reading English, and a send that cannot be seen is exactly the
 /// case `--confirm` was asked for. The message says what it looked for, since the commonest
 /// cause is a pane whose harness draws the text somewhere this cannot read - which is a fact
 /// about that harness rather than about the send.
+/// How long a pane is given to draw what it was handed before `--confirm` calls it missing.
+///
+/// A send is accepted once the daemon has the bytes, which is before the program has read them,
+/// echoed them, and had that land in the daemon's copy of the screen. Reading once at that
+/// moment refuses whatever has not finished the trip - the delivered message reported as
+/// refused, which is the one answer this flag exists to make impossible.
+///
+/// The floor is the slowest an honest pane was measured taking: 54ms, against a median of 0,
+/// with sixteen spinning cores on a ten-core machine. The ceiling is what a caller driving
+/// several agents will pay on a send that genuinely did not land, because only a miss waits out
+/// the whole budget - a pane that has already drawn the text answers on the first read, before
+/// any sleep. A second buys about eighteen times the worst honest case for a price a caller
+/// pays only when the news is bad.
+const CONFIRM_WITHIN: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// How often the pane is re-read while waiting, matching the seam's other bounded waits.
+const CONFIRM_POLL: std::time::Duration = std::time::Duration::from_millis(25);
+
 fn confirm_it_arrived(send: &proto::SendToPane) -> Response {
     let pane = if send.pane_id.is_empty() {
         match session::focused_pane() {
@@ -1577,9 +1599,22 @@ fn confirm_it_arrived(send: &proto::SendToPane) -> Response {
              going missing, not the send."
         ));
     };
-    match session::read_pane(&daemon, &pane, 0) {
-        Ok(read) if arrived_in(&read.text, &send.text) => Response::ok(),
-        Ok(_) => Response::failure(format!(
+    let deadline = std::time::Instant::now() + CONFIRM_WITHIN;
+    // Whatever the last read said, so a pane that could not be read at all is reported as that
+    // rather than as one that drew nothing - two different things to be told.
+    let unreadable = loop {
+        let outcome = match session::read_pane(&daemon, &pane, 0) {
+            Ok(read) if arrived_in(&read.text, &send.text) => return Response::ok(),
+            Ok(_) => None,
+            Err(refusal) => Some(refusal),
+        };
+        if std::time::Instant::now() >= deadline {
+            break outcome;
+        }
+        std::thread::sleep(CONFIRM_POLL);
+    };
+    match unreadable {
+        None => Response::failure(format!(
             "the text was sent to pane {pane} and is not on it, so whatever is running there \
              did not receive it. Two things do this. A terminal in canonical mode - anything \
              reading stdin without a line editor - discards a line over 1024 bytes whole rather \
@@ -1587,7 +1622,7 @@ fn confirm_it_arrived(send: &proto::SendToPane) -> Response {
              a long paste into a placeholder draws neither the text nor an error, which reads \
              here the same way. `muster pane read --pane {pane}` shows what it does draw."
         )),
-        Err(refusal) => Response::failure(format!(
+        Some(refusal) => Response::failure(format!(
             "the text was sent to pane {pane} and reading it back to confirm failed: {refusal}. \
              Whatever was sent may well have arrived."
         )),

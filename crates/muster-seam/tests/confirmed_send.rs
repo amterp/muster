@@ -33,6 +33,45 @@ const DRAWS: usize = 20;
 /// What the fixture prints once it has taken the terminal and is reading.
 const READING: &str = "fixture-is-reading";
 
+/// How long the slow fixture below sits on a message before drawing it.
+///
+/// Between the two numbers that matter, with room either side. The slowest an honest pane was
+/// measured taking to draw what it was handed is 54ms, so a confirmation that reads once and
+/// gives up fails this deterministically rather than occasionally; and it is well inside the
+/// budget in `confirm_it_arrived`, so a confirmation that waits passes it with margin to spare
+/// on a runner slower than the machine it was written on.
+const DRAWS_AFTER: f32 = 0.3;
+
+#[test]
+fn a_send_the_pane_draws_late_is_confirmed_rather_than_refused() {
+    let _turn = muster::testing::fresh_session();
+    let drawing = scratch("confirmed-send-late");
+    let daemon = Daemon::start_running(&slow_fixture(&drawing).to_string_lossy());
+    daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "late", "focus": true }));
+
+    assert_ok(&answer(request::Payload::Startup(Startup {
+        config_path: daemon.muster_config().to_string_lossy().into_owned(),
+        ..Startup::default()
+    })));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    let pane = the_only_pane();
+    wait_until_reading(&pane);
+
+    // The whole claim: a pane that is slow rather than deaf is confirmed. A send is accepted
+    // once the daemon holds the bytes, which is before the program has read them, echoed them
+    // and had that reach the daemon's copy of the screen - so a confirmation that reads at that
+    // moment and gives up refuses a message that arrived, which is the one answer this flag
+    // exists to make impossible.
+    assert_ok(&answer(request::Payload::SendToPane(SendToPane {
+        pane_id: pane,
+        text: "hello".to_string(),
+        confirm: true,
+        ..SendToPane::default()
+    })));
+
+    let _ = std::fs::remove_dir_all(&drawing);
+}
+
 #[test]
 fn a_send_the_pane_never_showed_is_refused_rather_than_reported_as_done() {
     let _turn = muster::testing::fresh_session();
@@ -196,6 +235,42 @@ while True:
         # escape bytes on the screen for a reader to trip over.
         text = chunk.replace(b"\x1b[200~", b"").replace(b"\x1b[201~", b"")
         os.write(1, text[:{DRAWS}] + b"\r\n")
+"#
+        ),
+    )
+    .expect("the scratch directory should be writable");
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755))
+        .expect("the fixture should be executable");
+    script
+}
+
+/// A program that draws everything it is handed, but not straight away.
+///
+/// The honest slow pane, which is what separates "did not receive it" from "has not drawn it
+/// yet". A harness redrawing a composer around a long paste, and a pane whose daemon is at the
+/// far end of an SSH forward, both take longer than an echo does.
+fn slow_fixture(drawing: &Path) -> PathBuf {
+    let script = drawing.join("draws-it-late.py");
+    std::fs::write(
+        &script,
+        format!(
+            r#"#!/usr/bin/env python3
+import os, select, time, tty
+
+tty.setraw(0)
+os.write(1, "{READING}".encode() + b"\r\n")
+
+while True:
+    if select.select([0], [], [], 0.2)[0]:
+        try:
+            chunk = os.read(0, 65536)
+        except OSError:
+            continue
+        if not chunk:
+            continue
+        text = chunk.replace(b"\x1b[200~", b"").replace(b"\x1b[201~", b"")
+        time.sleep({DRAWS_AFTER})
+        os.write(1, text + b"\r\n")
 "#
         ),
     )
