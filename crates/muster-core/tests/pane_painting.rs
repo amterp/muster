@@ -93,3 +93,24 @@ fn pane_key(spelled: &str) -> Result<PaneKey, CaseError> {
     })?;
     Ok(PaneKey::new(&DaemonId::new(daemon), &PaneId::new(pane)))
 }
+
+/// The sentence's remedy keeps the agent.
+///
+/// A pane that stopped painting most often has a wedged bridge, and the way to a new one that
+/// leaves the agent alone is a reattach. Closing the pane gets a new bridge too, by ending what
+/// is running in it - so a sentence advising that costs the reader the session they were trying
+/// to rescue (kan a_2MjBI7BLr).
+#[test]
+fn a_pane_that_stopped_painting_is_told_how_to_get_a_bridge_back_without_losing_its_agent() {
+    let pane = pane_key("local/p1w3r07bsd").expect("a pane key");
+    let told = muster_core::painting::stopped(&pane, 10_000 * PER_MILLI);
+
+    assert!(
+        told.contains("muster pane reattach --pane p1w3r07bsd"),
+        "the sentence should name the command that asks for a new bridge: {told}"
+    );
+    assert!(
+        !told.to_lowercase().contains("closing this pane"),
+        "closing the pane ends the agent, so the sentence may not advise it: {told}"
+    );
+}

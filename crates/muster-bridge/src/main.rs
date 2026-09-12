@@ -616,11 +616,7 @@ impl Pump {
         // mistyped pane id for a terminal that went somewhere is the kind of accurate,
         // useless message this whole path is being fixed to stop producing.
         if ending == Ending::TakenOver {
-            eprintln!(
-                "muster-bridge: pane {pane} is now being shown somewhere else, so this window \
-                 has stopped drawing it.\nOnly one client may hold a herdr terminal. The agent \
-                 is untouched; close this pane and open it again to bring it back here."
-            );
+            eprintln!("{}", taken_over(pane, None));
             std::process::exit(0);
         }
 
@@ -683,6 +679,17 @@ impl Pump {
             Exiting { ending, reason: reason.map(str::to_string), rendered: self.rendered };
         write_line(app, &message.wire_format());
     }
+}
+
+/// What a pane displaced by another client says, printed across the pane it can no longer draw.
+///
+/// `pane` is the daemon's id for the pane and `pane_name` is Muster's, when the app said it.
+fn taken_over(pane: &str, _pane_name: Option<&str>) -> String {
+    format!(
+        "muster-bridge: pane {pane} is now being shown somewhere else, so this window has \
+         stopped drawing it.\nOnly one client may hold a herdr terminal. The agent is untouched; \
+         close this pane and open it again to bring it back here."
+    )
 }
 
 #[cfg(test)]
@@ -789,6 +796,24 @@ mod tests {
             String::from_utf8_lossy(&read.stdout),
             script,
             "a shell should read back exactly what was quoted"
+        );
+    }
+
+    #[test]
+    fn a_displaced_pane_names_the_way_back_that_keeps_its_agent() {
+        // The pane text is the first thing somebody reads when their pane goes dark, at full
+        // width, and it cannot be dismissed. It used to say to close the pane, which ends the
+        // agent (kan a_2MjBI7BLr). The way back is a reattach, and the command takes Muster's
+        // name for the pane rather than the daemon's.
+        let told = taken_over("w5:p1", Some("p224xypzs3"));
+
+        assert!(
+            told.contains("muster pane reattach --pane p224xypzs3"),
+            "the notice should name the command that brings the pane back: {told}"
+        );
+        assert!(
+            !told.to_lowercase().contains("close this pane"),
+            "closing the pane ends the agent, so nothing here may advise it: {told}"
         );
     }
 }
