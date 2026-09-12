@@ -23,6 +23,13 @@
 //! for the same reason: a pane nothing is drawing paints nothing, and its bridge belongs to a
 //! surface that has been thrown away.
 //!
+//! That guard is about saying something new. A warning already raised stays raised when its pane
+//! leaves the screen, because looking away does not make it untrue: a wedged bridge used to lose
+//! its warning to a tab switch and stay frozen for three more minutes with nobody told (kan
+//! a_2LWqtPd8E). It goes when something answers it - a frame, the pane closing, its machine going
+//! away, or another sentence naming the cause - so a warning that went away says one of those
+//! happened.
+//!
 //! **Only while the pane's daemon is answering.** A machine that has gone away already raises one
 //! problem naming itself; accusing each of its eight panes as well is the nagging that keying a
 //! problem by its condition exists to end.
@@ -69,9 +76,6 @@ pub enum Cleared {
     /// The pane is gone.
     Closed,
 
-    /// The window stopped drawing the pane, which took what it owed with it.
-    Hidden,
-
     /// The pane's daemon stopped answering, and the machine's own problem says so instead.
     DaemonAway,
 
@@ -85,7 +89,6 @@ impl Cleared {
         match self {
             Cleared::Painted => "painted",
             Cleared::Closed => "closed",
-            Cleared::Hidden => "hidden",
             Cleared::DaemonAway => "daemon_away",
             Cleared::Explained => "explained",
         }
@@ -178,13 +181,12 @@ impl Painting {
     /// typed into it, so carrying the reading forward would accuse it for a silence that started
     /// the moment its surface was thrown away - and getting this wrong in the loud direction is
     /// what makes a watch worth switching off.
+    ///
+    /// Unless it has already been reported. That accusation was made while somebody was looking,
+    /// and it stays until a frame answers it: a warning that cleared on a tab switch read exactly
+    /// like a pane that had painted, about a bridge that was still wedged.
     pub fn showing(&mut self, visible: BTreeSet<PaneKey>) {
-        let hidden: Vec<PaneKey> =
-            self.asked.keys().filter(|pane| !visible.contains(*pane)).cloned().collect();
-        for pane in &hidden {
-            self.asked.remove(pane);
-            self.settle(pane, Cleared::Hidden);
-        }
+        self.asked.retain(|pane, _| visible.contains(pane) || self.reported.contains(pane));
         self.visible = Some(visible);
     }
 
@@ -305,7 +307,8 @@ impl Painting {
 
     /// Whether this pane's silence would be worth saying anything about.
     fn counts(&self, pane: &PaneKey) -> bool {
-        self.visible.as_ref().is_none_or(|visible| visible.contains(pane))
+        let drawn = self.visible.as_ref().is_none_or(|visible| visible.contains(pane));
+        (drawn || self.reported.contains(pane))
             && !self.away.contains(&pane.daemon)
             && !self.explained.contains(pane)
     }
