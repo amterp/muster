@@ -98,6 +98,55 @@ fn a_socket_nobody_is_listening_on_is_a_window_that_was_never_asked() {
     );
 }
 
+/// A request too big for any window to read is refused before it is sent.
+///
+/// A window reads the length, refuses it and hangs up without a word, and a request with no
+/// answer is exit 4 - "whatever was asked for may well have happened" - about a send that
+/// certainly did not. `pane send --file` is what makes one reachable.
+#[test]
+fn a_request_no_window_would_read_is_refused_rather_than_sent() {
+    let socket = socket_at("oversized");
+    let listener = UnixListener::bind(&socket).expect("a scratch socket path is free");
+    let (heard, hearing) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
+            let mut length = [0u8; 4];
+            let _ = heard.send(std::io::Read::read_exact(&mut stream, &mut length).is_ok());
+        }
+    });
+
+    let brief = socket.with_extension("md");
+    std::fs::write(&brief, "a".repeat(LARGEST_MESSAGE as usize + 1)).expect("/tmp is writable");
+    let argv: Vec<String> = ["--socket", &socket.to_string_lossy(), "pane", "send", "--file"]
+        .iter()
+        .map(ToString::to_string)
+        .chain(std::iter::once(brief.to_string_lossy().into_owned()))
+        .collect();
+    let (mut out, mut errors) = (Vec::new(), Vec::new());
+    let code = muster_cli::run(
+        &argv,
+        &BTreeMap::new(),
+        None,
+        &mut std::io::empty(),
+        &mut out,
+        &mut errors,
+    );
+
+    assert_eq!(
+        code,
+        1,
+        "a send no window can read exits {code} rather than as refused. Anything but 1 tells a \
+         caller the request may have landed, and it cannot have.\n{}",
+        String::from_utf8_lossy(&errors)
+    );
+    assert!(
+        !hearing.recv_timeout(BRIEFLY).unwrap_or(false),
+        "the oversized request was written to the window anyway, so the refusal describes a send \
+         that did in fact go out"
+    );
+}
+
 /// Asks a window what it is showing, which is the smallest request there is.
 ///
 /// Which request hardly matters: what a failure means is decided by how far the exchange got,

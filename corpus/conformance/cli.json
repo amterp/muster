@@ -329,6 +329,146 @@
       }
     },
     {
+      "name": "a brief can come from a file, resolved against where the command was typed",
+      "why": "Text with quotes in it has to survive every shell between the caller and this command, and a file crosses none of them (kan a_2M9T8iOgk). A relative path means what it means everywhere else, the directory `muster` was run in, and it is resolved here rather than by the read so a case can pin it.",
+      "given": {
+        "argv": [
+          "pane",
+          "send",
+          "--pane",
+          "p1w3r07bsd",
+          "--file",
+          "../briefs/slot-3.md",
+          "--enter"
+        ],
+        "cwd": "/work/muster-3",
+        "input": "read AGENTS.md, then take slot 3"
+      },
+      "expect": {
+        "reads_from": {
+          "file": "/work/briefs/slot-3.md"
+        },
+        "request": {
+          "send_to_pane": {
+            "enter": true,
+            "pane_id": "p1w3r07bsd",
+            "text": "read AGENTS.md, then take slot 3"
+          }
+        }
+      }
+    },
+    {
+      "name": "a lone hyphen reads the text from stdin",
+      "why": "The other half of the card: a caller holding the text in a pipe or a heredoc. Under `laptop run` the command itself travels over stdin, so this cannot be the only way in, and `--file` is the one that works there.",
+      "given": {
+        "argv": [
+          "pane",
+          "send",
+          "--pane",
+          "p1w3r07bsd",
+          "-"
+        ],
+        "input": "it's a brief with 'quotes' in it"
+      },
+      "expect": {
+        "reads_from": "stdin",
+        "request": {
+          "send_to_pane": {
+            "pane_id": "p1w3r07bsd",
+            "text": "it's a brief with 'quotes' in it"
+          }
+        }
+      }
+    },
+    {
+      "name": "trailing newlines are dropped the way command substitution drops them",
+      "why": "A file ends in a newline by convention, not because anybody meant one to reach the pane - and `--enter` is how a caller asks for Return. Dropping every trailing newline, as `\"$(cat PATH)\"` does, means `--file` sends exactly what callers were sending by hand before it existed. Newlines inside the text stay: a multi-line brief arrives as one paste.",
+      "given": {
+        "argv": [
+          "pane",
+          "send",
+          "-"
+        ],
+        "input": "first paragraph\n\nsecond paragraph\n\n"
+      },
+      "expect": {
+        "reads_from": "stdin",
+        "request": {
+          "send_to_pane": {
+            "text": "first paragraph\n\nsecond paragraph"
+          }
+        }
+      }
+    },
+    {
+      "name": "a hyphen inside the text is text",
+      "why": "Only a hyphen standing alone means stdin. One among other words is part of a sentence, and reading stdin there would hang a command that had its whole text already.",
+      "given": {
+        "argv": [
+          "pane",
+          "send",
+          "use",
+          "-",
+          "for",
+          "stdin"
+        ]
+      },
+      "expect": {
+        "request": {
+          "send_to_pane": {
+            "text": "use - for stdin"
+          }
+        }
+      }
+    },
+    {
+      "name": "a file and text on the command line together is refused",
+      "why": "Two sources for one message, and no reading of which the caller meant. Joining them would type something nobody wrote.",
+      "given": {
+        "argv": [
+          "pane",
+          "send",
+          "--file",
+          "/tmp/brief.md",
+          "hello"
+        ]
+      },
+      "expect": {
+        "usage": "ArgumentConflict"
+      }
+    },
+    {
+      "name": "a send with neither text nor a file is refused",
+      "why": "There is nothing to type. An empty string is still text and still allowed, because `pane send \"\" --enter` is how a caller presses Return on its own.",
+      "given": {
+        "argv": [
+          "pane",
+          "send",
+          "--pane",
+          "p1w3r07bsd"
+        ]
+      },
+      "expect": {
+        "usage": "MissingRequiredArgument"
+      }
+    },
+    {
+      "name": "a quoted tilde in a file path is refused rather than guessed at",
+      "why": "The shell expands a tilde and this command does not, so one that arrives here arrived quoted. Joined onto the working directory it names a file nobody has, and the refusal is more use than a read error about `/work/~/brief.md`.",
+      "given": {
+        "argv": [
+          "pane",
+          "send",
+          "--file",
+          "~/brief.md"
+        ],
+        "cwd": "/work"
+      },
+      "expect": {
+        "refused": "`--file ~/brief.md` still has its tilde, so the shell did not expand it - quoting is what usually does that, and muster does not expand one itself. Nothing was sent. Write the path out, or leave it unquoted so the shell expands it first."
+      }
+    },
+    {
       "name": "renaming a pane says what to call it",
       "why": "A person running fifteen agents wants to say which is which in their own words, and this is the surface a script sets those names from.",
       "given": {

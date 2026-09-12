@@ -18,6 +18,7 @@ fn main() {
         &argv,
         &environment,
         here.as_deref(),
+        &mut std::io::stdin().lock(),
         &mut anstream::stdout(),
         &mut anstream::stderr(),
     );

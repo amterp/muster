@@ -12,8 +12,9 @@
 //! tidy. This suite is developed inside Muster, so an inherited `MUSTER_SOCKET` would point the
 //! test at the developer's own window - splitting real panes and typing into them.
 
+use std::io::Write;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use herdr_harness::{Daemon, until, until_file, until_some};
 use muster::proto::{OpenWindow, Request, Response, Startup, request, response};
@@ -130,6 +131,7 @@ fn a_pane_can_drive_the_window_it_is_drawn_in() {
     let sent = run(&["pane", "send", "--pane", &made_pane, &sending, "--enter"], &inside(&first));
     assert_eq!(sent.code, 0, "`muster pane send` failed: {}", sent.errors);
     until_file(&told, "text sent to a pane by name to have run there");
+    text_can_come_from_a_file_or_stdin(daemon.root(), &made_pane, &inside(&first));
 
     a_pane_can_be_read_back(&made_pane, &inside(&first));
     the_columns_are_described(&inside(&first));
@@ -154,6 +156,34 @@ fn a_pane_can_drive_the_window_it_is_drawn_in() {
 /// the work inside it, so pairing the two is Muster's to keep - and without it, twenty daemons
 /// on a machine are twenty identical rows and the one holding somebody's live agent is picked
 /// by age, which picks wrong.
+/// A send whose text never went through a shell's quoting (kan a_2M9T8iOgk).
+///
+/// Each line carries a single quote, which is exactly what could not be passed through two
+/// shells as an argument, and ends in the newline a file or a heredoc ends in. What becomes of
+/// that newline is pinned in `cli.json`; this is the text arriving at all. Read off the
+/// filesystem for the reason the positional send above is.
+fn text_can_come_from_a_file_or_stdin(root: &Path, pane: &str, environment: &[(&str, String)]) {
+    let filed = root.join("filed.txt");
+    let brief = root.join("brief.sh");
+    std::fs::write(&brief, format!("printf 'it'\"'\"'s filed' > {}\n", filed.display()))
+        .expect("the daemon's scratch root is writable");
+    let sent = run(
+        &["pane", "send", "--pane", pane, "--file", &brief.to_string_lossy(), "--enter"],
+        environment,
+    );
+    assert_eq!(sent.code, 0, "`muster pane send --file` failed: {}", sent.errors);
+    until_file(&filed, "text sent from a file to have run in the pane");
+
+    let piped = root.join("piped.txt");
+    let sent = run_reading(
+        &["pane", "send", "--pane", pane, "-", "--enter"],
+        environment,
+        format!("printf 'it'\"'\"'s piped' > {}\n", piped.display()).as_bytes(),
+    );
+    assert_eq!(sent.code, 0, "`muster pane send -` failed: {}", sent.errors);
+    until_file(&piped, "text sent on stdin to have run in the pane");
+}
+
 fn the_machines_are_named_well_enough_to_end_one(environment: &[(&str, String)]) {
     let window = json_from(&run(&["window", "--json"], environment));
     let machines = window["daemons"].as_array().expect("a window names its machines");
@@ -696,13 +726,32 @@ struct Ran {
 
 /// The real binary, with an environment that says exactly what it is being given.
 fn run(argv: &[&str], environment: &[(&str, String)]) -> Ran {
+    run_reading(argv, environment, b"")
+}
+
+/// The same, with `input` on its stdin.
+fn run_reading(argv: &[&str], environment: &[(&str, String)], input: &[u8]) -> Ran {
     let mut command = Command::new(env!("CARGO_BIN_EXE_muster"));
-    command.args(argv).env_clear();
+    command
+        .args(argv)
+        .env_clear()
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     for (name, value) in environment {
         command.env(name, value);
     }
-    let output = command
-        .output()
+    let mut child = command
+        .spawn()
+        .unwrap_or_else(|error| panic!("the muster binary could not be run: {error}"));
+    child
+        .stdin
+        .take()
+        .expect("stdin was asked to be piped")
+        .write_all(input)
+        .expect("the muster binary takes its stdin");
+    let output = child
+        .wait_with_output()
         .unwrap_or_else(|error| panic!("the muster binary could not be run: {error}"));
     Ran {
         code: output.status.code().unwrap_or(-1),

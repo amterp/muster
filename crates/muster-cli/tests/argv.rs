@@ -15,7 +15,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use conformance::{CaseError, Conformance, fields};
-use muster_cli::args::{self, Asking};
+use muster_cli::args::{self, Asking, TextSource};
 use muster_proto::{Request, request};
 use serde_json::{Value, json};
 
@@ -42,6 +42,23 @@ fn cli_conformance() {
                     "request",
                     match &invocation.asking {
                         Asking::Send(request) => Some(described(request)),
+                        Asking::SendFrom { request, from } => match filled(request, from, given) {
+                            Ok(request) => Some(described(&request)),
+                            Err(refusal) => return Ok(json!({ "refused": refusal })),
+                        },
+                        _ => None,
+                    },
+                ),
+                // Where a send's text is read from when it is not on the command line. Pinned
+                // beside the request rather than folded into it, because it is a decision this
+                // CLI makes before anything is sent - and the one a relative path turns on.
+                (
+                    "reads_from",
+                    match &invocation.asking {
+                        Asking::SendFrom { from: TextSource::File(path), .. } => {
+                            Some(json!({ "file": path }))
+                        }
+                        Asking::SendFrom { from: TextSource::Stdin, .. } => Some(json!("stdin")),
                         _ => None,
                     },
                 ),
@@ -52,7 +69,7 @@ fn cli_conformance() {
                 (
                     "answers_here",
                     match &invocation.asking {
-                        Asking::Send(_) => None,
+                        Asking::Send(_) | Asking::SendFrom { .. } => None,
                         Asking::Print(_) => Some(json!("printing something this binary holds")),
                         Asking::Survey => Some(json!("asking every window on this machine")),
                         Asking::MakeWindow => Some(json!("starting another Muster")),
@@ -91,6 +108,33 @@ fn a_shell_can_be_told_how_to_complete_this() {
              complete less than muster takes. Script:\n{script}"
         );
     }
+}
+
+/// Bytes that are not UTF-8 are refused rather than typed.
+///
+/// Native rather than a corpus case, because a JSON string cannot hold them.
+#[test]
+fn text_that_is_not_text_is_refused() {
+    let refused = args::text_of(vec![b'o', b'k', 0xff], &TextSource::Stdin)
+        .expect_err("0xff cannot begin a UTF-8 character");
+    assert!(
+        refused.contains("stdin") && refused.contains("nothing was sent"),
+        "the refusal should say where the bytes came from and that nothing went out: {refused}"
+    );
+}
+
+/// A send's request with its text filled in from the case's `input`, the way `run` fills it.
+///
+/// A case with no `input` reads as an empty file, so a case about where the text comes from
+/// does not also have to say what it was.
+fn filled(request: &Request, from: &TextSource, given: &Value) -> Result<Request, String> {
+    let input = given.get("input").and_then(Value::as_str).unwrap_or_default();
+    let text = args::text_of(input.as_bytes().to_vec(), from)?;
+    let mut request = request.clone();
+    if let Some(request::Payload::SendToPane(send)) = request.payload.as_mut() {
+        send.text = text;
+    }
+    Ok(request)
 }
 
 /// The directory a case was typed in, for the one field whose meaning depends on it.

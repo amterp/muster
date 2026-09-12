@@ -50,6 +50,19 @@ and does not catch.
 Multi-line instructions are one send. The text reaches the harness as a single paste rather than
 as a submission per line, so a brief with paragraphs in it arrives as a brief.
 
+Text with quotes in it does not have to be quoted at all. `--file` sends what a file holds, and
+`-` sends what arrives on stdin:
+
+    muster pane send --pane p1w3r0ab2n --file brief.md --enter
+    muster pane send --pane p1w3r0ab2n - --enter <<'EOF'
+    it's slot 3's turn: read brief.md and say "ready" when you have
+    EOF
+
+Both drop the text's trailing newlines, the way `"$(cat brief.md)"` does, so the file's last line
+does not reach the pane as a Return nobody asked for. `--enter` is still how you ask for one.
+`--file` is the one that works when the command itself arrives on stdin, as it does over
+`laptop run`.
+
 ## Reading what they printed
 
 `muster window` says what state an agent is in and what it says it is working on. Neither of those

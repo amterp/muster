@@ -11,7 +11,7 @@
 //! machine that has never heard of it.
 
 use std::collections::BTreeMap;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::Path;
 
 pub mod args;
@@ -64,15 +64,16 @@ impl Trouble {
 
 /// One run of the command, start to finish.
 ///
-/// Takes its argv, its environment, the directory it was run in and both streams rather than
-/// reaching for them, so that a test says what it is testing - and so the one place that touches
-/// the process is `main`. The exception is a command line clap refused: clap renders those
-/// itself, to the stream and in the shape its own conventions call for, and re-rendering them
-/// here would be a worse version of a good error.
+/// Takes its argv, its environment, the directory it was run in and all three streams rather
+/// than reaching for them, so that a test says what it is testing - and so the one place that
+/// touches the process is `main`. The exception is a command line clap refused: clap renders
+/// those itself, to the stream and in the shape its own conventions call for, and re-rendering
+/// them here would be a worse version of a good error.
 pub fn run(
     argv: &[String],
     environment: &BTreeMap<String, String>,
     here: Option<&Path>,
+    input: &mut impl Read,
     out: &mut impl Write,
     errors: &mut impl Write,
 ) -> i32 {
@@ -132,6 +133,17 @@ pub fn run(
             return 0;
         }
         args::Asking::Send(request) => request,
+        args::Asking::SendFrom { mut request, from } => match read_text(&from, input) {
+            Ok(text) => {
+                if let Some(muster_proto::request::Payload::SendToPane(send)) =
+                    request.payload.as_mut()
+                {
+                    send.text = text;
+                }
+                request
+            }
+            Err(trouble) => return report(&trouble, json, errors),
+        },
     };
 
     // A question nobody narrowed, with more than one window listening. Naming no window is a
@@ -174,6 +186,28 @@ pub fn run(
         }
         Err(trouble) => report(&trouble, json, errors),
     }
+}
+
+/// The text a `pane send --file` or `pane send -` types, read before anything is dialed.
+///
+/// A failure here is a refusal: nothing has been asked of a window yet, so there is nothing
+/// that could have happened.
+fn read_text(from: &args::TextSource, input: &mut impl Read) -> Result<String, Trouble> {
+    let bytes = match from {
+        args::TextSource::File(path) => std::fs::read(path).map_err(|error| {
+            Trouble::Refused(format!("could not read {path} ({error}), so nothing was sent."))
+        })?,
+        args::TextSource::Stdin => {
+            let mut bytes = Vec::new();
+            input.read_to_end(&mut bytes).map_err(|error| {
+                Trouble::Refused(format!(
+                    "could not read the text from stdin ({error}), so nothing was sent."
+                ))
+            })?;
+            bytes
+        }
+    };
+    args::text_of(bytes, from).map_err(Trouble::Refused)
 }
 
 /// Refusals go to stderr, in whichever shape was asked for.

@@ -80,10 +80,23 @@ fn exchange(
     let _ = stream.set_read_timeout(Some(patience));
     let _ = stream.set_write_timeout(Some(patience));
 
+    let encoded = request.encode_to_vec();
+    // Refused here rather than written. A window reads the length, refuses it and hangs up
+    // without answering, and a request with no answer is exit 4 - "it may well have happened" -
+    // about something that certainly did not.
+    if encoded.len() > LARGEST_MESSAGE as usize {
+        return Err(Trouble::Refused(format!(
+            "this request is {} bytes and a window reads at most {LARGEST_MESSAGE}, so nothing \
+             was sent. A `pane send --file` of a large file is the usual way to get here; send \
+             a pointer to the file instead, such as `read <path> and follow it`.",
+            encoded.len()
+        )));
+    }
+
     // Unreachable rather than unanswered, and the difference is the frame: a write that did not
     // finish leaves a length the window will wait out and discard, so the request was not carried
     // out and sending it again costs nothing.
-    write_frame(&mut stream, &request.encode_to_vec()).map_err(|error| {
+    write_frame(&mut stream, &encoded).map_err(|error| {
         Trouble::Unreachable(format!(
             "the window at {path} accepted a connection and then would not take the request \
              ({error}). Either it is shutting down, or something else is listening on that path."

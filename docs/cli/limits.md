@@ -78,6 +78,11 @@ Newlines are safe to send. Muster hands the text to the daemon on the verb it en
 the pane's live modes, so a multi-line message reaches a harness fenced as one paste rather
 than as a submission per line.
 
+`--file` and `-` drop every trailing newline, as command substitution does, and keep the ones
+inside the text. A request carries at most 1 MiB, so a larger file is refused with exit 1 before
+anything is sent; send a line pointing at the file instead. Only a hyphen standing alone reads
+stdin, which leaves one way to send a lone hyphen: `printf - | muster pane send -`.
+
 ## A non-zero exit does not always mean nothing happened
 
 Exit 4 is a window that took the request and never answered. The bytes are on its side of the

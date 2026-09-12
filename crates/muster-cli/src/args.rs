@@ -46,6 +46,14 @@ pub enum Asking {
     /// Boxed because a `Request` is two orders of magnitude the size of the other variants, and
     /// every invocation would otherwise carry room for the largest message Muster has.
     Send(Box<Request>),
+    /// A send whose text is not on the command line, so this CLI reads it before dialing.
+    ///
+    /// The request goes out with its text empty until then. Reading is kept out of [`parse`],
+    /// which is pure, so what a command line means stays pinnable without a filesystem.
+    SendFrom {
+        request: Box<Request>,
+        from: TextSource,
+    },
     Print(String),
     /// Every window on this machine, asked the same thing and answered together.
     Survey,
@@ -53,6 +61,23 @@ pub enum Asking {
     MakeWindow,
     /// The window that was closed, which is the same act with the arrangement it left behind.
     ReopenWindow,
+}
+
+/// Where the text of a `pane send` comes from when it is not on the command line.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TextSource {
+    /// An absolute path, already resolved against the directory the command was run in.
+    File(String),
+    Stdin,
+}
+
+impl TextSource {
+    fn described(&self) -> String {
+        match self {
+            TextSource::File(path) => path.clone(),
+            TextSource::Stdin => "stdin".to_string(),
+        }
+    }
 }
 
 /// Why a command line produced no request.
@@ -357,8 +382,17 @@ enum Doing {
         #[arg(long)]
         confirm: bool,
 
-        /// The text, joined with spaces if it arrives in pieces
-        #[arg(required = true, value_name = "TEXT")]
+        /// Send what this file holds instead, less its trailing newlines
+        //
+        // Beside the positional rather than instead of it, because the two costs are different
+        // callers' (kan a_2M9T8iOgk). Text with quotes in it has to survive every shell between
+        // the caller and this command, and a file crosses none of them - including the one
+        // `laptop run` opens, where stdin already carries the command itself.
+        #[arg(long, value_name = "PATH", conflicts_with = "text")]
+        file: Option<String>,
+
+        /// The text, joined with spaces if it arrives in pieces. `-` reads it from stdin
+        #[arg(required_unless_present = "file", value_name = "TEXT")]
         text: Vec<String>,
     },
 
@@ -677,14 +711,27 @@ fn pane(
             name: name.join(" "),
             ..RenamePane::default()
         })),
-        Doing::Send { pane, enter, confirm, text } => {
-            send(request::Payload::SendToPane(SendToPane {
-                pane_id: pane_ref(pane.as_ref(), environment),
-                text: text.join(" "),
-                enter: *enter,
-                confirm: *confirm,
-                ..SendToPane::default()
-            }))
+        Doing::Send { pane, enter, confirm, file, text } => {
+            // Only a hyphen standing alone reads stdin. One inside a sentence is text, so
+            // `muster pane send a - b` still means what it says.
+            let from = match file {
+                Some(named) => Some(TextSource::File(file_to_read(named, here)?)),
+                None if text == &["-"] => Some(TextSource::Stdin),
+                None => None,
+            };
+            let request = Box::new(Request {
+                payload: Some(request::Payload::SendToPane(SendToPane {
+                    pane_id: pane_ref(pane.as_ref(), environment),
+                    text: if from.is_some() { String::new() } else { text.join(" ") },
+                    enter: *enter,
+                    confirm: *confirm,
+                    ..SendToPane::default()
+                })),
+            });
+            match from {
+                Some(from) => Asking::SendFrom { request, from },
+                None => Asking::Send(request),
+            }
         }
         Doing::Read { pane, rows } => send(request::Payload::ReadPane(ReadPane {
             pane_id: pane_ref(pane.as_ref(), environment),
@@ -884,6 +931,56 @@ fn directory(
     }
 
     Ok(settled(named))
+}
+
+/// The file a `pane send --file` reads, as an absolute path.
+///
+/// Resolved here rather than left to the read, for the reason [`directory`] resolves `--cwd`: a
+/// test says where the command was typed, and a corpus case can then pin what a relative path
+/// means. Unlike `--cwd` this file is read on this machine, so the only paths refused are the
+/// two nothing here can resolve.
+fn file_to_read(named: &str, here: Option<&Path>) -> Result<String, Failure> {
+    if named.starts_with('~') {
+        return Err(Failure::Refused(format!(
+            "`--file {named}` still has its tilde, so the shell did not expand it - quoting is \
+             what usually does that, and muster does not expand one itself. Nothing was sent. \
+             Write the path out, or leave it unquoted so the shell expands it first."
+        )));
+    }
+    let named = Path::new(named);
+    if named.is_absolute() {
+        return Ok(settled(named));
+    }
+    let Some(here) = here else {
+        return Err(Failure::Refused(format!(
+            "`--file {}` is relative and this command cannot tell what directory it is running \
+             in, so there is nothing to resolve it against, and nothing was sent. The usual \
+             cause is a shell whose working directory has been deleted underneath it. Give an \
+             absolute path, or `cd` somewhere that exists and try again.",
+            named.display()
+        )));
+    };
+    Ok(settled(&here.join(named)))
+}
+
+/// What a file or stdin handed over, as the text a `pane send` types.
+///
+/// Trailing newlines are dropped, the way `"$(cat PATH)"` drops them, so `--file brief.md` sends
+/// exactly what a caller passing the file's contents as an argument sent before this existed. A
+/// file ends in a newline by convention rather than because anybody meant one to reach the pane,
+/// and `--enter` is how a caller asks for Return.
+///
+/// Pure, and public so the corpus driver applies the same rule the command does. The error is
+/// the refusal, worded for whoever ran the command.
+pub fn text_of(bytes: Vec<u8>, from: &TextSource) -> Result<String, String> {
+    let text = String::from_utf8(bytes).map_err(|error| {
+        format!(
+            "{} is not UTF-8 text ({error}), so there is nothing a pane could be typed, and \
+             nothing was sent. A pane send carries text; check that this is the file you meant.",
+            from.described()
+        )
+    })?;
+    Ok(text.trim_end_matches('\n').to_string())
 }
 
 /// An absolute path with its `.` and `..` worked out, without asking the filesystem.
