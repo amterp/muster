@@ -349,15 +349,15 @@ Evidence: `corpus/herdr-0.8.0/detection/`.
 
 ## 8. Linux behaves the same as macOS
 
-Every scenario above was re-run against the Linux daemon in the devenv container, over
-SSH, and diffed:
+Every scenario in this document was recorded against the Linux daemon in the devenv
+container, over SSH, and diffed:
 
 ```
 $ tools/herdr-probe/diff-corpus corpus/herdr-0.8.0 corpus/herdr-0.8.0-linux
 --- corpus/herdr-0.8.0 (Darwin/arm64)
 +++ corpus/herdr-0.8.0-linux (Linux/aarch64)
 
-0 difference(s) across 15 shared scenario(s); 13 volatile fact(s) not compared; 4 not comparable across platforms
+0 difference(s) across 17 shared scenario(s); 13 volatile fact(s) not compared; 6 not comparable across platforms
 ```
 
 Not one recorded fact differs. The attach frame is the same 35,605 bytes, the PTY
@@ -368,21 +368,25 @@ about the daemon: the opaque terminal ids stamped per run, and a home directory.
 being asked of those - were the terminals reused, did the working directories survive -
 is recorded separately as a boolean, and those are compared.
 
-The four beside them are a weaker exemption and are worth naming, because a reader
+The six beside them are a weaker exemption and are worth naming, because a reader
 should know what this section does not cover. Three are `arranging`'s move payloads,
 which carry a whole layout tree worth comparing and are skipped because a `cwd` and a
 `terminal_id` sit inside the same blob. The fourth is where a line too long for the pane
 wraps in `read-depth`, measured from where the shell's echo of the command began - so it
-reports the width of a prompt as much as the daemon's wrapping. All four are compared
-when both recordings come from the same platform.
+reports the width of a prompt as much as the daemon's wrapping. The last two are
+`sending-text`'s byte counts for a canonical-mode line, which are the kernel's
+`MAX_CANON` - 1024 bytes on macOS, 4095 on Linux - rather than anything herdr decides;
+the claim they are evidence for, that a pane's program and a bare pty agree, is compared
+(section 25). All six are compared when both recordings come from the same platform.
 
 So the remote path is the same path, and "local and remote in one window" costs the
 adapter nothing beyond the transport. `./dev --ssh` re-runs this against a scratch
 recording on every invocation, so the day it stops printing zero is the day the remote
 path needs its own handling.
 
-Three corrections to what this section said when it was first written, each found by
-re-running it after the scenario set grew - from six to eleven, and then to fifteen.
+Four corrections to what this section said when it was first written, each found by
+re-running it after the scenario set grew - from six to eleven, to fifteen, and then to
+seventeen.
 
 The first is that it was six, and the claim was quietly narrower than it read. The
 five scenarios added since - input encoding, layout reconstruction, lifecycle,
@@ -410,6 +414,16 @@ in the probe again: a recording stamped whichever machine ran it, so the whole L
 corpus claimed to be `Darwin/arm64`, and nothing caught it because nothing read the
 stamp. The diff reads it now, which is what lets it tell a fact two platforms cannot
 share from one that merely moved.
+
+The fourth is about the Linux recording this section quotes, not the daemon. `sending-text`
+arrived, and `read-depth` gained five facts, with macOS recordings only, so the block above
+went on quoting a zero that the checked-in corpora no longer produced - the same command
+printed six differences before this correction. `./dev --ssh` and `./dev --corpus-linux`
+stayed green throughout, and were right to: they record Linux fresh into a scratch
+directory and diff that, which checks the daemon and never reads
+`corpus/herdr-0.8.0-linux/`. Nothing checks that copy. It is refreshed by hand with
+`tools/herdr-probe/probe --remote <scenario>` whenever a scenario is added or gains a fact,
+and the block above is re-run then.
 
 ## 9. Input-to-glyph is 1.4 ms, and its tail is a render throttle
 
@@ -1371,4 +1385,6 @@ the tty echoes the first thousand-odd characters to the screen and then drops th
 when its terminator arrives. Somebody reading the pane sees 1024 bytes of their message and
 concludes that much of it landed. None of it did.
 
-Evidence: `corpus/herdr-0.8.0/sending-text/`, and `bare-pty.json` there for the control.
+Evidence: `corpus/herdr-0.8.0/sending-text/`, and `bare-pty.json` there for the control. The
+Linux recording, where both columns carry the 2201-byte line, is
+`corpus/herdr-0.8.0-linux/sending-text/`.

@@ -1,0 +1,10 @@
+[  6191ms] pane.send_text delivered b'line one\nline two\nline three'
+[ 10179ms] pane.send_input delivered b'\x1b[200~line one\nline two\nline three\x1b[201~'
+[ 14597ms] pane.send_text carried 10000 of 10000 bytes into a raw-mode reader
+[ 18698ms] pane.send_input carried 10000 of 10000 bytes into a raw-mode reader
+[ 23368ms] a canonical-mode reader saw 1001 of a 1001-byte line
+[ 27875ms] a canonical-mode reader saw 1024 of a 1024-byte line
+[ 32592ms] a canonical-mode reader saw 1025 of a 1025-byte line
+[ 37132ms] a canonical-mode reader saw 1031 of a 1031-byte line
+[ 41916ms] a canonical-mode reader saw 2201 of a 2201-byte line
+[ 55295ms] the same boundary on a pty with no daemon near it, on the daemon's own machine: {"1000": 1001, "1023": 1024, "1024": 1025, "1030": 1031, "2200": 2201}
