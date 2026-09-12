@@ -80,7 +80,7 @@ Muster's principles, adapted to that evidence:
   **"No sleeps" means no fixed wait standing in for a condition**, and two things in the suite look like sleeps
   without being one. A poll interval inside a deadline-bounded `until` is not a wait - what the test waits for is
   the condition, and the deadline only decides how long it takes to fail. And *proving a negative* needs elapsed
-  time by construction: `split_sides.rs` waits past herdr's own second publish, measured at 100.4 ms, so that a
+  time by construction: `split_sides.rs` waits past herdr's own second publish, measured at 104.5 ms, so that a
   mirror which merely got there first and then walked backwards fails rather than passing on timing. There is no
   event for "nothing further arrives". Both are legitimate; both need a measured number and a comment saying which
   measurement, because a wait sized by guesswork is the flake this rule exists to prevent.

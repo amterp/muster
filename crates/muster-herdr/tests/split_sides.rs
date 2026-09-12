@@ -2,7 +2,7 @@
 //!
 //! What only a live daemon can answer: not whether the arrangement ends up right - the
 //! conformance cases pin the envelopes and `mirror.json` pins the suppression - but whether a
-//! window ever *renders* the arrangement in between. herdr publishes both, 100.4 ms apart
+//! window ever *renders* the arrangement in between. herdr publishes both, 104.5 ms apart
 //! (`observations/herdr-0.8.0.md` section 14), and a stand-in daemon publishing one would be
 //! Muster's own guess at herdr agreeing with Muster (`docs/testing.md`).
 //!
@@ -21,7 +21,8 @@ use muster_core::mirror::backend::{PaneId, TabId};
 use muster_herdr::subscription::Subscription;
 use serde_json::json;
 
-/// Long enough to be past herdr's own second publish, which was measured at 100.4 ms.
+/// Long enough to be past herdr's own second publish, which was measured at 104.5 ms
+/// (`corpus/herdr-0.8.0/split-sides/FACTS.json`).
 const PAST_THE_SECOND_PUBLISH: Duration = Duration::from_millis(500);
 
 /// Every distinct arrangement one tab was seen holding, in the order it held them.

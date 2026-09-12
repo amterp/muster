@@ -772,13 +772,13 @@ watching is shown while it happens.
 **Both arrangements are published, 100 ms apart.** The pair issued back to back with no
 wait between them produced `pane_created`, then a `layout_updated` placing the new pane
 on the right, then a second `layout_updated` placing it on the left. Arrival gaps
-measured by a watcher rather than read off the daemon: 0.0 ms from the creation to the
-first layout, and **108.3 ms** from the first layout to the second. At sixty frames a
+measured by a watcher rather than read off the daemon: 0.1 ms from the creation to the
+first layout, and **104.5 ms** from the first layout to the second. At sixty frames a
 second that is six frames of the pane sitting where nobody asked for it, then a jump.
 
 **That hundred milliseconds is the broadcast, not the work.** The same recording times
-the requests: `pane.split` answered in 13.8 ms and `pane.swap` in **1.5 ms** after it, so
-the pair is finished about 15 ms after it is asked for. What takes another hundred is
+the requests: `pane.split` answered in 8.4 ms and `pane.swap` in **0.6 ms** after it, so
+the pair is finished about 9 ms after it is asked for. What takes another hundred is
 herdr getting round to telling a *subscriber* - and the caller does not need telling,
 because `PaneSwapResult` carries the whole settled layout, in the same
 `PaneLayoutSnapshot` shape `layout_updated` uses. A client that reads its own answer is a

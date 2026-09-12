@@ -1,4 +1,4 @@
-[  3060ms] published 2 arrangement(s): [['w1:p1', 'w1:p2'], ['w1:p2', 'w1:p1']]
-[  3060ms] arrival gaps: [0.0, 108.3] ms
-[  3060ms] pair answered in 15.3 ms: [13.8, 1.5]
-[  3061ms] a swap naming no target: pane.swap failed: {"code": "invalid_pane_swap", "message": "missing target_pane_id"}
+[  3099ms] published 2 arrangement(s): [['w1:p1', 'w1:p2'], ['w1:p2', 'w1:p1']]
+[  3100ms] arrival gaps: [0.1, 104.5] ms
+[  3100ms] pair answered in 9.0 ms: [8.4, 0.6]
+[  3101ms] a swap naming no target: pane.swap failed: {"code": "invalid_pane_swap", "message": "missing target_pane_id"}

@@ -2009,7 +2009,7 @@
     },
     {
       "name": "an intermediate arrangement nobody asked for is dropped",
-      "why": "The case the whole thing exists for. herdr has no leftward split, so one is a rightward split followed by a swap, and it publishes both arrangements - 100.4 ms apart, measured (corpus/herdr-0.8.0/split-sides). Only the adapter knows what the middle one looked like, because only it issued the two halves, so it hands that tree over with the answer. Two arrangements are armed here rather than one: the tab's own previous tree, and the one published between the halves.",
+      "why": "The case the whole thing exists for. herdr has no leftward split, so one is a rightward split followed by a swap, and it publishes both arrangements - 104.5 ms apart, measured (corpus/herdr-0.8.0/split-sides). Only the adapter knows what the middle one looked like, because only it issued the two halves, so it hands that tree over with the answer. Two arrangements are armed here rather than one: the tab's own previous tree, and the one published between the halves.",
       "given": {
         "snapshot": {
           "workspaces": [

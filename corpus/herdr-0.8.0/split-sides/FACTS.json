@@ -10,24 +10,24 @@
     ]
   ],
   "arrival_gaps_ms": [
-    0.0,
-    108.3
+    0.1,
+    104.5
   ],
   "event_arrival_ms": [
     [
-      25.2,
+      17.5,
       "pane_created"
     ],
     [
-      25.2,
+      17.6,
       "layout_updated"
     ],
     [
-      133.5,
+      122.1,
       "layout_updated"
     ]
   ],
-  "pair_answered_in_ms": 15.3,
+  "pair_answered_in_ms": 9.0,
   "pair_event_kinds": [
     "pane_created",
     "layout_updated",
@@ -35,8 +35,8 @@
   ],
   "settled_tree_shape": "right(w1:p2, w1:p1@0.5)",
   "split_then_swap_answered_ms": [
-    13.8,
-    1.5
+    8.4,
+    0.6
   ],
   "swap_answer_arrangement": [
     "w1:p2",
