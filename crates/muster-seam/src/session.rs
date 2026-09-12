@@ -2109,16 +2109,34 @@ pub(crate) fn bridge_ended(pane: &PaneKey, ended: &Ended) {
 fn replace_bridge(pane: &PaneKey, ending: Ending) {
     let decision = {
         let mut session = poison::lock(&SESSION, "session");
-        if !session.holds(pane) {
+        if session.holds(pane) {
+            Some(session.respawns.ended(pane, clock::monotonic_now(), ending))
+        } else {
             // The pane closed, which is the other reason a bridge exits on its own. The region
             // showing it has already been reconciled away by the resnapshot; what is left is
             // the record of what was tried, which belongs to a pane that no longer exists.
             session.respawns.forget(pane);
-            return;
+            // And the wait `bridge_ended` has just started for it, with its dark-pane entry.
+            // `prune` takes both back for a pane the mirror drops, but when the mirror dropped
+            // this one before its bridge's ending arrived, that prune has already run and will
+            // not run for this pane again - so nothing else would ever remove them. Both locks
+            // are leaves, so taking them under `SESSION` is allowed.
+            watchdog::closed(pane);
+            poison::lock(&DARK, "dark-panes").remove(pane);
+            None
         }
-        session.respawns.ended(pane, clock::monotonic_now(), ending)
     };
 
+    let Some(decision) = decision else {
+        log::info(
+            "bridge.replacing.skipped",
+            fields! {
+                "pane" => pane.to_string(),
+                "why" => "the daemon no longer holds this pane",
+            },
+        );
+        return;
+    };
     match decision {
         Decision::Start(count) => {
             log::info(
@@ -2147,6 +2165,16 @@ fn replace_bridge(pane: &PaneKey, ending: Ending) {
         Decision::Yield => log::info(
             "bridge.yielded",
             fields! { "pane" => pane.to_string(), "detail" => respawn::yielded(pane) },
+        ),
+        // Nothing to attach to. A replacement here would be a bridge aimed at a terminal the
+        // daemon has just said does not exist, and its failure to dial would read as a machine
+        // nobody can reach (kan a_2LMpvavhA).
+        Decision::Leave => log::info(
+            "bridge.replacing.skipped",
+            fields! {
+                "pane" => pane.to_string(),
+                "why" => "the daemon says this pane's terminal no longer exists",
+            },
         ),
     }
 }

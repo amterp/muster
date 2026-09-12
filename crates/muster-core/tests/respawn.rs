@@ -76,6 +76,7 @@ fn spell(decision: Decision) -> String {
         Decision::Start(count) => format!("start:{count}"),
         Decision::GiveUp(tried) => format!("give_up:{tried}"),
         Decision::Yield => "yield".to_string(),
+        Decision::Leave => "leave".to_string(),
     }
 }
 

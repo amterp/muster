@@ -146,7 +146,15 @@ impl Waiting {
     /// wait either way - what is different is that this one can say what happened to the last
     /// bridge, and a pane that stays dark for five seconds after a refused attach has a remedy
     /// where a pane at launch has only a deadline.
+    ///
+    /// Except when the daemon said the terminal no longer exists. No bridge can dial in for that
+    /// pane, so there is nothing to wait for - and a wait started here accused the network, five
+    /// seconds later, about a pane somebody had just closed (kan a_2LMpvavhA).
     pub fn ended(&mut self, pane: PaneKey, at: u64, ended: Ended) {
+        if ended.ending == Ending::Gone {
+            self.closed(&pane);
+            return;
+        }
         // The backend's name for the pane is carried over rather than asked for again: a
         // bridge ending is a bridge that had a channel, so the wait this replaces knows it.
         let backend = self.waits.get(&pane).map(|wait| wait.backend.clone()).unwrap_or_default();
@@ -323,7 +331,10 @@ fn detail(pane: &PaneKey, deadline: u64, last: Option<&Ended>, backend_pane: &st
         // Never had a bridge. The launch case, and the three bugs this watch was written for:
         // the bridge failed to dial, the socket path had moved, the channel could not be
         // opened. Nothing has said anything about this pane, so the log is the only lead.
-        None => format!(
+        //
+        // `Gone` never waits, because `Waiting::ended` drops it, so it shares the sentence that
+        // claims the least.
+        None | Some(Ending::Gone) => format!(
             "The pane {pane} has had a socket open for over {waited}, and nothing has dialed \
              it - the bridge carrying this pane's keystrokes either never started or cannot \
              reach the socket. Everything typed into this pane is discarded and it goes on \

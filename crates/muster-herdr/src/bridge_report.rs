@@ -204,6 +204,10 @@ impl Exiting {
 /// `Lost` - the ending whose response is to start another bridge, which is the safe way to be
 /// wrong. Being wrong the other way would leave a pane dark on a daemon that is perfectly
 /// healthy.
+///
+/// That is also why each of the others is matched on words recorded from a real daemon, and why
+/// `crates/muster-herdr/tests/one_client_per_terminal.rs` records the one for a closed pane again
+/// on every run: a `Gone` read into the wrong prose starts no bridge for a pane that needed one.
 pub fn ending(reason: Option<&str>) -> Ending {
     let Some(reason) = reason else { return Ending::Lost };
     if reason.contains("taken over") {
@@ -211,6 +215,11 @@ pub fn ending(reason: Option<&str>) -> Ending {
     }
     if reason.contains("already has an attached client") {
         return Ending::Refused;
+    }
+    // `terminal attach ended: terminal <id> not found`, which is what a client hears when its pane
+    // is closed under it (`corpus/herdr-0.8.0/closing-reasons/closed.jsonl`).
+    if reason.contains("not found") {
+        return Ending::Gone;
     }
     Ending::Lost
 }

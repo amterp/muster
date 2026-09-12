@@ -954,7 +954,8 @@ Muster watches instead is the socket it bound for the pane and the bridge dialed
 (`muster-herdr/src/control_socket.rs`). That connection ends when the process does, whether it exited, was killed,
 or lost the machine it was running on, and it needs no cooperation from either dependency. The bridge writes one
 sentence there before it goes, saying which ending this was, because the answer differs: a refused attach is worth
-taking the terminal for, and a terminal taken by somebody else is not. The renderer's callback is still wired, as a
+taking the terminal for, a terminal taken by somebody else is not, and a terminal the daemon says no longer exists -
+which is what a bridge hears when its pane is closed under it - is worth no bridge at all. The renderer's callback is still wired, as a
 second source rather than the one that matters, and a pane whose bridge is already known gone ignores the second
 arrival.
 

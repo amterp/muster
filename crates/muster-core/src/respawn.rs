@@ -51,13 +51,14 @@ pub const SETTLED_NS: u64 = 30_000_000_000;
 
 /// Why a bridge stopped, in Muster's words rather than the daemon's.
 ///
-/// Three, because they are the three the app has to answer differently. The daemon says only
+/// Four, because they are the four the app has to answer differently. The daemon says only
 /// what happened, in prose; `muster_herdr::bridge_report` is where that becomes one of these.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Ending {
-    /// The stream carrying it ended. A route that changed, a daemon that restarted, a pane
-    /// that closed - and from here they are one thing, because the answer to all three is to
-    /// look again and start another bridge if the pane is still there.
+    /// The stream carrying it ended, and nothing said why. A route that changed, a daemon that
+    /// restarted, a pane that closed with nobody connected to hear it - and from here they are
+    /// one thing, because the answer to all three is to look again and start another bridge if
+    /// the pane is still there.
     Lost,
 
     /// The attach was refused: something else already holds this pane's terminal.
@@ -73,6 +74,15 @@ pub enum Ending {
     /// pane somewhere else and got it; taking it back would be answered the same way, and two
     /// windows would trade one terminal until both gave up.
     TakenOver,
+
+    /// The daemon says the terminal no longer exists, which is what a bridge hears when its pane
+    /// is closed under it.
+    ///
+    /// Split from `Lost` because the daemon has answered the question `Lost` leaves open. Looking
+    /// again is not enough: the window can still be drawing the pane when this arrives, so a
+    /// replacement goes to a terminal nothing can attach to, and its failure to dial was then
+    /// reported as a machine that could not be reached (kan a_2LMpvavhA).
+    Gone,
 }
 
 impl Ending {
@@ -82,6 +92,7 @@ impl Ending {
             Ending::Lost => "lost",
             Ending::Refused => "refused",
             Ending::TakenOver => "taken_over",
+            Ending::Gone => "gone",
         }
     }
 
@@ -90,6 +101,7 @@ impl Ending {
             "lost" => Some(Ending::Lost),
             "refused" => Some(Ending::Refused),
             "taken_over" => Some(Ending::TakenOver),
+            "gone" => Some(Ending::Gone),
             _ => None,
         }
     }
@@ -119,8 +131,8 @@ impl Ended {
     ///
     /// `Lost`, because that is the ending whose answer is to look again and start another, and
     /// a bridge that was killed - by a signal, by the machine going away - has said nothing and
-    /// is exactly that case. A bridge refused its terminal, or told its terminal has gone to
-    /// somebody else, has a moment to say so and does.
+    /// is exactly that case. A bridge refused its terminal, told its terminal has gone to
+    /// somebody else, or told it no longer exists, has a moment to say so and does.
     pub fn unsaid() -> Ended {
         Ended { ending: Ending::Lost, reason: None, rendered: false }
     }
@@ -144,6 +156,13 @@ pub enum Decision {
     /// panes nothing is dialing does not ask for one either - a yielded pane is dark on
     /// purpose, and it looks from the outside exactly like a pane whose bridge never started.
     Yield,
+
+    /// Start nothing, because the daemon says this pane's terminal no longer exists.
+    ///
+    /// Carries nothing, publishes nothing and records that the bridge ended, on the same terms
+    /// as `Yield` and for the same reasons. A separate answer because the run log says which it
+    /// was: that terminal has somebody else holding it, and this one is gone.
+    Leave,
 }
 
 /// Every pane whose bridge Muster has replaced, and how recently.
@@ -196,17 +215,25 @@ impl Respawns {
     /// place.
     ///
     /// `ending` decides one thing and only one: whether attaching again is the right answer at
-    /// all. For two of the three it is - a connection that went and a terminal held by a client
+    /// all. For two of the four it is - a connection that went and a terminal held by a client
     /// that has not noticed its transport died are both recovered by attaching again, and the
-    /// second needs the `--takeover` a replacement carries. For the third it is not. A terminal
-    /// handed to another client was handed to somebody who asked for it, and taking it back
-    /// would be answered the same way from the other side: two windows trading one terminal
-    /// at the speed a bridge starts, until both of them ran out of tries.
+    /// second needs the `--takeover` a replacement carries. For the other two it is not. A
+    /// terminal handed to another client was handed to somebody who asked for it, and taking it
+    /// back would be answered the same way from the other side: two windows trading one terminal
+    /// at the speed a bridge starts, until both of them ran out of tries. And a terminal the
+    /// daemon says no longer exists has nothing to attach to at all.
     pub fn ended(&mut self, pane: &PaneKey, now: u64, ending: Ending) -> Decision {
         let held = self.started.get(pane).copied().unwrap_or_default();
-        if ending == Ending::TakenOver {
-            self.finished(pane, held);
-            return Decision::Yield;
+        match ending {
+            Ending::TakenOver => {
+                self.finished(pane, held);
+                return Decision::Yield;
+            }
+            Ending::Gone => {
+                self.finished(pane, held);
+                return Decision::Leave;
+            }
+            Ending::Lost | Ending::Refused => {}
         }
         let settled = self
             .started
