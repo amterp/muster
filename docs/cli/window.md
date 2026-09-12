@@ -5,10 +5,10 @@ panes, and what the agent in each pane is doing. An agent has no eyes, so this i
 out what it did.
 
     tab 1  t1w3r07bsd  ~/src/muster  on screen
-      ▸ 1  p1w3r07bsd  unknown  ~/src/muster
-        2  p1w3r0ab2n  working  🤖 A · reading AGENTS.md
+      ▸ 1  p1w3r07bsd  unknown   2h  ~/src/muster
+        2  p1w3r0ab2n  working  12m  🤖 A · reading AGENTS.md
     tab 2  t1w3r0h4kp  the build
-        3  p1w3r0cd4x  blocked  🤖 B  (hidden)
+        3  p1w3r0cd4x  blocked  40m  🤖 B  (hidden)
 
     local  connected
       this machine · started by Muster · 3 panes in ~/src/muster
@@ -18,7 +18,8 @@ The tabs come first because that is what the window is: it holds an ordered list
 shows one. The machines follow rather than heading the list, because a tab can hold panes on more
 than one - so a pane's row says which machine it is on, and only while more than one is attached.
 
-`▸` marks the pane the window's keyboard is on. `(hidden)` means the pane exists and the window
+Beside each state is how long the pane has been in it, in the largest whole unit: `45s`, `12m`,
+`3h`, `2d`. `▸` marks the pane the window's keyboard is on. `(hidden)` means the pane exists and the window
 is not showing it, which is ordinary: a tab that is not on screen still holds its panes, and they
 are still running.
 
@@ -57,6 +58,11 @@ One entry per pane every followed daemon holds, on screen or not.
 - `given_name` - the name somebody gave it, empty when nobody has.
 - `subtitle` - what its agent is working on, empty when there is nothing worth a second line.
 - `state` - `working`, `blocked`, `idle`, `done` or `unknown`.
+- `since` - when the agent last changed state, in seconds since the epoch to the millisecond, so
+  `now - .since` in jq is how long it has been in it. Two reads that say `working` with the same
+  `since` are one turn; a different `since` is a finish and a new turn in between. Looking at a
+  `done` pane does not move it: the agent has been resting since it finished. `null` from a window
+  older than this field.
 - `on_screen` - whether the window is showing it right now.
 - `keyboard` - whether the window's keyboard is on it.
 - `rect` - where it sits, as fractions of the window: `x` and `y` from the top left, `width` and

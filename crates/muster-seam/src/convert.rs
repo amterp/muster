@@ -12,6 +12,17 @@ use muster_core::mirror::backend::SplitAxis;
 use muster_core::roster::{Numbering, Roster};
 
 use crate::proto;
+use crate::session::PaneAgent;
+
+/// What one pane's agent is doing, for the shell, a read, and a watch alike.
+pub(crate) fn pane_state(agent: &PaneAgent) -> proto::PaneStateChanged {
+    proto::PaneStateChanged {
+        daemon_id: agent.pane.daemon.to_string(),
+        pane_id: agent.pane.pane.to_string(),
+        state: agent.state.as_str().to_string(),
+        since_ms: agent.since_ms,
+    }
+}
 
 /// What the window is showing, on its way out to the shell.
 ///

@@ -44,7 +44,7 @@ use muster_ssh::{Forward, Remote, State as TunnelState, Tunnel, remote_environme
 use muster_vt::KeyEncoder;
 
 use crate::proto::{
-    AttentionChanged, BackendHealth, Event, PaneStateChanged, PaneTypeable, PresentationChanged,
+    AttentionChanged, BackendHealth, Event, PaneTypeable, PresentationChanged,
     Problem as ProblemMessage, ProblemsChanged, event,
 };
 use crate::shared_names::NamesFile;
@@ -1016,6 +1016,12 @@ pub(crate) struct Session {
     /// or it is not, and that answers for a laptop's panes and a devenv's at once.
     attention: Attention,
 
+    /// When each pane's agent last changed state, in milliseconds since the epoch.
+    ///
+    /// Stamped here rather than in the mirror, which is a pure fold over what a daemon said -
+    /// and a daemon's events carry no time.
+    state_since: BTreeMap<PaneKey, i64>,
+
     /// The window's own chrome, which spans the daemons for the same reason attention does.
     presentation: Presentation,
 
@@ -1473,6 +1479,27 @@ impl Session {
     fn agent_state(&self, pane: &PaneKey) -> Option<AgentState> {
         let mirror = poison::lock(&self.backends.get(&pane.daemon)?.mirror, "mirror");
         mirror.agent_state(&pane.pane)
+    }
+
+    /// One pane's agent as this window paints it, from what its daemon said.
+    fn presented(&self, pane: &PaneKey, backend: AgentState) -> PaneAgent {
+        PaneAgent {
+            pane: pane.clone(),
+            state: self.attention.presented(pane, backend),
+            since_ms: self.state_since.get(pane).copied().unwrap_or_default(),
+        }
+    }
+
+    /// Every pane every followed daemon holds, as this window paints it, daemon by daemon.
+    fn agents(&self) -> Vec<PaneAgent> {
+        let mut agents = Vec::new();
+        for (id, backend) in &self.backends {
+            let mirror = poison::lock(&backend.mirror, "mirror");
+            for pane in mirror.panes() {
+                agents.push(self.presented(&PaneKey::new(id, &pane.id), pane.agent_state));
+            }
+        }
+        agents
     }
 
     /// Shows a tab Muster asked for, once the daemon has described it.
@@ -2916,10 +2943,21 @@ pub(crate) struct WindowNow {
     /// Every pane, with the state the window would paint for it - which is not always the one
     /// the daemon reported: `done` is this window's answer rather than the daemon's, because a
     /// daemon cannot see which window has been looked at.
-    pub agents: Vec<(PaneKey, AgentState)>,
+    pub agents: Vec<PaneAgent>,
     /// Each followed daemon: how much of its truth Muster has, and enough about it to decide
     /// deliberately what happens to it.
     pub daemons: Vec<Machine>,
+}
+
+/// One pane's agent, as this window paints it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PaneAgent {
+    pub pane: PaneKey,
+    pub state: AgentState,
+    /// When the agent last changed state, in milliseconds since the epoch. Zero for a pane
+    /// nothing has stamped, which a window only holds between a daemon describing a pane and
+    /// that change reaching `report`.
+    pub since_ms: i64,
 }
 
 /// One machine this window is attached to, as anything outside the core reads it.
@@ -2954,16 +2992,13 @@ pub(crate) fn window() -> WindowNow {
     let roster = session.roster(&view);
     let numbering = session.numbering(&roster);
 
-    let mut agents = Vec::new();
+    let agents = session.agents();
     let mut daemons = Vec::new();
     for (id, backend) in &session.backends {
         let mirror = poison::lock(&backend.mirror, "mirror");
         let mut directories: Vec<String> = Vec::new();
         let mut panes = 0usize;
         for pane in mirror.panes() {
-            let key = PaneKey::new(id, &pane.id);
-            let presented = session.attention.presented(&key, pane.agent_state);
-            agents.push((key, presented));
             panes += 1;
             if !pane.cwd.is_empty() && !directories.contains(&pane.cwd) {
                 directories.push(pane.cwd.clone());
@@ -4033,10 +4068,18 @@ fn report(daemon: &DaemonId, change: &Change) {
     // The lock is let go before anything is emitted, on the same terms as `announce_state`
     // below: emitting reaches the shell, the shell reacts by dispatching, and a dispatch
     // arriving while this held the session would deadlock against it on the same thread.
+    //
+    // `state_since` is kept beside attention and nowhere else, because these three arms are
+    // the daemon's own transitions. A look settling `done` to `idle` goes through attention
+    // alone, so it does not restart how long the agent has been resting.
     let attended = match change {
         Change::AgentStateChanged { pane, from, to } => {
             let key = PaneKey::new(daemon, pane);
-            let attended = poison::lock(&SESSION, "session").attention.observed(&key, *from, *to);
+            let mut session = poison::lock(&SESSION, "session");
+            if from != to {
+                session.state_since.insert(key.clone(), clock::wall_clock_millis());
+            }
+            let attended = session.attention.observed(&key, *from, *to);
             attended.map(|attend| (key, attend))
         }
         // A pane that was already finished when this window arrived. Muster saw no transition
@@ -4051,6 +4094,7 @@ fn report(daemon: &DaemonId, change: &Change) {
             let mut session = poison::lock(&SESSION, "session");
             if let Some(backend) = session.agent_state(&key) {
                 session.attention.first_seen(&key, backend);
+                session.state_since.entry(key).or_insert_with(clock::wall_clock_millis);
             }
             None
         }
@@ -4058,7 +4102,9 @@ fn report(daemon: &DaemonId, change: &Change) {
         // closing it and the other is its program ending (`architecture.md`, event model).
         Change::PaneRemoved { pane, .. } => {
             let key = PaneKey::new(daemon, pane);
-            let attended = poison::lock(&SESSION, "session").attention.forget(&key);
+            let mut session = poison::lock(&SESSION, "session");
+            session.state_since.remove(&key);
+            let attended = session.attention.forget(&key);
             attended.map(|attend| (key, attend))
         }
         _ => None,
@@ -4126,13 +4172,9 @@ fn announce_state(pane: &PaneKey) {
     // Resolved before emitting, and with the lock let go in between. Emitting reaches the
     // shell, the shell reacts by dispatching, and a dispatch arriving while this held the
     // session would deadlock against it on the same thread.
-    let Some(state) = presented(pane) else { return };
+    let Some(agent) = presented(pane) else { return };
     ffi::emit(&Event {
-        payload: Some(event::Payload::PaneStateChanged(PaneStateChanged {
-            daemon_id: pane.daemon.to_string(),
-            pane_id: pane.pane.to_string(),
-            state: state.as_str().to_string(),
-        })),
+        payload: Some(event::Payload::PaneStateChanged(convert::pane_state(&agent))),
     });
 }
 
@@ -4145,10 +4187,10 @@ fn announce_state(pane: &PaneKey) {
 ///
 /// Then `done` is decided here rather than accepted from the daemon, because the daemon
 /// cannot see this window (`attention`).
-fn presented(pane: &PaneKey) -> Option<AgentState> {
+fn presented(pane: &PaneKey) -> Option<PaneAgent> {
     let session = poison::lock(&SESSION, "session");
     let backend = session.agent_state(pane)?;
-    Some(session.attention.presented(pane, backend))
+    Some(session.presented(pane, backend))
 }
 
 /// The window gained or lost the OS's focus.

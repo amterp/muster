@@ -2117,6 +2117,16 @@ message PaneStateChanged {
   // backend cannot classify is `unknown`, which renders as itself. An agent we failed to
   // read is not an agent that finished.
   string state = 2;
+
+  // When the agent last changed what it was doing, in milliseconds since the epoch.
+  //
+  // A snapshot that reads `working` twice cannot otherwise say whether that was one long turn
+  // or two turns with a finish between them (kan a_2M9T8O6dL). It moves when the daemon
+  // reports a different state, and not when somebody looks: a `done` pane that settles to
+  // `idle` keeps the moment it finished. A pane older than this window carries the moment
+  // this window first saw it, because nothing earlier is known. Zero from a window older than
+  // the field.
+  int64 since_ms = 4;
 }
 
 // How much of the backend's truth the core currently has.

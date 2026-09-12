@@ -227,3 +227,11 @@ log and is a success on purpose.
 
 Everything `muster window` reports is Muster's picture of each daemon rather than the daemon's
 own answer. `daemons[].state` says how much of that picture to trust.
+
+## `since` starts when the window first saw the pane
+
+A daemon's events carry no time, so Muster stamps a pane's `since` when it hears the agent change
+state. A pane whose agent was already working before this window opened says it has been working
+since the window first saw it. A window that loses a daemon and reconnects stamps any pane whose
+state changed during the gap with the moment it got back, since nothing says when in the gap it
+changed. Two windows can therefore give one pane two different `since` values.

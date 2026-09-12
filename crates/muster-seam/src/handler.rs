@@ -1394,15 +1394,7 @@ fn read_window() -> Response {
         payload: Some(response::Payload::Window(proto::Window {
             view: Some(convert::view(&now.view)),
             roster: Some(convert::roster(&now.roster, &now.numbering)),
-            panes: now
-                .agents
-                .iter()
-                .map(|(pane, state)| proto::PaneStateChanged {
-                    daemon_id: pane.daemon.to_string(),
-                    pane_id: pane.pane.to_string(),
-                    state: state.as_str().to_string(),
-                })
-                .collect(),
+            panes: now.agents.iter().map(convert::pane_state).collect(),
             daemons: now
                 .daemons
                 .iter()

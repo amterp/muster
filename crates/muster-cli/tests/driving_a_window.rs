@@ -134,6 +134,7 @@ fn a_pane_can_drive_the_window_it_is_drawn_in() {
     text_can_come_from_a_file_or_stdin(daemon.root(), &made_pane, &inside(&first));
 
     a_pane_can_be_read_back(&made_pane, &inside(&first));
+    every_pane_says_since_when(&inside(&first));
     the_columns_are_described(&inside(&first));
     the_arrangement_is_readable(&first, &made_pane, &inside(&first));
     an_uneven_tab_is_evened_out(&first, &made_pane, &inside(&first));
@@ -297,6 +298,31 @@ fn a_tab_is_addressable_by_name(window: &Value, environment: &[(&str, String)]) 
 /// the pane was told to print comes back - not that the answer is byte-for-byte a terminal grid,
 /// which it is not: a row wraps at the pane's width and the shell echoes the command as well as
 /// running it, and pinning either would be pinning herdr's rendering rather than this surface.
+/// Every pane says since when its agent has been in its state, as a time `now` can be taken from.
+///
+/// Seconds rather than milliseconds, like `started` in `muster daemons`, so `now - .since` in jq
+/// is the answer. The rule for when it moves is the seam's to prove; this is the number reaching
+/// the command somebody types, and reading as a moment in this century.
+fn every_pane_says_since_when(environment: &[(&str, String)]) {
+    let window = json_from(&run(&["window", "--json"], environment));
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("the clock is past 1970")
+        .as_secs_f64();
+    for pane in window["panes"].as_array().cloned().unwrap_or_default() {
+        let since = pane["since"].as_f64().unwrap_or_else(|| {
+            panic!(
+                "a pane's `since` is not a number, so nothing can say how long it has held: {pane}"
+            )
+        });
+        assert!(
+            since > now - 3600.0 && since <= now + 1.0,
+            "a pane this test made moments ago says it has been in its state since {since}, and \
+             it is {now} now - so `since` is not seconds since the epoch: {pane}"
+        );
+    }
+}
+
 fn a_pane_can_be_read_back(pane: &str, environment: &[(&str, String)]) {
     let read = until_some("the pane to have printed what it was told to", || {
         let read = run(&["pane", "read", "--pane", pane], environment);

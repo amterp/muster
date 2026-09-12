@@ -43,7 +43,7 @@ pub fn answer(response: &Response, json: bool) -> Result<String, Trouble> {
             made.pane_id.clone()
         }),
         Some(response::Payload::Window(window)) => {
-            Ok(if json { window_json(window).to_string() } else { window_text(window) })
+            Ok(if json { window_json(window).to_string() } else { window_text(window, now_ms()) })
         }
         Some(response::Payload::PaneText(read)) => Ok(if json {
             json!({ "text": read.text, "rows": read.rows, "truncated": read.truncated }).to_string()
@@ -190,7 +190,7 @@ pub fn answers(answers: &[(String, Result<Response, Trouble>)], json: bool) -> S
             );
             let body = match answer {
                 Ok(response) => match &response.payload {
-                    Some(response::Payload::Window(window)) => window_text(window),
+                    Some(response::Payload::Window(window)) => window_text(window, now_ms()),
                     _ => styled(named_or_empty(response), QUIET),
                 },
                 Err(trouble) => styled(trouble.detail(), QUIET),
@@ -234,10 +234,10 @@ fn tabs(window: &Window) -> impl Iterator<Item = &muster_proto::RosterTab> {
 ///
 /// Which machine holds a pane is on the pane's own row, and only while more than one is
 /// attached. On one machine the answer is on every row and says nothing.
-fn window_text(window: &Window) -> String {
+fn window_text(window: &Window, now_ms: i64) -> String {
     let keyboard = keyboard_pane(window);
     let states = states(window);
-    let widths = Widths::across(window, &states);
+    let widths = Widths::across(window, &states, now_ms);
     let machines: Vec<&muster_proto::Machine> = window.daemons.iter().collect();
     let say_machine = machines.len() > 1;
 
@@ -245,10 +245,12 @@ fn window_text(window: &Window) -> String {
     for tab in tabs(window) {
         lines.push(tab_line(&widths, tab));
         for pane in &tab.panes {
+            let agent = states.get(pane.pane_id.as_str()).copied();
             lines.push(pane_line(
                 &widths,
                 pane,
-                states.get(pane.pane_id.as_str()).copied().unwrap_or("unknown"),
+                agent.map_or("unknown", |agent| agent.state.as_str()),
+                &agent.map(|agent| held_for(agent.since_ms, now_ms)).unwrap_or_default(),
                 keyboard.as_deref() == Some(pane.pane_id.as_str()),
                 say_machine,
             ));
@@ -331,7 +333,8 @@ fn tab_line(widths: &Widths, tab: &muster_proto::RosterTab) -> String {
     line
 }
 
-/// One pane's row: which one has the keyboard in the gutter, then place, name, state and label.
+/// One pane's row: which one has the keyboard in the gutter, then place, name, state, how long it
+/// has been in that state, and label.
 ///
 /// The keyboard is marked in the gutter rather than in a column of its own, the way any list marks
 /// the item you are on - a column would put eight blank spaces on every other row. Being off screen
@@ -341,15 +344,17 @@ fn pane_line(
     widths: &Widths,
     pane: &muster_proto::RosterPane,
     state: &str,
+    held: &str,
     has_keyboard: bool,
     say_machine: bool,
 ) -> String {
     let mut line = format!(
-        "  {}{}  {}  {}  {}",
+        "  {}{}  {}  {}  {}  {}",
         if has_keyboard { styled("▸", NAME) + " " } else { "  ".to_string() },
         pad(&pane.place.to_string(), widths.place, QUIET, Align::Right),
         pad(&pane.pane_id, widths.name, PLAIN, Align::Left),
         pad(state, widths.state, agent_style(state), Align::Left),
+        pad(held, widths.held, QUIET, Align::Right),
         pane.label,
     );
     if !pane.subtitle.is_empty() {
@@ -438,22 +443,66 @@ struct Widths {
     place: usize,
     name: usize,
     state: usize,
+    held: usize,
 }
 
 impl Widths {
-    fn across(window: &Window, states: &BTreeMap<&str, &str>) -> Widths {
-        let mut widths = Widths { place: 1, name: 0, state: 0 };
+    fn across(
+        window: &Window,
+        states: &BTreeMap<&str, &muster_proto::PaneStateChanged>,
+        now_ms: i64,
+    ) -> Widths {
+        let mut widths = Widths { place: 1, name: 0, state: 0, held: 0 };
         for tab in tabs(window) {
             widths.name = widths.name.max(tab.tab_id.width());
             for pane in &tab.panes {
                 widths.place = widths.place.max(pane.place.to_string().width());
                 widths.name = widths.name.max(pane.pane_id.width());
-                let state = states.get(pane.pane_id.as_str()).copied().unwrap_or("unknown");
+                let agent = states.get(pane.pane_id.as_str());
+                let state = agent.map_or("unknown", |agent| agent.state.as_str());
                 widths.state = widths.state.max(state.width());
+                let held = agent.map(|agent| held_for(agent.since_ms, now_ms)).unwrap_or_default();
+                widths.held = widths.held.max(held.width());
             }
         }
         widths
     }
+}
+
+/// How long something has held since `since_ms`, in the one largest unit that fits: `45s`,
+/// `12m`, `3h`, `2d`.
+///
+/// One unit, because a row read at a glance wants "blocked 40m" and nothing finer - somebody
+/// deciding which agent has waited longest is comparing orders of magnitude. Empty for zero,
+/// which is a window too old to say, and a clock that has gone backwards reads as `0s` rather
+/// than as a negative.
+fn held_for(since_ms: i64, now_ms: i64) -> String {
+    if since_ms == 0 {
+        return String::new();
+    }
+    let seconds = (now_ms - since_ms).max(0) / 1000;
+    match seconds {
+        0..60 => format!("{seconds}s"),
+        60..3600 => format!("{}m", seconds / 60),
+        3600..86_400 => format!("{}h", seconds / 3600),
+        _ => format!("{}d", seconds / 86_400),
+    }
+}
+
+/// Milliseconds since the epoch, read once per answer so every row is measured from one moment.
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |since| i64::try_from(since.as_millis()).unwrap_or(i64::MAX))
+}
+
+/// Seconds since the epoch, to the millisecond, or null for a window too old to say.
+///
+/// Seconds, like `started` in `muster daemons`, so `now - .since` in jq is how long a pane has
+/// been in its state. The fraction keeps two changes inside one second from reading as one.
+#[allow(clippy::cast_precision_loss)]
+fn since_json(since_ms: i64) -> Value {
+    if since_ms == 0 { Value::Null } else { json!(since_ms as f64 / 1000.0) }
 }
 
 /// A window as a program reads it: one flat list of panes, each carrying where it sits.
@@ -489,7 +538,8 @@ fn window_json(window: &Window) -> Value {
                 "label": pane.label,
                 "given_name": pane.given_name,
                 "subtitle": pane.subtitle,
-                "state": states.get(pane.pane_id.as_str()).copied().unwrap_or("unknown"),
+                "state": states.get(pane.pane_id.as_str()).map_or("unknown", |agent| agent.state.as_str()),
+                "since": states.get(pane.pane_id.as_str()).map_or(Value::Null, |agent| since_json(agent.since_ms)),
                 "on_screen": pane.on_screen,
                 "keyboard": keyboard.as_deref() == Some(pane.pane_id.as_str()),
                 // Null rather than zeroes for a pane the window is not drawing, so this and
@@ -621,13 +671,13 @@ fn keyboard_pane(window: &Window) -> Option<String> {
     Some(region.pane_id.clone()).filter(|pane| !pane.is_empty())
 }
 
-/// What each pane's agent is doing, by pane.
+/// What each pane's agent is doing and since when, by pane.
 ///
 /// Keyed by pane alone even though the messages carry a daemon too: a pane name is Muster's own and
 /// unique across every machine in the window, which is the whole reason a caller can address one
 /// without knowing where it lives.
-fn states(window: &Window) -> BTreeMap<&str, &str> {
-    window.panes.iter().map(|pane| (pane.pane_id.as_str(), pane.state.as_str())).collect()
+fn states(window: &Window) -> BTreeMap<&str, &muster_proto::PaneStateChanged> {
+    window.panes.iter().map(|pane| (pane.pane_id.as_str(), pane)).collect()
 }
 
 /// The daemons on this machine, for somebody deciding which of them to end.
@@ -710,7 +760,7 @@ fn daemons_json(daemons: &muster_proto::Daemons) -> Value {
 
 #[cfg(test)]
 mod tests {
-    use super::{QUIET, agent_style};
+    use super::{QUIET, agent_style, held_for};
     use anstyle::{AnsiColor, Color, Style};
 
     fn hue(color: AnsiColor) -> Style {
@@ -742,5 +792,26 @@ mod tests {
         assert_eq!(agent_style("idle"), QUIET);
         assert_eq!(agent_style("unknown"), QUIET);
         assert_eq!(agent_style("compacting"), QUIET);
+    }
+
+    /// One unit per row, the largest that fits, so a glance down the column compares orders of
+    /// magnitude. The boundaries are where a row changes unit.
+    #[test]
+    fn a_duration_reads_in_its_largest_whole_unit() {
+        let now = 1_757_700_000_000;
+        assert_eq!(held_for(now - 59_999, now), "59s");
+        assert_eq!(held_for(now - 60_000, now), "1m");
+        assert_eq!(held_for(now - 3_599_999, now), "59m");
+        assert_eq!(held_for(now - 3_600_000, now), "1h");
+        assert_eq!(held_for(now - 86_400_000, now), "1d");
+    }
+
+    /// Zero is a window older than the field, which has nothing to say; a stamp from the future
+    /// is two clocks disagreeing, and a negative duration would be a wrong thing to print.
+    #[test]
+    fn a_duration_nobody_stamped_or_from_the_future_says_nothing_wrong() {
+        let now = 1_757_700_000_000;
+        assert_eq!(held_for(0, now), "");
+        assert_eq!(held_for(now + 5_000, now), "0s");
     }
 }
