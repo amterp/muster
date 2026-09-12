@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "backend-events-json",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1789256868655,
+  "creator": "Alexander Terp",
+  "description": "`corpus/conformance/backend-events.json` has a case whose payload carries the terminal id `term_6593e52635a081`, and no recording under `corpus/` contains that id. So the case cannot be traced back to a transcript, which is what the corpus exists for. It was already orphaned before the 2026-09-12 re-records.\n\nMinor. Re-derive the case from a current recording, or say in its `why` where it came from.",
+  "id": "a_2P65wEv9Y",
+  "position": "UUUUUUUUUUUUUUUUUUUUUU",
+  "title": "backend-events.json quotes a terminal id no recording holds",
+  "type": "chore",
+  "updated_at_millis": 1789256868655,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1789256868655}
+  ]
+}

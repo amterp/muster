@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "cli-requests-time",
+  "alias_explicit": false,
+  "area": [
+    "backend",
+    "shell"
+  ],
+  "column": "uncommitted",
+  "created_at_millis": 1789256867776,
+  "creator": "Alexander Terp",
+  "description": "Requests that come from the CLI still ride the 500ms budget `HerdrClient::DEFAULT_TIMEOUT` gives keystrokes. A CLI request is not on the typing path, so nobody is waiting on it at keystroke speed, but it times out as though it were.\n\nSince `5a5abb4` such a timeout reads as `unanswered` (exit 4) rather than as a refusal, which is honest. It still fails: the `daemon_settings` test flake is this. Whether CLI-originated intents should get the session's longer allowance instead is the decision this card is for.",
+  "id": "a_2P65uphDZ",
+  "position": "UUUUUUUUUUUUUUUU",
+  "title": "CLI requests time out on the 500ms budget keystrokes get",
+  "type": "chore",
+  "updated_at_millis": 1789256867776,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1789256867776}
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "pane-send-enter-exits",
+  "alias_explicit": false,
+  "area": [
+    "backend",
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1789256867358,
+  "creator": "Alexander Terp",
+  "description": "`muster pane send --enter` exits 0 when the text arrived and the Return request after it failed. The text sits on the receiving prompt unsubmitted, and the caller has no way to tell from the exit code. `press_enter` only logs a warning.\n\n`a_2I7Acusq4` established that exit 0 without submitting is a bug, because the exit code is the only thing a script reads. This is the same outcome by another path.\n\nFound by slot 2 of the 2026-09-12 round, reading the code.",
+  "id": "a_2P65u60Qp",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "title": "pane send --enter exits 0 when the Return itself fails",
+  "type": "bug",
+  "updated_at_millis": 1789256867358,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1789256867358}
+  ]
+}

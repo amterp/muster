@@ -5,16 +5,17 @@
   "area": [
     "testing"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "created_at_millis": 1788709964550,
   "creator": "Alexander Terp",
   "description": "docs/observations/herdr-0.8.0.md section 8 quotes `diff-corpus corpus/herdr-0.8.0 corpus/herdr-0.8.0-linux` printing \"0 difference(s) across 15 shared scenario(s)\". Measured 2026-09-06 it printed 7, and 6 after slot 2 added a layout-replay recording. So the doc asserts a thing that is no longer true, and it is the evidence a reader is pointed at.\n\nWhat drifted:\n\n- `sending-text` is macOS-only.\n- `read-depth` gained five facts on macOS the Linux side never recorded: alternate_screen_read, blank_bottom_read, erase_scrollback_read, main_screen_history_survives_the_alternate_screen, trimmed_rows_are_the_blank_remainder_of_the_viewport.\n\n**This is not a CI hole.** `./dev --corpus-linux` records Linux fresh into a scratch directory and diffs that, so it never reads the stale checked-in copy - the workflow that guards against a herdr re-pin moving one platform and not the other still works. What is stale is the checked-in evidence and the sentence quoting it.\n\nFix is `probe --remote` for the missing scenarios and re-quoting the block. The reason it matters despite not being a CI hole: docs/observations exists so a claim can be chased to a transcript, and a transcript that no longer says what the prose says is worse than no transcript.\n\nFound by slot 2, 2026-09-06.",
   "id": "a_2LOcSqpF4",
-  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "position": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!6",
   "title": "The checked-in Linux corpus has drifted, and an observation doc still claims it has not",
   "type": "chore",
-  "updated_at_millis": 1788709964550,
+  "updated_at_millis": 1789256869144,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1788709964550}
+    {"field":"column","value":"backlog-hi","at":1788709964550},
+    {"field":"column","value":"done","at":1789256869144}
   ]
 }

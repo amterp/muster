@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "upstream-herdr",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "uncommitted",
+  "created_at_millis": 1789256867639,
+  "creator": "Alexander Terp",
+  "description": "herdr writes at most one event of each subscribed kind per 100ms pass of its subscription loop, so a busy kind lags. Measured 2026-09-12 against the pinned daemon, and read from v0.8.0 `src/api/server.rs` (`stream_subscriptions`, `CONNECTION_POLL_INTERVAL`). `docs/observations/herdr-0.8.0.md`, \"Subscribing replays recent events, one kind at a time\", has the table.\n\nA burst of title changes or agent detections therefore arrives seconds late, and order across kinds is lost. Muster's mirror now tolerates the lost order (`7394a5b`). The lag remains, and it reaches the agent states the sidebar shows.\n\nWorth raising upstream, and worth checking what in Muster reads a busy kind and would be seconds stale under load.",
+  "id": "a_2P65uagak",
+  "position": "UUUUUUUUUUUUUUU",
+  "title": "🔌 Upstream: herdr delivers ten events of each kind a second",
+  "type": "chore",
+  "updated_at_millis": 1789256867639,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1789256867639}
+  ]
+}

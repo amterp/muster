@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "focus-only-verbs",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1789256868061,
+  "creator": "Alexander Terp",
+  "description": "The focus-only verbs that turn a refusal into prose (`step`, `focus_tab`, `focus_pane_at` in the seam's handler) still say \"the daemon did not make that change\" when herdr timed out. Since `5a5abb4` the other intents say it may have happened.\n\nThe keyboard move is Muster's own and has already happened, so the wrong sentence costs little. Minor.",
+  "id": "a_2P65vGYuZ",
+  "position": "UUUUUUUUUUUUUUUUUUU",
+  "title": "Focus-only verbs still say nothing moved on a timeout",
+  "type": "chore",
+  "updated_at_millis": 1789256868061,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1789256868061}
+  ]
+}

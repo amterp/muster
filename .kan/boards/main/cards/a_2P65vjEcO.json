@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "nothing-checks-the-checked",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "uncommitted",
+  "created_at_millis": 1789256868362,
+  "creator": "Alexander Terp",
+  "description": "Nothing notices when the checked-in Linux corpus (`corpus/herdr-0.8.0-linux/`) falls behind the macOS one. `./dev --corpus-linux` diffs a fresh Linux recording against macOS and never reads the checked-in Linux copy, which is how it drifted by six facts unnoticed until `77769b3` re-recorded it.\n\nThe tier could also diff its scratch recording against the checked-in copy and fail on a difference. That makes the `corpus-linux` CI workflow fail until somebody runs `probe --remote`, whenever a scenario is added or gains a fact. Whether that cost is worth it is the decision this card is for.",
+  "id": "a_2P65vjEcO",
+  "position": "UUUUUUUUUUUUUUUUU",
+  "title": "Nothing checks the checked-in Linux corpus for drift",
+  "type": "chore",
+  "updated_at_millis": 1789256868362,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1789256868362}
+  ]
+}

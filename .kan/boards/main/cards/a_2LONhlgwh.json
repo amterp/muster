@@ -6,16 +6,17 @@
     "testing",
     "devenv"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "created_at_millis": 1788709397191,
   "creator": "Alexander Terp",
   "description": "a_2Ky2ptlug names two directions for the shared devenv container and settles on neither. Two parallel rounds have now paid for that, and the second one found the exact mechanism.\n\n## The mechanism, measured 2026-09-06\n\n`devenv up` rebuilds the image with the local worktree pubkey every time, but **returns early when a container is already running**. So a container started 15 hours earlier by another worktree keeps that worktree key, and every other worktree is refused with `dev@localhost: Permission denied (publickey)`.\n\nThe script own comment in `up` predicts this failure - \"a keypair generated in a second worktree produced a container that refused every login with no hint that a stale image was why\" - but the guard it added covers a stale **image**, not a stale **container**. That is the gap.\n\n`devenv down \u0026\u0026 devenv up` fixes it, and re-arms the same trap for whoever runs next.\n\n## What two rounds cost\n\nRound 1: the collision was avoided by hand. The integrator read a_2Ky2ptlug while scoping and told three of four slots not to touch docker at all - a whole tier removed from three slots for reasons unrelated to their work, on the strength of one person happening to have read the card.\n\nRound 2: the one cleared slot lost time anyway, to the failure above.\n\nSo serializing by hand does not work, because the breakage is baked into a running container rather than held by a process anybody can see, and nothing checks it.\n\n## The cheap fix, which excludes neither original direction\n\nCompare the running container authorized key against `devenv/.ssh/id_ed25519.pub` in `up`, and recreate on mismatch. That turns a confusing auth failure into a one-line recreate, and it is worth doing whichever of a_2Ky2ptlug two directions is eventually chosen.",
   "id": "a_2LONhlgwh",
-  "position": "!!!!2",
+  "position": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!U",
   "title": "The devenv key collision cost a second round, and the decision is still open",
   "type": "chore",
-  "updated_at_millis": 1788709979549,
+  "updated_at_millis": 1789256868946,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1788709397191}
+    {"field":"column","value":"backlog-hi","at":1788709397191},
+    {"field":"column","value":"done","at":1789256868946}
   ]
 }
