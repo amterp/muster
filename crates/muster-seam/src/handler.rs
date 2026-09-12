@@ -3,13 +3,12 @@
 //! Bytes in, bytes out, no FFI: this is where the seam's behavior can be tested without a
 //! shell, a window or a linker. [`crate::ffi`] is the shim that lets a C caller reach it.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use muster_core::diagnostics::log::{self, LogLevel};
 use muster_core::diagnostics::sink::JsonLinesSink;
 use muster_core::fields;
 
-use muster_core::PaneKey;
 use muster_core::composition::{DaemonId, FontSizeChange, Frame, RegionId, Step, View};
 use muster_core::config::{self, CursorStyle};
 use muster_core::equalize::Evenly;
@@ -21,10 +20,11 @@ use muster_core::intent::{BackendIntent, Branch, Side};
 use muster_core::mirror::backend::{PaneId, TabId};
 use muster_core::problems::Severity;
 use muster_core::roster::TabStep;
+use muster_core::{AgentState, PaneKey};
 
 use crate::proto::{self, Request, Response, event, request, response};
 use crate::session::{self, AttachError, AttachedPane, Keyboard};
-use crate::{command, convert};
+use crate::{command, convert, watch};
 use prost::Message;
 
 /// Answers one encoded request.
@@ -130,6 +130,7 @@ fn route(payload: request::Payload) -> Response {
         request::Payload::ReadPane(read) => read_pane(&read),
         request::Payload::SendToPane(send) => send_to_pane(&send),
         request::Payload::ReadDaemons(_) => read_daemons(),
+        request::Payload::WatchPanes(_) => watch_without_a_socket(),
         request::Payload::ReadAppearance(_) => read_appearance(),
         request::Payload::ReadWindowFrame(read) => read_window_frame(&read.screens),
         request::Payload::ReportFontFamily(report) => report_font_family(&report),
@@ -1259,6 +1260,85 @@ fn pane_holder(pane: &PaneId, daemon_id: &str) -> Option<DaemonId> {
         return session::daemon_holding(pane);
     }
     Some(DaemonId::new(daemon_id))
+}
+
+/// A watch that arrived through `dispatch` rather than on the command socket.
+///
+/// `dispatch` has one answer to give and a watch is a stream of them, so only the endpoint can
+/// serve one - it routes a watch before it ever calls `dispatch`.
+fn watch_without_a_socket() -> Response {
+    Response::failure(
+        "a watch was dispatched rather than sent on the command socket, and a dispatch answers \
+         once, so nothing is being watched. A shell already gets every change to a pane's agent \
+         as a PaneStateChanged event, so whatever sent this has a bug.",
+    )
+}
+
+/// Starts watching agent states for a caller on the command socket, or says why it cannot.
+///
+/// Everything a watch is asked for is checked here, before anything is watched, so a caller that
+/// named a pane nobody holds or a state that does not exist is refused at once rather than left
+/// waiting on something that can never happen.
+pub(crate) fn watch_panes(request: &proto::WatchPanes) -> Result<watch::Watch, Box<Response>> {
+    let mut until = Vec::new();
+    for word in &request.until {
+        // Strict rather than `from_backend`, which reads a word it does not know as `unknown`:
+        // a caller who typed `idel` would otherwise be waiting for a shell.
+        let Some(state) = AgentState::ALL.into_iter().find(|state| state.as_str() == word) else {
+            return Err(Box::new(Response::failure(format!(
+                "`{word}` is not a state a pane can be in, so there is nothing to wait for. The \
+                 states are working, blocked, idle, done and unknown."
+            ))));
+        };
+        until.push(state);
+    }
+
+    let panes = if request.pane_ids.is_empty() {
+        None
+    } else {
+        let mut keys = BTreeSet::new();
+        for named in &request.pane_ids {
+            let pane = PaneId::new(named);
+            let Some(daemon) = holder_soon(&pane) else {
+                return Err(Box::new(Response::failure(format!(
+                    "no daemon this window is following holds a pane called {pane}, so there is \
+                     nothing to watch. Either it closed, or the name came from an older window - \
+                     `muster window` lists the panes this one has."
+                ))));
+            };
+            keys.insert(PaneKey::new(&daemon, &pane));
+        }
+        Some(keys)
+    };
+
+    Ok(watch::start(panes, until))
+}
+
+/// How long a watch gives a pane no mirror has heard of to turn up before refusing it.
+///
+/// A split answers with the pane's name before the daemon's event describing it reaches the
+/// window, so `muster pane wait --pane "$(muster pane new)"` names a pane nothing holds yet. Not
+/// measured beyond that gesture passing in `tests/agent_states.rs`: a pane that exists arrives
+/// long before this, and only a name that is wrong waits it all out, which is two seconds that
+/// caller pays to be told.
+const TURNS_UP_WITHIN: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// Which daemon holds a pane, giving one that was only just made a moment to reach a mirror.
+///
+/// Other requests about a pane no mirror holds are sent anyway and let the daemon answer
+/// (`target`). A watch has no daemon to ask - it waits on what the window hears - so it waits
+/// for the window to hear of the pane instead.
+fn holder_soon(pane: &PaneId) -> Option<DaemonId> {
+    let deadline = std::time::Instant::now() + TURNS_UP_WITHIN;
+    loop {
+        if let Some(daemon) = session::daemon_holding(pane) {
+            return Some(daemon);
+        }
+        if std::time::Instant::now() >= deadline {
+            return None;
+        }
+        std::thread::sleep(CONFIRM_POLL);
+    }
 }
 
 /// Which daemon a request about this tab goes to: the one it named, or the one holding the tab.

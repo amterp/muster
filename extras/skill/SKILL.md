@@ -50,6 +50,16 @@ in, which is usually somewhere else. Nothing tells a pane which tab holds it, so
 outright: `muster window --json` gives every pane a `tab`, and yours is the row whose `pane` matches
 `$MUSTER_PANE`.
 
+**Do not poll `muster window` to find out when an agent finishes.** `muster pane wait --pane X
+--until idle,blocked` blocks until it does and exits 0; `--timeout` gives up with exit 5. A pane
+already idle answers at once, so after handing an idle agent work, wait `--until working` first.
+To follow several agents, `muster window --watch` prints a line each time any of them changes -
+run it where each line reaches you as it arrives, such as a background monitor, rather than
+waiting for it to exit. It never does.
+
+**Send anything longer than a line from a file.** `muster pane send --pane X --file brief.md
+--enter` needs no quoting, and `-` reads the text from stdin.
+
 **You can read a pane, not just its state.** `muster pane read --pane X` hands back what that
 pane has printed. `muster window` tells you an agent is `blocked` or `done`; only this tells you
 what it said. `--rows 40` for the last page of it, and check `truncated` in `--json` before

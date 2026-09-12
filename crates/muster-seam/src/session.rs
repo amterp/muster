@@ -48,6 +48,7 @@ use crate::proto::{
     Problem as ProblemMessage, ProblemsChanged, event,
 };
 use crate::shared_names::NamesFile;
+use crate::watch::{self, Seen};
 use crate::{command, convert, ffi, watchdog};
 
 /// What Muster calls the daemon it found for itself.
@@ -1140,6 +1141,7 @@ pub(crate) fn reset() {
     // remember two. The endpoint is given up by asking for nowhere, which is the same path a
     // shell configured with no socket takes.
     watchdog::forget_everything();
+    watch::forget_everyone();
     command::listen("");
     ffi::muster_set_event_callback(None);
 }
@@ -2983,6 +2985,14 @@ pub(crate) struct Machine {
     pub panes: usize,
 }
 
+/// Every pane every followed daemon holds, as this window paints it.
+///
+/// The part of [`window`] a watch starts from, without building a view and a roster it would
+/// throw away.
+pub(crate) fn agents() -> Vec<PaneAgent> {
+    poison::lock(&SESSION, "session").agents()
+}
+
 pub(crate) fn window() -> WindowNow {
     let session = poison::lock(&SESSION, "session");
     // No reconcile, unlike `publish`. This is a read: a caller asking what the window shows
@@ -4116,6 +4126,9 @@ fn report(daemon: &DaemonId, change: &Change) {
     if let Some(pane) = change.announces_agent_state() {
         announce_state(&PaneKey::new(daemon, pane));
     }
+    if let Change::PaneRemoved { pane, .. } = change {
+        watch::publish(&Seen::Closed(PaneKey::new(daemon, pane)));
+    }
 }
 
 /// Tells the shell that a pane has started asking for somebody, or stopped.
@@ -4176,6 +4189,7 @@ fn announce_state(pane: &PaneKey) {
     ffi::emit(&Event {
         payload: Some(event::Payload::PaneStateChanged(convert::pane_state(&agent))),
     });
+    watch::publish(&Seen::State(agent));
 }
 
 /// What the window should show for a pane, which is not always what the daemon said.

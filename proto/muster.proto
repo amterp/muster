@@ -72,6 +72,7 @@ message Request {
     ReadDaemons read_daemons = 45;
     ReattachPane reattach_pane = 46;
     EqualizePanes equalize_panes = 47;
+    WatchPanes watch_panes = 48;
   }
 }
 
@@ -695,6 +696,40 @@ message SendToPane {
   bool confirm = 5;
 }
 
+// Keeps answering with what panes' agents are doing, instead of answering once.
+//
+// The one request answered with a stream, and only on the command socket. A caller that wants
+// to know when an agent finishes otherwise polls ReadWindow and diffs the answers, which is late
+// by the polling interval and cannot see a finish and a new turn between two polls (kan
+// a_2M9T8O6dL). The window already hears every change, because the shell is sent each one as a
+// PaneStateChanged, so this hands a caller the same changes over its connection.
+//
+// Answered with `pane_state` for each watched pane as it stands, then a `pane_state` for every
+// change and a `pane_closed` for every watched pane that goes - until the caller hangs up, or
+// until `until` is met. Through the C ABI it is refused: a shell already gets every change as an
+// event, and a dispatch has one answer to give.
+message WatchPanes {
+  // The panes to watch, by Muster's name. Empty watches every pane the window holds, including
+  // the ones that appear after the watch began.
+  repeated string pane_ids = 1;
+
+  // States that end the watch, as the five words `muster window` prints.
+  //
+  // Empty never ends it. Otherwise the answer carries only what ends it: every watched pane
+  // already in one of these states, or else the first to reach one, then `ok`. A condition
+  // rather than an event, so a pane that got there before the caller asked is not waited past.
+  // `idle` is also met by `done`, which is an idle nobody has looked at - whether a pane reads
+  // one or the other depends on where somebody's cursor was, and a wait must not. A watched pane
+  // that closes first ends it with a failure naming the pane.
+  repeated string until = 2;
+}
+
+// A pane a watch was following has gone - closed, or its program ended and took it with it.
+message PaneClosed {
+  string daemon_id = 1;
+  string pane_id = 2;
+}
+
 // Reads back what a pane has printed, and changes nothing.
 //
 // The half of a pane an agent could not see. `muster window` says every pane's state and what
@@ -1015,6 +1050,8 @@ message Response {
     PaneText pane_text = 10;
     PaneViewport pane_viewport = 11;
     Daemons daemons = 12;
+    PaneStateChanged pane_state = 13;
+    PaneClosed pane_closed = 14;
   }
 }
 

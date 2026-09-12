@@ -55,6 +55,14 @@ pub fn fresh_session() -> Turn {
     Turn { _turn: turn }
 }
 
+/// How many callers are watching agent states right now.
+///
+/// For a test proving that a caller who hangs up is let go. Nothing else reads it: a watch whose
+/// caller has gone costs a thread, and nothing a caller can observe says whether it was kept.
+pub fn watchers() -> usize {
+    crate::watch::count()
+}
+
 /// One test's turn, given up when it is dropped.
 #[derive(Debug)]
 pub struct Turn {

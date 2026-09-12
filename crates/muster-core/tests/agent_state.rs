@@ -38,3 +38,18 @@ fn every_state_is_in_the_corpus() {
         );
     }
 }
+
+#[test]
+fn counts_as_conformance() {
+    let corpus = Conformance::load("agent-state-counts-as.json");
+
+    let ran = corpus.run(|given| {
+        let word = |key: &str| given.get(key).and_then(Value::as_str).unwrap_or("");
+        let (state, wanted) =
+            (AgentState::from_backend(word("state")), AgentState::from_backend(word("wanted")));
+        Ok(fields([("counts", Some(json!(state.counts_as(wanted))))]))
+    });
+
+    assert_eq!(ran, corpus.cases.len());
+    assert!(ran > 0);
+}

@@ -469,6 +469,125 @@
       }
     },
     {
+      "name": "watching a window is one request that asks for everything",
+      "why": "The shape an integrator waiting on several agents wants: one connection, and a line each time any of them changes (kan a_2M9T8O6dL). It names no pane and no state, which is what the window reads as every pane, for good.",
+      "given": {
+        "argv": [
+          "window",
+          "--watch"
+        ],
+        "env": {
+          "MUSTER_PANE": "p1w3r07bsd"
+        }
+      },
+      "expect": {
+        "request": {
+          "watch_panes": {}
+        }
+      }
+    },
+    {
+      "name": "watching is about the one window, not the windows in the plural",
+      "why": "`window list`, `new` and `reopen` are about windows in the plural, and a watch holds one connection to one window. Both at once has no reading.",
+      "given": {
+        "argv": [
+          "window",
+          "--watch",
+          "list"
+        ]
+      },
+      "expect": {
+        "usage": "ArgumentConflict"
+      }
+    },
+    {
+      "name": "a wait names the panes, the states that end it, and how long to hold out",
+      "why": "Several panes because an integrator waits on the first of its workers to finish, and a comma list because `idle,blocked` - finished, or stuck on a question - is the usual pair. The timeout is the caller's patience, not something the window is told, so it stays out of the request.",
+      "given": {
+        "argv": [
+          "pane",
+          "wait",
+          "--pane",
+          "p1w3r07bsd",
+          "--pane",
+          "p1w3r0ab2n",
+          "--until",
+          "idle,blocked",
+          "--timeout",
+          "600"
+        ]
+      },
+      "expect": {
+        "gives_up_after": 600,
+        "request": {
+          "watch_panes": {
+            "pane_ids": [
+              "p1w3r07bsd",
+              "p1w3r0ab2n"
+            ],
+            "until": [
+              "idle",
+              "blocked"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "a wait does not wait on the pane it is running in",
+      "why": "Every other pane command falls back to $MUSTER_PANE. This one cannot mean it: the pane the command is running in is busy running the command, so a wait on it has no useful answer, and a caller who left `--pane` off meant some other pane.",
+      "given": {
+        "argv": [
+          "pane",
+          "wait",
+          "--until",
+          "idle"
+        ],
+        "env": {
+          "MUSTER_PANE": "p1w3r07bsd"
+        }
+      },
+      "expect": {
+        "usage": "MissingRequiredArgument"
+      }
+    },
+    {
+      "name": "a state nobody is ever in is refused by the command line",
+      "why": "A typo in a state would otherwise wait for something that never happens, which from outside is indistinguishable from an agent still working. The five words are the ones `muster window` prints.",
+      "given": {
+        "argv": [
+          "pane",
+          "wait",
+          "--pane",
+          "p1w3r07bsd",
+          "--until",
+          "idel"
+        ]
+      },
+      "expect": {
+        "usage": "InvalidValue"
+      }
+    },
+    {
+      "name": "a wait that gives up at once is refused",
+      "why": "Zero seconds would be answered before the window could say anything, so it reads as a pane that never got there. Somebody asking whether a pane is already somewhere asks with a second.",
+      "given": {
+        "argv": [
+          "pane",
+          "wait",
+          "--pane",
+          "p1w3r07bsd",
+          "--until",
+          "idle",
+          "--timeout",
+          "0"
+        ]
+      },
+      "expect": {
+        "usage": "ValueValidation"
+      }
+    },
+    {
       "name": "renaming a pane says what to call it",
       "why": "A person running fifteen agents wants to say which is which in their own words, and this is the surface a script sets those names from.",
       "given": {

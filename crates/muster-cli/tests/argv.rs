@@ -41,7 +41,9 @@ fn cli_conformance() {
                 (
                     "request",
                     match &invocation.asking {
-                        Asking::Send(request) => Some(described(request)),
+                        Asking::Send(request) | Asking::Watch { request, .. } => {
+                            Some(described(request))
+                        }
                         Asking::SendFrom { request, from } => match filled(request, from, given) {
                             Ok(request) => Some(described(&request)),
                             Err(refusal) => return Ok(json!({ "refused": refusal })),
@@ -69,13 +71,24 @@ fn cli_conformance() {
                 (
                     "answers_here",
                     match &invocation.asking {
-                        Asking::Send(_) | Asking::SendFrom { .. } => None,
+                        Asking::Send(_) | Asking::SendFrom { .. } | Asking::Watch { .. } => None,
                         Asking::Print(_) => Some(json!("printing something this binary holds")),
                         Asking::Survey => Some(json!("asking every window on this machine")),
                         Asking::MakeWindow => Some(json!("starting another Muster")),
                         Asking::ReopenWindow => {
                             Some(json!("starting the Muster whose window was closed"))
                         }
+                    },
+                ),
+                // How long a wait holds out, which is the caller's patience rather than anything
+                // the window is told - so it is not in the request.
+                (
+                    "gives_up_after",
+                    match &invocation.asking {
+                        Asking::Watch { timeout: Some(timeout), .. } => {
+                            Some(json!(timeout.as_secs()))
+                        }
+                        _ => None,
                     },
                 ),
                 ("json", invocation.json.then_some(json!(true))),
@@ -280,6 +293,12 @@ fn described_pane_or_window(payload: &request::Payload) -> Value {
             "read_pane": fields([
                 ("pane_id", said(&read.pane_id)),
                 ("rows", (read.rows != 0).then_some(json!(read.rows))),
+            ])
+        }),
+        request::Payload::WatchPanes(watch) => json!({
+            "watch_panes": fields([
+                ("pane_ids", (!watch.pane_ids.is_empty()).then(|| json!(watch.pane_ids))),
+                ("until", (!watch.until.is_empty()).then(|| json!(watch.until))),
             ])
         }),
         request::Payload::ReloadConfig(_) => json!({ "reload_config": {} }),

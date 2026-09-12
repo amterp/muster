@@ -16,6 +16,7 @@
 
 use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
+use std::time::Duration;
 
 use clap::{ArgGroup, CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::Shell;
@@ -23,7 +24,7 @@ use muster_proto::{
     AdjustFontSize, ArrangePane, ClosePane, CloseTab, CreateTab, EqualizePanes, FocusPane,
     FocusPaneAt, FocusRelative, FocusTab, FocusTabRelative, ReadDaemons, ReadPane, ReadWindow,
     ReattachPane, ReloadConfig, RenamePane, RenameTab, Request, ResizePane, SendToPane, SplitPane,
-    ToggleSidebar, ZoomPane, request,
+    ToggleSidebar, WatchPanes, ZoomPane, request,
 };
 
 use crate::{docs, environment};
@@ -53,6 +54,12 @@ pub enum Asking {
     SendFrom {
         request: Box<Request>,
         from: TextSource,
+    },
+    /// A request answered with a stream: printed as it arrives, until it ends or `timeout` runs
+    /// out. `None` waits for as long as the window keeps the watch open.
+    Watch {
+        request: Box<Request>,
+        timeout: Option<Duration>,
     },
     Print(String),
     /// Every window on this machine, asked the same thing and answered together.
@@ -128,6 +135,7 @@ Examples:
   muster window --json
   muster pane new --down --run claude --name '🤖 A'
   muster pane send --pane p1w3r07bsd 'read AGENTS.md and wait' --enter
+  muster pane wait --pane p1w3r07bsd --until idle,blocked --timeout 600
   muster pane move --pane p1w3r0ab2n --onto p1w3r07bsd
   muster tab new --run claude --name '🤖 reviewer'
   muster pane new --daemon devenv --run claude
@@ -138,8 +146,8 @@ machine. Otherwise muster looks for a listening window under ~/.muster/state, an
 rather than guessing if more than one answers.
 
 Exit codes: 0 it happened, 1 the window refused, 2 the command line was wrong, 3 there was
-no window to ask, 4 a window took it and never answered. Send it again after 3, never after
-4 - the request landed, and doing it twice is on you.
+no window to ask, 4 a window took it and never answered, 5 a wait ran out first. Send it again
+after 3 or 5, never after 4 - the request landed, and doing it twice is on you.
 ";
 
 #[derive(Debug, Parser)]
@@ -171,12 +179,23 @@ struct Cli {
 #[derive(Debug, Subcommand)]
 enum What {
     /// What the window is showing: its daemons, its tabs, its panes, and what each agent is doing
+    #[command(args_conflicts_with_subcommands = true)]
     Window {
+        /// Keep answering: a line per pane as it stands, then a line per change, until stopped
+        //
+        // A flag on the one-window read rather than a verb of its own, because it is the same
+        // question asked continuously - and it is the shape an integrator waiting on several
+        // agents at once wants: one connection, and one line each time any of them starts,
+        // stops or goes (kan a_2M9T8O6dL).
+        #[arg(long)]
+        watch: bool,
+
         #[command(subcommand)]
         doing: Option<AboutWindows>,
     },
 
-    /// Make a pane, name one, read it, type into one, move it, resize it, reattach it, or close it
+    /// Make a pane, name one, read it, type into one, wait on one, move it, resize it, reattach it,
+    /// or close it
     Pane {
         #[command(subcommand)]
         doing: Doing,
@@ -293,6 +312,32 @@ enum AboutWindows {
     Reopen,
 }
 
+/// A state `muster pane wait --until` can name.
+///
+/// The five words `muster window` prints, so a caller can send back what it read. A ValueEnum
+/// rather than free text so that `idel` is refused by the command line instead of waiting for a
+/// state nothing is ever in.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum Awaited {
+    Working,
+    Blocked,
+    Idle,
+    Done,
+    Unknown,
+}
+
+impl Awaited {
+    fn wire(self) -> &'static str {
+        match self {
+            Awaited::Working => "working",
+            Awaited::Blocked => "blocked",
+            Awaited::Idle => "idle",
+            Awaited::Done => "done",
+            Awaited::Unknown => "unknown",
+        }
+    }
+}
+
 /// What `muster font` can ask for.
 ///
 /// The schema's own three words rather than English ones like `bigger`, on the same rule the
@@ -394,6 +439,28 @@ enum Doing {
         /// The text, joined with spaces if it arrives in pieces. `-` reads it from stdin
         #[arg(required_unless_present = "file", value_name = "TEXT")]
         text: Vec<String>,
+    },
+
+    /// Wait until a pane's agent is in a state you name, and print which pane got there
+    //
+    // The other shape of waiting on an agent: `window --watch` hears every change, and this
+    // exits once, which is what a script's next line and a background job's one notification
+    // want. A condition rather than an event, so a pane already there answers at once.
+    Wait {
+        /// The pane to wait on. Give it more than once to wait for the first of several
+        //
+        // Required, unlike every other pane command, and $MUSTER_PANE is not read: the pane
+        // this is running in is running this, so waiting on it has no useful answer.
+        #[arg(long, value_name = "REF", required = true)]
+        pane: Vec<String>,
+
+        /// The states to wait for, comma-separated. idle is also met by done
+        #[arg(long, value_name = "STATE", required = true, value_delimiter = ',')]
+        until: Vec<Awaited>,
+
+        /// Give up after this many seconds, exiting 5
+        #[arg(long, value_name = "SECONDS", value_parser = clap::value_parser!(u64).range(1..))]
+        timeout: Option<u64>,
     },
 
     /// Print what a pane has on it, as far back as the window will go
@@ -618,13 +685,19 @@ pub fn parse(
     let cli = Cli::try_parse_from(words).map_err(|error| Failure::Usage(Box::new(error)))?;
 
     let asking = match &cli.what {
-        What::Window { doing: None } => send(request::Payload::ReadWindow(ReadWindow {})),
+        What::Window { watch: true, .. } => Asking::Watch {
+            request: Box::new(Request {
+                payload: Some(request::Payload::WatchPanes(WatchPanes::default())),
+            }),
+            timeout: None,
+        },
+        What::Window { doing: None, .. } => send(request::Payload::ReadWindow(ReadWindow {})),
         What::Daemons => send(request::Payload::ReadDaemons(ReadDaemons {})),
         // Asked of every window rather than of one, which is why it is not a `Send`: `--socket`
         // and $MUSTER_SOCKET both narrow to one window, and the question here is which there are.
-        What::Window { doing: Some(AboutWindows::List) } => Asking::Survey,
-        What::Window { doing: Some(AboutWindows::New) } => Asking::MakeWindow,
-        What::Window { doing: Some(AboutWindows::Reopen) } => Asking::ReopenWindow,
+        What::Window { doing: Some(AboutWindows::List), .. } => Asking::Survey,
+        What::Window { doing: Some(AboutWindows::New), .. } => Asking::MakeWindow,
+        What::Window { doing: Some(AboutWindows::Reopen), .. } => Asking::ReopenWindow,
         What::Pane { doing } => pane(doing, environment, here)?,
         What::Tab { doing } => tab(doing, environment, here)?,
         What::Focus { pane, next, previous, left, right, up, down, place } => {
@@ -733,6 +806,7 @@ fn pane(
                 None => Asking::Send(request),
             }
         }
+        Doing::Wait { pane, until, timeout } => wait(pane, until, *timeout),
         Doing::Read { pane, rows } => send(request::Payload::ReadPane(ReadPane {
             pane_id: pane_ref(pane.as_ref(), environment),
             // Zero is what the window reads as "as far as you will go", and it is also what
@@ -806,6 +880,20 @@ fn pane(
             }))
         }
     })
+}
+
+/// A `pane wait`: a watch that ends when a named pane gets somewhere, or when the caller's
+/// patience does.
+fn wait(panes: &[String], until: &[Awaited], timeout: Option<u64>) -> Asking {
+    Asking::Watch {
+        request: Box::new(Request {
+            payload: Some(request::Payload::WatchPanes(WatchPanes {
+                pane_ids: panes.to_vec(),
+                until: until.iter().map(|state| state.wire().to_string()).collect(),
+            })),
+        }),
+        timeout: timeout.map(Duration::from_secs),
+    }
 }
 
 /// No environment, unlike [`pane`] beside it.

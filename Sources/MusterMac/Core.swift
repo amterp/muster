@@ -998,6 +998,7 @@ public enum Core {
     case .readPane: return "read_pane"
     case .readViewport: return "read_viewport"
     case .readDaemons: return "read_daemons"
+    case .watchPanes: return "watch_panes"
     case .readWindowFrame: return "read_window_frame"
     case .setWindowFrame: return "set_window_frame"
     case .reportFontFamily: return "report_font_family"

@@ -36,6 +36,9 @@ pub enum Trouble {
     Unreachable(String),
     /// A window took the request and this command cannot say what came of it.
     Unanswered(String),
+    /// A wait ran out before what it was waiting for happened. Waiting changes nothing, so
+    /// waiting again is harmless.
+    TimedOut(String),
 }
 
 impl Trouble {
@@ -50,6 +53,7 @@ impl Trouble {
             Trouble::Refused(_) => 1,
             Trouble::Unreachable(_) => 3,
             Trouble::Unanswered(_) => 4,
+            Trouble::TimedOut(_) => 5,
         }
     }
 
@@ -57,7 +61,8 @@ impl Trouble {
         match self {
             Trouble::Refused(detail)
             | Trouble::Unreachable(detail)
-            | Trouble::Unanswered(detail) => detail,
+            | Trouble::Unanswered(detail)
+            | Trouble::TimedOut(detail) => detail,
         }
     }
 }
@@ -125,6 +130,11 @@ pub fn run(
                 Err(trouble) => report(&trouble, json, errors),
             };
         }
+        args::Asking::Watch { request, timeout } => {
+            // Never asked around, unlike a read. A watch is one connection held open, and a
+            // caller with several windows listening names one with --socket.
+            return watch(&request, timeout, named.as_deref(), environment, json, out, errors);
+        }
         args::Asking::Survey => {
             let answers = dial::survey(environment, &read_window());
             let here = environment.get(environment::WINDOW_SOCKET).filter(|path| !path.is_empty());
@@ -186,6 +196,67 @@ pub fn run(
         }
         Err(trouble) => report(&trouble, json, errors),
     }
+}
+
+/// Prints a watch's answers as they arrive, and exits with how it ended.
+///
+/// Each line is flushed as it is written, because the reader is usually a pipe - a Monitor, a
+/// `while read` loop - that is acting on each line as it comes, and a line sitting in a buffer
+/// is a change nobody hears about.
+fn watch(
+    request: &muster_proto::Request,
+    timeout: Option<std::time::Duration>,
+    socket: Option<&str>,
+    environment: &BTreeMap<String, String>,
+    json: bool,
+    out: &mut impl Write,
+    errors: &mut impl Write,
+) -> i32 {
+    let deadline = timeout.map(|timeout| std::time::Instant::now() + timeout);
+    let mut answers = match dial::follow(request, socket, environment) {
+        Ok(answers) => answers,
+        Err(trouble) => return report(&trouble, json, errors),
+    };
+    loop {
+        let response = match answers.next(deadline) {
+            Ok(response) => response,
+            Err(dial::Ended::HungUp(detail)) => {
+                return report(&Trouble::Unreachable(detail), json, errors);
+            }
+            Err(dial::Ended::TimedOut) => {
+                let waited = timeout.map_or(0, |timeout| timeout.as_secs());
+                return report(&Trouble::TimedOut(ran_out(request, waited)), json, errors);
+            }
+        };
+        if matches!(response.payload, Some(muster_proto::response::Payload::Ok(_))) {
+            return 0;
+        }
+        match render::answer(&response, json) {
+            Ok(line) => {
+                // The reader went away - `| head -1`, a Monitor stopped. Nothing is wrong, and
+                // there is nobody left to say anything to.
+                if writeln!(out, "{line}").and_then(|()| out.flush()).is_err() {
+                    return 0;
+                }
+            }
+            Err(trouble) => return report(&trouble, json, errors),
+        }
+    }
+}
+
+/// What a wait that ran out says, naming what it was waiting for.
+fn ran_out(request: &muster_proto::Request, waited: u64) -> String {
+    let Some(muster_proto::request::Payload::WatchPanes(watch)) = request.payload.as_ref() else {
+        return format!("nothing arrived within {waited}s.");
+    };
+    format!(
+        "{} {} not {} within {waited}s. Waiting changed nothing, so waiting again is harmless; \
+         `muster window` says what {} doing now.",
+        watch.pane_ids.join(", "),
+        if watch.pane_ids.len() == 1 { "was" } else { "were" },
+        watch.until.join(" or "),
+        if watch.pane_ids.len() == 1 { "it is" } else { "they are" },
+    )
 }
 
 /// The text a `pane send --file` or `pane send -` types, read before anything is dialed.

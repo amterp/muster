@@ -1,0 +1,50 @@
+{
+  "concept": "agentState.countsAs",
+  "source": "authored",
+  "citation": "proto/muster.proto, WatchPanes.until; kan a_2M9T8O6dL",
+  "why": "A caller waiting on an agent names the state it is waiting for, and the window answers when a watched pane is in it. The question this pins is what 'in it' means, because the window paints five words and two of them describe one agent: `done` is `idle` on a pane nobody has looked at. A wait that took the words literally would depend on where somebody's cursor was.",
+  "cases": [
+    {
+      "name": "a state counts as itself",
+      "why": "The ordinary case. A caller waiting for `blocked` is answered by a blocked pane.",
+      "given": { "state": "blocked", "wanted": "blocked" },
+      "expect": { "counts": true }
+    },
+    {
+      "name": "an idle pane counts as idle",
+      "why": "An agent that finished on a pane somebody was looking at.",
+      "given": { "state": "idle", "wanted": "idle" },
+      "expect": { "counts": true }
+    },
+    {
+      "name": "a done pane counts as idle",
+      "why": "`done` is an idle nobody has seen, which is a fact about the window rather than the agent. An integrator waiting for a worker to finish waits for `idle`, and whether the worker's pane was on screen when it finished must not decide whether the wait ever ends.",
+      "given": { "state": "done", "wanted": "idle" },
+      "expect": { "counts": true }
+    },
+    {
+      "name": "an idle pane does not count as done",
+      "why": "The reverse is not the same claim. A caller asking for `done` is asking which finished agents nobody has noticed, and one somebody has looked at is not among them.",
+      "given": { "state": "idle", "wanted": "done" },
+      "expect": { "counts": false }
+    },
+    {
+      "name": "a working pane does not count as idle",
+      "why": "The wait this whole concept exists for: an agent still working has not finished.",
+      "given": { "state": "working", "wanted": "idle" },
+      "expect": { "counts": false }
+    },
+    {
+      "name": "a blocked pane does not count as idle",
+      "why": "Blocked is stopped and waiting on somebody, which is not finished. A caller who wants either names both.",
+      "given": { "state": "blocked", "wanted": "idle" },
+      "expect": { "counts": false }
+    },
+    {
+      "name": "an unknown pane counts as unknown",
+      "why": "A plain shell reads `unknown`, so a caller waiting for a harness to exit and leave its shell behind can wait for this.",
+      "given": { "state": "unknown", "wanted": "unknown" },
+      "expect": { "counts": true }
+    }
+  ]
+}

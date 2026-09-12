@@ -16,6 +16,11 @@
 //! work that buys nothing. A thread each, because an answer can take a while - a pane being
 //! created waits on a daemon, and a caller waiting for that must not hold up a caller asking
 //! what the window looks like.
+//!
+//! A `WatchPanes` is the one request answered more than once, because its caller is the one
+//! that does not exit: it is waiting for agents to change state, and polling for that is what it
+//! exists to replace (kan a_2M9T8O6dL). Still one request per connection; the answers keep
+//! coming on it until the watch ends or the caller hangs up.
 
 use std::os::fd::AsRawFd;
 use std::os::unix::net::{UnixListener, UnixStream};
@@ -26,8 +31,11 @@ use std::time::Duration;
 use muster_core::diagnostics::{log, poison};
 use muster_core::fields;
 use muster_proto::frame::{LARGEST_MESSAGE, read_frame, write_frame};
+use muster_proto::{Request, WatchPanes, request};
+use prost::Message;
 
-use crate::dispatch;
+use crate::watch::Next;
+use crate::{dispatch, handler};
 
 /// The endpoint this process is listening on, held so that it stays open.
 ///
@@ -216,6 +224,15 @@ fn answer(mut stream: UnixStream) {
         }
     };
 
+    // Decoded here only to tell a watch from everything else. Which transport shape a request
+    // needs is this file's business; what the request means is still the handler's.
+    if let Ok(Request { payload: Some(request::Payload::WatchPanes(watching)) }) =
+        Request::decode(request.as_slice())
+    {
+        follow(stream, &watching);
+        return;
+    }
+
     // The same bytes-in, bytes-out call the C ABI makes, including its panic guard: a request
     // arriving here is no more trustworthy than one arriving from the shell.
     let response = dispatch(&request);
@@ -229,6 +246,61 @@ fn answer(mut stream: UnixStream) {
             },
         );
     }
+}
+
+/// How long a watch with nothing to say goes before checking its caller is still there.
+///
+/// A watch finds out its caller has gone when it next writes, and one waiting on a pane that
+/// stays busy for an hour would otherwise hold a thread for that hour after `muster pane wait`
+/// was interrupted. A second is one syscall per open watch per second.
+const HANGUP_CHECK: Duration = Duration::from_secs(1);
+
+/// Answers a watch until it ends, the caller hangs up, or the window goes away.
+fn follow(mut stream: UnixStream, watching: &WatchPanes) {
+    let mut watch = match handler::watch_panes(watching) {
+        Ok(watch) => watch,
+        Err(refusal) => {
+            let _ = write_frame(&mut stream, &refusal.encode_to_vec());
+            return;
+        }
+    };
+    loop {
+        let (response, last) = match watch.next(HANGUP_CHECK) {
+            Next::Answer(response) => (response, false),
+            Next::Last(response) => (response, true),
+            Next::Quiet if hung_up(&stream) => return,
+            Next::Quiet => continue,
+            Next::Over => return,
+        };
+        if write_frame(&mut stream, &response.encode_to_vec()).is_err() || last {
+            return;
+        }
+    }
+}
+
+/// Whether a watch's caller has hung up, asked without blocking and without consuming anything.
+///
+/// A caller sends its one request and then only reads, so anything readable on its end is either
+/// the end of the stream or a caller not speaking this protocol - and both mean stop.
+fn hung_up(stream: &UnixStream) -> bool {
+    let mut byte = 0u8;
+    // SAFETY: the fd is owned by `stream` and outlives the call; the buffer is one byte we own,
+    // and MSG_PEEK leaves whatever is there in place.
+    let read = unsafe {
+        libc::recv(
+            stream.as_raw_fd(),
+            std::ptr::from_mut(&mut byte).cast(),
+            1,
+            libc::MSG_PEEK | libc::MSG_DONTWAIT,
+        )
+    };
+    if read >= 0 {
+        return true;
+    }
+    !matches!(
+        std::io::Error::last_os_error().kind(),
+        std::io::ErrorKind::WouldBlock | std::io::ErrorKind::Interrupted
+    )
 }
 
 fn set_nosigpipe(stream: &UnixStream) {

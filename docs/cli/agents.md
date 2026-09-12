@@ -31,6 +31,35 @@ split is, which is what the chord does.
 
     muster window --json | jq -r '.panes[] | select(.state == "blocked") | "\(.pane) \(.label)"'
 
+That is one look. To find out when an agent finishes, wait on it rather than looking again:
+
+    muster pane wait --pane p1w3r0ab2n --until idle,blocked --timeout 600
+
+It blocks until the pane's agent is idle or blocked, prints the pane and its state -
+`p1w3r0ab2n  done` - and exits 0. `idle` is also met by `done`, which is an idle nobody has looked
+at. `--timeout` gives up with exit 5, and leaving it off waits for as long as it takes. Give
+`--pane` more than once to wait for the first of several agents.
+
+`--until` is a condition rather than an event, so a pane already there answers at once. After
+handing an idle agent work, wait for it to start before waiting for it to stop:
+
+    muster pane send --pane p1w3r0ab2n 'read brief.md and start' --enter
+    muster pane wait --pane p1w3r0ab2n --until working --timeout 60 &&
+      muster pane wait --pane p1w3r0ab2n --until idle,blocked
+
+To follow several agents at once, watch the window instead:
+
+    $ muster window --watch
+    p1w3r07bsd  unknown
+    p1w3r0ab2n  working
+    p1w3r0cd4x  working
+    p1w3r0ab2n  blocked
+
+A line for every pane as it stands, then a line each time any of them changes state or closes,
+until you stop it. Each line is written when the change happens, so a `while read` loop or a
+`grep --line-buffered` acts on it straight away, and nothing that happens between two looks is
+missed. `--json` makes each line an object carrying `since`; `muster docs window` has the shape.
+
 `blocked` is an agent waiting on somebody. Answer it by name:
 
     muster pane send --pane p1w3r0ab2n 'yes, go ahead' --enter
@@ -58,10 +87,10 @@ Text with quotes in it does not have to be quoted at all. `--file` sends what a 
     it's slot 3's turn: read brief.md and say "ready" when you have
     EOF
 
-Both drop the text's trailing newlines, the way `"$(cat brief.md)"` does, so the file's last line
-does not reach the pane as a Return nobody asked for. `--enter` is still how you ask for one.
-`--file` is the one that works when the command itself arrives on stdin, as it does over
-`laptop run`.
+Both drop the text's trailing newlines, the way `"$(cat brief.md)"` does, so a file's final
+newline is not sent as part of the message; `--enter` is how you ask for Return. `--file` is the
+one that works when stdin already carries the command itself, as it does when a command is piped
+to a shell on another machine.
 
 ## Reading what they printed
 

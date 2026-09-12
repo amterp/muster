@@ -49,6 +49,7 @@ pub fn only_reads(payload: &request::Payload) -> bool {
             | request::Payload::ReadPane(_)
             | request::Payload::ReadViewport(_)
             | request::Payload::ReadDaemons(_)
+            | request::Payload::WatchPanes(_)
     )
 }
 

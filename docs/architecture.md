@@ -693,6 +693,14 @@ calls, one request per connection, a thread each so a `pane new --run` waiting o
 caller asking what the window looks like. Nothing there decides anything; a second entry point that made its own
 decisions would be a second Muster.
 
+**One request is answered more than once.** A `WatchPanes` keeps its connection open and is sent each change to a
+pane's agent as the window hears it - the same changes the shell is sent as events - until the watch ends or the
+caller hangs up. The one-answer rule was about a caller that runs one command and exits; a caller waiting for an
+agent to finish is the one that does not, and polling `ReadWindow` for it was late by the interval and blind to a
+finish and a new turn between two polls (kan a_2M9T8O6dL). The endpoint routes a watch away from `dispatch`, which has
+one answer to give, and checks once a second whether a quiet watch's caller is still there, so an interrupted `muster
+pane wait` does not hold a thread.
+
 **A pid in the socket name, because two Musters are two windows.** A caller has to be able to reach the one it means,
 and a single fixed path would mean the second window to open silently took the first one's callers. Which window a
 pane belongs to is settled when the pane is made: Muster puts `MUSTER_SOCKET` in the environment of that request,

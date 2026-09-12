@@ -18,7 +18,8 @@ use std::time::Duration;
 
 use muster_cli::dial;
 use muster_proto::frame::{LARGEST_MESSAGE, read_frame, write_frame};
-use muster_proto::{ReadWindow, Request, request};
+use muster_proto::{PaneStateChanged, ReadWindow, Request, Response, request, response};
+use prost::Message;
 
 /// Short, because what is under test is which answer a deadline produces rather than the
 /// deadline itself.
@@ -118,11 +119,120 @@ fn a_request_no_window_would_read_is_refused_rather_than_sent() {
 
     let brief = socket.with_extension("md");
     std::fs::write(&brief, "a".repeat(LARGEST_MESSAGE as usize + 1)).expect("/tmp is writable");
-    let argv: Vec<String> = ["--socket", &socket.to_string_lossy(), "pane", "send", "--file"]
-        .iter()
-        .map(ToString::to_string)
-        .chain(std::iter::once(brief.to_string_lossy().into_owned()))
-        .collect();
+    let ran = ran(&[
+        "--socket",
+        &socket.to_string_lossy(),
+        "pane",
+        "send",
+        "--file",
+        &brief.to_string_lossy(),
+    ]);
+
+    assert_eq!(
+        ran.code, 1,
+        "a send no window can read exits {} rather than as refused. Anything but 1 tells a caller \
+         the request may have landed, and it cannot have.\n{}",
+        ran.code, ran.errors
+    );
+    assert!(
+        !hearing.recv_timeout(BRIEFLY).unwrap_or(false),
+        "the oversized request was written to the window anyway, so the refusal describes a send \
+         that did in fact go out"
+    );
+}
+
+/// A watch whose window goes away mid-stream is a window that is not there any more.
+///
+/// Not 4. Watching changes nothing, so there is nothing on the window's side that could have
+/// happened twice, and the caller should run it again once a window is back - which is 3. What
+/// the watch had already said still reaches the caller first.
+#[test]
+fn a_watch_whose_window_hangs_up_exits_as_no_window() {
+    let socket = socket_at("watch-hangs-up");
+    let listener = UnixListener::bind(&socket).expect("a scratch socket path is free");
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
+            let _ = read_frame(&mut stream, LARGEST_MESSAGE);
+            let said = Response {
+                payload: Some(response::Payload::PaneState(PaneStateChanged {
+                    daemon_id: "local".to_string(),
+                    pane_id: "p1w3r07bsd".to_string(),
+                    state: "working".to_string(),
+                    since_ms: 1_757_700_000_000,
+                })),
+            };
+            let _ = write_frame(&mut stream, &said.encode_to_vec());
+            // Dropped here, which is what the connection of a window that quit looks like.
+        }
+    });
+
+    let ran = ran(&["--socket", &socket.to_string_lossy(), "window", "--watch"]);
+
+    assert_eq!(
+        ran.code, 3,
+        "a watch whose window hung up exits {}. It changed nothing, so the caller should be told \
+         it may simply run it again.\n{}",
+        ran.code, ran.errors
+    );
+    assert!(
+        ran.out.contains("p1w3r07bsd") && ran.out.contains("working"),
+        "what the watch said before the window went away never reached the caller: {:?}",
+        ran.out
+    );
+}
+
+/// A wait that runs out says so with a code of its own.
+///
+/// A script waiting on an agent branches on this: the agent is still going, which is neither a
+/// refusal nor a missing window, and waiting again is harmless.
+#[test]
+fn a_wait_that_runs_out_exits_five() {
+    let socket = socket_at("wait-runs-out");
+    let listener = UnixListener::bind(&socket).expect("a scratch socket path is free");
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
+            let _ = read_frame(&mut stream, LARGEST_MESSAGE);
+            std::thread::sleep(UNTIL_THE_TEST_IS_OVER);
+        }
+    });
+
+    let ran = ran(&[
+        "--socket",
+        &socket.to_string_lossy(),
+        "pane",
+        "wait",
+        "--pane",
+        "p1w3r07bsd",
+        "--until",
+        "idle",
+        "--timeout",
+        "1",
+    ]);
+
+    assert_eq!(
+        ran.code, 5,
+        "a wait that ran out exits {}, so a script cannot tell an agent still working from a \
+         window that refused or was never there.\n{}",
+        ran.code, ran.errors
+    );
+    assert!(
+        ran.errors.contains("p1w3r07bsd") && ran.errors.contains("idle"),
+        "a wait that ran out should say what it was waiting on: {}",
+        ran.errors
+    );
+}
+
+struct Ran {
+    code: i32,
+    out: String,
+    errors: String,
+}
+
+/// One run of the command in this process, with nothing on stdin and no environment.
+fn ran(argv: &[&str]) -> Ran {
+    let argv: Vec<String> = argv.iter().map(ToString::to_string).collect();
     let (mut out, mut errors) = (Vec::new(), Vec::new());
     let code = muster_cli::run(
         &argv,
@@ -132,26 +242,18 @@ fn a_request_no_window_would_read_is_refused_rather_than_sent() {
         &mut out,
         &mut errors,
     );
-
-    assert_eq!(
+    Ran {
         code,
-        1,
-        "a send no window can read exits {code} rather than as refused. Anything but 1 tells a \
-         caller the request may have landed, and it cannot have.\n{}",
-        String::from_utf8_lossy(&errors)
-    );
-    assert!(
-        !hearing.recv_timeout(BRIEFLY).unwrap_or(false),
-        "the oversized request was written to the window anyway, so the refusal describes a send \
-         that did in fact go out"
-    );
+        out: String::from_utf8_lossy(&out).into_owned(),
+        errors: String::from_utf8_lossy(&errors).into_owned(),
+    }
 }
 
 /// Asks a window what it is showing, which is the smallest request there is.
 ///
 /// Which request hardly matters: what a failure means is decided by how far the exchange got,
 /// not by what was being asked for.
-fn asked(socket: &Path) -> Result<muster_proto::Response, muster_cli::Trouble> {
+fn asked(socket: &Path) -> Result<Response, muster_cli::Trouble> {
     let request = Request { payload: Some(request::Payload::ReadWindow(ReadWindow {})) };
     dial::ask_within(&request, Some(&socket.to_string_lossy()), &BTreeMap::new(), BRIEFLY)
 }

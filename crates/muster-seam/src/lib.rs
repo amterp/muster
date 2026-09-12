@@ -22,6 +22,7 @@ mod handler;
 mod session;
 mod shared_names;
 pub mod testing;
+mod watch;
 mod watchdog;
 
 /// Muster's vocabulary, under the name the rest of this crate has always called it.

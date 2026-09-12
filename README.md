@@ -62,15 +62,16 @@ tab the way tabs switch everywhere else, and one tab can hold both at once - dra
 row onto a laptop tab's caption and they sit side by side. You install nothing over there: Muster
 copies across the session daemon it was tested against, checked against a pinned checksum.
 
-**A CLI that drives the window.** `muster` reports what every agent is doing, reads back what any
-pane has printed, makes panes and tabs, moves and resizes them, names them, types into them, moves
-the keyboard and zooms. Every pane Muster opens can reach it, and it talks to the window that pane
-is drawn in - the address is in the pane's environment, so nothing has to be told which window it
-belongs to.
+**A CLI that drives the window.** `muster` reports what every agent is doing, waits for one to
+finish, reads back what any pane has printed, makes panes and tabs, moves and resizes them, names
+them, types into them, moves the keyboard and zooms. Every pane Muster opens can reach it, and it
+talks to the window that pane is drawn in - the address is in the pane's environment, so nothing
+has to be told which window it belongs to.
 
     muster window
     muster pane new --down --run claude --name "🤖 reviewer"
     muster pane send --pane p1w3r07bsd "read AGENTS.md and wait" --enter
+    muster pane wait --pane p1w3r07bsd --until idle,blocked
     muster pane read --pane p1w3r07bsd
     muster pane move --pane p1w3r0ab2n --onto p1w3r07bsd
 

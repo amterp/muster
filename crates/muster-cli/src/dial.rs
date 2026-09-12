@@ -1,13 +1,13 @@
 //! Finding a window, and asking it one thing.
 //!
 //! One request per connection, which is the whole of the protocol: this dials, writes a frame,
-//! reads a frame, and hangs up. Nothing here retries. A request that made a pane and then failed
-//! to be read back would otherwise be sent twice, and a caller cannot tell the two cases apart
-//! from out here.
+//! reads a frame, and hangs up - or, for a watch, reads frames until the window stops sending
+//! them. Nothing here retries. A request that made a pane and then failed to be read back would
+//! otherwise be sent twice, and a caller cannot tell the two cases apart from out here.
 
 use std::collections::BTreeMap;
 use std::os::unix::net::UnixStream;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use muster_proto::frame::{LARGEST_MESSAGE, read_frame, write_frame};
 use muster_proto::{Request, Response};
@@ -45,6 +45,75 @@ pub fn ask_within(
 ) -> Result<Response, Trouble> {
     let (path, stream) = reach(socket, environment)?;
     exchange(&path, stream, request, patience)
+}
+
+/// A watch that has been sent, and the answers still to come on its connection.
+#[derive(Debug)]
+pub struct Answers {
+    path: String,
+    stream: UnixStream,
+}
+
+/// Why a watch's answers stopped without one that ends it.
+#[derive(Debug)]
+pub enum Ended {
+    /// The window closed the connection without saying the watch was over, which is a window
+    /// quitting.
+    HungUp(String),
+    /// The caller's own deadline came first.
+    TimedOut,
+}
+
+/// Sends a request that is answered with a stream, and hands back the connection to read it from.
+///
+/// Found the way [`ask`] finds a window, and refused the same ways before anything is written.
+pub fn follow(
+    request: &Request,
+    socket: Option<&str>,
+    environment: &BTreeMap<String, String>,
+) -> Result<Answers, Trouble> {
+    let (path, mut stream) = reach(socket, environment)?;
+    let _ = stream.set_write_timeout(Some(PATIENCE));
+    write_frame(&mut stream, &request.encode_to_vec()).map_err(|error| {
+        Trouble::Unreachable(format!(
+            "the window at {path} accepted a connection and then would not take the watch \
+             ({error}). Either it is shutting down, or something else is listening on that path."
+        ))
+    })?;
+    Ok(Answers { path, stream })
+}
+
+impl Answers {
+    /// The next answer, waiting until `deadline` for it, or forever with none.
+    pub fn next(&mut self, deadline: Option<Instant>) -> Result<Response, Ended> {
+        // A zero timeout is refused by the socket, so a deadline already past waits a
+        // millisecond - which is also what lets an answer already in the buffer through.
+        let wait = deadline.map(|deadline| {
+            deadline.saturating_duration_since(Instant::now()).max(Duration::from_millis(1))
+        });
+        let _ = self.stream.set_read_timeout(wait);
+        let path = &self.path;
+        let bytes = read_frame(&mut self.stream, LARGEST_MESSAGE).map_err(|detail| {
+            // The error's own kind is lost in the framing's string, and a deadline that has
+            // passed is the one read failure a caller asked for.
+            if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+                Ended::TimedOut
+            } else {
+                Ended::HungUp(format!(
+                    "the window at {path} hung up in the middle of the watch ({detail}), which \
+                     is what a window that quits does. Watching changed nothing, so run it again \
+                     once a window is back."
+                ))
+            }
+        })?;
+        Response::decode(bytes.as_slice()).map_err(|error| {
+            Ended::HungUp(format!(
+                "the window at {path} sent something this muster cannot read ({error}), so the \
+                 two were built from different schemas. Reach the running app's own copy at \
+                 ~/.muster/bin/muster."
+            ))
+        })
+    }
 }
 
 /// Every window listening on this machine, and what each one answers.

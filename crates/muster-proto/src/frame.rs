@@ -1,8 +1,9 @@
 //! How a message is carried over a socket, in the one place both ends read it from.
 //!
-//! A four-byte big-endian length, then that many bytes of protobuf. One request and one answer
-//! per connection, so nothing here needs a message type or a sequence number - which end is
-//! talking is decided by who dialed.
+//! A four-byte big-endian length, then that many bytes of protobuf. One request per connection,
+//! answered once - or, for a `WatchPanes`, answered frame after frame until one end hangs up - so
+//! nothing here needs a message type or a sequence number: which end is talking is decided by who
+//! dialed.
 //!
 //! In this crate rather than beside the endpoint because the two ends are separate programs.
 //! The CLI is built from this repo but runs as whatever version somebody has on their PATH, so

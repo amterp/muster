@@ -56,6 +56,25 @@ pub fn answer(response: &Response, json: bool) -> Result<String, Trouble> {
         Some(response::Payload::Daemons(daemons)) => {
             Ok(if json { daemons_json(daemons).to_string() } else { daemons_text(daemons) })
         }
+        // One line each, because a watch is read a line at a time as it arrives. The pane's name
+        // first, so `grep --line-buffered p1w3r07bsd` is a filter.
+        Some(response::Payload::PaneState(agent)) => Ok(if json {
+            json!({
+                "pane": agent.pane_id,
+                "daemon": agent.daemon_id,
+                "state": agent.state,
+                "since": since_json(agent.since_ms),
+            })
+            .to_string()
+        } else {
+            format!("{}  {}", agent.pane_id, styled(&agent.state, agent_style(&agent.state)))
+        }),
+        Some(response::Payload::PaneClosed(closed)) => Ok(if json {
+            json!({ "pane": closed.pane_id, "daemon": closed.daemon_id, "closed": true })
+                .to_string()
+        } else {
+            format!("{}  {}", closed.pane_id, styled("closed", QUIET))
+        }),
         Some(other) => Err(Trouble::Refused(format!(
             "the window answered with {}, which nothing here asked for. That is a bug in muster \
              rather than anything to do with the request.",
@@ -84,6 +103,8 @@ fn named(payload: &response::Payload) -> &'static str {
         response::Payload::PaneText(_) => "a pane's text",
         response::Payload::PaneViewport(_) => "where a pane is looking",
         response::Payload::Daemons(_) => "a list of daemons",
+        response::Payload::PaneState(_) => "a pane's state",
+        response::Payload::PaneClosed(_) => "a closed pane",
     }
 }
 

@@ -153,6 +153,28 @@ anybody's machine. What it names is a slot rather than a pixel, so repainting `[
 does move what you see here - that is your terminal's own vocabulary, which every program in it
 shares.
 
+## Watching instead of reading
+
+`muster window --watch` keeps answering. It prints a line for every pane as it stands, then a line
+each time a pane's agent changes state or a pane closes, and runs until it is stopped:
+
+    p1w3r07bsd  unknown
+    p1w3r0ab2n  working
+    p1w3r0ab2n  blocked
+    p1w3r0cd4x  closed
+
+Pane name first, so `grep --line-buffered p1w3r0ab2n` follows one agent. Every pane is watched,
+including panes made after the watch began. A line is printed when a pane's state or its `since`
+changes, so an agent reporting the state it is already in prints nothing.
+
+Under `--json` each line is an object: `{"pane", "daemon", "state", "since"}` for a state, with
+`since` as in `panes[]`, and `{"pane", "daemon", "closed": true}` for a pane that went.
+
+The watch holds one connection to one window, so outside a pane with several windows open it
+refuses until `--socket` names one. It ends with exit 3 if the window quits under it.
+`muster pane wait` is the same watch narrowed to named panes and ended by a state; `muster docs
+agents` has both.
+
 ## daemons[]
 
 One entry per machine this window is attached to.

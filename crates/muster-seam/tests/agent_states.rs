@@ -5,14 +5,15 @@
 //! poll (kan a_2M9T8O6dL). These tests are against a real daemon, which is where agent states
 //! come from, and they drive states through herdr's own `pane.report_agent`.
 
+use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use herdr_harness::{Daemon, until_some};
+use herdr_harness::{Daemon, PATIENCE, until, until_some};
 use muster::proto::frame::{LARGEST_MESSAGE, read_frame, write_frame};
 use muster::proto::{
-    OpenWindow, PaneStateChanged, ReadWindow, Request, Response, Startup, Window, WindowFocus,
-    request, response,
+    ClosePane, OpenWindow, PaneStateChanged, ReadWindow, Request, Response, SplitPane, Startup,
+    WatchPanes, Window, WindowFocus, request, response,
 };
 use prost::Message;
 use serde_json::{Value, json};
@@ -66,6 +67,193 @@ fn a_pane_says_since_when_its_agent_has_been_doing_it() {
     );
 }
 
+/// A watch starts from every pane as it stands, then hears each change once, in order.
+///
+/// The shape an integrator waiting on several workers wants: one connection, and a line for every
+/// agent that starts, stops, or goes. Asserted frame by frame, so a change sent twice or a state
+/// skipped fails here rather than reading as a slow agent.
+#[test]
+fn a_watch_starts_from_every_pane_and_hears_each_change() {
+    let _turn = muster::testing::fresh_session();
+    let open = a_window_onto_one_pane();
+    let mut watch = watching(&open.socket, WatchPanes::default());
+
+    let first = state_frame(&mut watch);
+    assert_eq!(
+        (first.pane_id.as_str(), first.since_ms > 0),
+        (open.pane.as_str(), true),
+        "a watch has to begin with every pane as it stands, time included - otherwise a caller \
+         starting one cannot tell what it is waiting on: {first:?}"
+    );
+
+    open.report("working");
+    let working = state_frame(&mut watch);
+    assert_eq!(
+        working.state, "working",
+        "the first change heard was not the one made: {working:?}"
+    );
+    assert_eq!(
+        working.since_ms,
+        agent(&open.socket, &open.pane).since_ms,
+        "the watch and a read disagree about when the agent started, so they are two accounts of \
+         one pane"
+    );
+
+    open.report("idle");
+    let finished = state_frame(&mut watch);
+    assert_eq!(
+        finished.state, "done",
+        "after `working`, the next thing a watch says has to be the finish - anything else is a \
+         change heard twice or one the caller never made: {finished:?}"
+    );
+
+    assert_ok(&dispatch(request::Payload::WindowFocus(WindowFocus { focused: true })));
+    let seen = state_frame(&mut watch);
+    assert_eq!(
+        (seen.state.as_str(), seen.since_ms),
+        ("idle", finished.since_ms),
+        "somebody looking at a finished pane is a change a watch should hear, and it does not \
+         restart the agent's clock: {seen:?}"
+    );
+
+    let made = split(&open);
+    let appeared = state_frame(&mut watch);
+    assert_eq!(appeared.pane_id, made, "a pane made after the watch began went unannounced");
+    assert_ok(&dialed(
+        &open.socket,
+        request::Payload::ClosePane(ClosePane { pane_id: made.clone(), ..ClosePane::default() }),
+    ));
+    match frame(&mut watch).payload {
+        Some(response::Payload::PaneClosed(closed)) if closed.pane_id == made => {}
+        other => panic!(
+            "a watched pane that closes has to be said to have closed, or a caller waiting on it \
+             waits on nothing. Got {other:?}"
+        ),
+    }
+}
+
+/// A wait is a condition: a pane already there answers at once, and otherwise the first change
+/// that gets there does - and nothing short of it is sent.
+#[test]
+fn a_wait_ends_when_a_pane_gets_where_it_was_asked_to() {
+    let _turn = muster::testing::fresh_session();
+    let open = a_window_onto_one_pane();
+
+    let now = agent(&open.socket, &open.pane);
+    let mut already = watching(
+        &open.socket,
+        WatchPanes { pane_ids: vec![open.pane.clone()], until: vec![now.state.clone()] },
+    );
+    assert_eq!(
+        state_frame(&mut already).state,
+        now.state,
+        "a pane already in the state asked for has to answer at once, or a caller that asked a \
+         moment too late waits past something that already happened"
+    );
+    assert_ended(&mut already);
+
+    open.report("working");
+    until_state(&open, "working");
+    let mut finish = watching(
+        &open.socket,
+        WatchPanes { pane_ids: vec![open.pane.clone()], until: vec!["idle".to_string()] },
+    );
+    // Registered before the agent moves, so what answers is the change and not a later picture.
+    until(
+        "the window to hold the wait open",
+        || muster::testing::watchers() == 1,
+        || format!("{} watches are open", muster::testing::watchers()),
+    );
+    open.report("blocked");
+    open.report("idle");
+    let finished = state_frame(&mut finish);
+    assert_eq!(
+        finished.state, "done",
+        "a wait for `idle` answered with {finished:?}. Blocked is not finished and must not be \
+         sent, and `done` is an idle nobody has looked at - so this window, unfocused, owes `done`"
+    );
+    assert_ended(&mut finish);
+}
+
+/// A wait on a pane that closes is refused, rather than left waiting on something that is gone.
+#[test]
+fn a_wait_on_a_pane_that_closes_is_refused() {
+    let _turn = muster::testing::fresh_session();
+    let open = a_window_onto_one_pane();
+    // Straight after the split, the way `P=$(muster pane new); muster pane wait --pane "$P"`
+    // runs: the split answers with the name before the window's mirror has heard of the pane.
+    let made = split(&open);
+
+    // Blocked, because a plain shell never is, so nothing but the close can end this.
+    let mut waiting = watching(
+        &open.socket,
+        WatchPanes { pane_ids: vec![made.clone()], until: vec!["blocked".to_string()] },
+    );
+    until(
+        "the window to hold the wait open",
+        || muster::testing::watchers() == 1,
+        || format!("{} watches are open", muster::testing::watchers()),
+    );
+    assert_ok(&dialed(
+        &open.socket,
+        request::Payload::ClosePane(ClosePane { pane_id: made.clone(), ..ClosePane::default() }),
+    ));
+    match frame(&mut waiting).payload {
+        Some(response::Payload::Failure(failure)) if failure.reason.contains(&made) => {}
+        other => panic!(
+            "a wait on a pane that closed has to be refused, naming the pane, so a caller does not \
+             sit out its whole timeout on nothing. Got {other:?}"
+        ),
+    }
+}
+
+/// A watch that could never answer is refused before anything is watched.
+#[test]
+fn a_watch_on_nothing_real_is_refused() {
+    let _turn = muster::testing::fresh_session();
+    let open = a_window_onto_one_pane();
+
+    let refusals = [
+        (WatchPanes { pane_ids: vec!["p1nobody00".to_string()], until: vec![] }, "p1nobody00"),
+        (WatchPanes { pane_ids: vec![open.pane.clone()], until: vec!["idel".to_string()] }, "idel"),
+    ];
+    for (asked, named) in refusals {
+        let mut refused = watching(&open.socket, asked);
+        match frame(&mut refused).payload {
+            Some(response::Payload::Failure(failure)) if failure.reason.contains(named) => {}
+            other => panic!(
+                "a watch naming {named:?} can never be answered and has to be refused, naming it. \
+                 A typo in a state would otherwise wait for a shell. Got {other:?}"
+            ),
+        }
+    }
+
+    // Through the C ABI there is one answer to give, so a watch is refused there too.
+    let through_the_shell = dispatch(request::Payload::WatchPanes(WatchPanes::default()));
+    assert!(
+        matches!(through_the_shell.payload, Some(response::Payload::Failure(_))),
+        "a dispatched watch answered as though something were being watched: {through_the_shell:?}"
+    );
+}
+
+/// A caller that hangs up is let go, rather than holding a thread until its pane next changes.
+#[test]
+fn a_caller_that_hangs_up_is_let_go() {
+    let _turn = muster::testing::fresh_session();
+    let open = a_window_onto_one_pane();
+
+    let mut watch = watching(&open.socket, WatchPanes::default());
+    state_frame(&mut watch);
+    assert_eq!(muster::testing::watchers(), 1, "a watch that is answering is not registered");
+
+    drop(watch);
+    until(
+        "the window to let go of a watch whose caller hung up",
+        || muster::testing::watchers() == 0,
+        || format!("{} watches are still open", muster::testing::watchers()),
+    );
+}
+
 /// One window, showing one pane, whose herdr and Muster names are both known.
 struct Open {
     daemon: Daemon,
@@ -115,6 +303,64 @@ fn a_window_onto_one_pane() -> Open {
     Open { daemon, socket, pane, backend }
 }
 
+/// Opens a watch, and hands back the connection its answers arrive on.
+fn watching(socket: &std::path::Path, asked: WatchPanes) -> UnixStream {
+    let mut stream = UnixStream::connect(socket)
+        .unwrap_or_else(|error| panic!("nothing is listening on {}: {error}", socket.display()));
+    // The harness's own deadline, because every frame here is waiting on a condition the test
+    // has already made true.
+    stream.set_read_timeout(Some(PATIENCE)).expect("a unix socket takes a read timeout");
+    write_frame(
+        &mut stream,
+        &Request { payload: Some(request::Payload::WatchPanes(asked)) }.encode_to_vec(),
+    )
+    .expect("the endpoint takes a watch");
+    stream
+}
+
+fn frame(stream: &mut UnixStream) -> Response {
+    let bytes = read_frame(stream, LARGEST_MESSAGE)
+        .unwrap_or_else(|detail| panic!("the watch sent nothing more: {detail}"));
+    Response::decode(bytes.as_slice()).expect("a watch answers with responses this build knows")
+}
+
+fn state_frame(stream: &mut UnixStream) -> PaneStateChanged {
+    match frame(stream).payload {
+        Some(response::Payload::PaneState(state)) => state,
+        other => panic!("a watch sent {other:?} where a pane's state was due"),
+    }
+}
+
+/// The watch said it is finished, and then hung up.
+fn assert_ended(stream: &mut UnixStream) {
+    let last = frame(stream);
+    assert!(
+        matches!(last.payload, Some(response::Payload::Ok(_))),
+        "a wait that got what it asked for has to say so and stop, and sent {last:?}"
+    );
+    assert!(
+        read_frame(stream, LARGEST_MESSAGE).is_err(),
+        "a wait kept its connection open after its last answer"
+    );
+}
+
+/// Splits the pane, and hands back what Muster calls the one that appears.
+fn split(open: &Open) -> String {
+    match dialed(
+        &open.socket,
+        request::Payload::SplitPane(SplitPane {
+            pane_id: open.pane.clone(),
+            side: "down".to_string(),
+            ..SplitPane::default()
+        }),
+    )
+    .payload
+    {
+        Some(response::Payload::Made(made)) => made.pane_id,
+        other => panic!("a split answered with {other:?} rather than the pane it made"),
+    }
+}
+
 /// What the window says one pane's agent is doing, asked over the socket a CLI dials.
 fn agent(socket: &std::path::Path, pane: &str) -> PaneStateChanged {
     let window = read_window(socket);
@@ -141,7 +387,7 @@ fn read_window(socket: &std::path::Path) -> Window {
 
 /// One request over one connection, and its one answer.
 fn dialed(socket: &std::path::Path, payload: request::Payload) -> Response {
-    let mut stream = std::os::unix::net::UnixStream::connect(socket)
+    let mut stream = UnixStream::connect(socket)
         .unwrap_or_else(|error| panic!("nothing is listening on {}: {error}", socket.display()));
     write_frame(&mut stream, &Request { payload: Some(payload) }.encode_to_vec())
         .expect("the endpoint takes a request");

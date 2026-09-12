@@ -43,6 +43,17 @@ impl AgentState {
         }
     }
 
+    /// Whether a pane in this state has got where a caller waiting for `wanted` is waiting.
+    ///
+    /// The same state, or `Done` for a caller waiting on `Idle`. `done` is an idle nobody has
+    /// looked at, and which of the two a pane reads is a fact about where somebody's cursor was -
+    /// so a caller waiting for an agent to finish would otherwise wait forever on a window that
+    /// happened not to be looked at, or return early on one that was. The reverse does not hold:
+    /// a caller asking for `done` is asking about the unseen ones specifically.
+    pub fn counts_as(self, wanted: AgentState) -> bool {
+        self == wanted || (self == AgentState::Done && wanted == AgentState::Idle)
+    }
+
     pub fn as_str(self) -> &'static str {
         match self {
             AgentState::Working => "working",
