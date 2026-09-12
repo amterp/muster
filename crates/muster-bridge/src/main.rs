@@ -851,7 +851,7 @@ mod tests {
             "the notice should name the command that brings the pane back: {told}"
         );
         assert!(
-            !told.to_lowercase().contains("close this pane"),
+            !told.to_lowercase().contains("clos"),
             "closing the pane ends the agent, so nothing here may advise it: {told}"
         );
     }
