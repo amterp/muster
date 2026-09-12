@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "a-pane-whose-bridge-keeps",
+  "alias_explicit": false,
+  "area": [
+    "backend",
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1789255567977,
+  "creator": "Alexander Terp",
+  "description": "A pane whose bridge keeps ending probably raises its \"cannot be typed into\" error again after every ending, which would reopen a roster somebody closed once per ending. Read from the code, not seen in the app.\n\n`Waiting::ended` restarts the wait each time a bridge ends, so the error clears (`problem.cleared why=restarted`, logged since `c1fefa0`) and is raised again one deadline later. `corpus/conformance/typeable.json` pins this: \"a reported pane whose bridge ends is taken back and said again\". Each re-raise is a real change to `raise_problem`, and an Error-severity problem is what opens the roster.\n\nThis is not new behavior. The new `problem.raised` / `problem.cleared` records make it visible, which is how slot 1 of the 2026-09-12 round found it while fixing `a_2LMpvavhA`.\n\n## Validating\n\n- A pane whose bridge ends every few seconds: count `problem.raised` records for its key in the run log, and check whether the roster reopens after each one.\n- If it does, decide whether a re-raise of the same key and detail inside some window should be a change at all.",
+  "id": "a_2P5Y6Fy7L",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "title": "A pane whose bridge keeps ending may reopen the roster once per ending",
+  "type": "bug",
+  "updated_at_millis": 1789255567977,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1789255567977}
+  ]
+}

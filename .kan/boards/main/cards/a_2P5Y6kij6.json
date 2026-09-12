@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "the-bridge-names-a",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1789255568222,
+  "creator": "Alexander Terp",
+  "description": "The bridge still names a pane by the daemon's id in the text it prints into the pane: \"muster-bridge: pane w5:p1 closed: ...\" and \"could not attach to pane w5:p1\". Nobody can pass `w5:p1` to `muster`, which takes Muster's own pane names.\n\nSince `c140415` the app hands the bridge Muster's name as `--pane-name`, and the takeover text already uses it for `muster pane reattach --pane \u003cname\u003e`. The other lines in `crates/muster-bridge/src/main.rs` could use the same argument, falling back to the daemon id when it is absent (a bridge run by hand).\n\nMinor. Found by slot 1 of the 2026-09-12 round.",
+  "id": "a_2P5Y6kij6",
+  "position": "UUUUUUUUUUUUUUU",
+  "title": "The bridge names a pane by the daemon's id, which muster cannot take",
+  "type": "chore",
+  "updated_at_millis": 1789255568222,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1789255568222}
+  ]
+}

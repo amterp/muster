@@ -5,16 +5,17 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "created_at_millis": 1788729585415,
   "creator": "Alexander Terp",
   "description": "`Painting::showing` (crates/muster-core/src/painting.rs:134) drops a pane from `asked` the moment it leaves the screen, taking the pane's owed frame back with it (see the docstring right there). The next `reconcile()` then reports a `clear` for that pane's `pane:\u003ckey\u003e:painting` problem - the exact same `clear` a real incoming frame produces via `Painting::painted` (painting.rs:121). Nothing in `Reported::clear` (painting.rs:55), and nothing in the `problems.received` log line (Sources/MusterMac/Core.swift:1101, which only ever counts problems, never names them), says which of the two happened. `raise_problem`/`clear_problem` (crates/muster-seam/src/session.rs:373-395) log nothing at all.\n\nSo a pane whose bridge is genuinely wedged clears its warning the moment somebody looks away and back - switches tabs, unzooms, refocuses another pane - even though nothing painted. The warning gives no way to tell \"it recovered\" from \"I stopped watching it.\"\n\n## What was seen\n\nAlex saw the tooltip on local/p21hmsh5xb and, looking at the pane a couple of seconds later, saw nothing wrong. The run log backs up both halves of that:\n\n- The pane's bridge, `bridge:w6:p5T` (pid 34207), had produced a `bridge.frames` or `bridge.relay` line roughly once a second for the whole session - until 2026-09-06T21:06:51.770Z, when it went completely silent. No frame, no relay byte, no `bridge.ended`/`channel.bridge.gone` either - nothing at all until 21:10:08.203Z, 3m17s later, on the very same connection.\n- herdr's own server log shows nothing wrong in that window: it kept answering focus/tab requests for other panes the whole time, so this was not a daemon-wide stall - it was isolated to this one pane's bridge.\n- The app's `problems.received` count went 0 to 1 to 0 at 21:06:53.4Z and 21:06:58.6Z - a 5s blip, nowhere near covering the real 3m17s gap - right as several `FocusPane`/`ZoomPane`/tab-switch intents landed on this same pane.\n\nThat 5s blip matches the gap in the code above: the warning raised, the pane then left the screen, and the clear fired without the bridge ever painting again - it stayed wedged for three more minutes with nobody told.\n\n## Why it is worth a card\n\nThe design already accepts that this watch can raise about a pane that turns out to be fine - watchdog.rs:274-278 calls that out explicitly, which is why it is `Severity::Warning` rather than `Error`. That is the right call for the case it was written for: echo turned off, a password prompt, where the clear is real because a frame did eventually arrive. This is a different failure: the clear can be fake, and there is currently no way, not in the UI and not in the run log, to tell the two apart without doing what this investigation did - cross-referencing raw bridge byte counts against herdr's own log by hand. Someone wondering \"did my agent actually come back, or did I just stop looking\" cannot get that answer from Muster itself.\n\n## A shape for the fix\n\n`Reported::clear` could say why: distinguish \"painted\" from \"left the screen\" (there is a third silent path through the same `counts()` filter too - the daemon going away). At minimum, logging every raise and clear with its key and reason would turn this from something that needs cross-machine log correlation into something diagnosable from the run log alone.",
   "id": "a_2LWqtPd8E",
-  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "position": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!0",
   "title": "A cleared painting-stopped warning doesn't mean the pane painted",
   "type": "bug",
-  "updated_at_millis": 1788729585415,
+  "updated_at_millis": 1789255535398,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1788729585415}
+    {"field":"column","value":"backlog-hi","at":1788729585415},
+    {"field":"column","value":"done","at":1789255535398}
   ]
 }
