@@ -202,9 +202,9 @@ fn start(
 ///
 /// Which shell is over there decides whether it happens. bash forks; dash execs the last
 /// command of a backgrounded list, so the subshell is replaced by the redirected process and
-/// the pipes close. The devenv container's `/bin/sh` is dash, which is why the daemon-backed
-/// remote tests cannot see this - `crates/muster-herdr/tests/remote_start_script.rs` runs the
-/// script under bash instead.
+/// the pipes close. The devenv container's `/bin/sh` is dash, so an ordinary attach there cannot
+/// see this. `crates/muster-herdr/tests/remote_start_script.rs` runs the script under bash, and
+/// `devenv_forking_shell.rs` attaches with the container's `/bin/sh` pointed at bash.
 ///
 /// The brace group is what fixes it: `{ cmd & }` runs in the current shell, so the redirects
 /// land on the daemon and the shell ssh started exits as soon as it has forked one.

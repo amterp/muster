@@ -11,11 +11,11 @@
 //! is over there: bash forks, and dash execs the last command of a backgrounded list, which
 //! replaces the subshell with the redirected process and closes the pipes. `/bin/sh` is bash on
 //! macOS and dash on Debian, so reaching it through that name would make this test pass
-//! vacuously on the Linux runner. The devenv container's `/bin/sh` is dash, which is why the
-//! daemon-backed remote tier cannot see this at all.
+//! vacuously on the Linux runner. The devenv container's `/bin/sh` is dash, which is why
+//! `devenv.rs` cannot see this at all.
 //!
-//! What is not proven here is the attach end to end, which needs a remote whose `/bin/sh` forks
-//! and therefore `./dev --ssh` against an image built for it (kan a_2I5yedXos).
+//! The attach end to end is `devenv_forking_shell.rs`, which points the container's `/bin/sh` at
+//! bash for one test and runs under `./dev --ssh` (kan a_2I5yedXos).
 
 use std::io::Read;
 use std::os::unix::fs::PermissionsExt;

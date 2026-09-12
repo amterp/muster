@@ -391,6 +391,8 @@ SKIPPED_SUITES = [
       "note": "need the devenv container; ./dev --ssh runs them" },
     { "language": "Rust", "suite": "muster-herdr's devenv test", "skipped": 1,
       "note": "needs the devenv container; ./dev --ssh runs it" },
+    { "language": "Rust", "suite": "muster-herdr's forking-shell devenv test", "skipped": 1,
+      "note": "needs the devenv container; ./dev --ssh runs it" },
     { "language": "Rust", "suite": "fresh_session's doc example", "skipped": 1,
       "note": "an illustration in a doc comment rather than a test, so nothing runs it" },
     { "language": "Swift", "suite": "ClickRedriveTests", "skipped": 1,
@@ -489,7 +491,7 @@ fn run_ssh_tier():
         print_err(red("The remote tier discovered no tests."))
         print_err("An empty tier passes, so this is a failure rather than a green run.")
         print_err("Check that the #[ignore] tests in crates/muster-ssh/tests/ and")
-        print_err("crates/muster-herdr/tests/devenv.rs still exist.")
+        print_err("crates/muster-herdr/tests/devenv*.rs still exist.")
         exit(1)
     print(dim("{len(names)} remote test(s) discovered"))
 

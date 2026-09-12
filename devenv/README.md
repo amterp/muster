@@ -27,6 +27,11 @@ whatever was running in it, and locking out the worktree that started it until t
 cannot use the tier at once; whether each gets its own container or all share one key is
 open (kan a_2Ky2ptlug).
 
+`dev` has one sudo rule, and all it allows is pointing `/bin/sh` at bash and back at dash.
+Muster runs its remote scripts through `sh`, which is dash here and bash on a RHEL-family box,
+and whether a backgrounded daemon lets go of ssh depends on which. So
+`crates/muster-herdr/tests/devenv_forking_shell.rs` swaps it for one attach.
+
 ## One artifact, two jobs
 
 It stands in for the work devenv during development, and it is the fixture the remote
