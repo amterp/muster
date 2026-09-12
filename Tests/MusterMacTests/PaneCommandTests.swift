@@ -26,6 +26,20 @@ func absentSocketIsOmitted() {
   #expect(!command.contains("--control-socket"))
 }
 
+@Test("the bridge is told Muster's name for the pane beside the daemon's id")
+func bridgeKnowsThePaneName() {
+  // herdr is asked for `w5:p1`, and a person is told `muster pane reattach --pane p224xypzs3`.
+  // A bridge with only the daemon's id prints a command the CLI cannot match to any pane.
+  let command = PaneCommand.bridge(
+    executable: "/build/debug/muster", paneID: "w5:p1", controlSocketPath: "/tmp/s.sock",
+    paneName: "p224xypzs3")
+
+  #expect(
+    command
+      == "'/build/debug/muster-bridge' 'w5:p1' '--control-socket' '/tmp/s.sock' "
+      + "'--pane-name' 'p224xypzs3'")
+}
+
 @Test("a remote pane runs its frame stream through the master the core opened")
 func remotePaneRidesTheMaster() {
   // The one difference between a local pane and a devenv one, end to end. Reusing the

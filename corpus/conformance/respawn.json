@@ -211,7 +211,7 @@
     },
     {
       "name": "a pane that closed is forgotten",
-      "why": "A pane id belongs to one pane, but a window that gave up on one and then had it closed should not carry the refusal in a map for as long as it is open. Forgetting is also the way back: closing the pane and opening another is what the roster tells somebody to do.",
+      "why": "A pane id belongs to one pane, but a window that gave up on one and then had it closed should not carry the refusal in a map for as long as it is open.",
       "given": {
         "steps": [
           {

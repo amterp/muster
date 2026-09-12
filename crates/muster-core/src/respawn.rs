@@ -32,6 +32,7 @@
 use std::collections::BTreeMap;
 
 use crate::composition::PaneKey;
+use crate::mirror::backend::PaneId;
 
 /// How many replacements a pane gets before Muster stops and says so.
 ///
@@ -306,9 +307,8 @@ impl Respawns {
 ///
 /// Not a failure, and worded so nobody reads it as one: everything is working, the pane is
 /// being shown, and it is being shown somewhere else. What it has to carry is the way back,
-/// because there is one and it is not obvious - closing the pane here and opening it again
-/// starts a bridge that does take the terminal, which is the same action that recovers every
-/// other stuck pane.
+/// because there is one and it is not obvious - a bridge asked for after the first takes the
+/// terminal, the same way the other window's did.
 pub fn yielded(pane: &PaneKey) -> String {
     format!(
         "Another client attached to the pane {pane} and took its terminal, so this window has \
@@ -318,7 +318,7 @@ pub fn yielded(pane: &PaneKey) -> String {
          unaffected. Whichever window is showing it now is the one to type into. To bring it \
          back here instead, run {} - that asks for a bridge, and a bridge after the first takes \
          the terminal the way the other window's did.",
-        reattach_command(pane),
+        reattach_command(&pane.pane),
     )
 }
 
@@ -345,7 +345,7 @@ pub fn gave_up(pane: &PaneKey, tried: u32, backend_pane: &str) -> String {
          running in it.",
         SETTLED_NS / 1_000_000_000,
         release_command(backend_pane),
-        reattach_command(pane),
+        reattach_command(&pane.pane),
     )
 }
 
@@ -377,6 +377,10 @@ pub fn release_command(backend_pane: &str) -> String {
 /// Muster's name for the pane, which is the opposite of [`release_command`] and for the same
 /// reason: this one is read by the CLI, which speaks Muster's vocabulary, and that one is
 /// matched against a herdr process, which does not.
-pub fn reattach_command(pane: &PaneKey) -> String {
-    format!("`muster pane reattach --pane {}`", pane.pane)
+///
+/// The name alone rather than a whole key, because the CLI finds a pane by name on every
+/// machine a window shows - and because the bridge prints this too, and a bridge is told
+/// which pane it is but not which daemon Muster calls the machine it runs on.
+pub fn reattach_command(pane: &PaneId) -> String {
+    format!("`muster pane reattach --pane {pane}`")
 }

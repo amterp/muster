@@ -15,6 +15,10 @@ public enum PaneCommand {
   /// - Parameter controlSocketPath: where the bridge should dial back to reach the app.
   ///   Absent means the pane renders but cannot be typed into, which is a real state - the
   ///   app may have failed to bind - and not one to paper over.
+  /// - Parameter paneName: what Muster calls the pane, where `paneID` is the daemon's id for it.
+  ///   The bridge only prints it, in the one sentence that tells a person which `muster` command
+  ///   brings a displaced pane back - and the CLI takes Muster's name, so a command built from
+  ///   the daemon's id matches nothing.
   /// - Parameter sshHost: the machine this pane lives on, when it is not this one, and
   ///   `sshControlPath` the master the core already opened for that daemon. Both come from
   ///   the view rather than being worked out here: they name a connection the core owns.
@@ -36,7 +40,7 @@ public enum PaneCommand {
   ///   never takes over: the terminal it would take could be one another window is showing.
   public static func bridge(
     executable: String, paneID: String, controlSocketPath: String?,
-    herdrSocketPath: String? = nil, herdrBinaryPath: String? = nil,
+    paneName: String? = nil, herdrSocketPath: String? = nil, herdrBinaryPath: String? = nil,
     sshHost: String? = nil, sshControlPath: String? = nil,
     reattaching: Bool = false
   ) -> String {
@@ -48,6 +52,9 @@ public enum PaneCommand {
     var arguments = [bridge, paneID]
     if let controlSocketPath {
       arguments += ["--control-socket", controlSocketPath]
+    }
+    if let paneName, !paneName.isEmpty {
+      arguments += ["--pane-name", paneName]
     }
     if let herdrSocketPath, !herdrSocketPath.isEmpty {
       arguments += ["--herdr-socket", herdrSocketPath]

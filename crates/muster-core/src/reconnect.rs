@@ -15,11 +15,11 @@
 //! say what confirmation means; this module only requires that it be told.
 //!
 //! **It reports and keeps trying rather than giving up.** A bridge that gives up costs one
-//! pane, and its remedy is to close that pane and open it again. A tunnel that gave up costs
-//! every pane on that machine and its remedy is to relaunch the app, which is the failure the
-//! whole recovery story exists to prevent - a laptop that comes back from lunch should find
-//! its window working. So the ceiling is a long interval rather than a stop, and what happens
-//! at the point a bridge would give up is that somebody is told.
+//! pane, and its remedy is `muster pane reattach`, which asks for another. A tunnel that gave
+//! up costs every pane on that machine and its remedy is to relaunch the app, which is the
+//! failure the whole recovery story exists to prevent - a laptop that comes back from lunch
+//! should find its window working. So the ceiling is a long interval rather than a stop, and
+//! what happens at the point a bridge would give up is that somebody is told.
 //!
 //! Pure - no clock, no processes, no sockets. Time arrives as a number, so every rule here is
 //! driven by a recorded case.

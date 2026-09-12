@@ -19,7 +19,8 @@ use std::sync::{Arc, Mutex};
 use muster_core::diagnostics::log::{self, LogLevel};
 use muster_core::diagnostics::poison;
 use muster_core::fields;
-use muster_core::respawn::Ending;
+use muster_core::mirror::backend::PaneId;
+use muster_core::respawn::{self, Ending};
 use muster_herdr::bridge_report::{self, Exiting, PAINTED_INTERVAL_NS, Painted};
 use muster_herdr::{ControlStreamMessage, FrameDecoder, PaneStreamEvent};
 use muster_ssh::quoted;
@@ -27,7 +28,7 @@ use muster_ssh::quoted;
 const USAGE: &str = "\
 usage: muster-bridge <pane-id> [--control-socket <path>] [--herdr-socket <path>]
                      [--herdr-binary <path>] [--via-ssh <host> --ssh-control <path>]
-                     [--takeover]
+                     [--takeover] [--pane-name <name>]
 
 Runs `herdr terminal session control <pane-id>` and unwraps its frames onto stdout.
 Sized from the PTY on stdout, which is the surface's own geometry.
@@ -53,7 +54,11 @@ whatever is on PATH.
 With --takeover, takes the terminal from whatever client is already attached to it. Only
 one client may hold a herdr terminal, and one whose transport died goes on holding it -
 so a pane whose connection was lost cannot be re-attached without this. The app sends it
-only when re-attaching a pane it was already showing, never on a first attach.";
+only when re-attaching a pane it was already showing, never on a first attach.
+
+With --pane-name, knows what Muster calls this pane, which is not <pane-id>: that is the
+daemon's id. Only used in what this prints for a person, whose `muster` commands take
+Muster's name.";
 
 /// herdr's stdin, which two threads write to: the resize watcher and the app's relay.
 type HerdrInput = Arc<Mutex<ChildStdin>>;
@@ -156,7 +161,7 @@ fn main() {
     });
 
     pty::make_stdin_raw();
-    pump_frames(output, &arguments.pane, app.as_ref());
+    pump_frames(output, &arguments.pane, arguments.pane_name.as_deref(), app.as_ref());
 }
 
 struct Arguments {
@@ -192,6 +197,13 @@ struct Arguments {
     /// now. The app sends this only when replacing a bridge it had for this pane before
     /// (`crates/muster-core/src/respawn.rs`).
     takeover: bool,
+
+    /// What Muster calls this pane, when the app said.
+    ///
+    /// Not `pane`, which is the daemon's id and is what herdr is asked for. A sentence telling a
+    /// person which `muster` command to run needs this one instead, because the CLI speaks
+    /// Muster's names and a command carrying the daemon's matches nothing (kan a_2KIPfvt7L).
+    pane_name: Option<String>,
 }
 
 /// The machine a pane lives on, when it is not this one.
@@ -218,6 +230,7 @@ impl Arguments {
             herdr_binary: None,
             ssh: None,
             takeover: false,
+            pane_name: None,
         };
         let (mut host, mut control_path) = (None, None);
         while let Some(flag) = read.next() {
@@ -233,6 +246,7 @@ impl Arguments {
                 "--herdr-binary" => parsed.herdr_binary = Some(value),
                 "--via-ssh" => host = Some(value),
                 "--ssh-control" => control_path = Some(value),
+                "--pane-name" => parsed.pane_name = Some(value),
                 _ => return None,
             }
         }
@@ -460,7 +474,12 @@ fn relay(socket: UnixStream, input: &HerdrInput) {
 }
 
 /// Pumps decoded frames to the surface, until the stream ends.
-fn pump_frames(mut output: impl Read, pane: &str, app: Option<&Reporting>) -> ! {
+fn pump_frames(
+    mut output: impl Read,
+    pane: &str,
+    pane_name: Option<&str>,
+    app: Option<&Reporting>,
+) -> ! {
     let mut decoder = FrameDecoder::new();
     let mut pump = Pump::default();
     // Heap rather than stack: a repaint is routinely tens of kilobytes, and this thread
@@ -474,7 +493,8 @@ fn pump_frames(mut output: impl Read, pane: &str, app: Option<&Reporting>) -> ! 
                 // for. Same exit either way - it is what tells libghostty this pane's
                 // command is gone - but it goes through the same reporting so the window
                 // never just stops.
-                pump.finish(pane, Some("herdr's stream ended without a closing frame"), app);
+                let why = Some("herdr's stream ended without a closing frame");
+                pump.finish(pane, pane_name, why, app);
             }
             Ok(read) => read,
         };
@@ -482,7 +502,9 @@ fn pump_frames(mut output: impl Read, pane: &str, app: Option<&Reporting>) -> ! 
         for event in decoder.consume(&chunk[..read]) {
             match event {
                 PaneStreamEvent::Frame(frame) => pump.render(&frame.bytes, app),
-                PaneStreamEvent::Closed { reason } => pump.finish(pane, reason.as_deref(), app),
+                PaneStreamEvent::Closed { reason } => {
+                    pump.finish(pane, pane_name, reason.as_deref(), app);
+                }
             }
         }
     }
@@ -596,7 +618,13 @@ impl Pump {
     /// bridge is gone either way, from the socket closing behind this; what this adds is
     /// which of the several endings it was, which is what decides whether another bridge is
     /// worth starting.
-    fn finish(&self, pane: &str, reason: Option<&str>, app: Option<&Reporting>) -> ! {
+    fn finish(
+        &self,
+        pane: &str,
+        pane_name: Option<&str>,
+        reason: Option<&str>,
+        app: Option<&Reporting>,
+    ) -> ! {
         let why = reason.unwrap_or("herdr gave no reason");
         let ending = bridge_report::ending(reason);
         log::info(
@@ -616,7 +644,7 @@ impl Pump {
         // mistyped pane id for a terminal that went somewhere is the kind of accurate,
         // useless message this whole path is being fixed to stop producing.
         if ending == Ending::TakenOver {
-            eprintln!("{}", taken_over(pane, None));
+            eprintln!("{}", taken_over(pane_name));
             std::process::exit(0);
         }
 
@@ -683,12 +711,22 @@ impl Pump {
 
 /// What a pane displaced by another client says, printed across the pane it can no longer draw.
 ///
-/// `pane` is the daemon's id for the pane and `pane_name` is Muster's, when the app said it.
-fn taken_over(pane: &str, _pane_name: Option<&str>) -> String {
+/// The first thing somebody reads when a pane goes dark, and the one they cannot dismiss, so it
+/// carries the same way back the roster does, from the same builder. Closing the pane is not
+/// that way: it ends the agent (kan a_2MjBI7BLr).
+///
+/// Without Muster's name for the pane there is no command worth printing. The daemon's id in a
+/// `muster` command matches nothing, so this says what to name instead.
+fn taken_over(pane_name: Option<&str>) -> String {
+    let way_back = pane_name.map_or_else(
+        || "run `muster pane reattach` with this pane's name from `muster window`".to_string(),
+        |name| format!("run {}", respawn::reattach_command(&PaneId::new(name))),
+    );
     format!(
-        "muster-bridge: pane {pane} is now being shown somewhere else, so this window has \
-         stopped drawing it.\nOnly one client may hold a herdr terminal. The agent is untouched; \
-         close this pane and open it again to bring it back here."
+        "muster-bridge: another client took this pane's terminal, so this window has stopped \
+         drawing it - most often a second Muster window showing the same pane.\nOnly one client \
+         may hold a herdr terminal. The agent is untouched, and whichever window is showing the \
+         pane now is the one to type into. To bring it back here instead, {way_back}."
     )
 }
 
@@ -709,6 +747,7 @@ mod tests {
             herdr_binary: None,
             ssh: Some(Ssh { host: "devenv".to_string(), control_path: "/tmp/c".to_string() }),
             takeover,
+            pane_name: None,
         }
     }
 
@@ -805,7 +844,7 @@ mod tests {
         // width, and it cannot be dismissed. It used to say to close the pane, which ends the
         // agent (kan a_2MjBI7BLr). The way back is a reattach, and the command takes Muster's
         // name for the pane rather than the daemon's.
-        let told = taken_over("w5:p1", Some("p224xypzs3"));
+        let told = taken_over(Some("p224xypzs3"));
 
         assert!(
             told.contains("muster pane reattach --pane p224xypzs3"),
@@ -815,5 +854,19 @@ mod tests {
             !told.to_lowercase().contains("close this pane"),
             "closing the pane ends the agent, so nothing here may advise it: {told}"
         );
+    }
+
+    #[test]
+    fn the_pane_name_is_read_off_the_command_line() {
+        let parsed = Arguments::parse(&[
+            "w5:p1".to_string(),
+            "--pane-name".to_string(),
+            "p224xypzs3".to_string(),
+            "--takeover".to_string(),
+        ])
+        .expect("the flags parse");
+
+        assert_eq!(parsed.pane, "w5:p1", "the daemon's id is still what herdr is asked for");
+        assert_eq!(parsed.pane_name.as_deref(), Some("p224xypzs3"));
     }
 }

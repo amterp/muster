@@ -318,7 +318,7 @@ pub fn key(pane: &PaneKey) -> String {
 fn detail(pane: &PaneKey, deadline: u64, last: Option<&Ended>, backend_pane: &str) -> String {
     let waited = describe(deadline);
     let asking = describe(deadline.saturating_mul(ASK_AFTER_DEADLINES));
-    let reattach = respawn::reattach_command(pane);
+    let reattach = respawn::reattach_command(&pane.pane);
     match last.map(|ended| ended.ending) {
         // Never had a bridge. The launch case, and the three bugs this watch was written for:
         // the bridge failed to dial, the socket path had moved, the channel could not be

@@ -39,6 +39,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::composition::{DaemonId, PaneKey};
 use crate::diagnostics::clock::describe;
+use crate::respawn::reattach_command;
 
 /// What the problem list should be told, having compared the unanswered panes against the clock.
 ///
@@ -258,11 +259,16 @@ pub fn key(pane: &PaneKey) -> String {
 /// implicated, where the records that separate the causes are, and what puts the pane back
 /// without touching the agent behind it.
 ///
+/// The remedy is a reattach, because it is the way to a new bridge that keeps the agent. Closing
+/// the pane gets a new bridge too, by ending what is running in it, and a sentence advising that
+/// costs the reader the session they were trying to rescue (kan a_2MjBI7BLr).
+///
 /// The last clause is the one that saves somebody an hour. A pane that is genuinely fine says
 /// this too, if the program in it turned echo off and is waiting for a password, and a reader who
 /// does not know that goes looking for a broken bridge that was never broken.
 pub fn stopped(pane: &PaneKey, deadline: u64) -> String {
     let waited = describe(deadline);
+    let reattach = reattach_command(&pane.pane);
     format!(
         "Input reached the pane {pane} over {waited} ago and it has painted nothing since. It \
          shows whatever it painted last, so it reads as a program that has stopped rather than a \
@@ -271,9 +277,9 @@ pub fn stopped(pane: &PaneKey, deadline: u64) -> String {
          without saying so, or its daemon has stopped painting this one terminal while it goes \
          on answering everything else. The run log carries `bridge.painted` for as long as \
          frames arrive, and `bridge.closed` or `channel.bridge.gone` when a bridge ends; a frame \
-         the daemon decided not to send is in the daemon's own log on its own machine. Closing \
-         this pane and opening it again starts a new bridge and leaves the agent alone. A pane \
-         that is fine says this too if what is running in it turned echo off - a password prompt \
-         - and takes it back the moment anything paints."
+         the daemon decided not to send is in the daemon's own log on its own machine. \
+         {reattach} starts a new bridge and leaves the agent alone. A pane that is fine says \
+         this too if what is running in it turned echo off - a password prompt - and takes it \
+         back the moment anything paints."
     )
 }

@@ -543,7 +543,7 @@ public final class MusterWindow: NSObject {
       chrome,
       command: PaneCommand.bridge(
         executable: executable, paneID: pane.backendPaneID, controlSocketPath: socketPath,
-        herdrSocketPath: backendSocket, herdrBinaryPath: herdrBinary,
+        paneName: paneID, herdrSocketPath: backendSocket, herdrBinaryPath: herdrBinary,
         sshHost: transport?.sshHost, sshControlPath: transport?.sshControlPath,
         reattaching: pane.bridgeRestarts > 0),
       typeable: true)
