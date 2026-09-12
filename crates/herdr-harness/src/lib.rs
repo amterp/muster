@@ -19,8 +19,10 @@
 //! all, but everything that waits on one already depends on this crate, so this is where one
 //! copy of it costs nothing - and one copy is the point (`until::PATIENCE`).
 
+mod relay;
 mod until;
 
+pub use relay::Relay;
 pub use until::{Detail, PATIENCE, until, until_file, until_some, until_within};
 
 use std::path::{Path, PathBuf};
@@ -314,6 +316,15 @@ impl Daemon {
             panic!("could not write the harness's Muster config at {}: {error}", path.display())
         });
         path
+    }
+
+    /// A socket in front of this daemon that relays everything and never delivers the answer to
+    /// any of `methods`.
+    ///
+    /// For a test about a request the daemon carried out and whose answer was lost, which is
+    /// what a loaded machine produces and nothing can ask a daemon for. Removed with the daemon.
+    pub fn withholding_answers_to(&self, methods: &[&str]) -> Relay {
+        Relay::start(&self.root, &self.socket_path, methods)
     }
 
     pub fn client(&self) -> HerdrClient {
