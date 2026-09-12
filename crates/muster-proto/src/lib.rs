@@ -67,4 +67,11 @@ impl Response {
     pub fn failure(reason: impl Into<String>) -> Response {
         Response { payload: Some(response::Payload::Failure(Failure { reason: reason.into() })) }
     }
+
+    /// A change a daemon was asked for and never answered about, which may have happened.
+    pub fn unanswered(reason: impl Into<String>) -> Response {
+        Response {
+            payload: Some(response::Payload::Unanswered(Unanswered { reason: reason.into() })),
+        }
+    }
 }

@@ -4,7 +4,7 @@
 //!
 //! Both drivers here because they answer one question by two routes: a daemon that would not
 //! make a change says so either as an error or as a success that changed nothing, and both end
-//! in the same two-variant [`Refusal`]. Read apart, either one looks like the whole rule.
+//! in the same [`Refusal`]. Read apart, either one looks like the whole rule.
 
 use conformance::{CaseError, Conformance, fields};
 use muster_core::intent::Refusal;
@@ -49,6 +49,7 @@ fn declined_intent_conformance() {
 fn kind(refusal: &Refusal) -> &'static str {
     match refusal {
         Refusal::NotThere(_) => "not_there",
+        Refusal::Unanswered(_) => "unanswered",
         Refusal::Declined(_) => "declined",
     }
 }

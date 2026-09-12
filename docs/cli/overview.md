@@ -127,7 +127,7 @@ goes to a terminal only - a pipe, a file, or `NO_COLOR` gets none.
 | 1    | the window refused, and said why on stderr    |
 | 2    | the command line was wrong                    |
 | 3    | there was no window to ask                    |
-| 4    | a window took it and never answered           |
+| 4    | it was taken and never answered               |
 | 5    | a wait ran out before its pane got there      |
 
 They differ in whether the request happened, which is what decides whether to send it again.
@@ -135,7 +135,7 @@ A refusal will be refused again; no window may only mean Muster is not open yet,
 one to retry on. 5 is `pane wait` giving up, and waiting changes nothing, so waiting again is
 harmless.
 
-**4 is the one not to.** The request is on the window's side of the socket and only the answer
-went missing, so whatever was asked for may already have happened - a `pane send` retried on a 4
-is how a pane receives the same instruction twice. `muster pane read` says what a pane has on it,
-and `pane send --confirm` asks the window itself rather than guessing out here.
+**4 is the one not to.** The request reached a window, or the daemon behind it, and only the
+answer went missing, so whatever was asked for may already have happened - a `pane send` retried on
+a 4 is how a pane receives the same instruction twice. `muster pane read` says what a pane has on
+it, and `pane send --confirm` asks the window itself rather than guessing out here.

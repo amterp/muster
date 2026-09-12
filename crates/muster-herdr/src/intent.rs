@@ -60,7 +60,19 @@ impl HerdrBackend {
     fn workspace_for(&self, intent: &BackendIntent) -> Result<Option<String>, Refusal> {
         let BackendIntent::CreateTab { beside, .. } = intent else { return Ok(None) };
         let params = json!({ "pane_id": self.names.backend_pane(beside)?.as_str() });
-        let held = self.client.request("pane.get", &params).map_err(|failure| refusal(&failure))?;
+        let held = match self.client.request("pane.get", &params) {
+            Ok(held) => held,
+            Err(failure) => {
+                return Err(match refusal(&failure) {
+                    // This read may have been answered late, but the tab was never asked for.
+                    Refusal::Unanswered(detail) => Refusal::Declined(format!(
+                        "the daemon did not say which workspace holds {beside} ({detail}), so no \
+                         tab was asked for and nothing was made."
+                    )),
+                    refused => refused,
+                });
+            }
+        };
         // A daemon that answered and named no workspace is one whose pane is gone or whose
         // shape this build does not know, and both mean the same thing to the caller: the tab
         // it asked for has nowhere to go.
@@ -134,11 +146,23 @@ impl BackendChannel for HerdrBackend {
             Err(failure) => {
                 // Nothing was made, so nothing answers to the name. Released rather than left
                 // reserved, so a daemon that refuses splits all afternoon does not fill the
-                // registry with names for panes that never existed.
+                // registry with names for panes that never existed. An unanswered split may have
+                // made its pane, and is released all the same: the name can only be bound to the
+                // id the answer would have carried, so a reservation kept here would never settle.
                 if let Some(name) = &minted {
                     self.names.release(name);
                 }
-                return Err(refusal(&failure));
+                return Err(match (refusal(&failure), intent) {
+                    // Return goes after the text, as a request of its own, and is not sent
+                    // after text that may not have arrived: it would submit whatever else is
+                    // sitting at the prompt.
+                    (Refusal::Unanswered(detail), BackendIntent::SendText { enter: true, .. }) => {
+                        Refusal::Unanswered(format!(
+                            "{detail}, and Return was not pressed after it"
+                        ))
+                    }
+                    (refused, _) => refused,
+                });
             }
         };
 
@@ -688,12 +712,17 @@ fn rearranges(intent: &BackendIntent) -> Option<&PaneId> {
 /// are prose that has changed between versions and the codes have not, and being wrong here
 /// means a window that keeps showing a pane nobody can reach.
 ///
-/// Everything else - unreachable, timed out, a daemon that answered something unparseable -
-/// says nothing about whether the pane exists, so it stays a refusal and nothing more.
+/// A timeout and an unreadable answer are not refusals. The request reached the daemon whole in
+/// both, so it may have acted, and reporting that as a change that did not happen is how a
+/// delivered message gets sent twice (kan a_2LOHfLmsL). They say nothing about whether the pane
+/// exists either, so they are never `NotThere`.
+///
+/// Everything else - an unreachable daemon, any other code - is a refusal and nothing more.
 pub fn refusal(failure: &Failure) -> Refusal {
     let detail = failure.to_string();
     match failure {
         Failure::Daemon { code, .. } if code.ends_with("not_found") => Refusal::NotThere(detail),
+        Failure::TimedOut | Failure::MalformedResponse => Refusal::Unanswered(detail),
         _ => Refusal::Declined(detail),
     }
 }

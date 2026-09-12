@@ -30,6 +30,11 @@ const PLAIN: Style = Style::new();
 pub fn answer(response: &Response, json: bool) -> Result<String, Trouble> {
     match &response.payload {
         Some(response::Payload::Failure(failure)) => Err(Trouble::Refused(failure.reason.clone())),
+        // The same exit as a window that took the request and never answered, one hop further
+        // in: the window's daemon took it and never answered, so a retry may repeat it.
+        Some(response::Payload::Unanswered(unanswered)) => {
+            Err(Trouble::Unanswered(unanswered.reason.clone()))
+        }
         Some(response::Payload::Ok(_)) => {
             // Nothing to say. Silence is the answer to a request that did what it was asked, and
             // JSON gets an object anyway so that `--json` always produces one.
@@ -105,6 +110,7 @@ fn named(payload: &response::Payload) -> &'static str {
         response::Payload::Daemons(_) => "a list of daemons",
         response::Payload::PaneState(_) => "a pane's state",
         response::Payload::PaneClosed(_) => "a closed pane",
+        response::Payload::Unanswered(_) => "a request nobody answered",
     }
 }
 

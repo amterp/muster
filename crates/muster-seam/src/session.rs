@@ -1754,6 +1754,16 @@ pub(crate) enum Keyboard {
     StaysPut,
 }
 
+/// A submission's refusal and its unanswered detail, as two log fields of which at most one is
+/// set - so a search for refusals in a run log does not turn up changes that may have happened.
+fn refused_or_unanswered<T>(outcome: &Result<T, Refusal>) -> (String, String) {
+    match outcome {
+        Ok(_) => (String::new(), String::new()),
+        Err(Refusal::Unanswered(detail)) => (String::new(), detail.clone()),
+        Err(refusal) => (refusal.to_string(), String::new()),
+    }
+}
+
 pub(crate) fn submit(
     daemon: &DaemonId,
     intent: &BackendIntent,
@@ -1838,6 +1848,7 @@ pub(crate) fn submit(
     };
 
     let outcome = channel.submit(intent);
+    let (refused, unanswered) = refused_or_unanswered(&outcome);
     log::info(
         "intent.submitted",
         fields! {
@@ -1845,7 +1856,8 @@ pub(crate) fn submit(
             "backend" => channel.description(),
             "created" => outcome.as_ref().ok().and_then(|outcome| outcome.created.clone())
                 .map(|pane| pane.to_string()).unwrap_or_default(),
-            "refused" => outcome.as_ref().err().map(ToString::to_string).unwrap_or_default(),
+            "refused" => refused,
+            "unanswered" => unanswered,
         },
     );
 
@@ -2518,17 +2530,33 @@ pub(crate) fn equalize(daemon: &DaemonId, pane: &PaneId, evenly: Evenly) -> Resu
             },
             Keyboard::StaysPut,
         )
-        .map_err(|refusal| {
-            format!(
-                "the daemon {daemon} refused divider {} of {asked} while evening out the tab \
-                 {tab} ({refusal}), so the tab is part way there and the rest were not sent. \
-                 `muster window --json` says where every pane ended up; asking again from what \
-                 it now holds is safe.",
-                sent + 1
-            )
-        })?;
+        .map_err(|refusal| stopped_evening(daemon, &tab, sent + 1, asked, &refusal))?;
     }
     Ok(())
+}
+
+/// Why evening out a tab stopped at one divider, which is the `nth` of `asked`.
+fn stopped_evening(
+    daemon: &DaemonId,
+    tab: &TabId,
+    nth: usize,
+    asked: usize,
+    refusal: &Refusal,
+) -> String {
+    match refusal {
+        Refusal::Unanswered(detail) => format!(
+            "the daemon {daemon} did not answer about divider {nth} of {asked} while evening out \
+             the tab {tab} ({detail}), so that divider may or may not have moved and the rest \
+             were not sent. `muster window --json` says where every pane ended up; asking again \
+             from what it now holds is safe, because a divider is sent as a position."
+        ),
+        refusal => format!(
+            "the daemon {daemon} refused divider {nth} of {asked} while evening out the tab \
+             {tab} ({refusal}), so the tab is part way there and the rest were not sent. \
+             `muster window --json` says where every pane ended up; asking again from what it \
+             now holds is safe."
+        ),
+    }
 }
 
 /// A part's share of the window, from how many panes it holds.
@@ -3363,11 +3391,27 @@ fn open_a_workspace_if_the_window_is_empty() {
 /// a daemon says no is written down once.
 fn ask_for_a_workspace(daemon: &DaemonId) {
     log::info("workspace.creating", fields! { "daemon" => daemon.to_string() });
-    if let Err(refusal) = submit(
+    let asked = submit(
         daemon,
         &BackendIntent::CreateWorkspace { cwd: None, run: None, name: None },
         Keyboard::Follows,
-    ) {
+    );
+    if let Err(Refusal::Unanswered(detail)) = &asked {
+        log::warn(
+            "workspace.unanswered",
+            fields! {
+                "daemon" => daemon.to_string(),
+                "detail" => detail.clone(),
+                "impact" => "the daemon may have made the workspace, and if it did it arrives on \
+                             its own events and this machine fills in. If it did not, this \
+                             machine shows nothing in this window, and nothing will ask again - \
+                             asking twice could make two",
+                "check" => "whether the daemon is keeping up at all: it received the request and \
+                            did not answer in time. `muster pane new --daemon <id>` asks by hand \
+                            once `muster window` shows the machine still holds nothing",
+            },
+        );
+    } else if let Err(refusal) = asked {
         log::error(
             "workspace.refused",
             fields! {

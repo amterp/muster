@@ -35,6 +35,12 @@ Muster's principles, adapted to that evidence:
   and half-closing the write side - which is how every other herdr call signals it is finished - ends a subscription
   on the spot. Both fail as silence rather than as an error, which is the shape of bug a fake is worst at.
 
+  A lost answer is staged the same way. `Daemon::withholding_answers_to` puts a relay in front of the real daemon
+  that passes every connection through and, for the methods a test names, reads herdr's answer and never delivers
+  it. The daemon does the work and every byte a caller receives is one herdr sent, so what is staged is a transport
+  fault - the thing a loaded machine produces and no request can ask for - rather than a daemon of Muster's
+  invention.
+
   The daemon is pinned rather than found. `deps/herdr.pin` carries a version and a checksum per platform, `./dev`
   fetches that binary into `deps/herdr/` once and verifies it, and the path is handed down to the tests through
   the environment. Nothing consults PATH, for two reasons: a contributor's own herdr should be free to be any

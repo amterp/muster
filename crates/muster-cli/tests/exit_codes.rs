@@ -84,6 +84,36 @@ fn an_answer_this_muster_cannot_read_is_still_an_answer() {
 }
 
 #[test]
+fn a_window_whose_daemon_never_answered_exits_as_unanswered() {
+    // The same unknown one hop further in. The window answered promptly, and what it said is that
+    // its daemon took the request and said nothing back - a message delivered on a loaded machine
+    // looked exactly like this, and exited 1 as a refusal (kan a_2LOHfLmsL).
+    let socket = socket_at("daemon-silent");
+    let listener = UnixListener::bind(&socket).expect("a scratch socket path is free");
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
+            let _ = read_frame(&mut stream, LARGEST_MESSAGE);
+            let answer = Response::unanswered("timed out");
+            let _ = write_frame(&mut stream, &answer.encode_to_vec());
+        }
+    });
+
+    let response = asked(&socket).expect("the window answered");
+    let trouble = muster_cli::render::answer(&response, false)
+        .expect_err("a request nobody answered is not a success");
+
+    assert_eq!(
+        trouble.code(),
+        4,
+        "a window reporting that its daemon never answered exits {}. The request reached the \
+         daemon, so a caller that sends it again may do it twice.\n{}",
+        trouble.code(),
+        trouble.detail()
+    );
+}
+
+#[test]
 fn a_socket_nobody_is_listening_on_is_a_window_that_was_never_asked() {
     let socket = socket_at("nobody");
 

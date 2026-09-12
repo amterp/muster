@@ -25,6 +25,12 @@ func readResponse(_ response: [UInt8]) -> Result<Muster_Response, Refused> {
   if case .failure(let failure) = decoded.payload {
     return .failure(Refused(failure.reason))
   }
+  // Not a refusal, and nothing here branches on the difference: every sender on this path wants
+  // an answer to act on, and a change its daemon never answered about gives it none. The reason
+  // says which it was.
+  if case .unanswered(let unanswered) = decoded.payload {
+    return .failure(Refused(unanswered.reason))
+  }
   return .success(decoded)
 }
 

@@ -964,6 +964,13 @@ public enum Core {
         record("error", "core.refused", ["request": name(of: request), "reason": failure.reason])
       }
     }
+    // A warning rather than an error, because the change may well have happened: its daemon took
+    // the request and never answered.
+    if case .unanswered(let unanswered) = decoded.payload {
+      FileHandle.standardError.write(Data("muster: \(unanswered.reason)\n".utf8))
+      record(
+        "warn", "core.unanswered", ["request": name(of: request), "reason": unanswered.reason])
+    }
     return decoded.payload
   }
 

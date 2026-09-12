@@ -440,12 +440,12 @@ pub struct Outcome {
     pub renamed: Option<(PaneId, Option<String>)>,
 }
 
-/// Why a backend would not make a change.
+/// Why a backend did not come back saying a change was made.
 ///
 /// Mostly prose to hand back to whoever asked, because there is usually no second thing to
 /// try: a refused split is a split that did not happen, and the honest response is to say so
-/// rather than to answer as though it had. One kind is different, and is why this is not just
-/// a string.
+/// rather than to answer as though it had. Two kinds are different, and are why this is not
+/// just a string.
 ///
 /// A backend that answers a change it declined with an ordinary success has to produce one of
 /// these itself, which is a reading of its own vocabulary: a request whose state already holds
@@ -468,6 +468,15 @@ pub enum Refusal {
     /// what it does hold, because it will not volunteer it.
     NotThere(String),
 
+    /// The backend was asked and never said what came of it.
+    ///
+    /// Not a refusal at all, and the one answer here that must not be reported as one: the
+    /// request reached the backend, so the change may well have happened and only the answer
+    /// was lost. herdr does this on a loaded machine - a message delivered and a pane closed
+    /// were both reported refused, and a caller told so sends the request again (kan
+    /// a_2LOHfLmsL). Whatever did happen arrives on the backend's own events.
+    Unanswered(String),
+
     /// Anything else. The request did not happen, and saying so is all there is to do.
     Declined(String),
 }
@@ -476,7 +485,9 @@ impl Refusal {
     /// What the backend said, for a log or a message back to whoever asked.
     pub fn detail(&self) -> &str {
         match self {
-            Refusal::NotThere(detail) | Refusal::Declined(detail) => detail,
+            Refusal::NotThere(detail) | Refusal::Unanswered(detail) | Refusal::Declined(detail) => {
+                detail
+            }
         }
     }
 }

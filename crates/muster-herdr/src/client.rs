@@ -16,13 +16,19 @@ use std::time::Duration;
 use serde_json::{Value, json};
 
 /// Why a request did not produce a result.
+///
+/// Split by whether the daemon can have acted, because that is what a caller has to report:
+/// `Unreachable` did nothing, `TimedOut` and `MalformedResponse` may have done what was asked,
+/// and `Daemon` said no.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Failure {
-    /// No daemon answered - wrong path, not running, or gone.
+    /// The request never reached a daemon whole - wrong path, not running, gone, or not
+    /// reading. herdr acts only on a newline-terminated line, so nothing was done.
     Unreachable(String),
-    /// It answered too slowly, or stopped mid-answer.
+    /// The request was delivered and no answer came back in time, or the daemon hung up
+    /// without one. It may have acted.
     TimedOut,
-    /// It answered with something that is not a herdr response.
+    /// It answered with something that is not a herdr response, having read the request.
     MalformedResponse,
     /// It answered, and the answer was no.
     Daemon { code: String, message: String },
@@ -93,14 +99,19 @@ impl HerdrClient {
 
         let mut stream = UnixStream::connect(&self.socket_path)
             .map_err(|error| Failure::Unreachable(error.to_string()))?;
-        stream.set_read_timeout(Some(timeout)).map_err(|_| Failure::TimedOut)?;
-        stream.set_write_timeout(Some(timeout)).map_err(|_| Failure::TimedOut)?;
+        let unsent = |error: std::io::Error| Failure::Unreachable(error.to_string());
+        stream.set_read_timeout(Some(timeout)).map_err(unsent)?;
+        stream.set_write_timeout(Some(timeout)).map_err(unsent)?;
 
         // Written and then left open. Half-closing the write side here is what this did until
         // the first call arrived that the daemon answers slowly: herdr reads its one request
         // line and does not need end-of-write, and for `pane.wait_for_output` it treats a
         // half-closed socket as a caller that has gone and hangs up without answering.
-        stream.write_all(&payload).map_err(|_| Failure::TimedOut)?;
+        //
+        // A write that fails is unreachable rather than timed out. The newline is the last byte,
+        // and `write_all` fails only on a call that wrote nothing, so the daemon never received
+        // a line it could act on.
+        stream.write_all(&payload).map_err(unsent)?;
 
         let line = read_line(&mut stream).ok_or(Failure::TimedOut)?;
         let object: Value =

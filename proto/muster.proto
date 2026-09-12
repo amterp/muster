@@ -1052,6 +1052,7 @@ message Response {
     Daemons daemons = 12;
     PaneStateChanged pane_state = 13;
     PaneClosed pane_closed = 14;
+    Unanswered unanswered = 15;
   }
 }
 
@@ -1325,8 +1326,23 @@ message Ok {}
 
 message Failure {
   // Written for whoever reads it in a log at 2am: what broke, what it costs, what to
-  // check. Not an error code - the seam has no failures a caller can branch on, and
-  // pretending otherwise would invite handling instead of reporting.
+  // check. Not an error code - a Failure is a change that did not happen, and there are no
+  // kinds of that worth branching on; pretending otherwise would invite handling instead of
+  // reporting. The one answer a caller does have to tell apart is not a Failure: see
+  // Unanswered.
+  string reason = 1;
+}
+
+// A change the core asked a daemon for, and the daemon never said what came of it.
+//
+// Neither a success nor a Failure, and a payload of its own because a caller has to treat it as
+// neither. The request reached the daemon, so the change may well have happened; asking again
+// may make it happen twice. A loaded machine produces this: a message the receiving agent read
+// and a pane that closed were both reported as refused while they were one of these (kan
+// a_2LOHfLmsL). The CLI exits 4 for it, the code it already uses for a window that took a request
+// and never answered, since to a caller that is the same fact one hop further in.
+message Unanswered {
+  // What went missing and what to look at, in the same register as Failure's reason.
   string reason = 1;
 }
 

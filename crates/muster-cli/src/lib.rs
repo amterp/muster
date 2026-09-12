@@ -34,7 +34,8 @@ pub enum Trouble {
     Refused(String),
     /// There was no window to ask.
     Unreachable(String),
-    /// A window took the request and this command cannot say what came of it.
+    /// A window took the request and this command cannot say what came of it - because the
+    /// window never answered, or because the daemon behind it never answered the window.
     Unanswered(String),
     /// A wait ran out before what it was waiting for happened. Waiting changes nothing, so
     /// waiting again is harmless.

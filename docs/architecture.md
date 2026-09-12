@@ -352,6 +352,12 @@ The core answers every request, including the ones it refuses. A shell cannot ot
 "the core is gone", and those want opposite reactions - so a refusal is a `Failure` carrying prose written for
 whoever finds it in a log, not an error code to branch on.
 
+One answer is neither a success nor a refusal: `Unanswered`, a change the core passed to a daemon that never said
+what came of it. The request reached the daemon, so the change may well have happened, and a caller that reads this
+as a refusal sends it again - which is how a delivered message arrived twice (kan a_2LOHfLmsL). It is a payload of its
+own rather than a kind of `Failure` because that difference is the one a caller has to act on, and the CLI exits 4
+for it.
+
 Backpressure has no design yet, and the starting answer is a property of this architecture rather than a mechanism:
 because view = f(daemon state), a queued update can be **coalesced** rather than dropped or blocked on. That is what
 lets this seam afford a bounded queue when there is finally state worth queueing.

@@ -39,6 +39,7 @@ fn a_send_the_daemon_delivered_is_not_reported_as_refused() {
         || format!("the pane shows {:?}", on_the_pane(&daemon)),
     );
     match &answer.payload {
+        Some(response::Payload::Unanswered(_)) => {}
         Some(response::Payload::Failure(failure)) => panic!(
             "a send that arrived was reported as refused: {}\n  Impact: a caller told the \
              daemon did not make a change sends it again, and the pane receives the message \
@@ -49,7 +50,7 @@ fn a_send_the_daemon_delivered_is_not_reported_as_refused() {
             "a send whose answer never came back was reported as done. Nothing said so, and the \
              same answer for a send that did not arrive would be a lie in the other direction."
         ),
-        _ => {}
+        other => panic!("a send whose answer never came back answered {other:?}"),
     }
     drop(relay);
 }

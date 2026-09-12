@@ -771,8 +771,7 @@ struct Target {
 ///
 /// So the reply is replaced, with the sentence `read_pane` already uses: no machine, both
 /// causes, and the command that resolves it. Only for `Refusal::NotThere`, which is the daemon
-/// saying it does not hold what was named - anything else is a real failure of this request and
-/// is worth relaying as it stands.
+/// saying it does not hold what was named - anything else is relayed as it stands.
 fn placed(answer: Result<Response, Refusal>, target: &Target) -> Response {
     match answer {
         Ok(response) => response,
@@ -792,7 +791,7 @@ fn placed(answer: Result<Response, Refusal>, target: &Target) -> Response {
                  older window - `muster window` lists the panes this one has."
             ))
         }
-        Err(refusal) => refused(refusal.detail()),
+        Err(refusal) => relayed(Err(refusal)),
     }
 }
 
@@ -805,6 +804,7 @@ fn placed(answer: Result<Response, Refusal>, target: &Target) -> Response {
 fn relayed(answer: Result<Response, Refusal>) -> Response {
     match answer {
         Ok(response) => response,
+        Err(Refusal::Unanswered(detail)) => unanswered(&detail),
         Err(refusal) => refused(refusal.detail()),
     }
 }
@@ -1215,10 +1215,10 @@ fn arrange_pane(arrange: &proto::ArrangePane) -> Response {
     let Some(daemon) = pane_holder(&pane, &arrange.daemon_id) else {
         return no_pane_to_rearrange(&pane);
     };
-    match session::arrange_pane(&daemon, &pane, &PaneId::new(&arrange.onto_pane_id)) {
-        Ok(()) => Response::ok(),
-        Err(refusal) => refused(refusal.detail()),
-    }
+    relayed(
+        session::arrange_pane(&daemon, &pane, &PaneId::new(&arrange.onto_pane_id))
+            .map(|()| Response::ok()),
+    )
 }
 
 /// One wording for both destinations, since a name that resolves to nothing costs the same
@@ -1443,6 +1443,19 @@ fn refused(detail: &str) -> Response {
     ))
 }
 
+/// A change the daemon was asked for and never answered about.
+///
+/// Worded so that nobody reads it as a refusal, because the one thing a caller must not do with
+/// it is what a refusal invites: send the request again.
+fn unanswered(detail: &str) -> Response {
+    Response::unanswered(format!(
+        "the daemon was asked for that change and never said what came of it ({detail}), so it \
+         may well have happened. If it did, the window shows it once the daemon's own event \
+         arrives. Asking again may do it twice: `muster window` says what the session holds now, \
+         and `muster pane read` what a pane has on it."
+    ))
+}
+
 /// Opens the window onto whatever the daemons hold, which is what a bare `muster` asks for.
 fn open_window() -> Response {
     match session::open() {
@@ -1616,7 +1629,15 @@ fn send_to_pane(send: &proto::SendToPane) -> Response {
     let answer = act(&send.daemon_id, &send.pane_id, Keyboard::StaysPut, |pane| {
         BackendIntent::SendText { pane, text: send.text.clone(), enter: send.enter }
     });
-    if !send.confirm || !matches!(answer.payload, Some(response::Payload::Ok(_))) {
+    // A send whose answer was lost is confirmed too, since whether it arrived is exactly what the
+    // read-back settles. Not with `--enter`: Return is not pressed after text that may not have
+    // arrived, and a read-back finding the text would report a submission that never happened.
+    let settles = match &answer.payload {
+        Some(response::Payload::Ok(_)) => true,
+        Some(response::Payload::Unanswered(_)) => !send.enter,
+        _ => false,
+    };
+    if !send.confirm || !settles {
         return answer;
     }
     confirm_it_arrived(send)
