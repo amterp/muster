@@ -20,6 +20,13 @@ until somebody thought to say `rebuild`.
 The first `up` generates a keypair into `devenv/.ssh/`, which is gitignored. Nothing
 in the image is a secret and nothing outside localhost can reach it.
 
+That keypair is per worktree, and the container is one per machine. So `up` checks that a
+running container lets this worktree's key in, and recreates it when it does not - taking
+whatever was running in it, and locking out the worktree that started it until that one runs
+`up` again. `status` reports the mismatch rather than probing over ssh. Two worktrees still
+cannot use the tier at once; whether each gets its own container or all share one key is
+open (kan a_2Ky2ptlug).
+
 ## One artifact, two jobs
 
 It stands in for the work devenv during development, and it is the fixture the remote

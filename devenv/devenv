@@ -57,6 +57,14 @@ build() {
         -t "$IMAGE" -f "$REPO_ROOT/devenv/Dockerfile" "$@" "$REPO_ROOT"
 }
 
+# Whether the running container lets this worktree's key in. The container name is global to
+# the machine while devenv/.ssh/ is per worktree, so a container another worktree started
+# refuses every login from this one (kan a_2Ky2ptlug). Asked through docker rather than ssh,
+# because ssh with the wrong key cannot tell a refusal from a container that is not answering.
+key_matches() {
+    [[ "$(docker exec "$CONTAINER" cat /home/dev/.ssh/authorized_keys 2>/dev/null)" == "$(cat "$KEY.pub")" ]]
+}
+
 case "${1:-up}" in
     up)
         need_docker
@@ -67,8 +75,14 @@ case "${1:-up}" in
         # every login with no hint that a stale image was why.
         build >/dev/null
         if [[ -n "$(docker ps -q -f "name=^${CONTAINER}$")" ]]; then
-            echo "devenv already running on port $PORT"
-            exit 0
+            # The rebuild above does not reach a container that is already running, so one
+            # started from another worktree still holds that worktree's key and refuses this
+            # one's (kan a_2LONhlgwh).
+            if key_matches; then
+                echo "devenv already running on port $PORT"
+                exit 0
+            fi
+            echo "devenv was running with a key other than this worktree's; recreating it, and whatever was running in it"
         fi
         docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
         docker run -d --name "$CONTAINER" -p "$PORT:22" "$IMAGE" >/dev/null
@@ -104,6 +118,12 @@ case "${1:-up}" in
             exit 1
         fi
         echo "devenv: running on port $PORT"
+        # Checked before anything goes over ssh, because every probe below fails quietly with
+        # the wrong key and the report would read as an empty container.
+        if ! key_matches; then
+            echo "devenv: holds a key other than this worktree's, so ssh from here is refused - ./devenv/devenv up recreates it"
+            exit 1
+        fi
         # What is reported is what is there, rather than what ought to be. An empty
         # container is the correct state before Muster attaches, so a missing daemon is
         # news rather than a failure.
