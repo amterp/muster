@@ -786,8 +786,10 @@ The run log is not that surface, and mistaking it for one cost a whole evening: 
 unit refused a config file at 18:55, every setting in it went inert, and the window said nothing until somebody
 opened a JSON file the next morning. So a run log entry answers "what happened here" for whoever is debugging, and a
 problem answers "what do I do now" for whoever is typing - the same fact, twice, because the two readers arrive by
-different doors. Severity exists to decide interruption and nothing else: an error opens a roster somebody closed, a
-warning waits to be found.
+different doors. The log does hold what the person was told: every raise is a `problem.raised` record carrying its
+sentence, and every clear a `problem.cleared` record saying why it went, because a problem going away is not always
+the thing it was about being fixed. Severity exists to decide interruption and nothing else: an error opens a roster
+somebody closed, a warning waits to be found.
 
 **The list also carries failures nobody caused, and a pane that never becomes typeable is the first of them.** A
 pane's keystrokes travel through a bridge that dials a socket the core bound for it, and until that connection

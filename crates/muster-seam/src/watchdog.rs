@@ -267,8 +267,8 @@ fn watch() {
         for (key, detail) in reported.raise {
             session::raise_problem(&key, Severity::Error, &detail);
         }
-        for key in reported.clear {
-            session::clear_problem(&key);
+        for (key, why) in reported.clear {
+            session::clear_problem(&key, why.as_str());
         }
         // Outside the lock, like the two above and for the same reason: this reaches `SESSION`
         // and publishes, and publishing comes back through `showing` for `WAITING`.
@@ -288,8 +288,8 @@ fn watch() {
         for (key, detail) in painted.raise {
             session::raise_problem(&key, Severity::Warning, &detail);
         }
-        for key in painted.clear {
-            session::clear_problem(&key);
+        for (key, why) in painted.clear {
+            session::clear_problem(&key, why.as_str());
         }
 
         // Asked again under the guard this waits on, rather than reused from above. A pane

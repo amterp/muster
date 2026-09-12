@@ -378,15 +378,29 @@ pub(crate) fn raise_problem(key: &str, severity: Severity, detail: &str) {
     if !changed {
         return;
     }
+    // The sentence a person actually read, which the run log otherwise lacked: the conditions
+    // that raise a problem mostly log themselves, and the watches on panes log nothing, so the
+    // one line an incident turned on had to be inferred from the events around it (kan
+    // a_2LMpvavhA). Info rather than a level taken from the severity, because the condition's
+    // own record carries the level where there is one.
+    log::info(
+        "problem.raised",
+        fields! { "key" => key, "severity" => severity.as_str(), "detail" => detail },
+    );
     reconcile_sidebar_with_problems();
     announce_problems();
 }
 
-/// Records that something is no longer wrong.
+/// Records that something is no longer wrong, and why.
 ///
 /// Called from every success path, including the ones where nothing was ever wrong, so the
 /// common case is a call that changes nothing and says nothing.
-pub(crate) fn clear_problem(key: &str) {
+///
+/// `why` goes to the run log, because a problem going away is not always the thing it was about
+/// being fixed. A painting warning cleared by a frame and one cleared because nobody could see
+/// the pane any more used to be the same record, and only one of them meant the pane was working
+/// (kan a_2LWqtPd8E).
+pub(crate) fn clear_problem(key: &str, why: &str) {
     let changed = {
         let mut held = poison::lock(&PROBLEMS, "problems");
         held.get_or_insert_with(ProblemState::default).problems.clear(key)
@@ -394,6 +408,7 @@ pub(crate) fn clear_problem(key: &str) {
     if !changed {
         return;
     }
+    log::info("problem.cleared", fields! { "key" => key, "why" => why });
     reconcile_sidebar_with_problems();
     announce_problems();
 }
@@ -852,7 +867,7 @@ fn tunnel_state(daemon: &DaemonId, state: &TunnelState) {
             health(daemon, "stale", detail);
             raise_problem(&reconnect::key(daemon.as_str()), Severity::Warning, detail);
         }
-        TunnelState::Reachable => clear_problem(&reconnect::key(daemon.as_str())),
+        TunnelState::Reachable => clear_problem(&reconnect::key(daemon.as_str()), "reachable"),
     }
 }
 
@@ -2025,7 +2040,7 @@ pub(crate) fn pane_sized(pane: &PaneKey, columns: u32, rows: u32) {
                 "rows" => rows.to_string(),
             },
         );
-        clear_problem(&key);
+        clear_problem(&key, "fits");
         watchdog::explained(pane, false);
     }
 }
@@ -2061,7 +2076,7 @@ static STALE_GRIDS: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
 fn clear_stale_grid_problems() {
     let stale = std::mem::take(&mut *poison::lock(&STALE_GRIDS, "stale-grids"));
     for key in stale {
-        clear_problem(&key);
+        clear_problem(&key, "closed");
     }
 }
 

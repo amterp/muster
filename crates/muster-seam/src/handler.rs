@@ -1060,7 +1060,7 @@ fn report_font_family(report: &proto::ReportFontFamily) -> Response {
             );
             session::raise_problem(&problem.key, problem.severity, &problem.detail);
         }
-        None => session::clear_problem(font::KEY),
+        None => session::clear_problem(font::KEY, "usable"),
     }
     Response::ok()
 }
@@ -1948,7 +1948,7 @@ fn read_config(path: &str, reading: Reading) -> Option<config::Config> {
     };
     match config::parse(&text) {
         Ok(config) => {
-            session::clear_problem(CONFIG_PROBLEM);
+            session::clear_problem(CONFIG_PROBLEM, "accepted");
             Some(config)
         }
         Err(refusal) => {

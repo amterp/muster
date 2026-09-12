@@ -219,6 +219,77 @@ fn a_zoomed_tab_does_not_accuse_the_panes_it_covers() {
     );
 }
 
+/// A bridge that dials in late takes the problem back, and the run log says both what the
+/// person was told and why it went away.
+///
+/// The run log used to carry neither. Reconstructing an incident needed the events around the
+/// problem and a guess, because the sentence a person read was the one thing the timeline did not
+/// contain - and a clear could not say whether the pane had recovered or had only stopped being
+/// looked at (kan a_2LMpvavhA, a_2LWqtPd8E).
+#[test]
+fn a_problem_and_its_clearing_are_in_the_run_log_with_why() {
+    let _turn = muster::testing::fresh_session();
+    shorten_the_deadline();
+
+    let daemon = Daemon::start();
+    let log = daemon.root().join("run.jsonl");
+    watch_events();
+    assert_ok(&answer(request::Payload::Startup(Startup {
+        config_path: daemon.muster_config().to_string_lossy().into_owned(),
+        log_path: log.to_string_lossy().into_owned(),
+        ..Startup::default()
+    })));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+
+    until(
+        "the window to show a pane with a socket",
+        || painted_panes().iter().any(|(_, socket)| !socket.is_empty()),
+        || format!("the last view the core published: {:?}", latest_view()),
+    );
+    let (pane, socket) = painted_panes().pop().expect("just waited for one");
+    until(
+        "the core to report the pane nothing has dialed",
+        || !latest_problems().is_empty(),
+        || format!("nothing was reported {DEADLINE_MS}ms after a socket was bound for {pane}"),
+    );
+
+    let _bridge = std::os::unix::net::UnixStream::connect(&socket)
+        .expect("the core is listening on the pane's socket");
+    until(
+        "a bridge dialing in to take the problem back",
+        || latest_problems().is_empty(),
+        || format!("still outstanding after a dial: {:?}", latest_problems()),
+    );
+
+    let records = records(&log);
+    let raised = records.iter().find(|record| record["event"] == "problem.raised");
+    assert!(
+        raised.is_some_and(|record| {
+            record["key"].as_str().is_some_and(|key| key.ends_with(&format!("/{pane}")))
+                && record["severity"] == "error"
+                && record["detail"].as_str().is_some_and(|detail| detail.contains(&pane))
+        }),
+        "the run log should carry the problem a person was shown, sentence and all: {raised:?}"
+    );
+    let cleared = records.iter().find(|record| record["event"] == "problem.cleared");
+    assert!(
+        cleared.is_some_and(|record| {
+            record["key"].as_str().is_some_and(|key| key.ends_with(&format!("/{pane}")))
+                && record["why"] == "dialed"
+        }),
+        "the run log should say the problem went because a bridge dialed in: {cleared:?}"
+    );
+}
+
+/// Every record the run so far has written, read back as JSON.
+fn records(log: &std::path::Path) -> Vec<serde_json::Value> {
+    std::fs::read_to_string(log)
+        .expect("the run log was opened")
+        .lines()
+        .filter_map(|line| serde_json::from_str(line).ok())
+        .collect()
+}
+
 /// Sets the deadline this binary runs under, before any pane opens.
 ///
 /// Once per process rather than once per test, because it is read once per process and a

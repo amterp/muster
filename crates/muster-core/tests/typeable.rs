@@ -50,7 +50,12 @@ fn typeable_conformance() {
                     raised.push(json!(key));
                     details.push(detail);
                 }
-                cleared.extend(reported.clear.into_iter().map(Value::String));
+                cleared.extend(
+                    reported
+                        .clear
+                        .into_iter()
+                        .map(|(key, why)| json!({ "key": key, "because": why.as_str() })),
+                );
                 asked.extend(reported.stalled.iter().map(|pane| json!(pane.to_string())));
             } else {
                 return Err(CaseError::new(format!("the step does nothing: {step}")));
@@ -98,8 +103,8 @@ fn number(value: &Value, key: &str) -> Result<u64, CaseError> {
         .ok_or_else(|| CaseError::new(format!("`{key}` is not a whole number of nanoseconds")))
 }
 
-/// `local/w1:p1`, split the way `PaneKey` spells itself: at the first slash, because a daemon
-/// id is Muster's own and holds none where a pane id is the backend's string.
+/// `local/p1w3r07bsd`, split the way `PaneKey` spells itself: at the first slash, because a
+/// daemon id is Muster's own and holds none where a pane id is a name Muster minted.
 fn pane_key(spelled: &str) -> Result<PaneKey, CaseError> {
     let (daemon, pane) = spelled.split_once('/').ok_or_else(|| {
         CaseError::new(format!("`{spelled}` is not a pane key - it wants daemon/pane"))

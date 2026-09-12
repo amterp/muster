@@ -64,7 +64,12 @@ fn pane_painting_conformance() {
             // window nobody runs.
             let reported = painting.reconcile(now, deadline);
             raised.extend(reported.raise.into_iter().map(|(key, _)| json!(key)));
-            cleared.extend(reported.clear.into_iter().map(Value::String));
+            cleared.extend(
+                reported
+                    .clear
+                    .into_iter()
+                    .map(|(key, why)| json!({ "key": key, "because": why.as_str() })),
+            );
         }
 
         Ok(fields([

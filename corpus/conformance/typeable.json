@@ -2,7 +2,7 @@
   "concept": "typeable",
   "source": "authored",
   "citation": "crates/muster-core/src/typeable.rs, crates/muster-herdr/src/control_socket.rs, and kan card a_27Y4QtzyK. There is no oracle above these: how long a pane may render before Muster accuses its bridge is Muster's call, and these cases are where it is written down. The five seconds the seam actually uses is argued from tools/smoke-launch.py, which waits 2.0s after `app.ready` for a healthy bridge to start, dial back and paint.",
-  "why": "A pane becomes typeable when its bridge dials the socket Muster bound for it, and until then it renders, paints and discards every keystroke. Three separate bugs in this repo all ended in exactly that state - the bridge failed to dial, the socket path had moved, the channel could not be opened - and none of them said anything until somebody typed. Both ends of the wait are already known to the core, so the only thing missing was a deadline between them, which is what these cases pin.\n\nEvery case answers with the diff rather than the current set, because raising and clearing are the two things the caller can do, and getting the second one wrong is how a stale error outlives the pane it was about. `next_wake` is answered by every case too, because a loop around this has exactly two ways to go wrong: spinning on a pane it has already reported, and sleeping through one that fell overdue while it was busy elsewhere.\n\nTimes are nanoseconds, matching the monotonic clock the seam counts in. `raised` and `cleared` accumulate over every `reconcile` a case performs, so a case with two readings shows whether the second one had anything new to say. `next_wake` is asked once, at the case's `now` or at its last reading.\n\nA wait starts either way a pane can be waiting: `opened` is a socket bound with no bridge yet, and `ended` is the same wait restarting after one stopped, carrying how it stopped. The second is why the sentence differs at all - a pane looks identical in every one of these cases and the thing to do differs in all of them, and until they were told apart every one of them read as `look in the run log`.\n\n`showing` is the third thing a wait turns on, and it is the window rather than the clock: the panes it names are the ones a region is drawing, straight from `View::showing`. What this raises is that a pane renders and swallows what is typed into it, so a pane nothing is drawing has no such claim to make - and a pane drawn again waits a whole deadline from the moment it is drawn, because its clock ran while nobody could have noticed the silence. That last part is the one to get right: too eager and it accuses a bridge that has had no time to dial, too quiet and it deletes the alarm this whole concept exists to raise.\n\n`asked` is the other thing a reading produces, and it is what this watch does rather than what it says. Saying so was all of this at first, and saying so was not enough: a pane whose replacement bridge was decided on and never started has nothing that can ask for another, because everything that asks is driven by a bridge ending and this one never began - so the pane had none for the life of the app process, agent and all (kan a_2KIPfvt7L). The condition was already computed here, exactly, so this names the panes to ask a bridge for as well as the ones to report.\n\nIt is the opposite rule to `raised`, and the two are deliberately not the same list, on two counts. A condition that stays true is said once, because a roster that repeated itself is the nagging keying a problem by its condition exists to end; a bridge that never arrived is asked for again, because the last ask is exactly what may have produced nothing. And asking waits three deadlines where saying waits one, because the two cost different amounts of being wrong: a sentence about a pane that turns out fine is withdrawn a moment later, while an ask tears down the surface its bridge is the command of - and one aimed at a bridge that was merely slow replaces it with one just as slow on a machine just as busy. Every overdue pane appears in `asked`, including ones whose bridges are ending on their own - this watch only knows that nothing is dialing, and `respawn` is what decides whether asking is the right answer for a pane that gave up or yielded its terminal.\n\nThat is also why `next_wake` is rarely null while a pane is dark. Asking has to keep happening, so the loop keeps waking for as long as a drawn pane has no bridge, rather than sleeping forever the moment its problem is raised.\n\nTwo names for one pane appear in these sentences, and they are deliberately spelled differently in every case here so that a regression swapping them fails. A pane key is `<daemon>/<the name Muster minted>`, which is what the CLI's `--pane` takes and what the reattach remedy carries. An `opened` step also names the daemon's own id for the pane, and that is what the release remedy carries - because what that one matches is a herdr client's command line, and the bridge that started it spelled the pane the backend's way. A pattern built from the wrong one matches nothing, which is the worst kind of remedy: it runs, it exits, and the terminal is still held.",
+  "why": "A pane becomes typeable when its bridge dials the socket Muster bound for it, and until then it renders, paints and discards every keystroke. Three separate bugs in this repo all ended in exactly that state - the bridge failed to dial, the socket path had moved, the channel could not be opened - and none of them said anything until somebody typed. Both ends of the wait are already known to the core, so the only thing missing was a deadline between them, which is what these cases pin.\n\nEvery case answers with the diff rather than the current set, because raising and clearing are the two things the caller can do, and getting the second one wrong is how a stale error outlives the pane it was about. Each clear also says why - `dialed`, `closed`, `hidden` or `restarted` - because the run log carries it, and a clear that cannot tell a bridge arriving from a pane nobody is drawing any more leaves a reader guessing which happened. `next_wake` is answered by every case too, because a loop around this has exactly two ways to go wrong: spinning on a pane it has already reported, and sleeping through one that fell overdue while it was busy elsewhere.\n\nTimes are nanoseconds, matching the monotonic clock the seam counts in. `raised` and `cleared` accumulate over every `reconcile` a case performs, so a case with two readings shows whether the second one had anything new to say. `next_wake` is asked once, at the case's `now` or at its last reading.\n\nA wait starts either way a pane can be waiting: `opened` is a socket bound with no bridge yet, and `ended` is the same wait restarting after one stopped, carrying how it stopped. The second is why the sentence differs at all - a pane looks identical in every one of these cases and the thing to do differs in all of them, and until they were told apart every one of them read as `look in the run log`.\n\n`showing` is the third thing a wait turns on, and it is the window rather than the clock: the panes it names are the ones a region is drawing, straight from `View::showing`. What this raises is that a pane renders and swallows what is typed into it, so a pane nothing is drawing has no such claim to make - and a pane drawn again waits a whole deadline from the moment it is drawn, because its clock ran while nobody could have noticed the silence. That last part is the one to get right: too eager and it accuses a bridge that has had no time to dial, too quiet and it deletes the alarm this whole concept exists to raise.\n\n`asked` is the other thing a reading produces, and it is what this watch does rather than what it says. Saying so was all of this at first, and saying so was not enough: a pane whose replacement bridge was decided on and never started has nothing that can ask for another, because everything that asks is driven by a bridge ending and this one never began - so the pane had none for the life of the app process, agent and all (kan a_2KIPfvt7L). The condition was already computed here, exactly, so this names the panes to ask a bridge for as well as the ones to report.\n\nIt is the opposite rule to `raised`, and the two are deliberately not the same list, on two counts. A condition that stays true is said once, because a roster that repeated itself is the nagging keying a problem by its condition exists to end; a bridge that never arrived is asked for again, because the last ask is exactly what may have produced nothing. And asking waits three deadlines where saying waits one, because the two cost different amounts of being wrong: a sentence about a pane that turns out fine is withdrawn a moment later, while an ask tears down the surface its bridge is the command of - and one aimed at a bridge that was merely slow replaces it with one just as slow on a machine just as busy. Every overdue pane appears in `asked`, including ones whose bridges are ending on their own - this watch only knows that nothing is dialing, and `respawn` is what decides whether asking is the right answer for a pane that gave up or yielded its terminal.\n\nThat is also why `next_wake` is rarely null while a pane is dark. Asking has to keep happening, so the loop keeps waking for as long as a drawn pane has no bridge, rather than sleeping forever the moment its problem is raised.\n\nTwo names for one pane appear in these sentences, and they are deliberately spelled differently in every case here so that a regression swapping them fails. A pane key is `<daemon>/<the name Muster minted>`, which is what the CLI's `--pane` takes and what the reattach remedy carries. An `opened` step also names the daemon's own id for the pane, and that is what the release remedy carries - because what that one matches is a herdr client's command line, and the bridge that started it spelled the pane the backend's way. A pattern built from the wrong one matches nothing, which is the worst kind of remedy: it runs, it exits, and the terminal is still held.",
   "cases": [
     {
       "name": "a pane whose bridge never dials is reported once the deadline passes",
@@ -232,7 +232,10 @@
           "pane:local/p1w3r07bsd"
         ],
         "cleared": [
-          "pane:local/p1w3r07bsd"
+          {
+            "key": "pane:local/p1w3r07bsd",
+            "because": "dialed"
+          }
         ],
         "asked": [],
         "next_wake": null
@@ -265,7 +268,10 @@
           "pane:local/p1w3r07bsd"
         ],
         "cleared": [
-          "pane:local/p1w3r07bsd"
+          {
+            "key": "pane:local/p1w3r07bsd",
+            "because": "closed"
+          }
         ],
         "asked": [],
         "next_wake": null
@@ -375,6 +381,47 @@
           "pane:local/p1w3r07bsd"
         ],
         "cleared": [],
+        "asked": [],
+        "next_wake": 10000000000
+      }
+    },
+    {
+      "name": "a reported pane whose bridge ends is taken back and said again once the new wait runs out",
+      "why": "A bridge ending restarts the wait, because the replacement has to dial too, and the sentence the pane gets next knows how the last bridge ended. So the problem raised before is taken back and raised again a deadline later, and the clear says the wait started over - which is what a run log reader needs in order not to read it as the pane having recovered.",
+      "given": {
+        "deadline": 5000000000,
+        "steps": [
+          {
+            "opened": "local/p1w3r07bsd",
+            "at": 0
+          },
+          {
+            "reconcile": 5000000000
+          },
+          {
+            "ended": "local/p1w3r07bsd",
+            "at": 6000000000,
+            "ending": "lost"
+          },
+          {
+            "reconcile": 7000000000
+          },
+          {
+            "reconcile": 11000000000
+          }
+        ]
+      },
+      "expect": {
+        "raised": [
+          "pane:local/p1w3r07bsd",
+          "pane:local/p1w3r07bsd"
+        ],
+        "cleared": [
+          {
+            "key": "pane:local/p1w3r07bsd",
+            "because": "restarted"
+          }
+        ],
         "asked": [],
         "next_wake": 10000000000
       }
@@ -574,7 +621,10 @@
           "pane:local/p1w3r07bsd"
         ],
         "cleared": [
-          "pane:local/p1w3r07bsd"
+          {
+            "key": "pane:local/p1w3r07bsd",
+            "because": "hidden"
+          }
         ],
         "asked": [],
         "next_wake": null
@@ -812,7 +862,10 @@
           "pane:local/p1w3r07bsd"
         ],
         "cleared": [
-          "pane:local/p1w3r07bsd"
+          {
+            "key": "pane:local/p1w3r07bsd",
+            "because": "dialed"
+          }
         ],
         "asked": [],
         "next_wake": null

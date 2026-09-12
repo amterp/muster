@@ -52,8 +52,44 @@ pub struct Reported {
     /// Panes that have just gone quiet for too long: the problem key and the whole sentence.
     pub raise: Vec<(String, String)>,
 
-    /// Keys that were raised and are no longer true.
-    pub clear: Vec<String>,
+    /// Keys that were raised and are no longer true, and why each stopped being true.
+    ///
+    /// The why is the difference between a pane that painted and a pane nobody could see any
+    /// more, which cleared identically and had to be told apart by cross-referencing a bridge's
+    /// byte counts against the daemon's own log (kan a_2LWqtPd8E).
+    pub clear: Vec<(String, Cleared)>,
+}
+
+/// Why a problem this watch raised was taken back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Cleared {
+    /// A frame arrived.
+    Painted,
+
+    /// The pane is gone.
+    Closed,
+
+    /// The window stopped drawing the pane, which took what it owed with it.
+    Hidden,
+
+    /// The pane's daemon stopped answering, and the machine's own problem says so instead.
+    DaemonAway,
+
+    /// Something else has named this pane's silence - today, a grid too big to draw.
+    Explained,
+}
+
+impl Cleared {
+    /// The word for the log.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Cleared::Painted => "painted",
+            Cleared::Closed => "closed",
+            Cleared::Hidden => "hidden",
+            Cleared::DaemonAway => "daemon_away",
+            Cleared::Explained => "explained",
+        }
+    }
 }
 
 /// Every pane that owes a frame, and everything that decides whether owing one is worth saying.
@@ -72,6 +108,11 @@ pub struct Painting {
     /// is reported once and cleared once, and splitting the two across a lock boundary is how a
     /// stale error outlives the pane it was about.
     reported: BTreeSet<PaneKey>,
+
+    /// Why a reported pane stopped owing a frame since the last reading, for the clear that
+    /// takes its problem back. Written wherever `asked` loses a pane, because that is the one
+    /// thing a reading cannot see afterwards.
+    settled: BTreeMap<PaneKey, Cleared>,
 
     /// Panes whose silence something else has already explained.
     explained: BTreeSet<PaneKey>,
@@ -92,6 +133,7 @@ impl Painting {
         Painting {
             asked: BTreeMap::new(),
             reported: BTreeSet::new(),
+            settled: BTreeMap::new(),
             explained: BTreeSet::new(),
             away: BTreeSet::new(),
             visible: None,
@@ -120,7 +162,11 @@ impl Painting {
     /// answer to whatever was outstanding, and the two facts reach this in the order they
     /// happened.
     pub fn painted(&mut self, pane: &PaneKey) -> bool {
-        self.asked.remove(pane).is_some()
+        let owed = self.asked.remove(pane).is_some();
+        if owed {
+            self.settle(pane, Cleared::Painted);
+        }
+        owed
     }
 
     /// Which panes the window is drawing, as the view answered it.
@@ -133,7 +179,12 @@ impl Painting {
     /// the moment its surface was thrown away - and getting this wrong in the loud direction is
     /// what makes a watch worth switching off.
     pub fn showing(&mut self, visible: BTreeSet<PaneKey>) {
-        self.asked.retain(|pane, _| visible.contains(pane));
+        let hidden: Vec<PaneKey> =
+            self.asked.keys().filter(|pane| !visible.contains(*pane)).cloned().collect();
+        for pane in &hidden {
+            self.asked.remove(pane);
+            self.settle(pane, Cleared::Hidden);
+        }
         self.visible = Some(visible);
     }
 
@@ -145,7 +196,12 @@ impl Painting {
     pub fn daemon_away(&mut self, daemon: &DaemonId, away: bool) {
         if away {
             self.away.insert(daemon.clone());
-            self.asked.retain(|pane, _| pane.daemon != *daemon);
+            let stranded: Vec<PaneKey> =
+                self.asked.keys().filter(|pane| pane.daemon == *daemon).cloned().collect();
+            for pane in &stranded {
+                self.asked.remove(pane);
+                self.settle(pane, Cleared::DaemonAway);
+            }
         } else {
             self.away.remove(daemon);
         }
@@ -173,6 +229,7 @@ impl Painting {
     pub fn closed(&mut self, pane: &PaneKey) {
         self.asked.remove(pane);
         self.explained.remove(pane);
+        self.settle(pane, Cleared::Closed);
     }
 
     /// Compares the unanswered panes against the clock and says what the problem list owes.
@@ -196,8 +253,17 @@ impl Painting {
                 .difference(&self.reported)
                 .map(|pane| (key(pane), stopped(pane, deadline)))
                 .collect(),
-            clear: self.reported.difference(&overdue).map(key).collect(),
+            clear: self
+                .reported
+                .difference(&overdue)
+                .map(|pane| {
+                    // Still owed and no longer overdue: something else has named its silence.
+                    let why = self.settled.get(pane).copied().unwrap_or(Cleared::Explained);
+                    (key(pane), why)
+                })
+                .collect(),
         };
+        self.settled.clear();
         self.reported = overdue;
         reported
     }
@@ -227,6 +293,14 @@ impl Painting {
                 }
             })
             .min()
+    }
+
+    /// Records why a reported pane stopped owing a frame. A pane nobody was told about has
+    /// nothing to take back, so nothing is kept for it.
+    fn settle(&mut self, pane: &PaneKey, why: Cleared) {
+        if self.reported.contains(pane) {
+            self.settled.insert(pane.clone(), why);
+        }
     }
 
     /// Whether this pane's silence would be worth saying anything about.

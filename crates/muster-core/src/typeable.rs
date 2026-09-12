@@ -59,8 +59,12 @@ pub struct Reported {
     /// Panes that have just fallen overdue: the problem key and the whole sentence to say.
     pub raise: Vec<(String, String)>,
 
-    /// Keys that were raised and are no longer true.
-    pub clear: Vec<String>,
+    /// Keys that were raised and are no longer true, and why each stopped being true.
+    ///
+    /// The why is for the run log. A clear that only says the problem went away cannot tell a
+    /// bridge that dialed from a pane nobody is drawing any more, and reconstructing which it
+    /// was took somebody the surrounding events and a guess (kan a_2LMpvavhA).
+    pub clear: Vec<(String, Cleared)>,
 
     /// Panes that should be asked for a bridge, because nothing has dialed them.
     ///
@@ -69,6 +73,35 @@ pub struct Reported {
     /// Saying a thing twice is nagging; asking twice is the recovery, because the first ask is
     /// exactly what may have produced nothing.
     pub stalled: Vec<PaneKey>,
+}
+
+/// Why a problem this watch raised was taken back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Cleared {
+    /// A bridge dialed in, so the pane can be typed into.
+    Dialed,
+
+    /// The pane is gone, or its daemon said its terminal is.
+    Closed,
+
+    /// The window stopped drawing the pane, and a pane nothing draws is not accused.
+    Hidden,
+
+    /// The wait started over - a bridge ended, a socket was opened again, or the pane was drawn
+    /// again - so it is counted from now and is said again if it runs out.
+    Restarted,
+}
+
+impl Cleared {
+    /// The word for the log.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Cleared::Dialed => "dialed",
+            Cleared::Closed => "closed",
+            Cleared::Hidden => "hidden",
+            Cleared::Restarted => "restarted",
+        }
+    }
 }
 
 /// One pane's wait, and what is known about why it is waiting.
@@ -116,6 +149,11 @@ pub struct Waiting {
     /// is how a stale error outlives the pane it was about.
     reported: BTreeSet<PaneKey>,
 
+    /// Why a reported pane stopped waiting since the last reading, for the clear that takes its
+    /// problem back. Only the two ways a wait ends are written here; the others are still
+    /// visible in the wait itself when the reading comes.
+    settled: BTreeMap<PaneKey, Cleared>,
+
     /// Which panes the window is drawing, or `None` while nothing has said.
     ///
     /// `None` is not "no panes". It is the state before a window has published anything, and
@@ -126,7 +164,12 @@ pub struct Waiting {
 
 impl Waiting {
     pub const fn new() -> Waiting {
-        Waiting { waits: BTreeMap::new(), reported: BTreeSet::new(), visible: None }
+        Waiting {
+            waits: BTreeMap::new(),
+            reported: BTreeSet::new(),
+            settled: BTreeMap::new(),
+            visible: None,
+        }
     }
 
     /// A pane's socket is bound and its bridge is expected.
@@ -164,6 +207,7 @@ impl Waiting {
     /// A bridge dialed in, so this pane can be typed into.
     pub fn typeable(&mut self, pane: &PaneKey) {
         self.waits.remove(pane);
+        self.settle(pane, Cleared::Dialed);
     }
 
     /// The pane is gone, so nothing is owed about it.
@@ -173,6 +217,7 @@ impl Waiting {
     /// outlive it and sit in the roster naming a pane nobody can look at.
     pub fn closed(&mut self, pane: &PaneKey) {
         self.waits.remove(pane);
+        self.settle(pane, Cleared::Closed);
     }
 
     /// Which panes the window is drawing, as the view answered it.
@@ -243,7 +288,11 @@ impl Waiting {
                     (key(pane), detail(pane, deadline, wait.and_then(|w| w.last.as_ref()), backend))
                 })
                 .collect(),
-            clear: self.reported.difference(&overdue).map(key).collect(),
+            clear: self
+                .reported
+                .difference(&overdue)
+                .map(|pane| (key(pane), self.cleared(pane)))
+                .collect(),
             stalled: stalled.clone(),
         };
         for pane in &stalled {
@@ -252,7 +301,28 @@ impl Waiting {
             }
         }
         self.reported = overdue;
+        self.settled.clear();
         reported
+    }
+
+    /// Records why a reported pane stopped waiting. A pane nobody was told about has nothing
+    /// to take back, so nothing is kept for it.
+    fn settle(&mut self, pane: &PaneKey, why: Cleared) {
+        if self.reported.contains(pane) {
+            self.settled.insert(pane.clone(), why);
+        }
+    }
+
+    /// Why a pane that was reported is no longer overdue.
+    ///
+    /// A pane still waiting has one of two reasons, and the wait shows which: the window is not
+    /// drawing it, or its clock started again.
+    fn cleared(&self, pane: &PaneKey) -> Cleared {
+        match self.settled.get(pane) {
+            Some(why) => *why,
+            None if self.drawn(pane) => Cleared::Restarted,
+            None => Cleared::Hidden,
+        }
     }
 
     /// How long until there is something new to say, or `None` when nothing more will change.
