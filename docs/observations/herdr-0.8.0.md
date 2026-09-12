@@ -642,8 +642,8 @@ or a power cut is strictly worse than this and loses at least as much.
 | scrollback | **no** |
 
 herdr persists and restores the session's *shape*. It does not, and cannot, keep the
-processes: `terminal_id` changed on all three panes (`term_658f1ed496e411` became
-`term_658f1ed77653f1`), and a marker echoed into a pane before the restart was gone
+processes: `terminal_id` changed on all three panes (`w1:p1`'s `term_65b51396fedeb1` became
+`term_65b51399f1ad51`), and a marker echoed into a pane before the restart was gone
 afterwards. So a pane comes back in the right place, in the right directory, running a
 fresh shell.
 

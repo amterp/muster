@@ -138,7 +138,7 @@
         "viewport_rows": 21
       },
       "tab_id": "w1:t1",
-      "terminal_id": "term_658f1effe40da1",
+      "terminal_id": "term_65b51399f1ad51",
       "workspace_id": "w1"
     },
     {
@@ -154,14 +154,14 @@
         "viewport_rows": 21
       },
       "tab_id": "w1:t1",
-      "terminal_id": "term_658f1effe4dd82",
+      "terminal_id": "term_65b51399f2fdc2",
       "workspace_id": "w1"
     },
     {
       "agent_status": "unknown",
-      "cwd": "/Users/amterp/src/muster",
+      "cwd": "/Users/amterp/src/muster-4",
       "focused": false,
-      "foreground_cwd": "/Users/amterp/src/muster",
+      "foreground_cwd": "/Users/amterp/src/muster-4",
       "pane_id": "w1:p3",
       "revision": 0,
       "scroll": {
@@ -170,7 +170,7 @@
         "viewport_rows": 23
       },
       "tab_id": "w1:t2",
-      "terminal_id": "term_658f1effe5a153",
+      "terminal_id": "term_65b51399f44a53",
       "workspace_id": "w1"
     },
     {
@@ -186,7 +186,7 @@
         "viewport_rows": 23
       },
       "tab_id": "w1:t3",
-      "terminal_id": "term_658f1f016bb0f4",
+      "terminal_id": "term_65b5139b7b7b64",
       "workspace_id": "w1"
     },
     {
@@ -202,7 +202,7 @@
         "viewport_rows": 23
       },
       "tab_id": "w1:t3",
-      "terminal_id": "term_658f1f016cab35",
+      "terminal_id": "term_65b5139b7c5885",
       "workspace_id": "w1"
     }
   ],

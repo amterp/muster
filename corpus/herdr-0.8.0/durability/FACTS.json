@@ -1,6 +1,6 @@
 {
   "cwds_after_apply": [
-    "/Users/amterp/src/muster",
+    "/Users/amterp/src/muster-4",
     "/private/tmp"
   ],
   "cwds_survive_daemon_restart": true,
@@ -36,14 +36,14 @@
   "session_survives_daemon_restart": true,
   "splits_after_apply": 1,
   "terminal_ids_after_restart": {
-    "w1:p1": "term_658f1effe40da1",
-    "w1:p2": "term_658f1effe4dd82",
-    "w1:p3": "term_658f1effe5a153"
+    "w1:p1": "term_65b51399f1ad51",
+    "w1:p2": "term_65b51399f2fdc2",
+    "w1:p3": "term_65b51399f44a53"
   },
   "terminal_ids_before_restart": {
-    "w1:p1": "term_658f1efd033b71",
-    "w1:p2": "term_658f1efd03fdf2",
-    "w1:p3": "term_658f1efd04a7e3"
+    "w1:p1": "term_65b51396fedeb1",
+    "w1:p2": "term_65b5139702df82",
+    "w1:p3": "term_65b5139704ae33"
   },
   "terminals_survive_daemon_restart": false,
   "workspaces_after_restart": [
