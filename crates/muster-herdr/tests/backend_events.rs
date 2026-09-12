@@ -58,12 +58,17 @@ fn describe(event: &BackendEvent) -> String {
         // structure reads as it always did and a case about naming shows what it is about.
         // Absent is the ordinary state of both: most panes are unnamed and most programs
         // set no title.
-        BackendEvent::PaneUpserted(pane) => {
+        BackendEvent::PaneUpserted(pane) | BackendEvent::PaneUpdated(pane) => {
             let named = |key: &str, value: &Option<String>| {
                 value.as_ref().map(|value| format!(" {key}={value}")).unwrap_or_default()
             };
+            let kind = if matches!(event, BackendEvent::PaneUpdated(_)) {
+                "paneUpdated"
+            } else {
+                "paneUpserted"
+            };
             format!(
-                "paneUpserted:{} tab={} workspace={} state={} cwd={}{}{}",
+                "{kind}:{} tab={} workspace={} state={} cwd={}{}{}",
                 pane.id,
                 pane.tab,
                 pane.workspace,

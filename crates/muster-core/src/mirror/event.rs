@@ -1,16 +1,21 @@
 //! What a backend tells Muster changed.
 //!
 //! Upsert rather than created-and-updated, deliberately. `events.subscribe` replays the
-//! current session as creation events, so a client that snapshots and then subscribes is
-//! told every existing entity was just created (`docs/observations/herdr-0.8.0.md`
-//! section 1). Collapsing the two makes convergence a property of the vocabulary rather
-//! than a rule each adapter has to remember.
+//! daemon's recent events, which on a fresh session are the creations of everything in it, so
+//! a client that snapshots and then subscribes is told every existing entity was just created
+//! (`docs/observations/herdr-0.8.0.md` sections 1 and 10). Collapsing the two makes
+//! convergence a property of the vocabulary rather than a rule each adapter has to remember.
 //!
 //! **Where the two carry different information, they stay two.** That replay is a log of
 //! past events rather than a statement of the present, so a creation says what an entity
 //! was called when it was made and a rename says what it is called now - and a mirror that
 //! read them as one lets a reconnect put an old name back. `TabRenamed` is that case; a
 //! pane's name has no announcement at all and so is taken only from a snapshot (section 16).
+//!
+//! **And where they carry different authority.** A creation says a pane exists; an update only
+//! describes one, as it was when the event was built, and can arrive after the pane has closed.
+//! So a pane has `PaneUpdated` beside its upsert, and only the upsert may put a pane in the
+//! mirror (kan a_2Mi2uGGxX).
 
 use crate::AgentState;
 use crate::mirror::backend::{Layout, Pane, PaneId, Tab, TabId, Workspace, WorkspaceId};
@@ -51,7 +56,15 @@ pub enum BackendEvent {
         workspace: WorkspaceId,
         order: Vec<TabId>,
     },
+    /// A pane exists, as its creation or a move stated it. The only event that may introduce one.
     PaneUpserted(Pane),
+    /// What a pane already held now looks like. Never introduces one.
+    ///
+    /// An update is built from a pane as it stood at the time, and herdr delivers at most one
+    /// event of a kind per poll, so a busy stream of updates arrives behind the close of the pane
+    /// it describes. Read as an upsert, one of those put a closed pane back for the life of the
+    /// window (`observations/herdr-0.8.0.md` section 10).
+    PaneUpdated(Pane),
     /// A pane is gone, however it went. The backend distinguishes a pane a client closed
     /// from one whose program ended, and Muster does not: both mean the surface should
     /// stop existing, and keeping the difference would invite handling only one

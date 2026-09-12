@@ -548,13 +548,80 @@ all. Nothing reports that a pane was created and closed inside a gap, which leav
 periodic re-snapshot as the only detector for structure. That is the fact the
 reconciliation cadence gets chosen against.
 
-### Subscribing still replays
+### Subscribing replays recent events, one kind at a time
 
 Confirmed again on a smaller session: 7 events for one workspace, one tab, one pane -
 `workspace_created`, `workspace_focused`, `tab_created`, `tab_focused`, `pane_created`,
-`pane_focused`, `layout_updated`. Section 1 saw 9 for a three-pane session. The replay is
-the current session described as synthetic creation events, so snapshot-then-subscribe
-sees everything twice and convergent application is not optional.
+`pane_focused`, `layout_updated`. Section 1 saw 9 for a three-pane session. So
+snapshot-then-subscribe sees everything twice and convergent application is not optional.
+
+**What was written here next was wrong for any session that has lived.** It called the
+replay the current session described as synthetic creation events. That is what it looks
+like on a fresh daemon, and not what it is. Corrected 2026-09-12 from the source at `v0.8.0`
+and a measurement (kan a_2Mi2uGGxX):
+
+- The daemon keeps its last 512 events of every kind in one buffer, numbered by one sequence
+  (`src/api/event_hub.rs`, `MAX_EVENTS`).
+- Each kind a subscription names starts at sequence 0, so it replays every buffered event of
+  that kind (`src/api/subscriptions.rs`).
+- The stream writes at most one event per subscribed kind per pass, in the order the subscribe
+  request listed the kinds, then sleeps 100ms (`src/api/server.rs`, `stream_subscriptions`,
+  `CONNECTION_POLL_INTERVAL`).
+
+On a fresh session the buffer holds exactly the creations, which is what the recordings above
+saw. On one that has lived it holds the recent past, closes included. Measured on
+2026-09-08 against a session holding one pane: a fresh subscriber got 136 events in four
+seconds, among them `workspace_closed` for a workspace closed minutes earlier, `pane_created`
+for four panes that no longer existed, and three `pane_updated` for a pane in that closed
+workspace, with no `pane_closed` for it anywhere in the replay. A second subscription a minute
+later got 101 events with different contents.
+
+It is one buffer rather than a buffer per kind, and that bounds what can go wrong. Events leave
+it oldest first by sequence, so for any one pane the replay holds a suffix of its history: if
+its creation is still there, so is its close.
+
+Measured again on 2026-09-12 with a scratch script against a daemon that had made workspace
+`w1` with five panes, closed three of them, then made and closed workspace `w2`. Subscribed to
+five kinds in this order: `workspace.created`, `workspace.closed`, `tab.created`,
+`pane.created`, `pane.closed`.
+
+```
+  0.002  workspace_created  w1
+  0.002  workspace_closed   w2
+  0.002  tab_created        w1:t1
+  0.002  pane_created       w1:p1
+  0.002  pane_closed        w1:p2
+  0.103  workspace_created  w2
+  0.103  tab_created        w2:t1
+  0.103  pane_created       w1:p2
+  0.103  pane_closed        w1:p3
+  0.208  pane_created       w1:p3
+  0.208  pane_closed        w1:p4
+  0.312  pane_created       w1:p4
+  0.417  pane_created       w1:p5
+  0.521  pane_created       w2:p1
+```
+
+`w2` is closed a pass before it is created, and its pane arrives half a second after its close.
+Five splits fired together two seconds later arrived at 2.179, 2.284, 2.388, 2.493 and 2.596 -
+the pacing is the stream's, live as much as on replay.
+
+What follows for a client:
+
+- **Order across kinds is lost.** A close can arrive before the creation it undoes (section 22).
+- **A kind that fires faster than ten times a second falls behind.** Its events then arrive
+  after later events of other kinds, so an update built before a pane closed can land after
+  the close.
+- **Closing a tab or a workspace announces nothing for the panes in it** (`tab_closed` and
+  `workspace_closed` only), and that close can land on either side of those panes' creations.
+
+What Muster does about all three is in `muster-core/src/mirror/state.rs`: only a creation or a
+snapshot puts a pane in the mirror, an announced removal is remembered, and a tab's or
+workspace's removal takes the panes naming it and refuses any that arrive later. Pinned against
+a real daemon by `a_workspace_closed_before_the_subscription_takes_its_panes_with_it` and
+`a_pane_in_a_tab_closed_before_the_subscription_does_not_come_back`
+(`crates/muster-herdr/tests/subscription.rs`), which left two and three panes on a daemon
+holding one before the fix.
 
 ## 11. Agent state is only delivered to a subscriber that names the pane
 
@@ -1255,6 +1322,10 @@ instead of discarded, and a creation for a pane already said to be gone is refus
 (`muster-core/src/mirror/state.rs`). A snapshot clears that memory, being the census it
 stands in for. Both orders then converge: close-then-create is refused, and create-then-close
 removes the pane the ordinary way.
+
+Why it happens is section 10's "Subscribing replays recent events, one kind at a time":
+`pane.created` is written before `pane.closed` in each pass, and `w1:p2`'s creation was second
+in its kind's queue while its close was first in its own.
 
 Evidence: not in `corpus/herdr-0.8.0/`, unlike every section above. The finding came from a
 hand-run probe against a scratch daemon rather than from `tools/herdr-probe/probe`, and what

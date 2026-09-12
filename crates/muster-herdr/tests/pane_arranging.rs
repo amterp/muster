@@ -353,6 +353,56 @@ fn a_move_reaches_a_window_that_is_only_listening() {
     assert_eq!(tab_of(&live, &first), far, "the pane's own record still names the old tab");
 }
 
+/// A pane moved out of a tab it was alone in reaches a listening window, and stays.
+///
+/// herdr closes the emptied tab and announces that first: `tab_closed` for the tab the pane
+/// left, then `pane_moved` for the pane (herdr v0.8.0 `src/app/api/panes.rs`), and the stream
+/// writes `tab.closed` ahead of `pane.moved` besides. The mirror takes a tab's panes with it, so
+/// for a moment the moved pane is removed - and a mirror that remembered that removal as a close
+/// would refuse the move that follows, and lose a pane nobody closed.
+#[test]
+fn a_pane_moved_out_of_a_tab_it_was_alone_in_is_not_lost() {
+    let (daemon, mirror, _tab, first, second) = a_tab_of_two();
+    daemon.call("tab.create", &json!({ "focus": false }));
+    resnapshot(&daemon, &mirror);
+    let alone = order(&mirror)
+        .into_iter()
+        .find(|pane| pane != &first && pane != &second)
+        .expect("the new tab brings a pane of its own");
+    let home = tab_of(&mirror, &first);
+    let far = tab_of(&mirror, &alone);
+
+    let live = Arc::new(Mutex::new(Mirror::new()));
+    let _subscription = Subscription::start(
+        daemon.socket_path().to_string_lossy().into_owned(),
+        Arc::clone(&live),
+        Arc::new(|_| {}),
+        daemon.names(),
+    );
+    until(
+        "the subscription to describe the whole session",
+        || {
+            recorded_in(&live, &home) == sorted([&first, &second])
+                && recorded_in(&live, &far) == sorted([&alone])
+        },
+        (),
+    );
+
+    daemon
+        .backend()
+        .submit(&BackendIntent::MovePane {
+            pane: alone.clone(),
+            to: MoveDestination::Beside { tab: home.clone(), after: second.clone() },
+        })
+        .expect("herdr accepts a move into another tab");
+
+    until(
+        "the tab it landed in to hold it",
+        || recorded_in(&live, &home) == sorted([&first, &second, &alone]),
+        || format!("the tab holds {:?}", recorded_in(&live, &home)),
+    );
+}
+
 /// A tab reordered by somebody else reaches a window that is only listening.
 ///
 /// The tab half of the test above, and it needs the live route even more than the pane half

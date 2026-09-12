@@ -160,7 +160,7 @@ fn decode(line: &[u8], names: &Names) -> Decoded {
         // The third name for the same payload, and the one that carries a pane to a
         // different tab. Muster is what causes these - a row dropped on a row in another tab
         // is a `pane.move` - and the pane it carries already states the tab it landed in, so
-        // it upserts like the other two rather than needing a verb of its own
+        // it upserts like a creation rather than needing a verb of its own
         // (`observations/herdr-0.8.0.md` section 20).
         //
         // Reading it is not optional the way it looks. A tab's tree is withheld while the
@@ -168,8 +168,17 @@ fn decode(line: &[u8], names: &Names) -> Decoded {
         // states the new tab: `pane.move` answers with both trees under names this adapter
         // does not read, and no `pane_updated` follows. So a move that was not decoded froze
         // both tabs rather than showing it.
-        "pane_created" | "pane_updated" | "pane_moved" => {
+        //
+        // A move may introduce a pane, which is why it upserts rather than updates: a pane moved
+        // into another workspace is given an id there that the mirror has never held (herdr
+        // v0.8.0 `src/workspace.rs`, `register_new_pane_with_number`).
+        "pane_created" | "pane_moved" => {
             data.get("pane").and_then(|pane| read_pane(pane, names)).map(BackendEvent::PaneUpserted)
+        }
+        // An update describes a pane and never introduces one, because it can arrive after the
+        // pane has closed (`BackendEvent::PaneUpdated`).
+        "pane_updated" => {
+            data.get("pane").and_then(|pane| read_pane(pane, names)).map(BackendEvent::PaneUpdated)
         }
         // Two names for one outcome. A pane whose program ended emits `pane_exited` and
         // never a `pane_closed` afterwards, so a mirror keyed on the latter alone renders

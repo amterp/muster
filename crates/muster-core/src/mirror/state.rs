@@ -8,7 +8,7 @@
 //! what lets the whole of this behavior be judged by recorded cases rather than by staging
 //! a daemon into each state (`docs/testing.md`).
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use crate::mirror::ordered::Ordered;
 
@@ -68,36 +68,107 @@ impl Replaying {
     }
 }
 
-/// Entities a backend said were removed before it said they were created.
+/// How many removals of each kind the mirror remembers, as a bound on what it holds for them.
 ///
-/// A replay is not ordered by cause. A pane created and closed before the subscription
-/// opened is replayed close-first, so the removal reaches a mirror that has never heard of
-/// the pane and does nothing, and the creation behind it installs one the session no longer
-/// holds (`observations/herdr-0.8.0.md` section 22). Nothing afterwards corrects it: the
-/// removal arrived first, found nothing to remove, and there is no second one. The entity is
-/// then drawn until something unrelated forces a re-snapshot, which for a pane means a row
-/// in the sidebar taking a place in the numbered chords and a daemon that refuses every
-/// request naming it.
-///
-/// Remembering the removal is what lets the creation behind it be refused. Kept rather than
-/// dropped on the first match, because one replay may state a creation more than once and the
-/// second would put back what the first was denied.
-///
-/// Cleared by a snapshot, which is the census this stands in for and also what bounds it:
-/// nothing accumulates here in a settled session, because a removal for something the mirror
-/// does hold takes the ordinary path.
-#[derive(Debug, Default)]
-struct GoneBeforeKnown {
-    panes: BTreeSet<PaneId>,
-    tabs: BTreeSet<TabId>,
-    workspaces: BTreeSet<WorkspaceId>,
+/// Sized from the stream it guards against. herdr keeps its last 512 events of every kind in one
+/// buffer and a replay is drawn from it (`observations/herdr-0.8.0.md` section 10), so no replay
+/// names more than 512 panes. Forgetting past this costs a phantom only when more removals than
+/// that land while an event about the forgotten one is still on its way.
+pub const REMOVALS_REMEMBERED: usize = 512;
+
+/// A set that forgets its oldest entry once it holds [`REMOVALS_REMEMBERED`].
+#[derive(Debug)]
+struct Remembered<T> {
+    held: BTreeSet<T>,
+    order: VecDeque<T>,
 }
 
-impl GoneBeforeKnown {
+impl<T> Default for Remembered<T> {
+    fn default() -> Remembered<T> {
+        Remembered { held: BTreeSet::new(), order: VecDeque::new() }
+    }
+}
+
+impl<T: Ord + Clone> Remembered<T> {
+    fn insert(&mut self, item: T) {
+        if !self.held.insert(item.clone()) {
+            return;
+        }
+        self.order.push_back(item);
+        if self.order.len() > REMOVALS_REMEMBERED
+            && let Some(oldest) = self.order.pop_front()
+        {
+            self.held.remove(&oldest);
+        }
+    }
+
+    fn contains(&self, item: &T) -> bool {
+        self.held.contains(item)
+    }
+
+    fn remove(&mut self, item: &T) {
+        if self.held.remove(item) {
+            self.order.retain(|held| held != item);
+        }
+    }
+
+    fn clear(&mut self) {
+        self.held.clear();
+        self.order.clear();
+    }
+}
+
+/// What a backend has said is gone, so that nothing arriving afterwards puts it back.
+///
+/// A stream is not ordered by cause. herdr writes at most one event of each kind per poll, from
+/// a queue per kind (`observations/herdr-0.8.0.md` section 10), so a replay can state a pane's
+/// close before its creation, a busy kind can deliver an update from before a close after it, and
+/// a workspace's close can land on either side of the creations of the panes it took with it -
+/// closing a tab or a workspace announces no `pane_closed` for what was in it. Applied in arrival
+/// order, each of those installs a pane the session does not have, and nothing afterwards removes
+/// it: `muster window` counted ten panes on a daemon holding one (kan a_2Mi2uGGxX).
+///
+/// So a removal is remembered, and a creation naming something remembered is refused - the pane
+/// itself, or the tab or workspace it says it is in. Kept rather than spent on the first match,
+/// because one stream may state a creation more than once.
+///
+/// Cleared by a snapshot, which is the census this stands in for. Within one daemon's life herdr
+/// never reuses an id, and a daemon that restarts drops the subscription, which snapshots again.
+#[derive(Debug, Default)]
+struct Gone {
+    /// Panes the backend announced were closed, whether or not the mirror held them.
+    ///
+    /// Not the panes a tab or workspace took with it. That removal is an inference, and a move
+    /// contradicts it: moving the last pane out of a tab makes herdr close the tab first and
+    /// announce the pane in its new tab afterwards. Those panes are refused by their parent
+    /// instead, which a move does not name.
+    panes: Remembered<PaneId>,
+    /// Every tab said to be gone, announced or inferred. A pane naming one is not introduced.
+    tabs: Remembered<TabId>,
+    /// The tabs said to be gone before this mirror held them, which are not introduced either.
+    ///
+    /// Only these, because a tab's name can legitimately come back: a Muster tab keeps its name
+    /// when a machine is grouped back into it (MIP-2), and the new herdr tab is announced under
+    /// it. A tab that closed while held and is created again is that, since a stream states a
+    /// tab's creation once.
+    tabs_never_held: Remembered<TabId>,
+    /// Every workspace said to be gone. Neither it nor anything naming it is introduced.
+    workspaces: Remembered<WorkspaceId>,
+}
+
+impl Gone {
     fn clear(&mut self) {
         self.panes.clear();
         self.tabs.clear();
+        self.tabs_never_held.clear();
         self.workspaces.clear();
+    }
+
+    /// Whether a pane may not be introduced, by itself or by where it says it is.
+    fn refuses_pane(&self, pane: &Pane) -> bool {
+        self.panes.contains(&pane.id)
+            || self.tabs.contains(&pane.tab)
+            || self.workspaces.contains(&pane.workspace)
     }
 }
 
@@ -179,8 +250,8 @@ pub struct Mirror {
     /// and dropped with the pane if it turns out never to have survived. Nothing forgets one on a
     /// timer, because "the daemon is slow today" is exactly the case this exists for.
     names_awaiting_pane: BTreeMap<PaneId, Option<String>>,
-    /// What a replay said was gone before it said it existed.
-    gone_before_known: GoneBeforeKnown,
+    /// What the backend has said is gone, so a replay or a late event cannot put it back.
+    gone: Gone,
     focus: Focus,
     health: Health,
     /// Why the health is what it is, for anyone who has to say so out loud. Empty when
@@ -247,7 +318,7 @@ impl Mirror {
             .values()
             .map(|layout| (layout.tab.clone(), Replaying::of(layout)))
             .collect();
-        self.gone_before_known.clear();
+        self.gone.clear();
         // Same reasoning, one step further: a snapshot describing the pane carries the backend's
         // own label for it, which is what the rename produced. Holding the wish past that would
         // let it put back a name a later client had already changed.
@@ -336,9 +407,9 @@ impl Mirror {
     /// Applies one event, and reports what it actually changed.
     ///
     /// An event that changed nothing returns nothing. That is what makes idempotence
-    /// observable rather than merely intended: the subscription replays the whole session
-    /// as creation events, and a mirror that reported those as changes would repaint every
-    /// pane on every reconnect.
+    /// observable rather than merely intended: the subscription replays the daemon's recent
+    /// events, which restate the creation of much of what a snapshot already described, and a
+    /// mirror that reported those as changes would repaint every pane on every reconnect.
     pub fn apply(&mut self, event: BackendEvent) -> Vec<Change> {
         // Focus is compared once, here, rather than reported by whichever branch touched
         // it. Three different paths move a cursor - an explicit focus event, a removal
@@ -511,7 +582,7 @@ impl Mirror {
     /// storing something new - it is the mirror no longer keeping it to itself.
     fn upsert_workspace(&mut self, workspace: Workspace) -> Vec<Change> {
         let id = workspace.id.clone();
-        if !self.workspaces.contains_key(&id) && self.gone_before_known.workspaces.contains(&id) {
+        if !self.workspaces.contains_key(&id) && self.gone.workspaces.contains(&id) {
             return Vec::new();
         }
         let renamed =
@@ -534,10 +605,10 @@ impl Mirror {
     fn upsert_pane(&mut self, mut pane: Pane) -> Vec<Change> {
         let id = pane.id.clone();
         let Some(before) = self.panes.get(&id) else {
-            // A pane already said to be gone is not one an event may bring back. The
-            // statement that it closed arrived first because a replay is not ordered
-            // by cause, and it is still the later fact about this pane.
-            if self.gone_before_known.panes.contains(&id) {
+            // A pane already said to be gone, or said to be in a tab or workspace that is, is
+            // not one an event may bring back. The removal arrived first because a stream is not
+            // ordered by cause, and it is still the later fact about this pane.
+            if self.gone.refuses_pane(&pane) {
                 return Vec::new();
             }
             // A name this pane was already given, before the backend got round to
@@ -624,9 +695,14 @@ impl Mirror {
                     self.tabs.insert(id, tab);
                     return Vec::new();
                 }
-                if self.gone_before_known.tabs.contains(&id) {
+                if self.gone.tabs_never_held.contains(&id)
+                    || self.gone.workspaces.contains(&tab.workspace)
+                {
                     return Vec::new();
                 }
+                // A tab that closed while held, made again under its name: a machine grouped
+                // back into a Muster tab. Its panes are welcome again too.
+                self.gone.tabs.remove(&id);
                 self.tabs.insert(id.clone(), tab);
                 vec![Change::TabAdded(id)]
             }
@@ -645,6 +721,11 @@ impl Mirror {
                 self.reorder_tabs(workspace, &order)
             }
             BackendEvent::PaneUpserted(pane) => self.upsert_pane(pane),
+            BackendEvent::PaneUpdated(pane) if self.panes.contains_key(&pane.id) => {
+                self.upsert_pane(pane)
+            }
+            // Not news about a pane: see `BackendEvent::PaneUpdated` for why one arrives.
+            BackendEvent::PaneUpdated(_) => Vec::new(),
             BackendEvent::PaneRemoved(id) => self.remove_pane(&id, false),
             // Kept even for a tab this mirror does not know. herdr sends the layout for a
             // tab it has just created, and nothing says the tab event arrives first - a
@@ -732,11 +813,13 @@ impl Mirror {
     /// (`observations/herdr-0.8.0.md` section 10). A mirror that removed only what it was
     /// told about would keep rendering them, and they would be panes the user has no way
     /// to close.
+    ///
+    /// Whether or not the mirror holds the workspace itself. A stream delivers a workspace's
+    /// close and the creations of what was in it in no particular order, so the panes may be
+    /// here when the workspace is not - and nothing else will ever remove them.
     fn remove_workspace(&mut self, id: &WorkspaceId) -> Vec<Change> {
-        if self.workspaces.remove(id).is_none() {
-            self.gone_before_known.workspaces.insert(id.clone());
-            return Vec::new();
-        }
+        let held = self.workspaces.remove(id).is_some();
+        self.gone.workspaces.insert(id.clone());
         let orphaned: Vec<TabId> = self
             .tabs
             .values()
@@ -747,20 +830,40 @@ impl Mirror {
         for tab in orphaned {
             changes.extend(self.remove_tab(&tab));
         }
-        changes.push(Change::WorkspaceRemoved(id.clone()));
-        self.forget_focus();
+        // Whatever is left named the workspace from a tab this mirror has not been told about.
+        changes.extend(self.remove_panes_in(|pane| &pane.workspace == id));
+        if held {
+            changes.push(Change::WorkspaceRemoved(id.clone()));
+            self.forget_focus();
+        }
         changes
+    }
+
+    /// Removes every pane a parent's removal took with it, as inferred rather than announced.
+    fn remove_panes_in(&mut self, contained: impl Fn(&Pane) -> bool) -> Vec<Change> {
+        let orphaned: Vec<PaneId> = self
+            .panes
+            .values()
+            .filter(|pane| contained(pane))
+            .map(|pane| pane.id.clone())
+            .collect();
+        orphaned.iter().flat_map(|pane| self.remove_pane(pane, true)).collect()
     }
 
     /// Only panes carry whether their removal was announced or inferred, because only
     /// panes are rendered - a tab disappearing with its workspace has no surface to
     /// explain, while a pane does.
+    ///
+    /// Takes the panes naming the tab whether or not the mirror holds the tab, for the reason
+    /// [`Mirror::remove_workspace`] gives.
     fn remove_tab(&mut self, id: &TabId) -> Vec<Change> {
+        self.gone.tabs.insert(id.clone());
         if self.tabs.remove(id).is_none() {
-            // Remembered for the reason [`GoneBeforeKnown`] gives: this may be a removal that
-            // has overtaken its own creation, and then it is the only word there will be.
-            self.gone_before_known.tabs.insert(id.clone());
-            return Vec::new();
+            // Refused outright if it arrives later, for the reason [`Gone`] gives: this may be a
+            // removal that has overtaken its own creation, and then it is the only word there
+            // will be.
+            self.gone.tabs_never_held.insert(id.clone());
+            return self.remove_panes_in(|pane| &pane.tab == id);
         }
         // The tree goes with the tab and is not reported separately: `layout_updated` does
         // not fire for a tab closing, so a mirror that waited for one would keep a tree for
@@ -769,16 +872,7 @@ impl Mirror {
         self.superseded.remove(id);
         self.awaiting_echo.remove(id);
         self.replaying.remove(id);
-        let orphaned: Vec<PaneId> = self
-            .panes
-            .values()
-            .filter(|pane| &pane.tab == id)
-            .map(|pane| pane.id.clone())
-            .collect();
-        let mut changes = Vec::new();
-        for pane in orphaned {
-            changes.extend(self.remove_pane(&pane, true));
-        }
+        let mut changes = self.remove_panes_in(|pane| &pane.tab == id);
         changes.push(Change::TabRemoved(id.clone()));
         self.forget_focus();
         changes
@@ -788,15 +882,16 @@ impl Mirror {
         // Before the early return, because the pane this is about may be one that was named and
         // then died before the backend ever described it - and then this is the only word of it.
         self.names_awaiting_pane.remove(id);
+        // Announced removals only, whether or not the pane is held: see [`Gone::panes`] for why
+        // a pane taken with its tab is not remembered here.
+        if !cascaded {
+            self.gone.panes.insert(id.clone());
+        }
         let Some(gone) = self.panes.remove(id) else {
             // Nothing to report: replays and re-snapshots routinely say a thing is gone that
-            // this mirror already dropped, and that is a no-op rather than an error.
-            //
-            // It is remembered all the same, because the other way to reach this line is a
-            // removal that has *overtaken its own creation* in an unordered replay. Then this
-            // is the only word there will ever be that the pane is gone, and forgetting it
-            // lets the creation behind it install a pane the session no longer holds.
-            self.gone_before_known.panes.insert(id.clone());
+            // this mirror already dropped, and that is a no-op rather than an error. The other
+            // way to reach this line is a removal that has overtaken its own creation, which is
+            // why the memory above is written first.
             return Vec::new();
         };
         self.forget_focus();

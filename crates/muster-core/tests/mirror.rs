@@ -211,7 +211,8 @@ fn read_event(given: &Value) -> BackendEvent {
                 .map(TabId::new)
                 .collect(),
         },
-        "paneUpserted" | "paneUpdated" => BackendEvent::PaneUpserted(read_pane(given)),
+        "paneUpserted" => BackendEvent::PaneUpserted(read_pane(given)),
+        "paneUpdated" => BackendEvent::PaneUpdated(read_pane(given)),
         "paneRemoved" => BackendEvent::PaneRemoved(PaneId::new(text(given, "id"))),
         "layoutUpserted" => BackendEvent::LayoutUpserted(read_layout(given)),
         "agentStateChanged" => BackendEvent::AgentStateChanged {
@@ -230,6 +231,52 @@ fn read_event(given: &Value) -> BackendEvent {
         // Loudly, because a case naming an event this driver cannot build would otherwise
         // pass by exercising nothing at all.
         other => panic!("corpus case names an event kind the driver does not know: {other:?}"),
+    }
+}
+
+/// A removal is remembered within a bound, and the bound is a real one.
+///
+/// Its own module because the sequence is too long to spell as a case: a bound is proved by
+/// crossing it.
+mod removals_are_remembered_within_a_bound {
+    use muster_core::AgentState;
+    use muster_core::mirror::backend::{Pane, PaneId, TabId, WorkspaceId};
+    use muster_core::mirror::{BackendEvent, Mirror, REMOVALS_REMEMBERED};
+
+    fn pane(n: usize) -> Pane {
+        Pane {
+            id: PaneId::new(format!("w1:p{n}")),
+            tab: TabId::new("w1:t1"),
+            workspace: WorkspaceId::new("w1"),
+            agent_state: AgentState::Idle,
+            agent: None,
+            cwd: String::new(),
+            name: None,
+            revision: 0,
+            title: None,
+        }
+    }
+
+    #[test]
+    fn the_newest_removal_is_remembered_and_the_oldest_past_the_bound_is_not() {
+        let mut mirror = Mirror::new();
+        // One pane kept, so no removal empties the tab and turns into a remembered tab - which
+        // would refuse every pane below for a different reason than the one under test.
+        mirror.apply(BackendEvent::PaneUpserted(pane(0)));
+        for n in 1..=REMOVALS_REMEMBERED + 1 {
+            mirror.apply(BackendEvent::PaneUpserted(pane(n)));
+            mirror.apply(BackendEvent::PaneRemoved(pane(n).id));
+        }
+
+        assert!(
+            mirror.apply(BackendEvent::PaneUpserted(pane(REMOVALS_REMEMBERED + 1))).is_empty(),
+            "the most recent removal was forgotten, so a late creation put the pane back"
+        );
+        assert!(
+            !mirror.apply(BackendEvent::PaneUpserted(pane(1))).is_empty(),
+            "a removal {REMOVALS_REMEMBERED} removals old is still refusing its pane, so what the \
+             mirror remembers grows for as long as the connection lasts"
+        );
     }
 }
 

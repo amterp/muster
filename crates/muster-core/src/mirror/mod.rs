@@ -15,4 +15,4 @@ pub mod state;
 
 pub use backend::{Focus, Health, Pane, PaneId, Snapshot, Tab, TabId, Workspace, WorkspaceId};
 pub use event::{BackendEvent, Change};
-pub use state::Mirror;
+pub use state::{Mirror, REMOVALS_REMEMBERED};

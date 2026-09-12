@@ -4469,7 +4469,7 @@
     },
     {
       "name": "an update for a pane the mirror does not hold introduces nothing",
-      "why": "Only a creation or a snapshot may put a pane in the mirror. An update describes a pane as it was when the daemon built the event, and herdr delivers at most one event of each kind per 100ms poll, so a busy stream of updates arrives behind the close of the pane it describes (`observations/herdr-0.8.0.md` section 10, subscribing still replays). Read as an upsert, one late update put a closed pane back for the life of the window: `muster window` counted ten panes on a daemon holding one (kan a_2Mi2uGGxX).",
+      "why": "Only a creation or a snapshot may put a pane in the mirror. An update describes a pane as it was when the daemon built the event, and herdr delivers at most one event of each kind per 100ms poll, so a busy stream of updates arrives behind the close of the pane it describes (`observations/herdr-0.8.0.md` section 10). Read as an upsert, one late update put a closed pane back for the life of the window: `muster window` counted ten panes on a daemon holding one (kan a_2Mi2uGGxX).",
       "given": {
         "snapshot": {
           "workspaces": [

@@ -483,10 +483,16 @@ State changes only by applying events and intents in one place, in one order per
 the result. Pane content is not state in this sense - it is a stream the surface renders. Two constraints carry the
 model:
 
-- **Application is convergent.** herdr offers no event replay, and subscribing replays the current session as
-  synthetic events, so a client sees every existing entity twice and cannot ask for what it missed. Every event is
-  therefore applied idempotently and carries absolute values, never deltas, so snapshot-plus-events converges
-  regardless of what raced the bootstrap.
+- **Application is convergent.** herdr offers no way to ask for what a client missed, and subscribing replays the
+  daemon's last 512 events one kind at a time, so a client sees existing entities twice and sees the recent past
+  out of order. Every event is therefore applied idempotently and carries absolute values, never deltas, so
+  snapshot-plus-events converges regardless of what raced the bootstrap.
+- **Only a creation or a snapshot introduces something, and a removal is remembered.** herdr writes at most one
+  event of a kind per 100ms pass, live as well as on replay, so an update built before a pane closed can arrive
+  after the close, and a workspace's close can land before the creation of a pane in it
+  (`observations/herdr-0.8.0.md` section 10). An update for a pane the mirror does not hold is dropped; a pane
+  announced closed, or named as in a tab or workspace said to be gone, is not put back until the next snapshot.
+  Without this a window counted ten panes on a daemon holding one (kan a_2Mi2uGGxX).
 - **Gaps are quantifiable for agent state in arrears, and never for structure.** Measured rather than assumed
   (`observations/herdr-0.8.0.md` section 10). An agent's `state_change_seq` is stamped from one session-wide
   counter, so comparing two of them says how many transitions ran in between, including on panes the client has
