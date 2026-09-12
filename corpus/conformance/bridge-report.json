@@ -1,7 +1,7 @@
 {
   "concept": "bridgeReport.ending",
   "source": "recorded",
-  "regenerate": "see corpus/herdr-0.8.0/closing-reasons/, recorded by hand against a scratch daemon with three `herdr terminal session control` clients: one holding the terminal, one refused a plain attach, one taking it with --takeover",
+  "regenerate": "see corpus/herdr-0.8.0/closing-reasons/, recorded by hand against a scratch daemon with three `herdr terminal session control` clients: one holding the terminal, one refused a plain attach, one taking it with --takeover; and a fourth whose pane was closed under it, which `a_client_whose_pane_closes_is_told_its_terminal_is_gone` in crates/muster-herdr/tests/one_client_per_terminal.rs records again on every run",
   "citation": "docs/observations/herdr-0.8.0.md section 23",
   "why": "A bridge that stopped is one event to the app and several things to the person, and herdr says which only in prose - a `reason` string with no code beside it. Muster reads that prose in exactly one place, and this is the oracle for it: a herdr re-pin that rewords a closing reason silently turns a takeover into a lost connection, and two windows would then trade one terminal until both gave up. The endings are Muster's own words; the reasons are herdr's, quoted from the recording.",
   "cases": [
@@ -16,6 +16,12 @@
       "why": "The one ending that must not be answered by attaching again. Another window asked for this pane and got it; taking it back would be answered the same way by the window on the other side.",
       "given": { "reason": "terminal attach taken over" },
       "expect": { "ending": "taken_over" }
+    },
+    {
+      "name": "a terminal that no longer exists is gone",
+      "why": "What a bridge hears when its pane is closed under it. The daemon is saying the pane is gone, so no bridge can ever attach to it again, and the answer is to let it go. Read as a lost connection, the window started replacement bridges at a terminal that cannot exist and then told the person to check that a healthy machine was reachable (kan a_2LMpvavhA).",
+      "given": { "reason": "terminal attach ended: terminal term_65b513b45873d1 not found" },
+      "expect": { "ending": "gone" }
     },
     {
       "name": "a client letting go is not a refusal of anything",

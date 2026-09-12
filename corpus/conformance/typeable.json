@@ -123,6 +123,38 @@
       }
     },
     {
+      "name": "a pane whose terminal no longer exists is owed nothing",
+      "why": "What a bridge hears when its pane is closed under it: the daemon says the terminal is gone. The window can still be drawing the pane when this arrives, and a wait started here once accused the network five seconds later - 'check that the machine holding it is reachable' - about a pane somebody had just closed on a healthy machine (kan a_2LMpvavhA). Nothing can attach to it, so there is nothing to wait for, nothing to say and nothing to ask for.",
+      "given": {
+        "deadline": 5000000000,
+        "steps": [
+          {
+            "opened": "local/p1w3r07bsd",
+            "at": 0
+          },
+          {
+            "typeable": "local/p1w3r07bsd"
+          },
+          {
+            "ended": "local/p1w3r07bsd",
+            "at": 1000000000,
+            "ending": "gone",
+            "reason": "terminal attach ended: terminal term_65b513b45873d1 not found",
+            "rendered": true
+          },
+          {
+            "reconcile": 20000000000
+          }
+        ]
+      },
+      "expect": {
+        "raised": [],
+        "cleared": [],
+        "asked": [],
+        "next_wake": null
+      }
+    },
+    {
       "name": "a pane still inside its deadline is not accused",
       "why": "A bridge takes measurable time to start, dial and paint, and a window that reported every pane during its first moments would be a window nobody reads. The deadline separates slow from broken, so the boundary is exclusive on the near side - and one nanosecond short of it, the answer is to wait that nanosecond.",
       "given": {
