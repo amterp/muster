@@ -81,6 +81,43 @@
       "expect": { "raised": [], "cleared": [] }
     },
     {
+      "name": "a warning somebody looked away from is still raised when they look back, until the pane paints",
+      "why": "The accusation was true when it was made, and looking away does not make it untrue. A pane whose bridge had wedged cleared its warning the moment somebody switched tabs and back, and stayed frozen for three more minutes with nobody told - the clear was the same one a real frame produces, so the roster could not say whether the agent came back or the person had only stopped watching (kan a_2LWqtPd8E). What a pane nobody is drawing must not get is a new accusation, which the case above keeps; one already made waits for a frame, the pane closing, its machine going away, or the grid ceiling naming the cause.",
+      "given": {
+        "deadline": 10000,
+        "steps": [
+          { "showing": ["local/p1w3r07bsd"] },
+          { "typed": "local/p1w3r07bsd" },
+          { "tick": 10000 },
+          { "showing": [] },
+          { "tick": 60000 },
+          { "showing": ["local/p1w3r07bsd"] },
+          { "tick": 60000 },
+          { "painted": "local/p1w3r07bsd" }
+        ]
+      },
+      "expect": {
+        "raised": ["pane:local/p1w3r07bsd:painting"],
+        "cleared": [{ "key": "pane:local/p1w3r07bsd:painting", "because": "painted" }]
+      }
+    },
+    {
+      "name": "a warning on a machine that then goes away is taken back, and says that is why",
+      "why": "The machine's own problem names the cause once, and eight panes each saying they stopped painting beside it is the nagging keying a problem by its condition exists to end. The clear says the daemon went away, so the run log does not read as those panes having painted.",
+      "given": {
+        "deadline": 10000,
+        "steps": [
+          { "typed": "devenv/p206y9p61r" },
+          { "tick": 10000 },
+          { "away": "devenv" }
+        ]
+      },
+      "expect": {
+        "raised": ["pane:devenv/p206y9p61r:painting"],
+        "cleared": [{ "key": "pane:devenv/p206y9p61r:painting", "because": "daemon_away" }]
+      }
+    },
+    {
       "name": "a pane on a machine that has gone away is not accused for it",
       "why": "A daemon that stops answering takes every one of its panes' frames with it, and the window already says so once, naming the machine and saying it may come back. Eight more rows saying each pane stopped painting would bury the one row that names the cause. When the machine comes back the panes are asked again, and one that is still silent then is silent on its own account.",
       "given": {
