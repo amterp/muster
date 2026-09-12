@@ -3,7 +3,7 @@
   "source": "recorded",
   "regenerate": "tools/herdr-probe/probe lifecycle snapshot layout-replay",
   "citation": "corpus/herdr-0.8.0/lifecycle/, corpus/herdr-0.8.0/snapshot/ and corpus/herdr-0.8.0/layout-replay/; read out in docs/observations/herdr-0.8.0.md sections 1, 10 and 13",
-  "why": "The mirror is the core's picture of daemon truth, and every desideratum above it reads from that picture: which panes exist, what each agent is doing, which one has focus. Its failures are not display bugs. A pane that never disappears is a surface the user cannot close; an agent transition dropped on the floor is the product's whole reason for existing, silently absent. These cases come from a real daemon's recorded event stream rather than from what herdr's docs imply, because three of them describe behavior nobody would have guessed: closing a tab removes its panes with no pane event at all, a pane whose program exits is announced differently from one a client closed, and subscribing replays the entire session as fresh creations. Each case states the whole resulting picture rather than the part it is about, so a change with a side effect somewhere else fails here rather than somewhere later.",
+  "why": "The mirror is the core's picture of daemon truth, and every desideratum above it reads from that picture: which panes exist, what each agent is doing, which one has focus. Its failures are not display bugs. A pane that never disappears is a surface the user cannot close; an agent transition dropped on the floor is the product's whole reason for existing, silently absent. These cases come from a real daemon's recorded event stream rather than from what herdr's docs imply, because three of them describe behavior nobody would have guessed: closing a tab removes its panes with no pane event at all, a pane whose program exits is announced differently from one a client closed, and subscribing replays the daemon's recent events one kind at a time, out of the order they happened in. Each case states the whole resulting picture rather than the part it is about, so a change with a side effect somewhere else fails here rather than somewhere later.",
   "cases": [
     {
       "name": "an empty mirror knows nothing",
@@ -157,7 +157,7 @@
     },
     {
       "name": "subscribing after a snapshot does not double the session",
-      "why": "The load-bearing case. events.subscribe replays the current session as synthetic creation events, so a client that snapshots and then subscribes is told every existing entity was just created - 7 events for a one-pane session in the recording, 9 for a three-pane one. Convergence is what makes that harmless, and it is a property of the vocabulary rather than a rule each adapter remembers: there is no 'created' event to get wrong, only an upsert.",
+      "why": "The load-bearing case. events.subscribe replays the daemon's recent events, and on a fresh session those are the creations of everything in it - 7 events for a one-pane session in the recording, 9 for a three-pane one - so a client that snapshots and then subscribes is told every existing entity was just created. Convergence is what makes that harmless, and it is a property of the vocabulary rather than a rule each adapter remembers: there is no 'created' event to get wrong, only an upsert.",
       "given": {
         "snapshot": {
           "workspaces": [
@@ -4465,6 +4465,569 @@
         "focus": {},
         "health": "connected",
         "changes": []
+      }
+    },
+    {
+      "name": "an update for a pane the mirror does not hold introduces nothing",
+      "why": "Only a creation or a snapshot may put a pane in the mirror. An update describes a pane as it was when the daemon built the event, and herdr delivers at most one event of each kind per 100ms poll, so a busy stream of updates arrives behind the close of the pane it describes (`observations/herdr-0.8.0.md` section 10, subscribing still replays). Read as an upsert, one late update put a closed pane back for the life of the window: `muster window` counted ten panes on a daemon holding one (kan a_2Mi2uGGxX).",
+      "given": {
+        "snapshot": {
+          "workspaces": [
+            {
+              "id": "w1",
+              "label": "tmp"
+            }
+          ],
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "paneUpdated",
+            "id": "w1:p2",
+            "tab": "w1:t1",
+            "workspace": "w1",
+            "agentState": "idle"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1"
+        ],
+        "tabs": [
+          "w1:t1"
+        ],
+        "workspaces": [
+          "w1"
+        ],
+        "agentStates": {
+          "w1:p1": "idle"
+        },
+        "tabLabels": {
+          "w1:t1": "1"
+        },
+        "layouts": {},
+        "focus": {},
+        "health": "connected",
+        "changes": []
+      }
+    },
+    {
+      "name": "a pane closed and then updated stays closed",
+      "why": "The live half of the same bug, and the one that fitted the measurement: a window that re-snapshotted and then grew to ten panes with no reconnect in between, while herdr held one. A pane's last updates - a title changing as its program exits - can be queued behind its close.",
+      "given": {
+        "snapshot": {
+          "workspaces": [
+            {
+              "id": "w1",
+              "label": "tmp"
+            }
+          ],
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            },
+            {
+              "id": "w1:p2",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "paneRemoved",
+            "id": "w1:p2"
+          },
+          {
+            "kind": "paneUpdated",
+            "id": "w1:p2",
+            "tab": "w1:t1",
+            "workspace": "w1",
+            "agentState": "idle"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1"
+        ],
+        "tabs": [
+          "w1:t1"
+        ],
+        "workspaces": [
+          "w1"
+        ],
+        "agentStates": {
+          "w1:p1": "idle"
+        },
+        "tabLabels": {
+          "w1:t1": "1"
+        },
+        "layouts": {},
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "paneRemoved:w1:p2:announced"
+        ]
+      }
+    },
+    {
+      "name": "a pane closed and then created again stays closed",
+      "why": "What a removal is remembered for once the pane was held. `pane_moved` introduces a pane the way a creation does, because a move into another workspace gives the pane an id the mirror has never seen - and within one poll herdr writes events in the order the subscription named their kinds, which puts `pane.closed` ahead of `pane.moved`. So a pane moved and then closed arrives closed and then moved. A pane's name is never reused, so a pane said to be gone stays gone until the next snapshot.",
+      "given": {
+        "snapshot": {
+          "workspaces": [
+            {
+              "id": "w1",
+              "label": "tmp"
+            }
+          ],
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            },
+            {
+              "id": "w1:p2",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "paneRemoved",
+            "id": "w1:p2"
+          },
+          {
+            "kind": "paneUpserted",
+            "id": "w1:p2",
+            "tab": "w1:t1",
+            "workspace": "w1",
+            "agentState": "idle"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1"
+        ],
+        "tabs": [
+          "w1:t1"
+        ],
+        "workspaces": [
+          "w1"
+        ],
+        "agentStates": {
+          "w1:p1": "idle"
+        },
+        "tabLabels": {
+          "w1:t1": "1"
+        },
+        "layouts": {},
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "paneRemoved:w1:p2:announced"
+        ]
+      }
+    },
+    {
+      "name": "a workspace closed before its tab and pane are created leaves both closed",
+      "why": "Closing a workspace emits `workspace_closed` and nothing for the tabs and panes in it (herdr v0.8.0, `handle_workspace_close`), and a replay drains each kind from its own queue, so the close can arrive first. A remembered workspace refuses whatever names it, as a remembered pane refuses its own creation. Measured with a real daemon in `a_workspace_closed_before_the_subscription_takes_its_panes_with_it` (`crates/muster-herdr/tests/subscription.rs`).",
+      "given": {
+        "snapshot": {
+          "workspaces": [
+            {
+              "id": "w1",
+              "label": "tmp"
+            }
+          ],
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "workspaceRemoved",
+            "id": "w2"
+          },
+          {
+            "kind": "tabUpserted",
+            "id": "w2:t1",
+            "workspace": "w2",
+            "label": "1"
+          },
+          {
+            "kind": "paneUpserted",
+            "id": "w2:p1",
+            "tab": "w2:t1",
+            "workspace": "w2",
+            "agentState": "idle"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1"
+        ],
+        "tabs": [
+          "w1:t1"
+        ],
+        "workspaces": [
+          "w1"
+        ],
+        "agentStates": {
+          "w1:p1": "idle"
+        },
+        "tabLabels": {
+          "w1:t1": "1"
+        },
+        "layouts": {},
+        "focus": {},
+        "health": "connected",
+        "changes": []
+      }
+    },
+    {
+      "name": "a pane created before its workspace's close goes with it, though the workspace was never held",
+      "why": "The other order. The pane arrived first and was installed - a pane comes before its tab even on a live stream - and the close then named a workspace the mirror did not hold. Removing only what the mirror held left the pane with nothing ever to remove it.",
+      "given": {
+        "snapshot": {
+          "workspaces": [
+            {
+              "id": "w1",
+              "label": "tmp"
+            }
+          ],
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "paneUpserted",
+            "id": "w2:p1",
+            "tab": "w2:t1",
+            "workspace": "w2",
+            "agentState": "idle"
+          },
+          {
+            "kind": "workspaceRemoved",
+            "id": "w2"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1"
+        ],
+        "tabs": [
+          "w1:t1"
+        ],
+        "workspaces": [
+          "w1"
+        ],
+        "agentStates": {
+          "w1:p1": "idle"
+        },
+        "tabLabels": {
+          "w1:t1": "1"
+        },
+        "layouts": {},
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "paneAdded:w2:p1",
+          "paneRemoved:w2:p1:cascaded"
+        ]
+      }
+    },
+    {
+      "name": "a pane created before its tab's close goes with it, though the tab was never held",
+      "why": "The same for a tab. `tab.close`, which is how Muster closes one, makes herdr emit `tab_closed` and no `pane_closed` for the panes in the tab, and a pane can arrive before its tab does.",
+      "given": {
+        "snapshot": {
+          "workspaces": [
+            {
+              "id": "w1",
+              "label": "tmp"
+            }
+          ],
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "paneUpserted",
+            "id": "w1:p2",
+            "tab": "w1:t2",
+            "workspace": "w1",
+            "agentState": "idle"
+          },
+          {
+            "kind": "tabRemoved",
+            "id": "w1:t2"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1"
+        ],
+        "tabs": [
+          "w1:t1"
+        ],
+        "workspaces": [
+          "w1"
+        ],
+        "agentStates": {
+          "w1:p1": "idle"
+        },
+        "tabLabels": {
+          "w1:t1": "1"
+        },
+        "layouts": {},
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "paneAdded:w1:p2",
+          "paneRemoved:w1:p2:cascaded"
+        ]
+      }
+    },
+    {
+      "name": "a tab created and closed before its pane is created leaves the pane closed",
+      "why": "A tab's creation and its close can both arrive before the creation of a pane in it, because a session makes more panes than it closes tabs and each kind drains from its own queue. The tab was held when it closed, which the tab's own guard does not cover, so the close is remembered for the panes that name it.",
+      "given": {
+        "snapshot": {
+          "workspaces": [
+            {
+              "id": "w1",
+              "label": "tmp"
+            }
+          ],
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "tabUpserted",
+            "id": "w1:t2",
+            "workspace": "w1",
+            "label": "2"
+          },
+          {
+            "kind": "tabRemoved",
+            "id": "w1:t2"
+          },
+          {
+            "kind": "paneUpserted",
+            "id": "w1:p2",
+            "tab": "w1:t2",
+            "workspace": "w1",
+            "agentState": "idle"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1"
+        ],
+        "tabs": [
+          "w1:t1"
+        ],
+        "workspaces": [
+          "w1"
+        ],
+        "agentStates": {
+          "w1:p1": "idle"
+        },
+        "tabLabels": {
+          "w1:t1": "1"
+        },
+        "layouts": {},
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "tabAdded:w1:t2",
+          "tabRemoved:w1:t2"
+        ]
+      }
+    },
+    {
+      "name": "a tab closed and then made again, as a machine grouped back into a Muster tab is, comes back with its pane",
+      "why": "The case above must not hold a tab's name against the tab. A Muster tab's name is given to a new herdr tab when a machine is grouped back into it (MIP-2): `pane.move` makes the tab, and its `tab_created` arrives under the name of the one that closed. A replay states a tab's creation once, so a held tab that closed and is created again is this, and it lifts what was remembered.",
+      "given": {
+        "snapshot": {
+          "workspaces": [
+            {
+              "id": "w1",
+              "label": "tmp"
+            }
+          ],
+          "tabs": [
+            {
+              "id": "w1:t1",
+              "workspace": "w1",
+              "label": "1"
+            },
+            {
+              "id": "w1:t2",
+              "workspace": "w1",
+              "label": "2"
+            }
+          ],
+          "panes": [
+            {
+              "id": "w1:p1",
+              "tab": "w1:t1",
+              "workspace": "w1",
+              "agentState": "idle"
+            },
+            {
+              "id": "w1:p2",
+              "tab": "w1:t2",
+              "workspace": "w1",
+              "agentState": "idle"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "tabRemoved",
+            "id": "w1:t2"
+          },
+          {
+            "kind": "tabUpserted",
+            "id": "w1:t2",
+            "workspace": "w1",
+            "label": "2"
+          },
+          {
+            "kind": "paneUpserted",
+            "id": "w1:p3",
+            "tab": "w1:t2",
+            "workspace": "w1",
+            "agentState": "idle"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "w1:p1",
+          "w1:p3"
+        ],
+        "tabs": [
+          "w1:t1",
+          "w1:t2"
+        ],
+        "workspaces": [
+          "w1"
+        ],
+        "agentStates": {
+          "w1:p1": "idle",
+          "w1:p3": "idle"
+        },
+        "tabLabels": {
+          "w1:t1": "1",
+          "w1:t2": "2"
+        },
+        "layouts": {},
+        "focus": {},
+        "health": "connected",
+        "changes": [
+          "paneRemoved:w1:p2:cascaded",
+          "tabRemoved:w1:t2",
+          "tabAdded:w1:t2",
+          "paneAdded:w1:p3"
+        ]
       }
     },
     {

@@ -167,6 +167,82 @@ fn a_tab_closed_before_the_subscription_does_not_come_back() {
     assert_eq!(mirror.tabs().count(), 1, "a tab closed before the subscription came back");
 }
 
+/// How long a replay this small takes to drain, with room for a loaded machine.
+///
+/// herdr writes at most one event of each subscribed kind per 100ms poll
+/// (`CONNECTION_POLL_INTERVAL`, herdr v0.8.0 `src/api/server.rs`), and nothing marks where a
+/// replay ends. The sessions below replay three events of a kind at most.
+const REPLAY_DRAINS: Duration = Duration::from_secs(1);
+
+/// A closed workspace's tab and pane do not come back with the replay.
+///
+/// Closing a workspace emits `workspace_closed` and nothing for what was in it, and a replay
+/// drains each kind from its own queue, one event per poll. Here the close is first in its queue
+/// and the second workspace's tab and pane are second in theirs, so the close arrives a poll
+/// ahead of the things it took with it.
+#[test]
+fn a_workspace_closed_before_the_subscription_takes_its_panes_with_it() {
+    let daemon = Daemon::start();
+    daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "kept", "focus": true }));
+    let made = daemon
+        .call("workspace.create", &json!({ "cwd": "/tmp", "label": "closed", "focus": true }));
+    let closed = made
+        .get("workspace")
+        .and_then(|workspace| workspace.get("workspace_id"))
+        .and_then(Value::as_str)
+        .expect("workspace.create did not name the workspace it made")
+        .to_string();
+    daemon.call("workspace.close", &json!({ "workspace_id": closed }));
+
+    let (mirror, log, _subscription) = mirror_and_log(&daemon);
+    until("the first bootstrap", || log.bootstraps() > 0, ());
+    std::thread::sleep(REPLAY_DRAINS);
+
+    let mirror = mirror.lock().unwrap();
+    assert_eq!(
+        mirror.panes().count(),
+        1,
+        "a pane in a workspace closed before the subscription came back"
+    );
+    assert_eq!(
+        mirror.tabs().count(),
+        1,
+        "a tab in a workspace closed before the subscription came back"
+    );
+}
+
+/// A pane in a tab closed with `tab.close` does not come back with the replay.
+///
+/// The tab-level version of the case above: herdr emits `tab_closed` and nothing for the panes in
+/// the tab, and the tab's panes sit behind the first workspace's pane in their queue.
+#[test]
+fn a_pane_in_a_tab_closed_before_the_subscription_does_not_come_back() {
+    let daemon = Daemon::start();
+    daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "one", "focus": true }));
+    let made = daemon.call("tab.create", &json!({}));
+    let tab = made
+        .get("tab")
+        .and_then(|tab| tab.get("tab_id"))
+        .and_then(Value::as_str)
+        .expect("tab.create did not name the tab it made")
+        .to_string();
+    let root = made
+        .get("root_pane")
+        .or_else(|| made.get("pane"))
+        .and_then(|pane| pane.get("pane_id"))
+        .and_then(Value::as_str)
+        .expect("tab.create did not name the pane it made")
+        .to_string();
+    daemon.call("pane.split", &json!({ "target_pane_id": root, "direction": "right" }));
+    daemon.call("tab.close", &json!({ "tab_id": tab }));
+
+    let (mirror, log, _subscription) = mirror_and_log(&daemon);
+    until("the first bootstrap", || log.bootstraps() > 0, ());
+    std::thread::sleep(REPLAY_DRAINS);
+
+    assert_eq!(pane_count(&mirror), 1, "a pane in a tab closed before the subscription came back");
+}
+
 #[test]
 fn a_pane_created_after_the_subscription_arrives_on_it() {
     let daemon = Daemon::start();

@@ -211,7 +211,7 @@ fn read_event(given: &Value) -> BackendEvent {
                 .map(TabId::new)
                 .collect(),
         },
-        "paneUpserted" => BackendEvent::PaneUpserted(read_pane(given)),
+        "paneUpserted" | "paneUpdated" => BackendEvent::PaneUpserted(read_pane(given)),
         "paneRemoved" => BackendEvent::PaneRemoved(PaneId::new(text(given, "id"))),
         "layoutUpserted" => BackendEvent::LayoutUpserted(read_layout(given)),
         "agentStateChanged" => BackendEvent::AgentStateChanged {
