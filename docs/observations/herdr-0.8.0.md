@@ -1230,6 +1230,28 @@ Evidence: `corpus/herdr-0.8.0/arranging/` - `FACTS.json` for the event kinds, pa
 and answer shapes, `wire.ndjson` for the requests and their replies, `events.ndjson` for
 what each subscriber saw. Re-record with `tools/herdr-probe/probe arranging`.
 
+### A move into another workspace gives the pane a new id
+
+**herdr numbers panes per workspace, so a pane moved into another one is renumbered there.**
+Measured 2026-09-13 against herdr 0.8.0 on macOS/arm64: moving `w1:p1` into the second
+workspace held it as `w2:p2`, and both the `pane_moved` event and the `pane.move` answer
+carried `previous_pane_id: "w1:p1"`. The old id stays an alias for the moved pane, so
+`pane.get` on `w1:p1` answered with `w2:p2`; herdr's source drops the alias when the pane
+closes (`public_pane_id_aliases`). No `pane_closed` is sent for the old id. Moving a
+workspace's only pane out closes that workspace, and `workspace_closed` and `tab_closed`
+arrive before `pane_moved`.
+
+**Muster carries the pane's name to the new id.** The process in the pane was started with
+its name, so the name follows the pane rather than the id. Before this was read, Muster named
+the new id afresh: the pane's `$MUSTER_PANE` resolved to nothing, and its old row stayed in
+the tab it left (kan a_2P65uM7yI).
+
+Evidence: not in `arranging/`, which moves a pane between tabs of one workspace. Two tests
+in `crates/muster-herdr/tests/pane_arranging.rs` drive a real daemon and fail without the
+carried name - `a_pane_moved_to_another_workspace_keeps_its_name` and
+`a_pane_moved_out_of_a_workspace_it_was_alone_in_keeps_its_name`. The event order came from
+a hand-run probe against a scratch daemon.
+
 ## 21. A tab moved is announced to nobody but whoever named `tab.moved`, and to them it states the whole new order
 
 **A tab reordered announces exactly one event, and nothing else says it happened.** A client

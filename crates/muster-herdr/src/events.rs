@@ -41,6 +41,9 @@ pub struct EventDecoder {
     /// than this set was built to catch.
     unknown_seen: BTreeSet<String>,
     unknown_pending: Vec<String>,
+    /// Whether a move decoded since the last [`EventDecoder::take_renamed`] dropped a name the
+    /// moved pane had been given on sight.
+    renamed: bool,
 }
 
 impl EventDecoder {
@@ -50,6 +53,7 @@ impl EventDecoder {
             pending: Vec::new(),
             unknown_seen: BTreeSet::new(),
             unknown_pending: Vec::new(),
+            renamed: false,
         }
     }
 
@@ -67,11 +71,11 @@ impl EventDecoder {
         //
         // Destructured so the borrow checker can see that reading the buffer and recording an
         // unknown name touch different fields.
-        let Self { names, pending, unknown_seen, unknown_pending } = self;
+        let Self { names, pending, unknown_seen, unknown_pending, renamed } = self;
         let mut read = 0;
         while let Some(offset) = pending[read..].iter().position(|byte| *byte == b'\n') {
             let line = read..read + offset;
-            match decode(&pending[line], names) {
+            match decode(&pending[line], names, renamed) {
                 Decoded::Event(event) => events.push(event),
                 Decoded::Unknown(kind) => {
                     if unknown_seen.insert(kind.clone()) {
@@ -94,6 +98,18 @@ impl EventDecoder {
     pub fn take_unknown_kinds(&mut self) -> Vec<String> {
         std::mem::take(&mut self.unknown_pending)
     }
+
+    /// Whether a move decoded since the last call dropped a name the moved pane had been given on
+    /// sight.
+    ///
+    /// Anything that met the pane's new id before the move was read named it on sight: a
+    /// re-snapshot, or an agent watcher on its own connection, whose herdr subscription follows
+    /// the pane to its new id. Whatever that put in the mirror is still there under the other
+    /// name and no event will name it again, so a yes here means the mirror has to be read again
+    /// from a snapshot.
+    pub fn take_renamed(&mut self) -> bool {
+        std::mem::take(&mut self.renamed)
+    }
 }
 
 enum Decoded {
@@ -115,7 +131,7 @@ enum Decoded {
 /// the parameterized subscriptions answer with a different schema than the session-wide
 /// ones (`corpus/herdr-0.8.0/api-schema.json`, `subscription_event` versus `event`).
 /// `event` is required by both.
-fn decode(line: &[u8], names: &Names) -> Decoded {
+fn decode(line: &[u8], names: &Names, renamed: &mut bool) -> Decoded {
     let Ok(envelope) = serde_json::from_slice::<Value>(line) else { return Decoded::Unreadable };
     let Some(kind) = envelope.get("event").and_then(Value::as_str) else {
         return Decoded::Unreadable;
@@ -157,6 +173,9 @@ fn decode(line: &[u8], names: &Names) -> Decoded {
         // renumbering `tab_renamed` exists to be the only writer of
         // (`observations/herdr-0.8.0.md` sections 16 and 21).
         "tab_moved" => reordered(data, names),
+        "pane_created" => {
+            data.get("pane").and_then(|pane| read_pane(pane, names)).map(BackendEvent::PaneUpserted)
+        }
         // The third name for the same payload, and the one that carries a pane to a
         // different tab. Muster is what causes these - a row dropped on a row in another tab
         // is a `pane.move` - and the pane it carries already states the tab it landed in, so
@@ -169,11 +188,23 @@ fn decode(line: &[u8], names: &Names) -> Decoded {
         // does not read, and no `pane_updated` follows. So a move that was not decoded froze
         // both tabs rather than showing it.
         //
-        // A move may introduce a pane, which is why it upserts rather than updates: a pane moved
-        // into another workspace is given an id there that the mirror has never held (herdr
-        // v0.8.0 `src/workspace.rs`, `register_new_pane_with_number`).
-        "pane_created" | "pane_moved" => {
-            data.get("pane").and_then(|pane| read_pane(pane, names)).map(BackendEvent::PaneUpserted)
+        // A move into another workspace changes the pane's id as well as its tab, because herdr
+        // numbers panes per workspace, and `previous_pane_id` is the id it had. The name is
+        // carried to the new id before the pane is read, so the pane upserts onto the row it
+        // already had under the name its process was started with. Read without that, it
+        // arrived under a name minted for the new id, and its old row stayed in the tab it left
+        // (kan a_2P65uM7yI).
+        //
+        // Still an upsert rather than an update, because a move can introduce a pane: one this
+        // window never named, moved by another client, arrives here first.
+        "pane_moved" => {
+            let pane = data.get("pane");
+            if let (Some(from), Some(to)) =
+                (id(data, "previous_pane_id"), pane.and_then(|pane| id(pane, "pane_id")))
+            {
+                *renamed |= names.pane_moved(&from, &to);
+            }
+            pane.and_then(|pane| read_pane(pane, names)).map(BackendEvent::PaneUpserted)
         }
         // An update describes a pane and never introduces one, because it can arrive after the
         // pane has closed (`BackendEvent::PaneUpdated`).

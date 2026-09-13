@@ -56,6 +56,13 @@ fn pane_names_conformance() {
                         .ok_or_else(|| CaseError::new(format!("nothing reserved as {label:?}")))?,
                 );
                 names.release(&name);
+            } else if let Some(moved) = step.get("moved") {
+                // What a pane moved into another workspace produces: the same pane on the same
+                // daemon, under an id it did not have.
+                let daemon = DaemonId::new(moved["daemon"].as_str().unwrap_or_default());
+                let from = BackendPaneId::new(moved["from"].as_str().unwrap_or_default());
+                let to = BackendPaneId::new(moved["to"].as_str().unwrap_or_default());
+                names.moved(&daemon, &from, &to);
             } else if let Some(at) = step.get("resolve").and_then(Value::as_str) {
                 // `local/p1w3r07bsd` - a daemon, and a name Muster minted. The outward
                 // direction, which is what every request and every CLI argument needs and

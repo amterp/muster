@@ -237,7 +237,15 @@ fn run(
                         attempt = 0;
 
                         agents.follow();
-                        stream_events(stream, mirror, report, running, &mut agents, names)
+                        stream_events(
+                            stream,
+                            socket_path,
+                            mirror,
+                            report,
+                            running,
+                            &mut agents,
+                            names,
+                        )
                     }
                     // A connection with no session behind it is worse than no connection.
                     // Every event on it describes a change to a world the mirror does not
@@ -394,6 +402,7 @@ fn bootstrap(
 /// Reads until the daemon hangs up, and says why it stopped.
 fn stream_events(
     mut stream: UnixStream,
+    socket_path: &str,
     mirror: &Arc<Mutex<Mirror>>,
     report: &Report,
     running: &Arc<AtomicBool>,
@@ -435,6 +444,21 @@ fn stream_events(
         }
         for change in changes {
             report(Notice::Changed(change));
+        }
+
+        // A moved pane took its own name back from one it had been given on sight, so the
+        // mirror may hold a row or a tree under that other name with nothing coming to correct
+        // it (`EventDecoder::take_renamed`). A tree naming a pane the mirror does not hold is
+        // withheld, and a row is a pane listed twice. A fresh snapshot puts both right; one that
+        // fails ends this connection, which reconnects and bootstraps like every other failure
+        // here.
+        if decoder.take_renamed()
+            && let Err(failure) = bootstrap(socket_path, mirror, report, names)
+        {
+            return format!(
+                "a pane was renamed under this window and the daemon would not describe its \
+                 session again ({failure})"
+            );
         }
     }
 }

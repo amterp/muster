@@ -358,16 +358,41 @@ impl PaneNames {
         name
     }
 
-    /// Says where a reserved name's pane turned out to be.
-    pub fn settle(&mut self, name: &PaneId, daemon: &DaemonId, backend: &BackendPaneId) {
+    /// Binds a name to the pane it belongs to, and takes it off anything else.
+    ///
+    /// A reserved name settles here once the backend names its pane, and a pane's name follows it
+    /// here when the pane is given a new id ([`moved`](PaneNames::moved)). Both are one case: the
+    /// process in the pane was started with this name. A name the pane was given on sight in the
+    /// meantime is dropped.
+    ///
+    /// Answers whether one was. Whatever holds the pane under the dropped name - a mirror row, a
+    /// tab's tree - has to be read again, because nothing will rename it there.
+    pub fn settle(&mut self, name: &PaneId, daemon: &DaemonId, backend: &BackendPaneId) -> bool {
         self.reserved.remove(name);
         self.unannounced.insert((daemon.clone(), name.clone()));
-        self.bind(name.clone(), Located { daemon: daemon.clone(), backend: backend.clone() });
+        self.bind(name.clone(), Located { daemon: daemon.clone(), backend: backend.clone() })
+            .is_some()
     }
 
     /// Gives back a name whose pane was never made.
     pub fn release(&mut self, name: &PaneId) {
         self.reserved.remove(name);
+    }
+
+    /// Carries a pane's name to the id its daemon gave the pane on moving it.
+    ///
+    /// herdr numbers panes per workspace, so a pane moved into another workspace is held under a
+    /// new id there, and the move says which id it had (`observations/herdr-0.8.0.md` section
+    /// 20). Nothing to carry for a move that kept the id, which is every move within a workspace,
+    /// or for an id this registry never named.
+    ///
+    /// Answers whether a name the new id was given on sight was dropped, as
+    /// [`settle`](PaneNames::settle) does.
+    pub fn moved(&mut self, daemon: &DaemonId, from: &BackendPaneId, to: &BackendPaneId) -> bool {
+        if from == to {
+            return false;
+        }
+        self.known(daemon, from).is_some_and(|name| self.settle(&name, daemon, to))
     }
 
     /// How many names are reserved for panes nothing has yet settled or released.
@@ -600,9 +625,12 @@ where
     /// What is replaced depends on the noun. A pane's name covers one machine, so binding it
     /// again takes the old binding out entirely; a tab's covers one member per machine, so
     /// binding one replaces that machine's member and leaves the others alone.
-    fn bind(&mut self, name: N, at: Located<B>) {
-        if let Some(previous) = self.named.remove(&at) {
-            self.unbind(&previous, &at.daemon);
+    ///
+    /// Answers with the other name this thing had on this machine, if it had one.
+    fn bind(&mut self, name: N, at: Located<B>) -> Option<N> {
+        let previous = self.named.remove(&at);
+        if let Some(previous) = &previous {
+            self.unbind(previous, &at.daemon);
         }
         if self.spans_daemons {
             self.unbind(&name, &at.daemon);
@@ -612,7 +640,9 @@ where
             }
         }
         self.located.entry(name.clone()).or_default().insert(at.daemon.clone(), at.backend.clone());
+        let displaced = previous.filter(|previous| previous != &name);
         self.named.insert(at, name);
+        displaced
     }
 
     /// Takes one machine's member out of a name, and the name with it when that was the last.
@@ -798,14 +828,31 @@ impl Names {
     /// the pane's environment, so it is the one binding that cannot be revised afterwards.
     /// Writing it while holding the record is what makes another window adopt it rather than
     /// go on calling the same pane whatever it had guessed.
-    pub fn settle(&self, name: &PaneId, backend: &str) {
+    ///
+    /// Answers whether a name the pane was given on sight was dropped. See
+    /// [`PaneNames::settle`].
+    pub fn settle(&self, name: &PaneId, backend: &str) -> bool {
         let backend = BackendPaneId::new(backend);
-        self.naming(|panes, _| panes.settle(name, &self.daemon, &backend));
+        self.naming(|panes, _| panes.settle(name, &self.daemon, &backend))
     }
 
     /// Gives back a name whose pane the daemon never made.
     pub fn release(&self, name: &PaneId) {
         self.locked_panes().release(name);
+    }
+
+    /// Carries a pane's name to the id this daemon gave the pane on moving it. See
+    /// [`PaneNames::moved`].
+    ///
+    /// Under the shared record, so another window adopts the move rather than naming the new id
+    /// afresh. The two ids are compared first because they are equal for every move within a
+    /// workspace, and those should not take the record's lock.
+    pub fn pane_moved(&self, from: &str, to: &str) -> bool {
+        if from == to {
+            return false;
+        }
+        let (from, to) = (BackendPaneId::new(from), BackendPaneId::new(to));
+        self.naming(|panes, _| panes.moved(&self.daemon, &from, &to))
     }
 
     /// How many pane names are reserved and not yet settled or released. See

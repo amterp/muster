@@ -103,6 +103,44 @@
       }
     },
     {
+      "name": "a pane the backend gives a new id keeps its name",
+      "why": "herdr numbers panes per workspace, so a pane moved into another workspace is held under a new id there and the move says which id it had. The process in the pane was started with its name, so a registry that named the new id afresh would leave that process with a MUSTER_PANE nothing answers to - and the name would go on pointing at an id the pane no longer has (kan a_2P65uM7yI; observations/herdr-0.8.0.md section 20).",
+      "given": {
+        "seed": 1,
+        "do": [
+          { "see": "local/w1:p1" },
+          { "moved": { "daemon": "local", "from": "w1:p1", "to": "w2:p2" } },
+          { "see": "local/w2:p2" }
+        ]
+      },
+      "expect": { "trace": ["p1w3r07bsd", "p1w3r07bsd"], "located": { "p1w3r07bsd": "local/w2:p2" } }
+    },
+    {
+      "name": "a name minted on sight for the new id gives way to the name the pane already had",
+      "why": "A stream is not ordered by cause, so something naming the new id can arrive before the move that explains it, and the new id is named on sight. That name was never in any process's environment; the old one was. So the pane's own name wins and the one minted on sight is dropped rather than left beside it, which would be one pane under two names.",
+      "given": {
+        "seed": 1,
+        "do": [
+          { "see": "local/w1:p1" },
+          { "see": "local/w2:p2" },
+          { "moved": { "daemon": "local", "from": "w1:p1", "to": "w2:p2" } }
+        ]
+      },
+      "expect": { "trace": ["p1w3r07bsd", "p1w3r0a4a9"], "located": { "p1w3r07bsd": "local/w2:p2" } }
+    },
+    {
+      "name": "a move from an id never named carries nothing",
+      "why": "A pane moved before this Muster ever saw it has no name to carry, and inventing one here would mint a name nothing asked for. The new id is named on sight like any other pane.",
+      "given": {
+        "seed": 1,
+        "do": [
+          { "moved": { "daemon": "local", "from": "w1:p1", "to": "w2:p2" } },
+          { "see": "local/w2:p2" }
+        ]
+      },
+      "expect": { "trace": ["p1w3r07bsd"], "located": { "p1w3r07bsd": "local/w2:p2" } }
+    },
+    {
       "name": "a name says when its pane was made",
       "why": "The front of a name counts ten-second ticks since 2026, which is what stops two Musters that never speak to each other minting one name unless they mint within ten seconds of each other - and what makes names sort into the order their panes were made. The same entropy as the first case, one tick later: only the front moves.",
       "given": { "at": "2026-08-17T00:00:10Z", "seed": 1, "do": [{ "see": "local/w1:p1" }] },

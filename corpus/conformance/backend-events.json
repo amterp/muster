@@ -270,6 +270,43 @@
       }
     },
     {
+      "name": "a pane moved into another workspace arrives under the name it already had",
+      "why": "herdr numbers panes per workspace, so a pane moved into another workspace is held under a new id there, and previous_pane_id says which id it had (observations/herdr-0.8.0.md section 20, measured against the pinned daemon). The process in the pane was started with its name, so the pane has to arrive under that name rather than one minted for the new id - which also lands it on the row it already had instead of leaving that row in the tab it left (kan a_2P65uM7yI).",
+      "given": {
+        "chunks": [
+          "{\"event\":\"pane_created\",\"data\":{\"pane\":{\"agent_status\":\"unknown\",\"cwd\":\"/private/tmp\",\"focused\":false,\"foreground_cwd\":\"/private/tmp\",\"pane_id\":\"w1:p1\",\"revision\":0,\"scroll\":{\"max_offset_from_bottom\":0,\"offset_from_bottom\":0,\"viewport_rows\":23},\"tab_id\":\"w1:t1\",\"terminal_id\":\"term_659409cb882081\",\"workspace_id\":\"w1\"},\"type\":\"pane_created\"}}\n",
+          "{\"event\":\"pane_moved\",\"data\":{\"pane\":{\"agent_status\":\"unknown\",\"cwd\":\"/private/tmp\",\"focused\":false,\"foreground_cwd\":\"/private/tmp\",\"pane_id\":\"w2:p2\",\"revision\":0,\"scroll\":{\"max_offset_from_bottom\":0,\"offset_from_bottom\":0,\"viewport_rows\":23},\"tab_id\":\"w2:t1\",\"terminal_id\":\"term_659409cb882081\",\"workspace_id\":\"w2\"},\"previous_pane_id\":\"w1:p1\",\"previous_tab_id\":\"w1:t1\",\"previous_workspace_id\":\"w1\",\"type\":\"pane_moved\"}}\n"
+        ]
+      },
+      "expect": {
+        "events": [
+          "paneUpserted:w1:p1 tab=w1:t1 workspace=w1 state=unknown cwd=/private/tmp",
+          "paneUpserted:w1:p1 tab=w2:t1 workspace=w2 state=unknown cwd=/private/tmp"
+        ],
+        "unknownKinds": []
+      }
+    },
+    {
+      "name": "a moved pane named under its new id before the move arrived asks for the session to be read again",
+      "why": "Something can name the new id before the move that explains it is read - here a focus event, and in a running window a snapshot or another connection's agent watcher. The pane takes its own name back, but whatever was applied under the name minted on sight is still in the mirror under it, and no event will name it again. So the decoder says so, and the subscription reads the session again.",
+      "given": {
+        "chunks": [
+          "{\"event\":\"pane_created\",\"data\":{\"pane\":{\"agent_status\":\"unknown\",\"cwd\":\"/private/tmp\",\"focused\":false,\"foreground_cwd\":\"/private/tmp\",\"pane_id\":\"w1:p1\",\"revision\":0,\"scroll\":{\"max_offset_from_bottom\":0,\"offset_from_bottom\":0,\"viewport_rows\":23},\"tab_id\":\"w1:t1\",\"terminal_id\":\"term_659409cb882081\",\"workspace_id\":\"w1\"},\"type\":\"pane_created\"}}\n",
+          "{\"event\":\"pane_focused\",\"data\":{\"pane_id\":\"w2:p2\",\"workspace_id\":\"w2\",\"type\":\"pane_focused\"}}\n",
+          "{\"event\":\"pane_moved\",\"data\":{\"pane\":{\"agent_status\":\"unknown\",\"cwd\":\"/private/tmp\",\"focused\":false,\"foreground_cwd\":\"/private/tmp\",\"pane_id\":\"w2:p2\",\"revision\":0,\"scroll\":{\"max_offset_from_bottom\":0,\"offset_from_bottom\":0,\"viewport_rows\":23},\"tab_id\":\"w2:t1\",\"terminal_id\":\"term_659409cb882081\",\"workspace_id\":\"w2\"},\"previous_pane_id\":\"w1:p1\",\"previous_tab_id\":\"w1:t1\",\"previous_workspace_id\":\"w1\",\"type\":\"pane_moved\"}}\n"
+        ]
+      },
+      "expect": {
+        "events": [
+          "paneUpserted:w1:p1 tab=w1:t1 workspace=w1 state=unknown cwd=/private/tmp",
+          "focusMoved workspace=w2 pane=w2:p2",
+          "paneUpserted:w1:p1 tab=w2:t1 workspace=w2 state=unknown cwd=/private/tmp"
+        ],
+        "unknownKinds": [],
+        "renamed": true
+      }
+    },
+    {
       "name": "a tab moved states the whole new order for its workspace",
       "why": "The event Muster caused none of and could not see: nothing in the window reorders tabs, so this comes from another client or from herdr's own TUI, and it is the only thing that says the order changed - a client subscribed to every other structural kind sees nothing at all while it does (observations section 21). It carries the settled list rather than a tab and an offset, so it applies as a sequence and applying it twice is applying it once.\n\nOnly the order is taken. The payload describes every tab, and an unnamed tab's label is its position - `w1:t1` reads `2` here and read `1` a moment earlier - so taking labels from this would make it a second writer for the field tab_renamed owns, carrying exactly the numbers that rule keeps out. The payload is a recording, not an invention (corpus/herdr-0.8.0/arranging).",
       "given": {

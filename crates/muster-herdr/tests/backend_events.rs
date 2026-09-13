@@ -18,6 +18,7 @@ fn backend_events_conformance() {
         let mut decoder = EventDecoder::new(names());
         let mut events = Vec::new();
         let mut unknown = Vec::new();
+        let mut renamed = false;
 
         // Chunk by chunk rather than joined, because how the stream was cut is the point
         // of several cases and joining them first would quietly test something easier.
@@ -25,9 +26,15 @@ fn backend_events_conformance() {
             let bytes = chunk.as_str().unwrap_or_default().as_bytes();
             events.extend(decoder.consume(bytes).iter().map(describe));
             unknown.extend(decoder.take_unknown_kinds());
+            renamed |= decoder.take_renamed();
         }
 
-        Ok(fields([("events", Some(json!(events))), ("unknownKinds", Some(json!(unknown)))]))
+        // Only when it happened, so the cases that are not about it say nothing about it.
+        Ok(fields([
+            ("events", Some(json!(events))),
+            ("unknownKinds", Some(json!(unknown))),
+            ("renamed", renamed.then_some(json!(true))),
+        ]))
     });
 
     assert_eq!(ran, corpus.cases.len());
