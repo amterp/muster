@@ -17,8 +17,10 @@ use herdr_harness::{Daemon, until};
 use muster_core::intent::{BackendChannel, BackendIntent, MoveDestination, Refusal};
 use muster_core::mirror::Mirror;
 use muster_core::mirror::backend::{PaneId, TabId};
+use muster_core::names::{Mint, Names};
 use muster_herdr::snapshot::read_snapshot;
 use muster_herdr::subscription::Subscription;
+use muster_herdr::{HerdrBackend, PaneEnvironment};
 use serde_json::json;
 
 /// A daemon holding one tab of two panes, side by side.
@@ -407,41 +409,19 @@ fn a_pane_moved_out_of_a_tab_it_was_alone_in_is_not_lost() {
 /// left.
 ///
 /// herdr numbers panes per workspace, so a move across workspaces gives the pane a new id there
-/// and says which id it had in `previous_pane_id` (herdr v0.8.0 `src/app/api/panes.rs`,
-/// `handle_pane_move`). The process in the pane was started knowing its old name, and a window
-/// that names the new id afresh strands that process: its `$MUSTER_PANE` answers to nothing, and
-/// the name's old row stays in the tab the pane left (kan a_2P65uM7yI).
+/// and says which id it had in `previous_pane_id` (`observations/herdr-0.8.0.md` section 20).
+/// The process in the pane was started knowing its name, and a window that names the new id
+/// afresh strands that process: its `$MUSTER_PANE` answers to nothing, and the name's old row
+/// stays in the tab the pane left (kan a_2P65uM7yI).
 ///
 /// The first workspace keeps a pane of its own, so nothing closes it: a closed workspace takes
 /// its rows with it, which would hide a row left behind.
 #[test]
 fn a_pane_moved_to_another_workspace_keeps_its_name() {
-    let (daemon, mirror, home, first, second) = a_tab_of_two();
-    daemon
-        .call("workspace.create", &json!({ "cwd": "/tmp", "label": "elsewhere", "focus": false }));
-    resnapshot(&daemon, &mirror);
-    let elsewhere = order(&mirror)
-        .into_iter()
-        .find(|pane| pane != &first && pane != &second)
-        .expect("the new workspace brings a pane of its own");
-    let far = tab_of(&mirror, &elsewhere);
-    assert_ne!(
-        workspace_of(&mirror, &elsewhere),
-        workspace_of(&mirror, &first),
-        "the second workspace put its pane in the first one, so this move would not cross one"
-    );
+    let session = TwoWorkspaces::watched();
+    let TwoWorkspaces { names, live, home, far, first, second, elsewhere, .. } = &session;
 
-    let (live, _subscription) = listening(&daemon);
-    until(
-        "the subscription to describe the whole session",
-        || {
-            recorded_in(&live, &home) == sorted([&first, &second])
-                && recorded_in(&live, &far) == sorted([&elsewhere])
-        },
-        (),
-    );
-
-    daemon
+    session
         .backend()
         .submit(&BackendIntent::MovePane {
             pane: first.clone(),
@@ -450,110 +430,195 @@ fn a_pane_moved_to_another_workspace_keeps_its_name() {
         .expect("herdr accepts a move into a tab in another workspace");
 
     // What the fix rests on, asked of herdr itself: the pane is held under an id it did not have.
-    let moved = held_in(&daemon, &far)
+    let moved = session
+        .held_in(far)
         .into_iter()
-        .find(|pane| pane != elsewhere.as_str())
+        .find(|pane| pane != &session.backend_id(elsewhere))
         .expect("the tab the pane was moved into holds it");
     assert_ne!(
-        moved,
-        first.as_str(),
+        moved, session.first_id,
         "herdr kept the pane's id across workspaces, so there is no new id for Muster to follow"
     );
 
     until(
         "the tab it landed in to hold it under the name it was made with",
-        || recorded_in(&live, &far) == sorted([&elsewhere, &first]),
-        || format!("the tab holds {:?}", recorded_in(&live, &far)),
+        || recorded_in(live, far) == sorted([elsewhere, first]),
+        || format!("the tab holds {:?}", recorded_in(live, far)),
     );
     until(
         "the tab it left to stop naming it",
-        || recorded_in(&live, &home) == sorted([&second]),
-        || format!("the tab it left holds {:?}", recorded_in(&live, &home)),
+        || recorded_in(live, home) == sorted([second]),
+        || format!("the tab it left holds {:?}", recorded_in(live, home)),
     );
-    assert_eq!(
-        order(&live).len(),
-        3,
-        "the window holds {:?} for a session of three panes",
-        order(&live)
-    );
+    assert_eq!(order(live).len(), 3, "the window holds {:?} for three panes", order(live));
     until(
-        "the tab's tree to name it the same way its record does",
-        || in_tab(&live, &far).contains(&first),
-        || format!("the tree lays out {:?}", in_tab(&live, &far)),
+        "the tab's tree to name it the way its record does",
+        || in_tab(live, far).contains(first),
+        || format!("the tree lays out {:?}", in_tab(live, far)),
     );
     assert_eq!(
-        daemon.names().backend_pane(&first).map(|backend| backend.to_string()),
+        names.backend_pane(first).map(|backend| backend.to_string()),
         Ok(moved),
-        "the pane's name still resolves to the id it had before the move"
+        "the pane's name does not resolve to the id herdr holds it under now"
     );
 }
 
 /// A pane moved out of a workspace it was alone in keeps its name.
 ///
 /// herdr closes the emptied workspace and announces that before the move. The window takes the
-/// workspace's rows with it, so for a moment the pane has no row - and the pane arrives under
+/// workspace's rows with it, so for a moment the pane has no row - and the pane then arrives under
 /// the name that row had, which must not be refused as a pane already said to be gone.
 #[test]
 fn a_pane_moved_out_of_a_workspace_it_was_alone_in_keeps_its_name() {
-    let (daemon, mirror, home, first, second) = a_tab_of_two();
-    daemon
-        .call("workspace.create", &json!({ "cwd": "/tmp", "label": "elsewhere", "focus": false }));
-    resnapshot(&daemon, &mirror);
-    let alone = order(&mirror)
-        .into_iter()
-        .find(|pane| pane != &first && pane != &second)
-        .expect("the new workspace brings a pane of its own");
+    let session = TwoWorkspaces::watched();
+    let TwoWorkspaces { names, live, home, first, second, elsewhere, .. } = &session;
 
-    let (live, _subscription) = listening(&daemon);
-    until(
-        "the subscription to describe the whole session",
-        || order(&live).len() == 3 && recorded_in(&live, &home) == sorted([&first, &second]),
-        (),
-    );
-
-    daemon
+    session
         .backend()
         .submit(&BackendIntent::MovePane {
-            pane: alone.clone(),
+            pane: elsewhere.clone(),
             to: MoveDestination::Beside { tab: home.clone(), after: second.clone() },
         })
         .expect("herdr accepts a move into a tab in another workspace");
 
     until(
         "the tab it landed in to hold it under the name it was made with",
-        || recorded_in(&live, &home) == sorted([&first, &second, &alone]),
-        || format!("the tab holds {:?}", recorded_in(&live, &home)),
+        || recorded_in(live, home) == sorted([first, second, elsewhere]),
+        || format!("the tab holds {:?}", recorded_in(live, home)),
     );
+    assert_eq!(order(live).len(), 3, "the window holds {:?} for three panes", order(live));
+    let moved = session
+        .held_in(home)
+        .into_iter()
+        .find(|pane| {
+            ![session.first_id.as_str(), session.backend_id(second).as_str()]
+                .contains(&pane.as_str())
+        })
+        .expect("the tab the pane was moved into holds it");
     assert_eq!(
-        order(&live).len(),
-        3,
-        "the window holds {:?} for a session of three panes",
-        order(&live)
+        names.backend_pane(elsewhere).map(|backend| backend.to_string()),
+        Ok(moved),
+        "the pane's name does not resolve to the id herdr holds it under now"
     );
 }
 
-/// A mirror fed by a subscription and nothing else, and the subscription keeping it fed.
-fn listening(daemon: &Daemon) -> (Arc<Mutex<Mirror>>, Subscription) {
-    let live = Arc::new(Mutex::new(Mirror::new()));
-    let subscription = Subscription::start(
-        daemon.socket_path().to_string_lossy().into_owned(),
-        Arc::clone(&live),
-        Arc::new(|_| {}),
-        daemon.names(),
-    );
-    (live, subscription)
+/// Two workspaces - two panes side by side in the first, one in the second - and a window
+/// watching them that mints its own names.
+///
+/// Minted rather than the harness's backend mint, which spells a name as the daemon's own id.
+/// Under that mint a pane's name and the id it had before a move are one string, so anything
+/// still naming the old id after the move - a replayed layout - takes the name straight back,
+/// which a running Muster's names can never do.
+///
+/// Watched from before the first workspace exists, so every event arrives live and in order.
+/// A subscription opened onto an existing session replays it a kind at a time
+/// (`observations/herdr-0.8.0.md` section 10), and a replay still arriving after the move names
+/// ids the move retired.
+struct TwoWorkspaces {
+    // Before the daemon, so the subscription is dropped while its daemon is still there.
+    _subscription: Subscription,
+    daemon: Daemon,
+    names: Names,
+    live: Arc<Mutex<Mirror>>,
+    home: TabId,
+    far: TabId,
+    first: PaneId,
+    first_id: String,
+    second: PaneId,
+    elsewhere: PaneId,
 }
 
-/// The ids herdr itself holds in one tab, asked of the daemon rather than of any mirror.
-fn held_in(daemon: &Daemon, tab: &TabId) -> Vec<String> {
+impl TwoWorkspaces {
+    fn watched() -> TwoWorkspaces {
+        let daemon = Daemon::start();
+        let names = Names::alone("local", Mint::Drawn);
+        let live = Arc::new(Mutex::new(Mirror::new()));
+        let subscription = Subscription::start(
+            daemon.socket_path().to_string_lossy().into_owned(),
+            Arc::clone(&live),
+            Arc::new(|_| {}),
+            names.clone(),
+        );
+
+        daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "home", "focus": true }));
+        let (first_id, home_id) = daemon_panes(&daemon).into_iter().next().expect("a pane");
+        daemon.call("pane.split", &json!({ "target_pane_id": first_id, "direction": "right" }));
+        daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "far", "focus": false }));
+        let panes = daemon_panes(&daemon);
+        let second_id = panes
+            .iter()
+            .find(|(pane, tab)| tab == &home_id && pane != &first_id)
+            .map(|(pane, _)| pane.clone())
+            .expect("the split made a second pane beside the first");
+        let (elsewhere_id, far_id) = panes
+            .iter()
+            .find(|(_, tab)| tab != &home_id)
+            .cloned()
+            .expect("the second workspace brings a pane of its own");
+
+        let session = TwoWorkspaces {
+            first: names.pane(&first_id),
+            second: names.pane(&second_id),
+            elsewhere: names.pane(&elsewhere_id),
+            home: names.tab(&home_id),
+            far: names.tab(&far_id),
+            first_id,
+            _subscription: subscription,
+            daemon,
+            names,
+            live,
+        };
+        let TwoWorkspaces { live, home, far, first, second, elsewhere, .. } = &session;
+        until(
+            "the window to hold both workspaces, trees and all",
+            || {
+                recorded_in(live, home) == sorted([first, second])
+                    && recorded_in(live, far) == sorted([elsewhere])
+                    && sorted_tree(live, home) == sorted([first, second])
+                    && in_tab(live, far) == vec![elsewhere.clone()]
+            },
+            || format!("the window holds {:?}", order(live)),
+        );
+        session
+    }
+
+    fn backend(&self) -> HerdrBackend {
+        HerdrBackend::new(self.daemon.client(), PaneEnvironment::none(), self.names.clone())
+    }
+
+    fn backend_id(&self, pane: &PaneId) -> String {
+        self.names.backend_pane(pane).expect("a pane this window named resolves").to_string()
+    }
+
+    /// The ids herdr itself holds in one tab, asked of the daemon rather than of any mirror.
+    fn held_in(&self, tab: &TabId) -> Vec<String> {
+        let tab = self.names.backend_tab(tab).expect("a tab this window named resolves");
+        daemon_panes(&self.daemon)
+            .into_iter()
+            .filter(|(_, holding)| holding == tab.as_str())
+            .map(|(pane, _)| pane)
+            .collect()
+    }
+}
+
+/// Every pane the daemon holds, and the tab holding it, in herdr's own ids.
+fn daemon_panes(daemon: &Daemon) -> Vec<(String, String)> {
     let listed = daemon.call("pane.list", &json!({}));
     listed["panes"]
         .as_array()
         .into_iter()
         .flatten()
-        .filter(|pane| pane["tab_id"].as_str() == Some(tab.as_str()))
-        .filter_map(|pane| pane["pane_id"].as_str().map(str::to_string))
+        .filter_map(|pane| {
+            Some((pane["pane_id"].as_str()?.to_string(), pane["tab_id"].as_str()?.to_string()))
+        })
         .collect()
+}
+
+/// One tab's tree, sorted, for a question about membership rather than order.
+fn sorted_tree(mirror: &Arc<Mutex<Mirror>>, tab: &TabId) -> Vec<PaneId> {
+    let mut panes = in_tab(mirror, tab);
+    panes.sort();
+    panes
 }
 
 /// A tab reordered by somebody else reaches a window that is only listening.
