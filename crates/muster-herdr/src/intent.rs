@@ -233,8 +233,11 @@ impl BackendChannel for HerdrBackend {
         // Return, for text that asked for one. Its own request because herdr encodes a named key
         // against the pane's live modes, and a newline in the text above is only a newline - which
         // a program reading a bracketed paste buffers as more text instead of acting on.
+        //
+        // A Return that did not take fails the send, although the text arrived: a caller that asked
+        // for a submission and exits 0 believes it was one (kan a_2P65u60Qp).
         if let BackendIntent::SendText { pane, enter: true, .. } = intent {
-            self.press_enter(pane);
+            self.press_enter(pane).map_err(|refused| unsubmitted(pane, refused))?;
         }
 
         Ok(Outcome {
@@ -480,7 +483,19 @@ impl HerdrBackend {
             );
             return;
         }
-        self.press_enter(pane);
+        if let Err(refused) = self.press_enter(pane) {
+            log::warn(
+                "herdr.pane.unsubmitted",
+                fields! {
+                    "pane" => pane.to_string(),
+                    "detail" => refused.to_string(),
+                    "impact" => "the pane was made and its command was typed and may never have \
+                                 been submitted, so it can sit at the prompt unexecuted - which \
+                                 reads as a program that ignored it",
+                    "check" => "whether the daemon still holds this pane",
+                },
+            );
+        }
     }
 
     /// Presses Return in a pane, which is what submits whatever was just typed into it.
@@ -488,21 +503,13 @@ impl HerdrBackend {
     /// A named key rather than a newline in the text before it, so herdr encodes it against the
     /// pane's live modes - which is what a program reading a bracketed paste needs in order to
     /// treat this as a submission rather than as more text to buffer.
-    fn press_enter(&self, pane: &PaneId) {
-        let Ok(backend) = self.names.backend_pane(pane) else { return };
+    fn press_enter(&self, pane: &PaneId) -> Result<(), Refusal> {
+        let backend = self.names.backend_pane(pane)?;
         let enter = json!({ "pane_id": backend.as_str(), "keys": ["enter"] });
-        if let Err(failure) = self.client.request("pane.send_input", &enter) {
-            log::warn(
-                "herdr.pane.unsubmitted",
-                fields! {
-                    "pane" => pane.to_string(),
-                    "detail" => failure.to_string(),
-                    "impact" => "the text reached the pane and was never submitted, so it sits at \
-                                 the prompt unexecuted - which reads as a program that ignored it",
-                    "check" => "whether the daemon still holds this pane",
-                },
-            );
-        }
+        self.client
+            .request("pane.send_input", &enter)
+            .map(drop)
+            .map_err(|failure| refusal(&failure))
     }
 
     /// Waits until a pane's shell has printed something, or until it is not worth waiting more.
@@ -725,6 +732,29 @@ pub fn refusal(failure: &Failure) -> Refusal {
         Failure::TimedOut | Failure::MalformedResponse => Refusal::Unanswered(detail),
         _ => Refusal::Declined(detail),
     }
+}
+
+/// Why a send's Return did not take, once its text already had.
+///
+/// The kind is kept, so a lost answer is still unanswered and a refusal still a refusal. Only the
+/// detail changes, because the text is on the pane either way and a caller that sends it all
+/// again types it twice.
+fn unsubmitted(pane: &PaneId, refused: Refusal) -> Refusal {
+    match refused {
+        Refusal::Unanswered(detail) => Refusal::Unanswered(format!(
+            "{detail} pressing Return after the text reached {pane}, so the text may be sitting on \
+             its prompt unsubmitted"
+        )),
+        Refusal::NotThere(detail) => Refusal::NotThere(refused_return(pane, &detail)),
+        Refusal::Declined(detail) => Refusal::Declined(refused_return(pane, &detail)),
+    }
+}
+
+fn refused_return(pane: &PaneId, detail: &str) -> String {
+    format!(
+        "it would not press Return after the text reached {pane} ({detail}), so the text was \
+         typed and not submitted."
+    )
 }
 
 /// One intent as the method and parameters herdr wants for it.

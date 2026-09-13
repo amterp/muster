@@ -98,8 +98,11 @@ What to do instead of sending it again: `muster pane read --pane X` shows what i
 and `pane send --confirm` asks the window to read it back rather than deciding out here. With
 `--confirm`, a send whose daemon never answered is settled by that read-back and exits 0 if the
 text is on the pane. Not with `--enter` as well: Return is not pressed after text that may not
-have arrived, so a 4 there says the text may be sitting unsubmitted. What proves a request did
-*not* happen is only exit 3, where nothing was dialled at all.
+have arrived, so a 4 there says the text may be sitting unsubmitted. A 4 also comes back when the
+text arrived and the answer about the Return after it went missing, so Return may or may not have
+been pressed, and a Return the daemon refuses exits 1 with the text already typed. `muster pane
+read` shows which, and `muster pane send --pane X '' --enter` presses Return on its own. What
+proves a request did *not* happen is only exit 3, where nothing was dialled at all.
 
 A window is slow to answer for reasons that have nothing to do with the request - `pane new
 --run` waits on a shell drawing its prompt, and a loaded machine makes every one of them

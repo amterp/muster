@@ -77,7 +77,7 @@ lines are the last the window heard.
 when a person should read it before it runs.
 
 Whether Return submits is the receiving harness's to decide, and exit 0 says the daemon took the
-send rather than that the agent heard it. Where that matters, ask:
+text and the Return rather than that the agent heard it. Where that matters, ask:
 
     muster pane send --pane p1w3r0ab2n 'yes, go ahead' --enter --confirm
 
