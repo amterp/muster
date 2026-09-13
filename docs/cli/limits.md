@@ -94,6 +94,11 @@ refusal. Retrying a 4 is how a pane receives the same instruction twice, and it 
 driving other agents got one timeout on a message that had arrived, resent, and left the
 receiving harness with six copies of one instruction to reconcile.
 
+A `pane new` that exits 4 may still have made its pane. If the daemon's answer arrives late, the
+window binds it then, and the pane keeps the name in its own `$MUSTER_PANE`; `muster window` lists
+it under that name once it has. An answer that never arrives leaves the pane listed under a name
+the pane does not know, and `muster` commands run inside it are refused.
+
 What to do instead of sending it again: `muster pane read --pane X` shows what is on the pane,
 and `pane send --confirm` asks the window to read it back rather than deciding out here. With
 `--confirm`, a send whose daemon never answered is settled by that read-back and exits 0 if the

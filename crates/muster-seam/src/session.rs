@@ -1186,6 +1186,7 @@ impl Session {
             None => Names::new(id.clone(), Arc::clone(&self.names), Arc::clone(&self.tab_names)),
         };
         let reporting = id.clone();
+        let renaming = id.clone();
         let subscription = Subscription::start(
             &reached.socket_path,
             Arc::clone(&mirror),
@@ -1197,11 +1198,19 @@ impl Session {
             Backend {
                 mirror,
                 tunnel: reached.tunnel,
-                channel: Arc::new(HerdrBackend::new(
-                    HerdrClient::new(reached.socket_path.clone()),
-                    reached.panes,
-                    names.clone(),
-                )),
+                // A pane given back the name it was made with may already be on screen under a
+                // name it was given on sight, and nothing will name it again - so the session
+                // is read afresh, which is the census that swaps the one for the other.
+                channel: Arc::new(
+                    HerdrBackend::new(
+                        HerdrClient::new(reached.socket_path.clone()),
+                        reached.panes,
+                        names.clone(),
+                    )
+                    .on_renamed(Arc::new(move || {
+                        resnapshot(&renaming, "a pane took back the name it was made with");
+                    })),
+                ),
                 owns_config: reached.owns_config,
                 remote_config: reached.remote_config,
                 started: reached.started,

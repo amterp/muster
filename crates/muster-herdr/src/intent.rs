@@ -10,6 +10,7 @@
 //! becomes an array of booleans, herdr's own spelling for the turns. And two of Muster's four
 //! sides have no request behind them at all, so this is also where one intent becomes two.
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use muster_core::diagnostics::log;
@@ -22,7 +23,7 @@ use muster_core::mirror::backend::{PaneId, PaneText, TabId, Viewport};
 use muster_core::names::{BackendPaneId, Names};
 use serde_json::{Value, json};
 
-use crate::client::{Failure, HerdrClient};
+use crate::client::{Answered, Failure, HerdrClient, LateAnswer};
 use crate::env::PaneEnvironment;
 use crate::layout::{read_exported_layout, read_layout};
 
@@ -37,11 +38,34 @@ pub struct HerdrBackend {
     client: HerdrClient,
     panes: PaneEnvironment,
     names: Names,
+    renamed: Renamed,
 }
 
 impl HerdrBackend {
     pub fn new(client: HerdrClient, panes: PaneEnvironment, names: Names) -> HerdrBackend {
-        HerdrBackend { client, panes, names }
+        HerdrBackend { client, panes, names, renamed: Renamed(Arc::new(|| {})) }
+    }
+
+    /// The same backend, running `hook` after it binds a pane's name over a name the pane had
+    /// been given on sight.
+    ///
+    /// Whatever holds the pane under that other name - a mirror's row, a tab's tree - holds it
+    /// under a name nothing will say again, so a window passes a re-read of the session here.
+    /// This adapter holds no mirror to correct itself.
+    #[must_use]
+    pub fn on_renamed(mut self, hook: Arc<dyn Fn() + Send + Sync>) -> HerdrBackend {
+        self.renamed = Renamed(hook);
+        self
+    }
+}
+
+/// See [`HerdrBackend::on_renamed`].
+#[derive(Clone)]
+struct Renamed(Arc<dyn Fn() + Send + Sync>);
+
+impl std::fmt::Debug for Renamed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Renamed")
     }
 }
 
@@ -143,13 +167,23 @@ impl BackendChannel for HerdrBackend {
         };
 
         let (method, params) = request(intent, &panes, &self.names, workspace.as_deref())?;
-        let result = match self.client.request(method, &params) {
+        let answered = match self.client.request_or_late(method, &params) {
+            Ok(Answered::InTime(result)) => Ok(result),
+            // A request that minted a name is the one whose answer is still worth reading late:
+            // only the answer says which pane that name went to.
+            Ok(Answered::Late(late)) => match minted {
+                Some(reservation) => {
+                    return Err(self.name_when_answered(intent, late, reservation));
+                }
+                None => Err(Failure::TimedOut),
+            },
+            Err(failure) => Err(failure),
+        };
+        let result = match answered {
             Ok(result) => result,
             Err(failure) => {
-                // The reservation is given back as this returns. An unanswered split may have
-                // made its pane, and is given back all the same: the name can only be bound to
-                // the id the answer would have carried, so a reservation kept here would never
-                // settle.
+                // The reservation is given back as this returns: the daemon was not reached,
+                // refused, or answered with something that will not read as an answer.
                 return Err(match (refusal(&failure), intent) {
                     // Return goes after the text, as a request of its own, and is not sent
                     // after text that may not have arrived: it would submit whatever else is
@@ -342,9 +376,14 @@ impl Reservation {
     }
 
     /// Binds the name to the pane this daemon calls `backend`, and keeps it.
-    fn settle(mut self, backend: &str) -> PaneId {
-        self.names.settle(&self.name, backend);
+    ///
+    /// Runs `renamed` when the pane had been given another name on sight first, which happens
+    /// when the daemon's events about the pane are read before its answer.
+    fn settle(mut self, backend: &str, renamed: &Renamed) -> PaneId {
         self.settled = true;
+        if self.names.settle(&self.name, backend) {
+            (renamed.0)();
+        }
         self.name.clone()
     }
 }
@@ -356,6 +395,14 @@ impl Drop for Reservation {
         }
     }
 }
+
+/// How much longer a pane-making request's answer is waited for, once the caller has been told
+/// it did not come.
+///
+/// Long enough to outlast a daemon that is only slow - a loaded machine answers seconds late,
+/// not minutes - and short enough that a wedged one does not hold a thread and a reserved name
+/// for good.
+const ANSWERED_WITHIN: Duration = Duration::from_secs(30);
 
 /// How far back a find reads, in rows.
 ///
@@ -413,11 +460,83 @@ impl HerdrBackend {
     /// and [`request`] disagree about which intents make one, which is a bug here.
     fn settle(&self, backend: Option<&str>, minted: Option<Reservation>) -> Option<PaneId> {
         match (backend, minted) {
-            (Some(backend), Some(reservation)) => Some(reservation.settle(backend)),
+            (Some(backend), Some(reservation)) => Some(reservation.settle(backend, &self.renamed)),
             (Some(backend), None) => Some(self.names.pane(backend)),
             // An answer naming no pane gives the reservation back as it drops here.
             (None, _) => None,
         }
+    }
+
+    /// Reads the answer to a pane-making request that came too late, off the caller's thread,
+    /// and binds the pane's name when it arrives.
+    ///
+    /// The caller is told `Unanswered` at once, as for any request the daemon did not answer in
+    /// time. A ⌘D split waits on `submit` synchronously from the shell, and a machine slow enough
+    /// to miss the deadline is the last one that should hold the window up longer. The answer is
+    /// still worth reading, because only it says which pane the name in the request went to:
+    /// the pane arrives on events meanwhile and is named on sight, while the process in it was
+    /// started with this name (kan a_2P65ttmCu).
+    ///
+    /// Nothing but that answer is taken as evidence. Binding the name to whichever pane appeared
+    /// next would be a guess, and a wrong guess sends one pane's keystrokes to another.
+    fn name_when_answered(
+        &self,
+        intent: &BackendIntent,
+        late: LateAnswer,
+        reservation: Reservation,
+    ) -> Refusal {
+        let pane = reservation.name().to_string();
+        let intent = intent.clone();
+        let renamed = self.renamed.clone();
+        let waiting = {
+            let pane = pane.clone();
+            move || {
+                let answer = late.wait(ANSWERED_WITHIN);
+                if let Some(backend) = answer.as_ref().ok().and_then(|made| created(&intent, made))
+                {
+                    log::info(
+                        "herdr.split.answered_late",
+                        fields! { "pane" => pane, "backend" => backend.clone() },
+                    );
+                    reservation.settle(&backend, &renamed);
+                    return;
+                }
+                log::warn(
+                    "herdr.split.never_answered",
+                    fields! {
+                        "pane" => pane,
+                        "detail" => answer.err().map_or_else(
+                            || "the answer named no pane".to_string(),
+                            |failure| failure.to_string(),
+                        ),
+                        "impact" => "if the daemon made the pane, the window lists it under a \
+                                     name other than its $MUSTER_PANE, and `muster` commands run \
+                                     inside it are refused for a pane that does not exist",
+                        "check" => "whether the daemon is keeping up at all: it took the request \
+                                    and gave no answer within half a minute. Closing that pane \
+                                    and making it again gives it a name that resolves",
+                    },
+                );
+            }
+        };
+        if let Err(error) =
+            std::thread::Builder::new().name(format!("muster-late-{pane}")).spawn(waiting)
+        {
+            log::warn(
+                "herdr.split.unwaited",
+                fields! {
+                    "pane" => pane,
+                    "detail" => error.to_string(),
+                    "impact" => "the late answer is never read, so a pane the daemon made is \
+                                 listed under a name other than its $MUSTER_PANE",
+                    "check" => "whether the process has run out of threads",
+                },
+            );
+        }
+        Refusal::Unanswered(format!(
+            "{}; a pane it made takes the name it was made with once the answer arrives",
+            Failure::TimedOut
+        ))
     }
 
     /// Gives a pane the name and the program the request asked it to be made with.

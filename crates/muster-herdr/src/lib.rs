@@ -25,7 +25,7 @@ pub mod snapshot;
 pub mod subscription;
 
 pub use bridge_report::Exiting;
-pub use client::HerdrClient;
+pub use client::{Answered, HerdrClient, LateAnswer};
 pub use config::{configuration_text, herdr_configuration, write_configuration};
 pub use control_socket::{PaneControlChannel, Reports, silence_sigpipe};
 pub use control_stream::ControlStreamMessage;

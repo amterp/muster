@@ -103,6 +103,19 @@
       }
     },
     {
+      "name": "a reserved name settles over the name its pane was given on sight",
+      "why": "When a split's answer arrives after the pane's own events - late, on a loaded machine - the pane has already been named on sight. That name was never in any process's environment; the reserved one was, so it takes the pane and the other is dropped rather than left beside it (kan a_2P65ttmCu).",
+      "given": {
+        "seed": 1,
+        "do": [
+          { "reserve": "A" },
+          { "see": "local/w1:p2" },
+          { "settle": { "as": "A", "at": "local/w1:p2" } }
+        ]
+      },
+      "expect": { "trace": ["p1w3r07bsd", "p1w3r0a4a9"], "located": { "p1w3r07bsd": "local/w1:p2" } }
+    },
+    {
       "name": "a pane the backend gives a new id keeps its name",
       "why": "herdr numbers panes per workspace, so a pane moved into another workspace is held under a new id there and the move says which id it had. The process in the pane was started with its name, so a registry that named the new id afresh would leave that process with a MUSTER_PANE nothing answers to - and the name would go on pointing at an id the pane no longer has (kan a_2P65uM7yI; observations/herdr-0.8.0.md section 20).",
       "given": {

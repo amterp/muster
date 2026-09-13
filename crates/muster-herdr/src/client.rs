@@ -90,6 +90,27 @@ impl HerdrClient {
         params: &Value,
         timeout: Duration,
     ) -> Result<Value, Failure> {
+        let mut stream = self.send(method, params, timeout)?;
+        let line = read_line(&mut stream).ok_or(Failure::TimedOut)?;
+        answer_from(&line)
+    }
+
+    /// The same, handing back the connection when the answer does not come in time.
+    ///
+    /// For a request whose answer is worth having even late. A split names the pane it made
+    /// only in its answer, and on a loaded machine that answer arrives after the deadline -
+    /// but the daemon still writes it to this connection, so a caller that keeps the
+    /// connection can still read which pane was made (kan a_2P65ttmCu).
+    pub fn request_or_late(&self, method: &str, params: &Value) -> Result<Answered, Failure> {
+        let mut stream = self.send(method, params, self.timeout)?;
+        match read_line(&mut stream) {
+            Some(line) => answer_from(&line).map(Answered::InTime),
+            None => Ok(Answered::Late(LateAnswer { stream })),
+        }
+    }
+
+    /// Opens a connection and writes one request down it.
+    fn send(&self, method: &str, params: &Value, timeout: Duration) -> Result<UnixStream, Failure> {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed) + 1;
         let envelope = json!({ "id": format!("muster:{id}"), "method": method, "params": params });
         let mut payload = envelope.to_string().into_bytes();
@@ -112,19 +133,47 @@ impl HerdrClient {
         // and `write_all` fails only on a call that wrote nothing, so the daemon never received
         // a line it could act on.
         stream.write_all(&payload).map_err(unsent)?;
-
-        let line = read_line(&mut stream).ok_or(Failure::TimedOut)?;
-        let object: Value =
-            serde_json::from_slice(&line).map_err(|_| Failure::MalformedResponse)?;
-
-        if let Some(error) = object.get("error") {
-            return Err(Failure::Daemon {
-                code: error.get("code").and_then(Value::as_str).unwrap_or("unknown").to_string(),
-                message: error.get("message").and_then(Value::as_str).unwrap_or("").to_string(),
-            });
-        }
-        Ok(object.get("result").cloned().unwrap_or_else(|| json!({})))
+        Ok(stream)
     }
+}
+
+/// What [`HerdrClient::request_or_late`] got: the answer, or a connection still owed one.
+#[derive(Debug)]
+pub enum Answered {
+    InTime(Value),
+    Late(LateAnswer),
+}
+
+/// A request the daemon took and did not answer in time, still connected in case it does.
+#[derive(Debug)]
+pub struct LateAnswer {
+    stream: UnixStream,
+}
+
+impl LateAnswer {
+    /// Waits up to `within` longer for the answer.
+    ///
+    /// `TimedOut` again for an answer that does not come, including from a daemon that hung up
+    /// without one.
+    pub fn wait(mut self, within: Duration) -> Result<Value, Failure> {
+        self.stream
+            .set_read_timeout(Some(within))
+            .map_err(|error| Failure::Unreachable(error.to_string()))?;
+        let line = read_line(&mut self.stream).ok_or(Failure::TimedOut)?;
+        answer_from(&line)
+    }
+}
+
+/// One answer line as the `result` it carries, or the failure it states.
+fn answer_from(line: &[u8]) -> Result<Value, Failure> {
+    let object: Value = serde_json::from_slice(line).map_err(|_| Failure::MalformedResponse)?;
+    if let Some(error) = object.get("error") {
+        return Err(Failure::Daemon {
+            code: error.get("code").and_then(Value::as_str).unwrap_or("unknown").to_string(),
+            message: error.get("message").and_then(Value::as_str).unwrap_or("").to_string(),
+        });
+    }
+    Ok(object.get("result").cloned().unwrap_or_else(|| json!({})))
 }
 
 /// Reads one newline-terminated response.
