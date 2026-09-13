@@ -3,7 +3,7 @@
 //! What a loaded machine does to Muster's requests, on demand: herdr receives the request and
 //! acts on it, and the answer does not come back in time. No request can ask a daemon to do
 //! that, and waiting for a machine to be slow enough is a test that passes when it is not. So
-//! this relays every connection to the daemon unchanged, except that for the methods it was
+//! this relays every connection to the daemon unchanged, except that for the requests it was
 //! told about it reads herdr's answer and never delivers it.
 //!
 //! Not a hand-written herdr (`docs/testing.md`): every byte a caller receives is one the real
@@ -20,7 +20,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde_json::Value;
 
-/// A socket in front of one daemon, withholding the answers to some methods.
+/// A socket in front of one daemon, withholding the answers to some requests.
 ///
 /// Stops accepting on drop. Connections already relayed end when either side hangs up, which
 /// for a test is when its daemon or its window goes.
@@ -31,8 +31,11 @@ pub struct Relay {
     running: Arc<AtomicBool>,
 }
 
+/// Whether a relay withholds the answer to a request, asked of each request as herdr reads it.
+pub(crate) type Withheld = Arc<dyn Fn(&Value) -> bool + Send + Sync>;
+
 impl Relay {
-    pub(crate) fn start(root: &Path, daemon: &Path, withheld: &[&str]) -> Relay {
+    pub(crate) fn start(root: &Path, daemon: &Path, withheld: Withheld) -> Relay {
         let socket_path = root.join("relay.sock");
         let _ = std::fs::remove_file(&socket_path);
         let listener = UnixListener::bind(&socket_path).unwrap_or_else(|error| {
@@ -40,7 +43,6 @@ impl Relay {
         });
         let running = Arc::new(AtomicBool::new(true));
         let daemon = daemon.to_path_buf();
-        let withheld: Vec<String> = withheld.iter().map(|method| (*method).to_string()).collect();
         let accepting = Arc::clone(&running);
         std::thread::spawn(move || {
             for client in listener.incoming() {
@@ -49,7 +51,7 @@ impl Relay {
                 }
                 let Ok(client) = client else { continue };
                 let daemon = daemon.clone();
-                let withheld = withheld.clone();
+                let withheld = Arc::clone(&withheld);
                 std::thread::spawn(move || relay(client, &daemon, &withheld));
             }
         });
@@ -83,17 +85,14 @@ impl Drop for Relay {
     }
 }
 
-fn relay(mut client: UnixStream, daemon: &Path, withheld: &[String]) {
+fn relay(mut client: UnixStream, daemon: &Path, withheld: &Withheld) {
     let Some(request) = read_line(&mut client) else { return };
     let Ok(mut upstream) = UnixStream::connect(daemon) else { return };
     if upstream.write_all(&request).and_then(|()| upstream.write_all(b"\n")).is_err() {
         return;
     }
 
-    let method = serde_json::from_slice::<Value>(&request)
-        .ok()
-        .and_then(|request| request.get("method").and_then(Value::as_str).map(str::to_string));
-    if method.is_some_and(|method| withheld.contains(&method)) {
+    if serde_json::from_slice::<Value>(&request).is_ok_and(|request| withheld(&request)) {
         // Read to the end of the answer, so the daemon has finished the work before this gives
         // the caller nothing.
         let _ = read_line(&mut upstream);

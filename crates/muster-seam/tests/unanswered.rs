@@ -6,6 +6,9 @@
 //! pane send` exited 1 on a message the receiving agent read and replied to (kan a_2LOHfLmsL).
 //! A caller told a change was refused sends it again.
 //!
+//! Nor as done. `pane send --enter` is two requests, the text and then Return, and a Return whose
+//! answer was lost exited 0 with the text possibly sitting on the prompt unsent (kan a_2P65u60Qp).
+//!
 //! Staged with a relay in front of a real daemon that delivers the request and withholds the
 //! answer (`herdr_harness::Relay`), because nothing can ask a daemon to be slow on cue. The work
 //! is real: the text is read back off the daemon itself, around the relay.
@@ -15,16 +18,20 @@ use muster::proto::{
     OpenWindow, ReadWindow, Request, Response, SendToPane, Startup, request, response,
 };
 use prost::Message;
-use serde_json::json;
+use serde_json::{Value, json};
 
 /// Text no shell prints on its own, so finding it on the pane means the send arrived.
 const MESSAGE: &str = "slot-two-was-here";
+
+/// A command whose output is not its own text, so finding the output means Return was pressed.
+const COMMAND: &str = "printf 'slot-%s\\n' two-submitted";
+const SUBMITTED: &str = "slot-two-submitted";
 
 #[test]
 fn a_send_the_daemon_delivered_is_not_reported_as_refused() {
     let _turn = muster::testing::fresh_session();
     let daemon = Daemon::start();
-    let relay = open_a_window_through(&daemon);
+    let relay = open_a_window_through(&daemon, daemon.withholding_answers_to(&["pane.send_input"]));
     let pane = the_only_pane();
 
     let answer = answer(request::Payload::SendToPane(SendToPane {
@@ -62,7 +69,7 @@ fn a_confirmed_send_whose_answer_was_lost_is_settled_by_reading_the_pane() {
     // send did not succeed throws away the only certainty on offer.
     let _turn = muster::testing::fresh_session();
     let daemon = Daemon::start();
-    let relay = open_a_window_through(&daemon);
+    let relay = open_a_window_through(&daemon, daemon.withholding_answers_to(&["pane.send_input"]));
     let pane = the_only_pane();
 
     let answer = answer(request::Payload::SendToPane(SendToPane {
@@ -80,11 +87,72 @@ fn a_confirmed_send_whose_answer_was_lost_is_settled_by_reading_the_pane() {
     drop(relay);
 }
 
-/// A window attached to `daemon` through a relay that withholds every answer to a send.
-fn open_a_window_through(daemon: &Daemon) -> Relay {
+#[test]
+fn a_send_whose_return_went_unanswered_is_not_reported_as_submitted() {
+    // The text is answered and only the Return after it goes missing, so the caller cannot know
+    // whether what it sent was submitted - and exit 0 says it was (kan a_2P65u60Qp).
+    let _turn = muster::testing::fresh_session();
+    let daemon = Daemon::start();
+    let relay = open_a_window_through(&daemon, daemon.withholding_answers_where(presses_return));
+    let pane = the_only_pane();
+
+    let answer = answer(request::Payload::SendToPane(SendToPane {
+        pane_id: pane,
+        text: COMMAND.to_string(),
+        enter: true,
+        ..SendToPane::default()
+    }));
+
+    until(
+        "the command's output to reach the pane, which only a pressed Return produces",
+        || on_the_pane(&daemon).contains(SUBMITTED),
+        || format!("the pane shows {:?}", on_the_pane(&daemon)),
+    );
+    assert_unanswered(&answer);
+    drop(relay);
+}
+
+#[test]
+fn a_confirmed_send_whose_return_went_unanswered_is_not_settled_by_the_read_back() {
+    // `--confirm` finds the text on the pane, and the text is on a pane whether or not Return
+    // submitted it. So reading it back settles arrival and not the Return.
+    let _turn = muster::testing::fresh_session();
+    let daemon = Daemon::start();
+    let relay = open_a_window_through(&daemon, daemon.withholding_answers_where(presses_return));
+    let pane = the_only_pane();
+
+    let answer = answer(request::Payload::SendToPane(SendToPane {
+        pane_id: pane,
+        text: COMMAND.to_string(),
+        enter: true,
+        confirm: true,
+        ..SendToPane::default()
+    }));
+
+    assert_unanswered(&answer);
+    drop(relay);
+}
+
+/// A request that presses Return rather than typing text. Both go out as `pane.send_input`.
+fn presses_return(request: &Value) -> bool {
+    request["method"] == "pane.send_input" && request["params"].get("keys").is_some()
+}
+
+fn assert_unanswered(answer: &Response) {
+    match &answer.payload {
+        Some(response::Payload::Unanswered(_)) => {}
+        Some(response::Payload::Ok(_)) => panic!(
+            "a send whose Return was never answered was reported as submitted.\n  Impact: exit 0 \
+             is the only thing a script reads, and the text may be sitting on the prompt unsent."
+        ),
+        other => panic!("a send whose Return was never answered answered {other:?}"),
+    }
+}
+
+/// A window attached to `daemon` through `relay`.
+fn open_a_window_through(daemon: &Daemon, relay: Relay) -> Relay {
     daemon
         .call("workspace.create", &json!({ "cwd": "/tmp", "label": "unanswered", "focus": true }));
-    let relay = daemon.withholding_answers_to(&["pane.send_input"]);
     let started = answer(request::Payload::Startup(Startup {
         config_path: relay.muster_config().to_string_lossy().into_owned(),
         ..Startup::default()
