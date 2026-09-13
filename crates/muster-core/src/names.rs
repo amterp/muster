@@ -369,6 +369,15 @@ impl PaneNames {
     pub fn release(&mut self, name: &PaneId) {
         self.reserved.remove(name);
     }
+
+    /// How many names are reserved for panes nothing has yet settled or released.
+    ///
+    /// Nothing ever reads a reservation back, so one left behind by a request that failed has no
+    /// symptom anywhere else - and a daemon that refuses all afternoon leaves one per refusal.
+    /// This is the only place that can be seen.
+    pub fn reservations(&self) -> usize {
+        self.reserved.len()
+    }
 }
 
 impl TabNames {
@@ -797,6 +806,12 @@ impl Names {
     /// Gives back a name whose pane the daemon never made.
     pub fn release(&self, name: &PaneId) {
         self.locked_panes().release(name);
+    }
+
+    /// How many pane names are reserved and not yet settled or released. See
+    /// [`PaneNames::reservations`].
+    pub fn reservations(&self) -> usize {
+        self.locked_panes().reservations()
     }
 
     /// Forgets the names of panes this daemon no longer holds.

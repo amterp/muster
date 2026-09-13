@@ -15,9 +15,10 @@
 use std::path::PathBuf;
 
 use herdr_harness::{Daemon, until_some};
-use muster_core::intent::{BackendChannel, BackendIntent};
+use muster_core::intent::{BackendChannel, BackendIntent, Side};
+use muster_core::mirror::backend::PaneId;
 use muster_core::names::{Mint, Names};
-use muster_herdr::{HerdrBackend, PaneEnvironment};
+use muster_herdr::{HerdrBackend, HerdrClient, PaneEnvironment};
 use serde_json::json;
 
 #[test]
@@ -77,4 +78,64 @@ fn a_pane_muster_made_is_told_which_pane_it_is() {
          request in HerdrBackend::submit, that env::with_pane_name puts it in the `env` map, \
          and that herdr still passes `env` through to a pane's process."
     );
+}
+
+// A name is reserved before a pane-making request is built, because it has to ride in that
+// request. Everything that can refuse between the reservation and the request going out has to
+// give the name back, or each refusal strands one - invisibly, since nothing reads a reservation
+// again. Neither case needs a daemon: both are refused before anything is sent.
+
+#[test]
+fn a_tab_whose_workspace_could_not_be_asked_for_gives_its_name_back() {
+    // The backend mint, so the pane the tab goes beside resolves and the refusal is the one this
+    // is about: the daemon could not be asked which workspace holds it.
+    let names = Names::alone("local", Mint::Backend);
+    let backend = HerdrBackend::new(nobody_listening(), PaneEnvironment::none(), names.clone());
+
+    let refused = backend.submit(&BackendIntent::CreateTab {
+        beside: PaneId::new("w1:p1"),
+        cwd: None,
+        run: None,
+        name: None,
+    });
+
+    assert!(refused.is_err(), "a tab was made with no daemon to make it: {refused:?}");
+    assert_eq!(
+        names.reservations(),
+        0,
+        "a tab refused before it was asked for kept the name minted for its pane.\n  Impact: every \
+         ⌘T that cannot find its workspace strands one name for a pane that never existed.\n  \
+         Check that HerdrBackend::submit gives the name back on every early return."
+    );
+}
+
+#[test]
+fn a_split_of_a_pane_nothing_answers_to_gives_its_name_back() {
+    // A minting registry, under which a name nobody bound resolves to nothing, so `request`
+    // refuses to build the split at all.
+    let names = Names::alone("local", Mint::Drawn);
+    let backend = HerdrBackend::new(nobody_listening(), PaneEnvironment::none(), names.clone());
+
+    let refused = backend.submit(&BackendIntent::SplitPane {
+        pane: PaneId::new("p00000gone"),
+        side: Side::Right,
+        ratio: None,
+        cwd: None,
+        run: None,
+        name: None,
+    });
+
+    assert!(refused.is_err(), "a split of a pane nothing answers to was sent: {refused:?}");
+    assert_eq!(
+        names.reservations(),
+        0,
+        "a split refused before it was sent kept the name minted for its pane.\n  Impact: one \
+         stranded name per refusal, for a pane that never existed.\n  Check that \
+         HerdrBackend::submit gives the name back on every early return."
+    );
+}
+
+/// A client for a socket nobody is listening on, so every request is unreachable.
+fn nobody_listening() -> HerdrClient {
+    HerdrClient::new(format!("/tmp/muster-test/nobody-listening-{}.sock", std::process::id()))
 }
