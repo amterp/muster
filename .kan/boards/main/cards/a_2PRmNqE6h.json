@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-daemon-that-dies",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1789308549121,
+  "creator": "Alexander Terp",
+  "description": "A daemon that dies before its subscription takes its own first snapshot is reported `disconnected` by `muster window --json`, with its panes still listed, while the shell's `BackendHealth` says `stale` for the same daemon.\n\n`Session::follow` seeds the mirror with a snapshot, but the subscription thread's `held_a_session` counts only its own bootstrap. So a connection lost before that calls `mark_disconnected` on a mirror that holds panes, and the seam's `Notice::Stale` handler announces `stale` regardless of what the mirror says.\n\nMinor and rare: it needs a daemon dying within moments of attach. `muster window --watch` and `muster pane wait` treat the two words as one fact (not answering), so nothing is missed; the two words just disagree.\n\nFound by slot 3 of the 2026-09-13 round, as a 1-in-5 flake in its own test (`a_2P5njTPcm`).",
+  "id": "a_2PRmNqE6h",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUU",
+  "title": "A daemon that dies right after attach is disconnected to window --json and stale to the shell",
+  "type": "bug",
+  "updated_at_millis": 1789308549121,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1789308549121}
+  ]
+}

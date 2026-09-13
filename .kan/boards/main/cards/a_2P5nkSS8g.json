@@ -6,25 +6,32 @@
     "shell",
     "backend"
   ],
-  "column": "in-progress",
+  "column": "done",
   "comments": [
     {
       "author": "Alexander Terp",
       "body": "Likely seen in the gate, 2026-09-12: crates/muster-seam/tests/reopen.rs a_saved_region_naming_a_dropped_pane_puts_the_keyboard_on_one_that_is_there failed once under load ~60, when a SplitPane of the window's first pane answered 'no pane called p237e21sss on local'. Six reruns passed, and the next full gate passed. Same shape as this card: a verb resolving a name the mirror did not hold yet.",
       "created_at_millis": 1789256869330,
       "id": "c_2P65xNvZ4"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Fixed 2026-09-13 (slot 2): a pane new or tab new on the command socket answers once the window holds the pane, bounded at 2s; the shell's dispatch path does not wait. Validation showed read, send --confirm, move, close, and read after tab new racing; plain send and rename were already fine. The reopen.rs flake quoted above is probably not this race: 'no pane called ... on local' comes from Names::backend_pane, a name-registry miss on the window's first pane, which this fix does not touch.",
+      "created_at_millis": 1789308557052,
+      "id": "c_2PRmaf1O8"
     }
   ],
   "created_at_millis": 1789256169439,
   "creator": "Alexander Terp",
   "description": "`muster pane read` may refuse a pane that `muster pane new` printed a moment earlier. `pane new` answers with the new pane's name before the window's mirror lists the pane, and `read_pane` refuses a name no mirror holds.\n\nNot verified for `read`. It was seen for `pane wait`: a seam test that split a pane and named it straight away was refused, and `31d7e9e` fixed that one verb by letting a watch wait up to 2s for the name to appear (`holder_soon` in `handler.rs`). Other verbs that resolve a name through `pane_holder` likely race the same way.\n\n## Validating\n\n- A seam test shaped like `a_wait_on_a_pane_that_closes_is_refused` in `crates/muster-seam/tests/agent_states.rs`: split, then immediately `pane read`, `pane send` and `pane rename` the new name. Each either succeeds or the race is real.\n- If it is, one answer for every verb is better than a 2s wait copied into each: `pane new` could answer only once the mirror holds the pane.",
   "id": "a_2P5nkSS8g",
-  "position": "2",
+  "position": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!U",
   "title": "muster pane read may refuse a pane pane new just printed",
   "type": "bug",
-  "updated_at_millis": 1789306315409,
+  "updated_at_millis": 1789308557052,
   "history": [
     {"field":"column","value":"backlog-hi","at":1789256169439},
-    {"field":"column","value":"in-progress","at":1789306315409}
+    {"field":"column","value":"in-progress","at":1789306315409},
+    {"field":"column","value":"done","at":1789308548931}
   ]
 }
