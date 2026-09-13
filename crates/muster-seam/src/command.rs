@@ -21,21 +21,27 @@
 //! that does not exit: it is waiting for agents to change state, and polling for that is what it
 //! exists to replace (kan a_2M9T8O6dL). Still one request per connection; the answers keep
 //! coming on it until the watch ends or the caller hangs up.
+//!
+//! One answer is held back rather than decided differently: a pane a request made is answered
+//! once this window holds that pane ([`after_the_window_holds_it`]). That changes when the answer
+//! is written and not what the request did, and the reason is this transport's own - a caller on
+//! it hears no events, only the answer.
 
 use std::os::fd::AsRawFd;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use muster_core::diagnostics::{log, poison};
 use muster_core::fields;
+use muster_core::mirror::backend::PaneId;
 use muster_proto::frame::{LARGEST_MESSAGE, read_frame, write_frame};
-use muster_proto::{Request, WatchPanes, request};
+use muster_proto::{Request, Response, WatchPanes, request, response};
 use prost::Message;
 
 use crate::watch::Next;
-use crate::{dispatch, handler};
+use crate::{dispatch, handler, session};
 
 /// The endpoint this process is listening on, held so that it stays open.
 ///
@@ -236,6 +242,7 @@ fn answer(mut stream: UnixStream) {
     // The same bytes-in, bytes-out call the C ABI makes, including its panic guard: a request
     // arriving here is no more trustworthy than one arriving from the shell.
     let response = dispatch(&request);
+    after_the_window_holds_it(&response);
     if let Err(error) = write_frame(&mut stream, &response) {
         log::debug(
             "command.answer.unsent",
@@ -247,6 +254,57 @@ fn answer(mut stream: UnixStream) {
         );
     }
 }
+
+/// Holds back an answer naming a pane the request made until this window holds that pane.
+///
+/// A split answers as soon as the daemon has made the pane, and the daemon's event describing it
+/// reaches the window up to a herdr event pass later. A caller here names the pane in its next
+/// command - `muster pane read --pane "$(muster pane new)"` - and every lookup in the window
+/// refused a name it had not heard of yet (kan a_2P5nkSS8g). Waiting once here answers that for
+/// every verb, including ones written after this.
+///
+/// Not in the handler, because the shell reaches that on its main thread. The shell learns of the
+/// pane from the event and never names one before then, so a wait there would stop the window
+/// drawing and taking input for nothing.
+///
+/// A pane still unheard of at the deadline is answered anyway. The daemon made it, and a caller
+/// told otherwise would make another.
+fn after_the_window_holds_it(response: &[u8]) {
+    let Ok(Response { payload: Some(response::Payload::Made(made)) }) = Response::decode(response)
+    else {
+        return;
+    };
+    let pane = PaneId::new(&made.pane_id);
+    let asked = Instant::now();
+    while session::daemon_holding(&pane).is_none() {
+        if asked.elapsed() >= TURNS_UP_WITHIN {
+            log::warn(
+                "pane.made.unheard",
+                fields! {
+                    "pane" => pane.to_string(),
+                    "waited_ms" => asked.elapsed().as_millis().to_string(),
+                    "impact" => "the pane exists and its name was answered, and a command naming \
+                                 it straight away may be refused until this window hears of it",
+                    "check" => "whether this window is still hearing from the pane's daemon - \
+                                `muster window` shows each daemon's state - and whether the pane \
+                                closed as soon as it was made",
+                },
+            );
+            return;
+        }
+        std::thread::sleep(HEARD_OF_POLL);
+    }
+}
+
+/// How long a pane a request made is given to reach this window before it is answered anyway.
+///
+/// A pane arrives within one herdr event pass, a tenth of a second, on a machine keeping up. Not
+/// measured beyond that: the whole wait is paid only when the window is not hearing from the
+/// daemon, and then nothing that names the pane would work however long this was.
+const TURNS_UP_WITHIN: Duration = Duration::from_secs(2);
+
+/// How often the window is asked, short because every `pane new` pays up to one interval of it.
+const HEARD_OF_POLL: Duration = Duration::from_millis(5);
 
 /// How long a watch with nothing to say goes before checking its caller is still there.
 ///

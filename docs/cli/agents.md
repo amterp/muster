@@ -7,8 +7,8 @@ Make a pane below this one, running an agent, called something a person can pick
 
     A=$(muster pane new --down --run claude --name '🤖 A')
 
-`pane new` prints the name of the pane it made - `p1w3r0ab2n` - which is what makes the next line
-possible:
+`pane new` prints the name of the pane it made - `p1w3r0ab2n` - once the window has heard of it,
+which is what makes the next line possible:
 
     B=$(muster pane new --down --run claude --name '🤖 B')
     muster pane send --pane "$A" 'read AGENTS.md, then implement the parser' --enter

@@ -251,6 +251,7 @@ a pane that changed during the gap is heard as one change, stamped with the mome
 back, and anything it did in between - a finish followed by new work - is not heard at all. If the
 window quits, a watch ends with exit 3.
 
-A pane made a moment ago is known to the daemon before the window has heard of it, so a wait gives
-a name it does not recognise two seconds to turn up. A wait on a name no pane has is therefore
-refused after two seconds rather than at once.
+`pane new` and `tab new` print a pane's name once the window has heard of the pane, so the next
+command can name it. A window hearing nothing from that daemon still prints the name after two
+seconds, because the pane exists, and until the window catches up every command naming the pane
+refuses it. A wait on a name no pane has is refused at once.

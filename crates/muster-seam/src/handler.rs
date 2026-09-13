@@ -1299,7 +1299,7 @@ pub(crate) fn watch_panes(request: &proto::WatchPanes) -> Result<watch::Watch, B
         let mut keys = BTreeSet::new();
         for named in &request.pane_ids {
             let pane = PaneId::new(named);
-            let Some(daemon) = holder_soon(&pane) else {
+            let Some(daemon) = session::daemon_holding(&pane) else {
                 return Err(Box::new(Response::failure(format!(
                     "no daemon this window is following holds a pane called {pane}, so there is \
                      nothing to watch. Either it closed, or the name came from an older window - \
@@ -1312,33 +1312,6 @@ pub(crate) fn watch_panes(request: &proto::WatchPanes) -> Result<watch::Watch, B
     };
 
     Ok(watch::start(panes, until))
-}
-
-/// How long a watch gives a pane no mirror has heard of to turn up before refusing it.
-///
-/// A split answers with the pane's name before the daemon's event describing it reaches the
-/// window, so `muster pane wait --pane "$(muster pane new)"` names a pane nothing holds yet. Not
-/// measured beyond that gesture passing in `tests/agent_states.rs`: a pane that exists arrives
-/// long before this, and only a name that is wrong waits it all out, which is two seconds that
-/// caller pays to be told.
-const TURNS_UP_WITHIN: std::time::Duration = std::time::Duration::from_secs(2);
-
-/// Which daemon holds a pane, giving one that was only just made a moment to reach a mirror.
-///
-/// Other requests about a pane no mirror holds are sent anyway and let the daemon answer
-/// (`target`). A watch has no daemon to ask - it waits on what the window hears - so it waits
-/// for the window to hear of the pane instead.
-fn holder_soon(pane: &PaneId) -> Option<DaemonId> {
-    let deadline = std::time::Instant::now() + TURNS_UP_WITHIN;
-    loop {
-        if let Some(daemon) = session::daemon_holding(pane) {
-            return Some(daemon);
-        }
-        if std::time::Instant::now() >= deadline {
-            return None;
-        }
-        std::thread::sleep(CONFIRM_POLL);
-    }
 }
 
 /// Which daemon a request about this tab goes to: the one it named, or the one holding the tab.
