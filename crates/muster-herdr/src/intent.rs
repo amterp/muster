@@ -125,33 +125,31 @@ impl HerdrBackend {
 
 impl BackendChannel for HerdrBackend {
     fn submit(&self, intent: &BackendIntent) -> Result<Outcome, Refusal> {
+        // The one thing a request needs and only the daemon can answer. Asked here rather than
+        // carried in the intent, because a workspace is herdr's unit and the core stopped naming
+        // one (MIP-2) - and asked only for the intent that needs it, so ⌘T costs a round trip
+        // and nothing else does. Before the name below is minted, so no name is held across a
+        // round trip that may refuse.
+        let workspace = self.workspace_for(intent)?;
+
         // Minted before the request rather than read off the answer, because it has to travel
         // *in* the request: the pane's own environment is sent with the split and herdr names
         // the pane in its reply, so this is the only order in which a pane can be told what it
         // is called (see `muster_core::names`).
-        let minted = makes_a_pane(intent).then(|| self.names.reserve());
+        let minted = makes_a_pane(intent).then(|| Reservation::new(&self.names));
         let panes = match &minted {
-            Some(name) => self.panes.with_pane_name(name),
+            Some(reservation) => self.panes.with_pane_name(reservation.name()),
             None => self.panes.clone(),
         };
 
-        // The one thing a request needs and only the daemon can answer. Asked here rather than
-        // carried in the intent, because a workspace is herdr's unit and the core stopped naming
-        // one (MIP-2) - and asked only for the intent that needs it, so ⌘T costs a round trip
-        // and nothing else does.
-        let workspace = self.workspace_for(intent)?;
         let (method, params) = request(intent, &panes, &self.names, workspace.as_deref())?;
         let result = match self.client.request(method, &params) {
             Ok(result) => result,
             Err(failure) => {
-                // Nothing was made, so nothing answers to the name. Released rather than left
-                // reserved, so a daemon that refuses splits all afternoon does not fill the
-                // registry with names for panes that never existed. An unanswered split may have
-                // made its pane, and is released all the same: the name can only be bound to the
-                // id the answer would have carried, so a reservation kept here would never settle.
-                if let Some(name) = &minted {
-                    self.names.release(name);
-                }
+                // The reservation is given back as this returns. An unanswered split may have
+                // made its pane, and is given back all the same: the name can only be bound to
+                // the id the answer would have carried, so a reservation kept here would never
+                // settle.
                 return Err(match (refusal(&failure), intent) {
                     // Return goes after the text, as a request of its own, and is not sent
                     // after text that may not have arrived: it would submit whatever else is
@@ -171,7 +169,7 @@ impl BackendChannel for HerdrBackend {
         // would name it a tab of its own - which is the grouping not having happened.
         self.group(intent, &result);
 
-        let created = self.settle(created(intent, &result).as_deref(), minted.as_ref());
+        let created = self.settle(created(intent, &result).as_deref(), minted);
         let settled = match (rearranges(intent), &created) {
             (Some(pane), Some(created)) => self.rearrange(pane, created),
             // A split herdr made and would not name. Worth saying, because the consequence is
@@ -320,6 +318,45 @@ impl BackendChannel for HerdrBackend {
     }
 }
 
+/// A name minted for a pane the request carrying it may not make.
+///
+/// Given back when dropped unless it was settled first. Released rather than left reserved, so a
+/// daemon that refuses splits all afternoon does not fill the registry with names for panes that
+/// never existed - and released by being dropped, because `submit` has several ways to refuse
+/// between minting a name and hearing an answer, and a release written at each of them is one
+/// forgotten the next time a `?` is added (kan a_2P65v326R).
+#[derive(Debug)]
+struct Reservation {
+    names: Names,
+    name: PaneId,
+    settled: bool,
+}
+
+impl Reservation {
+    fn new(names: &Names) -> Reservation {
+        Reservation { names: names.clone(), name: names.reserve(), settled: false }
+    }
+
+    fn name(&self) -> &PaneId {
+        &self.name
+    }
+
+    /// Binds the name to the pane this daemon calls `backend`, and keeps it.
+    fn settle(mut self, backend: &str) -> PaneId {
+        self.names.settle(&self.name, backend);
+        self.settled = true;
+        self.name.clone()
+    }
+}
+
+impl Drop for Reservation {
+    fn drop(&mut self) {
+        if !self.settled {
+            self.names.release(&self.name);
+        }
+    }
+}
+
 /// How far back a find reads, in rows.
 ///
 /// herdr's own ceiling: `lines` is clamped to a thousand rather than refused, so asking for
@@ -374,18 +411,12 @@ impl HerdrBackend {
     /// A pane made under no reserved name is named on sight rather than dropped, because a pane
     /// the mirror cannot name is a split missing from the window. It also means [`makes_a_pane`]
     /// and [`request`] disagree about which intents make one, which is a bug here.
-    fn settle(&self, backend: Option<&str>, minted: Option<&PaneId>) -> Option<PaneId> {
+    fn settle(&self, backend: Option<&str>, minted: Option<Reservation>) -> Option<PaneId> {
         match (backend, minted) {
-            (Some(backend), Some(name)) => {
-                self.names.settle(name, backend);
-                Some(name.clone())
-            }
+            (Some(backend), Some(reservation)) => Some(reservation.settle(backend)),
             (Some(backend), None) => Some(self.names.pane(backend)),
-            (None, Some(name)) => {
-                self.names.release(name);
-                None
-            }
-            (None, None) => None,
+            // An answer naming no pane gives the reservation back as it drops here.
+            (None, _) => None,
         }
     }
 
