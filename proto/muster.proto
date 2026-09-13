@@ -1053,6 +1053,7 @@ message Response {
     PaneStateChanged pane_state = 13;
     PaneClosed pane_closed = 14;
     Unanswered unanswered = 15;
+    BackendHealth backend_health = 16;
   }
 }
 

@@ -20,7 +20,7 @@ use serde_json::{Value, json};
 #[test]
 fn a_caller_can_wait_on_an_agent_instead_of_polling() {
     let _turn = muster::testing::fresh_session();
-    let open = a_window_onto_one_pane();
+    let mut open = a_window_onto_one_pane();
 
     let ran = muster(
         &open,
@@ -44,6 +44,60 @@ fn a_caller_can_wait_on_an_agent_instead_of_polling() {
         "a wait on a pane nobody holds can never end, and has to be refused rather than hang: {}",
         String::from_utf8_lossy(&ran.stderr)
     );
+
+    a_daemon_that_stops_answering_is_heard_by_a_watch_and_ends_a_wait(&mut open);
+}
+
+/// A daemon that stops answering is a line on a watch, and ends a wait on its pane with exit 4.
+///
+/// Last, because it kills the daemon every gesture before it needs. 4 rather than 5: 5 tells a
+/// script the agent is still going and waiting again is harmless, and while its daemon is stale
+/// nobody can say what the agent is doing.
+fn a_daemon_that_stops_answering_is_heard_by_a_watch_and_ends_a_wait(open: &mut Open) {
+    let mut watch = spawned(open, &["--json", "window", "--watch"]);
+    let lines = lines_of(&mut watch);
+    let first = next_json(&lines, "the watch's first line, which is a pane as it stands");
+
+    let wait = command(
+        open,
+        &["pane", "wait", "--pane", &open.pane, "--until", "blocked", "--timeout", "60"],
+    )
+    .stdout(Stdio::null())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap_or_else(|error| panic!("the muster binary could not be run: {error}"));
+    until(
+        "the window to hold the watch and the wait open",
+        || muster::testing::watchers() == 2,
+        || format!("{} watches are open", muster::testing::watchers()),
+    );
+
+    open.daemon.kill();
+    // Past the rest of the panes as they stood, which are also on this daemon.
+    let stale = loop {
+        let line = next_json(&lines, "the watch to print the daemon going stale");
+        if line.get("pane").is_none() {
+            break line;
+        }
+    };
+    assert!(
+        stale["daemon"] == first["daemon"] && stale["state"] == json!("stale"),
+        "a daemon that stopped answering has to be a line of its own, naming the daemon: {stale}"
+    );
+
+    let ended = wait.wait_with_output().expect("the wait was spawned by this test");
+    let said = String::from_utf8_lossy(&ended.stderr);
+    assert_eq!(
+        ended.status.code(),
+        Some(4),
+        "a wait whose daemon stopped answering exits {:?}, so a script cannot tell an agent still \
+         working from one nobody can see: {said}",
+        ended.status.code()
+    );
+    assert!(said.contains(&open.pane), "a wait that lost its daemon should name its pane: {said}");
+
+    let _ = watch.kill();
+    let _ = watch.wait();
 }
 
 /// `window --watch --json` writes a line per pane, then a line per change, while it is running.

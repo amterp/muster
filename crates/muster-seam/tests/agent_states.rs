@@ -12,8 +12,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use herdr_harness::{Daemon, PATIENCE, until, until_some};
 use muster::proto::frame::{LARGEST_MESSAGE, read_frame, write_frame};
 use muster::proto::{
-    ClosePane, OpenWindow, PaneStateChanged, ReadWindow, Request, Response, SplitPane, Startup,
-    WatchPanes, Window, WindowFocus, request, response,
+    BackendHealth, ClosePane, OpenWindow, PaneStateChanged, ReadWindow, Request, Response,
+    SplitPane, Startup, WatchPanes, Window, WindowFocus, request, response,
 };
 use prost::Message;
 use serde_json::{Value, json};
@@ -207,6 +207,90 @@ fn a_wait_on_a_pane_that_closes_is_refused() {
     }
 }
 
+/// A watch hears a daemon stop answering, and hears it come back, once each.
+///
+/// While a daemon is stale nothing about its panes reaches the window, so a watch that said
+/// nothing would read as agents that had all gone quiet at once. Restarted rather than killed so
+/// that it does come back - and the subscription says a daemon is stale on every reconnect it
+/// tries and connected twice on the way back, which a caller should hear as one change each.
+#[test]
+fn a_watch_hears_a_daemon_stop_answering_and_come_back() {
+    let _turn = muster::testing::fresh_session();
+    let mut open = a_window_onto_one_pane();
+    let mut watch = watching(&open.socket, WatchPanes::default());
+    let daemon = state_frame(&mut watch).daemon_id;
+
+    open.daemon.restart();
+    let gone = health_frame(&mut watch);
+    assert_eq!(
+        (gone.daemon_id.as_str(), gone.state.as_str()),
+        (daemon.as_str(), "stale"),
+        "a daemon that stopped answering has to be said to have, by name, or a watch on its panes \
+         reads as agents that went quiet: {gone:?}"
+    );
+    let back = health_frame(&mut watch);
+    assert_eq!(
+        (back.daemon_id.as_str(), back.state.as_str()),
+        (daemon.as_str(), "connected"),
+        "after `stale`, the next thing a watch says about the daemon has to be that it is back - \
+         anything else is one change heard twice: {back:?}"
+    );
+}
+
+/// A wait on a pane whose daemon stops answering ends unanswered, rather than waiting on.
+///
+/// Nothing about the pane can reach the window while its daemon is stale, so the wait could only
+/// run out its timeout and exit as though the agent were still busy. Whether the pane got there
+/// is unknown, and that is what a wait started after the daemon went answers at once too. A watch
+/// started then says so before any pane, because every state it sends for that daemon is a guess.
+#[test]
+fn a_wait_on_a_pane_whose_daemon_stops_answering_is_unanswered() {
+    let _turn = muster::testing::fresh_session();
+    let mut open = a_window_onto_one_pane();
+    let blocked =
+        || WatchPanes { pane_ids: vec![open.pane.clone()], until: vec!["blocked".into()] };
+
+    // Blocked, because a plain shell never is, so nothing but the daemon going can end this.
+    let mut waiting = watching(&open.socket, blocked());
+    until(
+        "the window to hold the wait open",
+        || muster::testing::watchers() == 1,
+        || format!("{} watches are open", muster::testing::watchers()),
+    );
+    open.daemon.kill();
+    match frame(&mut waiting).payload {
+        Some(response::Payload::Unanswered(unanswered))
+            if unanswered.reason.contains(&open.pane) => {}
+        other => panic!(
+            "a wait on a pane whose daemon stopped answering has to end as unanswered, naming the \
+             pane, rather than sit out its timeout and read as an agent still working. Got {other:?}"
+        ),
+    }
+    assert!(
+        read_frame(&mut waiting, LARGEST_MESSAGE).is_err(),
+        "a wait kept its connection open after its last answer"
+    );
+
+    let mut late = watching(&open.socket, blocked());
+    match frame(&mut late).payload {
+        Some(response::Payload::Unanswered(unanswered))
+            if unanswered.reason.contains(&open.pane) => {}
+        other => panic!(
+            "a wait started while its pane's daemon is stale has nothing to hear, so it has to end \
+             at once as unanswered. Got {other:?}"
+        ),
+    }
+
+    let mut watch = watching(&open.socket, WatchPanes::default());
+    match frame(&mut watch).payload {
+        Some(response::Payload::BackendHealth(health)) if health.state == "stale" => {}
+        other => panic!(
+            "a watch started while a daemon is stale has to say so before any pane, since every \
+             state it sends for that daemon's panes is a guess. Got {other:?}"
+        ),
+    }
+}
+
 /// A watch that could never answer is refused before anything is watched.
 #[test]
 fn a_watch_on_nothing_real_is_refused() {
@@ -328,6 +412,20 @@ fn state_frame(stream: &mut UnixStream) -> PaneStateChanged {
     match frame(stream).payload {
         Some(response::Payload::PaneState(state)) => state,
         other => panic!("a watch sent {other:?} where a pane's state was due"),
+    }
+}
+
+/// The next thing a watch says about a daemon, passing over what it says about panes meanwhile.
+///
+/// A daemon that restarts may announce its panes again on the way back, and that is not what a
+/// test about its health is asserting.
+fn health_frame(stream: &mut UnixStream) -> BackendHealth {
+    loop {
+        match frame(stream).payload {
+            Some(response::Payload::BackendHealth(health)) => return health,
+            Some(response::Payload::PaneState(_) | response::Payload::PaneClosed(_)) => {}
+            other => panic!("a watch sent {other:?} where a daemon's health was due"),
+        }
     }
 }
 
