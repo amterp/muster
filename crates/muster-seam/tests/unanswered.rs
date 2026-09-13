@@ -13,9 +13,11 @@
 //! answer (`herdr_harness::Relay`), because nothing can ask a daemon to be slow on cue. The work
 //! is real: the text is read back off the daemon itself, around the relay.
 
-use herdr_harness::{Daemon, Relay, until};
+use herdr_harness::{Daemon, Relay, until, until_some};
+use std::path::PathBuf;
+
 use muster::proto::{
-    OpenWindow, ReadWindow, Request, Response, SendToPane, Startup, request, response,
+    OpenWindow, ReadWindow, Request, Response, SendToPane, SplitPane, Startup, request, response,
 };
 use prost::Message;
 use serde_json::{Value, json};
@@ -149,6 +151,53 @@ fn assert_unanswered(answer: &Response) {
     }
 }
 
+#[test]
+fn a_pane_made_by_a_split_whose_answer_was_lost_keeps_its_name() {
+    // The name a pane is told is minted before the split and sent with it, and herdr says which
+    // pane it made only in its answer. Lose the answer and the pane still arrives on events -
+    // under a name minted on sight, while the process inside it was started with the first one.
+    // An agent there then gets "no pane called ..." for its own pane (kan a_2P65ttmCu).
+    let _turn = muster::testing::fresh_session();
+    let daemon = Daemon::start();
+    let relay = open_a_window_through(&daemon, daemon.withholding_answers_to(&["pane.split"]));
+    let pane = the_only_pane();
+    let before = daemon_panes(&daemon);
+
+    let answer = answer(request::Payload::SplitPane(SplitPane {
+        pane_id: pane,
+        side: "right".to_string(),
+        ..SplitPane::default()
+    }));
+    assert!(
+        matches!(answer.payload, Some(response::Payload::Unanswered(_))),
+        "a split whose answer was withheld answered {:?}",
+        answer.payload
+    );
+
+    // Read out of the pane's own environment, around the relay, because that is the name
+    // everything run inside it will use.
+    let made = until_some("the daemon to hold the pane the split made", || {
+        daemon_panes(&daemon).into_iter().find(|pane| !before.contains(pane))
+    });
+    let told = told_its_name(&daemon, &made);
+
+    until(
+        "the window to list the new pane under the name it was told",
+        || {
+            let listed = listed_panes();
+            listed.len() == 2 && listed.contains(&told)
+        },
+        || {
+            format!(
+                "the pane was told it is {told} and the window lists {:?}.\n  Impact: every \
+                 `muster` command run in that pane is refused for a pane that does not exist.",
+                listed_panes()
+            )
+        },
+    );
+    drop(relay);
+}
+
 /// A window attached to `daemon` through `relay`.
 fn open_a_window_through(daemon: &Daemon, relay: Relay) -> Relay {
     daemon
@@ -160,6 +209,47 @@ fn open_a_window_through(daemon: &Daemon, relay: Relay) -> Relay {
     assert_ok(&started);
     assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
     relay
+}
+
+/// Every pane the window lists, by Muster's names for them.
+fn listed_panes() -> Vec<String> {
+    match answer(request::Payload::ReadWindow(ReadWindow {})).payload {
+        Some(response::Payload::Window(window)) => {
+            window.panes.into_iter().map(|pane| pane.pane_id).collect()
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// herdr's ids for every pane the daemon holds, asked of the daemon directly.
+fn daemon_panes(daemon: &Daemon) -> Vec<String> {
+    let listed = daemon.call("pane.list", &json!({}));
+    listed["panes"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|pane| pane["pane_id"].as_str().map(str::to_string))
+        .collect()
+}
+
+/// What a pane's shell says `$MUSTER_PANE` is, written to a file rather than read off its screen
+/// so the answer is not wrapped or echoed.
+fn told_its_name(daemon: &Daemon, pane: &str) -> String {
+    let dump =
+        PathBuf::from(format!("/tmp/muster-test/unanswered-name-{}.txt", std::process::id()));
+    let _ = std::fs::remove_file(&dump);
+    daemon.call(
+        "pane.send_text",
+        &json!({
+            "pane_id": pane,
+            "text": format!("printf '%s' \"$MUSTER_PANE\" > {}\n", dump.display()),
+        }),
+    );
+    let written = until_some("the shell in the new pane to write out its name", || {
+        std::fs::read_to_string(&dump).ok().filter(|text| !text.is_empty())
+    });
+    let _ = std::fs::remove_file(&dump);
+    written.trim().to_string()
 }
 
 /// The window's only pane, by Muster's name for it.
