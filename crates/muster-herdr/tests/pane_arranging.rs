@@ -403,6 +403,159 @@ fn a_pane_moved_out_of_a_tab_it_was_alone_in_is_not_lost() {
     );
 }
 
+/// A pane moved into another workspace keeps its name, and leaves no row behind in the tab it
+/// left.
+///
+/// herdr numbers panes per workspace, so a move across workspaces gives the pane a new id there
+/// and says which id it had in `previous_pane_id` (herdr v0.8.0 `src/app/api/panes.rs`,
+/// `handle_pane_move`). The process in the pane was started knowing its old name, and a window
+/// that names the new id afresh strands that process: its `$MUSTER_PANE` answers to nothing, and
+/// the name's old row stays in the tab the pane left (kan a_2P65uM7yI).
+///
+/// The first workspace keeps a pane of its own, so nothing closes it: a closed workspace takes
+/// its rows with it, which would hide a row left behind.
+#[test]
+fn a_pane_moved_to_another_workspace_keeps_its_name() {
+    let (daemon, mirror, home, first, second) = a_tab_of_two();
+    daemon
+        .call("workspace.create", &json!({ "cwd": "/tmp", "label": "elsewhere", "focus": false }));
+    resnapshot(&daemon, &mirror);
+    let elsewhere = order(&mirror)
+        .into_iter()
+        .find(|pane| pane != &first && pane != &second)
+        .expect("the new workspace brings a pane of its own");
+    let far = tab_of(&mirror, &elsewhere);
+    assert_ne!(
+        workspace_of(&mirror, &elsewhere),
+        workspace_of(&mirror, &first),
+        "the second workspace put its pane in the first one, so this move would not cross one"
+    );
+
+    let (live, _subscription) = listening(&daemon);
+    until(
+        "the subscription to describe the whole session",
+        || {
+            recorded_in(&live, &home) == sorted([&first, &second])
+                && recorded_in(&live, &far) == sorted([&elsewhere])
+        },
+        (),
+    );
+
+    daemon
+        .backend()
+        .submit(&BackendIntent::MovePane {
+            pane: first.clone(),
+            to: MoveDestination::Beside { tab: far.clone(), after: elsewhere.clone() },
+        })
+        .expect("herdr accepts a move into a tab in another workspace");
+
+    // What the fix rests on, asked of herdr itself: the pane is held under an id it did not have.
+    let moved = held_in(&daemon, &far)
+        .into_iter()
+        .find(|pane| pane != elsewhere.as_str())
+        .expect("the tab the pane was moved into holds it");
+    assert_ne!(
+        moved,
+        first.as_str(),
+        "herdr kept the pane's id across workspaces, so there is no new id for Muster to follow"
+    );
+
+    until(
+        "the tab it landed in to hold it under the name it was made with",
+        || recorded_in(&live, &far) == sorted([&elsewhere, &first]),
+        || format!("the tab holds {:?}", recorded_in(&live, &far)),
+    );
+    until(
+        "the tab it left to stop naming it",
+        || recorded_in(&live, &home) == sorted([&second]),
+        || format!("the tab it left holds {:?}", recorded_in(&live, &home)),
+    );
+    assert_eq!(
+        order(&live).len(),
+        3,
+        "the window holds {:?} for a session of three panes",
+        order(&live)
+    );
+    until(
+        "the tab's tree to name it the same way its record does",
+        || in_tab(&live, &far).contains(&first),
+        || format!("the tree lays out {:?}", in_tab(&live, &far)),
+    );
+    assert_eq!(
+        daemon.names().backend_pane(&first).map(|backend| backend.to_string()),
+        Ok(moved),
+        "the pane's name still resolves to the id it had before the move"
+    );
+}
+
+/// A pane moved out of a workspace it was alone in keeps its name.
+///
+/// herdr closes the emptied workspace and announces that before the move. The window takes the
+/// workspace's rows with it, so for a moment the pane has no row - and the pane arrives under
+/// the name that row had, which must not be refused as a pane already said to be gone.
+#[test]
+fn a_pane_moved_out_of_a_workspace_it_was_alone_in_keeps_its_name() {
+    let (daemon, mirror, home, first, second) = a_tab_of_two();
+    daemon
+        .call("workspace.create", &json!({ "cwd": "/tmp", "label": "elsewhere", "focus": false }));
+    resnapshot(&daemon, &mirror);
+    let alone = order(&mirror)
+        .into_iter()
+        .find(|pane| pane != &first && pane != &second)
+        .expect("the new workspace brings a pane of its own");
+
+    let (live, _subscription) = listening(&daemon);
+    until(
+        "the subscription to describe the whole session",
+        || order(&live).len() == 3 && recorded_in(&live, &home) == sorted([&first, &second]),
+        (),
+    );
+
+    daemon
+        .backend()
+        .submit(&BackendIntent::MovePane {
+            pane: alone.clone(),
+            to: MoveDestination::Beside { tab: home.clone(), after: second.clone() },
+        })
+        .expect("herdr accepts a move into a tab in another workspace");
+
+    until(
+        "the tab it landed in to hold it under the name it was made with",
+        || recorded_in(&live, &home) == sorted([&first, &second, &alone]),
+        || format!("the tab holds {:?}", recorded_in(&live, &home)),
+    );
+    assert_eq!(
+        order(&live).len(),
+        3,
+        "the window holds {:?} for a session of three panes",
+        order(&live)
+    );
+}
+
+/// A mirror fed by a subscription and nothing else, and the subscription keeping it fed.
+fn listening(daemon: &Daemon) -> (Arc<Mutex<Mirror>>, Subscription) {
+    let live = Arc::new(Mutex::new(Mirror::new()));
+    let subscription = Subscription::start(
+        daemon.socket_path().to_string_lossy().into_owned(),
+        Arc::clone(&live),
+        Arc::new(|_| {}),
+        daemon.names(),
+    );
+    (live, subscription)
+}
+
+/// The ids herdr itself holds in one tab, asked of the daemon rather than of any mirror.
+fn held_in(daemon: &Daemon, tab: &TabId) -> Vec<String> {
+    let listed = daemon.call("pane.list", &json!({}));
+    listed["panes"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|pane| pane["tab_id"].as_str() == Some(tab.as_str()))
+        .filter_map(|pane| pane["pane_id"].as_str().map(str::to_string))
+        .collect()
+}
+
 /// A tab reordered by somebody else reaches a window that is only listening.
 ///
 /// The tab half of the test above, and it needs the live route even more than the pane half
