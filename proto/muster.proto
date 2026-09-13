@@ -708,6 +708,13 @@ message SendToPane {
 // change and a `pane_closed` for every watched pane that goes - until the caller hangs up, or
 // until `until` is met. Through the C ABI it is refused: a shell already gets every change as an
 // event, and a dispatch has one answer to give.
+//
+// Daemons are part of it, because nothing about a pane reaches the window while its daemon is
+// stale, and a watch silent through that reads as agents that all went quiet (kan a_2P5njTPcm).
+// A watch follows the daemons holding the panes it names, or every daemon when it names none. It
+// starts with a `backend_health` for each of those that is not connected, ahead of any pane, and
+// then sends one each time a daemon's state changes - once per change, though the window hears a
+// stale daemon again on every reconnect it tries.
 message WatchPanes {
   // The panes to watch, by Muster's name. Empty watches every pane the window holds, including
   // the ones that appear after the watch began.
@@ -721,6 +728,11 @@ message WatchPanes {
   // `idle` is also met by `done`, which is an idle nobody has looked at - whether a pane reads
   // one or the other depends on where somebody's cursor was, and a wait must not. A watched pane
   // that closes first ends it with a failure naming the pane.
+  //
+  // A named pane whose daemon is not connected, when the wait begins or at any point after, ends
+  // it with `unanswered` naming the pane: whether it got there cannot be known until the daemon is
+  // back. A wait naming no pane carries on, the way it does when one pane closes, and no wait
+  // sends `backend_health`.
   repeated string until = 2;
 }
 
@@ -1342,6 +1354,10 @@ message Failure {
 // and a pane that closed were both reported as refused while they were one of these (kan
 // a_2LOHfLmsL). The CLI exits 4 for it, the code it already uses for a window that took a request
 // and never answered, since to a caller that is the same fact one hop further in.
+//
+// A wait ends with one too, when the daemon holding a pane it waits on stops answering. Nothing
+// is repeated by waiting again, but the fact is the same: the window took the request and cannot
+// say what came of it, because the pane may have got there unheard.
 message Unanswered {
   // What went missing and what to look at, in the same register as Failure's reason.
   string reason = 1;
@@ -2197,7 +2213,7 @@ message BackendHealth {
   // connected, stale, or disconnected.
   string state = 1;
 
-  // Why, for the title bar and the log. Empty when connected.
+  // Why, for the title bar, the log and a watch. Empty when connected.
   string detail = 2;
 }
 

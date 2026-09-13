@@ -241,13 +241,15 @@ since the window first saw it. A window that loses a daemon and reconnects stamp
 state changed during the gap with the moment it got back, since nothing says when in the gap it
 changed. Two windows can therefore give one pane two different `since` values.
 
-## A watch hears what the window hears, and nothing while a daemon is stale
+## A watch hears nothing about a stale daemon's panes
 
 `muster window --watch` and `muster pane wait` are told what the window is told. While a daemon is
-`stale` - a dropped VPN, a devenv restarting - the window hears nothing from it, so neither does a
-watch, and a wait on one of its panes waits on. When the daemon comes back, a pane that changed
-during the gap is heard as one change, stamped with the moment the window got back. If the window
-quits, a watch ends with exit 3.
+`stale` - a dropped VPN, a devenv restarting - the window hears nothing about its panes, so neither
+does a watch. A watch prints a line when the daemon goes stale and another when it is back, and a
+wait on one of its panes exits 4, however briefly the daemon was gone. When the daemon comes back,
+a pane that changed during the gap is heard as one change, stamped with the moment the window got
+back, and anything it did in between - a finish followed by new work - is not heard at all. If the
+window quits, a watch ends with exit 3.
 
 A pane made a moment ago is known to the daemon before the window has heard of it, so a wait gives
 a name it does not recognise two seconds to turn up. A wait on a name no pane has is therefore

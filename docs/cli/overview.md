@@ -139,3 +139,8 @@ harmless.
 answer went missing, so whatever was asked for may already have happened - a `pane send` retried on
 a 4 is how a pane receives the same instruction twice. `muster pane read` says what a pane has on
 it, and `pane send --confirm` asks the window itself rather than guessing out here.
+
+`pane wait` exits 4 as well, when the daemon holding its pane stops answering: the window took the
+wait and cannot say whether the pane got there. A wait changes nothing, so this 4 is safe to retry,
+once `muster window` shows the daemon `connected` - before that, the wait ends the same way at
+once.

@@ -167,13 +167,24 @@ Pane name first, so `grep --line-buffered p1w3r0ab2n` follows one agent. Every p
 including panes made after the watch began. A line is printed when a pane's state or its `since`
 changes, so an agent reporting the state it is already in prints nothing.
 
+A daemon gets a line when it stops answering and another when it is back, with its name where a
+pane's would be:
+
+    devenv  stale
+    devenv  connected
+
+Nothing about its panes arrives between the two. A daemon that is not `connected` when the watch
+starts gets its line first, ahead of every pane, because what the window holds for its panes is a
+guess. A watch on a window whose daemons are all answering prints only panes.
+
 Under `--json` each line is an object: `{"pane", "daemon", "state", "since"}` for a state, with
-`since` as in `panes[]`, and `{"pane", "daemon", "closed": true}` for a pane that went.
+`since` as in `panes[]`, `{"pane", "daemon", "closed": true}` for a pane that went, and
+`{"daemon", "state", "detail"}` for a daemon, as in `daemons[]` - the one line with no `pane`.
 
 The watch holds one connection to one window, so outside a pane with several windows open it
 refuses until `--socket` names one. It ends with exit 3 if the window quits under it.
-`muster pane wait` is the same watch narrowed to named panes and ended by a state; `muster docs
-agents` has both.
+`muster pane wait` is the same watch narrowed to named panes and ended by a state, or with exit
+4 when one of their daemons stops answering; `muster docs agents` has both.
 
 ## daemons[]
 

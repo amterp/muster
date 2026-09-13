@@ -147,7 +147,8 @@ rather than guessing if more than one answers.
 
 Exit codes: 0 it happened, 1 the window refused, 2 the command line was wrong, 3 there was
 no window to ask, 4 a window took it and never answered, 5 a wait ran out first. Send it again
-after 3 or 5, never after 4 - the request landed, and doing it twice is on you.
+after 3 or 5, never after 4 - the request landed, and doing it twice is on you. The exception is a
+wait, which exits 4 when its pane's daemon stops answering and changes nothing if run again.
 ";
 
 #[derive(Debug, Parser)]

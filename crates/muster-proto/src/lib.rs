@@ -68,7 +68,8 @@ impl Response {
         Response { payload: Some(response::Payload::Failure(Failure { reason: reason.into() })) }
     }
 
-    /// A change a daemon was asked for and never answered about, which may have happened.
+    /// A change a daemon was asked for and never answered about, which may have happened - or a
+    /// wait on a pane whose daemon stopped answering, whose pane may have got there unheard.
     pub fn unanswered(reason: impl Into<String>) -> Response {
         Response {
             payload: Some(response::Payload::Unanswered(Unanswered { reason: reason.into() })),

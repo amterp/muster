@@ -12,7 +12,7 @@ use muster_core::mirror::backend::SplitAxis;
 use muster_core::roster::{Numbering, Roster};
 
 use crate::proto;
-use crate::session::PaneAgent;
+use crate::session::{DaemonHealth, PaneAgent};
 
 /// What one pane's agent is doing, for the shell, a read, and a watch alike.
 pub(crate) fn pane_state(agent: &PaneAgent) -> proto::PaneStateChanged {
@@ -21,6 +21,15 @@ pub(crate) fn pane_state(agent: &PaneAgent) -> proto::PaneStateChanged {
         pane_id: agent.pane.pane.to_string(),
         state: agent.state.as_str().to_string(),
         since_ms: agent.since_ms,
+    }
+}
+
+/// How much of one daemon's truth the window has, for the shell and a watch alike.
+pub(crate) fn backend_health(heard: &DaemonHealth) -> proto::BackendHealth {
+    proto::BackendHealth {
+        daemon_id: heard.daemon.to_string(),
+        state: heard.health.as_str().to_string(),
+        detail: heard.detail.clone(),
     }
 }
 

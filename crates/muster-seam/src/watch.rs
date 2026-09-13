@@ -5,9 +5,15 @@
 //! the answers, late by its polling interval and blind to a finish and a new turn between two
 //! polls (kan a_2M9T8O6dL). This hands such a caller the changes the shell is handed.
 //!
-//! Registered before anything is read. A watch registers, then takes its first picture of the
-//! panes, so every change lands in that picture or in the channel after it and none falls between
-//! the two. A change can land in both; [`Watch`] drops what it has already sent.
+//! Registered before anything is read. A watch registers, then takes its first picture of each
+//! daemon's health and of the panes, so every change lands in that picture or in the channel after
+//! it and none falls between the two. A change can land in both; [`Watch`] drops what it has
+//! already sent.
+//!
+//! Daemon health is in it because nothing about a pane reaches the window while its daemon is
+//! stale. A watch silent through that reads as agents that all went quiet at once, and a wait on
+//! one of those panes could only run out its timeout as though the agent were still busy (kan
+//! a_2P5njTPcm).
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::sync::Mutex;
@@ -15,12 +21,14 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::time::Duration;
 
+use muster_core::composition::DaemonId;
 use muster_core::diagnostics::poison;
+use muster_core::mirror::Health;
 use muster_core::{AgentState, PaneKey};
 
 use crate::convert;
 use crate::proto::{self, Response, response};
-use crate::session::{self, PaneAgent};
+use crate::session::{self, DaemonHealth, PaneAgent};
 
 /// Something a watch may have to say.
 #[derive(Debug, Clone)]
@@ -29,6 +37,9 @@ pub(crate) enum Seen {
     State(PaneAgent),
     /// A pane is gone.
     Closed(PaneKey),
+    /// How much of a daemon's truth the window has. Said again on every attempt to reconnect and
+    /// twice on the way back, so it is news only when the daemon starts or stops answering.
+    Health(DaemonHealth),
 }
 
 #[derive(Debug)]
@@ -90,6 +101,9 @@ pub(crate) struct Watch {
     until: Vec<AgentState>,
     /// What was last sent about each pane, so a change heard twice is sent once.
     sent: BTreeMap<PaneKey, (AgentState, i64)>,
+    /// What was last sent about each daemon. One missing is connected, so a watch on a window
+    /// whose daemons are all answering says nothing about daemons at all.
+    health: BTreeMap<DaemonId, Health>,
     ready: VecDeque<Next>,
     ended: bool,
 }
@@ -108,20 +122,36 @@ pub(crate) fn start(panes: Option<BTreeSet<PaneKey>>, until: Vec<AgentState>) ->
         panes,
         until,
         sent: BTreeMap::new(),
+        health: BTreeMap::new(),
         ready: VecDeque::new(),
         ended: false,
     };
-    watch.begin(session::agents());
+    watch.begin(session::daemon_health(), session::agents());
     watch
 }
 
 impl Watch {
-    /// The first picture: every watched pane as it stands.
+    /// The first picture: every followed daemon that is not answering, then every watched pane as
+    /// it stands.
+    ///
+    /// Daemons first, because a state read off a stale mirror is a guess and a caller should know
+    /// that before it reads one. A wait on a pane whose daemon is already gone ends there.
     ///
     /// A watch with nothing to wait for says all of it. A watch waiting for a state says only the
     /// panes already there, and ends at once if there are any - a condition that already holds
     /// is not waited past.
-    fn begin(&mut self, now: Vec<PaneAgent>) {
+    fn begin(&mut self, daemons: Vec<DaemonHealth>, now: Vec<PaneAgent>) {
+        for heard in daemons {
+            match self.daemon(&heard) {
+                Some(last @ Next::Last(_)) => {
+                    self.ready.push_back(last);
+                    return;
+                }
+                Some(next) => self.ready.push_back(next),
+                None => {}
+            }
+        }
+
         let watched: Vec<PaneAgent> =
             now.into_iter().filter(|agent| self.watches(&agent.pane)).collect();
         for agent in &watched {
@@ -170,6 +200,7 @@ impl Watch {
         let heard = match self.changes.recv_timeout(quiet) {
             Ok(Seen::State(agent)) => self.state(&agent),
             Ok(Seen::Closed(pane)) => self.closed(&pane),
+            Ok(Seen::Health(heard)) => self.daemon(&heard),
             Err(RecvTimeoutError::Timeout) => None,
             Err(RecvTimeoutError::Disconnected) => return Next::Over,
         };
@@ -229,6 +260,57 @@ impl Watch {
                 spelled(&self.until)
             )))
         })
+    }
+
+    fn daemon(&mut self, heard: &DaemonHealth) -> Option<Next> {
+        if !self.follows(&heard.daemon) {
+            return None;
+        }
+        let before =
+            self.health.insert(heard.daemon.clone(), heard.health).unwrap_or(Health::Connected);
+        // Stale and disconnected are one fact to a caller, that the daemon is not answering, and
+        // the two can disagree about which word it is: a daemon that dies before its subscription
+        // takes its own first snapshot leaves the mirror saying disconnected while the window
+        // announces stale. So only crossing between answering and not is news.
+        if (before == Health::Connected) == (heard.health == Health::Connected) {
+            return None;
+        }
+        if self.until.is_empty() {
+            return Some(Next::Answer(Response {
+                payload: Some(response::Payload::BackendHealth(convert::backend_health(heard))),
+            }));
+        }
+        // Waiting on every pane, one daemon going quiet is fewer panes that could get there, the
+        // way one pane closing is. Waiting on its panes, nothing about them can arrive.
+        let waited_on: Vec<String> = self
+            .panes
+            .iter()
+            .flatten()
+            .filter(|pane| pane.daemon == heard.daemon)
+            .map(|pane| pane.pane.to_string())
+            .collect();
+        if heard.health == Health::Connected || waited_on.is_empty() {
+            return None;
+        }
+        let why =
+            if heard.detail.is_empty() { String::new() } else { format!(" ({})", heard.detail) };
+        let (panes, are) = match waited_on.as_slice() {
+            [one] => (format!("pane {one}"), "is"),
+            many => (format!("panes {}", many.join(", ")), "are"),
+        };
+        Some(Next::Last(Response::unanswered(format!(
+            "daemon {daemon} stopped answering{why}, and nothing about its panes reaches the window \
+             until it is back, so whether {panes} {are} {until} cannot be known. Waiting changed \
+             nothing, so waiting again is harmless once `muster window` shows {daemon} connected.",
+            daemon = heard.daemon,
+            until = spelled(&self.until),
+        ))))
+    }
+
+    /// Whether this watch hears about a daemon: one holding a pane it names, or every daemon when
+    /// it names none.
+    fn follows(&self, daemon: &DaemonId) -> bool {
+        self.panes.as_ref().is_none_or(|panes| panes.iter().any(|pane| pane.daemon == *daemon))
     }
 
     fn watches(&self, pane: &PaneKey) -> bool {

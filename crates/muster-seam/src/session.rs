@@ -44,8 +44,8 @@ use muster_ssh::{Forward, Remote, State as TunnelState, Tunnel, remote_environme
 use muster_vt::KeyEncoder;
 
 use crate::proto::{
-    AttentionChanged, BackendHealth, Event, PaneTypeable, PresentationChanged,
-    Problem as ProblemMessage, ProblemsChanged, event,
+    AttentionChanged, Event, PaneTypeable, PresentationChanged, Problem as ProblemMessage,
+    ProblemsChanged, event,
 };
 use crate::shared_names::NamesFile;
 use crate::watch::{self, Seen};
@@ -865,7 +865,7 @@ fn open_tunnel(
 fn tunnel_state(daemon: &DaemonId, state: &TunnelState) {
     match state {
         TunnelState::Unreachable { detail } => {
-            health(daemon, "stale", detail);
+            health(daemon, Health::Stale, detail);
             raise_problem(&reconnect::key(daemon.as_str()), Severity::Warning, detail);
         }
         TunnelState::Reachable => clear_problem(&reconnect::key(daemon.as_str()), "reachable"),
@@ -2990,6 +2990,15 @@ pub(crate) struct PaneAgent {
     pub since_ms: i64,
 }
 
+/// How much of one daemon's truth the window has, as the shell and a watch are told it.
+#[derive(Debug, Clone)]
+pub(crate) struct DaemonHealth {
+    pub daemon: DaemonId,
+    pub health: Health,
+    /// Why, when it is not connected.
+    pub detail: String,
+}
+
 /// One machine this window is attached to, as anything outside the core reads it.
 ///
 /// Muster is the only thing that can answer this. A socket can be asked what it holds and the
@@ -3019,6 +3028,27 @@ pub(crate) struct Machine {
 /// throw away.
 pub(crate) fn agents() -> Vec<PaneAgent> {
     poison::lock(&SESSION, "session").agents()
+}
+
+/// How much of each followed daemon's truth the window has, read off its mirror.
+///
+/// The mirror rather than the last health announced, because every change to a mirror's health
+/// is announced after it is written - so a watch that reads this after registering hears any
+/// change it missed here on its channel instead.
+pub(crate) fn daemon_health() -> Vec<DaemonHealth> {
+    let session = poison::lock(&SESSION, "session");
+    session
+        .backends
+        .iter()
+        .map(|(daemon, backend)| {
+            let mirror = poison::lock(&backend.mirror, "mirror");
+            DaemonHealth {
+                daemon: daemon.clone(),
+                health: mirror.health(),
+                detail: mirror.health_detail().to_string(),
+            }
+        })
+        .collect()
 }
 
 pub(crate) fn window() -> WindowNow {
@@ -4027,7 +4057,7 @@ fn announce(daemon: &DaemonId, notice: Notice) {
             // gone in the gap it was rebuilt across.
             reconcile(daemon);
             publish();
-            health(daemon, "connected", "");
+            health(daemon, Health::Connected, "");
             for change in changes {
                 report(daemon, &change);
             }
@@ -4061,11 +4091,11 @@ fn announce(daemon: &DaemonId, notice: Notice) {
                                 whether the tunnel is up",
                 },
             );
-            health(daemon, "stale", &detail);
+            health(daemon, Health::Stale, &detail);
         }
         Notice::Reconnected => {
             log::info("backend.reconnected", fields! { "daemon" => daemon.to_string() });
-            health(daemon, "connected", "");
+            health(daemon, Health::Connected, "");
         }
         Notice::UnknownEvent { kind } => log::warn(
             "backend.unknown_event",
@@ -4927,19 +4957,17 @@ pub(crate) fn window_focused(focused: bool) {
 /// Per daemon, because health is per connection. A window showing a laptop and a devenv has
 /// two answers, and one of them going stale says nothing about the other - so a single
 /// window-wide state would let a dropped VPN read as though every session had gone.
-fn health(daemon: &DaemonId, state: &str, detail: &str) {
+fn health(daemon: &DaemonId, health: Health, detail: &str) {
     // Here rather than at each call site, so that every path which tells the shell a machine
-    // has gone tells the watch too. A stale daemon takes its panes' frames with it and
-    // says so once, naming the machine; eight more rows saying each of its panes stopped
-    // painting would bury the one that names the cause.
-    watchdog::daemon_away(daemon, state == "stale");
+    // has gone tells the watchdog and every open watch too. A stale daemon takes its panes'
+    // frames with it and says so once, naming the machine; eight more rows saying each of its
+    // panes stopped painting would bury the one that names the cause.
+    watchdog::daemon_away(daemon, health == Health::Stale);
+    let heard = DaemonHealth { daemon: daemon.clone(), health, detail: detail.to_string() };
     ffi::emit(&Event {
-        payload: Some(event::Payload::BackendHealth(BackendHealth {
-            daemon_id: daemon.to_string(),
-            state: state.to_string(),
-            detail: detail.to_string(),
-        })),
+        payload: Some(event::Payload::BackendHealth(convert::backend_health(&heard))),
     });
+    watch::publish(&Seen::Health(heard));
 }
 
 /// The moment the pane becomes typeable, on the thread that accepted the connection.

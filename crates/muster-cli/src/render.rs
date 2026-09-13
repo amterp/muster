@@ -80,6 +80,15 @@ pub fn answer(response: &Response, json: bool) -> Result<String, Trouble> {
         } else {
             format!("{}  {}", closed.pane_id, styled("closed", QUIET))
         }),
+        // A daemon on a watch, which says whether the lines about its panes can be believed. The
+        // same keys as `daemons[]` in `muster window --json`, and no `pane`, which is how a reader
+        // tells it from a pane's line.
+        Some(response::Payload::BackendHealth(health)) => Ok(if json {
+            json!({ "daemon": health.daemon_id, "state": health.state, "detail": health.detail })
+                .to_string()
+        } else {
+            format!("{}  {}", health.daemon_id, styled(&health.state, health_style(&health.state)))
+        }),
         Some(other) => Err(Trouble::Refused(format!(
             "the window answered with {}, which nothing here asked for. That is a bug in muster \
              rather than anything to do with the request.",

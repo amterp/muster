@@ -40,6 +40,11 @@ It blocks until the pane's agent is idle or blocked, prints the pane and its sta
 at. `--timeout` gives up with exit 5, and leaving it off waits for as long as it takes. Give
 `--pane` more than once to wait for the first of several agents.
 
+A wait also ends when the daemon holding its pane stops answering - a devenv over a dropped VPN -
+because nothing the agent does reaches the window until the daemon is back. It exits 4 at once
+rather than sitting out `--timeout`, since 5 would say the agent is still working and nobody can
+tell. Waiting changes nothing, so run it again once `muster window` shows that daemon `connected`.
+
 `--until` is a condition rather than an event, so a pane already there answers at once. After
 handing an idle agent work, wait for it to start before waiting for it to stop:
 
@@ -59,6 +64,10 @@ A line for every pane as it stands, then a line each time any of them changes st
 until you stop it. Each line is written when the change happens, so a `while read` loop or a
 `grep --line-buffered` acts on it straight away, and nothing that happens between two looks is
 missed. `--json` makes each line an object carrying `since`; `muster docs window` has the shape.
+
+A daemon that stops answering gets a line of its own, `devenv  stale`, and another,
+`devenv  connected`, when it is back. Nothing about its panes arrives in between, so their last
+lines are the last the window heard.
 
 `blocked` is an agent waiting on somebody. Answer it by name:
 

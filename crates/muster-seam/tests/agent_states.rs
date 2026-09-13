@@ -283,7 +283,9 @@ fn a_wait_on_a_pane_whose_daemon_stops_answering_is_unanswered() {
 
     let mut watch = watching(&open.socket, WatchPanes::default());
     match frame(&mut watch).payload {
-        Some(response::Payload::BackendHealth(health)) if health.state == "stale" => {}
+        // Stale or disconnected: a daemon killed before the window's subscription took its own
+        // first snapshot is written down as never having been reached.
+        Some(response::Payload::BackendHealth(health)) if health.state != "connected" => {}
         other => panic!(
             "a watch started while a daemon is stale has to say so before any pane, since every \
              state it sends for that daemon's panes is a guess. Got {other:?}"

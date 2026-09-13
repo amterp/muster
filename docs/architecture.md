@@ -356,7 +356,8 @@ One answer is neither a success nor a refusal: `Unanswered`, a change the core p
 what came of it. The request reached the daemon, so the change may well have happened, and a caller that reads this
 as a refusal sends it again - which is how a delivered message arrived twice (kan a_2LOHfLmsL). It is a payload of its
 own rather than a kind of `Failure` because that difference is the one a caller has to act on, and the CLI exits 4
-for it.
+for it. A wait on a pane whose daemon stops answering ends with one too: waiting again repeats nothing, but the window
+still cannot say whether the pane got there.
 
 Backpressure has no design yet, and the starting answer is a property of this architecture rather than a mechanism:
 because view = f(daemon state), a queued update can be **coalesced** rather than dropped or blocked on. That is what
@@ -711,7 +712,8 @@ caller hangs up. The one-answer rule was about a caller that runs one command an
 agent to finish is the one that does not, and polling `ReadWindow` for it was late by the interval and blind to a
 finish and a new turn between two polls (kan a_2M9T8O6dL). The endpoint routes a watch away from `dispatch`, which has
 one answer to give, and checks once a second whether a quiet watch's caller is still there, so an interrupted `muster
-pane wait` does not hold a thread.
+pane wait` does not hold a thread. A watch is also told when a daemon it follows stops answering and when it is back,
+because nothing about that daemon's panes reaches the window in between (kan a_2P5njTPcm).
 
 **A pid in the socket name, because two Musters are two windows.** A caller has to be able to reach the one it means,
 and a single fixed path would mean the second window to open silently took the first one's callers. Which window a
