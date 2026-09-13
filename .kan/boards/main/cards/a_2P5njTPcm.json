@@ -6,16 +6,17 @@
     "backend",
     "shell"
   ],
-  "column": "backlog-hi",
+  "column": "in-progress",
   "created_at_millis": 1789256168846,
   "creator": "Alexander Terp",
   "description": "`muster window --watch` and `muster pane wait` print nothing when a daemon stops answering. A wait on a devenv pane over a dropped VPN therefore sits silent until its `--timeout`, then exits 5 as though the agent had simply not finished.\n\nThe watch hears agent-state changes and closed panes, and nothing about daemon health (added in `31d7e9e`). `docs/cli/limits.md` says so. The likely fix is a line per daemon health change on the watch, and a wait that ends early (with its own exit) when a daemon it depends on goes stale.\n\nFound by slot 3 of the 2026-09-12 round while building the watch.",
   "id": "a_2P5njTPcm",
-  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "position": "!U",
   "title": "A watch or a wait hears nothing when a daemon goes stale",
   "type": "bug",
-  "updated_at_millis": 1789256168846,
+  "updated_at_millis": 1789306315575,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1789256168846}
+    {"field":"column","value":"backlog-hi","at":1789256168846},
+    {"field":"column","value":"in-progress","at":1789306315575}
   ]
 }
