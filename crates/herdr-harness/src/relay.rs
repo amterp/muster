@@ -1,10 +1,10 @@
-//! A real daemon behind a socket that loses some of its answers.
+//! A real daemon behind a socket that loses or delays some of its answers.
 //!
 //! What a loaded machine does to Muster's requests, on demand: herdr receives the request and
 //! acts on it, and the answer does not come back in time. No request can ask a daemon to do
 //! that, and waiting for a machine to be slow enough is a test that passes when it is not. So
 //! this relays every connection to the daemon unchanged, except that for the requests it was
-//! told about it reads herdr's answer and never delivers it.
+//! told about it reads herdr's answer and either never delivers it or delivers it late.
 //!
 //! Not a hand-written herdr (`docs/testing.md`): every byte a caller receives is one the real
 //! daemon sent, and the work behind a withheld answer is done by the real daemon. It stages a
@@ -17,10 +17,20 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 use serde_json::Value;
 
-/// A socket in front of one daemon, withholding the answers to some requests.
+/// How long the relay keeps an answer to one of the requests it was told about.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum Holding {
+    /// Never delivered: a lost answer.
+    Forever,
+    /// Delivered this long after herdr gave it: a late one.
+    For(Duration),
+}
+
+/// A socket in front of one daemon, withholding or delaying the answers to some requests.
 ///
 /// Stops accepting on drop. Connections already relayed end when either side hangs up, which
 /// for a test is when its daemon or its window goes.
@@ -35,7 +45,7 @@ pub struct Relay {
 pub(crate) type Withheld = Arc<dyn Fn(&Value) -> bool + Send + Sync>;
 
 impl Relay {
-    pub(crate) fn start(root: &Path, daemon: &Path, withheld: Withheld) -> Relay {
+    pub(crate) fn start(root: &Path, daemon: &Path, withheld: Withheld, holding: Holding) -> Relay {
         let socket_path = root.join("relay.sock");
         let _ = std::fs::remove_file(&socket_path);
         let listener = UnixListener::bind(&socket_path).unwrap_or_else(|error| {
@@ -52,7 +62,7 @@ impl Relay {
                 let Ok(client) = client else { continue };
                 let daemon = daemon.clone();
                 let withheld = Arc::clone(&withheld);
-                std::thread::spawn(move || relay(client, &daemon, &withheld));
+                std::thread::spawn(move || relay(client, &daemon, &withheld, holding));
             }
         });
         Relay { config_path: root.join("muster-relay.toml"), socket_path, running }
@@ -85,7 +95,7 @@ impl Drop for Relay {
     }
 }
 
-fn relay(mut client: UnixStream, daemon: &Path, withheld: &Withheld) {
+fn relay(mut client: UnixStream, daemon: &Path, withheld: &Withheld, holding: Holding) {
     let Some(request) = read_line(&mut client) else { return };
     let Ok(mut upstream) = UnixStream::connect(daemon) else { return };
     if upstream.write_all(&request).and_then(|()| upstream.write_all(b"\n")).is_err() {
@@ -95,10 +105,22 @@ fn relay(mut client: UnixStream, daemon: &Path, withheld: &Withheld) {
     if serde_json::from_slice::<Value>(&request).is_ok_and(|request| withheld(&request)) {
         // Read to the end of the answer, so the daemon has finished the work before this gives
         // the caller nothing.
-        let _ = read_line(&mut upstream);
-        // Held open rather than closed. A hang-up reaches the caller as an end of file, which is
-        // a different failure from the silence under test.
-        let _ = std::io::copy(&mut client, &mut std::io::sink());
+        let answer = read_line(&mut upstream);
+        match holding {
+            // Held open rather than closed. A hang-up reaches the caller as an end of file,
+            // which is a different failure from the silence under test.
+            Holding::Forever => {
+                let _ = std::io::copy(&mut client, &mut std::io::sink());
+            }
+            // Then hung up, as herdr does once it has answered.
+            Holding::For(delay) => {
+                std::thread::sleep(delay);
+                if let Some(answer) = answer {
+                    let _ = client.write_all(&answer).and_then(|()| client.write_all(b"\n"));
+                }
+                let _ = client.shutdown(Shutdown::Both);
+            }
+        }
         return;
     }
 

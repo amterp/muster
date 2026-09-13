@@ -15,12 +15,16 @@
 
 use herdr_harness::{Daemon, Relay, until, until_some};
 use std::path::PathBuf;
+use std::time::Duration;
 
 use muster::proto::{
     OpenWindow, ReadWindow, Request, Response, SendToPane, SplitPane, Startup, request, response,
 };
 use prost::Message;
 use serde_json::{Value, json};
+
+/// How late the split's answer arrives: well past the half second a window gives a daemon.
+const ANSWERED_AFTER: Duration = Duration::from_secs(2);
 
 /// Text no shell prints on its own, so finding it on the pane means the send arrived.
 const MESSAGE: &str = "slot-two-was-here";
@@ -152,14 +156,16 @@ fn assert_unanswered(answer: &Response) {
 }
 
 #[test]
-fn a_pane_made_by_a_split_whose_answer_was_lost_keeps_its_name() {
+fn a_pane_made_by_a_split_answered_too_late_keeps_its_name() {
     // The name a pane is told is minted before the split and sent with it, and herdr says which
-    // pane it made only in its answer. Lose the answer and the pane still arrives on events -
-    // under a name minted on sight, while the process inside it was started with the first one.
-    // An agent there then gets "no pane called ..." for its own pane (kan a_2P65ttmCu).
+    // pane it made only in its answer. An answer that comes after the window stopped waiting
+    // used to be thrown away with the connection, and the pane arrived on events under a name
+    // minted on sight while the process inside it was started with the first one. An agent
+    // there then got "no pane called ..." for its own pane (kan a_2P65ttmCu).
     let _turn = muster::testing::fresh_session();
     let daemon = Daemon::start();
-    let relay = open_a_window_through(&daemon, daemon.withholding_answers_to(&["pane.split"]));
+    let relay =
+        open_a_window_through(&daemon, daemon.delaying_answers_to(&["pane.split"], ANSWERED_AFTER));
     let pane = the_only_pane();
     let before = daemon_panes(&daemon);
 
@@ -170,7 +176,7 @@ fn a_pane_made_by_a_split_whose_answer_was_lost_keeps_its_name() {
     }));
     assert!(
         matches!(answer.payload, Some(response::Payload::Unanswered(_))),
-        "a split whose answer was withheld answered {:?}",
+        "a split answered after the window's deadline answered {:?}",
         answer.payload
     );
 

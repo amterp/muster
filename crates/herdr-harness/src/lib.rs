@@ -22,6 +22,7 @@
 mod relay;
 mod until;
 
+use relay::Holding;
 pub use relay::Relay;
 pub use until::{Detail, PATIENCE, until, until_file, until_some, until_within};
 
@@ -324,12 +325,7 @@ impl Daemon {
     /// For a test about a request the daemon carried out and whose answer was lost, which is
     /// what a loaded machine produces and nothing can ask a daemon for. Removed with the daemon.
     pub fn withholding_answers_to(&self, methods: &[&str]) -> Relay {
-        let methods: Vec<String> = methods.iter().map(|method| (*method).to_string()).collect();
-        self.withholding_answers_where(move |request| {
-            request["method"]
-                .as_str()
-                .is_some_and(|method| methods.iter().any(|named| named == method))
-        })
+        self.withholding_answers_where(any_of(methods))
     }
 
     /// The same, for the requests `withheld` picks out of the JSON herdr is sent.
@@ -340,7 +336,20 @@ impl Daemon {
         &self,
         withheld: impl Fn(&Value) -> bool + Send + Sync + 'static,
     ) -> Relay {
-        Relay::start(&self.root, &self.socket_path, std::sync::Arc::new(withheld))
+        Relay::start(&self.root, &self.socket_path, std::sync::Arc::new(withheld), Holding::Forever)
+    }
+
+    /// The same, delivering the answer to any of `methods` only once `delay` has passed.
+    ///
+    /// For a test about an answer that arrives after the caller stopped waiting for it, which is
+    /// the ordinary shape of a lost answer on a loaded machine.
+    pub fn delaying_answers_to(&self, methods: &[&str], delay: Duration) -> Relay {
+        Relay::start(
+            &self.root,
+            &self.socket_path,
+            std::sync::Arc::new(any_of(methods)),
+            Holding::For(delay),
+        )
     }
 
     pub fn client(&self) -> HerdrClient {
@@ -426,4 +435,12 @@ pub fn binary() -> String {
              version check."
         )
     })
+}
+
+/// Picks out the requests to any of `methods`.
+fn any_of(methods: &[&str]) -> impl Fn(&Value) -> bool + Send + Sync + 'static {
+    let methods: Vec<String> = methods.iter().map(|method| (*method).to_string()).collect();
+    move |request| {
+        request["method"].as_str().is_some_and(|method| methods.iter().any(|named| named == method))
+    }
 }
