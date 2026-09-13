@@ -5,17 +5,18 @@
   "area": [
     "backend"
   ],
-  "column": "in-progress",
+  "column": "done",
   "created_at_millis": 1789256867198,
   "creator": "Alexander Terp",
   "description": "When herdr makes a split but its answer is lost, the new pane is listed under a different Muster name from the one in its own `$MUSTER_PANE`. An agent in that pane then gets \"no pane called ...\" from `muster pane new`.\n\nSince `5a5abb4` a timed-out split is `Refusal::Unanswered` rather than a refusal, but `HerdrBackend::submit` still releases the name it minted: the name can only be bound to the backend id the lost answer carried. The pane then arrives on events and is minted a fresh name, while the process inside it was started with the first one.\n\nFound by slot 2 of the 2026-09-12 round. Not seen in the app; read from the code.",
   "id": "a_2P65ttmCu",
-  "position": "E",
+  "position": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!6",
   "title": "A split whose answer was lost lists its pane under another name",
   "type": "bug",
-  "updated_at_millis": 1789306315272,
+  "updated_at_millis": 1789310090460,
   "history": [
     {"field":"column","value":"backlog-hi","at":1789256867198},
-    {"field":"column","value":"in-progress","at":1789306315272}
+    {"field":"column","value":"in-progress","at":1789306315272},
+    {"field":"column","value":"done","at":1789310090460}
   ]
 }

@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "a-pane-new-run-whose",
+  "alias_explicit": false,
+  "area": [
+    "backend",
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1789310090889,
+  "creator": "Alexander Terp",
+  "description": "`muster pane new --run X --name Y` whose split answer misses the 500ms deadline exits 4, and the pane herdr made is left a bare shell: no command typed, no label. `HerdrBackend::equip`, which types the command and sets the label, runs only after an answer that arrived in time.\n\nThis predates 2026-09-13. Since `a_2P65ttmCu` the late answer is read on a thread of its own and binds the pane's name, so that thread now holds everything `equip` needs.\n\nIt matters most under load, which is when splits time out, and `muster pane new --run` is how parallel-work rounds start their worker agents. The result is a pane with no agent in it and a caller told exit 4.\n\nThe decision this card is for: should the late-answer thread run the command and set the label? For: the caller asked for it, and exit 4 means \"may have happened\". Against: a command starting seconds after the caller was told the request went unanswered, and a caller that retried despite exit 4 would get two agents.\n\nFound by the integrator reviewing slot 1's work in the 2026-09-13 round.",
+  "id": "a_2PSQUYmcH",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "title": "A pane new --run whose split timed out never runs its command or takes its --name",
+  "type": "bug",
+  "updated_at_millis": 1789310090889,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1789310090889}
+  ]
+}

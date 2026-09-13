@@ -5,16 +5,17 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-lo",
+  "column": "done",
   "created_at_millis": 1789256867920,
   "creator": "Alexander Terp",
   "description": "Cmd+T reserves a pane name before it asks herdr which workspace the current pane is in, and never releases the name if that lookup fails. Each failed lookup leaks one minted name.\n\nMinor. Found by slot 2 of the 2026-09-12 round, reading `HerdrBackend::workspace_for` and its caller.",
   "id": "a_2P65v326R",
-  "position": "UUUUUUUUUUUUUUUUUU",
+  "position": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!0",
   "title": "Cmd+T leaks a pane name when its workspace lookup fails",
   "type": "chore",
-  "updated_at_millis": 1789256867920,
+  "updated_at_millis": 1789310090585,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1789256867920}
+    {"field":"column","value":"backlog-lo","at":1789256867920},
+    {"field":"column","value":"done","at":1789310090585}
   ]
 }
