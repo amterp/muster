@@ -82,7 +82,7 @@ impl Grid {
 /// that difference becomes a pane that was asked for something and answered nothing
 /// (kan a_2LMRCug0P).
 ///
-/// Sent at most every [`PAINTED_INTERVAL_NS`] and only when a frame arrived, which is the whole
+/// Sent at most every [`PAINTED_INTERVAL_NS`] and only after a frame arrived, which is the whole
 /// of what makes it affordable: a quiet pane costs nothing, a pane painting flat out costs four
 /// small lines a second, and either way the app learns "it painted" rather than a per-frame
 /// stream it would have to summarize itself.
@@ -99,10 +99,11 @@ pub struct Painted {
 /// How often a bridge says it is painting, in nanoseconds.
 ///
 /// Its own interval rather than the one the log summary runs on, because the two have different
-/// readers. A second is right for a person reading repaint counts, and a quarter of one is what
-/// bounds the window in which a keystroke can land inside a burst of painting and be recorded as
-/// unanswered - the last frames of a burst are only reported by the next line, and there is no
-/// next line when the burst was the end of it.
+/// readers. A second is right for a person reading repaint counts, and a quarter of one is how
+/// long a keystroke answered inside a burst of painting can look unanswered. Frames inside an
+/// interval are reported when it ends, not when the next frame arrives: the echo of the last
+/// keystroke before a pause has no next frame, and waiting for one raised a warning about a
+/// healthy pane on every pause (kan a_2PeXwg4fA).
 pub const PAINTED_INTERVAL_NS: u64 = 250_000_000;
 
 impl Painted {

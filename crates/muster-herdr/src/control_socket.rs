@@ -77,7 +77,8 @@ pub struct Reports {
     pub sized: Box<dyn Fn(u32, u32) + Send + Sync>,
 
     /// The bridge has painted. Runs on that connection's reader thread, at most four times a
-    /// second while frames are arriving and not at all while none are.
+    /// second while frames are arriving, once more within a quarter second of the last of them,
+    /// and not at all while none are.
     ///
     /// The one fact about a pane nothing above this can observe: frames go from the bridge's
     /// stdout into a surface's command, so the app never sees one and cannot tell a pane that

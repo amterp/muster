@@ -10,11 +10,13 @@
 //! one thing this does write back is geometry.
 
 mod pty;
+mod tally;
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::net::UnixStream;
 use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
+use std::time::Duration;
 
 use muster_core::diagnostics::log::{self, LogLevel};
 use muster_core::diagnostics::poison;
@@ -24,6 +26,7 @@ use muster_core::respawn::{self, Ending};
 use muster_herdr::bridge_report::{self, Exiting, PAINTED_INTERVAL_NS, Painted};
 use muster_herdr::{ControlStreamMessage, FrameDecoder, PaneStreamEvent};
 use muster_ssh::quoted;
+use tally::{Counted, Tally};
 
 const USAGE: &str = "\
 usage: muster-bridge <pane-id> [--control-socket <path>] [--herdr-socket <path>]
@@ -481,7 +484,13 @@ fn pump_frames(
     app: Option<&Reporting>,
 ) -> ! {
     let mut decoder = FrameDecoder::new();
-    let mut pump = Pump::default();
+    let counted = Arc::new(Counting::new(app.is_some()));
+    std::thread::spawn({
+        let counted = Arc::clone(&counted);
+        let app = app.cloned();
+        move || report_frames(&counted, app.as_ref())
+    });
+    let mut pump = Pump { rendered: false, counted };
     // Heap rather than stack: a repaint is routinely tens of kilobytes, and this thread
     // has no reason to carry that in its frame.
     let mut chunk = vec![0u8; 64 * 1024].into_boxed_slice();
@@ -501,7 +510,7 @@ fn pump_frames(
 
         for event in decoder.consume(&chunk[..read]) {
             match event {
-                PaneStreamEvent::Frame(frame) => pump.render(&frame.bytes, app),
+                PaneStreamEvent::Frame(frame) => pump.render(&frame.bytes),
                 PaneStreamEvent::Closed { reason } => {
                     pump.finish(pane, pane_name, reason.as_deref(), app);
                 }
@@ -510,100 +519,127 @@ fn pump_frames(
     }
 }
 
-#[derive(Default)]
-struct Pump {
-    /// Whether anything was ever painted, which is what separates a pane that ended from a
-    /// pane that never began.
-    rendered: bool,
-    /// Repaints since the last summary, and when that was.
+/// Frames the pump has counted and [`report_frames`] has yet to say anything about.
+///
+/// Counted on the pump thread and reported from a thread of their own, because the pump spends
+/// a quiet pane blocked in a read, and the last frames of a burst are owed their line while it
+/// is (kan a_2PeXwg4fA).
+struct Counting {
+    tallies: Mutex<Tallies>,
+    arrived: Condvar,
+}
+
+struct Tallies {
+    /// Repaint counts for the log.
     ///
     /// Frames are the answer to "did the pane react to what I typed", which is the first
     /// question anyone asks of this log and the one it could not answer: per-frame records
     /// sit at trace, off by default, because at repaint rates they bury everything else. A
-    /// periodic count is legible at any rate and still lands within a second of the
-    /// keystroke that caused it.
-    frames_since_summary: u64,
-    bytes_since_summary: usize,
-    last_summary: u64,
+    /// periodic count is legible at any rate and lands within a second of the frames it counts.
+    summary: Tally,
 
-    /// The same two counts for the app, on a clock of their own.
+    /// The same counts for the app, on an interval of their own, or `None` with no app to tell.
     ///
-    /// Separate from the summary above because the two have different readers and neither
-    /// interval is right for the other. A person reading repaint counts wants one line a second;
-    /// the app is answering "did this pane react to what was typed into it", and the last frames
-    /// of a burst are only ever reported by the next line - so the interval is what bounds how
-    /// long a keystroke landing inside a burst can look unanswered.
-    frames_since_report: u64,
-    bytes_since_report: usize,
-    last_report: u64,
+    /// Separate from the summary because the two have different readers and neither interval
+    /// is right for the other. A person reading repaint counts wants one line a second; the app
+    /// is answering "did this pane react to what was typed into it", and the interval bounds how
+    /// long a keystroke answered at the end of a burst can look unanswered.
+    report: Option<Tally>,
 }
 
 const SUMMARY_INTERVAL_NS: u64 = 1_000_000_000;
 
+impl Counting {
+    fn new(reporting: bool) -> Counting {
+        Counting {
+            tallies: Mutex::new(Tallies {
+                summary: Tally::new(SUMMARY_INTERVAL_NS),
+                report: reporting.then(|| Tally::new(PAINTED_INTERVAL_NS)),
+            }),
+            arrived: Condvar::new(),
+        }
+    }
+
+    fn count(&self, bytes: usize) {
+        let mut tallies = poison::lock(&self.tallies, "bridge.tallies");
+        let summary_was_quiet = tallies.summary.count(bytes);
+        let report_was_quiet = tallies.report.as_mut().is_some_and(|report| report.count(bytes));
+        drop(tallies);
+        if summary_was_quiet || report_was_quiet {
+            self.arrived.notify_one();
+        }
+    }
+}
+
+/// Says what the pump counted: a repaint count in the log at most once a second, and a paint
+/// report to the app at most four times a second.
+///
+/// Each goes out when its interval ends, whether or not another frame has arrived by then. A
+/// pane painting nothing says nothing and costs this thread no wakeups.
+///
+/// Silence in the log is information: a second with no summary is a second the pane did not
+/// change, which is exactly what "I pressed a key and nothing happened" looks like from the
+/// outside.
+///
+/// The report is the one fact about a pane the app cannot observe: frames go from here into a
+/// surface's command and never pass through it, so a pane that has stopped painting looks
+/// exactly like a pane whose agent has nothing to say. Joined up there with what the app
+/// delivered, the difference is a pane that was asked for something and answered nothing
+/// (kan a_2LMRCug0P).
+fn report_frames(counted: &Counting, app: Option<&Reporting>) -> ! {
+    let mut tallies = poison::lock(&counted.tallies, "bridge.tallies");
+    loop {
+        let now = muster_core::diagnostics::monotonic_now();
+        let summary = tallies.summary.take(now);
+        let report = tallies.report.as_mut().and_then(|report| report.take(now));
+        if summary.is_some() || report.is_some() {
+            // Not under the lock: the pump takes it on every frame, and a write to an app that
+            // has stopped reading would stall painting behind it.
+            drop(tallies);
+            if let Some(Counted { frames, bytes }) = summary {
+                log::debug("bridge.frames", fields! { "frames" => frames, "bytes" => bytes });
+            }
+            if let Some(Counted { frames, bytes }) = report {
+                write_line(app, &Painted { frames, bytes }.wire_format());
+            }
+            tallies = poison::lock(&counted.tallies, "bridge.tallies");
+            continue;
+        }
+
+        let owed = tallies.report.as_ref().and_then(|report| report.due_in(now));
+        tallies = match tallies.summary.due_in(now).into_iter().chain(owed).min() {
+            Some(nanos) => {
+                let waited = counted.arrived.wait_timeout(tallies, Duration::from_nanos(nanos));
+                poison::recover(waited, "bridge.tallies").0
+            }
+            None => poison::recover(counted.arrived.wait(tallies), "bridge.tallies"),
+        };
+    }
+}
+
+struct Pump {
+    /// Whether anything was ever painted, which is what separates a pane that ended from a
+    /// pane that never began.
+    rendered: bool,
+    counted: Arc<Counting>,
+}
+
 impl Pump {
-    fn render(&mut self, bytes: &[u8], app: Option<&Reporting>) {
+    fn render(&mut self, bytes: &[u8]) {
         // An attach opens with a full repaint, so a surface never has to have seen the
         // start of the stream.
         if !self.rendered {
             log::info("bridge.frame.first", fields! { "bytes" => bytes.len() });
-            self.last_summary = muster_core::diagnostics::monotonic_now();
         }
         self.rendered = true;
         if log::enabled(LogLevel::Trace) {
             log::trace("bridge.frame", fields! { "bytes" => bytes.len() });
         }
-        self.frames_since_summary += 1;
-        self.bytes_since_summary += bytes.len();
-        self.frames_since_report += 1;
-        self.bytes_since_report += bytes.len();
-        self.summarize_if_due();
-        self.tell_the_app_if_due(app);
+        self.counted.count(bytes.len());
 
         let mut out = std::io::stdout().lock();
         let _ = out.write_all(bytes);
         let _ = out.flush();
-    }
-
-    /// Emits a repaint count at most once a second, and only when there was one.
-    ///
-    /// Silence is information here: a second with no summary is a second the pane did not
-    /// change, which is exactly what "I pressed a key and nothing happened" looks like from
-    /// the outside.
-    fn summarize_if_due(&mut self) {
-        if muster_core::diagnostics::monotonic_since(self.last_summary) < SUMMARY_INTERVAL_NS {
-            return;
-        }
-        log::debug(
-            "bridge.frames",
-            fields! { "frames" => self.frames_since_summary, "bytes" => self.bytes_since_summary },
-        );
-        self.frames_since_summary = 0;
-        self.bytes_since_summary = 0;
-        self.last_summary = muster_core::diagnostics::monotonic_now();
-    }
-
-    /// Tells the app this pane is painting, at most four times a second.
-    ///
-    /// The one fact about a pane the app cannot observe: frames go from here into a surface's
-    /// command and never pass through it, so a pane that has stopped painting looks exactly like
-    /// a pane whose agent has nothing to say. Joined up there with what the app delivered, the
-    /// difference is a pane that was asked for something and answered nothing (kan a_2LMRCug0P).
-    ///
-    /// A pane painting nothing sends nothing, which is the point: silence costs a quiet window
-    /// no traffic at all, and the app's rule is driven by what a bridge says rather than by how
-    /// long it has been since one said anything.
-    fn tell_the_app_if_due(&mut self, app: Option<&Reporting>) {
-        if app.is_none()
-            || muster_core::diagnostics::monotonic_since(self.last_report) < PAINTED_INTERVAL_NS
-        {
-            return;
-        }
-        let painted =
-            Painted { frames: self.frames_since_report, bytes: self.bytes_since_report as u64 };
-        write_line(app, &painted.wire_format());
-        self.frames_since_report = 0;
-        self.bytes_since_report = 0;
-        self.last_report = muster_core::diagnostics::monotonic_now();
     }
 
     /// Reports why the stream ended, and exits.

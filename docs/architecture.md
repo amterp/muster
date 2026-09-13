@@ -964,7 +964,9 @@ itself, because an idle agent paints nothing all afternoon and is perfectly heal
 quiet wrong is that somebody typed. Neither process knows both halves, which is why this is
 joined above the seam - the app is the sender, and the bridge is the only thing that sees a
 frame, so it says it painted on the control socket it already holds, at most four times a second
-and not at all while nothing is arriving. Three guards keep the sentence true: only while the
+and not at all while nothing is arriving. Frames inside that quarter second are reported when it
+ends rather than by the next frame, because the echo of the last keystroke before a pause has no
+next frame, and waiting for one accused a healthy pane on every pause (kan a_2PeXwg4fA). Three guards keep the sentence true: only while the
 window is drawing the pane, only while its daemon is answering, and never when the ceiling has
 already named the silence, because two rows about one frozen pane send the reader to the one
 without the remedy in it. The first guard is about raising, not keeping: a warning already raised stays when its pane
