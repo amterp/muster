@@ -1,0 +1,17 @@
+{
+  "_v": 3,
+  "alias": "agents-md-says",
+  "alias_explicit": false,
+  "column": "backlog-lo",
+  "created_at_millis": 1789409408049,
+  "creator": "Alexander Terp",
+  "description": "`docs/cli/agents.md` and `docs/cli/overview.md` disagree about what quitting does to a running agent, and the wrong one is in the section somebody reads while their pane is stuck.\n\n`agents.md`, closing the \"A pane that has gone dark\" section:\n\n\u003e `muster pane close` also gets the pane a fresh start, by ending what is running in it, which is rarely what somebody staring at a stuck agent wants - and quitting Muster does the same thing to every pane at once.\n\n\"The same thing\" points at \"ending what is running in it\", so read plainly the sentence says quitting Muster kills every agent.\n\n`overview.md:19`:\n\n\u003e Panes outlive the window: quitting Muster leaves the daemons running, and the agents in their panes keep working.\n\nThe second is true and is the whole premise of daemon-owned sessions.\n\nWhat it cost, 2026-09-14: the remedy for a tab taken by a second window is to quit that window and reattach (see `a_2Mhi0EZlv`). Advising the quit meant first going to `overview.md` to check that it would not end three agents mid-task, because `agents.md` had just said it would.\n\nIf the intended claim was that quitting replaces every pane's bridge at once - true, and a fair point beside `pane close` - it needs to say bridge rather than \"the same thing\". Otherwise the clause should go.",
+  "id": "a_2Q86BVOkW",
+  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "title": "📖 agents.md says quitting Muster ends what is running in every pane",
+  "type": "docs",
+  "updated_at_millis": 1789409408049,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1789409408049}
+  ]
+}
