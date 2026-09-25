@@ -81,7 +81,7 @@ impl PaneChannel for Recorder {
         false
     }
 
-    fn description(&self) -> &str {
+    fn description(&self) -> &'static str {
         "the pane's control stream"
     }
 }
