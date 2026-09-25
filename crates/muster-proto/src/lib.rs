@@ -53,6 +53,52 @@ pub fn only_reads(payload: &request::Payload) -> bool {
     )
 }
 
+/// What a request names as the thing it is about.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Names<'a> {
+    Tab(&'a str),
+    Pane(&'a str),
+}
+
+/// The tab or pane a request that changes something names, when it names one.
+///
+/// Here for the reason [`only_reads`] is: two programs decide on it. A window carries a request
+/// about another window's tab to that window, because a tab belongs to exactly one window (kan
+/// a_2Mhi0EZlv) - and so the CLI can send a request that names its target to any window at all,
+/// where one that names nothing means "the keyboard's pane" and has to reach the right window.
+///
+/// Nothing for a request naming nothing, which means this window's keyboard. For a move, the
+/// destination, because that window is the one that has to show the pane arrive.
+pub fn names(payload: &request::Payload) -> Option<Names<'_>> {
+    fn tab(id: &str) -> Option<Names<'_>> {
+        (!id.is_empty()).then_some(Names::Tab(id))
+    }
+    fn pane(id: &str) -> Option<Names<'_>> {
+        (!id.is_empty()).then_some(Names::Pane(id))
+    }
+    use request::Payload;
+    match payload {
+        Payload::FocusTab(focus) => tab(&focus.tab_id),
+        Payload::CloseTab(close) => tab(&close.tab_id),
+        Payload::RenameTab(rename) => tab(&rename.tab_id),
+        Payload::SetSplitRatio(set) => tab(&set.tab_id),
+        Payload::ArrangePane(arrange) => tab(&arrange.tab_id)
+            .or_else(|| pane(&arrange.onto_pane_id))
+            .or_else(|| if arrange.new_tab { pane(&arrange.pane_id) } else { None }),
+        Payload::FocusPane(focus) => pane(&focus.pane_id),
+        Payload::ClosePane(close) => pane(&close.pane_id),
+        Payload::SplitPane(split) => pane(&split.pane_id),
+        Payload::CreateTab(create) => pane(&create.pane_id),
+        Payload::ZoomPane(zoom) => pane(&zoom.pane_id),
+        Payload::ResizePane(resize) => pane(&resize.pane_id),
+        Payload::RenamePane(rename) => pane(&rename.pane_id),
+        Payload::SendToPane(send) => pane(&send.pane_id),
+        Payload::ReattachPane(reattach) => pane(&reattach.pane_id),
+        Payload::EqualizePanes(even) => pane(&even.pane_id),
+        _ => None,
+    }
+}
+
 impl Response {
     /// Nothing to report, which is what most requests answer.
     ///

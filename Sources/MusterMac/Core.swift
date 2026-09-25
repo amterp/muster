@@ -1022,6 +1022,7 @@ public enum Core {
     case .adjustFontSize: return "adjust_font_size"
     case .reloadConfig: return "reload_config"
     case .readTabHolders: return "read_tab_holders"
+    case .carried: return "carried"
     case .bridgeExited: return "bridge_exited"
     case .resizePane: return "resize_pane"
     case .equalizePanes: return "equalize_panes"
@@ -1147,6 +1148,12 @@ public enum Core {
       let presentation = Presentation(sidebar: changed.sidebar)
       info("presentation.received", ["sidebar": String(presentation.sidebar)])
       window?.apply(presentation: presentation)
+    case .raiseWindow:
+      // Somebody went to one of this window's tabs from another window, or from a terminal. The
+      // tab is already on screen; this is the window coming forward to show it.
+      info("window.raised", [:])
+      NSApp.activate(ignoringOtherApps: true)
+      window?.raise()
     case nil:
       break
     }

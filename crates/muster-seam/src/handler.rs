@@ -149,6 +149,7 @@ fn route(payload: request::Payload) -> Response {
         }
         request::Payload::AdjustFontSize(adjust) => adjust_font_size(&adjust.change),
         request::Payload::ReloadConfig(_) => reload_config(),
+        request::Payload::Carried(carried) => answer_carried(*carried),
         request::Payload::ReadTabHolders(_) => {
             session::follow_the_record();
             Response::ok()
@@ -211,6 +212,27 @@ fn route(payload: request::Payload) -> Response {
             Response::ok()
         }
     }
+}
+
+/// Answers a request another window carried here, because it is about one of this window's tabs.
+///
+/// Answered as though it had arrived directly, and never carried on - see `forward`. Going to a
+/// tab this way brings the window forward, because whoever asked was looking at something else.
+fn answer_carried(carried: proto::Carried) -> Response {
+    let Some(payload) = carried.request.and_then(|request| request.payload) else {
+        return Response::failure(format!(
+            "window {} carried an empty request here, so nothing was done - a bug in whatever \
+             built it.",
+            carried.by
+        ));
+    };
+    let goes_to_a_tab =
+        matches!(payload, request::Payload::FocusTab(_) | request::Payload::FocusPane(_));
+    let response = route(payload);
+    if goes_to_a_tab && matches!(response.payload, Some(response::Payload::Ok(_))) {
+        session::raise_window();
+    }
+    response
 }
 
 /// Whether a request leaves an armed numbered chord alone.

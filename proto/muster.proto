@@ -74,7 +74,24 @@ message Request {
     EqualizePanes equalize_panes = 47;
     WatchPanes watch_panes = 48;
     ReadTabHolders read_tab_holders = 49;
+    Carried carried = 50;
   }
+}
+
+// A request another window carried here, because it is about a tab this window holds.
+//
+// A tab belongs to exactly one window and only that window may show it (kan a_2Mhi0EZlv), so a
+// request about another window's tab is answered by that window: `muster tab focus` works from
+// any window. The window a caller reached wraps the request in this and sends it on, and relays
+// the answer back.
+//
+// A carried request is answered here and never carried on, whatever this window believes about
+// who holds the tab. Two windows whose records briefly disagree would otherwise hand it back and
+// forth.
+message Carried {
+  // The window that carried it, by its arrangement's name - for the log.
+  string by = 1;
+  Request request = 2;
 }
 
 // This process is going away, and its panes should be handed back.
@@ -1688,8 +1705,17 @@ message Event {
     BindingsChanged bindings_changed = 8;
     ProblemsChanged problems_changed = 9;
     AttentionChanged attention_changed = 10;
+    RaiseWindow raise_window = 11;
   }
 }
+
+// Bring this window to the front.
+//
+// Sent when a request carried here from another window went to one of this window's tabs:
+// `muster tab focus` naming a tab in this window, run from somewhere else. The person asked to
+// go to that tab, and a tab brought on screen behind whatever they are looking at is not
+// somewhere they went.
+message RaiseWindow {}
 
 // One pane started asking for a person, or stopped.
 //

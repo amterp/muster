@@ -95,6 +95,25 @@ fn a_change_with_two_windows_open_still_refuses_and_names_them() {
     }
 }
 
+/// A change that names its tab or pane goes to any window, because the window it reaches carries
+/// it to the one holding that tab (kan a_2Mhi0EZlv): it does not matter which window a command
+/// is run from. One naming nothing still has to say which, above.
+#[test]
+fn a_change_naming_its_tab_goes_to_a_window_with_two_open() {
+    let scratch = Scratch::new("named");
+    let home = scratch.home();
+    window(home, 611, "first-pane");
+    window(home, 622, "second-pane");
+
+    let (code, _, errors) = run(&["tab", "focus", "t1w3r07bsd"], home, None);
+
+    assert_ne!(code, 3, "a change naming its tab was refused for want of a window: {errors}");
+    assert!(
+        !errors.contains("--socket"),
+        "a change naming its tab asked which window it was for:\n{errors}"
+    );
+}
+
 #[test]
 fn a_program_reading_two_windows_gets_one_object_per_window() {
     let scratch = Scratch::new("json");

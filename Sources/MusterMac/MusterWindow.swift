@@ -579,6 +579,12 @@ public final class MusterWindow: NSObject {
     applyTitle()
   }
 
+  /// Comes to the front, with its window made key.
+  public func raise() {
+    if window.isMiniaturized { window.deminiaturize(nil) }
+    window.makeKeyAndOrderFront(nil)
+  }
+
   /// Everything wrong with the window, for the roster to say properly and the title to count.
   ///
   /// Both, because the roster is the only one that can carry a sentence and it is not always on

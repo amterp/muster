@@ -17,8 +17,9 @@ use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 use muster_core::AgentState;
 use muster_core::attention::{Attend, Attention, Notifications};
 use muster_core::composition::{
-    Composition, Daemon, DaemonId, Endpoint, FontSizeChange, FontSizes, Frame, MusterTab, PaneKey,
-    Presentation, RegionId, Saved, Step, Transport, View, ViewPane, saved, zoom_filling,
+    Composition, Daemon, DaemonId, Endpoint, FontSizeChange, FontSizes, Frame, HeldWindow,
+    MusterTab, PaneKey, Presentation, RegionId, Saved, Step, Transport, View, ViewPane, saved,
+    zoom_filling,
 };
 use muster_core::config::{Appearance, Config, Feel, Panes};
 use muster_core::diagnostics::{clock, log, poison};
@@ -46,7 +47,7 @@ use muster_vt::KeyEncoder;
 use crate::holding::Holding;
 use crate::proto::{
     AttentionChanged, Event, PaneTypeable, PresentationChanged, Problem as ProblemMessage,
-    ProblemsChanged, RosterChanged, ViewChanged, event,
+    ProblemsChanged, RaiseWindow, RosterChanged, ViewChanged, event,
 };
 use crate::shared_file::SharedFile;
 use crate::watch::{self, Seen};
@@ -1339,6 +1340,30 @@ impl Session {
         })
     }
 
+    /// The region a request about a whole tab acts through, or why there is none.
+    ///
+    /// A tab a closed window holds may still be closed from here, with no region: the daemon does
+    /// the closing and the closed window only remembers the tab. A tab an open window holds never
+    /// reaches here from a caller, because it is carried to that window first (`forward`).
+    fn region_for_tab(
+        &self,
+        daemon: &DaemonId,
+        tab: &TabId,
+        closing: bool,
+    ) -> Result<Option<RegionId>, Refusal> {
+        if let Some(region) = self.composition.region_of(daemon, tab) {
+            return Ok(Some(region));
+        }
+        let described = self
+            .backends
+            .get(daemon)
+            .is_some_and(|backend| poison::lock(&backend.mirror, "mirror").tab(tab).is_some());
+        if closing && described && self.holding.elsewhere(tab).is_some() {
+            return Ok(None);
+        }
+        Err(Refusal::Declined(not_showing(daemon)))
+    }
+
     /// Brings composition, and what this process holds open, in line with one daemon.
     fn reconcile(&mut self, daemon: &DaemonId) {
         self.settle_holding(daemon);
@@ -1933,12 +1958,12 @@ pub(crate) fn submit(
             // and `muster tab close --tab <t>` naming another is the ordinary case. What it
             // still refuses is a tab in a session this window is not attached to, which is
             // what the guard was protecting against.
-            BackendIntent::CloseTab { tab } | BackendIntent::SetSplitRatio { tab, .. } => Some(
-                session
-                    .composition
-                    .region_of(daemon, tab)
-                    .ok_or_else(|| Refusal::Declined(not_showing(daemon)))?,
-            ),
+            BackendIntent::CloseTab { tab } | BackendIntent::SetSplitRatio { tab, .. } => session
+                .region_for_tab(
+                daemon,
+                tab,
+                matches!(intent, BackendIntent::CloseTab { .. }),
+            )?,
         };
         let channel = session.channel_of(daemon).ok_or_else(|| {
             Refusal::Declined(format!(
@@ -3015,6 +3040,34 @@ pub(crate) fn focused_pane() -> Option<PaneId> {
 /// way to know and no reason to.
 pub(crate) fn daemon_holding(pane: &PaneId) -> Option<DaemonId> {
     locate(pane).map(|(daemon, ..)| daemon)
+}
+
+/// The tab a pane is in, on whichever machine holds it.
+pub(crate) fn tab_of_pane(pane: &PaneId) -> Option<TabId> {
+    locate(pane).map(|(_, tab)| tab)
+}
+
+/// The other window holding a tab, if it is open.
+///
+/// Dialed after the session is let go: the other window may be carrying a request to this one at
+/// the same moment, and answering it needs this lock.
+pub(crate) fn open_window_holding(tab: &TabId) -> Option<HeldWindow> {
+    let (me, window) = {
+        let session = poison::lock(&SESSION, "session");
+        (session.holding.me().clone(), session.holding.elsewhere(tab).cloned()?)
+    };
+    crate::holding::is_open(&me, &window).then_some(window)
+}
+
+/// This window's name, as the record of which window holds each tab spells it.
+pub(crate) fn window_name() -> String {
+    poison::lock(&SESSION, "session").holding.me().to_string()
+}
+
+/// Brings this window to the front, because a request carried here from another window went to
+/// one of its tabs.
+pub(crate) fn raise_window() {
+    ffi::emit(&Event { payload: Some(event::Payload::RaiseWindow(RaiseWindow {})) });
 }
 
 /// The daemon this window's keyboard is on.

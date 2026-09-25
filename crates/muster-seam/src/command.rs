@@ -41,7 +41,7 @@ use muster_proto::{Request, Response, WatchPanes, request, response};
 use prost::Message;
 
 use crate::watch::Next;
-use crate::{dispatch, handler, session};
+use crate::{dispatch, forward, handler, session};
 
 /// The endpoint this process is listening on, held so that it stays open.
 ///
@@ -239,9 +239,17 @@ fn answer(mut stream: UnixStream) {
         return;
     }
 
+    // A request about another window's tab is that window's to answer (`forward`).
+    let carried = Request::decode(request.as_slice())
+        .ok()
+        .and_then(|decoded| Some((forward::elsewhere(&decoded)?, decoded)));
+
     // The same bytes-in, bytes-out call the C ABI makes, including its panic guard: a request
     // arriving here is no more trustworthy than one arriving from the shell.
-    let response = dispatch(&request);
+    let response = match carried {
+        Some((window, decoded)) => forward::carry(&window, decoded),
+        None => dispatch(&request),
+    };
     after_the_window_holds_it(&response);
     if let Err(error) = write_frame(&mut stream, &response) {
         log::debug(
