@@ -1331,6 +1331,15 @@ impl Session {
         self.font_sizes.retain(|pane| !gone.contains(pane));
     }
 
+    /// Whether this pane is in a tab this window holds.
+    fn in_a_held_tab(&self, pane: &PaneKey) -> bool {
+        self.backends.get(&pane.daemon).is_some_and(|backend| {
+            poison::lock(&backend.mirror, "mirror")
+                .pane(&pane.pane)
+                .is_some_and(|held| self.composition.holds(&held.tab))
+        })
+    }
+
     /// Whether the daemon still holds this pane.
     ///
     /// Asked of the mirror, which is a daemon's own answer as of the last thing it said, and
@@ -2358,34 +2367,39 @@ pub(crate) fn bridge_ended(pane: &PaneKey, ended: &Ended) {
 /// so what this does is count the replacement and publish - and the view carrying a number the
 /// shell has not seen for this pane is what makes it build one.
 fn replace_bridge(pane: &PaneKey, ending: Ending) {
-    let decision = {
+    let (decision, why) = {
         let mut session = poison::lock(&SESSION, "session");
-        if session.holds(pane) {
-            Some(session.respawns.ended(pane, clock::monotonic_now(), ending))
+        let gone = if !session.holds(pane) {
+            Some("the daemon no longer holds this pane")
+        } else if !session.in_a_held_tab(pane) {
+            // Its tab went to another window, and letting go of its terminal is what this
+            // bridge ending was. Another would take the terminal back from the window that has
+            // the tab now.
+            Some("its tab is in another window now")
         } else {
-            // The pane closed, which is the other reason a bridge exits on its own. The region
-            // showing it has already been reconciled away by the resnapshot; what is left is
-            // the record of what was tried, which belongs to a pane that no longer exists.
-            session.respawns.forget(pane);
-            // And the wait `bridge_ended` has just started for it, with its dark-pane entry.
-            // `prune` takes both back for a pane the mirror drops, but when the mirror dropped
-            // this one before its bridge's ending arrived, that prune has already run and will
-            // not run for this pane again - so nothing else would ever remove them. Both locks
-            // are leaves, so taking them under `SESSION` is allowed.
-            watchdog::closed(pane);
-            poison::lock(&DARK, "dark-panes").remove(pane);
             None
+        };
+        match gone {
+            None => (Some(session.respawns.ended(pane, clock::monotonic_now(), ending)), ""),
+            Some(why) => {
+                // The pane closed or left, which are the other reasons a bridge exits on its
+                // own. What is left is the record of what was tried, which belongs to a pane
+                // this window no longer draws.
+                session.respawns.forget(pane);
+                // And the wait `bridge_ended` has just started for it, with its dark-pane entry.
+                // `prune` takes both back for a pane the mirror drops, but when the mirror
+                // dropped this one before its bridge's ending arrived, that prune has already
+                // run and will not run for this pane again - so nothing else would ever remove
+                // them. Both locks are leaves, so taking them under `SESSION` is allowed.
+                watchdog::closed(pane);
+                poison::lock(&DARK, "dark-panes").remove(pane);
+                (None, why)
+            }
         }
     };
 
     let Some(decision) = decision else {
-        log::info(
-            "bridge.replacing.skipped",
-            fields! {
-                "pane" => pane.to_string(),
-                "why" => "the daemon no longer holds this pane",
-            },
-        );
+        log::info("bridge.replacing.skipped", fields! { "pane" => pane.to_string(), "why" => why });
         return;
     };
     match decision {

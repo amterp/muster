@@ -456,7 +456,7 @@ fn tab_line(widths: &Widths, tab: &muster_proto::RosterTab) -> String {
     let mut line = format!(
         "{} {}  {}",
         styled("tab", QUIET),
-        tab.place,
+        place(tab.place),
         pad(&tab.tab_id, widths.name, PLAIN, Align::Left),
     );
     if !tab.label.is_empty() {
@@ -468,6 +468,12 @@ fn tab_line(widths: &Widths, tab: &muster_proto::RosterTab) -> String {
         line.push_str(&styled("on screen", QUIET));
     }
     line
+}
+
+/// A place as a row prints it: blank for another window's tab or pane, which is that window's to
+/// number, so a person does not press a chord here for a number that means something there.
+fn place(place: u32) -> String {
+    if place == 0 { " ".to_string() } else { place.to_string() }
 }
 
 /// One pane's row: which one has the keyboard in the gutter, then place, name, state, how long it
@@ -488,7 +494,7 @@ fn pane_line(
     let mut line = format!(
         "  {}{}  {}  {}  {}  {}",
         if has_keyboard { styled("▸", NAME) + " " } else { "  ".to_string() },
-        pad(&pane.place.to_string(), widths.place, QUIET, Align::Right),
+        pad(&place(pane.place), widths.place, QUIET, Align::Right),
         pad(&pane.pane_id, widths.name, PLAIN, Align::Left),
         pad(state, widths.state, agent_style(state), Align::Left),
         pad(held, widths.held, QUIET, Align::Right),

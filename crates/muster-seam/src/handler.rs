@@ -1528,15 +1528,18 @@ fn read_window() -> Response {
     }
 }
 
-/// Another window's tabs, with the numbers this window would have given them taken off: they are
-/// that window's to number, and a place counted here would be one no chord there reaches.
+/// Another window's tabs, with what this window would have said about its own taken off: they are
+/// that window's to number and to show, and a place counted here is one no chord there reaches.
 fn unnumbered(mut tabs: Vec<proto::RosterTab>) -> Vec<proto::RosterTab> {
     for tab in &mut tabs {
         tab.place = 0;
         tab.tab_press = 0;
+        // Nothing of another window's is on this window's screen, whatever that window shows.
+        tab.on_screen = false;
         for pane in &mut tab.panes {
             pane.place = 0;
             pane.tab_press = 0;
+            pane.on_screen = false;
         }
     }
     tabs
