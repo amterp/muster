@@ -354,6 +354,23 @@
         ],
         "unknownKinds": []
       }
+    },
+    {
+      "name": "a title that begins with a status emoji keeps it",
+      "why": "Only glyphs a harness is seen to spin are taken off (observations/herdr-0.8.0.md section 26). `✅` and `❌` sit in the Dingbats block and `■` in Geometric Shapes beside the spinners, and a pane titled `✅ tests passed` is saying something its glyph is part of.",
+      "given": {
+        "chunks": [
+          "{\"data\": {\"pane\": {\"agent\": \"claude\", \"agent_status\": \"working\", \"cwd\": \"/private/tmp\", \"focused\": false, \"foreground_cwd\": \"/private/tmp\", \"pane_id\": \"w1:p1\", \"revision\": 12, \"scroll\": {\"max_offset_from_bottom\": 0, \"offset_from_bottom\": 0, \"viewport_rows\": 23}, \"tab_id\": \"w1:t1\", \"terminal_id\": \"term_65b514f68eca71\", \"terminal_title\": \"✅ tests passed\", \"terminal_title_stripped\": \"✅ tests passed\", \"workspace_id\": \"w1\"}, \"type\": \"pane_updated\"}, \"event\": \"pane_updated\"}\n{\"data\": {\"pane\": {\"agent\": \"claude\", \"agent_status\": \"working\", \"cwd\": \"/private/tmp\", \"focused\": false, \"foreground_cwd\": \"/private/tmp\", \"pane_id\": \"w1:p1\", \"revision\": 13, \"scroll\": {\"max_offset_from_bottom\": 0, \"offset_from_bottom\": 0, \"viewport_rows\": 23}, \"tab_id\": \"w1:t1\", \"terminal_id\": \"term_65b514f68eca71\", \"terminal_title\": \"❌ build failed\", \"terminal_title_stripped\": \"❌ build failed\", \"workspace_id\": \"w1\"}, \"type\": \"pane_updated\"}, \"event\": \"pane_updated\"}\n{\"data\": {\"pane\": {\"agent\": \"claude\", \"agent_status\": \"working\", \"cwd\": \"/private/tmp\", \"focused\": false, \"foreground_cwd\": \"/private/tmp\", \"pane_id\": \"w1:p1\", \"revision\": 14, \"scroll\": {\"max_offset_from_bottom\": 0, \"offset_from_bottom\": 0, \"viewport_rows\": 23}, \"tab_id\": \"w1:t1\", \"terminal_id\": \"term_65b514f68eca71\", \"terminal_title\": \"■ stopped\", \"terminal_title_stripped\": \"■ stopped\", \"workspace_id\": \"w1\"}, \"type\": \"pane_updated\"}, \"event\": \"pane_updated\"}\n"
+        ]
+      },
+      "expect": {
+        "events": [
+          "paneUpdated:w1:p1 tab=w1:t1 workspace=w1 state=working cwd=/private/tmp title=✅ tests passed",
+          "paneUpdated:w1:p1 tab=w1:t1 workspace=w1 state=working cwd=/private/tmp title=❌ build failed",
+          "paneUpdated:w1:p1 tab=w1:t1 workspace=w1 state=working cwd=/private/tmp title=■ stopped"
+        ],
+        "unknownKinds": []
+      }
     }
   ]
 }
