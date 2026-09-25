@@ -31,9 +31,12 @@ use crate::session;
 
 /// How long the other window has to answer.
 ///
-/// The CLI's own patience, because this stands between the CLI and the window it would have
-/// reached if it had known where to go: `pane new --run` waits on a shell before it answers.
-const PATIENCE: Duration = Duration::from_mins(1);
+/// `pane new --run` waits on a shell before it answers, so this has to be long, but it stays
+/// short of the CLI's own minute (`muster-cli`'s `dial::PATIENCE`): a window that hangs is then
+/// answered here with a refusal naming it, rather than the CLI giving up on this window without
+/// saying which one did not answer. Longer than the daemon's own deadline for an answer (30 s)
+/// and a shell's prompt (5 s) together.
+const PATIENCE: Duration = Duration::from_secs(45);
 
 /// The other open window a request is about, when it is about one.
 pub(crate) fn elsewhere(request: &Request) -> Option<HeldWindow> {
