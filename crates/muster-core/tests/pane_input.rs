@@ -5,6 +5,7 @@
 mod support;
 
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use conformance::{CaseError, Conformance, fields, hex, strings};
 use muster_core::input::{
@@ -12,7 +13,7 @@ use muster_core::input::{
     ScrollDirection,
 };
 use serde_json::{Value, json};
-use support::input::{FakeChannel, FakeEncoder, SendRecorder};
+use support::input::{FakeChannel, FakeEncoder, SendRecorder, SlowChannel};
 
 #[test]
 fn pane_input_conformance() {
@@ -127,4 +128,47 @@ fn describe(channel: &str, intent: &PaneIntent) -> Value {
             ("rows", Some(json!(rows))),
         ]),
     }
+}
+
+/// An arrow waits on the daemon, and whoever pressed it must not.
+///
+/// A server-encoded key is a round trip to the daemon, which herdr answers on the thread that
+/// renders every pane - measured at 154 ms at p90 and a 500 ms timeout thirteen times in one
+/// busy session. The caller is the window's main thread, so every one of those milliseconds was
+/// a window that drew nothing and took no other key. The order still has to hold: a key typed
+/// after the arrow reaches the pane after it.
+#[test]
+fn a_slow_daemon_does_not_hold_up_the_keystroke_or_reorder_the_next() {
+    let recorder = Arc::new(SendRecorder::default());
+    let control: Arc<dyn PaneChannel> =
+        Arc::new(FakeChannel::new("control", recorder.clone(), false, true));
+    let daemon: Arc<dyn PaneChannel> =
+        Arc::new(SlowChannel::new("daemon", recorder.clone(), Duration::from_millis(300)));
+    let pane =
+        PaneInput::new(control, Some(daemon), Arc::new(FakeEncoder), &PaneInputSettings::default());
+
+    let started = Instant::now();
+    pane.send(&press(Key::ArrowUp, ""));
+    pane.send(&press(Key::KeyA, "a"));
+    let held_for = started.elapsed();
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while recorder.sends().len() < 2 && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(5));
+    }
+
+    assert!(
+        held_for < Duration::from_millis(100),
+        "two keystrokes held their caller for {held_for:?} behind a 300 ms daemon"
+    );
+    let order: Vec<String> =
+        recorder.sends().iter().map(|(channel, intent)| format!("{channel} {intent:?}")).collect();
+    assert_eq!(
+        order,
+        vec![r#"daemon Key { name: "up" }"#.to_string(), "control Input([97])".to_string()]
+    );
+}
+
+fn press(key: Key, text: &str) -> KeyEvent {
+    KeyEvent { action: KeyAction::Press, key, text: text.to_string(), ..KeyEvent::default() }
 }

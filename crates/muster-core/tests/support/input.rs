@@ -71,6 +71,40 @@ impl PaneChannel for FakeChannel {
     }
 }
 
+/// A daemon channel that answers, but slowly - the busy daemon every arrow key waits on.
+#[derive(Debug)]
+pub(crate) struct SlowChannel {
+    name: String,
+    recorder: Arc<SendRecorder>,
+    delay: std::time::Duration,
+}
+
+impl SlowChannel {
+    pub(crate) fn new(
+        name: &str,
+        recorder: Arc<SendRecorder>,
+        delay: std::time::Duration,
+    ) -> SlowChannel {
+        SlowChannel { name: name.to_string(), recorder, delay }
+    }
+}
+
+impl PaneChannel for SlowChannel {
+    fn deliver(&self, intent: &PaneIntent) -> bool {
+        std::thread::sleep(self.delay);
+        self.recorder.record(&self.name, intent);
+        true
+    }
+
+    fn encodes_server_side(&self) -> bool {
+        true
+    }
+
+    fn description(&self) -> &str {
+        &self.name
+    }
+}
+
 /// An encoder that spells a keystroke the obvious way.
 ///
 /// Enough for testing what the pipeline *does* with bytes. What the bytes should be is a
