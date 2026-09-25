@@ -5,10 +5,10 @@
 //! whether another window is open - which is asked by dialing its socket rather than trusting a
 //! pid, because a pid outlives nothing and is handed to the next process that asks.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::os::unix::net::UnixStream;
 use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use muster_core::composition::holding::{from_toml, to_toml};
 use muster_core::composition::{DaemonId, HeldWindow, Holders, Taker, WindowName};
@@ -41,6 +41,11 @@ pub(crate) struct Holding {
     /// every agent transition reconciles. Forgotten whenever the record moves, because that is
     /// what changes the answer.
     passed_over: BTreeSet<TabId>,
+    /// Closed windows this window has asked the shell to reopen, and when.
+    ///
+    /// Remembered so that two requests close together launch one app. The second arrives while
+    /// the first launch is still starting, when the window does not answer on its socket yet.
+    reopening: BTreeMap<WindowName, Instant>,
     /// Whether this window has said it is open and not yet said it closed. While it is, a record
     /// that has lost this window's row is given it back.
     open: bool,
@@ -71,6 +76,7 @@ impl Holding {
             record: (!record.is_empty()).then(|| SharedFile::at(record, &HOLDERS)),
             holders: Holders::new(),
             passed_over: BTreeSet::new(),
+            reopening: BTreeMap::new(),
             open: false,
         }
     }
@@ -139,6 +145,21 @@ impl Holding {
     pub(crate) fn focused(&mut self) {
         let me = self.me.clone();
         self.change(|holders| holders.focused(&me, now()));
+    }
+
+    /// Says this window is asking for a closed window back, and whether it had not already.
+    ///
+    /// Ten seconds covers a window starting, after which it answers on its socket and a request
+    /// for one of its tabs is carried to it instead of reaching here.
+    pub(crate) fn ask_to_reopen(&mut self, window: &WindowName) -> bool {
+        const STARTING: Duration = Duration::from_secs(10);
+        let now = Instant::now();
+        self.reopening.retain(|_, asked| now.duration_since(*asked) < STARTING);
+        if self.reopening.contains_key(window) {
+            return false;
+        }
+        self.reopening.insert(window.clone(), now);
+        true
     }
 
     /// Says this window is about to ask a machine for a tab.

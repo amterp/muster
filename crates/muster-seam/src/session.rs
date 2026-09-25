@@ -3031,6 +3031,13 @@ fn reopened_for(tab: &TabId, show: &str) -> bool {
     if crate::holding::is_open(&me, &window) {
         return false;
     }
+    if !poison::lock(&SESSION, "session").holding.ask_to_reopen(&window.name) {
+        log::info(
+            "window.reopen.already_asked",
+            fields! { "window" => window.name.to_string(), "show" => show },
+        );
+        return true;
+    }
     log::info(
         "window.reopen.asked",
         fields! { "window" => window.name.to_string(), "show" => show },
