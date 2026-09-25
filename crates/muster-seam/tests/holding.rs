@@ -15,7 +15,7 @@ use std::sync::Mutex;
 
 use herdr_harness::{Daemon, until};
 use muster::proto::{
-    CreateTab, Event, OpenWindow, ReadTabHolders, ReadWindow, Request, Response, Startup,
+    ArrangePane, CreateTab, Event, OpenWindow, ReadTabHolders, ReadWindow, Request, Response, Startup,
     ViewChanged, event, request, response,
 };
 use muster_core::composition::holding::{from_toml, to_toml};
@@ -97,6 +97,41 @@ fn a_tab_this_window_asks_for_stays_here_while_another_is_in_front() {
     assert!(
         record.iter().any(|(tab, window)| tab == &made && window == "window-1"),
         "the tab this window made is not recorded as its own: {record:?}"
+    );
+}
+
+/// A pane this window moves into a tab of its own takes that tab with it, however recently another
+/// window was in front.
+///
+/// herdr names the tab a move made somewhere other than where it names the tab `tab.create` made,
+/// and reading only the second let the answer say nothing was made - so the window stopped waiting
+/// empty-handed and the window in front took the tab. An agent in a background window pulling its
+/// own pane out sent it to whatever window somebody was looking at.
+#[test]
+fn a_pane_this_window_moves_into_a_new_tab_stays_here_while_another_is_in_front() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = Daemon::start();
+    let _other = another_window(&daemon, "window-9", i64::MAX / 2);
+    open_a_window(&daemon, "window-1");
+    let first = until_showing_something();
+    daemon.call("pane.split", &json!({ "direction": "right" }));
+    until(
+        "the window to hear of the second pane",
+        || panes_in_this_window().len() == 2,
+        || format!("the window lists {:?}", panes_in_this_window()),
+    );
+    let moved = panes_in_this_window().pop().expect("just waited for two");
+
+    assert_ok(&answer(request::Payload::ArrangePane(ArrangePane {
+        pane_id: moved.clone(),
+        new_tab: true,
+        ..ArrangePane::default()
+    })));
+
+    until(
+        "the tab the move made to be recorded as this window's",
+        || holders(&daemon).iter().any(|(tab, window)| tab != &first && window == "window-1"),
+        || format!("the record says {:?}", holders(&daemon)),
     );
 }
 
@@ -302,6 +337,20 @@ fn showing() -> Option<String> {
 fn panes_on_the_daemon() -> u32 {
     match answer(request::Payload::ReadWindow(ReadWindow {})).payload {
         Some(response::Payload::Window(window)) => window.daemons.iter().map(|d| d.panes).sum(),
+        other => panic!("asking what the window is showing answered {other:?}"),
+    }
+}
+
+/// The panes in the tabs this window lists.
+fn panes_in_this_window() -> Vec<String> {
+    match answer(request::Payload::ReadWindow(ReadWindow {})).payload {
+        Some(response::Payload::Window(window)) => window
+            .roster
+            .iter()
+            .flat_map(|roster| roster.tabs.iter())
+            .flat_map(|tab| tab.panes.iter())
+            .map(|pane| pane.pane_id.clone())
+            .collect(),
         other => panic!("asking what the window is showing answered {other:?}"),
     }
 }
