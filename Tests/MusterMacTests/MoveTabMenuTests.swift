@@ -15,4 +15,15 @@ struct MoveTabMenuTests {
     #expect(open.title == "Window 4321 (3 tabs)")
     #expect(closed.title == "window-3 (closed, 1 tab)")
   }
+
+  /// A tab row goes between windows and a pane row stays within one. A tab dropped into its own
+  /// window's list is going nowhere, and a pane dragged in from another window would need that
+  /// window to let go of it, which moving a pane between windows does not do yet.
+  @Test("a tab is dropped from another window, and a pane only from this one")
+  func whatMayBeDroppedWhere() {
+    #expect(SidebarModel.acceptsTab(fromThisWindow: false))
+    #expect(!SidebarModel.acceptsTab(fromThisWindow: true))
+    #expect(SidebarModel.acceptsPane(fromThisWindow: true))
+    #expect(!SidebarModel.acceptsPane(fromThisWindow: false))
+  }
 }

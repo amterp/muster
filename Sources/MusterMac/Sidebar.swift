@@ -440,6 +440,23 @@ public enum SidebarModel {
     return target.daemon == pane.daemon
   }
 
+  /// Whether a tab dragged from somewhere may be dropped on this window's list.
+  ///
+  /// Only from another window. A tab belongs to exactly one window (kan a_2Mhi0EZlv), so a tab
+  /// row dropped into another window's list is a move into that window - the same request as
+  /// `muster tab move` - and one dropped back into its own list is going nowhere.
+  public static func acceptsTab(fromThisWindow: Bool) -> Bool {
+    !fromThisWindow
+  }
+
+  /// Whether a pane dragged from somewhere may be dropped on this window's list.
+  ///
+  /// Only from this window's own. A pane dragged in from another window would need that window
+  /// to let go of it, which moving a pane between windows does not do yet (kan a_29bpH8BZ5).
+  public static func acceptsPane(fromThisWindow: Bool) -> Bool {
+    fromThisWindow
+  }
+
   /// The dot beside a row, and whether to draw one at all.
   ///
   /// The same colors the pane borders use, because they are the same five states and a
@@ -558,6 +575,10 @@ public final class SidebarView: NSView {
   /// one: that names two panes and this names a tab, and only this one may cross machines.
   public var onPaneGrouped: ((PaneKey, String) -> Void)?
 
+  /// Called when somebody drops another window's tab row on this list, meaning they want that
+  /// tab in this window.
+  public var onTabReceived: ((String) -> Void)?
+
   public private(set) var rows: [SidebarModel.Row] = []
 
   /// The frames the list has settled on for its rows.
@@ -574,6 +595,10 @@ public final class SidebarView: NSView {
   /// Muster's own pasteboard type, so nothing outside this window can offer a drop this
   /// accepts and nothing here accepts a file somebody dragged in from the Finder.
   static let draggedPane = NSPasteboard.PasteboardType("dev.muster.pane")
+
+  /// A tab row, which is dragged between windows rather than within one: dropped into another
+  /// window's list, it moves the tab there.
+  static let draggedTab = NSPasteboard.PasteboardType("dev.muster.tab")
 
   private let table = NSTableView()
   private let scroll = NSScrollView()
@@ -607,10 +632,12 @@ public final class SidebarView: NSView {
     table.target = self
     table.action = #selector(rowClicked)
     table.doubleAction = #selector(rowDoubleClicked)
-    table.registerForDraggedTypes([SidebarView.draggedPane])
-    // Local only, and a move rather than a copy: there is no second copy of an agent to make,
-    // and nothing outside this window has any use for a pane id.
-    table.setDraggingSourceOperationMask([], forLocal: false)
+    table.registerForDraggedTypes([SidebarView.draggedPane, SidebarView.draggedTab])
+    // A move rather than a copy: there is no second copy of an agent to make. Offered outside
+    // this window too, because a tab row goes to another window - which is another process, so
+    // to AppKit another application. The types are Muster's own, so nothing else accepts one,
+    // and which of them may land where is `SidebarModel.acceptsTab` and `acceptsPane`.
+    table.setDraggingSourceOperationMask(.move, forLocal: false)
     table.setDraggingSourceOperationMask(.move, forLocal: true)
 
     scroll.documentView = table
@@ -771,8 +798,13 @@ extension SidebarView: NSTableViewDataSource, NSTableViewDelegate {
   public func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int)
     -> NSPasteboardWriting?
   {
-    guard rows.indices.contains(row), let pane = rows[row].pane else { return nil }
+    guard rows.indices.contains(row) else { return nil }
     let item = NSPasteboardItem()
+    if rows[row].isTab {
+      item.setString(rows[row].tab, forType: SidebarView.draggedTab)
+      return item
+    }
+    guard let pane = rows[row].pane else { return nil }
     item.setString("\(pane.daemon)\t\(pane.pane)", forType: SidebarView.draggedPane)
     return item
   }
@@ -784,7 +816,19 @@ extension SidebarView: NSTableViewDataSource, NSTableViewDelegate {
     // On a row rather than between two. The card's rule is that a drag exchanges two panes,
     // and an arrangement has no "between" to insert into - so the row you drop on is the place
     // you are asking for, and retargeting an above-row drop keeps the highlight honest.
-    guard let pane = dragged(info), rows.indices.contains(row) else { return [] }
+    // A drag from another window has no source this process can see, which is what tells the
+    // two kinds of drop apart.
+    let fromThisWindow = info.draggingSource != nil
+    if draggedTab(info) != nil {
+      guard SidebarModel.acceptsTab(fromThisWindow: fromThisWindow) else { return [] }
+      // Onto the list as a whole: a tab joins the end of this window's list, whichever row the
+      // pointer happens to be over.
+      tableView.setDropRow(-1, dropOperation: .on)
+      return .move
+    }
+    guard let pane = dragged(info), rows.indices.contains(row),
+      SidebarModel.acceptsPane(fromThisWindow: fromThisWindow)
+    else { return [] }
     if operation == .above {
       tableView.setDropRow(row, dropOperation: .on)
     }
@@ -795,7 +839,14 @@ extension SidebarView: NSTableViewDataSource, NSTableViewDelegate {
     _ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int,
     dropOperation operation: NSTableView.DropOperation
   ) -> Bool {
+    let fromThisWindow = info.draggingSource != nil
+    if let tab = draggedTab(info) {
+      guard SidebarModel.acceptsTab(fromThisWindow: fromThisWindow) else { return false }
+      onTabReceived?(tab)
+      return true
+    }
     guard let pane = dragged(info), rows.indices.contains(row),
+      SidebarModel.acceptsPane(fromThisWindow: fromThisWindow),
       SidebarModel.canArrange(pane, onto: rows[row])
     else { return false }
     if rows[row].isTab {
@@ -805,6 +856,13 @@ extension SidebarView: NSTableViewDataSource, NSTableViewDelegate {
     guard let onto = rows[row].pane else { return false }
     onPaneArranged?(pane, onto)
     return true
+  }
+
+  /// The tab a drag is carrying, or nil when it is carrying something else.
+  private func draggedTab(_ info: NSDraggingInfo) -> String? {
+    info.draggingPasteboard.string(forType: SidebarView.draggedTab).flatMap {
+      $0.isEmpty ? nil : $0
+    }
   }
 
   /// The pane a drag is carrying, or nil when it is carrying something else.

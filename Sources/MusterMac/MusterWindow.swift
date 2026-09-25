@@ -196,6 +196,11 @@ public final class MusterWindow: NSObject {
     sidebar.onPaneGrouped = { pane, tab in
       Core.arrange(pane: pane, intoTab: tab)
     }
+    // The same request `muster tab move` and the menu send, naming this window by naming none.
+    sidebar.onTabReceived = { tab in
+      Core.info("tab.dropped", ["tab": tab])
+      Core.moveTab(tab, to: "")
+    }
     // Both halves name their subject outright rather than leaving it to whatever has the
     // keyboard: the row somebody double-clicked is very often a pane no region is showing,
     // which is what the list is for.
