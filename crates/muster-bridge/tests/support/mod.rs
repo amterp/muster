@@ -428,6 +428,16 @@ impl Bridge {
         self.process.try_wait().is_ok_and(|exited| exited.is_some())
     }
 
+    /// How many herdr clients this bridge is running, which is whether it holds the pane's
+    /// terminal right now - one while it is streaming the pane, none while it is parked.
+    pub(crate) fn herdr_clients(&self) -> usize {
+        let out = Command::new("pgrep")
+            .args(["-P", &self.process.id().to_string()])
+            .output()
+            .expect("pgrep is on every macOS and Linux");
+        String::from_utf8_lossy(&out.stdout).lines().count()
+    }
+
     /// Stops this bridge where it stands, without ending it.
     ///
     /// The shape of the failure a frozen pane actually has, which nothing else here can
