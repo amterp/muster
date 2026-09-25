@@ -20,7 +20,7 @@ mod convert;
 pub mod ffi;
 mod handler;
 mod session;
-mod shared_names;
+mod shared_file;
 pub mod testing;
 mod watch;
 mod watchdog;

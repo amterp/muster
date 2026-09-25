@@ -24,6 +24,7 @@ pub mod problems;
 pub mod reconnect;
 pub mod respawn;
 pub mod roster;
+pub mod shared;
 pub mod typeable;
 
 pub use agent_state::AgentState;

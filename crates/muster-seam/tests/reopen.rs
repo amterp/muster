@@ -355,11 +355,9 @@ fn two_windows_come_back_each_on_its_own_tabs() {
             || tab_of_first_region().as_deref() == Some(own.as_str()),
             || format!("the last view the core published: {:?}", latest_view()),
         );
-        until(
-            "the daemon's first bootstrap to reach the window",
-            bootstrapped,
-            || "the daemon never said it was connected".to_string(),
-        );
+        until("the daemon's first bootstrap to reach the window", bootstrapped, || {
+            "the daemon never said it was connected".to_string()
+        });
 
         let listed: Vec<String> = read_window()
             .roster

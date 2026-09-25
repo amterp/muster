@@ -51,6 +51,7 @@ use crate::composition::DaemonId;
 use crate::diagnostics::{monotonic_now, poison};
 use crate::intent::Refusal;
 use crate::mirror::backend::{PaneId, TabId, id_type};
+use crate::shared::SharedRecord;
 
 // The two backend spellings, from the same macro the Muster-side ids come from. Their own types
 // rather than `String`s, because from here on the two spellings travel together and passing one
@@ -215,48 +216,6 @@ impl RandomSource for Seeded<'_> {
                 u8::try_from(self.0.wrapping_mul(0x2545_f491_4f6c_dd1d) >> 56).unwrap_or_default();
         }
         Ok(())
-    }
-}
-
-/// The written record of these names, which another Muster may be holding open too.
-///
-/// **The reason this exists is that a window is a process.** Two Musters attached to one daemon
-/// both see every pane it holds, and both would name one nobody had named yet - so the same
-/// pane ends up called two things, each window's `muster window` disagrees with the other's,
-/// and the one that writes the file last takes the other's bindings with it. Measured, not
-/// feared: two windows on one daemon agreed only about the pane that existed before the second
-/// one opened.
-///
-/// So naming something new is done while holding the record, rather than in memory and written
-/// out afterwards. `exclusively` is the whole of what the core asks for; where the record lives
-/// and how it is locked is the shell's business, like every other file.
-pub trait SharedNames: Send + Sync + std::fmt::Debug {
-    /// Runs `while_held` with nobody else able to read or write the record.
-    ///
-    /// `while_held` is given what the record says at that moment and answers with what to write
-    /// back, or `None` to leave it alone. A record that cannot be reached does not stop
-    /// anything: `while_held` still runs, given nothing, and this Muster names things the way
-    /// it did before there was a record to share - which is right, because a window that
-    /// refused to name a pane would be a window that cannot draw one.
-    fn exclusively(&self, while_held: &mut dyn FnMut(&str) -> Option<String>);
-
-    /// Whether the record has moved since this Muster last read it.
-    ///
-    /// What keeps the common answer cheap. Naming something this window has already named is
-    /// the overwhelming majority of these calls - every pane of every layout the daemon
-    /// describes - and taking a lock for each would be a lock per keystroke somebody typed
-    /// into an agent. So a name already held is handed straight back, unless the record has
-    /// changed underneath, in which case another Muster has written something and this window
-    /// takes the hold to find out what.
-    ///
-    /// Needed because a window can be *wrong* rather than merely ignorant: a pane created in
-    /// another window may be seen here, and named here, before that window has settled the
-    /// name it already put in the pane's environment. Without this, the guess would stand
-    /// forever, since nothing else would ever look at the record again.
-    ///
-    /// False by default, which is right for a record nothing else writes.
-    fn moved(&self) -> bool {
-        false
     }
 }
 
@@ -697,7 +656,7 @@ pub struct Names {
     ///
     /// `None` is a registry with nowhere to write - a conformance driver, or a window told to
     /// remember nothing - and it names things exactly as it did before this existed.
-    shared: Option<Arc<dyn SharedNames>>,
+    shared: Option<Arc<dyn SharedRecord>>,
 }
 
 impl Names {
@@ -714,7 +673,7 @@ impl Names {
         daemon: DaemonId,
         panes: Arc<Mutex<PaneNames>>,
         tabs: Arc<Mutex<TabNames>>,
-        shared: Arc<dyn SharedNames>,
+        shared: Arc<dyn SharedRecord>,
     ) -> Names {
         Names { daemon, panes, tabs, shared: Some(shared) }
     }
@@ -939,7 +898,7 @@ pub fn to_toml(panes: &PaneNames, tabs: &TabNames) -> String {
 fn holding<T>(
     panes: &Arc<Mutex<PaneNames>>,
     tabs: &Arc<Mutex<TabNames>>,
-    shared: &dyn SharedNames,
+    shared: &dyn SharedRecord,
     draw: impl FnOnce(&mut PaneNames, &mut TabNames) -> T,
 ) -> T {
     let mut drawn = None;
@@ -970,7 +929,7 @@ fn holding<T>(
 pub fn save_shared(
     panes: &Arc<Mutex<PaneNames>>,
     tabs: &Arc<Mutex<TabNames>>,
-    shared: &dyn SharedNames,
+    shared: &dyn SharedRecord,
 ) {
     holding(panes, tabs, shared, |_, _| ());
 }

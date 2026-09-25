@@ -47,7 +47,7 @@ use crate::proto::{
     AttentionChanged, Event, PaneTypeable, PresentationChanged, Problem as ProblemMessage,
     ProblemsChanged, RosterChanged, ViewChanged, event,
 };
-use crate::shared_names::NamesFile;
+use crate::shared_file::SharedFile;
 use crate::watch::{self, Seen};
 use crate::{command, convert, ffi, watchdog};
 
@@ -202,7 +202,7 @@ static NAMES_FILE: Mutex<Option<(String, String)>> = Mutex::new(None);
 /// Kept apart from [`NAMES_FILE`] above because they answer different questions: that one is
 /// "has anything changed since the last write", which is a cache and belongs to this process,
 /// and this one is the hold every naming goes through, which belongs to whoever else is open.
-static SHARED_NAMES: Mutex<Option<Arc<NamesFile>>> = Mutex::new(None);
+static SHARED_NAMES: Mutex<Option<Arc<SharedFile>>> = Mutex::new(None);
 
 /// Which chord asks for which action, as the config file left it.
 ///
@@ -542,12 +542,12 @@ pub(crate) fn set_fresh(fresh: bool) {
 /// tab the saved arrangement can no longer find.
 ///
 /// The same path becomes the record this window shares with any other Muster that is open, and
-/// from here on nothing writes it except through that - see `shared_names`.
+/// from here on nothing writes it except through that - see `shared_file`.
 pub(crate) fn set_pane_names_path(path: &str) {
     *poison::lock(&NAMES_FILE, "saved-names") =
         if path.is_empty() { None } else { Some((path.to_string(), String::new())) };
     *poison::lock(&SHARED_NAMES, "shared-names") =
-        (!path.is_empty()).then(|| Arc::new(NamesFile::at(path)));
+        (!path.is_empty()).then(|| Arc::new(SharedFile::at(path)));
     if path.is_empty() {
         return;
     }
@@ -3877,7 +3877,7 @@ fn save_names(panes: &Arc<Mutex<PaneNames>>, tabs: &Arc<Mutex<TabNames>>) {
 }
 
 /// The record this window shares, if it has one.
-fn shared_names() -> Option<Arc<NamesFile>> {
+fn shared_names() -> Option<Arc<SharedFile>> {
     poison::lock(&SHARED_NAMES, "shared-names").clone()
 }
 

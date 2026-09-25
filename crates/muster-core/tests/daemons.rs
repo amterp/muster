@@ -1,7 +1,7 @@
 //! What a daemon record says, and the rules that keep the directory readable.
 //!
 //! The file's meaning lives here and the directory lives in the herdr adapter, the same split
-//! `names.rs` and `shared_names.rs` draw. What is worth pinning at this level is the three
+//! `names.rs` and `shared_file.rs` draw. What is worth pinning at this level is the three
 //! things a reader depends on: a record round-trips, a version this build does not know is
 //! skipped rather than guessed at, and the bound drops the right records.
 

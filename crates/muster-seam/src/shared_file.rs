@@ -1,12 +1,13 @@
-//! The file two Musters name things in, and the lock that stops them doing it at once.
+//! A file two Musters write, and the lock that stops them doing it at once.
 //!
-//! `panes.toml` was a file one window wrote and the next one read. A second window makes it
+//! Two records are kept this way: the names in `panes.toml`, and which window holds each tab.
+//! The names were first, and they are why this exists. `panes.toml` was a file one window wrote and the next one read. A second window makes it
 //! something else: both are attached to the same daemon, both see every pane it holds, and both
 //! would name a pane nobody had named yet. Measured before this existed, two windows on one
 //! daemon agreed about exactly one pane - the one that was already there when the second opened -
 //! and the window that saved last took the other's bindings with it.
 //!
-//! So the core reads, names and writes inside one hold, and this is the hold. Everything about
+//! So the core reads, changes and writes inside one hold, and this is the hold. Everything about
 //! where the file is and how a lock is taken is here, because those are OS questions and the
 //! core has no business with either (`architecture.md`, the shell/core seam).
 
@@ -18,11 +19,11 @@ use std::time::UNIX_EPOCH;
 
 use muster_core::diagnostics::log;
 use muster_core::fields;
-use muster_core::names::SharedNames;
+use muster_core::shared::SharedRecord;
 
 /// The record, as a path and the lock beside it.
 #[derive(Debug)]
-pub(crate) struct NamesFile {
+pub(crate) struct SharedFile {
     record: PathBuf,
     /// A file of its own rather than the record, because the record is replaced by a rename
     /// every time it is written - and a lock held on an inode that has just been renamed out of
@@ -37,9 +38,9 @@ pub(crate) struct NamesFile {
     seen: AtomicU64,
 }
 
-impl NamesFile {
-    pub(crate) fn at(path: &str) -> NamesFile {
-        NamesFile {
+impl SharedFile {
+    pub(crate) fn at(path: &str) -> SharedFile {
+        SharedFile {
             record: PathBuf::from(path),
             lock: PathBuf::from(format!("{path}.lock")),
             seen: AtomicU64::new(0),
@@ -47,7 +48,7 @@ impl NamesFile {
     }
 }
 
-impl SharedNames for NamesFile {
+impl SharedRecord for SharedFile {
     fn moved(&self) -> bool {
         self.seen.load(Ordering::Relaxed) != self.revision()
     }
@@ -110,7 +111,7 @@ impl SharedNames for NamesFile {
     }
 }
 
-impl NamesFile {
+impl SharedFile {
     /// What the record is at this moment, as one number.
     ///
     /// Modification time and size together rather than either alone: a record rewritten within
@@ -170,29 +171,30 @@ impl Drop for Hold {
 }
 
 /// Inline rather than in `tests/`, because what is being tested is this file's own hold and
-/// `NamesFile` is not public. Two registries over one record is what two Musters are, and the
+/// `SharedFile` is not public. Two registries over one record is what two Musters are, and the
 /// only thing standing in for a second process is the second registry.
 #[cfg(test)]
 mod tests {
     use std::sync::{Arc, Mutex};
 
     use muster_core::mirror::backend::PaneId;
-    use muster_core::names::{Mint, Names, PaneNames, SharedNames, TabNames};
+    use muster_core::names::{Mint, Names, PaneNames, TabNames};
+    use muster_core::shared::SharedRecord;
 
-    use super::NamesFile;
+    use super::SharedFile;
 
     /// A window, as far as naming is concerned.
     ///
-    /// Its own registries *and* its own `NamesFile` over the same path, because that is what a
+    /// Its own registries *and* its own `SharedFile` over the same path, because that is what a
     /// second window is: another process, holding its own idea of what the record last said.
-    /// Sharing one `NamesFile` between the two would share the very thing that tells a window
+    /// Sharing one `SharedFile` between the two would share the very thing that tells a window
     /// the record has moved, and the test would pass without proving anything.
     fn window(at: &std::path::Path, daemon: &str) -> Names {
         Names::sharing(
             muster_core::composition::DaemonId::new(daemon),
             Arc::new(Mutex::new(PaneNames::new(Mint::Drawn))),
             Arc::new(Mutex::new(TabNames::new(Mint::Drawn))),
-            Arc::new(NamesFile::at(&at.to_string_lossy())) as Arc<dyn SharedNames>,
+            Arc::new(SharedFile::at(&at.to_string_lossy())) as Arc<dyn SharedRecord>,
         )
     }
 

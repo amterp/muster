@@ -1,7 +1,7 @@
 //! The daemons Muster started, written down and checked back.
 //!
 //! `muster_core::daemons` owns what a record says; this owns the directory it lives in and the
-//! dial that turns a record into an answer. The same division `names.rs` and `shared_names.rs`
+//! dial that turns a record into an answer. The same division `names.rs` and `shared_file.rs`
 //! draw, and for the same reason: what a file means is portable and where a file is is not.
 //!
 //! **One file per daemon, keyed by socket, so nothing needs a lock.** Two windows starting
