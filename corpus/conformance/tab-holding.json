@@ -396,6 +396,140 @@
       }
     },
     {
+      "name": "a tab nobody holds joins the window in front that follows its machine",
+      "why": "Only a window attached to a devenv hears that devenv's tabs. The window in front may not be one of them, and a window that cannot see a tab cannot show it - so it goes to the window most recently in front of the ones that can, rather than waiting on one that never will.",
+      "given": {
+        "steps": [
+          {
+            "do": "open",
+            "window": "window-1",
+            "arrangement": "/s/windows/window-1.toml",
+            "socket": "/s/command-11.sock",
+            "pid": 11,
+            "focused": 100,
+            "daemons": [
+              "devenv",
+              "local"
+            ]
+          },
+          {
+            "do": "open",
+            "window": "window-2",
+            "arrangement": "/s/windows/window-2.toml",
+            "socket": "/s/command-22.sock",
+            "pid": 22,
+            "focused": 200,
+            "daemons": [
+              "local"
+            ]
+          }
+        ],
+        "taker": {
+          "daemon": "devenv",
+          "now": 1000,
+          "open": [
+            "window-1",
+            "window-2"
+          ]
+        }
+      },
+      "expect": {
+        "windows": [
+          "window-1 pid=11 socket=/s/command-11.sock arrangement=/s/windows/window-1.toml focused=100 daemons=devenv,local",
+          "window-2 pid=22 socket=/s/command-22.sock arrangement=/s/windows/window-2.toml focused=200 daemons=local"
+        ],
+        "tabs": [],
+        "taker": "window-1"
+      }
+    },
+    {
+      "name": "a window that attaches a machine can take its tabs",
+      "why": "Which machines a window follows changes when somebody attaches a devenv, and the record says so from then on.",
+      "given": {
+        "steps": [
+          {
+            "do": "open",
+            "window": "window-1",
+            "arrangement": "/s/windows/window-1.toml",
+            "socket": "/s/command-11.sock",
+            "pid": 11,
+            "focused": 100,
+            "daemons": [
+              "local"
+            ]
+          },
+          {
+            "do": "open",
+            "window": "window-2",
+            "arrangement": "/s/windows/window-2.toml",
+            "socket": "/s/command-22.sock",
+            "pid": 22,
+            "focused": 200,
+            "daemons": [
+              "local"
+            ]
+          },
+          {
+            "do": "follow",
+            "window": "window-1",
+            "daemons": [
+              "devenv",
+              "local"
+            ]
+          }
+        ],
+        "taker": {
+          "daemon": "devenv",
+          "now": 1000,
+          "open": [
+            "window-1",
+            "window-2"
+          ]
+        }
+      },
+      "expect": {
+        "windows": [
+          "window-1 pid=11 socket=/s/command-11.sock arrangement=/s/windows/window-1.toml focused=100 daemons=devenv,local",
+          "window-2 pid=22 socket=/s/command-22.sock arrangement=/s/windows/window-2.toml focused=200 daemons=local"
+        ],
+        "tabs": [],
+        "taker": "window-1"
+      }
+    },
+    {
+      "name": "a tab on a machine no open window follows is taken by nobody",
+      "why": "The next window to follow that machine takes it, the same way the next window to open takes a tab when none is open.",
+      "given": {
+        "steps": [
+          {
+            "do": "open",
+            "window": "window-1",
+            "arrangement": "/s/windows/window-1.toml",
+            "socket": "/s/command-11.sock",
+            "pid": 11,
+            "focused": 100,
+            "daemons": [
+              "local"
+            ]
+          }
+        ],
+        "taker": {
+          "daemon": "devenv",
+          "now": 1000,
+          "open": [
+            "window-1"
+          ]
+        }
+      },
+      "expect": {
+        "windows": [
+          "window-1 pid=11 socket=/s/command-11.sock arrangement=/s/windows/window-1.toml focused=100 daemons=local"
+        ],
+        "tabs": [],
+        "taker": "nobody"
+      }
+    },
+    {
       "name": "with no window open, nobody takes a tab",
       "why": "The next window to open takes it instead, which is also the upgrade path: the first window after this record existed is the only one open, and takes every tab the way a single window always did.",
       "given": {

@@ -350,6 +350,100 @@ fn a_closed_windows_blocked_agent_is_announced_here_and_an_open_ones_is_not() {
     }
 }
 
+/// A blocked agent in a tab nobody holds is announced by the window in front, and by no other.
+///
+/// A tab made outside Muster is held by nobody until the window in front takes it, and every
+/// window hears its agents meanwhile. Each of them announcing one is a notification per window.
+#[test]
+fn a_tab_nobody_holds_is_announced_only_by_the_window_in_front() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = Daemon::start();
+    let _other = Stand::in_for(&daemon, "window-9");
+    open_a_window(&daemon, "window-1");
+    let own = listed().first().cloned().expect("the window opened onto a tab");
+    let path = record(&daemon);
+    let mut holders = read_record(&path);
+    holders.focused(&WindowName::new("window-9"), i64::MAX / 2);
+    write_record(&path, &holders);
+    assert_ok(&answer(request::Payload::ReadTabHolders(ReadTabHolders {})));
+
+    // The stand-in in front takes nothing, so this tab stays held by nobody.
+    daemon.call("tab.create", &json!({ "focus": false }));
+    until(
+        "this window to hear of the tab nobody asked for",
+        || all_panes().len() == 2,
+        || format!("the window has heard of {:?}", all_panes()),
+    );
+    let ours = panes_listed_in(&own);
+    let nobodys = all_panes().into_iter().find(|pane| !ours.contains(pane)).expect("two panes");
+    ASKED.lock().expect("a panicking test poisoned the log").clear();
+
+    // Nobody's first, then this window's own: the daemon announces them in that order, so once
+    // the second is announced here the first has been decided.
+    for pane in [&nobodys, &ours[0]] {
+        let backend = backend_of(&daemon, pane);
+        daemon.call(
+            "pane.report_agent",
+            &json!({ "pane_id": backend, "agent": "probe", "source": "probe", "state": "blocked" }),
+        );
+    }
+    until(
+        "this window to announce its own blocked agent",
+        || announced().contains(&ours[0]),
+        || format!("this window announced {:?}", announced()),
+    );
+    assert!(
+        !announced().contains(&nobodys),
+        "a window behind the one in front announced an agent in a tab nobody holds"
+    );
+}
+
+fn announced() -> Vec<String> {
+    ASKED
+        .lock()
+        .expect("a panicking test poisoned the log")
+        .iter()
+        .filter(|asked| asked.state == "blocked")
+        .map(|asked| asked.pane_id.clone())
+        .collect()
+}
+
+/// Every pane this window has heard of, in any tab.
+fn all_panes() -> Vec<String> {
+    match answer(request::Payload::ReadWindow(ReadWindow {})).payload {
+        Some(response::Payload::Window(window)) => {
+            window.panes.iter().map(|held| held.pane_id.clone()).collect()
+        }
+        other => panic!("asking what the window is showing answered {other:?}"),
+    }
+}
+
+fn panes_listed_in(tab: &str) -> Vec<String> {
+    match answer(request::Payload::ReadWindow(ReadWindow {})).payload {
+        Some(response::Payload::Window(window)) => window
+            .roster
+            .iter()
+            .flat_map(|roster| roster.tabs.iter())
+            .filter(|held| held.tab_id == tab)
+            .flat_map(|held| held.panes.iter())
+            .map(|pane| pane.pane_id.clone())
+            .collect(),
+        other => panic!("asking what the window is showing answered {other:?}"),
+    }
+}
+
+/// The daemon's own name for a pane, through the record both sides write names into.
+fn backend_of(daemon: &Daemon, muster: &str) -> String {
+    let names = std::fs::read_to_string(daemon.root().join("panes.toml"))
+        .expect("the window wrote its names");
+    let (panes, _) = muster_core::names::from_toml(&names, muster_core::names::Mint::Drawn)
+        .expect("the names read back");
+    panes.locate(&muster_core::mirror::backend::PaneId::new(muster)).map_or_else(
+        || panic!("{muster} has no backend name in the record"),
+        |located| located.backend.to_string(),
+    )
+}
+
 /// A window opened to show something shows it.
 ///
 /// What a closed window is reopened with when somebody went to one of its tabs from elsewhere.
