@@ -1591,6 +1591,12 @@ message Startup {
   // what every test gets: the window then holds every tab, as a single window always did.
   string tab_holders_path = 15;
 
+  // A pane or a tab to go to once the window is open, or empty for wherever it was left.
+  //
+  // What a closed window is reopened with when somebody went to one of its tabs from another
+  // window (ReopenWindow). Muster's names say which noun they are, so one field serves both.
+  string show = 16;
+
   // trace, debug, info, warn, error. Empty means debug.
   string log_level = 2;
 
@@ -1756,7 +1762,21 @@ message Event {
     ProblemsChanged problems_changed = 9;
     AttentionChanged attention_changed = 10;
     RaiseWindow raise_window = 11;
+    ReopenWindow reopen_window = 12;
   }
+}
+
+// Open a closed window again, onto one of its tabs.
+//
+// A closed window keeps its tabs and its agents keep running (kan a_2Mhi0EZlv), so going to one
+// of them - a notification about a blocked agent there, or `muster tab focus` naming its tab - is
+// going to that window. Opening one is starting an app, which is the shell's to do.
+message ReopenWindow {
+  // The window, by name: `window-2`. Its arrangement is the record the shell reopens it from.
+  string name = 1;
+
+  // What to show once it is open: a pane's name, or a tab's. Muster's names say which is which.
+  string show = 2;
 }
 
 // Bring this window to the front.

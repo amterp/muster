@@ -47,9 +47,11 @@ pub fn answer(response: &Response, json: bool) -> Result<String, Trouble> {
             // `muster pane send --pane "$(muster pane new --down)"`.
             made.pane_id.clone()
         }),
-        Some(response::Payload::Window(window)) => {
-            Ok(if json { window_json(window).to_string() } else { window_text(window, now_ms()) })
-        }
+        Some(response::Payload::Window(window)) => Ok(if json {
+            window_json(window, Others::All).to_string()
+        } else {
+            window_text(window, now_ms(), Others::All)
+        }),
         Some(response::Payload::PaneText(read)) => Ok(if json {
             json!({ "text": read.text, "rows": read.rows, "truncated": read.truncated }).to_string()
         } else {
@@ -201,7 +203,7 @@ pub fn answers(answers: &[(String, Result<Response, Trouble>)], json: bool) -> S
                             // window's answer is the same object here as it is on its own and a
                             // filter written for one reads across all of them:
                             // `.windows[].panes[] | select(.state == "blocked")`.
-                            if let Value::Object(fields) = window_json(window) {
+                            if let Value::Object(fields) = window_json(window, Others::Closed) {
                                 for (key, value) in fields {
                                     row[key] = value;
                                 }
@@ -220,22 +222,62 @@ pub fn answers(answers: &[(String, Result<Response, Trouble>)], json: bool) -> S
     answers
         .iter()
         .map(|(path, answer)| {
+            let name = match answer {
+                Ok(Response { payload: Some(response::Payload::Window(window)) })
+                    if !window.name.is_empty() =>
+                {
+                    format!(" ({})", window.name)
+                }
+                _ => String::new(),
+            };
             let heading = format!(
                 "{} {}",
-                styled(&format!("window {}", dial::named_window(path).unwrap_or(path)), NAME),
+                styled(&format!("window {}{name}", dial::named_window(path).unwrap_or(path)), NAME),
                 styled(path, QUIET)
             );
             let body = match answer {
                 Ok(response) => match &response.payload {
-                    Some(response::Payload::Window(window)) => window_text(window, now_ms()),
+                    Some(response::Payload::Window(window)) => {
+                        window_text(window, now_ms(), Others::None)
+                    }
                     _ => styled(named_or_empty(response), QUIET),
                 },
                 Err(trouble) => styled(trouble.detail(), QUIET),
             };
             format!("{heading}\n{}", body.trim_end())
         })
+        .chain(closed_windows(answers))
         .collect::<Vec<_>>()
         .join("\n\n")
+}
+
+/// The closed windows every open window lists, once each rather than once per window.
+///
+/// Described by whichever answer names one first. Each open window describes it from its own copy
+/// of the daemons, and they agree.
+fn closed_windows(answers: &[(String, Result<Response, Trouble>)]) -> Vec<String> {
+    let mut seen: Vec<&str> = Vec::new();
+    let mut sections = Vec::new();
+    for window in answers.iter().filter_map(|(_, answer)| match answer {
+        Ok(Response { payload: Some(response::Payload::Window(window)) }) => Some(window),
+        _ => None,
+    }) {
+        let states = states(window);
+        let widths = Widths::across(window, &states, now_ms());
+        for other in window.windows.iter().filter(|other| other.pid == 0) {
+            if seen.contains(&other.name.as_str()) {
+                continue;
+            }
+            seen.push(&other.name);
+            let mut lines = vec![styled(&other_heading(other), NAME)];
+            for tab in &other.tabs {
+                let say_machine = window.daemons.len() > 1;
+                lines.extend(tab_lines(&widths, tab, &states, None, now_ms(), say_machine));
+            }
+            sections.push(lines.join("\n"));
+        }
+    }
+    sections
 }
 
 /// What a window answered with, when it was not what was asked for.
@@ -271,7 +313,39 @@ fn tabs(window: &Window) -> impl Iterator<Item = &muster_proto::RosterTab> {
 ///
 /// Which machine holds a pane is on the pane's own row, and only while more than one is
 /// attached. On one machine the answer is on every row and says nothing.
-fn window_text(window: &Window, now_ms: i64) -> String {
+/// Which other windows a window's answer lists.
+///
+/// All of them when it is the only answer. When every open window is answering for itself, only
+/// the closed ones: an open window's tabs are already under its own heading, and a closed
+/// window has nobody else to speak for it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Others {
+    All,
+    Closed,
+    None,
+}
+
+impl Others {
+    fn include(self, other: &muster_proto::OtherWindow) -> bool {
+        match self {
+            Others::All => true,
+            Others::Closed => other.pid == 0,
+            Others::None => false,
+        }
+    }
+}
+
+/// How another window is headed: by the pid `muster window` heads an open one with, or by name
+/// once it has closed - the two things `muster tab move --window` takes.
+fn other_heading(other: &muster_proto::OtherWindow) -> String {
+    if other.pid == 0 {
+        format!("{} (closed)", other.name)
+    } else {
+        format!("window {} ({})", other.pid, other.name)
+    }
+}
+
+fn window_text(window: &Window, now_ms: i64, others: Others) -> String {
     let keyboard = keyboard_pane(window);
     let states = states(window);
     let widths = Widths::across(window, &states, now_ms);
@@ -280,17 +354,19 @@ fn window_text(window: &Window, now_ms: i64) -> String {
 
     let mut lines: Vec<String> = Vec::new();
     for tab in tabs(window) {
-        lines.push(tab_line(&widths, tab));
-        for pane in &tab.panes {
-            let agent = states.get(pane.pane_id.as_str()).copied();
-            lines.push(pane_line(
-                &widths,
-                pane,
-                agent.map_or("unknown", |agent| agent.state.as_str()),
-                &agent.map(|agent| held_for(agent.since_ms, now_ms)).unwrap_or_default(),
-                keyboard.as_deref() == Some(pane.pane_id.as_str()),
-                say_machine,
-            ));
+        lines.extend(tab_lines(&widths, tab, &states, keyboard.as_deref(), now_ms, say_machine));
+    }
+
+    // Other windows' tabs, after this window's own. A tab belongs to exactly one window, so
+    // these are not this window's to show - but any verb works from any window, and a closed
+    // window's agents are still running with nobody else to list them.
+    for other in window.windows.iter().filter(|other| others.include(other)) {
+        if !lines.is_empty() {
+            lines.push(String::new());
+        }
+        lines.push(styled(&other_heading(other), NAME));
+        for tab in &other.tabs {
+            lines.extend(tab_lines(&widths, tab, &states, None, now_ms, say_machine));
         }
     }
 
@@ -308,6 +384,30 @@ fn window_text(window: &Window, now_ms: i64) -> String {
         return "no daemon is attached, so this window is showing nothing".to_string();
     }
     lines.join("\n")
+}
+
+/// A tab's line, and a line for each pane in it.
+fn tab_lines(
+    widths: &Widths,
+    tab: &muster_proto::RosterTab,
+    states: &BTreeMap<&str, &muster_proto::PaneStateChanged>,
+    keyboard: Option<&str>,
+    now_ms: i64,
+    say_machine: bool,
+) -> Vec<String> {
+    let mut lines = vec![tab_line(widths, tab)];
+    for pane in &tab.panes {
+        let agent = states.get(pane.pane_id.as_str()).copied();
+        lines.push(pane_line(
+            widths,
+            pane,
+            agent.map_or("unknown", |agent| agent.state.as_str()),
+            &agent.map(|agent| held_for(agent.since_ms, now_ms)).unwrap_or_default(),
+            keyboard == Some(pane.pane_id.as_str()),
+            say_machine,
+        ));
+    }
+    lines
 }
 
 /// A machine's heading, and beneath it what would end with the daemon behind it.
@@ -546,7 +646,7 @@ fn since_json(since_ms: i64) -> Value {
 ///
 /// Flat because that is what filtering wants - "every blocked pane" is one pass here and a nested
 /// walk on the wire shape - and each pane names its daemon and its tab so nothing is lost by it.
-fn window_json(window: &Window) -> Value {
+fn window_json(window: &Window, others: Others) -> Value {
     let keyboard = keyboard_pane(window);
     let states = states(window);
     let places = places(window);
@@ -613,7 +713,36 @@ fn window_json(window: &Window) -> Value {
     // on it: `.panes[] | select(.pane == $MUSTER_PANE) | .tab` is how a pane finds its own tab,
     // and there is nothing in a pane's environment that says. The place is still in `tabs[]` for
     // anyone who wants it.
+    // Named so as not to read as the list `{"windows": [...]}` a caller outside any pane gets:
+    // these are the windows other than this one, as this one knows them.
+    let other_windows: Vec<Value> = window
+        .windows
+        .iter()
+        .filter(|other| others.include(other))
+        .map(|other| {
+            json!({
+                "window": other.name,
+                "pid": if other.pid == 0 { Value::Null } else { json!(other.pid) },
+                "tabs": other.tabs.iter().map(|tab| json!({
+                    "tab": tab.tab_id,
+                    "daemons": tab.daemon_ids,
+                    "label": tab.label,
+                    "given_name": tab.given_name,
+                    "panes": tab.panes.iter().map(|pane| json!({
+                        "pane": pane.pane_id,
+                        "daemon": pane.daemon_id,
+                        "label": pane.label,
+                        "state": states.get(pane.pane_id.as_str())
+                            .map_or("unknown", |agent| agent.state.as_str()),
+                    })).collect::<Vec<Value>>(),
+                })).collect::<Vec<Value>>(),
+            })
+        })
+        .collect();
+
     json!({
+        "name": window.name,
+        "other_windows": other_windows,
         "daemons": daemons,
         "keyboard": keyboard,
         // Which tab the window is on, named once rather than repeated on every region below.

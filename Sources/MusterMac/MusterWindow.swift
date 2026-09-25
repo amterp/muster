@@ -908,10 +908,19 @@ extension MusterWindow {
   /// which it could not render anyway, because herdr allows one client per terminal - and takes
   /// an arrangement nothing has ever held. Not fresh means it takes the most recent arrangement
   /// no live window is holding, which is the window that was closed.
-  private func openAnother(fresh: Bool) {
+  /// Opens a closed window again, onto a pane or tab it holds.
+  ///
+  /// What going to that pane or tab from here comes to: the window is closed, its tabs are still
+  /// its own, and a window is a process - so this starts one, told which record to take and where
+  /// to go once it is open.
+  public func reopen(named name: String, showing show: String) {
+    openAnother(fresh: false, reopening: [windowFlag, name] + (show.isEmpty ? [] : [showFlag, show]))
+  }
+
+  private func openAnother(fresh: Bool, reopening: [String] = []) {
     let configuration = NSWorkspace.OpenConfiguration()
     configuration.createsNewApplicationInstance = true
-    var arguments = fresh ? [freshFlag] : []
+    var arguments = (fresh ? [freshFlag] : []) + reopening
     if let home = ProcessInfo.processInfo.environment["MUSTER_HOME"], !home.isEmpty {
       arguments += ["--home", home]
     }

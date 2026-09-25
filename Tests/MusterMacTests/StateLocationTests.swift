@@ -164,3 +164,36 @@ private func publish(_ path: String?) {
   // safe because nothing was running in one yet.
   #expect(paneNamesPath(environment: ["MUSTER_PANE_NAMES": "", "HOME": "/home/a"]) == nil)
 }
+
+@Test func aClosedWindowIsReopenedFromItsOwnRecord() {
+  // Going to a closed window's tab reopens that window, and a window is its record (kan
+  // a_2Mhi0EZlv) - so the launch takes the record it was told, not the newest free one.
+  let home = scratch("named")
+  let environment = ["MUSTER_HOME": home]
+  let first = Arrangements.open(fresh: false, environment: environment, pid: 4101)
+  publish(first)
+  let second = Arrangements.open(fresh: true, environment: environment, pid: 4102)
+  publish(second)
+  Arrangements.release(first!)
+  Arrangements.release(second!)
+
+  let reopened = Arrangements.open(
+    fresh: false, named: "window-1", environment: environment, pid: 4103)
+
+  #expect(reopened == first)
+}
+
+@Test func aRecordALiveWindowHoldsIsNotReopenedAgain() {
+  // That window opened after all, between somebody going to its tab and this launch. Taking its
+  // record too would be two windows writing one file.
+  let home = scratch("named-held")
+  let environment = ["MUSTER_HOME": home]
+  let live = ProcessInfo.processInfo.processIdentifier
+  let held = Arrangements.open(fresh: false, environment: environment, pid: live)
+  publish(held)
+
+  let reopened = Arrangements.open(
+    fresh: false, named: "window-1", environment: environment, pid: 4104)
+
+  #expect(reopened != held)
+}

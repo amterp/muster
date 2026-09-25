@@ -47,7 +47,7 @@ use muster_vt::KeyEncoder;
 use crate::holding::Holding;
 use crate::proto::{
     AttentionChanged, Event, PaneTypeable, PresentationChanged, Problem as ProblemMessage,
-    ProblemsChanged, RaiseWindow, RosterChanged, ViewChanged, event,
+    ProblemsChanged, RaiseWindow, ReopenWindow, RosterChanged, ViewChanged, event,
 };
 use crate::shared_file::SharedFile;
 use crate::watch::{self, Seen};
@@ -1153,6 +1153,7 @@ pub(crate) fn reset() {
     *poison::lock(&PLATFORM_LOCALE, "locale") = None;
     *poison::lock(&COMMANDS, "commands") = None;
     *poison::lock(&STATE, "saved-arrangement") = None;
+    *poison::lock(&SHOW, "show") = None;
     *poison::lock(&NAMES_FILE, "saved-names") = None;
     *poison::lock(&SHARED_NAMES, "shared-names") = None;
     *poison::lock(&BINDINGS, "bindings") = None;
@@ -2567,6 +2568,11 @@ fn not_showing(daemon: &DaemonId) -> String {
 /// daemon is told as a courtesy it may refuse. A refused write is worth a log line and not
 /// worth undoing a focus move the user can see happened.
 pub(crate) fn focus(daemon: &DaemonId, pane: &PaneId) -> Result<(), Refusal> {
+    if let Some(tab) = tab_of_pane(pane)
+        && reopened_for(&tab, pane.as_str())
+    {
+        return Ok(());
+    }
     {
         let mut session = poison::lock(&SESSION, "session");
         let region = match session.region_holding(daemon, pane) {
@@ -2900,6 +2906,9 @@ pub(crate) fn move_pane_to_tab(
 /// The mouse's half of what `next_tab` does with the keyboard, through the same [`landing`]
 /// rule so that the two agree about where a tab is entered.
 pub(crate) fn focus_tab(tab: &TabId) -> Result<(), String> {
+    if reopened_for(tab, tab.as_str()) {
+        return Ok(());
+    }
     let found = {
         let session = poison::lock(&SESSION, "session");
         match session.roster(&session.view()).tabs().find(|held| &held.id == tab) {
@@ -2971,6 +2980,35 @@ pub(crate) fn move_tab(tab: Option<TabId>, window: &str) -> Result<(), Refusal> 
     }
     publish("move_tab");
     Ok(())
+}
+
+/// Asks for a closed window to be opened again when going somewhere means going into it.
+///
+/// A closed window keeps its tabs and their agents keep running, so a notification about one of
+/// them, or `muster tab focus` naming one, is somebody going to that window. Says whether it
+/// asked. An open window's tab never reaches here from a caller - it is carried to that window
+/// (`forward`) - and one that does is refused further on, since showing it here would take its
+/// terminals.
+fn reopened_for(tab: &TabId, show: &str) -> bool {
+    let (me, window) = {
+        let session = poison::lock(&SESSION, "session");
+        let Some(window) = session.holding.elsewhere(tab).cloned() else { return false };
+        (session.holding.me().clone(), window)
+    };
+    if crate::holding::is_open(&me, &window) {
+        return false;
+    }
+    log::info(
+        "window.reopen.asked",
+        fields! { "window" => window.name.to_string(), "show" => show },
+    );
+    ffi::emit(&Event {
+        payload: Some(event::Payload::ReopenWindow(ReopenWindow {
+            name: window.name.to_string(),
+            show: show.to_string(),
+        })),
+    });
+    true
 }
 
 /// Puts the keyboard on whatever the numbered chord for `place` names.
@@ -3490,7 +3528,46 @@ pub(crate) fn open() -> Result<(), String> {
     // A window just opened has been sent nothing, whatever an earlier one was.
     poison::lock(&SESSION, "session").sent = Sent::default();
     publish("open");
+    show_what_was_asked_for();
     Ok(())
+}
+
+/// What this launch was asked to go to, if anything: a closed window reopened onto one of its
+/// tabs, because somebody went to it from another window.
+///
+/// After everything else in `open`, so the tab is one this window has restored. A name that is
+/// no longer there is logged rather than refused: the window has opened, and wherever it was
+/// left is a fine place for it to be.
+static SHOW: Mutex<Option<String>> = Mutex::new(None);
+
+pub(crate) fn set_show(show: &str) {
+    *poison::lock(&SHOW, "show") = (!show.is_empty()).then(|| show.to_string());
+}
+
+fn show_what_was_asked_for() {
+    let Some(show) = poison::lock(&SHOW, "show").take() else { return };
+    let tab = TabId::new(&show);
+    let went = if daemon_holding_tab(&tab).is_some() {
+        focus_tab(&tab)
+    } else {
+        let pane = PaneId::new(&show);
+        match daemon_holding(&pane) {
+            Some(daemon) => focus(&daemon, &pane).map_err(|refusal| refusal.to_string()),
+            None => Err(format!("no daemon holds a pane or tab called {show}")),
+        }
+    };
+    if let Err(detail) = went {
+        log::warn(
+            "window.show.failed",
+            fields! {
+                "show" => &show,
+                "detail" => detail,
+                "impact" => "the window opened where it was left rather than on what it was \
+                             reopened for",
+                "check" => "whether that tab or pane closed while the window was opening",
+            },
+        );
+    }
 }
 
 /// Puts back the window's own chrome, and tells the shell either way.
@@ -4532,6 +4609,9 @@ fn report(daemon: &DaemonId, change: &Change) {
 /// is the core's decision (`roster`) and a banner naming an agent differently from the row it
 /// appears on is two names for one thing.
 fn announce_attention(pane: &PaneKey, attend: Attend) {
+    if matches!(attend, Attend::Raised(_)) && !speaks_for(pane) {
+        return;
+    }
     let (state, label, subtitle) = match attend {
         Attend::Raised(alert) => {
             let (label, subtitle) = describe_pane(pane).unwrap_or_default();
@@ -4558,6 +4638,34 @@ fn announce_attention(pane: &PaneKey, attend: Attend) {
             subtitle,
         })),
     });
+}
+
+/// Whether this window is the one to tell somebody a pane needs them.
+///
+/// A window speaks for its own tabs. Another open window speaks for its own, so two windows never
+/// post one agent twice. A closed window cannot speak at all, and its agents are still running -
+/// so the open window that came to the front most recently speaks for it, and clicking what it
+/// posts reopens that window onto the tab (kan a_2Mhi0EZlv).
+///
+/// Asked only when a pane starts asking for somebody, which is rare next to everything else a
+/// window hears - so dialing the other windows here costs nothing anybody will notice.
+fn speaks_for(pane: &PaneKey) -> bool {
+    let Some(tab) = tab_of_pane(&pane.pane) else { return true };
+    let (me, holders) = {
+        let session = poison::lock(&SESSION, "session");
+        if session.holding.holds(&tab) || session.holding.elsewhere(&tab).is_none() {
+            return true;
+        }
+        (session.holding.me().clone(), session.holding.holders().clone())
+    };
+    let Some(holder) = holders.holder(&tab).and_then(|name| holders.window(name)) else {
+        return true;
+    };
+    let open = |window: &HeldWindow| crate::holding::is_open(&me, window);
+    if open(holder) {
+        return false;
+    }
+    holders.in_front(open) == Some(&me)
 }
 
 /// What to call one pane, and what its agent says it is doing.

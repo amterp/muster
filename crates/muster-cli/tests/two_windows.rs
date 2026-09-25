@@ -16,7 +16,9 @@ use std::io::Read;
 use std::os::unix::net::UnixListener;
 use std::path::{Path, PathBuf};
 
-use muster_proto::{Response, RosterChanged, RosterPane, RosterTab, Window, frame, response};
+use muster_proto::{
+    OtherWindow, Response, RosterChanged, RosterPane, RosterTab, Window, frame, response,
+};
 use prost::Message;
 
 #[test]
@@ -134,6 +136,69 @@ fn a_program_reading_two_windows_gets_one_object_per_window() {
         assert!(window["panes"].is_array(), "a window's row carries no panes: {window}");
         assert!(window["window"].is_string(), "a window's row does not say which window: {window}");
     }
+}
+
+/// A closed window's tabs are listed under its name, once, however many windows answer.
+///
+/// A closed window keeps its tabs and its agents keep running (kan a_2Mhi0EZlv), and it has no
+/// socket of its own to answer for them - so every open window lists it, and when they all
+/// answer at once it is printed once rather than once per window.
+#[test]
+fn a_closed_windows_tabs_are_listed_under_its_name_once() {
+    let scratch = Scratch::new("closed");
+    let home = scratch.home();
+    let closed = OtherWindow {
+        name: "window-3".to_string(),
+        pid: 0,
+        tabs: vec![RosterTab {
+            tab_id: "t3closed".to_string(),
+            label: "left running".to_string(),
+            ..RosterTab::default()
+        }],
+    };
+    let open = OtherWindow { name: "window-2".to_string(), pid: 632, tabs: Vec::new() };
+    answering(home, 631, "window-1", vec![closed.clone(), open]);
+
+    let (code, out, errors) = run(&["window"], home, None);
+    assert_eq!(code, 0, "{errors}");
+    assert!(out.contains("window-3 (closed)"), "the closed window is not named:\n{out}");
+    assert!(out.contains("left running"), "the closed window's tab is not listed:\n{out}");
+    assert!(
+        out.contains("window 632 (window-2)"),
+        "an open window is not headed the way `tab move --window` takes it:\n{out}"
+    );
+
+    answering(home, 633, "window-2", vec![closed]);
+    let (code, out, errors) = run(&["window"], home, None);
+    assert_eq!(code, 0, "{errors}");
+    assert_eq!(
+        out.matches("window-3 (closed)").count(),
+        1,
+        "the closed window is listed once per open window rather than once:\n{out}"
+    );
+}
+
+/// A listener answering as a window with other windows beside it.
+fn answering(home: &Path, pid: u32, name: &str, others: Vec<OtherWindow>) {
+    let path = first_socket(home, pid);
+    let listener = UnixListener::bind(&path).expect("the temporary directory is writable");
+    let answer = Response {
+        payload: Some(response::Payload::Window(Window {
+            name: name.to_string(),
+            windows: others,
+            ..Window::default()
+        })),
+    }
+    .encode_to_vec();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
+            let _ = frame::read_frame(&mut stream, frame::LARGEST_MESSAGE);
+            let _ = frame::write_frame(&mut stream, &answer);
+            let mut drained = Vec::new();
+            let _ = stream.read_to_end(&mut drained);
+        }
+    });
 }
 
 /// A home of its own per test, since the CLI finds windows by reading one directory.

@@ -203,11 +203,20 @@ impl Holders {
         if let Some(expecting) = waiting {
             return Taker::Waiting(expecting.window.clone());
         }
+        self.in_front(open).map_or(Taker::Nobody, |window| Taker::Window(window.clone()))
+    }
+
+    /// The open window that came to the front most recently.
+    ///
+    /// Who a tab nobody holds joins, and who speaks for a closed window: a blocked agent in a
+    /// closed window's tab is announced by the window somebody is most likely looking at, and
+    /// by that one only, so two open windows do not both post it.
+    pub fn in_front(&self, open: impl Fn(&HeldWindow) -> bool) -> Option<&WindowName> {
         self.windows
             .values()
             .filter(|window| open(window))
             .max_by(|a, b| a.focused.cmp(&b.focused).then_with(|| b.name.cmp(&a.name)))
-            .map_or(Taker::Nobody, |window| Taker::Window(window.name.clone()))
+            .map(|window| &window.name)
     }
 
     /// How long a window may be waiting on an answer before its expectation is ignored.

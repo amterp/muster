@@ -11,8 +11,9 @@ use std::sync::{Arc, Mutex};
 
 use herdr_harness::{Daemon, until};
 use muster::proto::{
-    Carried, CloseTab, CreateTab, Event, FocusTab, MoveTab, OpenWindow, ReadTabHolders, ReadWindow,
-    RenameTab, Request, Response, Startup, event, request, response,
+    AttentionChanged, Carried, CloseTab, CreateTab, Event, FocusTab, MoveTab, OpenWindow,
+    ReadTabHolders, ReadWindow, RenameTab, ReopenWindow, Request, Response, Startup, event,
+    request, response,
 };
 use muster_core::composition::holding::{from_toml, to_toml};
 use muster_core::composition::{HeldWindow, Holders, WindowName};
@@ -231,6 +232,141 @@ fn the_window_says_what_every_other_window_holds() {
     );
 }
 
+/// Going to a closed window's tab asks for that window to be opened again, onto it.
+///
+/// A closed window keeps its tabs and its agents keep running, so going to one of them - from a
+/// notification, or `muster tab focus` - is going to that window. Opening one is starting an app,
+/// which is the shell's, so the core asks.
+#[test]
+fn going_to_a_closed_windows_tab_reopens_that_window() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = Daemon::start();
+    let ours = open_a_window(&daemon, "window-1");
+    let theirs = a_second_tab_given_to(&daemon, &ours, "window-8");
+    REOPENED.lock().expect("a panicking test poisoned the log").clear();
+
+    let answer = ask(
+        &ours,
+        request::Payload::FocusTab(FocusTab { tab_id: theirs.clone(), ..FocusTab::default() }),
+    );
+    assert!(matches!(answer.payload, Some(response::Payload::Ok(_))), "{answer:?}");
+    let reopened = REOPENED.lock().expect("a panicking test poisoned the log").clone();
+    assert_eq!(
+        reopened.iter().map(|asked| (asked.name.as_str(), asked.show.as_str())).collect::<Vec<_>>(),
+        vec![("window-8", theirs.as_str())],
+        "going to a closed window's tab did not ask for that window back"
+    );
+    assert!(!listed().contains(&theirs), "the closed window's tab was brought here instead");
+}
+
+/// A blocked agent in a closed window's tab is announced by the window in front, and one in an
+/// open window's tab is left to that window.
+///
+/// A closed window cannot say anything, and its agents are still running - so without this a
+/// blocked agent there would reach nobody. An open window speaks for itself, and two windows
+/// posting one agent is noise.
+#[test]
+fn a_closed_windows_blocked_agent_is_announced_here_and_an_open_ones_is_not() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = Daemon::start();
+    let _other = Stand::in_for(&daemon, "window-9");
+    let ours = open_a_window(&daemon, "window-1");
+    let closed = a_second_tab_given_to(&daemon, &ours, "window-8");
+    let open = a_second_tab_given_to(&daemon, &ours, "window-9");
+    ASKED.lock().expect("a panicking test poisoned the log").clear();
+
+    for (tab, announced) in [(&closed, true), (&open, false)] {
+        let (muster, backend) = pane_of(&daemon, tab);
+        daemon.call(
+            "pane.report_agent",
+            &json!({ "pane_id": backend, "agent": "probe", "source": "probe", "state": "blocked" }),
+        );
+        until(
+            "this window to hear the agent is blocked",
+            || state_of(&muster).as_deref() == Some("blocked"),
+            || format!("the window says {:?}", state_of(&muster)),
+        );
+        let asked = ASKED
+            .lock()
+            .expect("a panicking test poisoned the log")
+            .iter()
+            .any(|asked| asked.pane_id == muster && asked.state == "blocked");
+        assert_eq!(
+            asked,
+            announced,
+            "a blocked agent in {tab} was {} announced here",
+            if asked { "" } else { "not" }
+        );
+    }
+}
+
+/// A window opened to show something shows it.
+///
+/// What a closed window is reopened with when somebody went to one of its tabs from elsewhere.
+#[test]
+fn a_window_opened_to_show_a_tab_shows_it() {
+    let turn = muster::testing::fresh_session();
+    let daemon = Daemon::start();
+    let ours = open_a_window(&daemon, "window-1");
+    let first = listed().first().cloned().expect("the window holds a tab");
+    let _ = a_second_tab_given_to(&daemon, &ours, "window-8");
+    let moved = ask(&ours, move_tab(&first, "window-8"));
+    assert!(matches!(moved.payload, Some(response::Payload::Ok(_))), "{moved:?}");
+    assert_ok(&answer(request::Payload::Quitting(muster::proto::Quitting::default())));
+
+    turn.relaunch();
+    muster::ffi::muster_set_event_callback(Some(note));
+    assert_ok(&answer(request::Payload::Startup(Startup {
+        config_path: daemon.muster_config().to_string_lossy().into_owned(),
+        state_path: daemon.root().join("window-8.toml").to_string_lossy().into_owned(),
+        pane_names_path: daemon.root().join("panes.toml").to_string_lossy().into_owned(),
+        tab_holders_path: record(&daemon).to_string_lossy().into_owned(),
+        show: first.clone(),
+        ..Startup::default()
+    })));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    until(
+        "the reopened window to show the tab it was opened for",
+        || showing().as_deref() == Some(first.as_str()),
+        || format!("the window shows {:?} and lists {:?}", showing(), listed()),
+    );
+}
+
+/// A pane in a tab, by Muster's name and by the daemon's.
+fn pane_of(daemon: &Daemon, tab: &str) -> (String, String) {
+    let window = match answer(request::Payload::ReadWindow(ReadWindow {})).payload {
+        Some(response::Payload::Window(window)) => window,
+        other => panic!("asking what the window is showing answered {other:?}"),
+    };
+    let muster = window
+        .windows
+        .iter()
+        .flat_map(|other| other.tabs.iter())
+        .find(|held| held.tab_id == tab)
+        .and_then(|held| held.panes.first())
+        .map(|pane| pane.pane_id.clone())
+        .unwrap_or_else(|| panic!("no other window lists {tab}: {:?}", window.windows));
+    // The daemon's own name for it, through the record both sides write names into.
+    let names = std::fs::read_to_string(daemon.root().join("panes.toml"))
+        .expect("the window wrote its names");
+    let (panes, _) = muster_core::names::from_toml(&names, muster_core::names::Mint::Drawn)
+        .expect("the names read back");
+    let backend = panes
+        .locate(&muster_core::mirror::backend::PaneId::new(&muster))
+        .map(|located| located.backend.to_string())
+        .unwrap_or_else(|| panic!("{muster} has no backend name in the record"));
+    (muster, backend)
+}
+
+fn state_of(pane: &str) -> Option<String> {
+    match answer(request::Payload::ReadWindow(ReadWindow {})).payload {
+        Some(response::Payload::Window(window)) => {
+            window.panes.iter().find(|held| held.pane_id == pane).map(|held| held.state.clone())
+        }
+        _ => None,
+    }
+}
+
 fn move_tab(tab: &str, window: &str) -> request::Payload {
     request::Payload::MoveTab(MoveTab { tab_id: tab.to_string(), window: window.to_string() })
 }
@@ -398,14 +534,25 @@ fn listed() -> Vec<String> {
 }
 
 static RAISED: Mutex<Option<()>> = Mutex::new(None);
+static REOPENED: Mutex<Vec<ReopenWindow>> = Mutex::new(Vec::new());
+static ASKED: Mutex<Vec<AttentionChanged>> = Mutex::new(Vec::new());
 
 extern "C" fn note(bytes: *const u8, len: usize) {
     // SAFETY: the core guarantees `len` readable bytes for the duration of this call, which
     // is the contract in include/muster.h.
     let bytes = unsafe { std::slice::from_raw_parts(bytes, len) };
     let event = Event::decode(bytes).expect("the core emits events this build can decode");
-    if let Some(event::Payload::RaiseWindow(_)) = event.payload {
-        *RAISED.lock().expect("a panicking test poisoned the flag") = Some(());
+    match event.payload {
+        Some(event::Payload::RaiseWindow(_)) => {
+            *RAISED.lock().expect("a panicking test poisoned the flag") = Some(());
+        }
+        Some(event::Payload::ReopenWindow(reopen)) => {
+            REOPENED.lock().expect("a panicking test poisoned the log").push(reopen);
+        }
+        Some(event::Payload::AttentionChanged(asked)) => {
+            ASKED.lock().expect("a panicking test poisoned the log").push(asked);
+        }
+        _ => {}
     }
 }
 

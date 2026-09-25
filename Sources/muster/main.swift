@@ -72,14 +72,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // A window somebody asked for remembers its tabs under a record of its own, which the shell
     // picks and claims for as long as this process runs - an OS question. Which tabs it holds is
     // the core's, and a window starts holding nothing until it asks for a tab of its own.
-    let fresh = launchIsFresh(arguments: Array(CommandLine.arguments.dropFirst()))
-    let arrangement = Arrangements.open(fresh: fresh)
+    let launched = Array(CommandLine.arguments.dropFirst())
+    let fresh = launchIsFresh(arguments: launched)
+    let arrangement = Arrangements.open(fresh: fresh, named: launchWindow(arguments: launched))
     let holders = tabHoldersPath()
     Core.start(
       logPath: logPath, configPath: config, daemonPath: daemon, statePath: arrangement,
       daemonConfigPath: daemonConfigPath(), paneNamesPath: paneNamesPath(),
       commandSocketPath: commandSocketPath(), commandsPath: commands, cachePath: cachePath(),
-      daemonRecordsPath: daemonRecordsPath(), tabHoldersPath: holders)
+      daemonRecordsPath: daemonRecordsPath(), tabHoldersPath: holders,
+      show: launchShow(arguments: launched))
     watchTabHolders(holders)
     // Given up on the way out so that a window closed and reopened in the same second finds its
     // own record rather than the one before it. Not relied on: a window that is killed never

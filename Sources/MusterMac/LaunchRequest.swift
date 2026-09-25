@@ -73,8 +73,31 @@ public func launchHome(arguments: [String]) -> String? {
   return home.isEmpty ? nil : home
 }
 
+/// Which closed window this launch reopens, by name, if it was told.
+///
+/// What going to a closed window's tab from another window passes - a notification about a
+/// blocked agent there, or `muster tab focus` naming its tab. The window is its arrangement
+/// record, so this is which record to take (kan a_2Mhi0EZlv). An argument for the reason `--home`
+/// is one.
+public func launchWindow(arguments: [String]) -> String? {
+  valueOf(windowFlag, in: arguments)
+}
+
+/// What this launch should go to once it is open, a pane's name or a tab's, if it was told.
+public func launchShow(arguments: [String]) -> String? {
+  valueOf(showFlag, in: arguments)
+}
+
+private func valueOf(_ flag: String, in arguments: [String]) -> String? {
+  guard let at = arguments.firstIndex(of: flag), at + 1 < arguments.count else { return nil }
+  let value = arguments[at + 1]
+  return value.isEmpty ? nil : value
+}
+
 /// What `launchIsFresh` looks for, here so that the reader and the stripper cannot disagree.
 public let freshFlag = "--fresh"
+public let windowFlag = "--window"
+public let showFlag = "--show"
 
 /// The arguments with the options above taken out, so the rest reads as it did before they
 /// existed.
@@ -85,9 +108,11 @@ public let freshFlag = "--fresh"
 /// does not know.
 private func withoutLaunchOptions(_ arguments: [String]) -> [String] {
   var rest = arguments.filter { $0 != freshFlag }
-  guard let at = rest.firstIndex(of: "--home") else { return rest }
-  // The flag and its value, or just the flag when nothing followed it - which then falls
-  // through to `.unknown` and is reported, rather than being silently dropped.
-  rest.removeSubrange(at..<min(at + 2, rest.count))
+  for flag in ["--home", windowFlag, showFlag] {
+    guard let at = rest.firstIndex(of: flag) else { continue }
+    // The flag and its value, or just the flag when nothing followed it - which then falls
+    // through to `.unknown` and is reported, rather than being silently dropped.
+    rest.removeSubrange(at..<min(at + 2, rest.count))
+  }
   return rest
 }

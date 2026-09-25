@@ -33,6 +33,7 @@ public enum Arrangements {
   /// which is what every window did before any of this existed.
   public static func open(
     fresh: Bool,
+    named: String? = nil,
     environment: [String: String] = ProcessInfo.processInfo.environment,
     pid: Int32 = ProcessInfo.processInfo.processIdentifier
   ) -> String? {
@@ -50,7 +51,9 @@ public enum Arrangements {
     releaseDeadClaims(in: directory)
     adoptTheOldSingleFile(into: directory, environment: environment)
 
-    let record = fresh ? mint(in: directory) : (free(in: directory) ?? mint(in: directory))
+    let record =
+      reopening(named, in: directory)
+      ?? (fresh ? mint(in: directory) : (free(in: directory) ?? mint(in: directory)))
     claim(record, by: pid)
     return record.path
   }
@@ -97,6 +100,16 @@ public enum Arrangements {
           written: written(record))
       }
       .sorted { ($0.written ?? .distantPast) > ($1.written ?? .distantPast) }
+  }
+
+  /// The slot a launch was told to reopen, if no live window is holding it.
+  ///
+  /// Held means that window is open after all - it opened between somebody going to its tab and
+  /// this launch - and taking its record as well would be two windows writing one file. The
+  /// launch then goes the ordinary way instead.
+  private static func reopening(_ name: String?, in directory: URL) -> URL? {
+    guard let name, !name.contains("/") else { return nil }
+    return slots(in: directory).first { $0.stem == name && !$0.held }?.record
   }
 
   /// The most recent slot no window is holding and something has actually been written into.

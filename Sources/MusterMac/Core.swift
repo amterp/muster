@@ -27,7 +27,8 @@ public enum Core {
     logPath: String?, configPath: String? = nil, daemonPath: String? = nil,
     statePath: String? = nil, daemonConfigPath: String? = nil, paneNamesPath: String? = nil,
     commandSocketPath: String? = nil, commandsPath: String? = nil, cachePath: String? = nil,
-    daemonRecordsPath: String? = nil, tabHoldersPath: String? = nil, process: String = "app"
+    daemonRecordsPath: String? = nil, tabHoldersPath: String? = nil, show: String? = nil,
+    process: String = "app"
   ) {
     muster_set_event_callback(coreEventArrived)
 
@@ -43,6 +44,7 @@ public enum Core {
     startup.cachePath = cachePath ?? ""
     startup.daemonRecordsPath = daemonRecordsPath ?? ""
     startup.tabHoldersPath = tabHoldersPath ?? ""
+    startup.show = show ?? ""
     startup.locale = platformLocale() ?? ""
     startup.logLevel = ProcessInfo.processInfo.environment["MUSTER_LOG_LEVEL"] ?? ""
     startup.process = process
@@ -1184,6 +1186,11 @@ public enum Core {
       let presentation = Presentation(sidebar: changed.sidebar)
       info("presentation.received", ["sidebar": String(presentation.sidebar)])
       window?.apply(presentation: presentation)
+    case .reopenWindow(let reopen):
+      // Going to a tab a closed window holds is going to that window, and opening one is
+      // starting an app.
+      info("window.reopen", ["window": reopen.name, "show": reopen.show])
+      window?.reopen(named: reopen.name, showing: reopen.show)
     case .raiseWindow:
       // Somebody went to one of this window's tabs from another window, or from a terminal. The
       // tab is already on screen; this is the window coming forward to show it.

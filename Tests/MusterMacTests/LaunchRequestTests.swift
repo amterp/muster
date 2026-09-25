@@ -46,3 +46,15 @@ func anOrdinaryLaunchIsNotFresh() {
   #expect(!launchIsFresh(arguments: []))
   #expect(!launchIsFresh(arguments: ["--home", "/tmp/somewhere"]))
 }
+
+@Test("a closed window reopened onto a tab is still an ordinary launch")
+func aReopenedWindowIsStillAnOrdinaryLaunch() {
+  // What going to a closed window's tab from another window passes (kan a_2Mhi0EZlv). Both are
+  // about how the launch is arranged, so neither may reach the request and read as a flag Muster
+  // does not know.
+  let arguments = ["--window", "window-2", "--show", "t1w3r07bsd", "--home", "/tmp/somewhere"]
+  #expect(launchRequest(arguments: arguments) == .open)
+  #expect(launchWindow(arguments: arguments) == "window-2")
+  #expect(launchShow(arguments: arguments) == "t1w3r07bsd")
+  #expect(launchHome(arguments: arguments) == "/tmp/somewhere")
+}

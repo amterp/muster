@@ -1901,6 +1901,7 @@ fn start(startup: &proto::Startup) -> Response {
         &startup.state_path,
         &command::listening_at().unwrap_or_default(),
     );
+    session::set_show(&startup.show);
     apply_config(&startup.config_path);
     Response::ok()
 }
