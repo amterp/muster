@@ -3155,6 +3155,30 @@ pub(crate) fn announce_roster() {
     ffi::emit(&Event { payload: Some(event::Payload::RosterChanged(message)) });
 }
 
+/// Tells a bridge that has just dialed in that its pane is off screen, if it is.
+///
+/// Bridges are told what is showing when that changes, and one that had not dialed by then was
+/// told nothing: it starts out streaming, and without this would stream a pane nobody can see
+/// until the set next changed. Under `PUBLISHING`, so it cannot land after a publish that has
+/// since put the pane back on screen.
+fn tell_a_new_bridge_it_is_hidden(key: &PaneKey) {
+    let _publishing = poison::lock(&PUBLISHING, "publishing");
+    let hidden = {
+        let session = poison::lock(&SESSION, "session");
+        let local = session.backends.get(&key.daemon).is_some_and(|b| b.tunnel.is_none());
+        let off_screen =
+            session.sent.showing.as_ref().is_some_and(|showing| !showing.contains(key));
+        if local && off_screen {
+            session.panes.get(&key.daemon).and_then(|panes| panes.get(&key.pane)).cloned()
+        } else {
+            None
+        }
+    };
+    if let Some(pane) = hidden {
+        pane.control.show(false);
+    }
+}
+
 /// One numbering, as a log line says it.
 fn describe_numbering(numbering: &Numbering) -> String {
     match numbering {
@@ -5467,6 +5491,7 @@ fn health(daemon: &DaemonId, health: Health, detail: &str) {
 /// The moment the pane becomes typeable, on the thread that accepted the connection.
 fn typeable(daemon: &DaemonId, pane: &PaneId) {
     let key = PaneKey::new(daemon, pane);
+    tell_a_new_bridge_it_is_hidden(&key);
     // Something is painting this pane again, so the next bridge to stop is news.
     poison::lock(&DARK, "dark-panes").remove(&key);
     watchdog::typeable(&key);

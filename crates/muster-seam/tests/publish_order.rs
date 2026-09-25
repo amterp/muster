@@ -42,6 +42,9 @@ fn the_last_view_the_shell_is_sent_is_the_one_the_core_settled_last() {
         || format!("the last view the core published: {:?}", latest_view()),
     );
     settle();
+    // Opening a window forgets what the shell was sent, on purpose, so the view it opens onto
+    // can arrive twice. Counted from here.
+    SEEN.lock().expect("a panicking test poisoned the events").2 = 0;
 
     // Each thread leaves the size where it found it, so once all are done the window is back
     // at zero - and the last view sent had better say so.
