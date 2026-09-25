@@ -5,7 +5,7 @@
 //! harness that spins a glyph outside that list turns every frame of its spinner into a new
 //! title - Claude Code's `◐◑◒◓` did, at several a second per working agent, each one a
 //! relabel and a republish of the whole window (section 26). So the rule is repeated here,
-//! over the Unicode blocks spinners are drawn from rather than over one harness's glyphs.
+//! over herdr's list plus the glyphs harnesses have been seen spinning since.
 
 use serde_json::Value;
 
@@ -30,12 +30,13 @@ fn stripped(title: &str) -> Option<String> {
     (!title.is_empty()).then(|| title.to_string())
 }
 
-/// Named blocks rather than "any symbol", so a title somebody began with an emoji keeps it.
+/// Glyphs seen spinning, not the blocks they come from: `✅` and `❌` sit in Dingbats beside
+/// `✳`, and a title that begins with one is using it to say something.
 fn is_spinner_glyph(glyph: char) -> bool {
-    matches!(glyph,
-        '\u{00B7}'                    // middle dot
-        | '\u{25A0}'..='\u{25FF}'     // Geometric Shapes: ◐◑◒◓ ●○ ◆
-        | '\u{2700}'..='\u{27BF}'     // Dingbats: ✢✳✶✻✽
-        | '\u{2800}'..='\u{28FF}'     // Braille: ⠋⠙⠹
+    matches!(
+        glyph,
+        '·' | '✢' | '✳' | '✶' | '✻' | '✽'   // herdr's own list, Claude Code's older spinner
+        | '◐' | '◑' | '◒' | '◓'             // Claude Code's current spinner
+        | '\u{2800}'..='\u{28FF}' // Braille, which herdr strips whole: ⠋⠙⠹
     )
 }

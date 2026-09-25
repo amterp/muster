@@ -1557,9 +1557,9 @@ earlier one for the same pane differed only in the title, and the stripped title
 costs follow beyond the client's own:
 
 - **A Muster republish per frame.** A changed title relabels the pane, and a relabel republishes
-  the window's view and roster. Muster's herdr adapter now strips a leading glyph from the
-  Unicode blocks spinners come from - Braille, Geometric Shapes, Dingbats and the middle dot -
-  which took the 320 relabels in that sample to 0 (`corpus/conformance/backend-events.json`,
+  the window's view and roster. Muster's herdr adapter now also strips `◐◑◒◓` - herdr's list
+  plus the glyphs seen spinning, rather than the Unicode blocks they sit in, where `✅` and `❌`
+  sit too - which took the 320 relabels in that sample to 0 (`corpus/conformance/backend-events.json`,
   "a spinner herdr did not strip").
 - **History crowded out of herdr's replay.** Replay is the last 512 events of every kind (section
   22). At several title events a second the buffer holds about a minute, so a subscriber that
