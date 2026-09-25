@@ -471,6 +471,59 @@ with a 30 ms tail. The measuring loop held Python's GIL and starved the reader, 
 number described the instrument. Single-threaded blocking reads moved the median from
 20 ms to 1.4 ms. Any future timing harness here reads on the thread that is timing.
 
+### Stage by stage, and what a busy window costs (2026-09-24)
+
+`tools/latency.py` now times every stage in one run, rotating sample by sample so load lands on
+all of them alike: the bare PTY, herdr's own client, the real `muster-bridge` onto a PTY in the
+surface's place, the daemon-encoded arrow, and the bridge against a stand-in daemon that echoes
+at once. The machine was at a one-minute load of 27-60 throughout, so wall times below are
+inflated and only good for comparing rows of one table; the CPU and byte counts are the
+numbers to rely on.
+
+What one echoed keystroke costs each process, in CPU time:
+
+| process | CPU per keystroke |
+|---|---|
+| kernel PTY echo (the floor) | not measurable here |
+| herdr, rendering and framing | 1.5 ms |
+| herdr's client process | 0.10 ms |
+| `muster-bridge` alone (against the stand-in) | 0.11 ms |
+
+And what reaches the surface: 82 bytes per echoed byte, a cell-addressed repaint of the line
+rather than the byte. At `frame.vt_parse`'s 3.79 ns/byte that is 0.3 µs of parsing, so the extra
+bytes cost nothing a person could feel. For output, a pane printing 16,390 bytes at 33 lines a
+second put 75,107 bytes on the surface (4.6x), and herdr spent 190 ms of CPU over those 9.2
+seconds, its client 12 ms, the bridge 14 ms.
+
+In wall time, the bridge added 1.04 ms at the median over the stand-in read directly, and 0.04 ms
+in a run at a different load: under a millisecond either way, and within the noise of the herdr
+rows. So for the question of replacing herdr, the split is: the floor is the kernel's echo plus
+libghostty parsing the program's own bytes; herdr's share is its client hop, the virtual render
+(1.5 ms of CPU per keystroke), the 16 ms throttle above, and framing that re-sends the line; and
+Muster's share of the path is about a tenth of a millisecond of CPU in the bridge.
+
+**A busy window costs herdr per attached client, visible or not.** Fifteen panes, twelve printing
+`date` twenty times a second, measured alternately with fourteen clients attached and with only
+the two measured panes attached:
+
+| | 14 attached | 2 attached |
+|---|---|---|
+| herdr CPU, cores | 0.135 | 0.030 |
+| arrow round trip, median / p95 ms | 10.6 / 72.6 | 1.8 / 17.5 |
+| echo through herdr's client, median / p95 ms | 27.9 / 155.9 | 12.7 / 41.4 |
+| echo through the bridge, median / p95 ms | 29.5 / 272.9 | 19.1 / 45.0 |
+
+Starting a client and receiving its first frame took 50.5 ms at the median (30-133 ms), which
+is what showing a detached pane costs. Muster now detaches the hidden panes on this machine
+(`architecture.md`, output rides the data plane).
+
+**The first client to attach waits out the render window more often.** Two clients on two panes,
+alternating keystrokes: the one attached first landed in the ~20 ms mode 12 and 15 times in 24,
+the second 3 times, and swapping which pane each was on did not move it. The mechanism is not
+visible from outside herdr, and it is the kind of thing that should be asked upstream rather
+than worked around; the harness swaps attach order halfway through each phase so it lands on
+both paths.
+
 ## 10. Removals, and what the counters actually count
 
 Added 2026-08-13, for the mirror (`a_26DAm1Zt0`). Every earlier scenario recorded a
