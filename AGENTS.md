@@ -12,8 +12,9 @@ if your harness wants one.
 that ships Ghostty's chords where Ghostty has one, an agent list carrying a state on every row with a chord to each
 of the first nine, renaming, trading two agents' places by dragging a row, configuration that reloads when you save
 it, a CLI that drives the window from inside a pane, a notification when an agent needs you that takes you to the
-pane that asked, and a second daemon on an SSH machine in the same window - where Muster installs its own herdr
-rather than trusting whatever is over there, and where one tab can hold a laptop pane beside a devenv pane. Not
+pane that asked, a second daemon on an SSH machine in the same window - where Muster installs its own herdr
+rather than trusting whatever is over there, and where one tab can hold a laptop pane beside a devenv pane - and
+several windows that each hold their own tabs and hand them to each other. Not
 built, and worth knowing before you install rather than after: the shape of a split cannot be changed once it is
 made, mouse buttons and motion do not reach a pane, a pane on a devenv cannot drive the window it is drawn in, and
 find reaches only what a daemon will hand back - a thousand rows, and nothing at all behind the screen of a pane
@@ -114,7 +115,8 @@ core and this is the other door into it.
 
 **Tabs are named too, and for a narrower reason than panes.** `t1w3r07bsd`, minted by Muster and
 unique across every machine a window shows, so `muster tab focus` and `muster tab rename` reach one
-without saying which daemon holds it. What a tab does not get is a name in any pane's environment:
+without saying which daemon holds it - or which window: a tab belongs to exactly one window, and a
+request naming another window's tab is carried to that window. What a tab does not get is a name in any pane's environment:
 nothing has to tell a tab which tab it is, so there is no `$MUSTER_TAB`, and a script that means the
 tab it is sitting in reads that out of `muster window` - where every pane says which tab holds it.
 

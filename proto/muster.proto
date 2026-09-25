@@ -314,12 +314,12 @@ message RenamePane {
 // close per pane: a daemon closing its own tab is one act, where N closes is N chances to be
 // interrupted half way and left with a tab holding one pane and no reason.
 //
-// Refused for a tab this window does not hold, which is a tab in a session nobody here is
-// attached to. It used to be refused for any tab no region was showing, and that stopped being
-// a usable rule when a window came to show one tab at a time: every tab but one would be
-// unclosable, and naming one of those is what `muster tab close --tab` is for. What the old
-// rule was after survives elsewhere - the agent list names every tab, so you can still see what
-// you are about to destroy.
+// A tab another open window holds is closed by that window: the request is carried there
+// (Carried). A tab a closed window holds is closed from here, since the daemon does the closing
+// and the closed window only remembers the tab. Refused for a tab in a session nobody here is
+// attached to. It used to be refused for any tab no region was showing, and that stopped being a
+// usable rule when a window came to show one tab at a time: every tab but one would be
+// unclosable, and naming one of those is what `muster tab close --tab` is for.
 message CloseTab {
   // Ignored. A Muster tab may hold panes on more than one machine, so it belongs to none of
   // them - the name is Muster's own and unique across every attached machine, which is all this

@@ -454,3 +454,9 @@ enum rather than a second meaning for the same field.
   - **A window asks a machine for a workspace only once that machine has spoken.** Asking in the
     moment before a first snapshot lands opened a tab nobody wanted and left the one they did
     behind.
+- 2026-09-24 **A tab belongs to exactly one window** (kan a_2Mhi0EZlv). Every window had listed every
+  tab, so the window-level half of "two windows are two workspaces" was a convention about which tab
+  each was left on. Which window holds each tab is now Muster's own record,
+  `~/.muster/state/holding/tabs.toml`, beside the names and written the same way. A window keeps its
+  tabs while closed, lists only its own, carries a request about another window's tab to that
+  window, and hands a tab over by `muster tab move`, a menu or a drag.

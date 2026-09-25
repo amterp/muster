@@ -27,6 +27,26 @@ are still running.
 
     muster window --json | jq -r '.panes[] | select(.state == "blocked") | .pane'
 
+## Other windows
+
+A tab belongs to exactly one window, and `tabs[]` and the rows above are this window's own. The
+tabs every other window holds come after them, under a heading for each window: `window 4321
+(window-2)` for one that is open, and `window-2 (closed)` for one that is not - a closed window
+keeps its tabs, and its agents are still running. Those rows carry no numbers, because the numbers
+are that window's.
+
+    window-2 (closed)
+    tab    t1w3r0mn2q  the other build
+            p1w3r0pq7r  blocked  2h  🤖 C  (hidden)
+
+The tab names there work from here: a request naming one is carried to the window that holds it,
+and `muster tab focus` on a closed window's tab reopens that window onto it. `muster tab move
+--window` takes either handle, the pid of an open window or the name of any.
+
+Under `--json`, `name` is this window's own name, and `other_windows[]` carries `window` (its
+name), `pid` (null once it has closed) and its `tabs[]`, each with `tab`, `daemons`, `label`,
+`given_name` and `panes[]` of `pane`, `daemon`, `label` and `state`.
+
 ## More than one window
 
 Inside a pane this always answers about that pane's own window, because `$MUSTER_SOCKET` says
@@ -34,10 +54,13 @@ which one that is. Outside every pane, with several windows listening, it answer
 them - naming none is what "what is everything doing" means, and a question has nothing to be
 ambiguous about.
 
-Each answer is then headed by the window it is about: `window 39103`, the pid the socket is
-named after, with the socket path beside it for `--socket`. Under `--json` the answer becomes
-`{"windows": [...]}`, each entry carrying its `socket`, its `window`, and the ordinary fields
-below - so `.windows[].panes[] | select(.state == "blocked")` reads across every window.
+Each answer is then headed by the window it is about: `window 39103 (window-1)`, the pid the
+socket is named after and the window's own name, with the socket path beside it for `--socket`.
+The open windows' tabs are each under their own heading already, so a closed window is the only
+other one listed, once, after them all. Under `--json` the answer becomes `{"windows": [...]}`,
+each entry carrying its `socket`, its `window`, and the ordinary fields below - so
+`.windows[].panes[] | select(.state == "blocked")` reads across every window - with
+`other_windows[]` narrowed to the closed ones.
 
 With one window listening, both shapes are exactly what they are above. `--socket PATH` narrows
 to one at any time.
@@ -79,11 +102,12 @@ One entry per pane every followed daemon holds, on screen or not.
 
 ## tabs[], showing and keyboard
 
-`tabs[]` carry `tab`, `daemons`, `place`, `label`, `given_name` and `on_screen`.
+`tabs[]` are the tabs this window holds, and carry `tab`, `daemons`, `place`, `label`,
+`given_name` and `on_screen`.
 
-- `tab` - its name, and what to pass to `muster tab focus`, `muster tab rename --tab` and
-  `muster pane move --tab`. Muster's own name, unique across every machine the window is showing,
-  so it needs nothing beside it.
+- `tab` - its name, and what to pass to `muster tab focus`, `muster tab rename --tab`,
+  `muster tab move --tab` and `muster pane move --tab`. Muster's own name, unique across every
+  machine and every window, so it needs nothing beside it - from any window.
 - `daemons` - the machines it holds panes on, in the order their parts sit on screen. One for
   almost every tab; two for one somebody has grouped with `muster pane move --tab`. Plural because
   a tab does not belong to a machine - which machine holds a pane is on the pane.

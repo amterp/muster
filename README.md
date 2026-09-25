@@ -52,9 +52,9 @@ there.
 
 **More than one window, and `cmd+n` to make one.** Each is its own process, so quitting one leaves
 the others alone, and each has its own address for the CLI - `muster window list` says which are
-open. A window you ask for opens on tabs of its own: names are shared, so an agent named in one is
-the same agent, named the same way, in the other, but only one window at a time can *show* a given
-pane.
+open. Every tab belongs to one window, and each window lists only its own; drag a tab's row into
+another window, or use Move Tab to Window, and its agents go with it still running. A closed
+window keeps its tabs, and any `muster` command reaches any tab from any window.
 
 **Local and remote in one window.** Name an SSH host in your config and its agents appear in the
 same list as the ones on your laptop. `cmd+1` and `cmd+2` switch between a laptop tab and a devenv
@@ -116,11 +116,11 @@ after:
   and a pane running a full-screen program keeps no history behind its screen at all, which is
   most agent panes. The bar says which of those you are looking at rather than leaving a count of
   zero to speak for itself.
-- Only the last window you closed comes back. Every window keeps its own arrangement, so
-  `cmd+n`'s twin - Reopen Closed Window - brings one back; nothing lists the older ones or names
-  which is which.
-- Two windows cannot show the same pane. The session daemon allows one client per terminal, so a
-  window you open starts on tabs of its own rather than onto what another one is drawing.
+- Reopen Closed Window brings back the most recent closed window. An older one comes back when you
+  go to one of its tabs - `muster window` lists them under the closed window's name.
+- Two windows cannot show the same tab. The session daemon allows one client per terminal, so a
+  tab is in exactly one window and moves between them rather than being shown in both.
+- A pane on its own cannot be dragged to another window; it goes with its tab.
 - A name you give a pane reaches another window the next time that window asks the daemon what it
   holds, rather than at the moment you type it. Muster's own names are the same in every window.
 

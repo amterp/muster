@@ -173,9 +173,9 @@ over the line, because they are the way back.
 `muster pane reattach` asks for a bridge, and a bridge asked for after the first one takes the
 pane's terminal over rather than being refused. That is the whole point when the thing holding it
 is a herdr client whose ssh died - which is the usual case, and the one nobody guesses. But herdr
-allows one client per terminal and does not distinguish, so if a *second Muster window* is
-legitimately showing that pane, this takes it from that window. The other window says so and stops
-drawing it; nothing is lost, and it is not the outcome somebody reattaching a stuck pane expects.
+allows one client per terminal and does not distinguish, so whatever else holds it loses it: a
+herdr TUI, or a Muster window that has not yet heard the pane's tab moved away from it. That one
+says so and stops drawing the pane; nothing is lost.
 
 What it cannot do is anything about the machine. It asks this window for a bridge and reaches no
 daemon, so a pane on a devenv you cannot currently reach gets a bridge that fails the same way the
@@ -185,28 +185,41 @@ process, not a dead bridge, and a fresh bridge draws exactly the same thing.
 A pane no machine this window follows holds is refused rather than counted, because there is no
 request on its way that could make the name right a moment later.
 
-## Only the last window you closed comes back
+## A closed window comes back as the latest, or through one of its tabs
 
 `muster window reopen`, and Reopen Closed Window in the menu, bring back the most recent window
-no live window is holding. Every window keeps its own arrangement under
-`~/.muster/state/windows/`, so closing one leaves something to come back to, and reopening it
-twice in a row gets you the one before it.
+no live window is holding. A window keeps its tabs while it is closed - its agents are still
+running - so whichever window comes back, it comes back to its own tabs.
 
-What there is no way to say is *which* one, past that. The records are kept for the last twenty
-windows and nothing lists them or names them; a script that wants a particular arrangement back
-can point a launch at it with `MUSTER_STATE`.
+To bring back a particular one, go to one of its tabs. `muster window` lists a closed window's
+tabs under its name, `window-2 (closed)`, and `muster tab focus <TAB>` naming one of them reopens
+that window onto it; so does clicking a notification about an agent there. A blocked agent in a
+closed window's tab is announced by the window that was in front most recently.
 
-## A second window opens on tabs of its own
+Arrangements are kept for the last twenty windows. A tab whose window's arrangement has gone joins
+the window in front, because nothing could reopen onto it any more. A window that crashed is
+treated as closed the next time anything needs to know - it keeps its tabs the same way.
 
-A window you asked for asks for a workspace and opens onto the tab that comes back, rather than
-onto one that was already there. It has to: the tabs a machine already holds are the ones another
-window is showing, only one client may hold a terminal, and a second window opened onto one paints
-nothing at all. Those tabs are still listed and `muster tab focus` still reaches them - what the
-rule stops is Muster choosing one uninvited.
+## Every tab is in exactly one window
 
-So `muster window new` is not a way to look at the same agents twice. To reach a pane another
-window is showing, go to it in that window - `muster --socket "$W" tab focus <TAB>` - rather
-than opening a second one onto it.
+A window lists the tabs it holds and no others, and no tab is in two windows. Only one client may
+hold a terminal, so a tab two windows both listed would be one whose terminals the second window
+took from the first at a click. A tab made from a window is that window's. A tab made outside
+Muster - in herdr's own TUI, say - joins the window that was in front most recently.
+
+So the agent list, ⌘1 to ⌘9 and `next_tab` are about this window's tabs only. The rest are under
+their own window in `muster window`, and every verb still reaches them: a request naming a tab
+another window holds, or a pane in one, is carried to that window and answered there, and `muster
+tab focus` brings that window forward. Questions are answered by whichever window was asked.
+
+`muster tab move --tab <TAB> --window <WINDOW>` hands a tab to another window with every pane in it
+still running, and without `--window` it brings the tab here. Move Tab to Window in the Tab menu does
+the same, and so does dragging a tab's caption into another window's agent list. A window holding
+a single tab draws no caption, so that tab moves by the menu or the command. A pane on its own
+cannot be dragged to another window.
+
+So `muster window new` is not a way to look at the same agents twice: the window you ask for holds
+nothing until it makes a tab of its own.
 
 ## A name somebody typed does not cross windows straight away
 
@@ -215,12 +228,15 @@ to arrive. The daemon announces a rename to nobody, so a second window learns it
 asks the daemon what it holds rather than at the moment it happens. Muster's own names are not
 affected: those are written down where every window reads them.
 
-## Outside a pane, two open windows are ambiguous for anything that changes something
+## Outside a pane, two open windows are ambiguous for a change that names nothing
 
 Each window listens on its own socket, named after its process. A caller inside a pane reaches
 the right one because `$MUSTER_SOCKET` says which. A caller outside every pane has nothing to go
-on, so with two windows open anything that changes something - `pane new`, `focus`, `zoom` -
-refuses and names the sockets that answered. Pass `--socket` to pick one.
+on, so with two windows open a change that names no tab or pane - `pane new` with no `--pane`,
+`focus`, `zoom` - refuses and names the sockets that answered. Pass `--socket` to pick one.
+
+A change that does name one goes to whichever window answers first, which carries it to the window
+holding that tab. `tab move` names enough when it gives both `--tab` and `--window`.
 
 Questions do not refuse. `muster window` and `muster pane read` answer for every window that is
 listening, because naming none of them is what "what is everything doing" means. Their output

@@ -23,6 +23,8 @@ One name per concept; docs and code use these terms. Alphabetical.
   `~/.muster/state/command-<pid>.sock`. The same schema the shell/core seam carries, arriving from another process -
   which is what the CLI is. A pane reads the path of its own window's from `MUSTER_SOCKET`.
 - **frame** - one screen-diff message on a pane channel.
+- **hold** - which window a tab belongs to. Every tab is held by exactly one window, open or closed, and a window
+  lists only the tabs it holds; the record is `~/.muster/state/holding/tabs.toml`, shared by every window.
 - **intent** - a requested mutation sent to a daemon (split, focus, resize, input, scroll, spawn). Muster never
   mutates; it requests.
 - **mirror** - the core's disposable cache of daemon structure, bootstrapped from snapshot plus events; never
@@ -55,6 +57,7 @@ One name per concept; docs and code use these terms. Alphabetical.
 - **vocabulary** - the backend contract's nouns and verbs, owned by Muster; the contract corpus is its executable
   form.
 - **window** - the unit that holds an ordered list of Muster tabs and shows one of them, with an arrangement of its
-  own under `~/.muster/state/windows/`. Two windows are two arrangements rather than two views of one.
+  own under `~/.muster/state/windows/`. Two windows are two arrangements rather than two views of one, and a window is
+  named after its arrangement (`window-2`), so it is the same window after a quit.
 - **workspace** - a daemon's top-level container of tabs. Nothing a person using Muster has to know about: the
   adapter works out which one a tab belongs in, and no message and no CLI argument names one.

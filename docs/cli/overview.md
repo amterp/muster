@@ -16,8 +16,12 @@ laptop beside an SSH devenv - and a tab can hold panes from more than one of the
 Those side-by-side parts are the tab's *regions*, one per machine with panes in it, and most tabs
 have exactly one. `muster pane move --tab` is what puts a second machine in a tab.
 
+Every tab is in exactly one window. A window lists its own tabs and no others, and `muster tab
+move` hands one to another window. Any command works from any window all the same: one naming a
+tab or pane another window holds is carried to that window and answered there.
+
 Panes outlive the window: quitting Muster leaves the daemons running, and the agents in their
-panes keep working.
+panes keep working - and the window keeps its tabs, so reopening it comes back to them.
 
 ## Pane names
 
@@ -47,7 +51,7 @@ it - see `muster docs limits`.
 
 `muster tab focus` needs a name, because there is no "the tab I am in" to fall back on.
 `muster tab rename` without one means the tab the window's keyboard is in, which is what the
-menu item means.
+menu item means, and `muster tab move` without one means the tab the window is showing.
 
 ## Machine names
 
@@ -75,9 +79,10 @@ how a script says it outright, and how you ask again if a daemon refused.
 
 `$MUSTER_SOCKET` names the window a pane is drawn in, and Muster sets it in every pane it
 creates on this machine. Without it, `muster` looks for listening windows under `~/.muster/state`.
-Anything that changes something refuses rather than guessing if more than one answers; a question
-answers for all of them, headed by which window each answer is about. `--socket PATH` names one
-outright.
+If more than one answers, a change that names its tab or pane goes to any of them, since that
+window carries it to the one holding it; a change that names nothing refuses rather than guessing;
+a question answers for all of them, headed by which window each answer is about. `--socket PATH`
+names one outright.
 
 `muster window list` says which windows are listening under this `MUSTER_HOME`, marking the one
 this command is running in. A window launched with a home of its own is not in that list and is
@@ -85,22 +90,23 @@ reached by spelling out its socket. `muster window new` opens another and prints
 reaches it, so the next line of a script is `muster --socket "$W" pane new --run claude`.
 
 `muster window reopen` brings back the window you closed, and prints its socket the same way.
-The two differ in one thing: a window you ask for starts on tabs of its own and remembers them
-under an arrangement nothing has ever held, and this one takes the most recent arrangement no
-live window is holding.
+The two differ in one thing: a window you ask for holds nothing until it makes a tab of its own,
+and remembers it under an arrangement nothing has ever held; this one takes the most recent
+arrangement no live window is holding, and comes back to that window's tabs. A particular closed
+window comes back when you go to one of its tabs - `muster tab focus <TAB>`.
 
 A window is a process. That is why each one has its own socket named after its pid, and why
 making one starts an app rather than asking a running one for it - the case `window new` exists
 for includes there being no window to ask.
 
 Names are not a window's: two windows on one machine call the same pane the same thing, because
-the names are written down where both can read them. Showing is a window's, and that is the
-backend's limit rather than Muster's - one client may hold a terminal, so a pane one window is
-drawing is a pane another cannot draw at the same time. A window you ask for therefore opens on
-tabs of its own rather than onto what the other one is showing.
+the names are written down where both can read them. Tabs are a window's, and that follows from
+the backend's limit rather than Muster's - one client may hold a terminal, so a pane one window is
+drawing is a pane another cannot draw at the same time. Which window holds each tab is written
+down beside the names, in `~/.muster/state/holding/tabs.toml`, where every window reads it.
 
-There is no move that carries a pane to another window today, and none that carries it to another
-machine ever: a pane is a process and it lives where it lives.
+A pane moves to another window with its tab, `muster tab move --tab <TAB> --window <WINDOW>`, and
+never to another machine: a pane is a process and it lives where it lives.
 
 Muster puts `~/.muster/bin` at the front of the `PATH` of every pane it makes, which is why
 `muster` is there to run at all. That directory holds a link to the command belonging to the

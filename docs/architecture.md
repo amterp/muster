@@ -720,6 +720,14 @@ one answer to give, and checks once a second whether a quiet watch's caller is s
 pane wait` does not hold a thread. A watch is also told when a daemon it follows stops answering and when it is back,
 because nothing about that daemon's panes reaches the window in between (kan a_2P5njTPcm).
 
+**A request about another window's tab is carried to that window.** A tab belongs to exactly one window, and any
+verb works from any window, so the window a caller reaches checks whether a change it was asked for names a tab - or a
+pane in a tab - another open window holds, and if so sends it over that window's socket wrapped in a `Carried` and
+relays the answer. Here at the endpoint rather than in the CLI, because the socket is a door for anything that speaks
+the schema; and not in `dispatch`, because the shell calls that on its main thread and only ever shows its own tabs. A
+carried request is answered where it lands and never carried again. Questions are answered wherever they arrive,
+since every window follows the same daemons.
+
 **A pid in the socket name, because two Musters are two windows.** A caller has to be able to reach the one it means,
 and a single fixed path would mean the second window to open silently took the first one's callers. Which window a
 pane belongs to is settled when the pane is made: Muster puts `MUSTER_SOCKET` in the environment of that request,
@@ -1097,18 +1105,28 @@ open anything.
 `~/.muster/state/windows/`, one file each, and a window writes its pid beside the one it took. A launch drops the
 claims of processes that are gone, then takes the most recently written arrangement nobody is holding - which is the
 window Muster comes back to when none is running, and the window that was just closed when one is. `muster window
-new` and ⌘N say `--fresh`, and a fresh window takes an arrangement nothing has ever held.
+new` and ⌘N say `--fresh`, and a fresh window takes an arrangement nothing has ever held. Going to a closed window's
+tab from another window names the arrangement outright, and that launch takes it.
 
 Two things stand on that. The file has a single writer, where before every window shared one and whichever published
 last decided what came back. And a window that closes leaves something to come back to, which is what `muster window
 reopen` reads.
 
-**A window somebody asked for also opens onto a tab of its own**, and that is a second rule with the same cause. The
-tabs a machine already holds are the ones the window before this one is showing, and herdr allows one client per
-terminal, so a second window opening onto one renders nothing at all. So it writes down what each machine was holding
-when it first heard from it, asks for a workspace, and opens onto the tab that was not there before. Those tabs stay
-listed and stay reachable - taking a terminal from another window is a thing somebody may mean; what the rule stops
-is Muster deciding it uninvited.
+**Every tab belongs to exactly one window, and that is written down beside the names** (kan a_2Mhi0EZlv).
+`~/.muster/state/holding/tabs.toml` says which window holds each tab, and every window reads, changes and writes it
+inside the same lock the names use. herdr allows one client per terminal, so a tab two windows both listed was a tab
+whose terminals the second took from the first at a click - and before this every window listed every tab, so a
+window holding nothing drew the next tab anybody made. Now a window lists the tabs the record gives it and no others,
+and its arrangement names only those.
+
+A window here is its arrangement's name, `window-2`, not its process, so a window keeps its tabs across a quit and
+`muster window reopen` comes back to them. Whether a window is open is asked by dialing its socket rather than read
+off a pid. A tab a window asks for is recorded as its own before anybody else can take it: the window writes that it
+is waiting on that machine before it asks, and one write takes the tab and clears the wait, because herdr describes a
+new tab to every window before the asking one hears its name. A tab nothing asked for - made in herdr's own TUI, or
+held by a window whose arrangement has gone, or every tab on the first launch after this existed - joins the window
+that was in front most recently. The shell watches the record's directory and tells the core when it moves, so an idle
+window costs no wakeups.
 
 But composition is the piece nobody else can save. A herdr daemon's export is scoped to itself and structurally cannot
 describe a workspace spanning a laptop and a devenv, because neither daemon knows the other exists. Muster is the
