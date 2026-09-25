@@ -11,9 +11,9 @@ use std::sync::{Arc, Mutex};
 
 use herdr_harness::{Daemon, until};
 use muster::proto::{
-    AttentionChanged, Carried, CloseTab, CreateTab, Event, FocusTab, MoveTab, OpenWindow,
-    ReadTabHolders, ReadWindow, RenameTab, ReopenWindow, Request, Response, Startup, event,
-    request, response,
+    AttentionChanged, Carried, CloseTab, CreateTab, Event, FocusPane, FocusTab, MoveTab,
+    OpenWindow, ReadTabHolders, ReadWindow, RenameTab, ReopenWindow, Request, Response, Startup,
+    event, request, response,
 };
 use muster_core::composition::holding::{from_toml, to_toml};
 use muster_core::composition::{HeldWindow, Holders, WindowName};
@@ -111,6 +111,44 @@ fn a_request_carried_here_is_answered_here() {
         RAISED.lock().expect("a panicking test poisoned the flag").is_some(),
         "going to a tab from another window left this window behind whatever was in front"
     );
+}
+
+/// Going to a pane in another open window's tab from this window's own shell reaches that window.
+///
+/// A notification is the one way the shell asks about a tab it does not list: macOS hands the click
+/// to whichever instance it chooses, and the pane may be in any window. The shell calls in on its
+/// main thread, which never waits on another window, so the request is carried from a thread of
+/// its own and the call answers at once.
+#[test]
+fn a_notification_click_for_another_windows_pane_reaches_that_window() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = Daemon::start();
+    let other = Stand::in_for(&daemon, "window-9");
+    let ours = open_a_window(&daemon, "window-1");
+    let theirs = a_second_tab_given_to(&daemon, &ours, "window-9");
+    let (pane, _) = pane_of(&daemon, &theirs);
+
+    let focused = answer(request::Payload::FocusPane(FocusPane {
+        pane_id: pane.clone(),
+        ..FocusPane::default()
+    }));
+
+    assert!(
+        matches!(focused.payload, Some(response::Payload::Ok(_))),
+        "going to {pane} in another window's tab was refused: {focused:?}"
+    );
+    until(
+        "the other window to be carried the focus",
+        || other.carried.lock().expect("a panicking test poisoned the log").len() == 1,
+        || "the other window was carried nothing".to_string(),
+    );
+    let carried = other.last().expect("just waited for it");
+    assert_eq!(
+        carried.request.and_then(|request| request.payload),
+        Some(request::Payload::FocusPane(FocusPane { pane_id: pane, ..FocusPane::default() })),
+        "the other window was carried something other than the focus"
+    );
+    assert!(!listed().contains(&theirs), "the other window's tab was brought here instead");
 }
 
 /// A tab whose window is closed is closed from whichever window was asked.
