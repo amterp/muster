@@ -1744,7 +1744,12 @@ if latency:
     // Reported rather than gated. It needs a real daemon, and the number it produces is
     // mostly herdr's render cadence rather than Muster's cost - so a threshold here would
     // fail builds over a dependency's behavior. ./dev --perf gates what is ours.
-    stdout, stderr, code = $`python3 tools/latency.py` catch:
+    //
+    // The pinned daemon, like every other tier, and a release bridge, because the bridge's
+    // hop is one of the things measured and a debug build would overstate it.
+    herdr = herdr_binary()
+    $`cargo build --release --bin muster-bridge`
+    stdout, stderr, code = $`python3 tools/latency.py --herdr {herdr} --bridge target/release/muster-bridge` catch:
         print_err(red("Input-to-glyph could not be measured, so nothing was learned."))
         print_err(stdout.trim())
         print_err(stderr.trim())
