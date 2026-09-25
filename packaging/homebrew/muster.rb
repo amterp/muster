@@ -16,7 +16,7 @@
 # app a second time to get at it.
 
 cask "muster" do
-  version "0.8.1"
+  version "0.9.0"
   sha256 "b3e4cf7a6ac834d9e6cdbccec09b2f114ec5578feb36813f1baebd34e95cb86c"
 
   url "https://github.com/amterp/muster/releases/download/v#{version}/Muster-#{version}-arm64.zip"
