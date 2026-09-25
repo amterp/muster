@@ -41,6 +41,9 @@ pub(crate) struct Holding {
     /// every agent transition reconciles. Forgotten whenever the record moves, because that is
     /// what changes the answer.
     passed_over: BTreeSet<TabId>,
+    /// Whether this window has said it is open and not yet said it closed. While it is, a record
+    /// that has lost this window's row is given it back.
+    open: bool,
 }
 
 impl Default for Holding {
@@ -68,6 +71,7 @@ impl Holding {
             record: (!record.is_empty()).then(|| SharedFile::at(record, &HOLDERS)),
             holders: Holders::new(),
             passed_over: BTreeSet::new(),
+            open: false,
         }
     }
 
@@ -97,13 +101,7 @@ impl Holding {
     /// every window reliably passes through.
     pub(crate) fn open(&mut self, known: impl Fn(&TabId) -> bool) {
         let me = self.me.clone();
-        let window = HeldWindow {
-            name: me.clone(),
-            arrangement: self.arrangement.clone(),
-            socket: self.socket.clone(),
-            pid: std::process::id(),
-            focused: now(),
-        };
+        let window = self.this_window(now());
         self.change(move |holders| {
             // Before registering this window, so the question is about the others. A window
             // whose arrangement is gone can never be reopened, and a tab it held would otherwise
@@ -116,10 +114,23 @@ impl Holding {
             holders.opened(window);
             holders.prune(known);
         });
+        self.open = true;
+    }
+
+    /// This window's row in the record.
+    fn this_window(&self, focused: i64) -> HeldWindow {
+        HeldWindow {
+            name: self.me.clone(),
+            arrangement: self.arrangement.clone(),
+            socket: self.socket.clone(),
+            pid: std::process::id(),
+            focused,
+        }
     }
 
     /// Says this window has closed. It keeps its tabs, so reopening it comes back to them.
     pub(crate) fn close(&mut self) {
+        self.open = false;
         let me = self.me.clone();
         self.change(|holders| holders.closed(&me));
     }
@@ -280,10 +291,7 @@ impl Holding {
         taken
     }
 
-    /// Reads the record again, and says whether anything this window acts on moved.
-    ///
-    /// A window coming to the front changes the record too, and on its own that moves nothing
-    /// on screen - so only who holds which tab counts as a change.
+    /// Reads the record again, and says whether who holds which tab moved.
     pub(crate) fn reread(&mut self) -> bool {
         let Some(record) = &self.record else { return false };
         let mut read = None;
@@ -299,16 +307,16 @@ impl Holding {
                 return false;
             }
         };
-        let moved = holders
-            .windows()
-            .any(|window| holders.held_by(&window.name).ne(self.holders.held_by(&window.name)))
-            || self
-                .holders
-                .windows()
-                .any(|window| holders.held_by(&window.name).ne(self.holders.held_by(&window.name)));
-        self.holders = holders;
+        let before = self.holders.clone();
+        if self.open && holders.window(&self.me).is_none() {
+            // A write rather than an edit of what was just read, so it happens under the hold and
+            // `change` puts this window back from the copy in memory.
+            self.change(|_| {});
+        } else {
+            self.holders = holders;
+        }
         self.passed_over.clear();
-        moved
+        moved(&before, &self.holders)
     }
 
     /// Reads the record, changes it, and writes it back, all inside one hold.
@@ -321,6 +329,10 @@ impl Holding {
         let mut pending = Some(work);
         let mut changed = None;
         let fallback = self.holders.clone();
+        let (open, me) = (self.open, self.me.clone());
+        let this_window = self.this_window(
+            self.holders.window(&self.me).map_or_else(now, |window| window.focused),
+        );
         record.exclusively(&mut |text| {
             let mut holders = match from_toml(text) {
                 Ok(holders) => holders,
@@ -329,6 +341,9 @@ impl Holding {
                     fallback.clone()
                 }
             };
+            if open && holders.window(&me).is_none() {
+                rejoin(&mut holders, &fallback, &me, this_window.clone());
+            }
             let work = pending.take().expect("a hold does its work once");
             work(&mut holders);
             let written = to_toml(&holders);
@@ -339,6 +354,44 @@ impl Holding {
             self.holders = holders;
         }
     }
+}
+
+/// Whether who holds which tab differs between two copies of the record.
+///
+/// A window coming to the front changes the record too, and on its own that moves nothing on
+/// screen - so only who holds which tab counts.
+fn moved(before: &Holders, after: &Holders) -> bool {
+    let differs = |window: &HeldWindow| after.held_by(&window.name).ne(before.held_by(&window.name));
+    after.windows().any(differs) || before.windows().any(differs)
+}
+
+/// Puts an open window back into a record that has lost it, with the tabs it held that no
+/// window has taken since.
+///
+/// A record loses an open window two ways: somebody deleted the file, which the warning for an
+/// unreadable one invites, or another window opening forgot this one because its socket did not
+/// answer. Either way this window is still showing those tabs, and without its row it would let
+/// go of every one of them.
+fn rejoin(holders: &mut Holders, remembered: &Holders, me: &WindowName, window: HeldWindow) {
+    holders.opened(window);
+    let mut taken = Vec::new();
+    for tab in remembered.held_by(me) {
+        if holders.holder(tab).is_none() {
+            holders.take(tab.clone(), me);
+            taken.push(tab.clone());
+        }
+    }
+    log::warn(
+        "holding.rejoined",
+        fields! {
+            "window" => me.to_string(),
+            "tabs" => join(&taken),
+            "impact" => "the record had lost this open window, so it was written back with the \
+                         tabs it held; a tab another window took in the meantime stays there",
+            "check" => "whether somebody deleted the record, or whether this window stopped \
+                        answering on its socket long enough for another window to forget it",
+        },
+    );
 }
 
 /// Whether a window is open: this one always is, and another is when its socket answers.
@@ -371,8 +424,8 @@ fn unreadable(detail: &str) {
                          but it cannot see which tabs other windows have taken or given away \
                          since - it may list one of theirs, or miss one given to it",
             "check" => "whether another Muster of a different version is open, and what is in \
-                        the file; deleting it costs only which window each tab was in, and every \
-                        tab then joins the window in front",
+                        the file; deleting it is safe, since every open window writes itself and \
+                        its tabs back, and costs only which closed window held which tab",
         },
     );
 }
