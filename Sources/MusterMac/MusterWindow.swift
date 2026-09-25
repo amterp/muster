@@ -919,7 +919,8 @@ extension MusterWindow {
   /// its own, and a window is a process - so this starts one, told which record to take and where
   /// to go once it is open.
   public func reopen(named name: String, showing show: String) {
-    openAnother(fresh: false, reopening: [windowFlag, name] + (show.isEmpty ? [] : [showFlag, show]))
+    openAnother(
+      fresh: false, reopening: [windowFlag, name] + (show.isEmpty ? [] : [showFlag, show]))
   }
 
   private func openAnother(fresh: Bool, reopening: [String] = []) {
