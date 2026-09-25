@@ -14,7 +14,7 @@
   "labels": [
     "kill-criterion"
   ],
-  "position": "U",
+  "position": "b1t",
   "title": "Observe real herdr 0.8.0 on the wire, before any Swift",
   "type": "chore",
   "updated_at_millis": 1786485304611,

@@ -21,7 +21,7 @@
   "creator": "Alexander Terp",
   "description": "`MUSTER_SOCKET` is a unix socket path on the machine the window runs on, so Muster sets it only in panes held by a local daemon. A pane on an SSH devenv is told nothing and a program in it correctly concludes it cannot drive anything - it can still be addressed by name from a local pane, and `muster window` still describes it.\n\nStated rather than chased, because the scenario the CLI was built for is unaffected: the integrator is local and the agents it starts need not drive anything. Closing it means forwarding the endpoint over the same ssh master the control plane already opens, and deciding what a remote caller may ask for.\n\nDocumented in `docs/cli/limits.md`.",
   "id": "a_29e9be7aQ",
-  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "position": "aC",
   "tags": [
     "backend",
     "devenv"

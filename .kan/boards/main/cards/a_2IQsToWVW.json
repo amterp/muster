@@ -22,7 +22,7 @@
   "labels": [
     "ai-lo"
   ],
-  "position": "!!!!!!!!!!!!!!!!!!!!!!!0",
+  "position": "b04",
   "title": "🔌 A relaunch cannot recover panes whose orphaned bridges outlived the last app",
   "type": "bug",
   "updated_at_millis": 1788323180812,

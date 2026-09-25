@@ -11,7 +11,7 @@
   "creator": "Alexander Terp",
   "description": "Nobody has recorded what herdr emits, and in which order, when `pane.close` closes a pane that has a client attached. That order is the open question left in `a_2LMpvavhA`.\n\nThe incident's run log says the view dropped the pane 11ms after its bridge ended, yet the \"lost the connection\" error was raised 5s later. The typeable watch raises only panes in `View::showing()`, so a view that had dropped the pane cannot have raised it. Either that 11ms line refers to something other than `showing`, or the order was different from what the log suggests. The `Gone` ending from `ae3fece` fixes the symptom whichever order happened, so this is about understanding, not a live bug.\n\n## What to record\n\nWith the pinned daemon, one attached client and a subscription open, call `pane.close` and capture, with timestamps:\n\n- the client's `Closed` frame and its reason,\n- `pane_closed` on the event stream,\n- the first `pane.list` / snapshot that no longer lists the pane.\n\nKeep it under `corpus/herdr-0.8.0/` and quote it in `docs/observations/herdr-0.8.0.md` section 24.",
   "id": "a_2P5Y73nAJ",
-  "position": "UUUUUUUUUUUUUUUU",
+  "position": "aB",
   "title": "Record herdr's event order when a pane with a client attached is closed",
   "type": "chore",
   "updated_at_millis": 1789255568411,

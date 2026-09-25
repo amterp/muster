@@ -10,7 +10,7 @@
   "creator": "Alexander Terp",
   "description": "When herdr makes a split and its answer never arrives at all (a dropped connection, a daemon wedged past 30s), the window lists the pane under a name minted on sight, while the process inside it has the name the split was sent with in `$MUSTER_PANE`. `muster` commands run in that pane are refused for a pane that does not exist.\n\n`a_2P65ttmCu` fixed the common case: an answer that arrives late is read on a thread of its own and binds the name. An answer that never comes has no evidence left to bind on. Reading the shell's environment does not work on macOS, which hides the environment of `/bin/zsh` and `/bin/bash` from other processes. The gap is documented in `docs/cli/limits.md` under exit 4.\n\nA route that would close it: the CLI sends `$HERDR_PANE_ID` beside `$MUSTER_PANE`, and the core binds an unresolved name on it after checking with the daemon. That touches proto, CLI and seam, and heals only once something in the pane runs `muster`.\n\nFound by slot 1 of the 2026-09-13 round.",
   "id": "a_2PSQUDoNJ",
-  "position": "UUUUUUUUUUUUUUUUUUUUUUUU",
+  "position": "aI",
   "title": "A split whose answer never arrives still lists its pane under another name",
   "type": "bug",
   "updated_at_millis": 1789310090703,

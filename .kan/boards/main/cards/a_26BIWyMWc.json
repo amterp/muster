@@ -46,7 +46,7 @@
   "labels": [
     "kill-criterion"
   ],
-  "position": "UUUUUUUU",
+  "position": "b20",
   "title": "Input path: prove daemon-side-correct encoding",
   "type": "chore",
   "updated_at_millis": 1786617580890,

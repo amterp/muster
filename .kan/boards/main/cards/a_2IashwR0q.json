@@ -22,7 +22,7 @@
   "labels": [
     "ai-hi"
   ],
-  "position": "!!!!!!!!!!!!!!!!!!!!!!!!!E",
+  "position": "ax",
   "title": "🎨 Bold text cannot be given its own colour, so agent output reads flat",
   "type": "feature",
   "updated_at_millis": 1788324984362,

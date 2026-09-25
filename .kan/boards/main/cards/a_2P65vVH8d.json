@@ -11,7 +11,7 @@
   "creator": "Alexander Terp",
   "description": "`./devenv/devenv up` rebuilds the image, but a container that is already running keeps the image it started from. A `devenv/Dockerfile` edit therefore does not reach the container until somebody runs `down` first, and nothing says so.\n\nThis is the image version of `a_2LONhlgwh`, which `2c986bf` fixed for the ssh key. Slot 4 of the 2026-09-12 round hit it adding a sudoers rule. Comparing the running container's image id with the one `build` just produced, and recreating on mismatch, would cover it the same way.",
   "id": "a_2P65vVH8d",
-  "position": "UUUUUUUUUUUUUUUUUUUU",
+  "position": "aE",
   "title": "devenv up leaves a running container on a stale image",
   "type": "chore",
   "updated_at_millis": 1789256868207,

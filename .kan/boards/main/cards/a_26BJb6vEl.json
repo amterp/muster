@@ -11,7 +11,7 @@
   "creator": "Alexander Terp",
   "description": "Daemon owns truth; decide how much the local surface caches and who answers a scroll event. Interacts with herdr's alt-screen and copy-mode behavior.",
   "id": "a_26BJb6vEl",
-  "position": "UU",
+  "position": "a0",
   "title": "Scrollback strategy",
   "type": "chore",
   "updated_at_millis": 1786461806247,

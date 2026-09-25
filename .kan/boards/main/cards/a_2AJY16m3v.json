@@ -8,7 +8,7 @@
   "created_at_millis": 1787072480232,
   "updated_at_millis": 1787072485841,
   "column": "backlog-lo",
-  "position": "UUUUUUU",
+  "position": "a3",
   "history": [
     {"field":"column","value":"backlog-lo","at":1787072480232}
   ]

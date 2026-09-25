@@ -19,7 +19,7 @@
   "creator": "Alexander Terp",
   "description": "Subscribe to pane.agent_status_changed across all attached daemons; render working/blocked/done/idle uniformly. The reason muster exists - the desiderata's #1.",
   "id": "a_26BJGTrZV",
-  "position": "!!!2",
+  "position": "b1c",
   "title": "Stage 3: agent-state sidebar",
   "type": "feature",
   "updated_at_millis": 1786786220408,

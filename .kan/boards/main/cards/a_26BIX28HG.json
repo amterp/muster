@@ -22,7 +22,7 @@
   "labels": [
     "kill-criterion"
   ],
-  "position": "UUUUUUUUUUUU",
+  "position": "b24",
   "title": "Measure double-emulation latency",
   "type": "chore",
   "updated_at_millis": 1786622399610,

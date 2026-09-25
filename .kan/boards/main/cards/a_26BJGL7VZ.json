@@ -19,7 +19,7 @@
   "creator": "Alexander Terp",
   "description": "Mirror herdr structure from session.snapshot + events (layout.export is a portable restore tree, not live state); render each tab's pane tree as real native splits; splits/resizes go back through the socket API. Event application must be idempotent and absolute-valued - no exposed sequence numbers upstream (see architecture.md, event model).",
   "id": "a_26BJGL7VZ",
-  "position": "!!U",
+  "position": "b1j",
   "title": "Stage 2: render the mirrored pane tree as native splits",
   "type": "feature",
   "updated_at_millis": 1786663791349,

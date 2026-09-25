@@ -10,7 +10,7 @@
   "creator": "Alexander Terp",
   "description": "`ghostty_surface_read_selection` hands over a selection's text and nothing hands over its bounds. That is why a word or line selection cannot be re-placed after a scroll the way a drag can.\n\n`a_2Jrhh1dkA` shipped the workaround: keep the click count and re-drive two presses at the projected cell, which works only because a press more than one cell width from the last resets libghostty's count - and which needs a rule about never landing twice on the same cell, or the word becomes a line.\n\nTwo numbers would replace all of it. Muster owns the libghostty seam, so this is a legitimate upstream ask.",
   "id": "a_2LMRtvqyJ",
-  "position": "UUUUUUUUUUUUU",
+  "position": "aL",
   "title": "⬆️ Upstream ghostty: a getter for a selection's start and end",
   "type": "chore",
   "updated_at_millis": 1788704791939,

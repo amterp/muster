@@ -10,7 +10,7 @@
   "creator": "Alexander Terp",
   "description": "Structural gaps leave no evidence at all - nothing reports a pane created and closed while a subscription was down - so periodic re-snapshot is the only detector (architecture.md, event model). The mirror already rebuilds on every reconnect; what is missing is a timer for the case where the connection never drops but the daemon and the mirror have diverged anyway.\n\nCheap to do: session.snapshot costs 0.7ms. The question is the interval, and whether constant traffic is worth guarding a divergence nobody has observed. Deferred deliberately until there is a reason to think it happens.",
   "id": "a_27RZ05KFh",
-  "position": "UUUUUUUUUUUUUUUUUUUUUUUUUUU",
+  "position": "aB",
   "title": "🔌 Reconciliation cadence: how often to re-snapshot",
   "type": "chore",
   "updated_at_millis": 1786648294183,

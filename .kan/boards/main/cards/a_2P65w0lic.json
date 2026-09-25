@@ -10,7 +10,7 @@
   "creator": "Alexander Terp",
   "description": "herdr published a tab's `layout_updated` with a 0x0 area once, while the `naming` probe ran at a load average of about 80. Two unloaded retries gave 54x24, and the 0x0 recording was discarded rather than checked in.\n\nQuestion worth answering: what does the mirror do with a zero-area layout? If it takes it, a pane may briefly lay out at zero size, or a resize may be sent for one. A mirror case with a 0x0 `layout_updated` would say.\n\nSeen by slot 4 of the 2026-09-12 round. Not reproduced.",
   "id": "a_2P65w0lic",
-  "position": "UUUUUUUUUUUUUUUUUUUUU",
+  "position": "aF",
   "title": "herdr published a 0x0 layout under load",
   "type": "chore",
   "updated_at_millis": 1789256868512,

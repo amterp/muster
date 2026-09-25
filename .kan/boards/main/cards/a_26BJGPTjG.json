@@ -18,7 +18,7 @@
   "creator": "Alexander Terp",
   "description": "Attach the devenv container's daemon alongside the local one - the mixed local/remote view herdr itself cannot do (their discussion #2232). Decide transport here: tunneled socket vs CLI-over-ssh.",
   "id": "a_26BJGPTjG",
-  "position": "!!0",
+  "position": "b1g",
   "title": "Stage 2: second daemon over SSH in the same window",
   "type": "feature",
   "updated_at_millis": 1786779051758,

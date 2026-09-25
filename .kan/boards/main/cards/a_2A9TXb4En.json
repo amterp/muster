@@ -8,7 +8,7 @@
   "created_at_millis": 1787048475382,
   "updated_at_millis": 1788131558268,
   "column": "done",
-  "position": "!!!!!!!!!!!!!!!!!!!!U",
+  "position": "b0N",
   "history": [
     {"field":"column","value":"backlog-hi","at":1787048475382},
     {"field":"column","value":"done","at":1788131558268}

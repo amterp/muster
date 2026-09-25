@@ -22,7 +22,7 @@
   "labels": [
     "ai-lo"
   ],
-  "position": "!!!!!!!!!!!!!!!!!!!!!!!!!2",
+  "position": "av",
   "title": "📖 pane read --rows answers blank on a quiet pane, and blank means nothing printed",
   "type": "bug",
   "updated_at_millis": 1788325557291,

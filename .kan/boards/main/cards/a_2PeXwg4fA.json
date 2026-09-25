@@ -10,7 +10,7 @@
   "creator": "Alexander Terp",
   "description": "The bridge reports `bridge.painted` on the leading edge only (at most every 250ms, and only when a frame arrives). Frames inside the interval are held until the next frame, so the echo of the last keystrokes before a pause is never reported, and the core raises `pane:\u003ckey\u003e:painting` 10s later. The next keystroke clears it. The `bridge.frames` debug summary has the same defect.\n\nSeen on local/p23f0s2f1p: last keystroke 22:26:10.255, raised 22:26:20.108, the next keystroke's report at 22:26:27.226 carried the 9 held frames.\n\nFix: a trailing report, so held frames get their line once the interval ends even when no further frame arrives.",
   "id": "a_2PeXwg4fA",
-  "position": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!U",
+  "position": "a0",
   "title": "🎯 Pausing after typing raises a false painting-stopped warning",
   "type": "bug",
   "updated_at_millis": 1789339481366,

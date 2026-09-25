@@ -15,7 +15,7 @@
   "creator": "Alexander Terp",
   "description": "`muster window` painted working green and done blue; the window paints working blue and done green. Two independent literals, and no document anywhere stated the legend - so the second author had nothing to disagree with.\n\nReported as \"the dot stays green after an agent finishes\": green is `done`, working is blue, but the CLI had taught the opposite.\n\nThe CLI moves, because attention lives in the window. Legend written into docs/architecture.md and docs/cli/window.md, each source site citing the doc and the other surface, and a tripwire test per side.",
   "id": "a_2HPHq3Zck",
-  "position": "!!!!!!!!!!!!!!!!!!!U",
+  "position": "b0S",
   "title": "🎨 The window and the CLI paint agent states in inverted colours",
   "type": "bug",
   "updated_at_millis": 1788120694872,

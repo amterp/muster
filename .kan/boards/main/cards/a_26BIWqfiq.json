@@ -18,7 +18,7 @@
   "creator": "Alexander Terp",
   "description": "Prove the unstable embedding API builds and runs outside ghostty's own app: one window, one surface, spawn $SHELL. Reference: ghostty's macos/Sources wiring. This is the foundation every later card stands on.",
   "id": "a_26BIWqfiq",
-  "position": "UUUUU",
+  "position": "b1x",
   "title": "Spike: embed a libghostty surface in a bare Swift window",
   "type": "feature",
   "updated_at_millis": 1786517743250,

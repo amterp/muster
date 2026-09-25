@@ -10,7 +10,7 @@
   "creator": "Alexander Terp",
   "description": "Its label sits about 16pt left of its neighbours, so a long list is ragged from the tenth pane down. Visible in this project own fifteen-pane windows.\n\nOne word: reservedPresses of 1 rather than 0 on pane rows under numbered_chords = \"panes\". Slot 2 noticed it while building a_2LSUoy7dd and deliberately left it - that card was about tab_then_pane, and this changes the default scheme appearance, which nobody asked for.\n\nWorth deciding rather than just doing: reserving the gutter costs 16pt of label on every pane row in every window, to straighten rows past the ninth that only exist in large windows. The alternative is leaving it ragged, which is honest about the fact that those panes have no chord.",
   "id": "a_2LUbDx0ZM",
-  "position": "UUUUUUUUUUUUU",
+  "position": "a8",
   "title": "Under the panes scheme a pane past the ninth reserves no gutter",
   "type": "chore",
   "updated_at_millis": 1788724216555,

@@ -28,7 +28,7 @@
     }
   ],
   "column": "in-progress",
-  "position": "U",
+  "position": "a0",
   "history": [
     {"field":"column","value":"backlog-lo","at":1787041310779},
     {"field":"column","value":"in-progress","at":1787041483308},

@@ -10,7 +10,7 @@
   "creator": "Alexander Terp",
   "description": "A pane moved to another workspace leaves its old id in the mirror, and the moved pane loses its Muster name. herdr gives a cross-workspace move a new pane id, and `pane_moved` carries `previous_pane_id`, which nothing in Muster reads. The name registry does not rebind the name to the new id.\n\nSo the old row stays as a phantom (`a_2Mi2uGGxX`'s symptom by a different path), and the process in the moved pane keeps a `$MUSTER_PANE` no pane answers to.\n\nFound by slot 2 of the 2026-09-12 round, reading herdr v0.8.0 `src/workspace.rs` (`register_new_pane_with_number`). Not reproduced against a daemon.",
   "id": "a_2P65uM7yI",
-  "position": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!2",
+  "position": "a2",
   "title": "A pane moved across workspaces leaves its old id in the mirror",
   "type": "bug",
   "updated_at_millis": 1789310090524,

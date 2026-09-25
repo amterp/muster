@@ -10,7 +10,7 @@
   "creator": "Alexander Terp",
   "description": "`muster window --watch` prints each line as a pane id and a state (`p1w3r0ab2n  idle`), with no label or given name. An agent knows the ids it is watching, so this costs it nothing; a person running the watch has to cross-reference `muster window` to know which pane moved.\n\nMinor. The plain output could carry the label `muster window` prints; `--json` is fine as it is.",
   "id": "a_2P5nkmvqO",
-  "position": "UUUUUUUUUUUUUUUUU",
+  "position": "aC",
   "title": "window --watch lines name panes by id only",
   "type": "enhancement",
   "updated_at_millis": 1789256169629,

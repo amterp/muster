@@ -10,7 +10,7 @@
   "creator": "Alexander Terp",
   "description": "A subscription opened onto an existing session replays one event kind at a time. In testing, replayed `layout_updated` events naming a pane's old id (`w1:p1`) arrived after a cross-workspace move had already given it a new one (`w2:p2`).\n\nWith names Muster mints, that mints a throwaway name for the dead id, and the tab's tree is withheld until the next layout. A replayed `pane_created` for the old id in that window would add a phantom row under a fresh name.\n\nSeen while writing `a_2P65uM7yI`'s tests, not reproduced as a user-visible fault. herdr keeps the old id as an alias until the pane closes (`docs/observations/herdr-0.8.0.md` section 20), which is why a late event naming it still resolves.\n\nFound by slot 1 of the 2026-09-13 round.",
   "id": "a_2PSQUPBkE",
-  "position": "UUUUUUUUUUUUUUUUUUUUUUUUU",
+  "position": "aJ",
   "title": "A replay arriving after a cross-workspace move can name the retired pane id",
   "type": "bug",
   "updated_at_millis": 1789310090797,

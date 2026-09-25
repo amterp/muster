@@ -11,7 +11,7 @@
   "creator": "Alexander Terp",
   "description": "Their socket API is not a stability contract yet. Pin a tested herdr version per muster release; contract-test corpus doubles as the upgrade gate.",
   "id": "a_26BJbBnQC",
-  "position": "UUU",
+  "position": "a1",
   "title": "herdr version compatibility policy",
   "type": "chore",
   "updated_at_millis": 1786461806292,
