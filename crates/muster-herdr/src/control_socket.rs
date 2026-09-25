@@ -235,9 +235,20 @@ impl PaneControlChannel {
     /// the surface starting and the bridge dialing back - and is a real problem after that,
     /// which is why the caller is told rather than the failure being swallowed here.
     pub fn send(&self, message: &ControlStreamMessage) -> bool {
+        self.write_line(&message.wire_format())
+    }
+
+    /// Tells the bridge whether its pane is on screen, which decides whether it holds a herdr
+    /// client (`bridge_report::Showing`). False when no bridge has connected yet, which needs
+    /// nothing done: a bridge starts out streaming, for a pane a region is showing.
+    pub fn show(&self, on_screen: bool) -> bool {
+        self.write_line(&crate::bridge_report::Showing { on_screen }.wire_format())
+    }
+
+    fn write_line(&self, line: &[u8]) -> bool {
         let mut slot = poison::lock(&self.client, "pane-control-channel");
         let Some(stream) = slot.as_mut() else { return false };
-        match stream.write_all(&message.wire_format()) {
+        match stream.write_all(line) {
             Ok(()) => true,
             Err(error) => {
                 log::error(

@@ -8,22 +8,27 @@
 //! Output only, deliberately. The frames have already consumed the pane's terminal modes,
 //! so nothing here may encode input - that belongs where the modes live, in the daemon. The
 //! one thing this does write back is geometry.
+//!
+//! And it lets its herdr client go while the pane is hidden (`attachment.rs`), because herdr
+//! renders every attached client whether or not anybody can see it.
 
+mod attachment;
 mod pty;
 mod tally;
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::net::UnixStream;
-use std::process::{Child, ChildStdin, Command, Stdio};
+use std::process::{Child, ChildStdout, Command, Stdio};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
+use attachment::{Attachment, Ended};
 use muster_core::diagnostics::log::{self, LogLevel};
 use muster_core::diagnostics::poison;
 use muster_core::fields;
 use muster_core::mirror::backend::PaneId;
 use muster_core::respawn::{self, Ending};
-use muster_herdr::bridge_report::{self, Exiting, PAINTED_INTERVAL_NS, Painted};
+use muster_herdr::bridge_report::{self, Exiting, PAINTED_INTERVAL_NS, Painted, Showing};
 use muster_herdr::{ControlStreamMessage, FrameDecoder, PaneStreamEvent};
 use muster_ssh::quoted;
 use tally::{Counted, Tally};
@@ -63,8 +68,9 @@ With --pane-name, knows what Muster calls this pane, which is not <pane-id>: tha
 daemon's id. Only used in what this prints for a person, whose `muster` commands take
 Muster's name.";
 
-/// herdr's stdin, which two threads write to: the resize watcher and the app's relay.
-type HerdrInput = Arc<Mutex<ChildStdin>>;
+/// herdr's stdin, which two threads write to - the resize watcher and the app's relay - and
+/// which is not there at all while the pane is parked.
+type HerdrInput = Arc<Attachment>;
 
 fn main() {
     let Some(arguments) = Arguments::parse(&std::env::args().skip(1).collect::<Vec<_>>()) else {
@@ -130,8 +136,13 @@ fn main() {
         }
     };
 
-    let input: HerdrInput =
-        Arc::new(Mutex::new(herdr.stdin.take().expect("herdr was spawned with a piped stdin")));
+    let input: HerdrInput = Arc::new(Attachment::new(
+        herdr.stdin.take().expect("herdr was spawned with a piped stdin"),
+    ));
+    std::thread::spawn({
+        let input = Arc::clone(&input);
+        move || input.park_when_idle()
+    });
     let output = herdr.stdout.take().expect("herdr was spawned with a piped stdout");
 
     // Dialed before the resize watcher starts, because that watcher reports every grid it asks
@@ -164,9 +175,10 @@ fn main() {
     });
 
     pty::make_stdin_raw();
-    pump_frames(output, &arguments.pane, arguments.pane_name.as_deref(), app.as_ref());
+    pump_frames(herdr, output, &arguments, app.as_ref(), &input);
 }
 
+#[derive(Clone)]
 struct Arguments {
     pane: String,
     control_socket: Option<String>,
@@ -375,11 +387,7 @@ fn herdr_binary(told: Option<&str>) -> std::ffi::OsString {
 }
 
 fn send(input: &HerdrInput, message: &ControlStreamMessage) {
-    let mut input = poison::lock(input, "herdr-stdin");
-    // Nowhere useful to report a failed write: herdr has gone, and the frame pump is about
-    // to notice and say so with the reason it was given.
-    let _ = input.write_all(&message.wire_format());
-    let _ = input.flush();
+    input.send_if_streaming(&message.wire_format());
 }
 
 /// Dials the app and relays whatever it sends, verbatim.
@@ -468,21 +476,29 @@ fn relay(socket: UnixStream, input: &HerdrInput) {
                 },
             },
         );
-        let mut herdr = poison::lock(input, "herdr-stdin");
-        if herdr.write_all(&line).is_err() {
+        if let Some(showing) = Showing::parse(&line) {
+            log::info("bridge.showing", fields! { "on_screen" => showing.on_screen });
+            input.show(showing.on_screen);
+            continue;
+        }
+        if !input.send_input(&line) {
             return;
         }
-        let _ = herdr.flush();
     }
 }
 
-/// Pumps decoded frames to the surface, until the stream ends.
+/// Pumps decoded frames to the surface, until the stream ends for good.
+///
+/// A stream this bridge ended on purpose, to park a hidden pane, is not the end: the pump waits
+/// until a client is wanted again and starts one.
 fn pump_frames(
-    mut output: impl Read,
-    pane: &str,
-    pane_name: Option<&str>,
+    mut herdr: Child,
+    mut output: ChildStdout,
+    arguments: &Arguments,
     app: Option<&Reporting>,
+    input: &Attachment,
 ) -> ! {
+    let (pane, pane_name) = (arguments.pane.as_str(), arguments.pane_name.as_deref());
     let mut decoder = FrameDecoder::new();
     let counted = Arc::new(Counting::new(app.is_some()));
     std::thread::spawn({
@@ -490,30 +506,62 @@ fn pump_frames(
         let app = app.cloned();
         move || report_frames(&counted, app.as_ref())
     });
-    let mut pump = Pump { rendered: false, counted };
+    let mut pump = Pump { rendered: false, counted, resumed: None };
     // Heap rather than stack: a repaint is routinely tens of kilobytes, and this thread
     // has no reason to carry that in its frame.
     let mut chunk = vec![0u8; 64 * 1024].into_boxed_slice();
 
     loop {
-        let read = match output.read(&mut chunk) {
-            Ok(0) | Err(_) => {
-                // herdr hung up without a closing frame, which the protocol does not call
-                // for. Same exit either way - it is what tells libghostty this pane's
-                // command is gone - but it goes through the same reporting so the window
-                // never just stops.
-                let why = Some("herdr's stream ended without a closing frame");
-                pump.finish(pane, pane_name, why, app);
-            }
-            Ok(read) => read,
-        };
-
-        for event in decoder.consume(&chunk[..read]) {
-            match event {
-                PaneStreamEvent::Frame(frame) => pump.render(&frame.bytes),
-                PaneStreamEvent::Closed { reason } => {
-                    pump.finish(pane, pane_name, reason.as_deref(), app);
+        // herdr hung up without a closing frame, which the protocol does not call for. Same
+        // exit either way - it is what tells libghostty this pane's command is gone - but it
+        // goes through the same reporting so the window never just stops.
+        let mut ended = None;
+        match output.read(&mut chunk) {
+            Ok(0) | Err(_) => ended = Some("herdr's stream ended without a closing frame".into()),
+            Ok(read) => {
+                for event in decoder.consume(&chunk[..read]) {
+                    match event {
+                        PaneStreamEvent::Frame(frame) => pump.render(&frame.bytes),
+                        PaneStreamEvent::Closed { reason } => {
+                            ended = Some(reason.unwrap_or_else(|| "herdr gave no reason".into()));
+                            break;
+                        }
+                    }
                 }
+            }
+        }
+        let Some(why) = ended else { continue };
+
+        let because = match input.ended() {
+            Ended::Finished => pump.finish(pane, pane_name, Some(&why), app),
+            Ended::Restart { because } => because,
+        };
+        let _ = herdr.wait();
+        let (columns, rows) = pty::terminal_size();
+        // Never a takeover: a pane taken while it was parked belongs to whoever took it, and
+        // the app decides whether to take it back, as it does for any refused attach.
+        let resuming = Arguments { takeover: false, ..arguments.clone() };
+        match spawn_herdr(&resuming, columns, rows) {
+            Ok(mut next) => {
+                input.attached(next.stdin.take().expect("herdr was spawned with a piped stdin"));
+                output = next.stdout.take().expect("herdr was spawned with a piped stdout");
+                herdr = next;
+                decoder = FrameDecoder::new();
+                pump.resumed = Some((std::time::Instant::now(), because));
+            }
+            Err(error) => {
+                log::error(
+                    "bridge.resume.failed",
+                    fields! {
+                        "pane" => pane,
+                        "error" => error.clone(),
+                        "impact" => "this pane stays on its last picture and takes no input",
+                        "check" => "whether herdr can still be run here - the same check as a \
+                                    bridge that could not start",
+                    },
+                );
+                let why = format!("herdr could not be started again: {error}");
+                pump.finish(pane, pane_name, Some(&why), app);
             }
         }
     }
@@ -622,6 +670,8 @@ struct Pump {
     /// pane that never began.
     rendered: bool,
     counted: Arc<Counting>,
+    /// When a parked pane's new client was started, and why, until its first frame arrives.
+    resumed: Option<(std::time::Instant, &'static str)>,
 }
 
 impl Pump {
@@ -632,6 +682,16 @@ impl Pump {
             log::info("bridge.frame.first", fields! { "bytes" => bytes.len() });
         }
         self.rendered = true;
+        // What reattaching cost is what showing a hidden tab costs, so it is on the record.
+        if let Some((at, because)) = self.resumed.take() {
+            log::info(
+                "bridge.resumed",
+                fields! {
+                    "because" => because,
+                    "ms" => format!("{:.1}", at.elapsed().as_secs_f64() * 1000.0),
+                },
+            );
+        }
         if log::enabled(LogLevel::Trace) {
             log::trace("bridge.frame", fields! { "bytes" => bytes.len() });
         }

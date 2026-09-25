@@ -310,10 +310,15 @@ between "bytes" and "control":
 
 - **Output rides the data plane.** Each visible pane has its own channel from adapter to surface, bypassing the
   core. With herdr the channel carries server-rendered frame diffs of the pane's screen - not the raw program
-  output - so the daemon's render cost scales with *visible* panes: hidden panes detach their channels, and
-  revealing a pane costs one full repaint. Detaching costs no state: herdr analyzes a pane's screen whether or not
-  anyone is watching it, so a hidden pane keeps reporting its agent state. The core never sits in this path;
-  per-byte work in the core is a defect (desiderata: fast is a feature).
+  output - so the daemon's render cost scales with *visible* panes: a hidden pane's bridge lets go of its herdr
+  client and keeps its surface and its socket, and revealing the pane starts a client whose first frame is a full
+  repaint (about 50 ms to that frame on a loaded machine; the surface shows its last picture meanwhile). herdr
+  renders every attached client on each pass, and with twelve of fifteen panes printing that measured 0.135 of a
+  core with all of them attached against 0.030 with the two on screen. Detaching costs no state: herdr analyzes a
+  pane's screen whether or not anyone is watching it, so a hidden pane keeps reporting its agent state, and keeps
+  the size its last client gave it. Local panes only: a remote pane's client is an ssh exec that takes about half
+  a second to start, which would be the price of every tab switch, so a remote pane stays attached. The core never
+  sits in this path; per-byte work in the core is a defect (desiderata: fast is a feature).
 - **Everything else rides the control plane, through the core** - daemon events (structure, agent states, bells,
   titles), intents, configuration, and *input*. Input is the awkward one, because nobody in this picture is in a
   position to encode it well. Key encoding needs the pane's terminal modes (kitty keyboard, bracketed paste,

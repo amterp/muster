@@ -21,10 +21,12 @@ import AppKit
 /// what was on screen. Keyed by pane, a parked pane keeps its state painted, so a tab switched
 /// back to is right on the first frame rather than on the next agent transition.
 ///
-/// What it costs is what the card priced: one `muster-bridge`, one ssh channel and one herdr
-/// client per pane, held for as long as the pane exists, rather than per pane on screen. A
-/// window of fifteen agents holds fifteen of each. They are released when the daemon stops
-/// holding the pane, so the cost scales with panes rather than with switches.
+/// What it costs is what the card priced: one `muster-bridge` per pane, held for as long as the
+/// pane exists, rather than per pane on screen, and for a remote pane its ssh channel and herdr
+/// client too. A local pane's bridge lets go of its herdr client while the pane is hidden,
+/// because herdr renders every attached client whether anybody can see it, and a local client
+/// is cheap to start again. They are released when the daemon stops holding the pane, so the
+/// cost scales with panes rather than with switches.
 @MainActor
 public final class PaneSurfaces {
   /// Gives a pane's chrome a surface, and the bridge that feeds it.

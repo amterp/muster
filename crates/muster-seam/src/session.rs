@@ -890,8 +890,9 @@ pub(crate) struct AttachedPane {
     /// between attaching and answering cannot be handed an id from a registry that has already
     /// forgotten it.
     pub(crate) backend_pane_id: String,
-    /// Held because dropping it unlinks the socket and stops the listener.
-    _control: Arc<PaneControlChannel>,
+    /// Held because dropping it unlinks the socket and stops the listener, and used to tell the
+    /// bridge whether its pane is on screen.
+    control: Arc<PaneControlChannel>,
 }
 
 /// One daemon this process is following.
@@ -1091,6 +1092,8 @@ pub(crate) struct Session {
 struct Sent {
     view: Option<ViewChanged>,
     roster: Option<RosterChanged>,
+    /// The panes on screen the last time the bridges were told which theirs are.
+    showing: Option<BTreeSet<PaneKey>>,
 }
 
 impl Sent {
@@ -1179,6 +1182,36 @@ pub(crate) fn reset() {
 }
 
 impl Session {
+    /// Which local panes' bridges to tell whether they are on screen, when that has changed.
+    ///
+    /// A bridge told its pane is hidden lets go of its herdr client, because herdr renders every
+    /// attached client on each pass whether or not anybody can see it - measured at 0.135 of a
+    /// core with fourteen panes attached against 0.030 with the two on screen. Every pane is told
+    /// rather than only the ones that moved, because the message costs a line and a bridge
+    /// replaced while its pane was hidden starts out streaming.
+    ///
+    /// Local panes only. A remote pane's client is an ssh exec, measured at 444-561 ms to start
+    /// (`PaneSurfaces`), which would be the price of every tab switch; its daemon renders it
+    /// regardless, and says so to nobody on this machine.
+    fn tell_bridges_what_is_showing(
+        &mut self,
+        showing: &BTreeSet<PaneKey>,
+    ) -> Vec<(Arc<AttachedPane>, bool)> {
+        if self.sent.showing.as_ref() == Some(showing) {
+            return Vec::new();
+        }
+        self.sent.showing = Some(showing.clone());
+        self.panes
+            .iter()
+            .filter(|(daemon, _)| self.backends.get(*daemon).is_some_and(|b| b.tunnel.is_none()))
+            .flat_map(|(daemon, panes)| {
+                panes.iter().map(move |(pane, held)| {
+                    (Arc::clone(held), showing.contains(&PaneKey::new(daemon, pane)))
+                })
+            })
+            .collect()
+    }
+
     /// Starts following a daemon, or leaves the one already being followed alone.
     ///
     /// Seeded with a snapshot the caller already has, before the subscription starts. The
@@ -1502,7 +1535,7 @@ impl Session {
                 .delivering_to(Arc::new(move || watchdog::typed(&asked))),
                 control_socket_path: path,
                 backend_pane_id: backend_pane.as_str().to_string(),
-                _control: control,
+                control,
             }),
         );
         // The socket is bound and the shell has not been told about it yet, so this is the
@@ -3918,7 +3951,7 @@ fn publish(cause: &str) {
     // two are settled together rather than left to drift. `noticed` is the panes that were
     // waiting to be noticed and have now been - re-announced below, after the shell has been
     // handed the arrangement they appear in.
-    let (view, roster, numbering, noticed, view_message, roster_message) = {
+    let (view, roster, numbering, noticed, view_message, roster_message, told) = {
         let mut session = poison::lock(&SESSION, "session");
         // Before the view is built, and over every daemon rather than whichever one prompted
         // this. Several paths change what is on screen without going near a reconcile:
@@ -3963,8 +3996,13 @@ fn publish(cause: &str) {
         let roster_message = convert::roster(&roster, &numbering);
         let view_message = session.sent.view(&view_message).then_some(view_message);
         let roster_message = session.sent.roster(&roster_message).then_some(roster_message);
-        (view, roster, numbering, noticed, view_message, roster_message)
+        let told = session.tell_bridges_what_is_showing(view.showing());
+        (view, roster, numbering, noticed, view_message, roster_message, told)
     };
+    // Outside the lock, because each is a write to a socket.
+    for (pane, on_screen) in told {
+        pane.control.show(on_screen);
+    }
 
     // The first thing done outside that lock, because it is the only thing here that has been
     // waiting for it: the reconciles above are what discover a pane has closed, and taking back

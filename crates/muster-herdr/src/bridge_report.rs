@@ -20,9 +20,47 @@
 //! pass the app, so nothing above knows whether a pane answered what was typed into it - and a
 //! pane that stopped answering looks exactly like one nobody has touched. `Painted` says a frame
 //! arrived, on the same terms as `Grid`: the fact, not a verdict about it.
+//!
+//! **One thing goes the other way in Muster's words**: `Showing`, whether the pane is on screen.
+//! It is not herdr's to hear - it decides whether the bridge holds a herdr client at all - so
+//! the bridge answers it itself instead of relaying it.
 
 use muster_core::respawn::Ending;
 use serde_json::Value;
+
+/// Whether the app is showing a bridge's pane, which decides whether it keeps a herdr client.
+///
+/// A client costs its daemon a render on every pass for as long as it is attached, whether or not
+/// anybody can see the pane, so a bridge told its pane is hidden lets its client go and starts
+/// another when told it is shown again.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Showing {
+    pub on_screen: bool,
+}
+
+impl Showing {
+    pub fn wire_format(&self) -> Vec<u8> {
+        let object = serde_json::json!({ "type": "bridge.showing", "on_screen": self.on_screen });
+        let mut out = object.to_string().into_bytes();
+        out.push(b'\n');
+        out
+    }
+
+    /// One line back, or `None` for anything else - which is every line the relay copies to
+    /// herdr untouched.
+    pub fn parse(line: &[u8]) -> Option<Showing> {
+        // Checked before parsing, because this runs on every line the app sends, most of them
+        // keystrokes, and none of those mention it.
+        if !line.windows(14).any(|window| window == b"bridge.showing") {
+            return None;
+        }
+        let object: Value = serde_json::from_slice(line).ok()?;
+        if object.get("type")?.as_str()? != "bridge.showing" {
+            return None;
+        }
+        Some(Showing { on_screen: object.get("on_screen")?.as_bool()? })
+    }
+}
 
 /// How big a grid a bridge has just asked its daemon to draw.
 ///
@@ -228,6 +266,15 @@ pub fn ending(reason: Option<&str>) -> Ending {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn showing_reads_back_what_it_wrote_and_nothing_else() {
+        for on_screen in [true, false] {
+            let line = Showing { on_screen }.wire_format();
+            assert_eq!(Showing::parse(&line), Some(Showing { on_screen }));
+        }
+        assert_eq!(Showing::parse(br#"{"type":"terminal.input","bytes":"aA=="}"#), None);
+    }
 
     #[test]
     fn a_line_survives_the_round_trip() {
