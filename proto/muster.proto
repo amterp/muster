@@ -350,7 +350,8 @@ message MoveTab {
   // Where it goes: an open window's pid, as `muster window` heads it, or a window's name such as
   // `window-2`, which may be a window that is closed - the tab is there when it is reopened.
   // Empty means this window, and then the tab comes on screen: whoever asked is looking here.
-  // A tab moved to another window joins the end of its list without coming on screen, because a
+  // A tab moved to a window by name joins the end of its list without coming on screen - naming
+  // this window too, since a CLI outside every pane reaches whichever window answers first. A
   // window that switched tabs on something done elsewhere is one that types into the wrong pane.
   string window = 2;
 }

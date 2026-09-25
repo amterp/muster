@@ -2960,10 +2960,13 @@ pub(crate) fn focus_tab(tab: &TabId) -> Result<(), String> {
 /// now hears the same and lists it. This one acts at once on its own half, because it may be
 /// either of them.
 ///
-/// Moved here, the tab comes on screen, because whoever asked is looking at this window. Moved
-/// elsewhere, it joins the end of that window's list without coming on screen.
+/// Brought here by naming no window, the tab comes on screen, because whoever asked is looking at
+/// this window. Moved to a window by name - this one included - it joins the end of that window's
+/// list without coming on screen: a CLI outside every pane sends it to whichever window answers
+/// first, so what it does cannot depend on which window that was.
 pub(crate) fn move_tab(tab: Option<TabId>, window: &str) -> Result<(), Refusal> {
-    let (tab, here) = {
+    let bring_here = window.is_empty();
+    let tab = {
         let mut session = poison::lock(&SESSION, "session");
         let tab = match tab {
             Some(tab) => tab,
@@ -2979,14 +2982,28 @@ pub(crate) fn move_tab(tab: Option<TabId>, window: &str) -> Result<(), Refusal> 
             .backends
             .values()
             .any(|backend| poison::lock(&backend.mirror, "mirror").tab(&tab).is_some());
-        if !described {
+        if bring_here && !described {
             return Err(Refusal::NotThere(format!(
                 "no daemon this window is following holds a tab called {tab}, so nothing was \
                  moved. `muster window` lists the tabs there are."
             )));
         }
+        // A move naming its window is a write to the record every window shares, so a tab on a
+        // machine this window does not follow can still be sent: the record or the names every
+        // window shares say it exists.
+        let known = described
+            || session.holding.holders().holder(&tab).is_some()
+            || poison::lock(&session.tab_names, "tab-names")
+                .entries()
+                .any(|(name, _, _)| name == &tab);
+        if !known {
+            return Err(Refusal::NotThere(format!(
+                "no window knows a tab called {tab}, so nothing was moved. `muster window` lists \
+                 the tabs there are."
+            )));
+        }
         let to = session.holding.destination(window)?;
-        let here = &to == session.holding.me();
+        let to_me = &to == session.holding.me();
         let from = session.holding.holders().holder(&tab).map(ToString::to_string);
         session.holding.give(&tab, &to);
         log::info(
@@ -2997,15 +3014,15 @@ pub(crate) fn move_tab(tab: Option<TabId>, window: &str) -> Result<(), Refusal> 
                 "to" => to.to_string(),
             },
         );
-        if here {
+        if to_me {
             session.composition.hold(tab.clone());
         } else {
             session.composition.let_go(&tab);
         }
-        (tab, here)
+        tab
     };
     reconcile_every_daemon();
-    if here {
+    if bring_here {
         return focus_tab(&tab).map_err(Refusal::Declined);
     }
     publish("move_tab");
