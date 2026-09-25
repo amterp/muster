@@ -195,11 +195,14 @@ impl Holders {
 
     /// Which window takes a tab nobody holds on this machine, at this moment.
     ///
-    /// The window most recently brought to the front, of the ones that are open. A tab made
-    /// outside Muster - in herdr's own TUI, say - has nothing else to say where it belongs, and
-    /// the window somebody was last looking at is where they will look for it. It is also the
-    /// upgrade path: the first window to open after this record existed is the only one open,
-    /// so it takes every tab, as a single window always did.
+    /// The window most recently brought to the front, of the open ones that follow this machine.
+    /// A tab made outside Muster - in herdr's own TUI, say - has nothing else to say where it
+    /// belongs, and the window somebody was last looking at is where they will look for it. It
+    /// is also the upgrade path: the first window to open after this record existed is the only
+    /// one open, so it takes every tab, as a single window always did.
+    ///
+    /// Only windows following the machine are asked, because a window that cannot see a tab
+    /// cannot show it, and waiting on one would leave the tab held by nobody.
     ///
     /// Unless a window is waiting on this machine. Then nobody takes it yet, because it is very
     /// likely that window's tab and the answer saying so is on its way. An expectation from a
@@ -214,18 +217,22 @@ impl Holders {
         if let Some(expecting) = waiting {
             return Taker::Waiting(expecting.window.clone());
         }
-        self.in_front(open).map_or(Taker::Nobody, |window| Taker::Window(window.clone()))
+        self.in_front(daemon, open).map_or(Taker::Nobody, |window| Taker::Window(window.clone()))
     }
 
-    /// The open window that came to the front most recently.
+    /// The open window following this machine that came to the front most recently.
     ///
-    /// Who a tab nobody holds joins, and who speaks for a closed window: a blocked agent in a
-    /// closed window's tab is announced by the window somebody is most likely looking at, and
-    /// by that one only, so two open windows do not both post it.
-    pub fn in_front(&self, open: impl Fn(&HeldWindow) -> bool) -> Option<&WindowName> {
+    /// Who a tab nobody holds joins, and who speaks for a tab no open window holds: a blocked
+    /// agent there is announced by the window somebody is most likely looking at, and by that
+    /// one only, so two open windows do not both post it.
+    pub fn in_front(
+        &self,
+        daemon: &DaemonId,
+        open: impl Fn(&HeldWindow) -> bool,
+    ) -> Option<&WindowName> {
         self.windows
             .values()
-            .filter(|window| open(window))
+            .filter(|window| window.daemons.contains(daemon) && open(window))
             .max_by(|a, b| a.focused.cmp(&b.focused).then_with(|| b.name.cmp(&a.name)))
             .map(|window| &window.name)
     }

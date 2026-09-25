@@ -88,6 +88,11 @@ impl Holding {
         &self.me
     }
 
+    /// Whether there is a record other windows read, rather than this window being the only one.
+    pub(crate) fn is_shared(&self) -> bool {
+        self.record.is_some()
+    }
+
     pub(crate) fn holders(&self) -> &Holders {
         &self.holders
     }

@@ -625,6 +625,7 @@
             "pid": 11,
             "focused": 100,
             "daemons": [
+              "devenv",
               "local"
             ]
           },
@@ -636,6 +637,7 @@
             "pid": 22,
             "focused": 200,
             "daemons": [
+              "devenv",
               "local"
             ]
           },
@@ -657,8 +659,8 @@
       },
       "expect": {
         "windows": [
-          "window-1 pid=11 socket=/s/command-11.sock arrangement=/s/windows/window-1.toml focused=100 daemons=local",
-          "window-2 pid=22 socket=/s/command-22.sock arrangement=/s/windows/window-2.toml focused=200 daemons=local"
+          "window-1 pid=11 socket=/s/command-11.sock arrangement=/s/windows/window-1.toml focused=100 daemons=devenv,local",
+          "window-2 pid=22 socket=/s/command-22.sock arrangement=/s/windows/window-2.toml focused=200 daemons=devenv,local"
         ],
         "tabs": [],
         "taker": "window-2"

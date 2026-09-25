@@ -4719,7 +4719,8 @@ fn announce_attention(pane: &PaneKey, attend: Attend) {
 /// A window speaks for its own tabs. Another open window speaks for its own, so two windows never
 /// post one agent twice. A closed window cannot speak at all, and its agents are still running -
 /// so the open window that came to the front most recently speaks for it, and clicking what it
-/// posts reopens that window onto the tab (kan a_2Mhi0EZlv).
+/// posts reopens that window onto the tab (kan a_2Mhi0EZlv). A tab nobody holds yet is the same
+/// case: every window hears its agents, and only the one in front says so.
 ///
 /// Asked only when a pane starts asking for somebody, which is rare next to everything else a
 /// window hears - so dialing the other windows here costs nothing anybody will notice.
@@ -4727,19 +4728,18 @@ fn speaks_for(pane: &PaneKey) -> bool {
     let Some(tab) = tab_of_pane(&pane.pane) else { return true };
     let (me, holders) = {
         let session = poison::lock(&SESSION, "session");
-        if session.holding.holds(&tab) || session.holding.elsewhere(&tab).is_none() {
+        if session.holding.holds(&tab) || !session.holding.is_shared() {
             return true;
         }
         (session.holding.me().clone(), session.holding.holders().clone())
     };
-    let Some(holder) = holders.holder(&tab).and_then(|name| holders.window(name)) else {
-        return true;
-    };
     let open = |window: &HeldWindow| crate::holding::is_open(&me, window);
-    if open(holder) {
+    if let Some(holder) = holders.holder(&tab).and_then(|name| holders.window(name))
+        && open(holder)
+    {
         return false;
     }
-    holders.in_front(open) == Some(&me)
+    holders.in_front(&pane.daemon, open) == Some(&me)
 }
 
 /// What to call one pane, and what its agent says it is doing.
