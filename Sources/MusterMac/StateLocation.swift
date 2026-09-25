@@ -158,14 +158,20 @@ public enum Arrangements {
   /// Exclusive: two launches that both found a slot free cannot both claim it, because the claim
   /// is linked into place and a link onto a name that exists fails. Written beside it first, so
   /// nobody ever reads a claim with no pid in it and sweeps it as garbage.
-  static func claim(_ record: URL, by pid: Int32) -> Bool {
+  ///
+  /// `linking` is `link(2)`, and a parameter so that a test can stand in for a filesystem that
+  /// cannot link.
+  static func claim(
+    _ record: URL, by pid: Int32,
+    linking: (String, String) -> Int32 = { link($0, $1) }
+  ) -> Bool {
     let claim = claimFile(for: record)
     let written = claim.appendingPathExtension("\(pid)")
     guard (try? String(pid).write(to: written, atomically: false, encoding: .utf8)) != nil else {
       return false
     }
     defer { unlink(written.path) }
-    return link(written.path, claim.path) == 0
+    return linking(written.path, claim.path) == 0
   }
 
   private static func claimFile(for record: URL) -> URL {
@@ -203,17 +209,21 @@ public enum Arrangements {
   /// False when either time cannot be read, which keeps the claim: a window wrongly thought
   /// closed is two windows writing one record, and that is the worse mistake.
   private static func startedAfter(_ pid: pid_t, _ claim: URL) -> Bool {
+    guard let started = started(pid), let written = self.written(claim) else { return false }
+    return started > written
+  }
+
+  /// When a process started, or nothing when there is no such process.
+  static func started(_ pid: pid_t) -> Date? {
     var process = kinfo_proc()
     var size = MemoryLayout<kinfo_proc>.stride
     var name: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
     guard sysctl(&name, 4, &process, &size, nil, 0) == 0,
-      size == MemoryLayout<kinfo_proc>.stride,
-      let written = self.written(claim)
-    else { return false }
+      size == MemoryLayout<kinfo_proc>.stride
+    else { return nil }
     let start = process.kp_proc.p_un.__p_starttime
-    let started = Date(
+    return Date(
       timeIntervalSince1970: TimeInterval(start.tv_sec) + TimeInterval(start.tv_usec) / 1_000_000)
-    return started > written
   }
 
   /// Moves the one file every window used to share into the first record.
