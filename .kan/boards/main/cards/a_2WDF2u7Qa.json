@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "upstream-herdr-s",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "uncommitted",
+  "created_at_millis": 1790308245251,
+  "creator": "Alexander Terp",
+  "description": "src/terminal/title.rs:1 strips one leading glyph from braille or ·✢✳✶✻✽. Claude Code now spins ◐◑ (U+25D0/25D1), so every frame changes terminal_title_stripped, bumps revision, and emits pane_updated: 40 alternating '◐ task'/'◑ task' writes produced 40 events, where ✳/✶ produced 1. On a live daemon with three agents working: 329 pane_updated in 60 s, 314 of them title-only. The 512-event replay buffer then holds about a minute of spinner frames, and six such agents would saturate the one-event-per-kind-per-100 ms cap, delaying real pane_updated changes.\n\nMuster strips by Unicode block in its adapter since 2026-09-24 (crates/muster-herdr/src/title.rs), so this is an upstream ask, not a Muster bug. Suggest herdr strip by block too (Braille, Geometric Shapes, Dingbats) rather than a list. Evidence: docs/observations/herdr-0.8.0.md section 26.",
+  "id": "a_2WDF2u7Qa",
+  "position": "aQ",
+  "title": "🔌 Upstream: herdr's title stripping misses Claude Code's ◐◑ spinner",
+  "type": "chore",
+  "updated_at_millis": 1790308245251,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1790308245251}
+  ]
+}

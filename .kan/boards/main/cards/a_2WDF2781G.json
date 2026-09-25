@@ -1,0 +1,22 @@
+{
+  "_v": 3,
+  "alias": "a-hidden-devenv-pane",
+  "alias_explicit": false,
+  "area": [
+    "backend",
+    "shell",
+    "devenv"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1790308244794,
+  "creator": "Alexander Terp",
+  "description": "Local hidden panes park since round 1 (2026-09-24, a_2LMnyDJU0): the bridge lets go of its herdr client while the pane is hidden and starts one when it is shown. Remote panes do not, because showing a parked remote pane would cost a new ssh exec, measured at 444-561 ms, on every tab switch.\n\nThat leaves the devenv, where a_2KHGXkKSc first measured this, paying for every pane it ever showed: herdr rendering every attached client on the thread that answers keystrokes. Locally, parking took herdr from 0.135 to 0.030 cores and the arrow round trip p95 from 72.6 to 17.5 ms.\n\nParking a remote pane needs a cheaper way back first: a long-lived client per ssh master that can attach a pane without a new exec (the shape a_2I776rXVS proposes), or a linger that keeps a recently hidden pane attached. Measure a devenv window with several tabs before and after.",
+  "id": "a_2WDF2781G",
+  "position": "aV",
+  "title": "🛰️ A hidden devenv pane still costs its daemon a render",
+  "type": "enhancement",
+  "updated_at_millis": 1790308244794,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1790308244794}
+  ]
+}
