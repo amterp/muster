@@ -2,6 +2,9 @@ import Foundation
 
 /// Notices that the config file was saved, and asks for it to be read again.
 ///
+/// Also watches the record of which window holds each tab, which is the same job for a file
+/// another window writes: notice the save, and dispatch the request that reads it.
+///
 /// A trigger rather than a second path: what it does is dispatch the same `reload_config` action
 /// the menu item and a chord dispatch, so there is one place a reload happens and one place to
 /// look when it goes wrong ("one action path", `docs/architecture.md`).

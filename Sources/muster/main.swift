@@ -14,6 +14,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private var renderer: Renderer?
   /// Held for the life of the app; dropping it stops the watch.
   private var watcher: ConfigWatcher?
+  /// Hears another window take a tab, give one away, open or close.
+  private var holdingWatcher: ConfigWatcher?
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     // Before anything asks where Muster's files are, because everything below reads it through
@@ -67,18 +69,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // holding a link that cannot run.
     let commands = refreshMusterCommand(
       executable: CommandLine.arguments[0], commands: commandsPath())
-    // A window somebody asked for starts on tabs of its own and remembers them under a record
-    // of its own. The two halves are answered by different layers: which file this window's
-    // arrangement lives in is an OS question, so the shell picks it and claims it for as long
-    // as this process runs, and where the window starts is the core's, so the core is told
-    // which kind of launch this is.
+    // A window somebody asked for remembers its tabs under a record of its own, which the shell
+    // picks and claims for as long as this process runs - an OS question. Which tabs it holds is
+    // the core's, and a window starts holding nothing until it asks for a tab of its own.
     let fresh = launchIsFresh(arguments: Array(CommandLine.arguments.dropFirst()))
     let arrangement = Arrangements.open(fresh: fresh)
+    let holders = tabHoldersPath()
     Core.start(
       logPath: logPath, configPath: config, daemonPath: daemon, statePath: arrangement,
       daemonConfigPath: daemonConfigPath(), paneNamesPath: paneNamesPath(),
       commandSocketPath: commandSocketPath(), commandsPath: commands, cachePath: cachePath(),
-      daemonRecordsPath: daemonRecordsPath(), fresh: fresh)
+      daemonRecordsPath: daemonRecordsPath(), tabHoldersPath: holders)
+    watchTabHolders(holders)
     // Given up on the way out so that a window closed and reopened in the same second finds its
     // own record rather than the one before it. Not relied on: a window that is killed never
     // gets here, and the claim carries a pid for exactly that.
@@ -208,6 +210,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   ///
   /// That makes this an output-only check on the renderer, and it says so rather than
   /// presenting a terminal that ignores the keyboard.
+  /// Watches the record of which window holds each tab, so a tab another window takes leaves this
+  /// one and a tab given to this one arrives.
+  ///
+  /// Its directory is made first, because a watch is on the directory and the first window ever
+  /// to open finds none. The core writes into it moments later.
+  private func watchTabHolders(_ path: String?) {
+    guard let path else { return }
+    let directory = URL(fileURLWithPath: path).deletingLastPathComponent()
+    try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let watcher = ConfigWatcher(path: path) { Core.readTabHolders() }
+    holdingWatcher = watcher
+    if !watcher.start() {
+      Core.warn(
+        "holding.watch.failed",
+        [
+          "path": path,
+          "impact": "this window will not hear another window take one of its tabs, so it can "
+            + "keep drawing a tab that has moved and fight the other window for its terminals",
+          "check": "whether the directory holding it exists and is readable",
+        ])
+    }
+  }
+
   private func explainRendererCheck() {
     FileHandle.standardError.write(
       Data(

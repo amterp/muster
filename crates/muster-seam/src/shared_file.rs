@@ -21,10 +21,48 @@ use muster_core::diagnostics::log;
 use muster_core::fields;
 use muster_core::shared::SharedRecord;
 
+/// What a record is, for the lines logged when it cannot be locked or written.
+///
+/// Per record because what a failure costs depends on what the record holds, and a log line
+/// that says so is one somebody can act on.
+#[derive(Debug)]
+pub(crate) struct About {
+    pub(crate) unlocked: &'static str,
+    pub(crate) unlocked_impact: &'static str,
+    pub(crate) unsaved: &'static str,
+    pub(crate) unsaved_impact: &'static str,
+}
+
+/// The names Muster gives panes and tabs.
+pub(crate) const NAMES: About = About {
+    unlocked: "names.unlocked",
+    unlocked_impact: "names are still written, and a second Muster naming the same pane at the \
+                      same moment could win the race - the two windows would then call one pane \
+                      two things",
+    unsaved: "names.save.failed",
+    unsaved_impact: "these names last until this Muster quits. Every pane open at that moment \
+                     keeps a name in its environment that the next launch will not know, so \
+                     commands from inside them are refused - and the next launch cannot find the \
+                     tabs its saved arrangement names, so it opens fresh",
+};
+
+/// Which window holds each tab.
+pub(crate) const HOLDERS: About = About {
+    unlocked: "holding.unlocked",
+    unlocked_impact: "which window holds each tab is still written, and two windows taking the same \
+                      tab at the same moment could both believe they won - that tab would then be \
+                      listed in both, and whichever window shows it second takes its terminals",
+    unsaved: "holding.save.failed",
+    unsaved_impact: "this window's tabs are its own only until it quits, and no other window hears \
+                     which tabs it took or gave away - so another window may list them too, and \
+                     the next launch cannot tell which tabs were this window's",
+};
+
 /// The record, as a path and the lock beside it.
 #[derive(Debug)]
 pub(crate) struct SharedFile {
     record: PathBuf,
+    about: &'static About,
     /// A file of its own rather than the record, because the record is replaced by a rename
     /// every time it is written - and a lock held on an inode that has just been renamed out of
     /// the way is a lock two writers can both believe they hold.
@@ -39,9 +77,10 @@ pub(crate) struct SharedFile {
 }
 
 impl SharedFile {
-    pub(crate) fn at(path: &str) -> SharedFile {
+    pub(crate) fn at(path: &str, about: &'static About) -> SharedFile {
         SharedFile {
             record: PathBuf::from(path),
+            about,
             lock: PathBuf::from(format!("{path}.lock")),
             seen: AtomicU64::new(0),
         }
@@ -61,12 +100,10 @@ impl SharedRecord for SharedFile {
             // Named once rather than per call: a directory that cannot be written to will not
             // start being writable, and a line per publish would bury the run log.
             log::warn(
-                "names.unlocked",
+                self.about.unlocked,
                 fields! {
                     "path" => self.lock.display().to_string(),
-                    "impact" => "names are still written, and a second Muster naming the same \
-                                 pane at the same moment could win the race - the two windows \
-                                 would then call one pane two things",
+                    "impact" => self.about.unlocked_impact,
                     "check" => "whether that directory exists and is writable",
                 },
             );
@@ -95,15 +132,11 @@ impl SharedRecord for SharedFile {
 
         if let Err(error) = saved {
             log::warn(
-                "names.save.failed",
+                self.about.unsaved,
                 fields! {
                     "path" => self.record.display().to_string(),
                     "detail" => error.to_string(),
-                    "impact" => "these names last until this Muster quits. Every pane open at \
-                                 that moment keeps a name in its environment that the next \
-                                 launch will not know, so commands from inside them are \
-                                 refused - and the next launch cannot find the tabs its saved \
-                                 arrangement names, so it opens fresh",
+                    "impact" => self.about.unsaved_impact,
                     "check" => "whether that directory exists and is writable",
                 },
             );
@@ -194,7 +227,7 @@ mod tests {
             muster_core::composition::DaemonId::new(daemon),
             Arc::new(Mutex::new(PaneNames::new(Mint::Drawn))),
             Arc::new(Mutex::new(TabNames::new(Mint::Drawn))),
-            Arc::new(SharedFile::at(&at.to_string_lossy())) as Arc<dyn SharedRecord>,
+            Arc::new(SharedFile::at(&at.to_string_lossy(), &super::NAMES)) as Arc<dyn SharedRecord>,
         )
     }
 

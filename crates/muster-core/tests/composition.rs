@@ -47,7 +47,7 @@ fn composition_conformance() {
             ("daemons", Some(json!(describe_daemons(&composition)))),
             ("regions", Some(json!(describe_regions(&composition)))),
             // Which of the window's tabs is on screen. Absent when it is showing none, which
-            // is a window whose only tabs are another window's - and a real state, since it
+            // is a window holding no tab a daemon has described - and a real state, since it
             // is what a fresh window looks like until its own workspace arrives.
             ("showingTab", composition.showing().map(|tab| json!(tab.as_str()))),
             (
@@ -129,19 +129,10 @@ fn act(
         "showTab" => {
             composition.show(&TabId::new(text(step, "tab")));
         }
-        // What a window somebody asked for records about a machine it has just met: these
-        // tabs are another window's, so do not open onto them uninvited.
-        "claim" => {
-            let tabs = step
-                .get("tabs")
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-                .filter_map(Value::as_str)
-                .map(TabId::new)
-                .collect();
-            composition.claim(&daemon(step), tabs);
-        }
+        // What the record of which window holds each tab says about this one. A case that
+        // reconciles without holding anything is a window every tab is somebody else's in.
+        "hold" => composition.hold(TabId::new(text(step, "tab"))),
+        "letGo" => composition.let_go(&TabId::new(text(step, "tab"))),
         // The one drag Muster settles for itself: no daemon knows the other one exists, so
         // nothing upstream can say how a window divides between them.
         "setBoundary" => composition.set_boundary(region(step)?, ratio(step)),

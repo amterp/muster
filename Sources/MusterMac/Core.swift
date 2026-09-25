@@ -27,7 +27,7 @@ public enum Core {
     logPath: String?, configPath: String? = nil, daemonPath: String? = nil,
     statePath: String? = nil, daemonConfigPath: String? = nil, paneNamesPath: String? = nil,
     commandSocketPath: String? = nil, commandsPath: String? = nil, cachePath: String? = nil,
-    daemonRecordsPath: String? = nil, fresh: Bool = false, process: String = "app"
+    daemonRecordsPath: String? = nil, tabHoldersPath: String? = nil, process: String = "app"
   ) {
     muster_set_event_callback(coreEventArrived)
 
@@ -42,7 +42,7 @@ public enum Core {
     startup.commandsPath = commandsPath ?? ""
     startup.cachePath = cachePath ?? ""
     startup.daemonRecordsPath = daemonRecordsPath ?? ""
-    startup.fresh = fresh
+    startup.tabHoldersPath = tabHoldersPath ?? ""
     startup.locale = platformLocale() ?? ""
     startup.logLevel = ProcessInfo.processInfo.environment["MUSTER_LOG_LEVEL"] ?? ""
     startup.process = process
@@ -541,6 +541,13 @@ public enum Core {
     send(request)
   }
 
+  /// Tells the core another window changed which window holds each tab.
+  public static func readTabHolders() {
+    var request = Muster_Request()
+    request.readTabHolders = Muster_ReadTabHolders()
+    send(request)
+  }
+
   public static func toggleSidebar() {
     var request = Muster_Request()
     request.toggleSidebar = Muster_ToggleSidebar()
@@ -1014,6 +1021,7 @@ public enum Core {
     case .sendToPane: return "send_to_pane"
     case .adjustFontSize: return "adjust_font_size"
     case .reloadConfig: return "reload_config"
+    case .readTabHolders: return "read_tab_holders"
     case .bridgeExited: return "bridge_exited"
     case .resizePane: return "resize_pane"
     case .equalizePanes: return "equalize_panes"

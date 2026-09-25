@@ -104,9 +104,13 @@ fn built(given: &Value) -> Result<Roster, CaseError> {
     }
 
     // The window's tabs come from what its daemons hold, in the order the case attaches them -
-    // which is what a launch with nothing saved produces.
+    // which is what a launch with nothing saved produces. Every one is this window's: which
+    // window holds a tab is tab-holding.json's subject, and a roster lists what it is given.
     for id in &attached {
         if let Some(mirror) = worlds.get(id) {
+            for tab in mirror.tabs() {
+                composition.hold(tab.id.clone());
+            }
             composition.reconcile(id, mirror);
         }
     }

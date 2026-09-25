@@ -27,7 +27,7 @@ use muster_core::fields;
 use muster_core::find::{Found, Needle, Reach};
 use muster_core::grid::{self, Grids};
 use muster_core::input::{Bindings, PaneInput, PaneInputSettings, ScrollDirection};
-use muster_core::intent::{BackendChannel, BackendIntent, MoveDestination, Refusal};
+use muster_core::intent::{BackendChannel, BackendIntent, MoveDestination, Outcome, Refusal};
 use muster_core::mirror::backend::{PaneId, PaneText, Snapshot, TabId, Viewport};
 use muster_core::mirror::{Change, Health, Mirror};
 use muster_core::names::{self, Mint, Names, PaneNames, TabNames};
@@ -43,6 +43,7 @@ use muster_herdr::{
 use muster_ssh::{Forward, Remote, State as TunnelState, Tunnel, remote_environment};
 use muster_vt::KeyEncoder;
 
+use crate::holding::Holding;
 use crate::proto::{
     AttentionChanged, Event, PaneTypeable, PresentationChanged, Problem as ProblemMessage,
     ProblemsChanged, RosterChanged, ViewChanged, event,
@@ -525,13 +526,15 @@ pub(crate) fn set_state_path(path: &str) {
     *held = if path.is_empty() { None } else { Some((path.to_string(), String::new())) };
 }
 
-/// Says that somebody asked for this window, rather than it being the one Muster comes back to.
+/// Says where every window writes which window holds each tab, and which window this is.
 ///
-/// On the session rather than in a static beside the paths above, because it is not a setting:
-/// it describes this launch, and a test that reset the statics and not this one would open its
-/// window under the last test's answer.
-pub(crate) fn set_fresh(fresh: bool) {
-    poison::lock(&SESSION, "session").fresh = fresh;
+/// Named after its arrangement, so a window that is reopened is the same window and comes back
+/// to its tabs (MIP-2). The socket is how other windows tell whether this one is open.
+///
+/// On the session rather than in a static, because it describes this launch: a test that reset
+/// the statics and not this would open its window as the last test's.
+pub(crate) fn set_tab_holders(record: &str, arrangement: &str, socket: &str) {
+    poison::lock(&SESSION, "session").holding = Holding::new(record, arrangement, socket);
 }
 
 /// Says where names are remembered, and reads back the ones already there.
@@ -547,7 +550,7 @@ pub(crate) fn set_pane_names_path(path: &str) {
     *poison::lock(&NAMES_FILE, "saved-names") =
         if path.is_empty() { None } else { Some((path.to_string(), String::new())) };
     *poison::lock(&SHARED_NAMES, "shared-names") =
-        (!path.is_empty()).then(|| Arc::new(SharedFile::at(path)));
+        (!path.is_empty()).then(|| Arc::new(SharedFile::at(path, &crate::shared_file::NAMES)));
     if path.is_empty() {
         return;
     }
@@ -998,19 +1001,11 @@ pub(crate) struct Session {
     /// version of the same reason: a rule that retried a refusal would retry it forever.
     workspaces_asked_of: BTreeSet<DaemonId>,
 
-    /// Whether somebody asked for this window, rather than it being the one Muster comes back
-    /// to.
+    /// Which window this is, and which window holds each tab.
     ///
-    /// One rule turns on it, and it is about where the window starts rather than about how it
-    /// behaves: a window somebody asked for opens onto a tab of its own instead of one that was
-    /// already there. That tab is very often the one another window is showing, and herdr allows
-    /// one client per terminal - so the alternative is a window of surfaces that paint nothing
-    /// (kan `a_2IZ5TL6DQ`).
-    ///
-    /// Said by the shell rather than worked out here, because the two launches differ in
-    /// nothing this layer can see. It stops mattering once every machine has been claimed, which
-    /// is what makes this a rule about where a window starts rather than about how it behaves.
-    fresh: bool,
+    /// A window lists only the tabs it holds (kan a_2Mhi0EZlv). What the composition holds is
+    /// kept in line with this, and this is kept in line with the file every window shares.
+    holding: Holding,
 
     /// Which agents have been seen, and so which are `done`.
     ///
@@ -1346,8 +1341,29 @@ impl Session {
 
     /// Brings composition, and what this process holds open, in line with one daemon.
     fn reconcile(&mut self, daemon: &DaemonId) {
+        self.settle_holding(daemon);
         self.prune(daemon);
         self.open_channels(daemon);
+    }
+
+    /// Takes the tabs on this machine that nobody holds, if they are this window's to take, and
+    /// tells the composition which of the machine's tabs are this window's.
+    ///
+    /// Before the window has opened this takes nothing when there is a shared record, because
+    /// the window has not said it exists and so is never the one a tab joins. That is on purpose:
+    /// what it restores decides which tabs it comes back to, and a tab taken in the moment before
+    /// is one another window's arrangement may name.
+    fn settle_holding(&mut self, daemon: &DaemonId) {
+        let described: Vec<TabId> = {
+            let Some(backend) = self.backends.get(daemon) else { return };
+            poison::lock(&backend.mirror, "mirror").tabs().map(|tab| tab.id.clone()).collect()
+        };
+        self.holding.take_unheld(daemon, &described);
+        for tab in described {
+            if self.holding.holds(&tab) {
+                self.composition.hold(tab);
+            }
+        }
     }
 
     /// Lets go of what this daemon no longer holds.
@@ -1650,6 +1666,18 @@ impl Session {
             })?;
             held.tab.clone()
         };
+        // Another window's tab stays in that window. Surfacing it here would take its terminals
+        // from the window showing them, which is the failure kan a_2Mhi0EZlv was raised for.
+        if !self.holding.holds(&tab) {
+            if let Some(window) = self.holding.elsewhere(&tab) {
+                return Err(Refusal::Declined(format!(
+                    "{pane} is in {tab}, which is in another window ({}), so the keyboard stayed \
+                     where it was. Showing it here would take its terminals from that window.",
+                    window.name
+                )));
+            }
+            self.holding.keep(std::slice::from_ref(&tab));
+        }
         self.composition.surface(daemon, &tab).ok_or_else(|| {
             Refusal::Declined(format!(
                 "{daemon} is followed but not attached to this window's composition, so no \
@@ -1921,7 +1949,11 @@ pub(crate) fn submit(
         (region, source, channel)
     };
 
+    let makes_a_tab = expect_a_tab(daemon, intent);
     let outcome = channel.submit(intent);
+    if makes_a_tab {
+        hold_what_was_made(daemon, outcome.as_ref().ok());
+    }
     let (refused, unanswered) = refused_or_unanswered(&outcome);
     log::info(
         "intent.submitted",
@@ -2032,6 +2064,34 @@ pub(crate) fn submit(
     // about a pane no machine holds, its answer is correct on its own terms and misleading
     // where it lands (`handler::placed`).
     outcome.map(|_| created)
+}
+
+/// Says this window is waiting on a tab, when a request can make one.
+///
+/// The daemon describes a new tab to every window before this one hears the answer naming it,
+/// and a window that has not been told to wait would take it (kan a_2Mhi0EZlv). A move counts:
+/// a pane moved into a tab of its own, or into a tab on another machine, makes one there.
+fn expect_a_tab(daemon: &DaemonId, intent: &BackendIntent) -> bool {
+    let makes_a_tab = matches!(
+        intent,
+        BackendIntent::CreateTab { .. }
+            | BackendIntent::CreateWorkspace { .. }
+            | BackendIntent::MovePane { .. }
+    );
+    if makes_a_tab {
+        poison::lock(&SESSION, "session").holding.expect(daemon);
+    }
+    makes_a_tab
+}
+
+/// Takes the tab a request made as this window's, and stops waiting, in one write.
+fn hold_what_was_made(daemon: &DaemonId, outcome: Option<&Outcome>) {
+    let made = outcome.and_then(|outcome| outcome.created_tab.clone());
+    let mut session = poison::lock(&SESSION, "session");
+    session.holding.answered(daemon, made.as_ref());
+    if let Some(tab) = made {
+        session.composition.hold(tab);
+    }
 }
 
 /// Takes the shell's word that nothing is painting a pane, and starts another bridge if the
@@ -3242,6 +3302,7 @@ pub(crate) fn open() -> Result<(), String> {
     follow_implicitly_if_nothing_else()?;
     restore_presentation();
     restore_font_sizes();
+    say_this_window_is_open();
     reopen_what_was_left();
     // After the file has been read and before anything writes over it. Everything above reads
     // the arrangement; everything from here on is entitled to replace it - which is why this
@@ -3319,6 +3380,20 @@ fn restore_font_sizes() {
     poison::lock(&SESSION, "session").font_sizes = saved.font_sizes;
 }
 
+/// Tells the other windows this one is open, and brings this window's idea of who holds what up
+/// to date.
+///
+/// Before the restore, which reads the answer: a tab another window took while this one was
+/// closed is not this window's to reopen.
+fn say_this_window_is_open() {
+    let mut session = poison::lock(&SESSION, "session");
+    let known: BTreeSet<TabId> = {
+        let tabs = poison::lock(&session.tab_names, "tab-names");
+        tabs.entries().map(|(name, _, _)| name.clone()).collect()
+    };
+    session.holding.open(|tab| known.contains(tab));
+}
+
 /// Puts back the regions this window was showing when it last closed.
 ///
 /// Before the two rules under it rather than instead of them, which is what makes this an
@@ -3332,14 +3407,27 @@ fn restore_font_sizes() {
 /// region is a wish, and a tab nobody holds any more would render as a square that never
 /// fills in.
 fn reopen_what_was_left() {
+    let mut session = poison::lock(&SESSION, "session");
+    // Tabs given to this window while it was closed are its own as much as the ones it was left
+    // on, and come after them.
+    let given: Vec<TabId> =
+        session.holding.holders().held_by(session.holding.me()).cloned().collect();
+    for tab in given {
+        session.composition.hold(tab);
+    }
     let Some(saved) = saved_arrangement() else { return };
 
-    let mut session = poison::lock(&SESSION, "session");
+    // Only the tabs that are still this window's. One another window has taken since is that
+    // window's now, and one nobody holds - every tab, the first launch after holding was written
+    // down - is taken here, which is how a window that was alone comes back exactly as it was.
+    let listed: Vec<TabId> = saved.tabs.iter().map(|tab| tab.id.clone()).collect();
+    session.holding.keep(&listed);
     let restorable = saved.restorable(|daemon, tab| {
-        session
-            .backends
-            .get(daemon)
-            .is_some_and(|backend| poison::lock(&backend.mirror, "mirror").tab(tab).is_some())
+        session.holding.holds(tab)
+            && session
+                .backends
+                .get(daemon)
+                .is_some_and(|backend| poison::lock(&backend.mirror, "mirror").tab(tab).is_some())
     });
     if restorable.tabs.is_empty() {
         return;
@@ -3723,50 +3811,13 @@ fn locate(pane: &PaneId) -> Option<(DaemonId, TabId)> {
     found
 }
 
-/// Keeps a window somebody asked for off the tabs another window is already showing.
-///
-/// `muster window new` and ⌘N pass `--fresh`, and a fresh window remembers nothing. What it must
-/// not do is open onto what is already on screen elsewhere: herdr allows one client per terminal,
-/// so a second window onto the first one's tab renders panes that refuse to attach and cannot be
-/// closed (kan a_2IZ5TL6DQ). So what each machine was already holding is written down the first
-/// time this window hears from it, and the window opens onto the tab that appears afterwards -
-/// which is the workspace [`open_a_workspace_if_the_window_is_empty`] then asks for.
-///
-/// Only what a machine held when this window first saw it. A claim is made once per machine, so
-/// the tab this window opens for itself is never in it.
-///
-/// Nothing is hidden by this. Every tab is still listed and still reachable by ⌘2 or a click -
-/// taking a terminal from another window is a thing somebody may mean. What it stops is Muster
-/// deciding it uninvited.
-fn claim_for_a_fresh_window() {
-    let mut session = poison::lock(&SESSION, "session");
-    if !session.fresh {
-        return;
-    }
-    let theirs: Vec<(DaemonId, BTreeSet<TabId>)> = session
-        .backends
-        .iter()
-        .filter_map(|(id, backend)| {
-            let mirror = poison::lock(&backend.mirror, "mirror");
-            // Only a machine that has spoken. A daemon still coming up holds nothing as far as
-            // this window knows, and claiming that would claim nothing and then stand.
-            (mirror.health() == Health::Connected)
-                .then(|| (id.clone(), mirror.tabs().map(|tab| tab.id.clone()).collect()))
-        })
-        .collect();
-    for (id, tabs) in theirs {
-        session.composition.claim(&id, tabs);
-    }
-}
-
 /// Settles what this window is showing, after anything that could have changed it.
 ///
-/// Three rules with an order between them. Take in whatever the machines have already said,
-/// then claim what belongs to another window, and only then ask for a workspace - so the window
-/// that asks is one that genuinely has nothing to open onto.
+/// Two rules with an order between them. Take in whatever the machines have already said -
+/// including any tab nobody holds that is this window's to take - and only then ask for a
+/// workspace, so the window that asks is one that genuinely has nothing to open onto.
 fn settle_what_the_window_shows() {
     reconcile_every_daemon();
-    claim_for_a_fresh_window();
     open_a_workspace_if_the_window_is_empty();
 }
 
@@ -4850,6 +4901,9 @@ fn no_pane_to_size() -> String {
 /// over a session somebody is coming back to, and there is no session to come back to here -
 /// so that half is skipped rather than done and then undone.
 pub(crate) fn quitting(close_sessions: bool) {
+    // First, so the other windows hear it even if handing the panes back runs long. This window
+    // keeps its tabs: its agents are still running, and reopening it comes back to them.
+    poison::lock(&SESSION, "session").holding.close();
     let daemons: Vec<(DaemonId, String, Names)> = {
         let session = poison::lock(&SESSION, "session");
         session
@@ -5030,10 +5084,45 @@ fn announce_presentation(presentation: Presentation) {
     });
 }
 
+/// Makes this window match the record of which window holds each tab, after something changed it.
+///
+/// A tab another window has taken leaves this window's list, and its surfaces go with it - so its
+/// terminals are free for the window that has it now, and the panes in it keep running. A tab
+/// given to this window joins the end of the list at the reconcile below, and is not brought on
+/// screen: a window that switched tabs because of something done elsewhere is one that types
+/// into the wrong pane.
+pub(crate) fn follow_the_record() {
+    {
+        let mut session = poison::lock(&SESSION, "session");
+        if !session.holding.reread() {
+            return;
+        }
+        let lost: Vec<TabId> =
+            session.composition.held().filter(|tab| !session.holding.holds(tab)).cloned().collect();
+        for tab in &lost {
+            session.composition.let_go(tab);
+        }
+        if !lost.is_empty() {
+            log::info(
+                "holding.lost",
+                fields! {
+                    "tabs" => lost.iter().map(TabId::as_str).collect::<Vec<&str>>().join(","),
+                },
+            );
+        }
+    }
+    reconcile_every_daemon();
+    publish("holders");
+}
+
 pub(crate) fn window_focused(focused: bool) {
     log::info("window.focus", fields! { "focused" => focused });
     let noticed = {
         let mut session = poison::lock(&SESSION, "session");
+        // Coming to the front is what makes this the window a tab nobody holds joins.
+        if focused {
+            session.holding.focused();
+        }
         session.attention.window_focused(focused)
     };
     for pane in &noticed.settled {

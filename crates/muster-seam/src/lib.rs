@@ -19,6 +19,7 @@ pub mod command;
 mod convert;
 pub mod ffi;
 mod handler;
+mod holding;
 mod session;
 mod shared_file;
 pub mod testing;

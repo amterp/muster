@@ -73,6 +73,7 @@ message Request {
     ReattachPane reattach_pane = 46;
     EqualizePanes equalize_panes = 47;
     WatchPanes watch_panes = 48;
+    ReadTabHolders read_tab_holders = 49;
   }
 }
 
@@ -503,6 +504,18 @@ message AdjustFontSize {
 // watcher dispatches this rather than being a second path to it. That is what keeps one action
 // path honest: a chord, a menu item, a CLI and a saved file all arrive here.
 message ReloadConfig {}
+
+// Reads which window holds each tab again, and makes this window match it.
+//
+// What the shell sends when the record changes on disk, which is another window taking a tab,
+// giving one away, opening or closing. A tab this window has lost leaves its list and its
+// terminals are let go; a tab it has gained joins the end of its list without coming on screen,
+// because a window that switched tabs on something another window did is one that types into
+// the wrong pane.
+//
+// Like ReloadConfig, a request rather than something the core watches for itself: watching a
+// file is an OS question, and an idle window should cost no wakeups at all.
+message ReadTabHolders {}
 
 // Shows the roster or puts it away.
 //
@@ -1481,22 +1494,11 @@ message Startup {
   // install - slow rather than broken.
   string cache_path = 12;
 
-  // Whether somebody asked for this window, rather than it being the window Muster comes back
-  // to.
-  //
-  // `muster window new` and the New Window menu item both set it; a launch from the Dock does
-  // not. What follows from it is where the window starts: the window Muster comes back to opens
-  // onto the tabs it was left on, and a window somebody asked for opens onto tabs of its own.
-  //
-  // It has to be said rather than worked out, because the two launches are otherwise
-  // identical, and getting it wrong is not a cosmetic difference: herdr allows one client per
-  // terminal, so a second window that opened onto the tabs the first one is showing renders
-  // nothing and leaves every surface in it dead.
-  //
-  // Only where the window starts. Everything after the first tab is the same in both, and
-  // `state_path` is where "remember nothing" is said - the shell sends it empty for a window
-  // like this, because two windows writing one file is the other half of the same bug.
-  bool fresh = 13;
+  // Was whether somebody asked for this window. Which tabs a window opens onto is now which tabs
+  // it holds (tab_holders_path), so a window somebody asked for holds nothing until it asks for
+  // a tab of its own, and the core has no use for being told.
+  reserved 13;
+  reserved "fresh";
 
   // Where Muster writes down the daemons it starts, or empty for nowhere.
   //
@@ -1509,6 +1511,18 @@ message Startup {
   // Empty is a real state and not a failure: `muster daemons` then answers with nothing and
   // says so, which is exactly what it did before this existed.
   string daemon_records_path = 14;
+
+  // Where every window writes which window holds each tab, or empty for nowhere.
+  //
+  // One file for every window, because the rule it keeps spans them: a tab belongs to exactly
+  // one window, and a window lists only its own (kan a_2Mhi0EZlv). herdr allows one client per
+  // terminal, so a tab two windows both listed is a tab one of them takes from the other at the
+  // first click. No daemon can hold this - none knows which windows exist.
+  //
+  // In a directory of its own so the shell can watch it, and send ReadTabHolders when another
+  // window changes it, without waking for every arrangement a window saves beside it. Empty is
+  // what every test gets: the window then holds every tab, as a single window always did.
+  string tab_holders_path = 15;
 
   // trace, debug, info, warn, error. Empty means debug.
   string log_level = 2;

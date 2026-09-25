@@ -275,7 +275,6 @@ fn a_window_somebody_asked_for_opens_onto_a_tab_of_its_own() {
     // somebody asked for it. The daemon is the same one, still holding the tab above, which is
     // what the first window would still be showing.
     assert_ok(&answer(request::Payload::Startup(Startup {
-        fresh: true,
         state_path: String::new(),
         ..startup(&daemon, &state)
     })));
@@ -333,10 +332,7 @@ fn two_windows_come_back_each_on_its_own_tabs() {
     turn.relaunch();
     forget_the_view();
     muster::ffi::muster_set_event_callback(Some(note));
-    assert_ok(&answer(request::Payload::Startup(Startup {
-        fresh: true,
-        ..startup(&daemon, &second)
-    })));
+    assert_ok(&answer(request::Payload::Startup(Startup { ..startup(&daemon, &second) })));
     assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
     until(
         "the second window to open onto a tab of its own",
@@ -572,6 +568,9 @@ fn startup(daemon: &Daemon, state: &std::path::Path) -> Startup {
         // first launch - which is the app's own behaviour without this file, and would leave a
         // relaunch here testing nothing.
         pane_names_path: daemon.root().join("panes.toml").to_string_lossy().into_owned(),
+        // Shared by every launch in a test, as it is by every window on a machine: which window
+        // holds each tab is what a relaunch reads back to know which tabs are its own.
+        tab_holders_path: daemon.root().join("holding/tabs.toml").to_string_lossy().into_owned(),
         ..Startup::default()
     }
 }

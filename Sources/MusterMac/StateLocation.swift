@@ -197,3 +197,22 @@ public func paneNamesPath(environment: [String: String] = ProcessInfo.processInf
   guard let home = musterHome(environment: environment) else { return nil }
   return home.appendingPathComponent("state/panes.toml").path
 }
+
+/// Where every window writes which window holds each tab.
+///
+/// One file for all of them, like the names beside it, because the rule it keeps spans windows: a
+/// tab belongs to exactly one, and a window lists only its own. In a directory of its own, because
+/// the shell watches it for another window's changes and should not wake for every arrangement a
+/// window saves.
+///
+/// Nowhere to write is a real answer - the window then holds every tab, as a single window always
+/// did.
+public func tabHoldersPath(environment: [String: String] = ProcessInfo.processInfo.environment)
+  -> String?
+{
+  if let explicit = environment["MUSTER_TAB_HOLDERS"] {
+    return explicit.isEmpty ? nil : explicit
+  }
+  guard let home = musterHome(environment: environment) else { return nil }
+  return home.appendingPathComponent("state/holding/tabs.toml").path
+}

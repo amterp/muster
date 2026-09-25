@@ -137,6 +137,10 @@
         },
         "steps": [
           {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
+          {
             "do": "attachDaemon",
             "daemon": "local",
             "socketPath": "/tmp/herdr-local.sock"
@@ -238,6 +242,10 @@
         },
         "steps": [
           {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
+          {
             "do": "attachDaemon",
             "daemon": "local",
             "socketPath": "/tmp/herdr-local.sock"
@@ -316,6 +324,10 @@
           }
         },
         "steps": [
+          {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
           {
             "do": "attachDaemon",
             "daemon": "local",
@@ -397,6 +409,10 @@
           }
         },
         "steps": [
+          {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
           {
             "do": "attachDaemon",
             "daemon": "local",
@@ -496,6 +512,10 @@
           }
         },
         "steps": [
+          {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
           {
             "do": "attachDaemon",
             "daemon": "local",
@@ -650,6 +670,10 @@
         },
         "steps": [
           {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
+          {
             "do": "attachDaemon",
             "daemon": "local",
             "socketPath": "/tmp/herdr-local.sock"
@@ -766,6 +790,10 @@
         },
         "steps": [
           {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
+          {
             "do": "attachDaemon",
             "daemon": "local",
             "socketPath": "/tmp/herdr-local.sock"
@@ -871,6 +899,10 @@
           }
         },
         "steps": [
+          {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
           {
             "do": "attachDaemon",
             "daemon": "local",
@@ -994,6 +1026,10 @@
         },
         "steps": [
           {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
+          {
             "do": "attachDaemon",
             "daemon": "local",
             "socketPath": "/tmp/herdr-local.sock"
@@ -1114,6 +1150,10 @@
         },
         "steps": [
           {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
+          {
             "do": "attachDaemon",
             "daemon": "local",
             "socketPath": "/tmp/herdr-local.sock"
@@ -1227,6 +1267,10 @@
           }
         },
         "steps": [
+          {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
           {
             "do": "attachDaemon",
             "daemon": "local",
@@ -1342,6 +1386,10 @@
         },
         "steps": [
           {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
+          {
             "do": "attachDaemon",
             "daemon": "local",
             "socketPath": "/tmp/herdr-local.sock"
@@ -1451,6 +1499,10 @@
           }
         },
         "steps": [
+          {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
           {
             "do": "attachDaemon",
             "daemon": "local",
@@ -1598,6 +1650,10 @@
         },
         "steps": [
           {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
+          {
             "do": "attachDaemon",
             "daemon": "local",
             "socketPath": "/tmp/herdr-local.sock"
@@ -1710,6 +1766,10 @@
         },
         "steps": [
           {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
+          {
             "do": "attachDaemon",
             "daemon": "local",
             "socketPath": "/tmp/herdr-local.sock"
@@ -1797,6 +1857,10 @@
           }
         },
         "steps": [
+          {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
           {
             "do": "attachDaemon",
             "daemon": "local",
@@ -1899,6 +1963,10 @@
           }
         },
         "steps": [
+          {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
           {
             "do": "attachDaemon",
             "daemon": "local",
@@ -2020,6 +2088,10 @@
         },
         "steps": [
           {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
+          {
             "do": "attachDaemon",
             "daemon": "local",
             "socketPath": "/tmp/herdr-local.sock"
@@ -2123,6 +2195,10 @@
           }
         },
         "steps": [
+          {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
           {
             "do": "attachDaemon",
             "daemon": "devenv",
@@ -2246,6 +2322,10 @@
         },
         "steps": [
           {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
+          {
             "do": "attachDaemon",
             "daemon": "local",
             "socketPath": "/tmp/herdr-local.sock"
@@ -2350,6 +2430,10 @@
           }
         },
         "steps": [
+          {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
           {
             "do": "attachDaemon",
             "daemon": "local",
@@ -2461,6 +2545,10 @@
         },
         "steps": [
           {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
+          {
             "do": "attachDaemon",
             "daemon": "local",
             "socketPath": "/tmp/herdr-local.sock"
@@ -2565,6 +2653,10 @@
           }
         },
         "steps": [
+          {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
           {
             "do": "attachDaemon",
             "daemon": "devenv",
@@ -2768,6 +2860,10 @@
         },
         "steps": [
           {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
+          {
             "do": "attachDaemon",
             "daemon": "local",
             "socketPath": "/tmp/herdr-local.sock"
@@ -2921,6 +3017,10 @@
         },
         "steps": [
           {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
+          {
             "do": "attachDaemon",
             "daemon": "local",
             "socketPath": "/tmp/herdr-local.sock"
@@ -3070,6 +3170,10 @@
         },
         "steps": [
           {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
+          {
             "do": "attachDaemon",
             "daemon": "devenv",
             "socketPath": "/tmp/herdr-devenv.sock"
@@ -3180,6 +3284,10 @@
           }
         },
         "steps": [
+          {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
           {
             "do": "attachDaemon",
             "daemon": "local"
@@ -3520,6 +3628,14 @@
           }
         },
         "steps": [
+          {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "hold",
+            "tab": "w1:t2"
+          },
           {
             "do": "attachDaemon",
             "daemon": "local",
@@ -3982,6 +4098,10 @@
         },
         "steps": [
           {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
+          {
             "do": "attachDaemon",
             "daemon": "local",
             "socketPath": "/tmp/herdr-local.sock"
@@ -4102,6 +4222,10 @@
           }
         },
         "steps": [
+          {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
           {
             "do": "attachDaemon",
             "daemon": "local",
@@ -4224,6 +4348,10 @@
         },
         "steps": [
           {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
+          {
             "do": "attachDaemon",
             "daemon": "local",
             "socketPath": "/tmp/herdr-local.sock"
@@ -4344,6 +4472,10 @@
           }
         },
         "steps": [
+          {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
           {
             "do": "attachDaemon",
             "daemon": "local",
@@ -4466,6 +4598,10 @@
         },
         "steps": [
           {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
+          {
             "do": "attachDaemon",
             "daemon": "local",
             "socketPath": "/tmp/herdr-local.sock"
@@ -4587,6 +4723,10 @@
         },
         "steps": [
           {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
+          {
             "do": "attachDaemon",
             "daemon": "local",
             "socketPath": "/tmp/herdr-local.sock"
@@ -4707,6 +4847,10 @@
           }
         },
         "steps": [
+          {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
           {
             "do": "attachDaemon",
             "daemon": "local",
@@ -4840,6 +4984,18 @@
         },
         "steps": [
           {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "hold",
+            "tab": "w1:t2"
+          },
+          {
+            "do": "hold",
+            "tab": "w2:t1"
+          },
+          {
             "do": "attachDaemon",
             "daemon": "local",
             "socketPath": "/tmp/herdr-local.sock"
@@ -4967,6 +5123,18 @@
         },
         "steps": [
           {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "hold",
+            "tab": "w1:t2"
+          },
+          {
+            "do": "hold",
+            "tab": "w2:t1"
+          },
+          {
             "do": "attachDaemon",
             "daemon": "local",
             "socketPath": "/tmp/herdr-local.sock"
@@ -5014,8 +5182,8 @@
       }
     },
     {
-      "name": "a window somebody asked for does not open onto a tab another window has",
-      "why": "herdr allows one client per terminal, so a second window opening onto the first one's tab renders panes that refuse to attach and cannot be closed (kan a_2IZ5TL6DQ). What the machine already held is claimed, and the window shows nothing until a tab of its own arrives - which is what the empty window on screen is for.",
+      "name": "a window lists the tabs it holds and no others",
+      "why": "Two windows follow the same daemon and both hear about every tab it holds, so a daemon describing a tab says nothing about whose it is. A window listing another window's tab is one whose ⌘ chord or click takes that tab's terminals from the window showing them - measured on 0.7.0 (kan a_2Mhi0EZlv).",
       "given": {
         "attached": [],
         "worlds": {
@@ -5068,6 +5236,10 @@
         },
         "steps": [
           {
+            "do": "hold",
+            "tab": "w1:t2"
+          },
+          {
             "do": "attachDaemon",
             "daemon": "local",
             "socketPath": "/tmp/herdr-local.sock"
@@ -5076,14 +5248,6 @@
             "do": "reconcile",
             "daemon": "local",
             "world": "laptop"
-          },
-          {
-            "do": "claim",
-            "daemon": "local",
-            "tabs": [
-              "w1:t1",
-              "w1:t2"
-            ]
           }
         ]
       },
@@ -5091,17 +5255,23 @@
         "daemons": [
           "local local=/tmp/herdr-local.sock"
         ],
+        "focusedPane": "w1:p9",
+        "focusedRegion": "r0",
         "regions": [
-          "r0 daemon=local tab=w1:t1 pane=w1:p1",
-          "r1 daemon=local tab=w1:t2 pane=w1:p9"
+          "r0 daemon=local tab=w1:t2 pane=w1:p9"
         ],
-        "showing": [],
-        "view": []
+        "showing": [
+          "local/w1:p9"
+        ],
+        "showingTab": "w1:t2",
+        "view": [
+          "r0 tab=w1:t2 w1:p9"
+        ]
       }
     },
     {
-      "name": "a claimed machine's next tab is the one the window opens onto",
-      "why": "The other half of the claim: what a fresh window asked for is the tab that appears after it, and nothing has to correlate the answer with the request for that to work. Every tab in the claim stays listed and stays reachable - taking a terminal from another window is a thing somebody may mean, and only Muster doing it uninvited is the bug.",
+      "name": "a tab held before any daemon describes it opens once one does",
+      "why": "The ordinary order for a tab this window asked for: the answer naming it comes back before the event describing it, so the window holds a tab it cannot show yet. The region opens at the reconcile that finally sees it, and a window that had chosen nothing shows it.",
       "given": {
         "attached": [],
         "worlds": {
@@ -5184,6 +5354,10 @@
         },
         "steps": [
           {
+            "do": "hold",
+            "tab": "w1:t2"
+          },
+          {
             "do": "attachDaemon",
             "daemon": "local",
             "socketPath": "/tmp/herdr-local.sock"
@@ -5192,13 +5366,6 @@
             "do": "reconcile",
             "daemon": "local",
             "world": "one tab"
-          },
-          {
-            "do": "claim",
-            "daemon": "local",
-            "tabs": [
-              "w1:t1"
-            ]
           },
           {
             "do": "reconcile",
@@ -5212,17 +5379,16 @@
           "local local=/tmp/herdr-local.sock"
         ],
         "focusedPane": "w1:p9",
-        "focusedRegion": "r1",
+        "focusedRegion": "r0",
         "regions": [
-          "r0 daemon=local tab=w1:t1 pane=w1:p1",
-          "r1 daemon=local tab=w1:t2 pane=w1:p9"
+          "r0 daemon=local tab=w1:t2 pane=w1:p9"
         ],
         "showing": [
           "local/w1:p9"
         ],
         "showingTab": "w1:t2",
         "view": [
-          "r1 tab=w1:t2 w1:p9"
+          "r0 tab=w1:t2 w1:p9"
         ]
       }
     },
@@ -5402,6 +5568,18 @@
         },
         "steps": [
           {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "hold",
+            "tab": "w1:t2"
+          },
+          {
+            "do": "hold",
+            "tab": "w1:t3"
+          },
+          {
             "do": "attachDaemon",
             "daemon": "local",
             "socketPath": "/tmp/herdr-local.sock"
@@ -5495,6 +5673,14 @@
           }
         },
         "steps": [
+          {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "hold",
+            "tab": "w1:t2"
+          },
           {
             "do": "attachDaemon",
             "daemon": "local",

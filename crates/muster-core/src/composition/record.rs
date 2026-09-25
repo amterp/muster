@@ -237,9 +237,10 @@ impl MusterTab {
 
 /// Which daemons are attached, which tabs this window holds, and which of them is on screen.
 ///
-/// **A window holds an ordered list of Muster tabs and shows one of them** (MIP-2). Tabs arrive
-/// in the order the daemons describe them and a new one goes on the end, which is where every
-/// other tab strip puts one. `cmd+1` to `cmd+9` and `next_tab` walk that list, and a tab on the
+/// **A window holds an ordered list of Muster tabs and shows one of them** (MIP-2). Only its own:
+/// which window holds a tab is decided elsewhere, and this lists the ones it was told are its.
+/// Tabs arrive in the order the daemons describe them and a new one goes on the end, which is
+/// where every other tab strip puts one. `cmd+1` to `cmd+9` and `next_tab` walk that list, and a tab on the
 /// list that no daemon still holds is not on it.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Composition {
@@ -250,23 +251,20 @@ pub struct Composition {
     /// The tab on screen, once something has said which.
     ///
     /// `None` means nobody has chosen, not that nothing is on screen: a window that has been
-    /// told nothing shows the first tab it holds that is not somebody else's, which is what a
-    /// launch onto a machine already holding tabs means. See [`Composition::showing`].
+    /// told nothing shows the first tab it holds. See [`Composition::showing`].
     showing: Option<TabId>,
-    /// Tabs this window will not open onto of its own accord, by machine.
+    /// The tabs this window holds, whether or not a daemon has described them yet.
     ///
-    /// A window somebody asked for is a different launch from the window Muster comes back to
-    /// (MIP-2), and herdr allows one client per terminal - so opening onto a tab another window
-    /// is already showing is a window of panes that refuse to attach and cannot be closed
-    /// (kan a_2IZ5TL6DQ). What each machine was already holding when this window first saw it
-    /// is written here, and this window opens onto the tab that appears after.
+    /// **A window lists only its own tabs** (kan a_2Mhi0EZlv). Every window follows the same
+    /// daemons and hears about every tab, so a daemon describing one says nothing about whose it
+    /// is - which window holds it is Muster's own record (`holding`), and this is that record's
+    /// answer for this window. Before it existed every window took in every tab, and a window
+    /// holding nothing drew the next tab anybody made.
     ///
-    /// They are still listed and still reachable: ⌘2 and a click on a caption go where they are
-    /// pointed, and taking a terminal from another window is a thing somebody may mean. What
-    /// this stops is Muster deciding it uninvited.
-    ///
-    /// Per launch and never saved. Next launch there is no other window to inherit from.
-    claimed: BTreeMap<DaemonId, BTreeSet<TabId>>,
+    /// A tab can be held before any daemon has described it, which is the ordinary order for a
+    /// tab this window asked for: the answer naming it arrives before the event describing it,
+    /// and the region opens at the reconcile that finally sees it.
+    held: BTreeSet<TabId>,
     /// Never reused, so that a region id names one region for the life of a composition.
     /// Reusing them would let a stale intent - a keystroke sent as a region closed - land
     /// in whatever took its place.
@@ -299,7 +297,6 @@ impl Composition {
             return;
         }
         let was_at = self.showing_at();
-        self.claimed.remove(id);
         for tab in &mut self.tabs {
             tab.regions.retain(|region| &region.daemon != id);
             tab.settle_focus();
@@ -318,7 +315,9 @@ impl Composition {
 
     /// Says that this daemon holds panes in this tab, and names the region showing its half.
     ///
-    /// The one way a tab enters a window and the one way it grows a second machine. A tab
+    /// The one way a tab enters a window and the one way it grows a second machine. Opening a
+    /// region onto a tab is an explicit act, so the window holds the tab from then on - which is
+    /// why only a caller that already knows the tab is this window's should open one. A tab
     /// nothing had heard of is appended to the list; a tab already there gains a region on
     /// the end for this machine, which is grouping. Both are idempotent: a daemon that
     /// already has a region in this tab gets the one it has.
@@ -337,6 +336,7 @@ impl Composition {
         if let Some(held) = self.region_of(daemon, &tab) {
             return Some(held);
         }
+        self.held.insert(tab.clone());
         let id = RegionId(self.next_region);
         self.next_region += 1;
         let region = Region {
@@ -396,40 +396,47 @@ impl Composition {
         self.showing_tab().map(|tab| &tab.id)
     }
 
-    /// The tab on screen: the one chosen, or the first this window is free to open onto.
+    /// The tab on screen: the one chosen, or the first this window holds.
     ///
-    /// A fallback rather than a choice made at the moment a tab appears, because the two inputs
-    /// land in an order nothing guarantees: a daemon's first snapshot and this window's claim on
-    /// that machine arrive on different threads. Derived from both every time, the order stops
-    /// mattering.
+    /// A fallback rather than a choice made at the moment a tab appears, because a window that
+    /// has chosen nothing and then gains a tab should show it, and one that has chosen should
+    /// not switch.
     fn showing_tab(&self) -> Option<&MusterTab> {
         if let Some(showing) = self.showing.as_ref()
             && let Some(tab) = self.tabs.iter().find(|tab| &tab.id == showing)
         {
             return Some(tab);
         }
-        self.tabs.iter().find(|tab| !self.is_claimed(&tab.id))
+        self.tabs.first()
     }
 
-    fn is_claimed(&self, tab: &TabId) -> bool {
-        self.claimed.values().any(|theirs| theirs.contains(tab))
-    }
-
-    /// Records what a machine was already holding when this window first saw it.
+    /// Says this window holds a tab, so the next reconcile that sees it opens a region onto it.
     ///
-    /// Idempotent by machine: a claim is made once, on the first snapshot, and a second one
-    /// would take in the tab this window has since opened for itself.
-    pub fn claim(&mut self, daemon: &DaemonId, theirs: BTreeSet<TabId>) -> bool {
-        if self.claimed.contains_key(daemon) {
-            return false;
-        }
-        self.claimed.insert(daemon.clone(), theirs);
-        true
+    /// Nothing is brought on screen, for the reason [`Composition::open_region`] gives.
+    pub fn hold(&mut self, tab: TabId) {
+        self.held.insert(tab);
     }
 
-    /// What this machine was holding when this window claimed it, if it has.
-    pub fn claimed(&self, daemon: &DaemonId) -> Option<&BTreeSet<TabId>> {
-        self.claimed.get(daemon)
+    /// Says this window no longer holds a tab, and takes it out of the list.
+    ///
+    /// What happens when a tab moves to another window. Its panes keep running: they belong to a
+    /// daemon, and the window taking the tab attaches to them. If it was on screen, the window
+    /// lands on whatever took its place, as it does when a tab closes.
+    pub fn let_go(&mut self, tab: &TabId) {
+        self.held.remove(tab);
+        let was_at = self.showing_at();
+        self.tabs.retain(|held| &held.id != tab);
+        self.settle_showing(was_at);
+    }
+
+    /// Whether this window holds a tab, described yet or not.
+    pub fn holds(&self, tab: &TabId) -> bool {
+        self.held.contains(tab)
+    }
+
+    /// Every tab this window holds, described yet or not.
+    pub fn held(&self) -> impl Iterator<Item = &TabId> {
+        self.held.iter()
     }
 
     /// The machine's half of a tab, if this window is holding one.
@@ -587,10 +594,11 @@ impl Composition {
     /// its way out of, so both are resolved here - once, in the core - rather than guarded at
     /// every reader.
     ///
-    /// **A tab this daemon holds and this window does not is added.** That is how a window
-    /// comes to list a laptop tab beside a devenv tab, and it replaces the rule that gave every
-    /// machine a column of its own. Nothing is owed a column any more, so a machine whose last
-    /// pane closes simply stops contributing tabs (kan a_2I6h18OU6).
+    /// **A tab this window holds, and has no region onto for this daemon, is added.** That is
+    /// how a tab this window asked for arrives, and how a tab comes to hold a laptop half beside
+    /// a devenv half. A tab this window does not hold is left alone however loudly a daemon
+    /// describes it (kan a_2Mhi0EZlv). Nothing is owed a column, so a machine whose last pane
+    /// closes simply stops contributing tabs (kan a_2I6h18OU6).
     ///
     /// One daemon at a time, and only its own regions. Streams from different daemons have
     /// no mutual order, so a pass over every region would resolve one daemon's regions
@@ -602,7 +610,9 @@ impl Composition {
             return;
         }
         let was_at = self.showing_at();
-        for tab in mirror.tabs().map(|tab| tab.id.clone()).collect::<Vec<TabId>>() {
+        let held: Vec<TabId> =
+            mirror.tabs().map(|tab| tab.id.clone()).filter(|tab| self.held.contains(tab)).collect();
+        for tab in held {
             self.open_region(daemon, tab);
         }
 

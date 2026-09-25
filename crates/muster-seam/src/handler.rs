@@ -96,6 +96,9 @@ fn handle(request: Request) -> Response {
 ///
 /// Split from [`handle`] so that the rule above it - which applies to every request alike -
 /// is not read as part of a table where each line is about one request only.
+// A table with one arm per request, for the reason `muster_herdr::intent::request` gives:
+// split into helpers it would be the same length with the correspondence broken up.
+#[allow(clippy::too_many_lines)]
 fn route(payload: request::Payload) -> Response {
     match payload {
         request::Payload::Startup(startup) => start(&startup),
@@ -146,6 +149,10 @@ fn route(payload: request::Payload) -> Response {
         }
         request::Payload::AdjustFontSize(adjust) => adjust_font_size(&adjust.change),
         request::Payload::ReloadConfig(_) => reload_config(),
+        request::Payload::ReadTabHolders(_) => {
+            session::follow_the_record();
+            Response::ok()
+        }
         request::Payload::ZoomPane(zoom) => {
             act(&zoom.daemon_id, &zoom.pane_id, Keyboard::Follows, |pane| BackendIntent::ZoomPane {
                 pane,
@@ -1800,9 +1807,6 @@ fn start(startup: &proto::Startup) -> Response {
     // attaching publishes, and a publish before this is one that would write the arrangement
     // out to nowhere - or worse, read it back after it had been replaced.
     session::set_state_path(&startup.state_path);
-    // Beside the arrangement, and before the config for the same reason: applying one attaches
-    // daemons, and the first machine to answer is the first one this decides where to start.
-    session::set_fresh(startup.fresh);
     // Before the config, and for the sharpest version of the same reason: applying one attaches
     // daemons, and the first snapshot from each mints a name for every pane it describes. Read
     // afterwards, every pane already open would be named a second time, and a program running
@@ -1834,6 +1838,14 @@ fn start(startup: &proto::Startup) -> Response {
     // window with no daemons attached, which is the truth at that moment and says so: the health
     // in the answer is `disconnected` rather than the pane list merely being empty.
     command::listen(&startup.command_socket_path);
+    // After listening, because the socket this window answers on is how another window tells it
+    // is open - and one that failed to bind is a window nothing can reach, which is what it
+    // should then look like. Before the config, because applying one attaches daemons.
+    session::set_tab_holders(
+        &startup.tab_holders_path,
+        &startup.state_path,
+        &command::listening_at().unwrap_or_default(),
+    );
     apply_config(&startup.config_path);
     Response::ok()
 }
