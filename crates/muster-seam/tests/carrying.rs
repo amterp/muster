@@ -344,17 +344,19 @@ fn pane_of(daemon: &Daemon, tab: &str) -> (String, String) {
         .flat_map(|other| other.tabs.iter())
         .find(|held| held.tab_id == tab)
         .and_then(|held| held.panes.first())
-        .map(|pane| pane.pane_id.clone())
-        .unwrap_or_else(|| panic!("no other window lists {tab}: {:?}", window.windows));
+        .map_or_else(
+            || panic!("no other window lists {tab}: {:?}", window.windows),
+            |pane| pane.pane_id.clone(),
+        );
     // The daemon's own name for it, through the record both sides write names into.
     let names = std::fs::read_to_string(daemon.root().join("panes.toml"))
         .expect("the window wrote its names");
     let (panes, _) = muster_core::names::from_toml(&names, muster_core::names::Mint::Drawn)
         .expect("the names read back");
-    let backend = panes
-        .locate(&muster_core::mirror::backend::PaneId::new(&muster))
-        .map(|located| located.backend.to_string())
-        .unwrap_or_else(|| panic!("{muster} has no backend name in the record"));
+    let backend = panes.locate(&muster_core::mirror::backend::PaneId::new(&muster)).map_or_else(
+        || panic!("{muster} has no backend name in the record"),
+        |located| located.backend.to_string(),
+    );
     (muster, backend)
 }
 
