@@ -191,6 +191,29 @@ fn the_first_launch_with_a_record_takes_every_tab_it_was_left_with() {
     );
 }
 
+/// A record deleted while the window is open costs the window nothing.
+///
+/// The warning for a record that cannot be read tells somebody to delete it, so deleting it has
+/// to be safe. Read as empty, it said this window held nothing, and the window let go of every
+/// tab with nothing to bring them back short of a relaunch.
+#[test]
+fn a_record_deleted_under_an_open_window_is_written_again() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = Daemon::start();
+    open_a_window(&daemon, "window-1");
+    let ours = until_showing_something();
+
+    std::fs::remove_file(record(&daemon)).expect("the window wrote a record");
+    assert_ok(&answer(request::Payload::ReadTabHolders(ReadTabHolders {})));
+
+    assert_eq!(listed(), vec![ours.clone()], "the window let go of its tab when the record went");
+    assert_eq!(
+        holders(&daemon),
+        vec![(ours, "window-1".to_string())],
+        "the window did not write itself and its tab back into the record"
+    );
+}
+
 /// Stands in for a window that is open: a socket that answers, named in the shared record.
 fn another_window(daemon: &Daemon, name: &str, focused: i64) -> UnixListener {
     let socket = daemon.root().join(format!("{name}.sock"));
