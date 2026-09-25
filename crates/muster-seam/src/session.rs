@@ -45,7 +45,7 @@ use muster_vt::KeyEncoder;
 
 use crate::proto::{
     AttentionChanged, Event, PaneTypeable, PresentationChanged, Problem as ProblemMessage,
-    ProblemsChanged, event,
+    ProblemsChanged, RosterChanged, ViewChanged, event,
 };
 use crate::shared_names::NamesFile;
 use crate::watch::{self, Seen};
@@ -1078,6 +1078,38 @@ pub(crate) struct Session {
     /// from this *and* the roster every time, so a tab that closed while it was armed reads
     /// as disarmed rather than wedging the chords. Always `None` under the settled scheme.
     armed: Option<TabId>,
+
+    /// The last view and roster the shell was sent, so one it already has is not sent again.
+    ///
+    /// Each costs the shell main-thread work - a forced layout per region, two sidebar diffs,
+    /// every badge redrawn - and many republishes change nothing: focusing the pane that
+    /// already has the keyboard, a daemon echoing an arrangement the window already holds.
+    sent: Sent,
+}
+
+#[derive(Debug, Default)]
+struct Sent {
+    view: Option<ViewChanged>,
+    roster: Option<RosterChanged>,
+}
+
+impl Sent {
+    /// Remembers `view`, and says whether the shell has yet to see it.
+    fn view(&mut self, view: &ViewChanged) -> bool {
+        if self.view.as_ref() == Some(view) {
+            return false;
+        }
+        self.view = Some(view.clone());
+        true
+    }
+
+    fn roster(&mut self, roster: &RosterChanged) -> bool {
+        if self.roster.as_ref() == Some(roster) {
+            return false;
+        }
+        self.roster = Some(roster.clone());
+        true
+    }
 }
 
 /// One pane's live search.
@@ -2825,12 +2857,15 @@ pub(crate) fn disarm() {
 /// and nothing else. Going through `publish` would reconcile every daemon and save the
 /// composition on a keystroke, which is a lot of work to say that a number moved.
 pub(crate) fn announce_roster() {
-    let (roster, numbering) = {
-        let session = poison::lock(&SESSION, "session");
+    let (roster, numbering, message) = {
+        let mut session = poison::lock(&SESSION, "session");
         let roster = session.roster(&session.view());
         let numbering = session.numbering(&roster);
-        (roster, numbering)
+        let message = convert::roster(&roster, &numbering);
+        let unseen = session.sent.roster(&message);
+        (roster, numbering, unseen.then_some(message))
     };
+    let Some(message) = message else { return };
     // The same line `publish` writes, because the question a run log has to answer about this
     // is "which rows carried numbers, and when" - and half the answers arriving on a line that
     // says nothing would make the log worse than no log for exactly the feature it is for.
@@ -2842,9 +2877,7 @@ pub(crate) fn announce_roster() {
             "panes" => roster.panes().count().to_string(),
         },
     );
-    ffi::emit(&Event {
-        payload: Some(event::Payload::RosterChanged(convert::roster(&roster, &numbering))),
-    });
+    ffi::emit(&Event { payload: Some(event::Payload::RosterChanged(message)) });
 }
 
 /// One numbering, as a log line says it.
@@ -3185,6 +3218,8 @@ pub(crate) fn open() -> Result<(), String> {
     // would turn that rule off and wait forever for a region nothing else will make.
     mark_opened();
     settle_what_the_window_shows();
+    // A window just opened has been sent nothing, whatever an earlier one was.
+    poison::lock(&SESSION, "session").sent = Sent::default();
     publish("open");
     Ok(())
 }
@@ -3883,7 +3918,7 @@ fn publish(cause: &str) {
     // two are settled together rather than left to drift. `noticed` is the panes that were
     // waiting to be noticed and have now been - re-announced below, after the shell has been
     // handed the arrangement they appear in.
-    let (view, roster, numbering, noticed) = {
+    let (view, roster, numbering, noticed, view_message, roster_message) = {
         let mut session = poison::lock(&SESSION, "session");
         // Before the view is built, and over every daemon rather than whichever one prompted
         // this. Several paths change what is on screen without going near a reconcile:
@@ -3924,7 +3959,11 @@ fn publish(cause: &str) {
         save(&session.composition, session.presentation, &session.font_sizes);
         session.forget_what_closed();
         save_names(&session.names, &session.tab_names);
-        (view, roster, numbering, noticed)
+        let view_message = convert::view(&view);
+        let roster_message = convert::roster(&roster, &numbering);
+        let view_message = session.sent.view(&view_message).then_some(view_message);
+        let roster_message = session.sent.roster(&roster_message).then_some(roster_message);
+        (view, roster, numbering, noticed, view_message, roster_message)
     };
 
     // The first thing done outside that lock, because it is the only thing here that has been
@@ -3932,40 +3971,47 @@ fn publish(cause: &str) {
     // what was said about one needs `PROBLEMS` before `SESSION`.
     clear_stale_grid_problems();
 
+    if view_message.is_none() && roster_message.is_none() {
+        log::debug("publish.unchanged", fields! { "cause" => cause });
+    }
+
     // The shape, not the fact. "the view changed" is useless in a bug report and what it
     // changed to is the whole answer - a window rendering the wrong thing and a window
     // rendering nothing are one line apart here (`architecture.md`, the diagnostic log).
-    for region in &view.regions {
-        log::info(
-            "view.region",
-            fields! {
-                "region" => region.id.to_string(),
-                "daemon" => region.daemon.to_string(),
-                "tab" => region.tab.to_string(),
-                "keyboard" => region.pane.as_ref().map(ToString::to_string).unwrap_or_default(),
-                "tree" => match &region.root {
-                    Some(root) => root.to_string(),
-                    None => "(not yet published)".to_string(),
+    if let Some(message) = view_message {
+        for region in &view.regions {
+            log::info(
+                "view.region",
+                fields! {
+                    "cause" => cause,
+                    "region" => region.id.to_string(),
+                    "daemon" => region.daemon.to_string(),
+                    "tab" => region.tab.to_string(),
+                    "keyboard" => region.pane.as_ref().map(ToString::to_string).unwrap_or_default(),
+                    "tree" => match &region.root {
+                        Some(root) => root.to_string(),
+                        None => "(not yet published)".to_string(),
+                    },
+                    "focused" => view.focused == Some(region.id),
                 },
-                "focused" => view.focused == Some(region.id),
+            );
+        }
+        ffi::emit(&Event { payload: Some(event::Payload::ViewChanged(message)) });
+    }
+    if let Some(message) = roster_message {
+        log::info(
+            "roster.published",
+            fields! {
+                "cause" => cause,
+                "tabs" => roster.tabs().count().to_string(),
+                "tabs_on_screen" => roster.tabs().filter(|tab| tab.on_screen).count().to_string(),
+                "panes" => roster.panes().count().to_string(),
+                "on_screen" => roster.panes().filter(|pane| pane.on_screen).count().to_string(),
+                "numbering" => describe_numbering(&numbering),
             },
         );
+        ffi::emit(&Event { payload: Some(event::Payload::RosterChanged(message)) });
     }
-    log::info(
-        "roster.published",
-        fields! {
-            "cause" => cause,
-            "tabs" => roster.tabs().count().to_string(),
-            "tabs_on_screen" => roster.tabs().filter(|tab| tab.on_screen).count().to_string(),
-            "panes" => roster.panes().count().to_string(),
-            "on_screen" => roster.panes().filter(|pane| pane.on_screen).count().to_string(),
-            "numbering" => describe_numbering(&numbering),
-        },
-    );
-    ffi::emit(&Event { payload: Some(event::Payload::ViewChanged(convert::view(&view))) });
-    ffi::emit(&Event {
-        payload: Some(event::Payload::RosterChanged(convert::roster(&roster, &numbering))),
-    });
 
     // After the view, so that a pane surfaced by this very publish has somewhere to be
     // painted before it is told it is no longer waiting on anyone.
