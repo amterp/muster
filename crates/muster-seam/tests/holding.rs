@@ -15,8 +15,8 @@ use std::sync::Mutex;
 
 use herdr_harness::{Daemon, until};
 use muster::proto::{
-    ArrangePane, CreateTab, Event, FocusPane, OpenWindow, ReadTabHolders, ReadWindow, Request,
-    Response, Startup, ViewChanged, event, request, response,
+    ArrangePane, AttachPane, CreateTab, Event, FocusPane, OpenWindow, ReadTabHolders, ReadWindow,
+    Request, Response, Startup, ViewChanged, WindowFocus, event, request, response,
 };
 use muster_core::composition::holding::{from_toml, to_toml};
 use muster_core::composition::{DaemonId, HeldWindow, WindowName};
@@ -297,6 +297,105 @@ fn a_record_deleted_under_an_open_window_is_written_again() {
     );
 }
 
+/// A first window lists every tab the daemon already holds.
+///
+/// Alex's upgrade: his first launch of this release finds every tab already running and no record
+/// saying whose. The daemon described them before this window had said it was open, so no window
+/// could take them then, and nothing asked again once it had.
+#[test]
+fn a_first_window_lists_every_tab_already_on_the_daemon() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = Daemon::start();
+    tabs_already_running(&daemon);
+
+    open_a_window(&daemon, "window-1");
+
+    until(
+        "the window to list both tabs the daemon already held",
+        || listed().len() == 2,
+        || format!("this window lists {:?}; the record says {:?}", listed(), holders(&daemon)),
+    );
+}
+
+/// The same, for a launch that names a pane: `muster <pane>`, which the contract tier runs.
+#[test]
+fn a_first_window_opened_onto_a_pane_lists_every_tab_already_on_the_daemon() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = Daemon::start();
+    tabs_already_running(&daemon);
+    start_a_window(&daemon, "window-1");
+    let pane = a_named_pane(&daemon);
+
+    assert!(matches!(
+        answer(request::Payload::AttachPane(AttachPane { pane_id: pane })).payload,
+        Some(response::Payload::Attached(_))
+    ));
+
+    until(
+        "the window to list both tabs the daemon already held",
+        || listed().len() == 2,
+        || format!("this window lists {:?}; the record says {:?}", listed(), holders(&daemon)),
+    );
+    assert_eq!(
+        holders(&daemon).iter().filter(|(_, window)| window == "window-1").count(),
+        2,
+        "the record does not say this window holds both: {:?}",
+        holders(&daemon)
+    );
+}
+
+/// A window reopened lists a tab made while no window was open.
+///
+/// Nobody held it, and this window is the only one open, so it is this window's. The daemon
+/// described it before the window had said it was open again.
+#[test]
+fn a_reopened_window_lists_a_tab_made_while_it_was_closed() {
+    let turn = muster::testing::fresh_session();
+    let daemon = Daemon::start();
+    open_a_window(&daemon, "window-1");
+    until_showing_something();
+    assert_ok(&answer(request::Payload::Quitting(muster::proto::Quitting::default())));
+    daemon.call("tab.create", &json!({ "focus": false }));
+
+    turn.relaunch();
+    open_a_window(&daemon, "window-1");
+
+    until(
+        "the reopened window to list the tab made while it was closed",
+        || listed().len() == 2,
+        || format!("this window lists {:?}; the record says {:?}", listed(), holders(&daemon)),
+    );
+}
+
+/// A tab this window left for the window in front is taken once this window comes to the front.
+///
+/// Coming to the front is what makes a window the one a tab nobody holds joins, so it has to ask
+/// again then, rather than wait for the daemon to say something else.
+#[test]
+fn coming_to_the_front_takes_the_tabs_left_for_the_window_that_was() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = Daemon::start();
+    let _other = another_window(&daemon, "window-9", i64::MAX / 2);
+    open_a_window(&daemon, "window-1");
+    until_showing_something();
+    daemon.call("tab.create", &json!({ "focus": false }));
+    until(
+        "this window to hear of the tab nobody asked for",
+        || panes_on_the_daemon() == 2,
+        || format!("the window has heard of {} panes", panes_on_the_daemon()),
+    );
+    assert_eq!(listed().len(), 1, "this window took a tab the window in front was due");
+    // The other window goes behind, as it would once this one is in front.
+    let path = record(&daemon);
+    let mut holders = read_record(&path);
+    holders.focused(&WindowName::new("window-9"), 0);
+    write_record(&path, &holders);
+
+    assert_ok(&answer(request::Payload::WindowFocus(WindowFocus { focused: true })));
+
+    assert_eq!(listed().len(), 2, "coming to the front did not take the tab nobody holds");
+}
+
 /// Stands in for a window that is open: a socket that answers, named in the shared record.
 fn another_window(daemon: &Daemon, name: &str, focused: i64) -> UnixListener {
     let socket = daemon.root().join(format!("{name}.sock"));
@@ -353,6 +452,13 @@ fn write_record(path: &Path, holders: &muster_core::composition::Holders) {
 }
 
 fn open_a_window(daemon: &Daemon, name: &str) {
+    start_a_window(daemon, name);
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+}
+
+/// Everything a launch does before it says what to show: `muster` then opens, and `muster <pane>`
+/// attaches that pane instead.
+fn start_a_window(daemon: &Daemon, name: &str) {
     *VIEW.lock().expect("a panicking test poisoned the view") = None;
     muster::ffi::muster_set_event_callback(Some(note));
     let arrangement = daemon.root().join(format!("{name}.toml"));
@@ -363,7 +469,34 @@ fn open_a_window(daemon: &Daemon, name: &str) {
         tab_holders_path: record(daemon).to_string_lossy().into_owned(),
         ..Startup::default()
     })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+}
+
+/// Two tabs on the daemon before any window opens: one split three ways, and one of a single pane.
+///
+/// What `tools/smoke-launch.py` stages, and what Alex's machine looks like at his first launch of
+/// the release that brought this record: every tab already there, and no record saying whose.
+fn tabs_already_running(daemon: &Daemon) {
+    daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "work", "focus": true }));
+    daemon.call("pane.split", &json!({ "direction": "right" }));
+    daemon.call("pane.split", &json!({ "direction": "down" }));
+    daemon.call("tab.create", &json!({ "focus": false }));
+}
+
+/// Muster's name for a pane the daemon already held, once the window has named it.
+fn a_named_pane(daemon: &Daemon) -> String {
+    let path = daemon.root().join("panes.toml");
+    let first = || -> Option<String> {
+        let text = std::fs::read_to_string(&path).ok()?;
+        let (panes, _) =
+            muster_core::names::from_toml(&text, muster_core::names::Mint::Drawn).ok()?;
+        panes.entries().next().map(|(name, _, _)| name.to_string())
+    };
+    until(
+        "the window to name the panes the daemon holds",
+        || first().is_some(),
+        || format!("{} names nothing yet", path.display()),
+    );
+    first().expect("just waited for it")
 }
 
 fn until_showing_something() -> String {
