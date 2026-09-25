@@ -43,9 +43,8 @@ pub fn ask_within(
     environment: &BTreeMap<String, String>,
     patience: Duration,
 ) -> Result<Response, Trouble> {
-    let named =
-        request.payload.as_ref().is_some_and(|payload| muster_proto::names(payload).is_some());
-    let (path, stream) = reach(socket, environment, named)?;
+    let any_will_do = request.payload.as_ref().is_some_and(muster_proto::any_window_will_do);
+    let (path, stream) = reach(socket, environment, any_will_do)?;
     exchange(&path, stream, request, patience)
 }
 
@@ -202,13 +201,14 @@ fn exchange(
 /// way to tell a live window from a file a killed one left behind, and connecting twice would
 /// leave room for the window to go away in between.
 ///
-/// `named` is whether the request names the tab or pane it is about. Any window will do for one
-/// that does, because a window carries a request about another window's tab to that window - so
-/// with several open, the first that answers is asked, and it does not matter which.
+/// `any_will_do` is whether any open window can carry the request out
+/// (`muster_proto::any_window_will_do`): one naming its tab or pane, which a window carries to the
+/// window holding it, or a tab move naming where it goes. With several open, the first that
+/// answers is asked, and it does not matter which.
 fn reach(
     socket: Option<&str>,
     environment: &BTreeMap<String, String>,
-    named: bool,
+    any_will_do: bool,
 ) -> Result<(String, UnixStream), Trouble> {
     if let Some(path) = socket {
         return dial(path).map(|stream| (path.to_string(), stream)).map_err(|error| {
@@ -238,7 +238,7 @@ fn reach(
 
     match answered.len() {
         1 => Ok(answered.remove(0)),
-        count if count > 1 && named => Ok(answered.remove(0)),
+        count if count > 1 && any_will_do => Ok(answered.remove(0)),
         0 => Err(Trouble::Unreachable(format!(
             "no Muster window is listening. ${} is not set, so this is not running in a pane \
              Muster made, and nothing under {} answered. Open Muster, or name a window with \
