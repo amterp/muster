@@ -1191,8 +1191,8 @@ impl Session {
     /// replaced while its pane was hidden starts out streaming.
     ///
     /// Local panes only. A remote pane's client is an ssh exec, measured at 444-561 ms to start
-    /// (`PaneSurfaces`), which would be the price of every tab switch; its daemon renders it
-    /// regardless, and says so to nobody on this machine.
+    /// (`PaneSurfaces`), which would be the price of every tab switch - so a remote daemon still
+    /// renders the hidden panes it streams here.
     fn tell_bridges_what_is_showing(
         &mut self,
         showing: &BTreeSet<PaneKey>,
