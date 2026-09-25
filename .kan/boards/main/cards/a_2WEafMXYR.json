@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "upstream-herdr-knows",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "uncommitted",
+  "created_at_millis": 1790311459592,
+  "creator": "Alexander Terp",
+  "description": "Found in round 1 (2026-09-24): herdr's agent detection matches on the process name, so a Claude Code started as anything other than claude (a wrapper script, a copied binary, a path under a scratch dir) reads unknown forever, and the sidebar never shows its state. Harnesses installed through wrappers are common. Worth asking herdr whether detection could also use the screen or an explicit report (pane.report_agent), and worth knowing when choosing what a Muster-owned daemon would detect by.",
+  "id": "a_2WEafMXYR",
+  "position": "aR",
+  "title": "🔌 Upstream: herdr knows an agent only by its process name",
+  "type": "chore",
+  "updated_at_millis": 1790311459592,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1790311459592}
+  ]
+}

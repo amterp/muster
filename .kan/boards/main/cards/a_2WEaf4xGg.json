@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "the-sidebar-rebuilds",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1790311459425,
+  "creator": "Alexander Terp",
+  "description": "Measured in round 1 (2026-09-24), release build, sample profile of a scratch window during focus changes: applying a view costs about 2 ms of main-thread CPU, and about 55% of that is the sidebar. reloadData(forRowIndexes:) rebuilds each row whose keyboard marker moved, at about 1.2 ms of AppKit view construction per row: two rows per focus change, one per agent transition (which costs 2-4 ms in all). Another ~30% is AppKit retitling the window, which really does change on a focus change; ~15% is RegionView.apply.\n\nNot per keystroke or per byte, so not the snappiness problem - but it is the largest remaining main-thread cost per user action, and it grows with agent churn. Reuse row views (update the marker and state in place) rather than reloading the row. view.received and pane_state.received carry cpu_ms, so the before/after is one grep.",
+  "id": "a_2WEaf4xGg",
+  "position": "aW",
+  "title": "🐢 The sidebar rebuilds a row's views instead of reusing them",
+  "type": "enhancement",
+  "updated_at_millis": 1790311459425,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1790311459425}
+  ]
+}
