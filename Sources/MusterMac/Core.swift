@@ -1048,7 +1048,8 @@ public enum Core {
 
   private static func milliseconds(since start: ContinuousClock.Instant) -> String {
     let elapsed = ContinuousClock.now - start
-    let ms = Double(elapsed.components.seconds) * 1000
+    let ms =
+      Double(elapsed.components.seconds) * 1000
       + Double(elapsed.components.attoseconds) / 1e15
     return String(format: "%.2f", ms)
   }
