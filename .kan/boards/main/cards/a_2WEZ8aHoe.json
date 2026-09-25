@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-window-that-cannot",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1790311400831,
+  "creator": "Alexander Terp",
+  "description": "Found in review, round 1 (2026-09-24). When ~/.muster/state/holding/tabs.toml does not parse, change() in crates/muster-seam/src/holding.rs writes the window's in-memory copy back over it. Today only a corrupt file reaches that path. Once the record's format changes, an older Muster still running beside a newer one would overwrite the newer file and drop whatever it does not know. Refuse to write a record this version cannot read, and say so in the run log.",
+  "id": "a_2WEZ8aHoe",
+  "position": "aN",
+  "title": "A window that cannot read the tab record writes over it",
+  "type": "chore",
+  "updated_at_millis": 1790311400831,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1790311400831}
+  ]
+}
