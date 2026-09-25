@@ -6,7 +6,8 @@
 //! about macOS - the two things it needs from the outside, an encoder and a channel, arrive
 //! as traits.
 
-use std::sync::{Arc, Mutex, RwLock};
+use std::collections::VecDeque;
+use std::sync::{Arc, Condvar, Mutex, RwLock};
 
 use super::{
     KeyEncoding, KeyEvent, Keymap, PaneChannel, PaneInputSettings, PaneIntent, Resolution,
@@ -36,12 +37,18 @@ pub struct PaneInput {
     /// → bridge → daemon, while a server-encoded key goes app → daemon directly and skips a
     /// hop. Left concurrent, `abc<up>def` can deliver the arrow out of place. So sends are
     /// serialized and a server-encoded intent completes its round trip before the next item
-    /// goes out - which costs nothing at typing speed and is what makes mixing the two
-    /// routes safe at all.
+    /// goes out - which is what makes mixing the two routes safe at all.
+    ///
+    /// But not on the caller's thread. The caller is the window's main thread, and the daemon
+    /// answers a server-encoded key on the thread that renders every pane it streams: 154 ms
+    /// at p90 in one busy session, and a 500 ms timeout thirteen times, with the window
+    /// frozen for each. So a server-encoded intent goes to a worker, and anything sent while
+    /// the worker is busy queues behind it. Everything else is written inline, as before,
+    /// whenever nothing is queued - typing pays for no thread.
     ///
     /// The one-shot warning lives inside the same lock because it is written on exactly the
     /// path this serializes.
-    outbound: Mutex<Outbound>,
+    outbound: Arc<Outbox>,
 
     /// Run after each intent that actually reached the pane.
     ///
@@ -69,8 +76,31 @@ struct Typing {
 }
 
 #[derive(Default)]
+struct Outbox {
+    state: Mutex<Outbound>,
+    /// Signalled when a worker has emptied the queue.
+    drained: Condvar,
+}
+
+#[derive(Default)]
 struct Outbound {
     warned_about_dropped_input: bool,
+    queue: VecDeque<Queued>,
+    /// A worker is delivering, so whatever is sent now goes behind it.
+    draining: bool,
+}
+
+struct Queued {
+    intent: PaneIntent,
+    target: Arc<dyn PaneChannel>,
+    fallback: Option<PaneIntent>,
+}
+
+/// What a delivery needs besides the intent, cloned out so a worker can outlive the call.
+#[derive(Clone)]
+struct Route {
+    channel: Arc<dyn PaneChannel>,
+    delivered: Option<Arc<dyn Fn() + Send + Sync>>,
 }
 
 impl std::fmt::Debug for PaneInput {
@@ -100,7 +130,7 @@ impl PaneInput {
                 keymap: settings.keymap(),
                 settings: settings.clone(),
             }),
-            outbound: Mutex::new(Outbound::default()),
+            outbound: Arc::new(Outbox::default()),
             delivered: None,
         }
     }
@@ -261,9 +291,9 @@ impl PaneInput {
             return;
         };
         self.deliver_over(
-            &PaneIntent::Text(text.to_string()),
-            server.as_ref(),
-            Some(&PaneIntent::Input(text.as_bytes().to_vec())),
+            PaneIntent::Text(text.to_string()),
+            server,
+            Some(PaneIntent::Input(text.as_bytes().to_vec())),
         );
     }
 
@@ -282,7 +312,23 @@ impl PaneInput {
     /// not arrive is a keystroke, and a pane not handed back is worth naming in one record
     /// beside the others rather than in fifteen.
     pub fn resize(&self, columns: u16, rows: u16) -> bool {
+        self.flush();
         self.channel.deliver(&PaneIntent::Resize { columns, rows })
+    }
+
+    /// Waits until everything sent so far has been delivered or given up on.
+    ///
+    /// For whoever needs the pane to have had its input before acting - a test reading what
+    /// went out, and a pane being handed back at quit.
+    pub fn flush(&self) {
+        let mut outbound = poison::lock(&self.outbound.state, "pane-outbound");
+        while outbound.draining {
+            outbound = self
+                .outbound
+                .drained
+                .wait(outbound)
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+        }
     }
 
     /// Hands a key to the daemon to encode, because we would get it wrong.
@@ -297,9 +343,9 @@ impl PaneInput {
         log::debug("input.key.server", fields! { "key" => key.key.as_str(), "name" => name });
         let local = self.encoder().encode(key).unwrap_or_default();
         self.deliver_over(
-            &PaneIntent::Key { name: name.to_string() },
-            server.as_ref(),
-            Some(&PaneIntent::Input(local)),
+            PaneIntent::Key { name: name.to_string() },
+            server,
+            Some(PaneIntent::Input(local)),
         );
     }
 
@@ -316,41 +362,102 @@ impl PaneInput {
     }
 
     fn deliver(&self, intent: &PaneIntent) {
-        self.deliver_over(intent, self.channel.clone().as_ref(), None);
+        self.deliver_over(intent.clone(), Arc::clone(&self.channel), None);
     }
 
     fn deliver_over(
         &self,
-        intent: &PaneIntent,
-        target: &dyn PaneChannel,
-        fallback: Option<&PaneIntent>,
+        intent: PaneIntent,
+        target: Arc<dyn PaneChannel>,
+        fallback: Option<PaneIntent>,
     ) {
-        let mut outbound = poison::lock(&self.outbound, "pane-outbound");
-        if target.deliver(intent) {
-            self.arrived();
+        let route = Route { channel: Arc::clone(&self.channel), delivered: self.delivered.clone() };
+        let mut outbound = poison::lock(&self.outbound.state, "pane-outbound");
+        // Inline while holding the lock, so a watcher told of the delivery is told in order.
+        if !outbound.draining && !target.encodes_server_side() {
+            if !attempt(&route, &intent, target.as_ref(), fallback.as_ref()) {
+                report_dropped(target.as_ref(), &mut outbound);
+            }
             return;
         }
-        if let Some(fallback) = fallback.filter(|f| *f != intent) {
+        outbound.queue.push_back(Queued { intent, target, fallback });
+        if outbound.draining {
+            return;
+        }
+        outbound.draining = true;
+        drop(outbound);
+
+        let outbox = Arc::clone(&self.outbound);
+        let worker = route.clone();
+        let spawned = std::thread::Builder::new()
+            .name("pane-input".into())
+            .spawn(move || drain(&outbox, &worker));
+        if let Err(error) = spawned {
             log::warn(
-                "input.fallback",
+                "input.worker.failed",
                 fields! {
-                    "channel" => target.description(),
-                    "impact" => "sent with a guessed encoding instead, which may be wrong for this pane",
+                    "error" => error.to_string(),
+                    "impact" => "this keystroke waits for the daemon on the window's own \
+                                 thread, which freezes the window until the daemon answers",
+                    "check" => "the process is out of threads; `ps -M` on the app shows how many \
+                                it holds",
                 },
             );
-            if self.channel.deliver(fallback) {
-                self.arrived();
-                return;
-            }
+            drain(&self.outbound, &route);
         }
-        report_dropped(target, &mut outbound);
     }
+}
 
+/// Delivers what is queued, in order, until nothing is.
+fn drain(outbox: &Outbox, route: &Route) {
+    loop {
+        let next = {
+            let mut outbound = poison::lock(&outbox.state, "pane-outbound");
+            let Some(next) = outbound.queue.pop_front() else {
+                outbound.draining = false;
+                outbox.drained.notify_all();
+                return;
+            };
+            next
+        };
+        if !attempt(route, &next.intent, next.target.as_ref(), next.fallback.as_ref()) {
+            report_dropped(next.target.as_ref(), &mut poison::lock(&outbox.state, "pane-outbound"));
+        }
+    }
+}
+
+/// Sends one intent, falling back to a local encoding if the target refuses it.
+fn attempt(
+    route: &Route,
+    intent: &PaneIntent,
+    target: &dyn PaneChannel,
+    fallback: Option<&PaneIntent>,
+) -> bool {
+    if target.deliver(intent) {
+        route.arrived();
+        return true;
+    }
+    if let Some(fallback) = fallback.filter(|f| *f != intent) {
+        log::warn(
+            "input.fallback",
+            fields! {
+                "channel" => target.description(),
+                "impact" => "sent with a guessed encoding instead, which may be wrong for this pane",
+            },
+        );
+        if route.channel.deliver(fallback) {
+            route.arrived();
+            return true;
+        }
+    }
+    false
+}
+
+impl Route {
     /// Something reached the pane, so a frame is owed.
     ///
-    /// Called while `outbound` is held, which is deliberate: this runs on exactly the path that
-    /// lock serializes, and a watcher told out of order would record a pane as owing a frame it
-    /// had already been given.
+    /// Called only on the path `outbound` serializes, which is deliberate: a watcher told out
+    /// of order would record a pane as owing a frame it had already been given.
     fn arrived(&self) {
         if let Some(delivered) = self.delivered.as_ref() {
             delivered();

@@ -34,6 +34,8 @@ fn pane_input_conformance() {
             apply(step, &pane)?;
         }
 
+        // A daemon-encoded intent is delivered off the caller's thread.
+        pane.flush();
         let trace: Vec<Value> =
             recorder.sends().iter().map(|(channel, intent)| describe(channel, intent)).collect();
         Ok(fields([("trace", Some(Value::Array(trace)))]))

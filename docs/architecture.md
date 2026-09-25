@@ -853,6 +853,12 @@ queueing behind itself, and the position it ends on is always sent, because the 
 asked for. This is contained to that request rather than made general - the other drag in the window moves a region
 boundary, which is Muster's own composition and never reaches a daemon.
 
+**Input the daemon encodes is the other.** An unmodified arrow and a paste go to the daemon as `pane.send_input`,
+because only it knows the pane's modes, and herdr answers that on the thread that renders every pane it streams - 154
+ms at p90 in one busy session, with the window frozen for each. So a pane's input path hands such an intent to a worker
+and returns, and anything typed while it is out queues behind it: the order in which a pane receives keys is the order
+they were pressed, and only the waiting moved.
+
 ## The renderer seam
 
 The renderer gets the same treatment as the backend: a narrow contract in Muster's terms - create a surface in a
