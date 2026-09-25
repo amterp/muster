@@ -1093,12 +1093,23 @@ public enum Core {
   /// it is about, so a window that is not showing it drops it.
   @MainActor public static weak var window: MusterWindow?
 
-  private static func milliseconds(since start: ContinuousClock.Instant) -> String {
-    let elapsed = ContinuousClock.now - start
-    let ms =
-      Double(elapsed.components.seconds) * 1000
-      + Double(elapsed.components.attoseconds) / 1e15
-    return String(format: "%.2f", ms)
+  /// What applying one event cost the main thread, for the line that records it.
+  ///
+  /// Two numbers because they answer different questions. `ms` is how long input and drawing
+  /// waited; `cpu_ms` is the work itself, which stays true on a loaded machine where `ms` also
+  /// counts the time the thread was not running.
+  private struct ApplyCost {
+    let wall = ContinuousClock.now
+    let cpu = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
+
+    var fields: [String: String] {
+      let elapsed = ContinuousClock.now - wall
+      let ms =
+        Double(elapsed.components.seconds) * 1000
+        + Double(elapsed.components.attoseconds) / 1e15
+      let cpuMs = Double(clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - cpu) / 1e6
+      return ["ms": String(format: "%.2f", ms), "cpu_ms": String(format: "%.3f", cpuMs)]
+    }
   }
 
   /// An event the core sent unasked, already back on the main thread.
@@ -1110,8 +1121,11 @@ public enum Core {
     case .paneTypeable(let typeable):
       info("pane.typeable", ["daemon": typeable.daemonID, "pane": typeable.paneID])
     case .paneStateChanged(let changed):
+      let cost = ApplyCost()
       window?.apply(
         pane: PaneKey(daemon: changed.daemonID, pane: changed.paneID), state: changed.state)
+      // Debug rather than info: one per agent transition, which is the busiest thing here.
+      debug("pane_state.received", cost.fields.merging(["state": changed.state]) { $1 })
     case .backendHealth(let backend):
       window?.apply(daemon: backend.daemonID, health: backend.state, detail: backend.detail)
     case .viewChanged(let changed):
@@ -1122,16 +1136,17 @@ public enum Core {
       // After applying rather than before, so the line can say what applying cost: this is
       // main-thread time that input and drawing wait behind, once per publish.
       let contents = WindowContents(changed)
-      let applying = ContinuousClock.now
+      let cost = ApplyCost()
       window?.apply(contents)
       info(
         "view.received",
-        [
-          "regions": String(contents.regions.count),
-          "panes": String(contents.regions.reduce(0) { $0 + ($1.tree?.leaves.count ?? 0) }),
-          "keyboard": contents.keyboardPane ?? "",
-          "ms": milliseconds(since: applying),
-        ])
+        cost.fields.merging(
+          [
+            "regions": String(contents.regions.count),
+            "panes": String(contents.regions.reduce(0) { $0 + ($1.tree?.leaves.count ?? 0) }),
+            "keyboard": contents.keyboardPane ?? "",
+          ]
+        ) { $1 })
     case .appearanceChanged(let changed):
       let appearance = read(changed.appearance)
       info(
@@ -1151,15 +1166,16 @@ public enum Core {
       window?.apply(bindings: bindings)
     case .rosterChanged(let changed):
       let roster = Roster(changed)
-      let applying = ContinuousClock.now
+      let cost = ApplyCost()
       window?.apply(roster)
       info(
         "roster.received",
-        [
-          "panes": String(roster.panes.count),
-          "on_screen": String(roster.panes.filter(\.onScreen).count),
-          "ms": milliseconds(since: applying),
-        ])
+        cost.fields.merging(
+          [
+            "panes": String(roster.panes.count),
+            "on_screen": String(roster.panes.filter(\.onScreen).count),
+          ]
+        ) { $1 })
     case .problemsChanged(let changed):
       let problems = changed.problems.map {
         Problem(key: $0.key, severity: Problem.Severity($0.severity), detail: $0.detail)
