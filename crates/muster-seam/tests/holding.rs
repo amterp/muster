@@ -15,7 +15,7 @@ use std::sync::Mutex;
 
 use herdr_harness::{Daemon, until};
 use muster::proto::{
-    ArrangePane, CreateTab, Event, OpenWindow, ReadTabHolders, ReadWindow, Request, Response, Startup,
+    ArrangePane, CreateTab, Event, FocusPane, OpenWindow, ReadTabHolders, ReadWindow, Request, Response, Startup,
     ViewChanged, event, request, response,
 };
 use muster_core::composition::holding::{from_toml, to_toml};
@@ -133,6 +133,53 @@ fn a_pane_this_window_moves_into_a_new_tab_stays_here_while_another_is_in_front(
         || holders(&daemon).iter().any(|(tab, window)| tab != &first && window == "window-1"),
         || format!("the record says {:?}", holders(&daemon)),
     );
+}
+
+/// Going to a pane never shows a tab another window holds, even before this window has read that
+/// it does.
+///
+/// The shell reads the record a moment after it moves, and a window still starting up has not read
+/// it at all. A focus in that moment on a tab nobody held when this window last looked used to take
+/// what it could, find the tab already taken, and show it anyway - taking its terminals from the
+/// window that holds it.
+#[test]
+fn a_focus_never_shows_a_tab_the_record_gives_another_window() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = Daemon::start();
+    let _other = another_window(&daemon, "window-9", 0);
+    open_a_window(&daemon, "window-1");
+    let first = until_showing_something();
+    daemon.call("tab.create", &json!({ "focus": false }));
+    until(
+        "this window, in front, to take the tab nobody asked for",
+        || listed().len() == 2,
+        || format!("this window lists {:?}", listed()),
+    );
+    let theirs = listed().into_iter().find(|tab| tab != &first).expect("just waited for two");
+    let pane = panes_in(&theirs).pop().expect("a new tab has a pane");
+
+    // The other window comes to the front and the tab is held by nobody, which this window reads:
+    // it lets the tab go and leaves it for the window in front.
+    let path = record(&daemon);
+    let mut holders = read_record(&path);
+    holders.prune(|tab| tab.as_str() != theirs);
+    holders.focused(&WindowName::new("window-9"), i64::MAX / 2);
+    write_record(&path, &holders);
+    assert_ok(&answer(request::Payload::ReadTabHolders(ReadTabHolders {})));
+    assert_eq!(listed(), vec![first.clone()], "this window kept a tab it was not due");
+
+    // Then the other window takes it, and this window has not read that yet.
+    give(&daemon, &theirs, "window-9");
+    let focused = answer(request::Payload::FocusPane(FocusPane {
+        pane_id: pane.clone(),
+        ..FocusPane::default()
+    }));
+
+    assert!(
+        matches!(focused.payload, Some(response::Payload::Failure(_))),
+        "a focus on {pane} in another window's tab was carried out here: {focused:?}"
+    );
+    assert_eq!(showing(), Some(first), "this window showed a tab another window holds");
 }
 
 /// A tab another window takes leaves this one, and the panes in it keep running.
@@ -349,6 +396,21 @@ fn panes_in_this_window() -> Vec<String> {
             .iter()
             .flat_map(|roster| roster.tabs.iter())
             .flat_map(|tab| tab.panes.iter())
+            .map(|pane| pane.pane_id.clone())
+            .collect(),
+        other => panic!("asking what the window is showing answered {other:?}"),
+    }
+}
+
+/// The panes in one tab this window lists.
+fn panes_in(tab: &str) -> Vec<String> {
+    match answer(request::Payload::ReadWindow(ReadWindow {})).payload {
+        Some(response::Payload::Window(window)) => window
+            .roster
+            .iter()
+            .flat_map(|roster| roster.tabs.iter())
+            .filter(|held| held.tab_id == tab)
+            .flat_map(|held| held.panes.iter())
             .map(|pane| pane.pane_id.clone())
             .collect(),
         other => panic!("asking what the window is showing answered {other:?}"),
