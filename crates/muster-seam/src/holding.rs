@@ -159,6 +159,11 @@ impl Holding {
         }
     }
 
+    /// Whether this window has said it is open, and not since said it closed.
+    pub(crate) fn has_opened(&self) -> bool {
+        self.open
+    }
+
     /// Says this window has closed. It keeps its tabs, so reopening it comes back to them.
     pub(crate) fn close(&mut self) {
         self.open = false;

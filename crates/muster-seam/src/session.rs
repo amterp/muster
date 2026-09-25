@@ -1395,12 +1395,13 @@ impl Session {
     /// tells the composition which of the machine's tabs are this window's.
     ///
     /// Before the window has opened this takes nothing when there is a shared record, because
-    /// the window has not said it exists and so is never the one a tab joins. That is on purpose:
-    /// what it restores decides which tabs it comes back to, and a tab taken in the moment before
-    /// is one another window's arrangement may name.
-    fn settle_holding(&mut self, daemon: &DaemonId) {
+    /// the window has not said it exists and so is never the one a tab joins. Saying so asks again
+    /// ([`take_what_nobody_holds`]), and so does coming to the front.
+    ///
+    /// Says whether it took anything.
+    fn settle_holding(&mut self, daemon: &DaemonId) -> bool {
         let described: Vec<TabId> = {
-            let Some(backend) = self.backends.get(daemon) else { return };
+            let Some(backend) = self.backends.get(daemon) else { return false };
             poison::lock(&backend.mirror, "mirror").tabs().map(|tab| tab.id.clone()).collect()
         };
         // Here rather than at each place a daemon is attached or let go, because every one of
@@ -1408,12 +1409,13 @@ impl Session {
         if !self.holding.follows_exactly(self.backends.keys()) {
             self.holding.follow(self.backends.keys().cloned().collect());
         }
-        self.holding.take_unheld(daemon, &described);
+        let taken = self.holding.take_unheld(daemon, &described);
         for tab in described {
             if self.holding.holds(&tab) {
                 self.composition.hold(tab);
             }
         }
+        !taken.is_empty()
     }
 
     /// Lets go of what this daemon no longer holds.
@@ -3725,14 +3727,41 @@ fn restore_font_sizes() {
 /// Before the restore, which reads the answer: a tab another window took while this one was
 /// closed is not this window's to reopen.
 fn say_this_window_is_open() {
+    {
+        let mut session = poison::lock(&SESSION, "session");
+        if session.holding.has_opened() {
+            return;
+        }
+        let known: BTreeSet<TabId> = {
+            let tabs = poison::lock(&session.tab_names, "tab-names");
+            tabs.entries().map(|(name, _, _)| name.clone()).collect()
+        };
+        let followed = session.backends.keys().cloned().collect();
+        session.holding.follow(followed);
+        session.holding.open(|tab| known.contains(tab));
+    }
+    // The daemons described their tabs before this window had said it was open, when it could
+    // not be the one to take them. On a first launch that is every tab there is.
+    take_what_nobody_holds();
+}
+
+/// Takes the tabs nobody holds that are this window's to take, on every machine it follows, and
+/// says whether it took any.
+///
+/// What a tab nobody holds needs asked again whenever the answer to "whose is it" may have become
+/// this window: when it says it is open, and when it comes to the front. Otherwise nothing asks
+/// until the daemon next says something, which on a quiet session is never.
+fn take_what_nobody_holds() -> bool {
     let mut session = poison::lock(&SESSION, "session");
-    let known: BTreeSet<TabId> = {
-        let tabs = poison::lock(&session.tab_names, "tab-names");
-        tabs.entries().map(|(name, _, _)| name.clone()).collect()
-    };
-    let followed = session.backends.keys().cloned().collect();
-    session.holding.follow(followed);
-    session.holding.open(|tab| known.contains(tab));
+    let daemons: Vec<DaemonId> = session.backends.keys().cloned().collect();
+    let mut took = false;
+    for daemon in &daemons {
+        if session.settle_holding(daemon) {
+            session.reconcile(daemon);
+            took = true;
+        }
+    }
+    took
 }
 
 /// Puts back the regions this window was showing when it last closed.
@@ -4017,6 +4046,10 @@ pub(crate) fn first_attached_daemon() -> Option<DaemonId> {
 pub(crate) fn attach(pane_id: &str) -> Result<Arc<AttachedPane>, AttachError> {
     let pane = PaneId::new(pane_id);
     follow_implicitly_if_nothing_else().map_err(AttachError::Unreachable)?;
+    // A window opened onto one pane is a window like any other: it holds tabs, and a tab nobody
+    // holds joins it. Without this it never said it was open, so it held nothing but the tab on
+    // screen, and every other tab the daemon had was listed by no window at all.
+    say_this_window_is_open();
 
     let (daemon, tab) = locate(&pane).ok_or_else(|| AttachError::NoSuchPane {
         pane: pane_id.to_string(),
@@ -5507,6 +5540,9 @@ pub(crate) fn window_focused(focused: bool) {
     // never raised one in the first place.
     for pane in &noticed.withdrawn {
         announce_attention(pane, Attend::Withdrawn);
+    }
+    if focused && take_what_nobody_holds() {
+        publish("holders");
     }
 }
 
