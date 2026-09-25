@@ -231,3 +231,38 @@ private func publish(_ path: String?) {
   let claim = record.deletingPathExtension().appendingPathExtension("held")
   #expect((try? String(contentsOf: claim, encoding: .utf8)) == String(live))
 }
+
+@Test func aClaimWrittenInTheSecondItsWindowStartedStaysHeld() {
+  // HFS+ keeps a file's time to the second, so a window started at .3 whose claim was written at
+  // .8 reads as having started after its own claim. That window is running, and its slot must
+  // not be handed to anybody else.
+  let home = scratch("coarse")
+  let environment = ["MUSTER_HOME": home]
+  let live = ProcessInfo.processInfo.processIdentifier
+  let held = Arrangements.open(fresh: false, environment: environment, pid: live)
+  publish(held)
+  let claim = URL(fileURLWithPath: held!).deletingPathExtension().appendingPathExtension("held")
+  let started = Arrangements.started(live)!
+  try? FileManager.default.setAttributes(
+    [.modificationDate: started.addingTimeInterval(-0.9)], ofItemAtPath: claim.path)
+
+  let reopened = Arrangements.open(
+    fresh: false, named: "window-1", environment: environment, pid: 4401)
+
+  #expect(reopened != held)
+}
+
+@Test func aFilesystemThatCannotLinkStillLetsAWindowClaimItsSlot() {
+  // Every launch there failed every claim and opened a window that remembered nothing.
+  let home = scratch("unlinkable")
+  let record = URL(fileURLWithPath: home).appendingPathComponent("window-1.toml")
+  let refused: (String, String) -> Int32 = { _, _ in
+    errno = ENOTSUP
+    return -1
+  }
+
+  #expect(Arrangements.claim(record, by: 4501, linking: refused))
+  #expect(!Arrangements.claim(record, by: 4502, linking: refused))
+  let claim = record.deletingPathExtension().appendingPathExtension("held")
+  #expect((try? String(contentsOf: claim, encoding: .utf8)) == "4501")
+}
