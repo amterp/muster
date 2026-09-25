@@ -506,7 +506,7 @@ fn pump_frames(
         let app = app.cloned();
         move || report_frames(&counted, app.as_ref())
     });
-    let mut pump = Pump { rendered: false, counted, resumed: None };
+    let mut pump = Pump { rendered: false, counted, resumed: None, resuming: false };
     // Heap rather than stack: a repaint is routinely tens of kilobytes, and this thread
     // has no reason to carry that in its frame.
     let mut chunk = vec![0u8; 64 * 1024].into_boxed_slice();
@@ -539,7 +539,7 @@ fn pump_frames(
         let _ = herdr.wait();
         let (columns, rows) = pty::terminal_size();
         // Never a takeover: a pane taken while it was parked belongs to whoever took it, and
-        // the app decides whether to take it back, as it does for any refused attach.
+        // a refusal is reported as the takeover it amounts to (`Pump::resuming`).
         let resuming = Arguments { takeover: false, ..arguments.clone() };
         match spawn_herdr(&resuming, columns, rows) {
             Ok(mut next) => {
@@ -548,6 +548,7 @@ fn pump_frames(
                 herdr = next;
                 decoder = FrameDecoder::new();
                 pump.resumed = Some((std::time::Instant::now(), because));
+                pump.resuming = true;
             }
             Err(error) => {
                 log::error(
@@ -672,6 +673,12 @@ struct Pump {
     counted: Arc<Counting>,
     /// When a parked pane's new client was started, and why, until its first frame arrives.
     resumed: Option<(std::time::Instant, &'static str)>,
+    /// Whether the client streaming now is one this bridge started after parking.
+    ///
+    /// A refusal then means another client took the terminal while nobody here held it, which
+    /// is a takeover in all but timing: reported as an ordinary refused attach, the app would
+    /// answer it with `--takeover` and steal the pane from the window that has it.
+    resuming: bool,
 }
 
 impl Pump {
@@ -722,7 +729,10 @@ impl Pump {
         app: Option<&Reporting>,
     ) -> ! {
         let why = reason.unwrap_or("herdr gave no reason");
-        let ending = bridge_report::ending(reason);
+        let ending = match bridge_report::ending(reason) {
+            Ending::Refused if self.resuming => Ending::TakenOver,
+            ending => ending,
+        };
         log::info(
             "bridge.closed",
             fields! {
