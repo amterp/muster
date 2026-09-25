@@ -1211,9 +1211,21 @@ public enum Core {
       // This window is carrying somebody to another window's tab. Since macOS 14 an app comes
       // forward only when the active one hands over, and if anything is active here it is this
       // window, where the click or the command came from.
-      info("window.raise.handed", ["pid": String(raise.pid)])
-      NSRunningApplication(processIdentifier: pid_t(raise.pid))?
-        .activate(from: .current, options: [])
+      // A pid is read from a record a person can edit, and one past what a pid can be is ignored
+      // rather than trapped on.
+      guard let pid = pid_t(exactly: raise.pid) else {
+        warn(
+          "window.raise.unhandable",
+          [
+            "pid": String(raise.pid),
+            "impact": "the window holding the tab was not handed activation, so it may stay "
+              + "behind whatever is in front",
+            "check": "the pid for that window in ~/.muster/state/holding/tabs.toml",
+          ])
+        break
+      }
+      info("window.raise.handed", ["pid": String(pid)])
+      NSRunningApplication(processIdentifier: pid)?.activate(from: .current, options: [])
     case .raiseWindow:
       // Somebody went to one of this window's tabs from another window, or from a terminal. The
       // tab is already on screen; this is the window coming forward to show it.
