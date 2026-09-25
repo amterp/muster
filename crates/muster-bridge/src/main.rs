@@ -544,6 +544,16 @@ fn pump_frames(
         match spawn_herdr(&resuming, columns, rows) {
             Ok(mut next) => {
                 input.attached(next.stdin.take().expect("herdr was spawned with a piped stdin"));
+                // Read again, because a resize arriving since the size above was read found no
+                // client to send to and was dropped - which is exactly when one lands, as the
+                // window lays out the tab that just came back.
+                let now = pty::terminal_size();
+                if now != (columns, rows) {
+                    let (columns, rows) = now;
+                    input.send_if_streaming(
+                        &ControlStreamMessage::Resize { columns, rows }.wire_format(),
+                    );
+                }
                 output = next.stdout.take().expect("herdr was spawned with a piped stdout");
                 herdr = next;
                 decoder = FrameDecoder::new();
