@@ -25,11 +25,8 @@ fn stripped(title: &str) -> Option<String> {
         _ => title,
     };
     // A glyph fused to the next word is part of the title, the same condition herdr applies.
-    let title = if rest.is_empty() || rest.starts_with(char::is_whitespace) {
-        rest.trim()
-    } else {
-        title
-    };
+    let title =
+        if rest.is_empty() || rest.starts_with(char::is_whitespace) { rest.trim() } else { title };
     (!title.is_empty()).then(|| title.to_string())
 }
 
