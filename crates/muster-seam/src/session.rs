@@ -1129,6 +1129,16 @@ struct Search {
 pub(crate) static SESSION: LazyLock<Mutex<Session>> =
     LazyLock::new(|| Mutex::new(Session::default()));
 
+/// Held from settling what the shell is to be sent until it has been sent.
+///
+/// `Session::sent` remembers the last view and roster so that neither is sent twice, which is
+/// only true if they reach the shell in the order they were remembered. Publishes run on the
+/// main thread, daemon threads and the watchdog's; without this, one settled first could be
+/// sent second, leaving the shell on the older view with nothing left to correct it. Its own
+/// lock rather than `SESSION` held longer, because what it covers includes socket writes to
+/// bridges. Always taken before `SESSION`, never while holding it.
+static PUBLISHING: Mutex<()> = Mutex::new(());
+
 /// Puts this process back where it was before any of it started.
 ///
 /// One window per process is the arrangement everything above is written against, and a global
@@ -3121,6 +3131,7 @@ pub(crate) fn disarm() {
 /// and nothing else. Going through `publish` would reconcile every daemon and save the
 /// composition on a keystroke, which is a lot of work to say that a number moved.
 pub(crate) fn announce_roster() {
+    let _publishing = poison::lock(&PUBLISHING, "publishing");
     let (roster, numbering, message) = {
         let mut session = poison::lock(&SESSION, "session");
         let roster = session.roster(&session.view());
@@ -4264,6 +4275,7 @@ pub(crate) fn set_window_frame(frame: Option<Frame>, full_screen: bool) {
 /// past about fifteen panes.
 /// `cause` names what asked, for the log line that says the window moved.
 fn publish(cause: &str) {
+    let publishing = poison::lock(&PUBLISHING, "publishing");
     // What the window is showing is also the answer to which agents have been seen, so the
     // two are settled together rather than left to drift. `noticed` is the panes that were
     // waiting to be noticed and have now been - re-announced below, after the shell has been
@@ -4367,6 +4379,7 @@ fn publish(cause: &str) {
         );
         ffi::emit(&Event { payload: Some(event::Payload::RosterChanged(message)) });
     }
+    drop(publishing);
 
     // After the view, so that a pane surfaced by this very publish has somewhere to be
     // painted before it is told it is no longer waiting on anyone.
