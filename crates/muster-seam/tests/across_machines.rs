@@ -961,11 +961,13 @@ fn evening_out_a_grouped_tab_divides_it_by_what_each_machine_holds() {
         || machines_of(&laptop_tab) == vec!["laptop".to_string(), "devenv".to_string()],
         || format!("the tab says it is on {:?}", machines_of(&laptop_tab)),
     );
-    assert_eq!(
-        weights(),
-        vec![1.0, 1.0],
-        "a tab nobody has arranged divides itself evenly between its machines, and this one \
-         does not - so what the equalize below changes would be unreadable"
+    // Waited for rather than read once: the list says the tab is on both machines as soon as the
+    // grouping is written, and the devenv's region opens when that machine's own event lands.
+    until(
+        "a tab nobody has arranged to divide itself evenly between its machines, without which \
+         what the equalize below changes would be unreadable",
+        || weights() == vec![1.0, 1.0],
+        || format!("the regions weigh {:?}", weights()),
     );
 
     assert_ok(&answer(request::Payload::EqualizePanes(EqualizePanes {
