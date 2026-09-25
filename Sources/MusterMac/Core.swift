@@ -114,6 +114,41 @@ public enum Core {
     }
   }
 
+  /// Every other window, open or closed, as somebody picking where a tab goes would name it.
+  public static func otherWindows() -> [OtherWindow] {
+    var request = Muster_Request()
+    request.readWindow = Muster_ReadWindow()
+    guard case .window(let answer) = send(request) else { return [] }
+    return answer.windows.map { OtherWindow(name: $0.name, pid: $0.pid, tabs: $0.tabs.count) }
+  }
+
+  /// Another window, open or closed.
+  public struct OtherWindow: Equatable, Sendable {
+    /// What names it when it is closed, and what a move is sent with either way.
+    public let name: String
+    /// Zero once it has closed.
+    public let pid: UInt32
+    public let tabs: Int
+
+    /// How a menu says it: the pid `muster window` prints for an open window, the name for a
+    /// closed one - the same handles `muster tab move --window` takes.
+    public var title: String {
+      let held = tabs == 1 ? "1 tab" : "\(tabs) tabs"
+      return pid == 0 ? "\(name) (closed, \(held))" : "Window \(pid) (\(held))"
+    }
+  }
+
+  /// Hands a tab to another window. An empty tab means the one this window is showing, and an
+  /// empty window means this one.
+  public static func moveTab(_ tab: String = "", to window: String) {
+    var moved = Muster_MoveTab()
+    moved.tabID = tab
+    moved.window = window
+    var request = Muster_Request()
+    request.moveTab = moved
+    send(request)
+  }
+
   /// One machine this window is attached to.
   public struct Machine: Equatable, Sendable {
     public let daemon: String
@@ -1023,6 +1058,7 @@ public enum Core {
     case .reloadConfig: return "reload_config"
     case .readTabHolders: return "read_tab_holders"
     case .carried: return "carried"
+    case .moveTab: return "move_tab"
     case .bridgeExited: return "bridge_exited"
     case .resizePane: return "resize_pane"
     case .equalizePanes: return "equalize_panes"

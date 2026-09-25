@@ -99,6 +99,18 @@ pub fn names(payload: &request::Payload) -> Option<Names<'_>> {
     }
 }
 
+/// Whether any open window can carry out this request, because it says everything it is about.
+///
+/// What lets the CLI, outside any pane and with several windows open, send a request to whichever
+/// window answers first. A request naming its tab or pane is carried to the window holding it;
+/// a tab move naming both the tab and where it goes is a write to a record every window shares.
+/// Anything else means "this window" somewhere in it, and has to reach the right one.
+pub fn any_window_will_do(payload: &request::Payload) -> bool {
+    names(payload).is_some()
+        || matches!(payload, request::Payload::MoveTab(moved)
+            if !moved.tab_id.is_empty() && !moved.window.is_empty())
+}
+
 impl Response {
     /// Nothing to report, which is what most requests answer.
     ///

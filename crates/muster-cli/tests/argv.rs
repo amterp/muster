@@ -184,7 +184,7 @@ fn described(request: &Request) -> Value {
 /// The arms about a tab, which is the one subject with a vocabulary of its own.
 ///
 /// Split out for length rather than for meaning, and split here because this is where a real
-/// line falls: `muster tab` has four verbs and they are the four below.
+/// line falls: `muster tab` has five verbs and they are the five below.
 fn described_tab(payload: &request::Payload) -> Option<Value> {
     Some(match payload {
         request::Payload::FocusTab(focus) => json!({
@@ -198,6 +198,9 @@ fn described_tab(payload: &request::Payload) -> Option<Value> {
         }),
         request::Payload::CloseTab(close) => json!({
             "close_tab": fields([("tab_id", said(&close.tab_id))])
+        }),
+        request::Payload::MoveTab(moved) => json!({
+            "move_tab": fields([("tab_id", said(&moved.tab_id)), ("window", said(&moved.window))])
         }),
         request::Payload::FocusTabRelative(step) => json!({
             "focus_tab_relative": json!({ "direction": step.direction })

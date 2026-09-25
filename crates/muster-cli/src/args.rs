@@ -22,9 +22,9 @@ use clap::{ArgGroup, CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::Shell;
 use muster_proto::{
     AdjustFontSize, ArrangePane, ClosePane, CloseTab, CreateTab, EqualizePanes, FocusPane,
-    FocusPaneAt, FocusRelative, FocusTab, FocusTabRelative, ReadDaemons, ReadPane, ReadWindow,
-    ReattachPane, ReloadConfig, RenamePane, RenameTab, Request, ResizePane, SendToPane, SplitPane,
-    ToggleSidebar, WatchPanes, ZoomPane, request,
+    FocusPaneAt, FocusRelative, FocusTab, FocusTabRelative, MoveTab, ReadDaemons, ReadPane,
+    ReadWindow, ReattachPane, ReloadConfig, RenamePane, RenameTab, Request, ResizePane, SendToPane,
+    SplitPane, ToggleSidebar, WatchPanes, ZoomPane, request,
 };
 
 use crate::{docs, environment};
@@ -592,9 +592,9 @@ enum Doing {
 
 /// What `muster tab` can do.
 ///
-/// Far fewer verbs than a pane has, and the gaps are the point. There is no `close`, because a
-/// tab closes when its last pane does; and nothing types into a tab, moves one, or gives one a
-/// bridge - those are all things you do to the pane inside it.
+/// Far fewer verbs than a pane has, and the gaps are the point: nothing types into a tab or gives
+/// one a bridge - those are things you do to the pane inside it. Moving one is between windows,
+/// because a tab belongs to exactly one.
 #[derive(Debug, Subcommand)]
 enum WithTab {
     /// Make a tab, and print the name of the pane that appears in it
@@ -655,6 +655,21 @@ enum WithTab {
         /// The tab to close, or the one the window's keyboard is in
         #[arg(long, value_name = "REF")]
         tab: Option<String>,
+    },
+
+    /// Hand a tab to another window, with every pane in it still running
+    //
+    // `--window` takes what `muster window` prints for an open window, its pid, or a window's
+    // name, which is the only handle a closed one has. Without it the tab comes here - into the
+    // window this command reaches - and comes on screen.
+    Move {
+        /// The tab to move, or the one the window is showing
+        #[arg(long, value_name = "REF")]
+        tab: Option<String>,
+
+        /// Where it goes: a window's pid, or a name like window-2. This window if not given
+        #[arg(long, value_name = "WINDOW")]
+        window: Option<String>,
     },
 
     /// Call a tab something. An empty name takes the name away again
@@ -937,6 +952,10 @@ fn tab(
         WithTab::Close { tab } => send(request::Payload::CloseTab(CloseTab {
             tab_id: tab.clone().unwrap_or_default(),
             ..CloseTab::default()
+        })),
+        WithTab::Move { tab, window } => send(request::Payload::MoveTab(MoveTab {
+            tab_id: tab.clone().unwrap_or_default(),
+            window: window.clone().unwrap_or_default(),
         })),
         WithTab::Rename { tab, name } => send(request::Payload::RenameTab(RenameTab {
             tab_id: tab.clone().unwrap_or_default(),

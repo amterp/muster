@@ -912,6 +912,69 @@
       }
     },
     {
+      "name": "a tab moves into the window this reaches",
+      "why": "Pulling a tab here is the move a person makes most: it is in another window and they want it in this one. No --window is this window, the one the command reaches, and the tab comes on screen because whoever asked is looking here (kan a_2Mhi0EZlv).",
+      "given": {
+        "argv": [
+          "tab",
+          "move",
+          "--tab",
+          "t1w3r07bsd"
+        ]
+      },
+      "expect": {
+        "request": {
+          "move_tab": {
+            "tab_id": "t1w3r07bsd"
+          }
+        }
+      }
+    },
+    {
+      "name": "a tab moves to a window named by its pid",
+      "why": "The pid is what `muster window` prints at the head of each window's answer, so a person reads one and types the other. Carried as the words said rather than as a number: a closed window is named, not numbered, and the window decides which it was given.",
+      "given": {
+        "argv": [
+          "tab",
+          "move",
+          "--tab",
+          "t1w3r07bsd",
+          "--window",
+          "4321"
+        ]
+      },
+      "expect": {
+        "request": {
+          "move_tab": {
+            "tab_id": "t1w3r07bsd",
+            "window": "4321"
+          }
+        }
+      }
+    },
+    {
+      "name": "a tab moves to a window that is closed, by name",
+      "why": "A closed window keeps its tabs and has no process, so its name is the only handle it has. Moving a tab there takes it out of this window now, and it is back when that window is reopened.",
+      "given": {
+        "argv": [
+          "tab",
+          "move",
+          "--tab",
+          "t1w3r07bsd",
+          "--window",
+          "window-2"
+        ]
+      },
+      "expect": {
+        "request": {
+          "move_tab": {
+            "tab_id": "t1w3r07bsd",
+            "window": "window-2"
+          }
+        }
+      }
+    },
+    {
       "name": "renaming with no tab means the tab the keyboard is in",
       "why": "The empty field, which the schema reads as the tab holding the pane the window's keyboard is on - what the menu item means. Deliberately not the tab this command is running in: nothing in a pane's environment says which tab holds it, and guessing from $MUSTER_PANE would need a second round trip from a parser that is pure by design.",
       "given": {

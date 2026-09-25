@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 
 use herdr_harness::{Daemon, until};
 use muster::proto::{
-    Carried, CloseTab, CreateTab, Event, FocusTab, OpenWindow, ReadTabHolders, ReadWindow,
+    Carried, CloseTab, CreateTab, Event, FocusTab, MoveTab, OpenWindow, ReadTabHolders, ReadWindow,
     RenameTab, Request, Response, Startup, event, request, response,
 };
 use muster_core::composition::holding::{from_toml, to_toml};
@@ -132,6 +132,132 @@ fn a_closed_windows_tab_is_closed_from_here() {
         || daemon_tabs(&daemon).len() == before - 1,
         || format!("the daemon still holds {:?}", daemon_tabs(&daemon)),
     );
+}
+
+/// A tab moved into this window comes on screen, and one moved out leaves, with every pane in
+/// both still running.
+///
+/// The three doors - `muster tab move`, the menu, a dropped row - all send this one request.
+#[test]
+fn a_tab_moves_between_windows_and_its_panes_keep_running() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = Daemon::start();
+    let _other = Stand::in_for(&daemon, "window-9");
+    let ours = open_a_window(&daemon, "window-1");
+    let theirs = a_second_tab_given_to(&daemon, &ours, "window-9");
+    let panes = daemon_panes(&daemon);
+
+    // Pulled here, by naming no window.
+    let answer = ask(&ours, move_tab(&theirs, ""));
+    assert!(matches!(answer.payload, Some(response::Payload::Ok(_))), "{answer:?}");
+    assert!(listed().contains(&theirs), "the tab moved here is not listed: {:?}", listed());
+    until(
+        "the tab moved here to come on screen",
+        || showing().as_deref() == Some(theirs.as_str()),
+        || format!("the window shows {:?}", showing()),
+    );
+
+    // Sent away, by the pid `muster window` prints for the other window.
+    let answer = ask(&ours, move_tab(&theirs, "1"));
+    assert!(matches!(answer.payload, Some(response::Payload::Ok(_))), "{answer:?}");
+    assert!(!listed().contains(&theirs), "the tab sent away is still listed: {:?}", listed());
+    assert_eq!(holder(&daemon, &theirs).as_deref(), Some("window-9"));
+
+    assert_eq!(daemon_panes(&daemon), panes, "moving tabs between windows ended a pane");
+}
+
+/// A closed window can be given a tab, by name, and it is there when that window reopens.
+#[test]
+fn a_tab_moves_to_a_closed_window_by_name() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = Daemon::start();
+    let ours = open_a_window(&daemon, "window-1");
+    let _ = a_second_tab_given_to(&daemon, &ours, "window-8");
+    let own = listed().first().cloned().expect("the window holds a tab");
+
+    for (window, why) in
+        [("window-77", "no window is called"), ("999999", "no open window has pid")]
+    {
+        let answer = ask(&ours, move_tab(&own, window));
+        match answer.payload {
+            Some(response::Payload::Failure(failure)) => assert!(
+                failure.reason.contains(why),
+                "moving to {window} was refused without saying why: {}",
+                failure.reason
+            ),
+            other => panic!("a tab was moved to {window}, which is not a window: {other:?}"),
+        }
+    }
+
+    let answer = ask(&ours, move_tab(&own, "window-8"));
+    assert!(matches!(answer.payload, Some(response::Payload::Ok(_))), "{answer:?}");
+    assert_eq!(holder(&daemon, &own).as_deref(), Some("window-8"));
+    assert!(listed().is_empty(), "the tab given to a closed window is still listed here");
+}
+
+/// `muster window` says which tabs every other window holds, open or closed.
+///
+/// This window lists only its own now, and any verb works from any window - so a caller needs
+/// somewhere to find a name another window holds, and a closed window's running agents need
+/// somewhere to be seen.
+#[test]
+fn the_window_says_what_every_other_window_holds() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = Daemon::start();
+    let _other = Stand::in_for(&daemon, "window-9");
+    let ours = open_a_window(&daemon, "window-1");
+    let theirs = a_second_tab_given_to(&daemon, &ours, "window-9");
+
+    let window = match answer(request::Payload::ReadWindow(ReadWindow {})).payload {
+        Some(response::Payload::Window(window)) => window,
+        other => panic!("asking what the window is showing answered {other:?}"),
+    };
+    assert_eq!(window.name, "window-1");
+    let other = window
+        .windows
+        .iter()
+        .find(|other| other.name == "window-9")
+        .unwrap_or_else(|| panic!("the other window is not listed: {:?}", window.windows));
+    assert_eq!(other.pid, 1, "an open window is not given its pid");
+    assert_eq!(
+        other.tabs.iter().map(|tab| tab.tab_id.clone()).collect::<Vec<_>>(),
+        vec![theirs.clone()],
+        "the other window's tab is not listed under it"
+    );
+    assert!(
+        other.tabs.iter().all(|tab| tab.place == 0 && tab.panes.iter().all(|pane| pane.place == 0)),
+        "another window's tabs carry numbers this window made up: {:?}",
+        other.tabs
+    );
+}
+
+fn move_tab(tab: &str, window: &str) -> request::Payload {
+    request::Payload::MoveTab(MoveTab { tab_id: tab.to_string(), window: window.to_string() })
+}
+
+fn holder(daemon: &Daemon, tab: &str) -> Option<String> {
+    read_record(&record(daemon)).holder(&TabId::new(tab)).map(ToString::to_string)
+}
+
+fn daemon_panes(daemon: &Daemon) -> Vec<String> {
+    let snapshot = daemon.call("session.snapshot", &json!({}));
+    let mut panes: Vec<String> = snapshot["snapshot"]["panes"]
+        .as_array()
+        .map(|panes| {
+            panes.iter().filter_map(|pane| pane["pane_id"].as_str().map(str::to_string)).collect()
+        })
+        .unwrap_or_default();
+    panes.sort();
+    panes
+}
+
+fn showing() -> Option<String> {
+    match answer(request::Payload::ReadWindow(ReadWindow {})).payload {
+        Some(response::Payload::Window(window)) => {
+            window.view.and_then(|view| view.regions.first().map(|region| region.tab_id.clone()))
+        }
+        _ => None,
+    }
 }
 
 /// The other window, as far as this one can tell: a socket that answers, named in the record.

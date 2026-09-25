@@ -113,6 +113,9 @@ public enum AppMenu {
       for item in inGroup {
         groupMenu.addItem(entry(for: item, target: target))
       }
+      if group == .tab {
+        groupMenu.addItem(MoveTabMenu.shared.item())
+      }
       groupItem.submenu = groupMenu
       menu.addItem(groupItem)
     }
@@ -216,4 +219,47 @@ enum BoundAction {
   private static let chordModifiers: NSEvent.ModifierFlags = [
     .command, .option, .control, .shift,
   ]
+}
+
+/// Move Tab to Window, which lists the other windows as they are when it opens.
+///
+/// Not one of the core's actions, because it has no chord to be bound to: a move needs a
+/// destination, and a chord cannot name one. What it sends is the same `MoveTab` that `muster tab
+/// move` and a dropped row send, so the three doors do one thing.
+@MainActor
+public final class MoveTabMenu: NSObject, NSMenuDelegate {
+  public static let shared = MoveTabMenu()
+
+  func item() -> NSMenuItem {
+    let item = NSMenuItem(title: "Move Tab to Window", action: nil, keyEquivalent: "")
+    let submenu = NSMenu(title: "Move Tab to Window")
+    submenu.delegate = self
+    item.submenu = submenu
+    return item
+  }
+
+  /// Asked of the core each time, because windows open and close between one look and the next.
+  public func menuNeedsUpdate(_ menu: NSMenu) {
+    menu.removeAllItems()
+    let windows = Core.otherWindows()
+    if windows.isEmpty {
+      let none = NSMenuItem(title: "No Other Windows", action: nil, keyEquivalent: "")
+      none.isEnabled = false
+      menu.addItem(none)
+      return
+    }
+    for window in windows {
+      let item = NSMenuItem(
+        title: window.title, action: #selector(move(_:)), keyEquivalent: "")
+      item.target = self
+      item.representedObject = window.name
+      menu.addItem(item)
+    }
+  }
+
+  @objc private func move(_ sender: NSMenuItem) {
+    guard let window = sender.representedObject as? String else { return }
+    Core.info("tab.move.picked", ["window": window])
+    Core.moveTab(to: window)
+  }
 }

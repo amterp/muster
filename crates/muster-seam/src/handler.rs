@@ -150,6 +150,13 @@ fn route(payload: request::Payload) -> Response {
         request::Payload::AdjustFontSize(adjust) => adjust_font_size(&adjust.change),
         request::Payload::ReloadConfig(_) => reload_config(),
         request::Payload::Carried(carried) => answer_carried(*carried),
+        request::Payload::MoveTab(moved) => relayed(
+            session::move_tab(
+                (!moved.tab_id.is_empty()).then(|| TabId::new(&moved.tab_id)),
+                &moved.window,
+            )
+            .map(|()| Response::ok()),
+        ),
         request::Payload::ReadTabHolders(_) => {
             session::follow_the_record();
             Response::ok()
@@ -1505,8 +1512,34 @@ fn read_window() -> Response {
                 })
                 .collect(),
             places: places(&now.view),
+            name: now.name.clone(),
+            windows: now
+                .others
+                .iter()
+                .map(|other| proto::OtherWindow {
+                    name: other.name.clone(),
+                    pid: other.pid,
+                    tabs: unnumbered(
+                        convert::roster(&other.roster, &muster_core::Numbering::Panes).tabs,
+                    ),
+                })
+                .collect(),
         })),
     }
+}
+
+/// Another window's tabs, with the numbers this window would have given them taken off: they are
+/// that window's to number, and a place counted here would be one no chord there reaches.
+fn unnumbered(mut tabs: Vec<proto::RosterTab>) -> Vec<proto::RosterTab> {
+    for tab in &mut tabs {
+        tab.place = 0;
+        tab.tab_press = 0;
+        for pane in &mut tab.panes {
+            pane.place = 0;
+            pane.tab_press = 0;
+        }
+    }
+    tabs
 }
 
 /// Where each pane on screen sits, for a caller that cannot look at the window.

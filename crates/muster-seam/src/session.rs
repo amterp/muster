@@ -1785,6 +1785,41 @@ impl Session {
         )
     }
 
+    /// Every other window the record knows, with a roster of the tabs each holds.
+    ///
+    /// Built through a composition of its own, holding that window's tabs, so a tab is described
+    /// the same way here as in the window that has it: the same labels, the same pane order.
+    fn other_windows(&self) -> Vec<(HeldWindow, Roster)> {
+        let mirrors: BTreeMap<&DaemonId, MutexGuard<'_, Mirror>> = self
+            .backends
+            .iter()
+            .map(|(id, backend)| (id, poison::lock(&backend.mirror, "mirror")))
+            .collect();
+        let holders = self.holding.holders();
+        holders
+            .windows()
+            .filter(|window| &window.name != self.holding.me())
+            .map(|window| {
+                let mut theirs = Composition::new();
+                for daemon in self.composition.daemons() {
+                    theirs.attach_daemon(daemon.clone());
+                }
+                for tab in holders.held_by(&window.name) {
+                    theirs.hold(tab.clone());
+                }
+                for (daemon, mirror) in &mirrors {
+                    theirs.reconcile(daemon, mirror);
+                }
+                let roster = Roster::of(
+                    &theirs,
+                    |daemon| mirrors.get(daemon).map(|held| &**held),
+                    &BTreeSet::new(),
+                );
+                (window.clone(), roster)
+            })
+            .collect()
+    }
+
     /// What ⌘1 to ⌘9 name at this moment.
     ///
     /// The scheme is the config file's answer and the armed tab is this session's; putting
@@ -2879,6 +2914,65 @@ pub(crate) fn focus_tab(tab: &TabId) -> Result<(), String> {
     focus(&daemon, &pane).map_err(|refusal| refusal.to_string())
 }
 
+/// Hands a tab to a window: this one when `window` is empty, or another by pid or by name.
+///
+/// A write to the record every window shares, so any window can make it and none has to be
+/// asked. The window that had the tab hears the record move and lets it go; the one that has it
+/// now hears the same and lists it. This one acts at once on its own half, because it may be
+/// either of them.
+///
+/// Moved here, the tab comes on screen, because whoever asked is looking at this window. Moved
+/// elsewhere, it joins the end of that window's list without coming on screen.
+pub(crate) fn move_tab(tab: Option<TabId>, window: &str) -> Result<(), Refusal> {
+    let (tab, here) = {
+        let mut session = poison::lock(&SESSION, "session");
+        let tab = match tab {
+            Some(tab) => tab,
+            None => session.composition.showing().cloned().ok_or_else(|| {
+                Refusal::Declined(
+                    "this window is showing no tab, so there was none to move. Name one with \
+                     --tab."
+                        .to_string(),
+                )
+            })?,
+        };
+        let described = session
+            .backends
+            .values()
+            .any(|backend| poison::lock(&backend.mirror, "mirror").tab(&tab).is_some());
+        if !described {
+            return Err(Refusal::NotThere(format!(
+                "no daemon this window is following holds a tab called {tab}, so nothing was \
+                 moved. `muster window` lists the tabs there are."
+            )));
+        }
+        let to = session.holding.destination(window)?;
+        let here = &to == session.holding.me();
+        let from = session.holding.holders().holder(&tab).map(ToString::to_string);
+        session.holding.give(&tab, &to);
+        log::info(
+            "tab.moved",
+            fields! {
+                "tab" => tab.to_string(),
+                "from" => from.unwrap_or_default(),
+                "to" => to.to_string(),
+            },
+        );
+        if here {
+            session.composition.hold(tab.clone());
+        } else {
+            session.composition.let_go(&tab);
+        }
+        (tab, here)
+    };
+    reconcile_every_daemon();
+    if here {
+        return focus_tab(&tab).map_err(Refusal::Declined);
+    }
+    publish("move_tab");
+    Ok(())
+}
+
 /// Puts the keyboard on whatever the numbered chord for `place` names.
 ///
 /// What ⌘1 to ⌘9 mean, and under `numbered_chords = "panes"` that is a pane at a place in the
@@ -3165,6 +3259,20 @@ pub(crate) struct WindowNow {
     /// Each followed daemon: how much of its truth Muster has, and enough about it to decide
     /// deliberately what happens to it.
     pub daemons: Vec<Machine>,
+    /// This window's name, as the record of which window holds each tab spells it.
+    pub name: String,
+    /// Every other window, open or closed, with the tabs it holds.
+    pub others: Vec<OtherWindow>,
+}
+
+/// Another window, as this one can describe it.
+#[derive(Debug)]
+pub(crate) struct OtherWindow {
+    pub name: String,
+    /// Zero once it has closed, or when its socket stopped answering.
+    pub pid: u32,
+    /// Its tabs, described from this window's copy of each daemon.
+    pub roster: Roster,
 }
 
 /// One pane's agent, as this window paints it.
@@ -3272,7 +3380,21 @@ pub(crate) fn window() -> WindowNow {
         });
     }
 
-    WindowNow { view, roster, numbering, agents, daemons }
+    let name = session.holding.me().to_string();
+    let me = session.holding.me().clone();
+    let others = session.other_windows();
+    drop(session);
+    // Dialed with the session let go, for the reason `open_window_holding` gives.
+    let others = others
+        .into_iter()
+        .map(|(window, roster)| OtherWindow {
+            name: window.name.to_string(),
+            pid: if crate::holding::is_open(&me, &window) { window.pid } else { 0 },
+            roster,
+        })
+        .collect();
+
+    WindowNow { view, roster, numbering, agents, daemons, name, others }
 }
 
 /// Starts following every daemon a config file named.

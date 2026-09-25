@@ -14,6 +14,7 @@ use muster_core::composition::holding::{from_toml, to_toml};
 use muster_core::composition::{DaemonId, HeldWindow, Holders, Taker, WindowName};
 use muster_core::diagnostics::log;
 use muster_core::fields;
+use muster_core::intent::Refusal;
 use muster_core::mirror::backend::TabId;
 use muster_core::shared::SharedRecord;
 
@@ -165,6 +166,60 @@ impl Holding {
                 }
             }
         });
+    }
+
+    /// Gives a tab to a window, this one or another, open or closed.
+    pub(crate) fn give(&mut self, tab: &TabId, window: &WindowName) {
+        self.change(|holders| holders.take(tab.clone(), window));
+    }
+
+    /// The window a caller means: this one for nothing, an open window for a pid, or a window by
+    /// name, open or closed.
+    ///
+    /// A pid names only an open window, because a closed window has no process - and a pid whose
+    /// window has gone is a number the next process may already have.
+    pub(crate) fn destination(&self, said: &str) -> Result<WindowName, Refusal> {
+        if said.is_empty() {
+            return Ok(self.me.clone());
+        }
+        if let Ok(pid) = said.parse::<u32>() {
+            if pid == std::process::id() {
+                return Ok(self.me.clone());
+            }
+            return self
+                .holders
+                .windows()
+                .find(|window| window.pid == pid && is_open(&self.me, window))
+                .map(|window| window.name.clone())
+                .ok_or_else(|| {
+                    Refusal::NotThere(format!(
+                        "no open window has pid {pid}, so nothing was moved. `muster window list` \
+                         shows the windows that are open, and a closed one is named rather than \
+                         numbered: {}.",
+                        self.known()
+                    ))
+                });
+        }
+        let name = WindowName::new(said);
+        if name == self.me || self.holders.window(&name).is_some() {
+            return Ok(name);
+        }
+        Err(Refusal::NotThere(format!(
+            "no window is called {said}, so nothing was moved. The windows there are: {}.",
+            self.known()
+        )))
+    }
+
+    /// Every window the record knows, as a person would name each.
+    fn known(&self) -> String {
+        self.holders
+            .windows()
+            .map(|window| match window.pid {
+                0 => format!("{} (closed)", window.name),
+                pid => format!("{} (pid {pid})", window.name),
+            })
+            .collect::<Vec<String>>()
+            .join(", ")
     }
 
     /// Takes the tabs nobody holds on this machine, if this window is the one they join.

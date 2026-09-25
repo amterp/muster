@@ -75,6 +75,7 @@ message Request {
     WatchPanes watch_panes = 48;
     ReadTabHolders read_tab_holders = 49;
     Carried carried = 50;
+    MoveTab move_tab = 51;
   }
 }
 
@@ -329,6 +330,29 @@ message CloseTab {
   // FocusTab this has a sensible fallback, because closing what you are looking at is the thing
   // a person picking a menu item is asking for.
   string tab_id = 2;
+}
+
+// Hands a tab to another window, with every pane in it still running.
+//
+// A tab belongs to exactly one window (kan a_2Mhi0EZlv), so moving it between windows is an
+// explicit act, and this is the one request every door sends: `muster tab move`, the Move Tab to
+// Window menu, and a tab row dropped into another window's agent list. Nothing about the panes
+// changes. The window that had the tab stops listing it and lets its terminals go, and the
+// window that has it now attaches when it shows it.
+//
+// Never carried to another window (Carried): which window holds a tab is a record every window
+// shares, and any window can write it.
+message MoveTab {
+  // The tab to move, as `muster window` prints it. Empty means the tab this window is showing,
+  // which is what a menu item means.
+  string tab_id = 1;
+
+  // Where it goes: an open window's pid, as `muster window` heads it, or a window's name such as
+  // `window-2`, which may be a window that is closed - the tab is there when it is reopened.
+  // Empty means this window, and then the tab comes on screen: whoever asked is looking here.
+  // A tab moved to another window joins the end of its list without coming on screen, because a
+  // window that switched tabs on something done elsewhere is one that types into the wrong pane.
+  string window = 2;
 }
 
 // Calls a tab what somebody wants to call it.
@@ -1225,6 +1249,32 @@ message Window {
   // Building it per render would put it on a path with a budget against it (perf/baseline.json,
   // view.build) to serve nobody up there.
   repeated PanePlace places = 5;
+
+  // This window's name, as the record of which window holds each tab spells it: `window-2`, after
+  // its arrangement. `muster tab move --window` takes it, and it is the only name a window keeps
+  // across a quit.
+  string name = 6;
+
+  // Every other window, open or closed, and the tabs it holds.
+  //
+  // Here because a tab belongs to exactly one window and this window lists only its own (kan
+  // a_2Mhi0EZlv), so `tabs` above no longer says what exists - and since any verb works from any
+  // window, a caller needs somewhere to find a tab name another window holds. A closed window is
+  // listed too: it keeps its tabs, and its agents are still running.
+  repeated OtherWindow windows = 7;
+}
+
+// Another window, as this one knows it.
+message OtherWindow {
+  // Its name, which is what names it when it is closed.
+  string name = 1;
+
+  // Its process while it is open, as `muster window` heads its answer; zero once it has closed.
+  uint32 pid = 2;
+
+  // The tabs it holds, described from this window's own copy of each daemon. Not numbered:
+  // numbers are that window's, and only it can say which it is showing.
+  repeated RosterTab tabs = 3;
 }
 
 // Where one pane sits, as fractions of the window.
