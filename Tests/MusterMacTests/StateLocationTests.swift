@@ -197,3 +197,24 @@ private func publish(_ path: String?) {
 
   #expect(reopened != held)
 }
+
+@Test func aClaimWhosePidNowBelongsToAnotherProcessIsReleased() {
+  // A window killed without releasing its claim, whose pid macOS has since handed to something
+  // unrelated. Judged by the pid alone the claim looked alive forever, and the slot could never be
+  // reopened - so every reopen opened a different closed window instead.
+  let home = scratch("reused")
+  let environment = ["MUSTER_HOME": home]
+  let crashed = Arrangements.open(fresh: false, environment: environment, pid: 4201)
+  publish(crashed)
+  let claim = URL(fileURLWithPath: crashed!).deletingPathExtension().appendingPathExtension("held")
+  // This process's pid, which is alive, on a claim written long before this process started.
+  try? String(ProcessInfo.processInfo.processIdentifier).write(
+    to: claim, atomically: true, encoding: .utf8)
+  try? FileManager.default.setAttributes(
+    [.modificationDate: Date(timeIntervalSince1970: 946_684_800)], ofItemAtPath: claim.path)
+
+  let reopened = Arrangements.open(
+    fresh: false, named: "window-1", environment: environment, pid: 4202)
+
+  #expect(reopened == crashed)
+}
