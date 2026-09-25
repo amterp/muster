@@ -3254,10 +3254,10 @@ pub(crate) fn window_name() -> String {
     poison::lock(&SESSION, "session").holding.me().to_string()
 }
 
-/// Brings this window to the front, because a request carried here from another window went to
-/// one of its tabs.
-pub(crate) fn raise_window() {
-    ffi::emit(&Event { payload: Some(event::Payload::RaiseWindow(RaiseWindow {})) });
+/// Brings a window to the front, because somebody went to one of its tabs from another window:
+/// this one for `pid` 0, or the window with that process, which this one hands activation to.
+pub(crate) fn raise_window(pid: u32) {
+    ffi::emit(&Event { payload: Some(event::Payload::RaiseWindow(RaiseWindow { pid })) });
 }
 
 /// The daemon this window's keyboard is on.

@@ -70,7 +70,7 @@ fn a_request_carried_here_is_answered_here() {
     let other = Stand::in_for(&daemon, "window-9");
     let ours = open_a_window(&daemon, "window-1");
     let theirs = a_second_tab_given_to(&daemon, &ours, "window-9");
-    RAISED.lock().expect("a panicking test poisoned the flag").take();
+    RAISED.lock().expect("a panicking test poisoned the log").clear();
 
     // Carried here although the record says the other window has it: this window answers, and
     // refuses rather than showing another window's tab.
@@ -108,7 +108,7 @@ fn a_request_carried_here_is_answered_here() {
     );
     assert!(matches!(answer.payload, Some(response::Payload::Ok(_))), "{answer:?}");
     assert!(
-        RAISED.lock().expect("a panicking test poisoned the flag").is_some(),
+        RAISED.lock().expect("a panicking test poisoned the log").contains(&0),
         "going to a tab from another window left this window behind whatever was in front"
     );
 }
@@ -127,6 +127,7 @@ fn a_notification_click_for_another_windows_pane_reaches_that_window() {
     let ours = open_a_window(&daemon, "window-1");
     let theirs = a_second_tab_given_to(&daemon, &ours, "window-9");
     let (pane, _) = pane_of(&daemon, &theirs);
+    RAISED.lock().expect("a panicking test poisoned the log").clear();
 
     let focused = answer(request::Payload::FocusPane(FocusPane {
         pane_id: pane.clone(),
@@ -149,6 +150,13 @@ fn a_notification_click_for_another_windows_pane_reaches_that_window() {
         "the other window was carried something other than the focus"
     );
     assert!(!listed().contains(&theirs), "the other window's tab was brought here instead");
+    // The stand-in's pid, which is what this window hands activation to: on macOS 14 an app comes
+    // forward only when the active one lets it.
+    assert_eq!(
+        RAISED.lock().expect("a panicking test poisoned the log").clone(),
+        vec![1],
+        "this window did not hand activation to the window it carried the focus to"
+    );
 }
 
 /// A tab whose window is closed is closed from whichever window was asked.
@@ -573,7 +581,8 @@ fn listed() -> Vec<String> {
     }
 }
 
-static RAISED: Mutex<Option<()>> = Mutex::new(None);
+/// The `pid` of every `RaiseWindow` emitted, 0 for this window itself.
+static RAISED: Mutex<Vec<u32>> = Mutex::new(Vec::new());
 static REOPENED: Mutex<Vec<ReopenWindow>> = Mutex::new(Vec::new());
 static ASKED: Mutex<Vec<AttentionChanged>> = Mutex::new(Vec::new());
 
@@ -583,8 +592,8 @@ extern "C" fn note(bytes: *const u8, len: usize) {
     let bytes = unsafe { std::slice::from_raw_parts(bytes, len) };
     let event = Event::decode(bytes).expect("the core emits events this build can decode");
     match event.payload {
-        Some(event::Payload::RaiseWindow(_)) => {
-            *RAISED.lock().expect("a panicking test poisoned the flag") = Some(());
+        Some(event::Payload::RaiseWindow(raise)) => {
+            RAISED.lock().expect("a panicking test poisoned the log").push(raise.pid);
         }
         Some(event::Payload::ReopenWindow(reopen)) => {
             REOPENED.lock().expect("a panicking test poisoned the log").push(reopen);

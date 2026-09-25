@@ -24,7 +24,7 @@ use muster_core::{AgentState, PaneKey};
 
 use crate::proto::{self, Request, Response, event, request, response};
 use crate::session::{self, AttachError, AttachedPane, Keyboard};
-use crate::{command, convert, watch};
+use crate::{command, convert, forward, watch};
 use prost::Message;
 
 /// Answers one encoded request.
@@ -89,6 +89,9 @@ fn handle(request: Request) -> Response {
         session::disarm();
     }
 
+    if let Some(handed_on) = forward::hand_on(&payload) {
+        return handed_on;
+    }
     route(payload)
 }
 
@@ -237,7 +240,7 @@ fn answer_carried(carried: proto::Carried) -> Response {
         matches!(payload, request::Payload::FocusTab(_) | request::Payload::FocusPane(_));
     let response = route(payload);
     if goes_to_a_tab && matches!(response.payload, Some(response::Payload::Ok(_))) {
-        session::raise_window();
+        session::raise_window(0);
     }
     response
 }

@@ -1207,11 +1207,18 @@ public enum Core {
       // starting an app.
       info("window.reopen", ["window": reopen.name, "show": reopen.show])
       window?.reopen(named: reopen.name, showing: reopen.show)
+    case .raiseWindow(let raise) where raise.pid != 0:
+      // This window is carrying somebody to another window's tab. Since macOS 14 an app comes
+      // forward only when the active one hands over, and if anything is active here it is this
+      // window, where the click or the command came from.
+      info("window.raise.handed", ["pid": String(raise.pid)])
+      NSRunningApplication(processIdentifier: pid_t(raise.pid))?
+        .activate(from: .current, options: [])
     case .raiseWindow:
       // Somebody went to one of this window's tabs from another window, or from a terminal. The
       // tab is already on screen; this is the window coming forward to show it.
       info("window.raised", [:])
-      NSApp.activate(ignoringOtherApps: true)
+      NSApp.activate()
       window?.raise()
     case nil:
       break

@@ -1779,13 +1779,20 @@ message ReopenWindow {
   string show = 2;
 }
 
-// Bring this window to the front.
+// Bring a window to the front.
 //
-// Sent when a request carried here from another window went to one of this window's tabs:
-// `muster tab focus` naming a tab in this window, run from somewhere else. The person asked to
+// Sent when somebody goes to a tab from another window: `muster tab focus` run somewhere else, or
+// a notification click that macOS delivered to a window not holding the pane. The person asked to
 // go to that tab, and a tab brought on screen behind whatever they are looking at is not
 // somewhere they went.
-message RaiseWindow {}
+//
+// Sent on both sides of the carry, because macOS 14 activates an app only when the active one
+// hands over: the window carrying the request hands activation to the holder's process, and the
+// holder brings itself forward.
+message RaiseWindow {
+  // The process to hand activation to, or 0 for this window itself.
+  uint32 pid = 1;
+}
 
 // One pane started asking for a person, or stopped.
 //

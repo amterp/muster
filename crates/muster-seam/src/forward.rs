@@ -7,9 +7,11 @@
 //! know which window holds what, and neither does anything else speaking the schema.
 //!
 //! Here rather than in the CLI, because the command socket is a door for anything that speaks
-//! the schema and the CLI is only one of them. Here rather than in the handler, because the shell
-//! reaches the handler on its main thread and a carried request can wait a minute on another
-//! window: the shell only ever shows this window's tabs, so it has nothing to carry.
+//! the schema and the CLI is only one of them. The command socket carries on the thread answering
+//! its caller, since a carried request can wait most of a minute on another window. The shell
+//! reaches the handler on its main thread, which never waits, and lists only this window's tabs -
+//! so the one thing it can ask about another window's tab is a focus from a notification, which
+//! [`hand_on`] carries from a thread of its own.
 //!
 //! Reads are not carried. Every window follows the same daemons, so it can answer a question
 //! about any pane itself, and a watch is a stream a relay would have to hold open.
@@ -40,12 +42,54 @@ pub(crate) fn elsewhere(request: &Request) -> Option<HeldWindow> {
     session::open_window_holding(&tab)
 }
 
+/// Hands a focus on another open window's tab to that window, from a thread of its own, and answers
+/// at once.
+///
+/// What a notification click needs: macOS delivers it to whichever instance it chooses, which may
+/// not hold the pane, and the shell calls in on its main thread, which never waits on another
+/// window. Only a focus, because the shell lists only this window's tabs, so a focus from a
+/// notification is the one request it makes about another window's. A request carried here is
+/// answered by `route` and never reaches this, so it is not handed back.
+pub(crate) fn hand_on(payload: &request::Payload) -> Option<Response> {
+    if !matches!(payload, request::Payload::FocusPane(_) | request::Payload::FocusTab(_)) {
+        return None;
+    }
+    let request = Request { payload: Some(payload.clone()) };
+    let window = elsewhere(&request)?;
+    let to = window.name.to_string();
+    let spawned = std::thread::Builder::new().name("carry-focus".to_string()).spawn(move || {
+        carry(&window, request);
+    });
+    if let Err(error) = spawned {
+        log::warn(
+            "request.carry.unstarted",
+            fields! {
+                "to" => &to,
+                "detail" => error.to_string(),
+                "impact" => "the focus was not carried to the window holding the tab, so nothing \
+                             moved",
+                "check" => "whether this process has run out of threads; go to the pane from \
+                            its own window",
+            },
+        );
+        return Some(Response::failure(format!(
+            "that is in another window ({to}), and this window could not start carrying the focus \
+             there ({error}). Nothing moved."
+        )));
+    }
+    Some(Response::ok())
+}
+
 /// Sends a request to the window holding what it is about, and hands back that window's answer.
 ///
 /// A window that cannot be reached is answered here with a refusal that says which window it
 /// was, rather than carried out here instead: the tab is that window's, and showing it here is
 /// the failure this exists to prevent.
 pub(crate) fn carry(window: &HeldWindow, request: Request) -> Vec<u8> {
+    let goes_to_a_tab = matches!(
+        request.payload,
+        Some(request::Payload::FocusPane(_) | request::Payload::FocusTab(_))
+    );
     let carried = Request {
         payload: Some(request::Payload::Carried(Box::new(Carried {
             by: session::window_name(),
@@ -56,6 +100,10 @@ pub(crate) fn carry(window: &HeldWindow, request: Request) -> Vec<u8> {
         "request.carried",
         fields! { "to" => window.name.to_string(), "socket" => &window.socket },
     );
+    // Before the carry, so the holder has been handed activation by the time it asks for it.
+    if goes_to_a_tab {
+        session::raise_window(window.pid);
+    }
     match exchange(&window.socket, &carried) {
         Ok(answer) => answer,
         Err(detail) => {
