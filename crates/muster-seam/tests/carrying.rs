@@ -159,6 +159,33 @@ fn a_notification_click_for_another_windows_pane_reaches_that_window() {
     );
 }
 
+/// A tab moved to a window by name joins that window's list, whichever window was asked.
+///
+/// From outside a pane, the CLI sends a move naming its window to whichever window answers first.
+/// The outcome deciding on who answered meant `--window window-1` brought the tab on screen when
+/// window-1 answered and only listed it when another window did. Only a move naming no window -
+/// "bring it here" - is somebody looking at the window it lands in.
+#[test]
+fn a_tab_moved_to_a_window_by_name_joins_its_list_without_coming_on_screen() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = Daemon::start();
+    let _other = Stand::in_for(&daemon, "window-9");
+    let ours = open_a_window(&daemon, "window-1");
+    let own = listed().first().cloned().expect("the window opened onto a tab");
+    let theirs = a_second_tab_given_to(&daemon, &ours, "window-9");
+
+    let answer = ask(&ours, move_tab(&theirs, "window-1"));
+
+    assert!(matches!(answer.payload, Some(response::Payload::Ok(_))), "{answer:?}");
+    assert!(listed().contains(&theirs), "the tab moved here is not listed: {:?}", listed());
+    assert_eq!(holder(&daemon, &theirs).as_deref(), Some("window-1"));
+    assert_eq!(
+        showing().as_deref(),
+        Some(own.as_str()),
+        "a tab moved here by name came on screen, which a move asked of another window would not"
+    );
+}
+
 /// A tab whose window is closed is closed from whichever window was asked.
 ///
 /// The daemon does the closing, and the closed window only remembers the tab. Refusing would
