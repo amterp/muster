@@ -599,9 +599,11 @@ fn a_second_tab_given_to(daemon: &Daemon, ours: &Path, window: &str) -> String {
         .payload,
         Some(response::Payload::Made(_) | response::Payload::Ok(_))
     ));
+    // The pane as well as the tab: herdr can announce a tab before the pane in it, and callers
+    // go on to name that pane.
     until(
-        "the second tab to arrive",
-        || listed().len() == 2,
+        "the second tab and its pane to arrive",
+        || listed().len() == 2 && listed().last().is_some_and(|tab| has_a_pane(tab)),
         || format!("this window lists {:?}", listed()),
     );
     let theirs = listed().last().cloned().expect("just waited for it");
@@ -627,11 +629,15 @@ fn open_a_window(daemon: &Daemon, name: &str) -> PathBuf {
     })));
     assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
     until(
-        "the window to open onto a tab",
-        || !listed().is_empty(),
-        || "the window lists no tab".to_string(),
+        "the window to open onto a tab with a pane in it",
+        || listed().first().is_some_and(|tab| has_a_pane(tab)),
+        || format!("the window lists {:?}", listed()),
     );
     socket
+}
+
+fn has_a_pane(tab: &str) -> bool {
+    !panes_listed_in(tab).is_empty()
 }
 
 /// Asks this window over its command socket, the way the CLI does.

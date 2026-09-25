@@ -150,12 +150,13 @@ fn a_focus_never_shows_a_tab_the_record_gives_another_window() {
     open_a_window(&daemon, "window-1");
     let first = until_showing_something();
     daemon.call("tab.create", &json!({ "focus": false }));
+    // The pane as well as the tab: herdr can announce a tab before the pane in it.
     until(
-        "this window, in front, to take the tab nobody asked for",
-        || listed().len() == 2,
+        "this window, in front, to take the tab nobody asked for and hear of its pane",
+        || listed().iter().any(|tab| tab != &first && !panes_in(tab).is_empty()),
         || format!("this window lists {:?}", listed()),
     );
-    let theirs = listed().into_iter().find(|tab| tab != &first).expect("just waited for two");
+    let theirs = listed().into_iter().find(|tab| tab != &first).expect("just waited for it");
     let pane = panes_in(&theirs).pop().expect("a new tab has a pane");
 
     // The other window comes to the front and the tab is held by nobody, which this window reads:
