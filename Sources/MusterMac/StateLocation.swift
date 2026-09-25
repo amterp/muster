@@ -208,9 +208,13 @@ public enum Arrangements {
   ///
   /// False when either time cannot be read, which keeps the claim: a window wrongly thought
   /// closed is two windows writing one record, and that is the worse mistake.
+  ///
+  /// With two seconds' slack, because HFS+ keeps a file's time to the second: a window started at
+  /// .3 that wrote its claim at .8 has a claim that reads as written before it started. A pid
+  /// reused that soon after the window that held it wrote its claim is not a case that happens.
   private static func startedAfter(_ pid: pid_t, _ claim: URL) -> Bool {
     guard let started = started(pid), let written = self.written(claim) else { return false }
-    return started > written
+    return started > written.addingTimeInterval(2)
   }
 
   /// When a process started, or nothing when there is no such process.
