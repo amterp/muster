@@ -202,7 +202,8 @@ public final class PaneNotifier: NSObject, UNUserNotificationCenterDelegate {
       // an arrangement that may have had to change to show this pane at all.
       // A pane in another window's tab is carried there by the core, which then has this app
       // hand activation to that window's process - so this one comes forward first either way.
-      NSApp.activate()
+      // The deprecated call for the reason `Core`'s raise gives: it still forces the app forward.
+      NSApp.activate(ignoringOtherApps: true)
       Core.focus(daemonID: daemon, paneID: pane)
     }
   }

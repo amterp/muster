@@ -1217,8 +1217,12 @@ public enum Core {
     case .raiseWindow:
       // Somebody went to one of this window's tabs from another window, or from a terminal. The
       // tab is already on screen; this is the window coming forward to show it.
+      //
+      // The deprecated call on purpose. macOS 14's `activate()` succeeds only when the active app
+      // yields, and a terminal running `muster tab focus` never does - so the tab changed inside
+      // this window while it stayed behind. This one still forces it forward.
       info("window.raised", [:])
-      NSApp.activate()
+      NSApp.activate(ignoringOtherApps: true)
       window?.raise()
     case nil:
       break
