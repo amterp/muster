@@ -5227,6 +5227,65 @@
       }
     },
     {
+      "name": "a tab a daemon holds is not this window's until the window holds it",
+      "why": "Measured on 0.8.1 (kan a_2Mhi0EZlv): a window that held nothing drew the tab another window had just asked for, then took the tab that window's keyboard was on, three panes with it. Every window took in every tab a daemon described, so a tab appearing was a tab every window listed and any window with nothing chosen opened onto. Which window a tab belongs to is Muster's own record, so a daemon describing one says nothing about whether it is this window's.",
+      "given": {
+        "attached": [],
+        "worlds": {
+          "one tab": {
+            "workspaces": [
+              {
+                "id": "w1",
+                "label": "w1"
+              }
+            ],
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "workspace": "w1",
+                "label": "t1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "tab": "w1:t1",
+                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ],
+            "layouts": [
+              {
+                "tab": "w1:t1",
+                "root": "w1:p1"
+              }
+            ]
+          }
+        },
+        "steps": [
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/herdr-local.sock"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "one tab"
+          }
+        ]
+      },
+      "expect": {
+        "daemons": [
+          "local local=/tmp/herdr-local.sock"
+        ],
+        "regions": [],
+        "showing": [],
+        "view": []
+      }
+    },
+    {
       "name": "a tab the daemon no longer holds leaves the window",
       "why": "A tab closed from another client has nothing left to show, and a window still listing it is a caption that goes nowhere. The window moves to whatever took its place rather than to the first tab, which is what every tab strip does when you close the one you are on.",
       "given": {

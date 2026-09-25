@@ -302,6 +302,80 @@ fn a_window_somebody_asked_for_opens_onto_a_tab_of_its_own() {
     );
 }
 
+/// Two windows that were both open come back each on its own tabs, and only its own.
+///
+/// Measured on 0.7.0 (kan `a_2Mhi0EZlv`): after a full quit, both arrangements named the one tab
+/// left, both windows opened onto it, and the second one's bridge took the terminal from the
+/// first. Each record listed every tab its window had ever seen, because every window listed
+/// every tab - so "which tabs are this window's" was an answer no file held.
+///
+/// Two windows cannot be open at once here, so they take turns: the first opens and makes a tab,
+/// the second is a window somebody asked for and makes its own, and then each is reopened from
+/// its record. A window listing the other's tab is one whose ⌘2 or click takes that tab's
+/// terminals from a window still showing them.
+#[test]
+fn two_windows_come_back_each_on_its_own_tabs() {
+    let turn = muster::testing::fresh_session();
+    let daemon = Daemon::start();
+    let first = daemon.muster_config().with_file_name("window-1.toml");
+    let second = daemon.muster_config().with_file_name("window-2.toml");
+
+    forget_the_view();
+    muster::ffi::muster_set_event_callback(Some(note));
+    open_a_window(&daemon, &first);
+    until(
+        "the first window to open onto a workspace",
+        || tab_of_first_region().is_some(),
+        || format!("the last view the core published: {:?}", latest_view()),
+    );
+    let theirs = tab_of_first_region().expect("just waited for it");
+
+    turn.relaunch();
+    forget_the_view();
+    muster::ffi::muster_set_event_callback(Some(note));
+    assert_ok(&answer(request::Payload::Startup(Startup {
+        fresh: true,
+        ..startup(&daemon, &second)
+    })));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    until(
+        "the second window to open onto a tab of its own",
+        || tab_of_first_region().is_some_and(|tab| tab != theirs),
+        || format!("the last view the core published: {:?}", latest_view()),
+    );
+    let ours = tab_of_first_region().expect("just waited for it");
+
+    for (record, own, other) in [(&second, &ours, &theirs), (&first, &theirs, &ours)] {
+        turn.relaunch();
+        forget_the_view();
+        muster::ffi::muster_set_event_callback(Some(note));
+        open_a_window(&daemon, record);
+        until(
+            "the window to come back onto its own tab",
+            || tab_of_first_region().as_deref() == Some(own.as_str()),
+            || format!("the last view the core published: {:?}", latest_view()),
+        );
+        until(
+            "the daemon's first bootstrap to reach the window",
+            bootstrapped,
+            || "the daemon never said it was connected".to_string(),
+        );
+
+        let listed: Vec<String> = read_window()
+            .roster
+            .iter()
+            .flat_map(|roster| roster.tabs.iter())
+            .map(|tab| tab.tab_id.clone())
+            .collect();
+        assert!(
+            !listed.contains(other),
+            "{} lists {other}, the other window's tab, beside its own {own} ({listed:?}). ⌘2 or \
+             a click there takes that tab's terminals from the window showing them.",
+            record.display()
+        );
+    }
+}
+
 /// A window Muster comes back to still takes the tabs it was left on.
 ///
 /// The other side of the rule above, and the reason it is a flag rather than a change of
