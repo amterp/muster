@@ -330,9 +330,8 @@ impl Holding {
         let mut changed = None;
         let fallback = self.holders.clone();
         let (open, me) = (self.open, self.me.clone());
-        let this_window = self.this_window(
-            self.holders.window(&self.me).map_or_else(now, |window| window.focused),
-        );
+        let this_window = self
+            .this_window(self.holders.window(&self.me).map_or_else(now, |window| window.focused));
         record.exclusively(&mut |text| {
             let mut holders = match from_toml(text) {
                 Ok(holders) => holders,
@@ -361,7 +360,8 @@ impl Holding {
 /// A window coming to the front changes the record too, and on its own that moves nothing on
 /// screen - so only who holds which tab counts.
 fn moved(before: &Holders, after: &Holders) -> bool {
-    let differs = |window: &HeldWindow| after.held_by(&window.name).ne(before.held_by(&window.name));
+    let differs =
+        |window: &HeldWindow| after.held_by(&window.name).ne(before.held_by(&window.name));
     after.windows().any(differs) || before.windows().any(differs)
 }
 

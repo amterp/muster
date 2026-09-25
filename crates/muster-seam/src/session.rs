@@ -18,8 +18,8 @@ use muster_core::AgentState;
 use muster_core::attention::{Attend, Attention, Notifications};
 use muster_core::composition::{
     Composition, Daemon, DaemonId, Endpoint, FontSizeChange, FontSizes, Frame, HeldWindow,
-    MusterTab, PaneKey, Presentation, RegionId, Saved, Step, Transport, View, ViewPane, saved,
-    zoom_filling,
+    MusterTab, PaneKey, Presentation, RegionId, Saved, Step, Transport, View, ViewPane, WindowName,
+    saved, zoom_filling,
 };
 use muster_core::config::{Appearance, Config, Feel, Panes};
 use muster_core::diagnostics::{clock, log, poison};
@@ -1715,13 +1715,14 @@ impl Session {
         // from the window showing them, which is the failure kan a_2Mhi0EZlv was raised for.
         if !self.holding.holds(&tab) {
             if let Some(window) = self.holding.elsewhere(&tab) {
-                return Err(Refusal::Declined(format!(
-                    "{pane} is in {tab}, which is in another window ({}), so the keyboard stayed \
-                     where it was. Showing it here would take its terminals from that window.",
-                    window.name
-                )));
+                return Err(taken_elsewhere(pane, &tab, &window.name));
             }
+            // Kept under the hold, which reads the record afresh: this window's copy may be a
+            // moment behind another window taking the tab.
             self.holding.keep(std::slice::from_ref(&tab));
+            if let Some(window) = self.holding.elsewhere(&tab) {
+                return Err(taken_elsewhere(pane, &tab, &window.name));
+            }
         }
         self.composition.surface(daemon, &tab).ok_or_else(|| {
             Refusal::Declined(format!(
@@ -3004,6 +3005,14 @@ pub(crate) fn move_tab(tab: Option<TabId>, window: &str) -> Result<(), Refusal> 
     }
     publish("move_tab");
     Ok(())
+}
+
+/// Why a pane in another window's tab was not shown here.
+fn taken_elsewhere(pane: &PaneId, tab: &TabId, window: &WindowName) -> Refusal {
+    Refusal::Declined(format!(
+        "{pane} is in {tab}, which is in another window ({window}), so the keyboard stayed where \
+         it was. Showing it here would take its terminals from that window."
+    ))
 }
 
 /// Asks for a closed window to be opened again when going somewhere means going into it.

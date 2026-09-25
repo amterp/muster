@@ -15,8 +15,8 @@ use std::sync::Mutex;
 
 use herdr_harness::{Daemon, until};
 use muster::proto::{
-    ArrangePane, CreateTab, Event, FocusPane, OpenWindow, ReadTabHolders, ReadWindow, Request, Response, Startup,
-    ViewChanged, event, request, response,
+    ArrangePane, CreateTab, Event, FocusPane, OpenWindow, ReadTabHolders, ReadWindow, Request,
+    Response, Startup, ViewChanged, event, request, response,
 };
 use muster_core::composition::holding::{from_toml, to_toml};
 use muster_core::composition::{HeldWindow, WindowName};
