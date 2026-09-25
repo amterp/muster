@@ -291,16 +291,20 @@ fn going_to_a_closed_windows_tab_reopens_that_window() {
     let theirs = a_second_tab_given_to(&daemon, &ours, "window-8");
     REOPENED.lock().expect("a panicking test poisoned the log").clear();
 
-    let answer = ask(
-        &ours,
-        request::Payload::FocusTab(FocusTab { tab_id: theirs.clone(), ..FocusTab::default() }),
-    );
-    assert!(matches!(answer.payload, Some(response::Payload::Ok(_))), "{answer:?}");
+    // Twice, as a double click or a click and a command close together would: the window is
+    // still starting when the second arrives, and a second launch would open a different window.
+    for _ in 0..2 {
+        let answer = ask(
+            &ours,
+            request::Payload::FocusTab(FocusTab { tab_id: theirs.clone(), ..FocusTab::default() }),
+        );
+        assert!(matches!(answer.payload, Some(response::Payload::Ok(_))), "{answer:?}");
+    }
     let reopened = REOPENED.lock().expect("a panicking test poisoned the log").clone();
     assert_eq!(
         reopened.iter().map(|asked| (asked.name.as_str(), asked.show.as_str())).collect::<Vec<_>>(),
         vec![("window-8", theirs.as_str())],
-        "going to a closed window's tab did not ask for that window back"
+        "going to a closed window's tab did not ask for that window back exactly once"
     );
     assert!(!listed().contains(&theirs), "the closed window's tab was brought here instead");
 }
