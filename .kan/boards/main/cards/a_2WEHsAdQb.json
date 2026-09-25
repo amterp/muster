@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-window-s-only-tab",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1790310737259,
+  "creator": "Alexander Terp",
+  "description": "Since a tab belongs to one window (a_2Mhi0EZlv, 2026-09-24), dragging a tab's caption row into another window moves it there. A window holding a single tab draws no caption row, so its only tab has nothing to drag. muster tab move and the Move Tab to Window submenu still work. Either draw the caption when a second window is open, or make the whole pane list draggable as its tab.",
+  "id": "a_2WEHsAdQb",
+  "position": "aL",
+  "title": "🪟 A window's only tab has no caption row, so it cannot be dragged to another window",
+  "type": "bug",
+  "updated_at_millis": 1790310737259,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1790310737259}
+  ]
+}

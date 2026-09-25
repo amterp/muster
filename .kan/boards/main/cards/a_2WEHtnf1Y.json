@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "createtab-take-focus",
+  "alias_explicit": false,
+  "area": [
+    "backend",
+    "testing"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1790310738460,
+  "creator": "Alexander Terp",
+  "description": "Found by exploration in round 1 (2026-09-24), not investigated further. In session::submit a new tab always comes on screen, so CreateTab.take_focus has no effect. corpus/conformance/cli.json case 56 is named 'making a tab does not move the keyboard' but pins --focus -\u003e take_focus: true. Decide what making a tab should do to the keyboard, then make the field, the case name and the behavior agree.",
+  "id": "a_2WEHtnf1Y",
+  "position": "aM",
+  "title": "CreateTab.take_focus does nothing, and its corpus case says the opposite of what it pins",
+  "type": "chore",
+  "updated_at_millis": 1790310738460,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1790310738460}
+  ]
+}
