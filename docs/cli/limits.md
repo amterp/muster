@@ -205,12 +205,14 @@ treated as closed the next time anything needs to know - it keeps its tabs the s
 A window lists the tabs it holds and no others, and no tab is in two windows. Only one client may
 hold a terminal, so a tab two windows both listed would be one whose terminals the second window
 took from the first at a click. A tab made from a window is that window's. A tab made outside
-Muster - in herdr's own TUI, say - joins the window that was in front most recently.
+Muster - in herdr's own TUI, say - joins the window that was in front most recently, of the ones
+attached to that tab's machine.
 
 So the agent list, ⌘1 to ⌘9 and `next_tab` are about this window's tabs only. The rest are under
 their own window in `muster window`, and every verb still reaches them: a request naming a tab
 another window holds, or a pane in one, is carried to that window and answered there, and `muster
-tab focus` brings that window forward. Questions are answered by whichever window was asked.
+tab focus` brings that window forward. So does clicking a notification, whichever window macOS
+hands the click to. Questions are answered by whichever window was asked.
 
 `muster tab move --tab <TAB> --window <WINDOW>` hands a tab to another window with every pane in it
 still running, and without `--window` it brings the tab here. Move Tab to Window in the Tab menu does
@@ -220,6 +222,10 @@ cannot be dragged to another window.
 
 So `muster window new` is not a way to look at the same agents twice: the window you ask for holds
 nothing until it makes a tab of its own.
+
+Which window holds each tab is written in `~/.muster/state/holding/tabs.toml`. Deleting it while
+windows are open costs them nothing, because each one writes itself and its tabs back. It costs the
+closed windows their tabs, which then join the window in front.
 
 ## A name somebody typed does not cross windows straight away
 

@@ -1102,8 +1102,10 @@ opened is empty, and a shell reports its frame the moment the window exists, whi
 open anything.
 
 **One arrangement per window, and a window claims one for as long as it runs.** They live under
-`~/.muster/state/windows/`, one file each, and a window writes its pid beside the one it took. A launch drops the
-claims of processes that are gone, then takes the most recently written arrangement nobody is holding - which is the
+`~/.muster/state/windows/`, one file each, and a window writes its pid beside the one it took, as a file that fails
+to link when one is already there, so two launches cannot claim one arrangement. A launch drops the claims of
+processes that are gone, and of pids macOS has since given to a process that started after the claim was written. It
+then takes the most recently written arrangement nobody is holding - which is the
 window Muster comes back to when none is running, and the window that was just closed when one is. `muster window
 new` and ⌘N say `--fresh`, and a fresh window takes an arrangement nothing has ever held. Going to a closed window's
 tab from another window names the arrangement outright, and that launch takes it.
