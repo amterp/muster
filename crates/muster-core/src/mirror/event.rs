@@ -165,6 +165,26 @@ pub enum Change {
 }
 
 impl Change {
+    /// What kind of change this is, for a log line that has to say why the window moved.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Change::PaneAdded(_) => "pane_added",
+            Change::PaneRemoved { .. } => "pane_removed",
+            Change::AgentStateChanged { .. } => "agent_state",
+            Change::PaneRelabelled(_) => "pane_relabelled",
+            Change::TabAdded(_) => "tab_added",
+            Change::TabRelabelled(_) => "tab_relabelled",
+            Change::TabRemoved(_) => "tab_removed",
+            Change::TabsReordered(_) => "tabs_reordered",
+            Change::LayoutChanged(_) => "layout_changed",
+            Change::WorkspaceAdded(_) => "workspace_added",
+            Change::WorkspaceRelabelled(_) => "workspace_relabelled",
+            Change::WorkspaceRemoved(_) => "workspace_removed",
+            Change::FocusChanged => "focus_changed",
+            Change::AgentTransitionsMissed { .. } => "agent_transitions_missed",
+        }
+    }
+
     /// Whether this can have moved something composition names.
     ///
     /// Agent state and daemon focus cannot: one is a property of a pane that still exists,

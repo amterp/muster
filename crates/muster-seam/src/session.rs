@@ -501,7 +501,7 @@ fn set_sidebar(shown: bool) {
         session.presentation
     };
     announce_presentation(presentation);
-    publish();
+    publish("sidebar");
 }
 
 fn announce_problems() {
@@ -1956,7 +1956,7 @@ pub(crate) fn submit(
         moved = true;
     }
     if moved {
-        publish();
+        publish("intent");
     }
     // The pane, so a caller can name it in its next breath. The only thing here a caller could
     // not have learned some other way: the arrangement reaches it as a view, and this reaches it
@@ -2208,7 +2208,7 @@ fn replace_bridge(pane: &PaneKey, ending: Ending) {
                 "bridge.replacing",
                 fields! { "pane" => pane.to_string(), "attempt" => count.to_string() },
             );
-            publish();
+            publish("bridge_replaced");
         }
         // Written down and not raised in the roster, although this is a pane nobody can type
         // into. The typeable watch already reports exactly that, and reports it here: the wait
@@ -2267,7 +2267,7 @@ pub(crate) fn reattach(pane: &PaneKey) -> bool {
         "bridge.reattach.asked",
         fields! { "pane" => pane.to_string(), "restarts" => restarts.to_string() },
     );
-    publish();
+    publish("reattach");
     true
 }
 
@@ -2303,7 +2303,7 @@ pub(crate) fn bridge_stalled(pane: &PaneKey, deadline: u64) {
             "quiet_for_ms" => (deadline / 1_000_000).to_string(),
         },
     );
-    publish();
+    publish("bridge_stalled");
 }
 
 /// Asks a daemon what it actually holds, and shows that instead.
@@ -2360,7 +2360,7 @@ fn resnapshot(daemon: &DaemonId, why: &str) {
     );
 
     reconcile(daemon);
-    publish();
+    publish("resnapshot");
     for change in changes {
         report(daemon, &change);
     }
@@ -2394,7 +2394,7 @@ pub(crate) fn focus(daemon: &DaemonId, pane: &PaneId) -> Result<(), Refusal> {
         };
         session.composition.focus_pane(region, pane.clone());
     }
-    publish();
+    publish("focus");
     submit(daemon, &BackendIntent::FocusPane { pane: pane.clone() }, Keyboard::Follows).map(drop)
 }
 
@@ -2408,7 +2408,7 @@ pub(crate) fn set_region_boundary(left: RegionId, ratio: f32) {
         let mut session = poison::lock(&SESSION, "session");
         session.composition.set_boundary(left, ratio);
     }
-    publish();
+    publish("region_boundary");
 }
 
 /// Moves the keyboard one pane along, in the window's own reading order.
@@ -2521,7 +2521,7 @@ pub(crate) fn equalize(daemon: &DaemonId, pane: &PaneId, evenly: Evenly) -> Resu
                 session.composition.set_weight(region, weight_of(panes));
             }
             drop(session);
-            publish();
+            publish("equalize");
         }
     }
 
@@ -3185,7 +3185,7 @@ pub(crate) fn open() -> Result<(), String> {
     // would turn that rule off and wait forever for a region nothing else will make.
     mark_opened();
     settle_what_the_window_shows();
-    publish();
+    publish("open");
     Ok(())
 }
 
@@ -3557,7 +3557,7 @@ pub(crate) fn attach(pane_id: &str) -> Result<Arc<AttachedPane>, AttachError> {
     settle_what_the_window_shows();
     // Outside the lock, because emitting reaches the shell and a shell reacting to an event
     // by dispatching a request is ordinary.
-    publish();
+    publish("attach");
     Ok(attached)
 }
 
@@ -3877,7 +3877,8 @@ pub(crate) fn set_window_frame(frame: Option<Frame>, full_screen: bool) {
 /// The whole view rather than what moved. A shell handed the whole answer holds no picture
 /// of its own to patch, and the message is a few hundred bytes for a window nobody can fill
 /// past about fifteen panes.
-fn publish() {
+/// `cause` names what asked, for the log line that says the window moved.
+fn publish(cause: &str) {
     // What the window is showing is also the answer to which agents have been seen, so the
     // two are settled together rather than left to drift. `noticed` is the panes that were
     // waiting to be noticed and have now been - re-announced below, after the shell has been
@@ -3953,6 +3954,7 @@ fn publish() {
     log::info(
         "roster.published",
         fields! {
+            "cause" => cause,
             "tabs" => roster.tabs().count().to_string(),
             "tabs_on_screen" => roster.tabs().filter(|tab| tab.on_screen).count().to_string(),
             "panes" => roster.panes().count().to_string(),
@@ -4010,7 +4012,7 @@ fn reconcile(daemon: &DaemonId) {
         settle_what_the_window_shows();
     }
     if showed {
-        publish();
+        publish("tab_shown");
     }
 }
 
@@ -4065,7 +4067,7 @@ fn announce(daemon: &DaemonId, notice: Notice) {
             // A bootstrap replaces the whole picture, so anything composition names may have
             // gone in the gap it was rebuilt across.
             reconcile(daemon);
-            publish();
+            publish("bootstrap");
             health(daemon, Health::Connected, "");
             for change in changes {
                 report(daemon, &change);
@@ -4080,7 +4082,7 @@ fn announce(daemon: &DaemonId, notice: Notice) {
                 reconcile(daemon);
             }
             if change.republishes() {
-                publish();
+                publish(change.kind());
             }
             report(daemon, &change);
         }
@@ -4731,7 +4733,7 @@ pub(crate) fn adjust_font_size(change: FontSizeChange) -> Result<(), String> {
         "pane.font_size",
         fields! { "pane" => pane.to_string(), "offset" => offset.to_string() },
     );
-    publish();
+    publish("font_size");
     Ok(())
 }
 

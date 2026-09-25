@@ -1046,6 +1046,13 @@ public enum Core {
   /// it is about, so a window that is not showing it drops it.
   @MainActor public static weak var window: MusterWindow?
 
+  private static func milliseconds(since start: ContinuousClock.Instant) -> String {
+    let elapsed = ContinuousClock.now - start
+    let ms = Double(elapsed.components.seconds) * 1000
+      + Double(elapsed.components.attoseconds) / 1e15
+    return String(format: "%.2f", ms)
+  }
+
   /// An event the core sent unasked, already back on the main thread.
   ///
   /// Annotated rather than merely called from a main-actor task, so that touching a view
@@ -1063,15 +1070,20 @@ public enum Core {
       // The shape is already in the log beside this line, written by the core when it
       // published. What is recorded here is that it crossed, and how many surfaces the window
       // was asked for - the part the core cannot see.
+      //
+      // After applying rather than before, so the line can say what applying cost: this is
+      // main-thread time that input and drawing wait behind, once per publish.
       let contents = WindowContents(changed)
+      let applying = ContinuousClock.now
+      window?.apply(contents)
       info(
         "view.received",
         [
           "regions": String(contents.regions.count),
           "panes": String(contents.regions.reduce(0) { $0 + ($1.tree?.leaves.count ?? 0) }),
           "keyboard": contents.keyboardPane ?? "",
+          "ms": milliseconds(since: applying),
         ])
-      window?.apply(contents)
     case .appearanceChanged(let changed):
       let appearance = read(changed.appearance)
       info(
@@ -1091,13 +1103,15 @@ public enum Core {
       window?.apply(bindings: bindings)
     case .rosterChanged(let changed):
       let roster = Roster(changed)
+      let applying = ContinuousClock.now
+      window?.apply(roster)
       info(
         "roster.received",
         [
           "panes": String(roster.panes.count),
           "on_screen": String(roster.panes.filter(\.onScreen).count),
+          "ms": milliseconds(since: applying),
         ])
-      window?.apply(roster)
     case .problemsChanged(let changed):
       let problems = changed.problems.map {
         Problem(key: $0.key, severity: Problem.Severity($0.severity), detail: $0.detail)
