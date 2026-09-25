@@ -11,10 +11,10 @@
 
 use muster_core::diagnostics::log;
 use muster_core::fields;
-use muster_core::input::{PaneChannel, PaneIntent};
+use muster_core::input::{Delivery, PaneChannel, PaneIntent};
 use serde_json::json;
 
-use crate::client::HerdrClient;
+use crate::client::{Failure, HerdrClient};
 use crate::control_socket::PaneControlChannel;
 use crate::control_stream::ControlStreamMessage;
 
@@ -38,10 +38,10 @@ impl ControlStreamMessage {
 }
 
 impl PaneChannel for PaneControlChannel {
-    fn deliver(&self, intent: &PaneIntent) -> bool {
+    fn deliver(&self, intent: &PaneIntent) -> Delivery {
         match ControlStreamMessage::from_intent(intent) {
-            Some(message) => self.send(&message),
-            None => false,
+            Some(message) => self.send(&message).into(),
+            None => Delivery::Refused,
         }
     }
 
@@ -89,7 +89,7 @@ impl HerdrPaneChannel {
 }
 
 impl PaneChannel for HerdrPaneChannel {
-    fn deliver(&self, intent: &PaneIntent) -> bool {
+    fn deliver(&self, intent: &PaneIntent) -> Delivery {
         let params = match intent {
             PaneIntent::Text(text) => json!({ "pane_id": self.pane_id, "text": text }),
             PaneIntent::Key { name } => json!({ "pane_id": self.pane_id, "keys": [name] }),
@@ -97,7 +97,7 @@ impl PaneChannel for HerdrPaneChannel {
             // scroll is answered there against the same live state, and a pane's size follows
             // whichever client is driving it - which is the stream and never a request.
             PaneIntent::Input(_) | PaneIntent::Scroll { .. } | PaneIntent::Resize { .. } => {
-                return false;
+                return Delivery::Refused;
             }
         };
 
@@ -118,9 +118,15 @@ impl PaneChannel for HerdrPaneChannel {
                         "ms" => format!("{elapsed_ms:.2}"),
                     },
                 );
-                true
+                Delivery::Arrived
             }
             Err(failure) => {
+                // A request herdr read may still be acted on (`client.rs`), so only one it
+                // never got, or answered no to, is safe to send another way.
+                let delivery = match failure {
+                    Failure::Unreachable(_) | Failure::Daemon { .. } => Delivery::Refused,
+                    Failure::TimedOut | Failure::MalformedResponse => Delivery::Unconfirmed,
+                };
                 log::warn(
                     "server_channel.failed",
                     fields! {
@@ -128,10 +134,14 @@ impl PaneChannel for HerdrPaneChannel {
                         "intent" => label(intent),
                         "error" => failure.to_string(),
                         "ms" => format!("{elapsed_ms:.2}"),
-                        "impact" => "falls back to a locally guessed encoding, which pagers reject",
+                        "impact" => if delivery == Delivery::Refused {
+                            "falls back to a locally guessed encoding, which pagers reject"
+                        } else {
+                            "not sent again: the daemon read it and may still deliver it"
+                        },
                     },
                 );
-                false
+                delivery
             }
         }
     }

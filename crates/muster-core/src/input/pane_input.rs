@@ -10,8 +10,8 @@ use std::collections::VecDeque;
 use std::sync::{Arc, Condvar, Mutex, RwLock};
 
 use super::{
-    KeyEncoding, KeyEvent, Keymap, PaneChannel, PaneInputSettings, PaneIntent, Resolution,
-    ScrollDirection,
+    Delivery, KeyEncoding, KeyEvent, Keymap, PaneChannel, PaneInputSettings, PaneIntent,
+    Resolution, ScrollDirection,
 };
 use crate::diagnostics::{log, poison};
 use crate::fields;
@@ -313,7 +313,7 @@ impl PaneInput {
     /// beside the others rather than in fifteen.
     pub fn resize(&self, columns: u16, rows: u16) -> bool {
         self.flush();
-        self.channel.deliver(&PaneIntent::Resize { columns, rows })
+        self.channel.deliver(&PaneIntent::Resize { columns, rows }).arrived()
     }
 
     /// Waits until everything sent so far has been delivered or given up on.
@@ -333,8 +333,9 @@ impl PaneInput {
 
     /// Hands a key to the daemon to encode, because we would get it wrong.
     ///
-    /// Falls back to local encoding rather than dropping the key: a guessed arrow beats no
-    /// arrow, and a daemon that has gone away must not take the keyboard with it.
+    /// Falls back to local encoding when the daemon never got the key: a guessed arrow beats
+    /// no arrow, and a daemon that has gone away must not take the keyboard with it. One that
+    /// got it and has not answered may still deliver it, so that one is not sent twice.
     fn send_server_encoded(&self, name: &str, key: &KeyEvent) {
         let Some(server) = self.server_channel.clone() else {
             self.send_locally_encoded(key);
@@ -427,15 +428,36 @@ fn drain(outbox: &Outbox, route: &Route) {
 }
 
 /// Sends one intent, falling back to a local encoding if the target refuses it.
+///
+/// False only when nothing reached the pane and nothing may yet.
 fn attempt(
     route: &Route,
     intent: &PaneIntent,
     target: &dyn PaneChannel,
     fallback: Option<&PaneIntent>,
 ) -> bool {
-    if target.deliver(intent) {
-        route.arrived();
-        return true;
+    match target.deliver(intent) {
+        Delivery::Arrived => {
+            route.arrived();
+            return true;
+        }
+        // Not also sent the local way, which would deliver it twice if the daemon gets to it:
+        // an arrow moving two lines, or a paste run line by line and then pasted again. Not
+        // counted as arrived either, since no frame is owed for input that may never land.
+        Delivery::Unconfirmed => {
+            log::warn(
+                "input.unconfirmed",
+                fields! {
+                    "channel" => target.description(),
+                    "impact" => "this key or paste reaches the pane late or not at all; it is \
+                                 not sent again, because the daemon may still deliver it",
+                    "check" => "a daemon slow to answer; `server_channel.failed` beside this \
+                                says how long it was given",
+                },
+            );
+            return true;
+        }
+        Delivery::Refused => {}
     }
     if let Some(fallback) = fallback.filter(|f| *f != intent) {
         log::warn(
@@ -445,7 +467,7 @@ fn attempt(
                 "impact" => "sent with a guessed encoding instead, which may be wrong for this pane",
             },
         );
-        if route.channel.deliver(fallback) {
+        if route.channel.deliver(fallback).arrived() {
             route.arrived();
             return true;
         }

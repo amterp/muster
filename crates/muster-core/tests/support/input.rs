@@ -7,7 +7,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use muster_core::input::{EncodeError, KeyEncoding, KeyEvent, PaneChannel, PaneIntent};
+use muster_core::input::{Delivery, EncodeError, KeyEncoding, KeyEvent, PaneChannel, PaneIntent};
 
 /// One ordered account of everything the input path sent, across every channel.
 ///
@@ -54,12 +54,12 @@ impl FakeChannel {
 }
 
 impl PaneChannel for FakeChannel {
-    fn deliver(&self, intent: &PaneIntent) -> bool {
+    fn deliver(&self, intent: &PaneIntent) -> Delivery {
         if !self.accepts {
-            return false;
+            return Delivery::Refused;
         }
         self.recorder.record(&self.name, intent);
-        true
+        Delivery::Arrived
     }
 
     fn encodes_server_side(&self) -> bool {
@@ -90,10 +90,10 @@ impl SlowChannel {
 }
 
 impl PaneChannel for SlowChannel {
-    fn deliver(&self, intent: &PaneIntent) -> bool {
+    fn deliver(&self, intent: &PaneIntent) -> Delivery {
         std::thread::sleep(self.delay);
         self.recorder.record(&self.name, intent);
-        true
+        Delivery::Arrived
     }
 
     fn encodes_server_side(&self) -> bool {

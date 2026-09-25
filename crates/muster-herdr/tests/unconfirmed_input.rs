@@ -12,7 +12,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use muster_core::input::{
-    EncodeError, KeyEncoding, KeyEvent, PaneChannel, PaneInput, PaneInputSettings, PaneIntent,
+    Delivery, EncodeError, KeyEncoding, KeyEvent, PaneChannel, PaneInput, PaneInputSettings,
+    PaneIntent,
 };
 use muster_herdr::{HerdrClient, HerdrPaneChannel};
 
@@ -71,9 +72,9 @@ impl Recorder {
 }
 
 impl PaneChannel for Recorder {
-    fn deliver(&self, intent: &PaneIntent) -> bool {
+    fn deliver(&self, intent: &PaneIntent) -> Delivery {
         self.sends.lock().expect("a panicking sender poisoned the recorder").push(intent.clone());
-        true
+        Delivery::Arrived
     }
 
     fn encodes_server_side(&self) -> bool {

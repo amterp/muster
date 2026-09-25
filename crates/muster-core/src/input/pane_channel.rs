@@ -64,15 +64,40 @@ pub enum PaneIntent {
     Resize { columns: u16, rows: u16 },
 }
 
+/// What became of an intent a channel was asked to deliver.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Delivery {
+    /// It reached the pane.
+    Arrived,
+    /// Nothing was done with it, so sending it another way is safe.
+    Refused,
+    /// It was handed over and no answer came back. It may still arrive, so sending it another
+    /// way risks sending it twice.
+    Unconfirmed,
+}
+
+impl Delivery {
+    pub fn arrived(self) -> bool {
+        self == Delivery::Arrived
+    }
+}
+
+impl From<bool> for Delivery {
+    fn from(arrived: bool) -> Delivery {
+        if arrived { Delivery::Arrived } else { Delivery::Refused }
+    }
+}
+
 /// Where a pane's intents go.
 ///
 /// Two implementations exist and they differ in a way the core must not care about: one
 /// writes bytes onto a control stream the pane already holds open, the other asks the
-/// daemon to encode and costs a round trip. `deliver` returning whether it arrived is what
-/// lets the caller degrade instead of silently swallowing input.
+/// daemon to encode and costs a round trip. `deliver` saying what became of the intent is
+/// what lets the caller degrade instead of silently swallowing input, and not degrade when
+/// the first attempt may yet land.
 pub trait PaneChannel: Send + Sync {
-    /// Sends one intent, and says whether it got there.
-    fn deliver(&self, intent: &PaneIntent) -> bool;
+    /// Sends one intent, and says what became of it.
+    fn deliver(&self, intent: &PaneIntent) -> Delivery;
 
     /// Whether this channel can encode an intent the client cannot - text and named keys.
     ///
