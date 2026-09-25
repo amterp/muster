@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "two-loose-ends-in",
+  "alias_explicit": false,
+  "area": [
+    "shell",
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1790313546920,
+  "creator": "Alexander Terp",
+  "description": "From the second review of round 1's tab-holding fixes (2026-09-25), not fixed for 0.9.0:\n- forward::hand_on discards the holding window's answer, so if B refuses a carried focus (the tab just moved or closed), A logs nothing - and A raises B before knowing B accepted.\n- Sources/MusterMac/StateLocation.swift, the stale-claim sweep: it reads a claim and later removes it by path, so a launch that sweeps while another launch re-claims the same slot between the two steps deletes that fresh, live claim. Microseconds wide; matters only for simultaneous launches.",
+  "id": "a_2WFSy1inQ",
+  "position": "aP",
+  "title": "Two loose ends in carrying a request to another window",
+  "type": "chore",
+  "updated_at_millis": 1790313546920,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1790313546920}
+  ]
+}
