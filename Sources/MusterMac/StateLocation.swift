@@ -171,7 +171,30 @@ public enum Arrangements {
       return false
     }
     defer { unlink(written.path) }
-    return linking(written.path, claim.path) == 0
+    if linking(written.path, claim.path) == 0 { return true }
+    let refused = errno
+    if refused == EEXIST { return false }
+    // A filesystem that will not link at all. Still exclusive, but the claim exists empty for a
+    // moment before its pid is in it, which a launch sweeping dead claims at that moment reads as
+    // garbage - a narrow race, and better than every window remembering nothing.
+    linkRefused = String(cString: strerror(refused))
+    return createExclusively(claim, holding: pid)
+  }
+
+  /// Why the last claim could not be linked into place, when that happened.
+  ///
+  /// Kept rather than logged, because a claim is made before the core that writes the log has
+  /// started. The launch says it once the core is up. Unsynchronized because a launch claims once,
+  /// on the main thread, before anything else is running.
+  nonisolated(unsafe) public private(set) static var linkRefused: String?
+
+  private static func createExclusively(_ claim: URL, holding pid: Int32) -> Bool {
+    let descriptor = Darwin.open(claim.path, O_WRONLY | O_CREAT | O_EXCL, 0o644)
+    guard descriptor >= 0 else { return false }
+    defer { close(descriptor) }
+    let text = String(pid)
+    let wrote = text.withCString { Darwin.write(descriptor, $0, strlen($0)) }
+    return wrote == text.utf8.count
   }
 
   private static func claimFile(for record: URL) -> URL {

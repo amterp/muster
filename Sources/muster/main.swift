@@ -83,6 +83,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       daemonRecordsPath: daemonRecordsPath(), tabHoldersPath: holders,
       show: launchShow(arguments: launched))
     watchTabHolders(holders)
+    if let refused = Arrangements.linkRefused {
+      Core.warn(
+        "arrangement.claim.unlinked",
+        [
+          "detail": refused,
+          "impact":
+            "this filesystem refused the link that makes a window's claim on its arrangement "
+            + "exclusive, so claims were made another way that two launches in the same moment "
+            + "can both win",
+          "check": "whether Muster's home is on a network or FAT volume; set MUSTER_HOME to a "
+            + "local APFS directory",
+        ])
+    }
     // Given up on the way out so that a window closed and reopened in the same second finds its
     // own record rather than the one before it. Not relied on: a window that is killed never
     // gets here, and the claim carries a pid for exactly that.
