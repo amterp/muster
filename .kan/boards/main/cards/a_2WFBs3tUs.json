@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "a-pane-moved-to",
+  "alias_explicit": false,
+  "area": [
+    "testing",
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1790312889735,
+  "creator": "Alexander Terp",
+  "description": "crates/muster-herdr/tests/pane_arranging.rs. Failed the CI gate twice the same way: 2026-09-14 (run 34879193197, at 0821318) and 2026-09-25 (run 36096095915, at 726a6fa), each time timing out after 20 s 'waiting for the window to hold both workspaces, trees and all' with the window holding three panes. Passes 8 of 8 locally at load ~9, in 0.57 s each. Neither failing commit touched the test or herdr's intent code. A candidate, unverified: herdr 0.8.0 replays events per kind, at most one per kind per 100 ms, so order across kinds is lost (memory 9lv06jxiy30n); a workspace's creation and the pane move's updates can arrive in an order the mirror does not settle from. Reproduce under load with N concurrent copies of the binary before changing anything.",
+  "id": "a_2WFBs3tUs",
+  "position": "aX",
+  "title": "🎲 a_pane_moved_to_another_workspace_keeps_its_name flakes on CI",
+  "type": "bug",
+  "updated_at_millis": 1790312889735,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1790312889735}
+  ]
+}
