@@ -218,3 +218,16 @@ private func publish(_ path: String?) {
 
   #expect(reopened == crashed)
 }
+
+@Test func aSlotIsClaimedByOneLaunchOnly() {
+  // Two reopens close together both find the slot free, and both used to claim it: two windows
+  // writing one record.
+  let home = scratch("exclusive")
+  let record = URL(fileURLWithPath: home).appendingPathComponent("window-1.toml")
+  let live = ProcessInfo.processInfo.processIdentifier
+
+  #expect(Arrangements.claim(record, by: live))
+  #expect(!Arrangements.claim(record, by: 4301))
+  let claim = record.deletingPathExtension().appendingPathExtension("held")
+  #expect((try? String(contentsOf: claim, encoding: .utf8)) == String(live))
+}

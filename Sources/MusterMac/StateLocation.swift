@@ -51,12 +51,21 @@ public enum Arrangements {
     releaseDeadClaims(in: directory)
     adoptTheOldSingleFile(into: directory, environment: environment)
 
-    let record =
-      reopening(named, in: directory)
-      ?? (fresh ? mint(in: directory) : (free(in: directory) ?? mint(in: directory)))
-    claim(record, by: pid)
-    return record.path
+    if let record = reopening(named, in: directory), claim(record, by: pid) {
+      return record.path
+    }
+    // Chosen again whenever another launch claims the same slot first: the claim that beat this
+    // one now marks the slot held, so the next choice is a different one.
+    for _ in 0..<claimAttempts {
+      let record = fresh ? mint(in: directory) : (free(in: directory) ?? mint(in: directory))
+      if claim(record, by: pid) { return record.path }
+    }
+    return nil
   }
+
+  /// How many slots a launch tries before opening a window that remembers nothing. Only a launch
+  /// racing this many others at once ever reaches the last.
+  private static let claimAttempts = 8
 
   /// Says the window holding this record has gone, so the next launch may take it.
   ///
@@ -144,8 +153,19 @@ public enum Arrangements {
   /// How many closed windows are worth being able to reopen.
   private static let kept = 20
 
-  private static func claim(_ record: URL, by pid: Int32) {
-    try? String(pid).write(to: claimFile(for: record), atomically: true, encoding: .utf8)
+  /// Claims a slot for a window, and says whether it got it.
+  ///
+  /// Exclusive: two launches that both found a slot free cannot both claim it, because the claim
+  /// is linked into place and a link onto a name that exists fails. Written beside it first, so
+  /// nobody ever reads a claim with no pid in it and sweeps it as garbage.
+  static func claim(_ record: URL, by pid: Int32) -> Bool {
+    let claim = claimFile(for: record)
+    let written = claim.appendingPathExtension("\(pid)")
+    guard (try? String(pid).write(to: written, atomically: false, encoding: .utf8)) != nil else {
+      return false
+    }
+    defer { unlink(written.path) }
+    return link(written.path, claim.path) == 0
   }
 
   private static func claimFile(for record: URL) -> URL {
@@ -154,9 +174,14 @@ public enum Arrangements {
 
   /// Drops the claims of windows that are no longer running.
   ///
-  /// A pid that no longer exists is the test, on the same terms as the endpoint sockets:
+  /// A pid that no longer exists is the first test, on the same terms as the endpoint sockets:
   /// `kill(pid, 0)` reports existence without sending anything, and EPERM counts as alive, since
   /// a process owned by somebody else is still a process.
+  ///
+  /// A pid that exists is not enough, because macOS hands a dead window's pid to the next process
+  /// that needs one, and a claim that looks alive forever is a window nobody can reopen. The
+  /// process that wrote a claim started before it wrote it, so one that started after the claim
+  /// was written is somebody else.
   private static func releaseDeadClaims(in directory: URL) {
     let names = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
     for name in names where name.hasSuffix(".held") {
@@ -167,9 +192,28 @@ public enum Arrangements {
         try? FileManager.default.removeItem(at: claim)
         continue
       }
-      if kill(pid, 0) == 0 || errno == EPERM { continue }
+      let exists = kill(pid, 0) == 0 || errno == EPERM
+      if exists, !startedAfter(pid, claim) { continue }
       try? FileManager.default.removeItem(at: claim)
     }
+  }
+
+  /// Whether the process with this pid started after the claim was written.
+  ///
+  /// False when either time cannot be read, which keeps the claim: a window wrongly thought
+  /// closed is two windows writing one record, and that is the worse mistake.
+  private static func startedAfter(_ pid: pid_t, _ claim: URL) -> Bool {
+    var process = kinfo_proc()
+    var size = MemoryLayout<kinfo_proc>.stride
+    var name: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
+    guard sysctl(&name, 4, &process, &size, nil, 0) == 0,
+      size == MemoryLayout<kinfo_proc>.stride,
+      let written = self.written(claim)
+    else { return false }
+    let start = process.kp_proc.p_un.__p_starttime
+    let started = Date(
+      timeIntervalSince1970: TimeInterval(start.tv_sec) + TimeInterval(start.tv_usec) / 1_000_000)
+    return started > written
   }
 
   /// Moves the one file every window used to share into the first record.
