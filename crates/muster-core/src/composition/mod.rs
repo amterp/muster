@@ -18,7 +18,8 @@
 //!
 //! One window's worth of tabs, because there is one window. A second window keeps a list of its
 //! own and leaves the daemons where they are - which daemons are attached is not a window's
-//! business.
+//! business. Which window a tab belongs to is `holding`: a record every window shares, because
+//! no tab may be in two of them.
 //!
 //! `saved` is what that smallness buys: the records write to a few hundred bytes of TOML and
 //! read back, so a window reopens onto the tabs it was showing, in the order and at the
@@ -31,11 +32,13 @@
 //! survive a restart, and a view is derived, disposable, and correct only for as long as
 //! the mirror behind it is.
 
+pub mod holding;
 pub mod presentation;
 pub mod record;
 pub mod saved;
 pub mod view;
 
+pub use holding::{Expecting, HeldWindow, Holders, Taker, WindowName};
 pub use presentation::{FontSizeChange, FontSizes, Frame, Presentation};
 pub use record::{
     Composition, Daemon, DaemonId, Endpoint, MusterTab, PaneKey, Region, RegionId, TabKey,
