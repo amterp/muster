@@ -274,7 +274,7 @@ impl BackendChannel for HerdrBackend {
 
         Ok(Outcome {
             created,
-            created_tab: created_tab(&result, &self.names),
+            created_tab: created_tab(intent, &result, &self.names),
             settled,
             // Either the rename this intent *was*, or the one a split asked for on the way. Both
             // are the only route there is - herdr announces a rename to nobody
@@ -1229,7 +1229,20 @@ fn created(intent: &BackendIntent, result: &Value) -> Option<String> {
 /// `tab.create` answers with the tab under `tab`, and `workspace.create` with the one it
 /// started the workspace off with. Read for the same reason the pane is: a tab nothing is
 /// showing is a tab nobody asked for twice.
-fn created_tab(result: &Value, names: &Names) -> Option<TabId> {
+///
+/// `pane.move` answers under `created_tab` instead. A move into a tab of its own made a Muster
+/// tab; a move into a Muster tab this machine held no part of made only this machine's half of
+/// it, which [`HerdrBackend::group`] binds, so the tab it made is the one it joined. Either way the
+/// window that asked is waiting to be told, and a move answered with nothing left the tab to
+/// whichever window was in front (kan a_2Mhi0EZlv).
+fn created_tab(intent: &BackendIntent, result: &Value, names: &Names) -> Option<TabId> {
+    if let BackendIntent::MovePane { to, .. } = intent {
+        let made = nested(result, "created_tab")?.get("tab_id")?.as_str()?;
+        return Some(match to {
+            MoveDestination::Tab { tab } => tab.clone(),
+            _ => names.tab_from_answer(made),
+        });
+    }
     // Named from an answer, so the name is held against the next prune: the tab is announced a
     // moment after this and until then no mirror holds anything by that name.
     Some(names.tab_from_answer(result.get("tab")?.get("tab_id")?.as_str()?))
