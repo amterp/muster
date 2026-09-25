@@ -953,7 +953,8 @@ space follows it, and answers nothing at all when what is left is empty
 writes one; `label` is absent until somebody sets one, in 1942 recorded pane objects
 across this corpus, so "has a name" needs no sentinel.
 
-**A changed title is announced, and a rotating spinner is free.** One OSC 2 write
+**A changed title is announced, and a rotating spinner is free - if herdr knows its glyph.**
+Section 26 is the spinner it does not know. One OSC 2 write
 produced exactly one `pane_updated`, carrying the new title on the event itself rather
 than only in an answer to a later question. Five spinner glyphs rotated in front of an
 unchanged title produced none, because herdr compares the *stripped* title before it
@@ -1481,3 +1482,41 @@ concludes that much of it landed. None of it did.
 Evidence: `corpus/herdr-0.8.0/sending-text/`, and `bare-pty.json` there for the control. The
 Linux recording, where both columns carry the 2201-byte line, is
 `corpus/herdr-0.8.0-linux/sending-text/`.
+
+## 26. A spinner herdr does not know is a new title every frame
+
+herdr's stripping (section 16) knows braille and `·✢✳✶✻✽`
+(`~/src/herdr/src/terminal/title.rs:1`). Claude Code now spins `◐◑` in front of its title, which
+is in neither, so `terminal_title_stripped` keeps the glyph, every frame of the spinner compares
+unequal, and every frame is announced:
+
+| 40 title writes, 0.1 s apart, alternating | `pane_updated` received |
+|---|---|
+| `✳ task` / `✶ task` | 1 (the first) |
+| `◐ task` / `◑ task` | 40, stripped title `◐ task` and `◑ task` |
+
+Each announcement also moves the pane's `revision`, which counts changed stripped titles.
+
+On a live daemon with nine panes and three Claude Code agents working, a 60 s subscription to
+`pane.updated` and `layout.updated` received 329 `pane_updated`; 314 of the 320 that followed an
+earlier one for the same pane differed only in the title, and the stripped title began with `◑`
+165 times and `◐` 161 times. The subscription was itself an extra client during the sample. Two
+costs follow beyond the client's own:
+
+- **A Muster republish per frame.** A changed title relabels the pane, and a relabel republishes
+  the window's view and roster. Muster's herdr adapter now strips a leading glyph from the
+  Unicode blocks spinners come from - Braille, Geometric Shapes, Dingbats and the middle dot -
+  which took the 320 relabels in that sample to 0 (`corpus/conformance/backend-events.json`,
+  "a spinner herdr did not strip").
+- **History crowded out of herdr's replay.** Replay is the last 512 events of every kind (section
+  22). At several title events a second the buffer holds about a minute, so a subscriber that
+  reconnects after longer replays spinner frames and nothing structural. It also approaches the
+  one-event-per-kind-per-100 ms delivery cap: the busiest agent sampled spun 1.75 frames a
+  second, so six such agents would fill it and backlog every `pane_updated` behind them,
+  including the ones carrying a cwd or agent change.
+
+The fix belongs upstream: `◐◑◒◓` in herdr's glyph list, or the same block-based rule.
+
+Evidence: reproduced against the pinned daemon with a scratch session and a pane printing OSC 2
+titles; the live sample was recorded 2026-09-24 against a working session and is not checked
+in, because its titles and paths are somebody's work.

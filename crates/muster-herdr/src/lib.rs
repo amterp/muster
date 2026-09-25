@@ -23,6 +23,7 @@ pub mod records;
 pub mod remote;
 pub mod snapshot;
 pub mod subscription;
+mod title;
 
 pub use bridge_report::Exiting;
 pub use client::{Answered, HerdrClient, LateAnswer};

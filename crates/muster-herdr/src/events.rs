@@ -338,11 +338,9 @@ fn read_pane(value: &Value, names: &Names) -> Option<Pane> {
         cwd: text(value, "cwd").to_string(),
         name: optional(value, "label"),
         revision: value.get("revision").and_then(Value::as_u64).unwrap_or_default(),
-        // The stripped spelling, so the activity glyph a harness spins in front of its
-        // title never reaches a reader. herdr strips it and announces only when the
-        // stripped text changes, which is what makes a spinning agent cost nothing
-        // (`observations/herdr-0.8.0.md` section 16).
-        title: optional(value, "terminal_title_stripped"),
+        // Without the activity glyph a harness spins in front of it, so a spinning agent
+        // is not a new title every frame (`crate::title`).
+        title: crate::title::read(value),
     })
 }
 

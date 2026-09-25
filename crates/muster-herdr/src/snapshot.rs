@@ -139,7 +139,7 @@ pub fn read_snapshot(snapshot: &Value, names: &Names) -> (Snapshot, usize) {
             cwd: text(value, "cwd").to_string(),
             name: optional(value, "label"),
             revision: value.get("revision").and_then(Value::as_u64).unwrap_or_default(),
-            title: optional(value, "terminal_title_stripped"),
+            title: crate::title::read(value),
         })
     });
 
