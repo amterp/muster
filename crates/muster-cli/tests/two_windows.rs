@@ -116,6 +116,29 @@ fn a_change_naming_its_tab_goes_to_a_window_with_two_open() {
     );
 }
 
+/// A tab move that names the tab and where it goes goes to any window too: it is a write to the
+/// record every window shares, so any window can make it. One naming no window means "here", and
+/// still has to say which window that is.
+#[test]
+fn a_tab_move_naming_where_it_goes_reaches_a_window_with_two_open() {
+    let scratch = Scratch::new("move");
+    let home = scratch.home();
+    window(home, 633, "first-pane");
+    window(home, 644, "second-pane");
+
+    let (code, _, errors) =
+        run(&["tab", "move", "--tab", "t1w3r07bsd", "--window", "window-2"], home, None);
+    assert_ne!(code, 3, "a tab move naming its window was refused for want of one: {errors}");
+    assert!(
+        !errors.contains("--socket"),
+        "a tab move naming where it goes asked which window it was for:\n{errors}"
+    );
+
+    let (code, _, errors) = run(&["tab", "move", "--tab", "t1w3r07bsd"], home, None);
+    assert_eq!(code, 3, "a tab move to \"here\" went somewhere with two windows open: {errors}");
+    assert!(errors.contains("--socket"), "the refusal does not say how to pick one:\n{errors}");
+}
+
 #[test]
 fn a_program_reading_two_windows_gets_one_object_per_window() {
     let scratch = Scratch::new("json");
