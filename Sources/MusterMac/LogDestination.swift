@@ -6,9 +6,11 @@ import Foundation
 
 /// Opens this run's log file and points every process Muster spawns at it.
 ///
-/// Returns the path, so startup can say where to look. Nil means logging is off, which is
-/// what a release build does unless `MUSTER_LOG=1` asks otherwise: a log that records
-/// what a person types is not something to switch on for them.
+/// Returns the path, so startup can say where to look. Nil means logging is off, which only
+/// `MUSTER_LOG=0` asks for. On in every build, because the log records the shape of input
+/// and never its content unless `MUSTER_LOG_INPUT=1` says so, and every bundle before 0.9.0
+/// was a debug build that logged: an optimized one going quiet would have taken away the
+/// file bug reports are made of without anyone deciding to.
 @discardableResult
 public func startLogging() -> String? {
   let environment = ProcessInfo.processInfo.environment
@@ -17,12 +19,7 @@ public func startLogging() -> String? {
     return path
   }
 
-  #if DEBUG
-    let wanted = environment["MUSTER_LOG"] != "0"
-  #else
-    let wanted = environment["MUSTER_LOG"] == "1"
-  #endif
-  guard wanted else { return nil }
+  guard environment["MUSTER_LOG"] != "0" else { return nil }
 
   let directory = FileManager.default.homeDirectoryForCurrentUser
     .appendingPathComponent("Library/Logs/muster", isDirectory: true)

@@ -13,6 +13,19 @@ import PackageDescription
 //
 // Neither is muster-bridge, nor libmuster: both come from the Rust workspace, and `./dev`
 // stages them where the app and the linker look.
+
+/// Where libmuster is found, for one cargo profile.
+func linkingTheCore(from profile: String) -> [String] {
+  [
+    "-Ltarget/\(profile)",
+    // Loader-relative, so a checkout works without installing anything: the first depth
+    // resolves for executables in .build/<triple>/<config>/, the second for a test bundle's
+    // deeper Contents/MacOS.
+    "-Xlinker", "-rpath", "-Xlinker", "@loader_path/../../../target/\(profile)",
+    "-Xlinker", "-rpath", "-Xlinker", "@loader_path/../../../../../../target/\(profile)",
+  ]
+}
+
 let package = Package(
   name: "muster",
   platforms: [.macOS(.v14)],
@@ -58,15 +71,11 @@ let package = Package(
         "CMuster", "MusterRenderer",
         .product(name: "SwiftProtobuf", package: "swift-protobuf"),
       ],
+      // Each configuration links the core cargo built under the same name, so a release shell
+      // never carries an unoptimized core: `./dev --bundle` builds both halves release.
       linkerSettings: [
-        .unsafeFlags([
-          "-Ltarget/debug",
-          // Loader-relative, so a checkout works without installing anything: the first
-          // depth resolves for executables in .build/<triple>/<config>/, the second for a
-          // test bundle's deeper Contents/MacOS.
-          "-Xlinker", "-rpath", "-Xlinker", "@loader_path/../../../target/debug",
-          "-Xlinker", "-rpath", "-Xlinker", "@loader_path/../../../../../../target/debug",
-        ])
+        .unsafeFlags(linkingTheCore(from: "debug"), .when(configuration: .debug)),
+        .unsafeFlags(linkingTheCore(from: "release"), .when(configuration: .release)),
       ]
     ),
     .executableTarget(name: "muster", dependencies: ["MusterMac", "MusterRenderer"]),

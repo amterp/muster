@@ -597,13 +597,13 @@ fn run_corpus_linux_tier():
 // and it starts the pinned one rather than whatever is on PATH, for the reason the suite
 // does not read PATH either. So a build that produced no daemon would produce an app that
 // opens an empty window - and this is the one step that touches the network.
-fn stage_helpers():
-    swift_bin = $`swift build --show-bin-path`.stdout.trim()
-    stage(target = "target/debug/muster-bridge", into = "{swift_bin}/muster-bridge")
+fn stage_helpers(profile):
+    swift_bin = $`swift build -c {profile} --show-bin-path`.stdout.trim()
+    stage(target = "target/{profile}/muster-bridge", into = "{swift_bin}/muster-bridge")
     // The CLI, staged under a different name than cargo built it under: the app's own executable
     // is already `muster`, and the two would collide in one directory. The app puts a link called
     // `muster` in ~/.muster/bin pointing here, which is what a pane finds on its PATH.
-    stage(target = "target/debug/muster", into = "{swift_bin}/muster-cli")
+    stage(target = "target/{profile}/muster", into = "{swift_bin}/muster-cli")
     herdr = herdr_binary()
     stage(target = herdr, into = "{swift_bin}/herdr")
 
@@ -628,7 +628,7 @@ fn stage(target, into):
 // Signing and notarization are a separate question and belong with going public. This is
 // about launching it like an app on the machine that built it.
 fn build_bundle():
-    swift_bin = $`swift build --show-bin-path`.stdout.trim()
+    swift_bin = $`swift build -c release --show-bin-path`.stdout.trim()
     contents = "{BUNDLE}/Contents"
 
     // Assembled from nothing every time. A bundle that accumulated across builds could
@@ -642,7 +642,7 @@ fn build_bundle():
     $`cp {swift_bin}/muster {contents}/MacOS/muster`
     $`cp {swift_bin}/muster-bridge {contents}/MacOS/muster-bridge`
     $`cp {swift_bin}/muster-cli {contents}/MacOS/muster-cli`
-    $`cp target/debug/libmuster.dylib {contents}/Frameworks/libmuster.dylib`
+    $`cp target/release/libmuster.dylib {contents}/Frameworks/libmuster.dylib`
     $`cp {GHOSTTY_DIR}/zig-out/lib/libghostty-vt.dylib {contents}/Frameworks/libghostty-vt.dylib`
 
     // Bundling herdr is redistribution, and Apache-2.0 asks that its terms travel with the
@@ -664,7 +664,7 @@ fn build_bundle():
     write_info_plist(contents)
     write_daemon_bundle(contents, swift_bin)
 
-    // The rpaths compiled in are loader-relative to target/debug and to the ghostty
+    // The rpaths compiled in are loader-relative to target/release and to the ghostty
     // checkout (Package.swift, .cargo/config.toml), and neither exists inside a bundle. So
     // both binaries learn where their libraries now sit, and both are re-signed afterwards:
     // editing a Mach-O invalidates its signature, and macOS refuses to launch the result.
@@ -1542,10 +1542,17 @@ if build:
     // ones a contributor can act on without a window.
     $`cargo build --workspace --all-targets`
     $`swift build`
-    stage_helpers()
+    stage_helpers("debug")
 
 if bundle:
     announce("bundle")
+    // Optimized, where the gate's build above is not. Until 0.9.0 every bundle carried the
+    // debug build of all three layers - a first bundle's default that nobody chose - so the
+    // app people ran was the one binary nothing had measured: the perf and latency tiers
+    // build release. libghostty is ReleaseFast either way (build_deps).
+    $`cargo build --release -p muster-seam -p muster-bridge -p muster-cli`
+    $`swift build -c release`
+    stage_helpers("release")
     build_bundle()
 
 if notarize:

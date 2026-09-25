@@ -167,8 +167,9 @@ a stamp read and four path checks - and the alternative was worse than slow: the
 during a build and committed nowhere, so a suite that skipped it ran the shell against whatever was generated last
 and went green while the schema said something else.
 
-`./dev --bundle` assembles `.build/muster.app` around the built binary - a thing you can double-click, keep in the
-Dock, or hand to somebody, with the pinned herdr, both dylibs, the icon and the licenses inside it. Out of the gate
+`./dev --bundle` assembles `.build/muster.app` around a release build - a thing you can double-click, keep in the
+Dock, or hand to somebody, with the pinned herdr, both dylibs, the icon and the licenses inside it. Release, where the
+gate builds debug: until 0.9.0 every bundle shipped the unoptimized shell, core and bridge, which nobody had chosen. Out of the gate
 because nothing in the gate needs one, and it is also the only way to meet the descriptor ceiling launchd imposes on
 a GUI-launched process. The signature is ad-hoc, which is what macOS needs to run a Mach-O at all and asserts nothing
 about who built it.

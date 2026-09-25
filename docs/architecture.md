@@ -1164,10 +1164,12 @@ Events are named for the question they answer, not for the code that emitted the
 boundaries where a process can silently stop mattering: the control socket binding, a bridge dialing back, the first
 frame painted, and the reason a pane's stream ended.
 
-On by default in debug builds and opt-in in release, because a terminal multiplexer's logs are unusually sensitive.
-What the user typed is recorded only under a separate switch again: by default a keystroke record carries its shape -
-which key, how many bytes - and not its content. The default must stay the one that cannot leak a password into a
-file destined for a bug report.
+On by default in every build, and `MUSTER_LOG=0` turns it off. A terminal multiplexer's logs are unusually
+sensitive, so what the user typed is recorded only under a separate switch: by default a keystroke record carries
+its shape - which key, how many bytes - and not its content. The default must stay the one that cannot leak a
+password into a file destined for a bug report. It used to be opt-in outside debug builds, which made no difference
+while every bundle was one; the optimized bundles of 0.9.0 would otherwise have stopped writing the file bug
+reports are made of.
 
 Where the file lives is an OS question and therefore the shell's; nothing in the core knows the path.
 
