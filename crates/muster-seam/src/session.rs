@@ -1403,6 +1403,11 @@ impl Session {
             let Some(backend) = self.backends.get(daemon) else { return };
             poison::lock(&backend.mirror, "mirror").tabs().map(|tab| tab.id.clone()).collect()
         };
+        // Here rather than at each place a daemon is attached or let go, because every one of
+        // them reconciles next. Compared first, so the ordinary reconcile writes nothing.
+        if !self.holding.follows_exactly(self.backends.keys()) {
+            self.holding.follow(self.backends.keys().cloned().collect());
+        }
         self.holding.take_unheld(daemon, &described);
         for tab in described {
             if self.holding.holds(&tab) {
@@ -3708,6 +3713,8 @@ fn say_this_window_is_open() {
         let tabs = poison::lock(&session.tab_names, "tab-names");
         tabs.entries().map(|(name, _, _)| name.clone()).collect()
     };
+    let followed = session.backends.keys().cloned().collect();
+    session.holding.follow(followed);
     session.holding.open(|tab| known.contains(tab));
 }
 

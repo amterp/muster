@@ -16,7 +16,7 @@ use muster::proto::{
     event, request, response,
 };
 use muster_core::composition::holding::{from_toml, to_toml};
-use muster_core::composition::{HeldWindow, Holders, WindowName};
+use muster_core::composition::{DaemonId, HeldWindow, Holders, WindowName};
 use muster_core::mirror::backend::TabId;
 use muster_proto::frame::{LARGEST_MESSAGE, read_frame, write_frame};
 use prost::Message;
@@ -468,6 +468,7 @@ impl Stand {
             socket: socket.to_string_lossy().into_owned(),
             pid: 1,
             focused: 0,
+            daemons: std::iter::once(DaemonId::new("local")).collect(),
         });
         write_record(&path, &holders);
 

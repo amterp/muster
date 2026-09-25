@@ -15,13 +15,16 @@
             "arrangement": "/s/windows/window-1.toml",
             "socket": "/s/command-11.sock",
             "pid": 11,
-            "focused": 100
+            "focused": 100,
+            "daemons": [
+              "local"
+            ]
           }
         ]
       },
       "expect": {
         "windows": [
-          "window-1 pid=11 socket=/s/command-11.sock arrangement=/s/windows/window-1.toml focused=100"
+          "window-1 pid=11 socket=/s/command-11.sock arrangement=/s/windows/window-1.toml focused=100 daemons=local"
         ],
         "tabs": []
       }
@@ -37,7 +40,10 @@
             "arrangement": "/s/windows/window-1.toml",
             "socket": "/s/command-11.sock",
             "pid": 11,
-            "focused": 100
+            "focused": 100,
+            "daemons": [
+              "local"
+            ]
           },
           {
             "do": "open",
@@ -45,7 +51,10 @@
             "arrangement": "/s/windows/window-2.toml",
             "socket": "/s/command-22.sock",
             "pid": 22,
-            "focused": 200
+            "focused": 200,
+            "daemons": [
+              "local"
+            ]
           },
           {
             "do": "take",
@@ -61,8 +70,8 @@
       },
       "expect": {
         "windows": [
-          "window-1 pid=11 socket=/s/command-11.sock arrangement=/s/windows/window-1.toml focused=100",
-          "window-2 pid=22 socket=/s/command-22.sock arrangement=/s/windows/window-2.toml focused=200"
+          "window-1 pid=11 socket=/s/command-11.sock arrangement=/s/windows/window-1.toml focused=100 daemons=local",
+          "window-2 pid=22 socket=/s/command-22.sock arrangement=/s/windows/window-2.toml focused=200 daemons=local"
         ],
         "tabs": [
           "t1 window-1",
@@ -81,7 +90,10 @@
             "arrangement": "/s/windows/window-1.toml",
             "socket": "/s/command-11.sock",
             "pid": 11,
-            "focused": 100
+            "focused": 100,
+            "daemons": [
+              "local"
+            ]
           },
           {
             "do": "open",
@@ -89,7 +101,10 @@
             "arrangement": "/s/windows/window-2.toml",
             "socket": "/s/command-22.sock",
             "pid": 22,
-            "focused": 200
+            "focused": 200,
+            "daemons": [
+              "local"
+            ]
           },
           {
             "do": "take",
@@ -105,8 +120,8 @@
       },
       "expect": {
         "windows": [
-          "window-1 pid=11 socket=/s/command-11.sock arrangement=/s/windows/window-1.toml focused=100",
-          "window-2 pid=22 socket=/s/command-22.sock arrangement=/s/windows/window-2.toml focused=200"
+          "window-1 pid=11 socket=/s/command-11.sock arrangement=/s/windows/window-1.toml focused=100 daemons=local",
+          "window-2 pid=22 socket=/s/command-22.sock arrangement=/s/windows/window-2.toml focused=200 daemons=local"
         ],
         "tabs": [
           "t1 window-2"
@@ -124,7 +139,10 @@
             "arrangement": "/s/windows/window-1.toml",
             "socket": "/s/command-11.sock",
             "pid": 11,
-            "focused": 100
+            "focused": 100,
+            "daemons": [
+              "local"
+            ]
           },
           {
             "do": "take",
@@ -139,7 +157,7 @@
       },
       "expect": {
         "windows": [
-          "window-1 pid=0 socket= arrangement=/s/windows/window-1.toml focused=100"
+          "window-1 pid=0 socket= arrangement=/s/windows/window-1.toml focused=100 daemons=local"
         ],
         "tabs": [
           "t1 window-1"
@@ -157,7 +175,10 @@
             "arrangement": "/s/windows/window-1.toml",
             "socket": "/s/command-11.sock",
             "pid": 11,
-            "focused": 100
+            "focused": 100,
+            "daemons": [
+              "local"
+            ]
           },
           {
             "do": "take",
@@ -174,13 +195,16 @@
             "arrangement": "/s/windows/window-1.toml",
             "socket": "/s/command-33.sock",
             "pid": 33,
-            "focused": 500
+            "focused": 500,
+            "daemons": [
+              "local"
+            ]
           }
         ]
       },
       "expect": {
         "windows": [
-          "window-1 pid=33 socket=/s/command-33.sock arrangement=/s/windows/window-1.toml focused=500"
+          "window-1 pid=33 socket=/s/command-33.sock arrangement=/s/windows/window-1.toml focused=500 daemons=local"
         ],
         "tabs": [
           "t1 window-1"
@@ -198,7 +222,10 @@
             "arrangement": "/s/windows/window-1.toml",
             "socket": "/s/command-11.sock",
             "pid": 11,
-            "focused": 100
+            "focused": 100,
+            "daemons": [
+              "local"
+            ]
           },
           {
             "do": "take",
@@ -214,8 +241,8 @@
       },
       "expect": {
         "windows": [
-          "window-1 pid=11 socket=/s/command-11.sock arrangement=/s/windows/window-1.toml focused=100",
-          "window-3 pid=0 socket= arrangement= focused=0"
+          "window-1 pid=11 socket=/s/command-11.sock arrangement=/s/windows/window-1.toml focused=100 daemons=local",
+          "window-3 pid=0 socket= arrangement= focused=0 daemons="
         ],
         "tabs": [
           "t1 window-3"
@@ -233,7 +260,10 @@
             "arrangement": "/s/windows/window-1.toml",
             "socket": "/s/command-11.sock",
             "pid": 11,
-            "focused": 100
+            "focused": 100,
+            "daemons": [
+              "local"
+            ]
           },
           {
             "do": "open",
@@ -241,7 +271,10 @@
             "arrangement": "/s/windows/window-2.toml",
             "socket": "/s/command-22.sock",
             "pid": 22,
-            "focused": 200
+            "focused": 200,
+            "daemons": [
+              "local"
+            ]
           }
         ],
         "taker": {
@@ -255,8 +288,8 @@
       },
       "expect": {
         "windows": [
-          "window-1 pid=11 socket=/s/command-11.sock arrangement=/s/windows/window-1.toml focused=100",
-          "window-2 pid=22 socket=/s/command-22.sock arrangement=/s/windows/window-2.toml focused=200"
+          "window-1 pid=11 socket=/s/command-11.sock arrangement=/s/windows/window-1.toml focused=100 daemons=local",
+          "window-2 pid=22 socket=/s/command-22.sock arrangement=/s/windows/window-2.toml focused=200 daemons=local"
         ],
         "tabs": [],
         "taker": "window-2"
@@ -273,7 +306,10 @@
             "arrangement": "/s/windows/window-1.toml",
             "socket": "/s/command-11.sock",
             "pid": 11,
-            "focused": 100
+            "focused": 100,
+            "daemons": [
+              "local"
+            ]
           },
           {
             "do": "open",
@@ -281,7 +317,10 @@
             "arrangement": "/s/windows/window-2.toml",
             "socket": "/s/command-22.sock",
             "pid": 22,
-            "focused": 200
+            "focused": 200,
+            "daemons": [
+              "local"
+            ]
           },
           {
             "do": "close",
@@ -298,8 +337,8 @@
       },
       "expect": {
         "windows": [
-          "window-1 pid=11 socket=/s/command-11.sock arrangement=/s/windows/window-1.toml focused=100",
-          "window-2 pid=0 socket= arrangement=/s/windows/window-2.toml focused=200"
+          "window-1 pid=11 socket=/s/command-11.sock arrangement=/s/windows/window-1.toml focused=100 daemons=local",
+          "window-2 pid=0 socket= arrangement=/s/windows/window-2.toml focused=200 daemons=local"
         ],
         "tabs": [],
         "taker": "window-1"
@@ -316,7 +355,10 @@
             "arrangement": "/s/windows/window-1.toml",
             "socket": "/s/command-11.sock",
             "pid": 11,
-            "focused": 100
+            "focused": 100,
+            "daemons": [
+              "local"
+            ]
           },
           {
             "do": "open",
@@ -324,7 +366,10 @@
             "arrangement": "/s/windows/window-2.toml",
             "socket": "/s/command-22.sock",
             "pid": 22,
-            "focused": 200
+            "focused": 200,
+            "daemons": [
+              "local"
+            ]
           },
           {
             "do": "focus",
@@ -343,8 +388,8 @@
       },
       "expect": {
         "windows": [
-          "window-1 pid=11 socket=/s/command-11.sock arrangement=/s/windows/window-1.toml focused=300",
-          "window-2 pid=22 socket=/s/command-22.sock arrangement=/s/windows/window-2.toml focused=200"
+          "window-1 pid=11 socket=/s/command-11.sock arrangement=/s/windows/window-1.toml focused=300 daemons=local",
+          "window-2 pid=22 socket=/s/command-22.sock arrangement=/s/windows/window-2.toml focused=200 daemons=local"
         ],
         "tabs": [],
         "taker": "window-1"
@@ -361,7 +406,10 @@
             "arrangement": "/s/windows/window-1.toml",
             "socket": "/s/command-11.sock",
             "pid": 11,
-            "focused": 100
+            "focused": 100,
+            "daemons": [
+              "local"
+            ]
           }
         ],
         "taker": {
@@ -372,7 +420,7 @@
       },
       "expect": {
         "windows": [
-          "window-1 pid=11 socket=/s/command-11.sock arrangement=/s/windows/window-1.toml focused=100"
+          "window-1 pid=11 socket=/s/command-11.sock arrangement=/s/windows/window-1.toml focused=100 daemons=local"
         ],
         "tabs": [],
         "taker": "nobody"
@@ -389,7 +437,10 @@
             "arrangement": "/s/windows/window-1.toml",
             "socket": "/s/command-11.sock",
             "pid": 11,
-            "focused": 100
+            "focused": 100,
+            "daemons": [
+              "local"
+            ]
           },
           {
             "do": "open",
@@ -397,7 +448,10 @@
             "arrangement": "/s/windows/window-2.toml",
             "socket": "/s/command-22.sock",
             "pid": 22,
-            "focused": 200
+            "focused": 200,
+            "daemons": [
+              "local"
+            ]
           },
           {
             "do": "expect",
@@ -417,8 +471,8 @@
       },
       "expect": {
         "windows": [
-          "window-1 pid=11 socket=/s/command-11.sock arrangement=/s/windows/window-1.toml focused=100",
-          "window-2 pid=22 socket=/s/command-22.sock arrangement=/s/windows/window-2.toml focused=200"
+          "window-1 pid=11 socket=/s/command-11.sock arrangement=/s/windows/window-1.toml focused=100 daemons=local",
+          "window-2 pid=22 socket=/s/command-22.sock arrangement=/s/windows/window-2.toml focused=200 daemons=local"
         ],
         "tabs": [],
         "taker": "waiting on window-1"
@@ -435,7 +489,10 @@
             "arrangement": "/s/windows/window-1.toml",
             "socket": "/s/command-11.sock",
             "pid": 11,
-            "focused": 100
+            "focused": 100,
+            "daemons": [
+              "local"
+            ]
           },
           {
             "do": "open",
@@ -443,7 +500,10 @@
             "arrangement": "/s/windows/window-2.toml",
             "socket": "/s/command-22.sock",
             "pid": 22,
-            "focused": 200
+            "focused": 200,
+            "daemons": [
+              "local"
+            ]
           },
           {
             "do": "expect",
@@ -463,8 +523,8 @@
       },
       "expect": {
         "windows": [
-          "window-1 pid=11 socket=/s/command-11.sock arrangement=/s/windows/window-1.toml focused=100",
-          "window-2 pid=22 socket=/s/command-22.sock arrangement=/s/windows/window-2.toml focused=200"
+          "window-1 pid=11 socket=/s/command-11.sock arrangement=/s/windows/window-1.toml focused=100 daemons=local",
+          "window-2 pid=22 socket=/s/command-22.sock arrangement=/s/windows/window-2.toml focused=200 daemons=local"
         ],
         "tabs": [],
         "taker": "window-2"
@@ -481,7 +541,10 @@
             "arrangement": "/s/windows/window-1.toml",
             "socket": "/s/command-11.sock",
             "pid": 11,
-            "focused": 100
+            "focused": 100,
+            "daemons": [
+              "local"
+            ]
           },
           {
             "do": "open",
@@ -489,7 +552,10 @@
             "arrangement": "/s/windows/window-2.toml",
             "socket": "/s/command-22.sock",
             "pid": 22,
-            "focused": 200
+            "focused": 200,
+            "daemons": [
+              "local"
+            ]
           },
           {
             "do": "expect",
@@ -514,8 +580,8 @@
       },
       "expect": {
         "windows": [
-          "window-1 pid=11 socket=/s/command-11.sock arrangement=/s/windows/window-1.toml focused=100",
-          "window-2 pid=22 socket=/s/command-22.sock arrangement=/s/windows/window-2.toml focused=200"
+          "window-1 pid=11 socket=/s/command-11.sock arrangement=/s/windows/window-1.toml focused=100 daemons=local",
+          "window-2 pid=22 socket=/s/command-22.sock arrangement=/s/windows/window-2.toml focused=200 daemons=local"
         ],
         "tabs": [],
         "taker": "window-2"
@@ -532,7 +598,10 @@
             "arrangement": "/s/windows/window-1.toml",
             "socket": "/s/command-11.sock",
             "pid": 11,
-            "focused": 100
+            "focused": 100,
+            "daemons": [
+              "local"
+            ]
           },
           {
             "do": "open",
@@ -540,7 +609,10 @@
             "arrangement": "/s/windows/window-2.toml",
             "socket": "/s/command-22.sock",
             "pid": 22,
-            "focused": 200
+            "focused": 200,
+            "daemons": [
+              "local"
+            ]
           },
           {
             "do": "expect",
@@ -559,8 +631,8 @@
       },
       "expect": {
         "windows": [
-          "window-1 pid=11 socket=/s/command-11.sock arrangement=/s/windows/window-1.toml focused=100",
-          "window-2 pid=22 socket=/s/command-22.sock arrangement=/s/windows/window-2.toml focused=200"
+          "window-1 pid=11 socket=/s/command-11.sock arrangement=/s/windows/window-1.toml focused=100 daemons=local",
+          "window-2 pid=22 socket=/s/command-22.sock arrangement=/s/windows/window-2.toml focused=200 daemons=local"
         ],
         "tabs": [],
         "taker": "window-2"
@@ -577,7 +649,10 @@
             "arrangement": "/s/windows/window-1.toml",
             "socket": "/s/command-11.sock",
             "pid": 11,
-            "focused": 100
+            "focused": 100,
+            "daemons": [
+              "local"
+            ]
           },
           {
             "do": "open",
@@ -585,7 +660,10 @@
             "arrangement": "/s/windows/window-2.toml",
             "socket": "/s/command-22.sock",
             "pid": 22,
-            "focused": 200
+            "focused": 200,
+            "daemons": [
+              "local"
+            ]
           },
           {
             "do": "expect",
@@ -605,8 +683,8 @@
       },
       "expect": {
         "windows": [
-          "window-1 pid=11 socket=/s/command-11.sock arrangement=/s/windows/window-1.toml focused=100",
-          "window-2 pid=22 socket=/s/command-22.sock arrangement=/s/windows/window-2.toml focused=200"
+          "window-1 pid=11 socket=/s/command-11.sock arrangement=/s/windows/window-1.toml focused=100 daemons=local",
+          "window-2 pid=22 socket=/s/command-22.sock arrangement=/s/windows/window-2.toml focused=200 daemons=local"
         ],
         "tabs": [],
         "taker": "window-2"
@@ -623,7 +701,10 @@
             "arrangement": "/s/windows/window-1.toml",
             "socket": "/s/command-11.sock",
             "pid": 11,
-            "focused": 100
+            "focused": 100,
+            "daemons": [
+              "local"
+            ]
           },
           {
             "do": "open",
@@ -631,7 +712,10 @@
             "arrangement": "/s/windows/window-2.toml",
             "socket": "/s/command-22.sock",
             "pid": 22,
-            "focused": 200
+            "focused": 200,
+            "daemons": [
+              "local"
+            ]
           },
           {
             "do": "expect",
@@ -647,8 +731,8 @@
       },
       "expect": {
         "windows": [
-          "window-1 pid=0 socket= arrangement=/s/windows/window-1.toml focused=100",
-          "window-2 pid=22 socket=/s/command-22.sock arrangement=/s/windows/window-2.toml focused=200"
+          "window-1 pid=0 socket= arrangement=/s/windows/window-1.toml focused=100 daemons=local",
+          "window-2 pid=22 socket=/s/command-22.sock arrangement=/s/windows/window-2.toml focused=200 daemons=local"
         ],
         "tabs": []
       }
@@ -664,7 +748,10 @@
             "arrangement": "/s/windows/window-1.toml",
             "socket": "/s/command-11.sock",
             "pid": 11,
-            "focused": 100
+            "focused": 100,
+            "daemons": [
+              "local"
+            ]
           },
           {
             "do": "open",
@@ -672,7 +759,10 @@
             "arrangement": "/s/windows/window-2.toml",
             "socket": "/s/command-22.sock",
             "pid": 22,
-            "focused": 200
+            "focused": 200,
+            "daemons": [
+              "local"
+            ]
           },
           {
             "do": "take",
@@ -694,7 +784,7 @@
       },
       "expect": {
         "windows": [
-          "window-1 pid=11 socket=/s/command-11.sock arrangement=/s/windows/window-1.toml focused=100"
+          "window-1 pid=11 socket=/s/command-11.sock arrangement=/s/windows/window-1.toml focused=100 daemons=local"
         ],
         "tabs": [
           "t1 window-1"
@@ -712,7 +802,10 @@
             "arrangement": "/s/windows/window-1.toml",
             "socket": "/s/command-11.sock",
             "pid": 11,
-            "focused": 100
+            "focused": 100,
+            "daemons": [
+              "local"
+            ]
           },
           {
             "do": "take",
@@ -734,7 +827,7 @@
       },
       "expect": {
         "windows": [
-          "window-1 pid=11 socket=/s/command-11.sock arrangement=/s/windows/window-1.toml focused=100"
+          "window-1 pid=11 socket=/s/command-11.sock arrangement=/s/windows/window-1.toml focused=100 daemons=local"
         ],
         "tabs": [
           "t2 window-1"

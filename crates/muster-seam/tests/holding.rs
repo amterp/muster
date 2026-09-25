@@ -19,7 +19,7 @@ use muster::proto::{
     Response, Startup, ViewChanged, event, request, response,
 };
 use muster_core::composition::holding::{from_toml, to_toml};
-use muster_core::composition::{HeldWindow, WindowName};
+use muster_core::composition::{DaemonId, HeldWindow, WindowName};
 use muster_core::mirror::backend::TabId;
 use prost::Message;
 use serde_json::json;
@@ -311,6 +311,7 @@ fn another_window(daemon: &Daemon, name: &str, focused: i64) -> UnixListener {
         socket: socket.to_string_lossy().into_owned(),
         pid: 1,
         focused,
+        daemons: std::iter::once(DaemonId::new("local")).collect(),
     });
     write_record(&path, &holders);
     listener

@@ -41,6 +41,8 @@ pub(crate) struct Holding {
     /// every agent transition reconciles. Forgotten whenever the record moves, because that is
     /// what changes the answer.
     passed_over: BTreeSet<TabId>,
+    /// The machines this window follows, as it last wrote them into its row.
+    daemons: BTreeSet<DaemonId>,
     /// Closed windows this window has asked the shell to reopen, and when.
     ///
     /// Remembered so that two requests close together launch one app. The second arrives while
@@ -76,6 +78,7 @@ impl Holding {
             record: (!record.is_empty()).then(|| SharedFile::at(record, &HOLDERS)),
             holders: Holders::new(),
             passed_over: BTreeSet::new(),
+            daemons: BTreeSet::new(),
             reopening: BTreeMap::new(),
             open: false,
         }
@@ -131,6 +134,23 @@ impl Holding {
             socket: self.socket.clone(),
             pid: std::process::id(),
             focused,
+            daemons: self.daemons.clone(),
+        }
+    }
+
+    /// Whether this window's row already names exactly these machines.
+    pub(crate) fn follows_exactly<'a>(&self, daemons: impl Iterator<Item = &'a DaemonId>) -> bool {
+        self.daemons.iter().eq(daemons)
+    }
+
+    /// Says which machines this window follows, so that a tab on one it does not follow is left
+    /// to a window that does. Written only once this window is open; before that, `open` writes
+    /// it with the rest of the row.
+    pub(crate) fn follow(&mut self, daemons: BTreeSet<DaemonId>) {
+        self.daemons = daemons;
+        if self.open {
+            let (me, daemons) = (self.me.clone(), self.daemons.clone());
+            self.change(|holders| holders.follows(&me, daemons));
         }
     }
 

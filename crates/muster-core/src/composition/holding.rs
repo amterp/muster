@@ -19,7 +19,7 @@
 //! Pure: no clock, no socket, no file. Whether a window is open is asked of the caller, which
 //! dials its socket, and so is the time.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::composition::DaemonId;
 use crate::mirror::backend::{TabId, id_type};
@@ -44,6 +44,9 @@ pub struct HeldWindow {
     /// When it last came to the front, in milliseconds since the epoch. Decides which window a
     /// tab nobody holds joins.
     pub focused: i64,
+    /// The machines it follows. Every window follows this one's daemon, but only a window
+    /// attached to a devenv follows that one, and a window that cannot see a tab cannot take it.
+    pub daemons: BTreeSet<DaemonId>,
 }
 
 /// A window about to ask a machine for a tab it has not been told the name of yet.
@@ -115,6 +118,7 @@ impl Holders {
             socket: String::new(),
             pid: 0,
             focused: 0,
+            daemons: BTreeSet::new(),
         });
         self.tabs.insert(tab, window.clone());
     }
@@ -134,6 +138,13 @@ impl Holders {
             window.pid = 0;
         }
         self.expecting.retain(|expecting| &expecting.window != name);
+    }
+
+    /// Says which machines a window follows now, which changes when it attaches one.
+    pub fn follows(&mut self, name: &WindowName, daemons: BTreeSet<DaemonId>) {
+        if let Some(window) = self.windows.get_mut(name) {
+            window.daemons = daemons;
+        }
     }
 
     pub fn focused(&mut self, name: &WindowName, at: i64) {
@@ -249,6 +260,16 @@ pub fn to_toml(holders: &Holders) -> String {
             table.insert("socket".to_string(), toml::Value::String(window.socket.clone()));
             table.insert("pid".to_string(), toml::Value::Integer(i64::from(window.pid)));
             table.insert("focused".to_string(), toml::Value::Integer(window.focused));
+            table.insert(
+                "daemons".to_string(),
+                toml::Value::Array(
+                    window
+                        .daemons
+                        .iter()
+                        .map(|daemon| toml::Value::String(daemon.to_string()))
+                        .collect(),
+                ),
+            );
             toml::Value::Table(table)
         })
         .collect();
@@ -333,6 +354,14 @@ pub fn from_toml(text: &str) -> Result<Holders, String> {
                     .and_then(|pid| u32::try_from(pid).ok())
                     .unwrap_or(0),
                 focused: table.get("focused").and_then(toml::Value::as_integer).unwrap_or(0),
+                daemons: table
+                    .get("daemons")
+                    .and_then(toml::Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(toml::Value::as_str)
+                    .map(DaemonId::new)
+                    .collect(),
             },
         );
     }

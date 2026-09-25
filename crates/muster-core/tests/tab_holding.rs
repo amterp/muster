@@ -65,7 +65,12 @@ fn act(holders: &mut Holders, step: &Value) -> Result<(), CaseError> {
                 .and_then(|p| u32::try_from(p).ok())
                 .unwrap_or(0),
             focused: number(step, "focused"),
+            daemons: strings(step, "daemons").into_iter().map(DaemonId::new).collect(),
         }),
+        "follow" => holders.follows(
+            &window(step),
+            strings(step, "daemons").into_iter().map(DaemonId::new).collect(),
+        ),
         "close" => holders.closed(&window(step)),
         "focus" => holders.focused(&window(step), number(step, "at")),
         "take" => holders.take(TabId::new(text(step, "tab")), &window(step)),
@@ -109,8 +114,13 @@ fn taker(holders: &Holders, asked: &Value) -> String {
 
 fn describe(window: &HeldWindow) -> String {
     format!(
-        "{} pid={} socket={} arrangement={} focused={}",
-        window.name, window.pid, window.socket, window.arrangement, window.focused
+        "{} pid={} socket={} arrangement={} focused={} daemons={}",
+        window.name,
+        window.pid,
+        window.socket,
+        window.arrangement,
+        window.focused,
+        window.daemons.iter().map(DaemonId::as_str).collect::<Vec<&str>>().join(",")
     )
 }
 
