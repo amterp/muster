@@ -1,0 +1,22 @@
+{
+  "_v": 3,
+  "alias": "an-agent-says-more",
+  "alias_explicit": false,
+  "area": [
+    "backend",
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1790478163397,
+  "creator": "Alexander Terp",
+  "description": "Raised by amterp 2026-09-26: when you look at an agent in Muster - `muster window`, `muster pane` output, the sidebar - you should see at a glance not only whether it is working/blocked/idle/done, but how full its context is, whether it has sub-agents running, and similar detail. Muster should have a concept of rich agent state, not just the four states.\n\nWhy now: MIP-3 moves agent detection into muster-daemon (a_2XJ1gk34C ports herdr's engine), so the daemon becomes the place that reads every agent's screen on a cadence. Extracting facts is the same machinery as detecting state.\n\nDirections to weigh (not decided):\n- Screen facts through the manifests: a rule gains named captures (e.g. a statusline region matching `(\\d+)%` as `context_percent`, a 'N agents running' line as `subagents`), published as key/value facts beside the state on the daemon's event stream and in the protocol's Pane record. Cheap and harness-agnostic in mechanism, but statuslines are user-configurable (amterp's is custom), so screen parsing alone is fragile.\n- Agent-reported facts: the agent (via a hook, or its statusline command) reports its own facts to the daemon, e.g. `muster agent report --context 31% --subagents 2` from inside the pane (`$MUSTER_PANE` names it). Authoritative and survives UI changes; needs per-harness wiring (a skill or hook config, not Muster code), which fits 'one thing we support, never the thing we are'. Worth checking what Claude Code hands its statusline command and hooks (context window usage, sub-agent/task activity) before designing.\n- Likely both: reported facts win, screen facts fill in.\n\nShape to settle: a small vocabulary of well-known facts Muster understands and renders (context used, sub-agents, current task/title, cost?) plus free-form key/values passed through; how the sidebar shows it without clutter; `muster window --json` carrying it; `muster pane wait` able to wait on a fact (e.g. context over 80%).\n\nSequencing: after the detection port lands in the daemon (MIP-3 round 3), and before or alongside the cut-over so the protocol's Pane record is shaped once. Also relevant to the message service (a_2Rtd0Ed0l), whose presence adapter wants the same facts.",
+  "id": "a_2XMXOShAA",
+  "parent": "a_2XJ1fUIyr",
+  "position": "ap",
+  "title": "An agent says more than its state: context used, sub-agents running, and what it is doing",
+  "type": "feature",
+  "updated_at_millis": 1790478163397,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1790478163397}
+  ]
+}

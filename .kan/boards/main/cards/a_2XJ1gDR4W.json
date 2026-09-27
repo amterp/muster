@@ -5,7 +5,7 @@
   "area": [
     "backend"
   ],
-  "column": "in-progress",
+  "column": "done",
   "created_at_millis": 1790469794479,
   "creator": "Alexander Terp",
   "description": "MIP-3 sections 1-3 and 9. The first `muster-daemon` binary: it holds tabs and pane trees by Muster's names, spawns panes, and serves the control connection from a_2XJ1g2eBz. Pane byte streams, input, detection and persistence are separate cards that build on this.\n\nIn scope:\n- one daemon per machine per install, on a socket named for that install, so a dev build never adopts the release daemon and tests never adopt either;\n- the session model: tabs (Muster tab name, label with generation counter, pane tree with axis/ratio per split, zoomed pane), panes (name, cwd, command, title, alive), grouped-tab membership by tab name only. No workspace;\n- spawning: the user's shell as an interactive login shell; a command runs as `$SHELL -l -i -c '\u003ccommand\u003e; exec $SHELL -l -i'`; the create request's grid sizes the PTY from birth; env adds `COLORTERM`, `MUSTER_PANE`, `MUSTER_SOCKET` (TERM, terminfo and shell integration are their own card); child reaping, SIGHUP to the process group on close, no fd leaks;\n- the control connection: every a_2XJ1g2eBz request that does not need streams or detection, with events emitted before answers;\n- the structure that handoff will need later (MIP-3 section 10): a pane can be rebuilt from a PTY master plus persisted fields, so nothing ties a pane's state to being the PTY's parent.\n\nherdr references for PTY handling, if useful: `src/pty/actor/unix.rs`, `src/pane.rs` spawn path (~1635-2090), `src/platform/{macos,linux}.rs` for cwd reads (herdr v0.8.0, Apache-2.0).\n\nTests go through the neutral harness card and spawn the real binary.",
@@ -14,9 +14,10 @@
   "position": "Zw",
   "title": "muster-daemon core: tabs, panes and PTYs under Muster's names",
   "type": "feature",
-  "updated_at_millis": 1790472199280,
+  "updated_at_millis": 1790478675179,
   "history": [
     {"field":"column","value":"next","at":1790469794479},
-    {"field":"column","value":"in-progress","at":1790472199280}
+    {"field":"column","value":"in-progress","at":1790472199280},
+    {"field":"column","value":"done","at":1790478675179}
   ]
 }
