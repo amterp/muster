@@ -253,6 +253,27 @@ fn the_census_asks_each_daemon_what_it_holds() {
     assert_eq!(census[0].panes, 1);
 }
 
+/// A herdr daemon a Muster from before muster-daemon started is named as one while it listens,
+/// and never sent muster-daemon's handshake; once it has gone its record reads like any other.
+#[test]
+fn a_herdr_daemon_from_before_is_named_in_the_census() {
+    let root = std::path::PathBuf::from(format!("/tmp/muster-test/herdr-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let socket = root.join("herdr.sock");
+    let records = root.join("records").display().to_string();
+    let listening = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+    records::started(&records, &socket.display().to_string());
+
+    let census = records::census(&records);
+    assert_eq!(census[0].state, records::State::Herdr);
+    assert_eq!(census[0].panes, 0, "herdr is not asked what it holds");
+
+    drop(listening);
+    assert_eq!(records::census(&records)[0].state, records::State::Silent);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// A window reacts to what a daemon says by asking it for more - an empty window asks for a
 /// tab - and that request's answer is read by the same connection the notice came from. So a
 /// reaction asking the daemon something has to be answered, not left waiting on itself.

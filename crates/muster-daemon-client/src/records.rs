@@ -9,6 +9,7 @@
 //! than starts - so no two writers ever reach for one file. That is what lets this be a plain
 //! write where the shared name registry needs a hold.
 
+use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -42,6 +43,10 @@ pub enum State {
     /// daemon whose socket path was deleted out from under it is still running and unreachable,
     /// and looks exactly like one that ended.
     Gone,
+    /// A herdr daemon, which a Muster from before muster-daemon started and wrote down here.
+    /// Something still listens on its socket, so it is running, keeping its panes alive, and
+    /// no window of this Muster shows them.
+    Herdr,
 }
 
 impl State {
@@ -50,6 +55,7 @@ impl State {
             State::Answering => "answering",
             State::Silent => "silent",
             State::Gone => "gone",
+            State::Herdr => "herdr",
         }
     }
 }
@@ -107,6 +113,10 @@ pub fn census(directory: &str) -> Vec<Census> {
 fn look(record: Started) -> Census {
     let state = if !Path::new(&record.socket).exists() {
         State::Gone
+    } else if is_herdr(&record.socket) {
+        // Never sent muster-daemon's handshake, which herdr would not answer: a listener is
+        // all there is to learn from it.
+        if UnixStream::connect(&record.socket).is_ok() { State::Herdr } else { State::Silent }
     } else if answers(&record.socket) {
         State::Answering
     } else {
@@ -115,6 +125,12 @@ fn look(record: Started) -> Census {
     let (panes, directories) =
         if state == State::Answering { held_by(&record.socket) } else { (0, Vec::new()) };
     Census { socket: record.socket, started: record.started, state, panes, directories }
+}
+
+/// Whether `socket` is where a Muster from before muster-daemon had herdr listen, which was
+/// always a file of this name.
+fn is_herdr(socket: &str) -> bool {
+    Path::new(socket).file_name().is_some_and(|name| name == "herdr.sock")
 }
 
 /// Whether a daemon answers on `socket`, by its handshake.

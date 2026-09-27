@@ -251,11 +251,14 @@ from the file. A daemon Muster adopted is somebody else's to account for; `muste
 it while this window is using it, and Muster has no standing to tell you what it holds after
 that.
 
-- `state` is `answering`, `silent` or `gone`. `answering` replied when it was dialed. `silent`
-  has a socket file nothing answers on, which is a daemon that ended without tidying up. `gone`
-  has no socket file left, and it is the one case Muster cannot resolve for you: a daemon whose
-  socket path was deleted out from under it is still running and unreachable, and looks
-  identical to one that ended.
+- `state` is `answering`, `silent`, `gone` or `herdr`. `answering` replied when it was dialed.
+  `silent` has a socket file nothing answers on, which is a daemon that ended without tidying up.
+  `gone` has no socket file left, and it is the one case Muster cannot resolve for you: a daemon
+  whose socket path was deleted out from under it is still running and unreachable, and looks
+  identical to one that ended. `herdr` is the daemon a Muster from before it had one of its own
+  started, still listening: its panes run on, no window of this Muster shows them, and it is not
+  asked what it holds. Its row says how to end it, with `kill $(lsof -t <socket>)`, because it
+  keeps no `.lock` file.
 - `panes` and `directories` say what an answering daemon holds. This is the row that decides
   anything - a count of zero is a daemon you can end and lose nothing.
 - `attached_here` says whether the window answering is using it. A window can only speak for

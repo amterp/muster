@@ -1125,12 +1125,14 @@ message KnownDaemon {
   // the youngest of twenty.
   int64 started = 2;
 
-  // `answering`, `silent`, or `gone`.
+  // `answering`, `silent`, `gone`, or `herdr`.
   //
   // `answering` was dialed and replied. `silent` has a socket file that nothing answers on,
   // which is a daemon that exited without tidying up. `gone` has no socket file left at all,
   // and that is the one case Muster cannot resolve: a daemon whose socket path was deleted out
   // from under it is still running and unreachable, and looks identical to one that ended.
+  // `herdr` is a herdr daemon a Muster from before muster-daemon started, still listening:
+  // its panes run on, and no window of this Muster shows them.
   string state = 3;
 
   // How many panes it holds and where they are, for a daemon that answered. Empty otherwise,

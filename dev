@@ -202,8 +202,49 @@ fn report_machine(cores, fast, load1, load5, load15):
 // this one exists to be run at the moment somebody is already suspicious.
 fn run_doctor():
     doctor_processes()
+    doctor_muster_daemons()
     doctor_herdr()
     doctor_devenv()
+
+// Every muster-daemon on this machine, whoever started it, with the socket it serves.
+//
+// What each one holds is `muster daemons`' to say, from inside a window: it dials each socket
+// with the daemon's own protocol, which a build script cannot speak. This half is the one the
+// daemons' records cannot give - the ones nothing wrote down, a test's included.
+fn doctor_muster_daemons():
+    print(bold("\nmuster daemons"))
+    stdout, stderr, code = quiet $`pgrep -a -x muster-daemon` catch:
+        stdout = ""
+    pids = stdout.trim().split_lines().filter(fn(pid) pid.trim() != "")
+    if len(pids) == 0:
+        print(dim("  none running"))
+        return
+    print(dim("  pid    age          socket"))
+    for pid in pids:
+        print("  {doctor_muster_daemon(pid.trim())}")
+    print(dim("  What each holds: muster daemons, from a pane. End one with: kill $(lsof -t <socket>.lock)"))
+
+fn doctor_muster_daemon(pid):
+    stdout, stderr, code = quiet $`ps -o etime= -p {pid}` catch:
+        stdout = ""
+    age = stdout.trim()
+    if age == "":
+        blank = ""
+        return "{pid:<7}{blank:<13}gone - it exited while this was being written"
+    stdout, stderr, code = quiet $`lsof -a -p {pid} -U` catch:
+        stdout = ""
+    socket = ""
+    for line in stdout.split_lines():
+        fields = line.split(" ").filter(fn(field) field != "")
+        if len(fields) > 0 and fields[-1].ends_with(".sock"):
+            socket = fields[-1]
+    if socket == "":
+        return "{pid:<7}{age:<13}no socket - starting, handing over, or on its way out"
+    if not get_path(socket).exists:
+        return "{pid:<7}{age:<13}{socket}  unreachable, its socket path is gone"
+    scratch = socket.starts_with("/tmp/") or socket.starts_with("/private/tmp/")
+    where = scratch ? "scratch" : "kept"
+    return "{pid:<7}{age:<13}{socket}  {where}"
 
 // Load says the machine is busy; this says what is eating it.
 //
@@ -226,7 +267,7 @@ fn doctor_processes():
             command = join(fields[2:], " ")
             print("  {fields[0]:<7}{fields[1]:<13}{command.truncate(76)}")
 
-// The daemons this machine is carrying, each paired with the work it holds.
+// The herdr daemons a Muster from before muster-daemon left on this machine.
 //
 // Built out of the OS rather than out of herdr's API, because the API cannot answer it. You can
 // ask a socket what it holds and you can ask the OS which sockets a process has open, and there
@@ -262,9 +303,8 @@ fn doctor_herdr():
     print(dim("  pid    age          socket"))
     for row in rows:
         print("  {row[0]}")
-    print(dim("  The test harness tears its own daemons down; what accumulates is what a person"))
-    print(dim("  or a fixture started outside it. Twenty together drew 0.1% CPU (a_28YghIUw2), so"))
-    print(dim("  this is about knowing which one holds work before ending it, not about speed."))
+    print(dim("  A Muster from before its own daemon started these, and no window of this one shows"))
+    print(dim("  their panes. End a daemon, and every pane it holds, with: kill $(lsof -t <socket>)"))
 
 // One daemon: how old, which socket, and what is in its panes.
 //

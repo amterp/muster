@@ -239,11 +239,11 @@ performance-core count, which on Apple silicon is fewer than its cores - past th
 starts landing on the slower ones. `./dev --perf --anyway` measures regardless, for when you want the numbers and
 not the verdict.
 
-`./dev --doctor` says what this repo's own tooling has left running on this machine: herdr daemons paired with the
-work each one holds, the devenv container, and whatever is currently eating the CPU. It answers the question the
-load average at the top of every run raises and cannot itself answer, which is *what* is busy - and it is what makes
-ending a stray daemon safe, since the process holding somebody's live agent looks exactly like the nineteen that
-hold nothing.
+`./dev --doctor` says what this repo's own tooling has left running on this machine: every muster-daemon with the
+socket it serves, any herdr daemon an older Muster left behind, the devenv container, and whatever is currently eating
+the CPU. It answers the question the load average at the top of every run raises and cannot itself answer, which is
+*what* is busy. What each daemon holds is `muster daemons`' to say, and that is what makes ending a stray one safe,
+since the process holding somebody's live agent looks exactly like the nineteen that hold nothing.
 
 Two toolchains, one door: the gate builds, tests and lints the Rust core and the Swift shell together, and a suite
 that discovers zero tests fails in either language rather than reporting green.

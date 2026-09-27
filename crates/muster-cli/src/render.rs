@@ -875,6 +875,16 @@ fn daemons_text(daemons: &muster_proto::Daemons) -> String {
         let here = if daemon.attached_here { " · this window" } else { "" };
         lines.push(format!("{}{}{}{here}", NAME.render(), described(daemon), NAME.render_reset()));
         lines.push(format!("  {}{}{}", QUIET.render(), daemon.socket, QUIET.render_reset()));
+        // A herdr daemon holds no lock file of muster-daemon's, so the line below does not
+        // reach it; its listener is the process to end.
+        if daemon.state == "herdr" {
+            lines.push(format!(
+                "  {}End it, and every pane it holds, with: kill $(lsof -t {}){}",
+                QUIET.render(),
+                daemon.socket,
+                QUIET.render_reset()
+            ));
+        }
     }
     lines.push(String::new());
     lines.push(format!(
@@ -906,6 +916,9 @@ fn described(daemon: &muster_proto::KnownDaemon) -> String {
         "gone" => "gone · no socket file left, so it either ended or is running with its socket \
                    path deleted out from under it, and nothing here can tell those apart"
             .to_string(),
+        "herdr" => "herdr · started by a Muster from before it had a daemon of its own, and \
+                    still running: its panes go on, and no window of this Muster can show them"
+            .to_string(),
         other => format!("{other} · a state this muster does not know, so the window is newer"),
     }
 }
@@ -930,11 +943,35 @@ fn daemons_json(daemons: &muster_proto::Daemons) -> Value {
 
 #[cfg(test)]
 mod tests {
-    use super::{QUIET, agent_style, held_for};
+    use super::{QUIET, agent_style, daemons_text, held_for};
     use anstyle::{AnsiColor, Color, Style};
 
     fn hue(color: AnsiColor) -> Style {
         Style::new().fg_color(Some(Color::Ansi(color)))
+    }
+
+    /// A herdr daemon an older Muster left running is named for what it is, with the way to end
+    /// it: muster-daemon's `.lock` line cannot reach it, and nothing else would say what it holds.
+    #[test]
+    fn a_herdr_daemon_from_before_is_named_with_how_to_end_it() {
+        let daemon = |socket: &str, state: &str| muster_proto::KnownDaemon {
+            socket: socket.to_string(),
+            state: state.to_string(),
+            ..muster_proto::KnownDaemon::default()
+        };
+        let text = daemons_text(&muster_proto::Daemons {
+            remembered: true,
+            daemons: vec![
+                daemon("/home/a/.config/herdr/sessions/muster/herdr.sock", "herdr"),
+                daemon("/home/a/.muster/daemon/i1.sock", "answering"),
+            ],
+        });
+        assert!(text.contains("herdr · started by a Muster from before"), "{text}");
+        assert!(
+            text.contains("kill $(lsof -t /home/a/.config/herdr/sessions/muster/herdr.sock)"),
+            "{text}"
+        );
+        assert!(!text.contains("lsof -t /home/a/.muster/daemon/i1.sock)"), "{text}");
     }
 
     /// The window decides the legend and nothing checks the two across the language line, so this
