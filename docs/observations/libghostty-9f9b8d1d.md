@@ -495,6 +495,13 @@ neither on 2026-09-26. Muster carries it as `deps/ghostty-patches/0001`, additiv
 - The palette extra writes all 256 entries as OSC 4, 5.5 KB for a pane nobody recolored,
   and each becomes an override that stops following the app's theme.
 
+**A gap between text takes the style of the text before it.** The content formatter holds a
+run of blank cells back until the next text on the row, then writes them as spaces before
+closing the previous cell's style (`formatter.zig:1339`, and the fast path's pending blanks).
+After a colored label, the gap to the next text comes out in the label's background; after
+underlined text, underlined. The carried patch adds `Options.unstyled_blanks`, off by default,
+which closes the style before the gap; only its screen formatter turns it on.
+
 **What no formatter output carries, patched or not:**
 
 - OSC 8 on text already written. The content formatter emits hyperlinks for HTML only,

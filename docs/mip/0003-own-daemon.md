@@ -288,7 +288,10 @@ The primary screen while the alternate is active, and state without content, nee
 formatters the pinned C API does not expose, although the Zig formatter has both
 (`formatter.zig:301-304` asks for them). Muster carries them as a patch on the pin,
 `deps/ghostty-patches/0001`, for good and not for upstream: it only adds C API and changes
-nothing that exists, and stays small so that a re-pin rebases it. The snapshot API was the
+nothing that exists, and stays small so that a re-pin rebases it. It also carries one formatter
+option, off by default and turned on only by the screen formatter: the formatter writes the gap
+before the next text on a row in whatever style the previous text left open, so a background
+or underline would bleed across it, and the option closes the style first. The snapshot API was the
 alternative, and reaches the primary screen but still cannot emit state without content.
 
 Five things are not replayed, and the oracle pins each as its exact difference so a fix shows
