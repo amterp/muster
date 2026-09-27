@@ -1087,6 +1087,13 @@ message Handoff {
     // Whether what was last published was a report, and said the screen was unreadable.
     bool emitted_reported = 24;
     bool emitted_unreadable = 25;
+    // Where telling that the rules cannot read the screen stands: how long ago the rules began
+    // reading every screen as idle, no rule began matching, and a working report began counting,
+    // and how long ago each second of the last minute with output began.
+    optional uint32 rules_idle_ms_ago = 26;
+    optional uint32 unmatched_ms_ago = 27;
+    optional uint32 working_ms_ago = 28;
+    repeated uint32 active_ms_ago = 29;
   }
 
   message Ready {}

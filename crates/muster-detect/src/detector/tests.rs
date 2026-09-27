@@ -796,6 +796,12 @@ fn a_resumed_detector_goes_on_from_where_it_was_carried() {
         concluded: Some(published(Some(claude()), State::Idle)),
         report: Some((claude(), State::Working, Duration::from_millis(500))),
         output_ago: Some(Duration::from_millis(50)),
+        drift: Drift {
+            rules_idle_ago: Some(Duration::from_secs(40)),
+            unmatched_ago: None,
+            working_ago: Some(Duration::from_secs(30)),
+            active_ago: vec![Duration::from_secs(2), Duration::from_secs(1)],
+        },
     };
     let now = Instant::now();
     let detector = Detector::resumed(100, carried.clone(), now, 7);
@@ -810,6 +816,12 @@ fn a_resumed_detector_goes_on_from_where_it_was_carried() {
             idle_seen_ago: Some(Duration::from_millis(300)),
             report: Some((claude(), State::Working, Duration::from_millis(600))),
             output_ago: Some(Duration::from_millis(150)),
+            drift: Drift {
+                rules_idle_ago: Some(Duration::from_millis(40_100)),
+                unmatched_ago: None,
+                working_ago: Some(Duration::from_millis(30_100)),
+                active_ago: vec![Duration::from_millis(2100), Duration::from_millis(1100)],
+            },
             ..carried
         }
     );
@@ -1035,6 +1047,22 @@ contains = ["busy"]
     run.start_agent();
     let typed = run.run_for(reporting::DRIFT + Duration::from_secs(2), Some("> a long prompt"));
     assert!(typed.iter().all(|publication| !publication.unreadable), "{typed:?}");
+}
+
+/// A pane whose screen the rules cannot read is still unreadable on the daemon it is handed to,
+/// from its first tick: learning it again there would clear it for a minute, and say it again.
+#[test]
+fn unreadable_stays_so_across_a_handoff() {
+    let mut run = Run::new();
+    run.tick();
+    run.start_agent();
+    let published = run.run_for(reporting::DRIFT + Duration::from_secs(2), Some("spinning"));
+    assert!(published.last().is_some_and(|last| last.unreadable), "{published:?}");
+
+    let carried = run.detector.carried(run.now);
+    run.detector = Detector::resumed(SHELL, carried, run.now, 0);
+    let after = run.run_for(Duration::from_secs(5), Some("still spinning"));
+    assert!(after.iter().all(|publication| publication.unreadable), "{after:?}");
 }
 
 #[test]

@@ -24,6 +24,7 @@ use crate::{Agent, Input, Manifests, State, screen_text, title};
 
 pub(crate) mod reporting;
 
+pub use reporting::Drift;
 use reporting::Reporting;
 
 const TICK_UNIDENTIFIED: Duration = Duration::from_millis(500);
@@ -205,6 +206,7 @@ impl Detector {
             concluded: self.last_concluded.clone(),
             report,
             output_ago,
+            drift: self.reporting.drift(now),
         }
     }
 
@@ -228,7 +230,8 @@ impl Detector {
         detector.foreground_shell_exit_reported = carried.shell_exit_reported;
         detector.title_writes_at_change = carried.title_pending.then_some(title_writes);
         detector.last_concluded = carried.concluded;
-        detector.reporting = Reporting::resumed(carried.report, carried.output_ago, now);
+        detector.reporting =
+            Reporting::resumed(carried.report, carried.output_ago, carried.drift, now);
         detector
     }
 
@@ -541,6 +544,8 @@ pub struct Carried {
     pub report: Option<(Agent, State, Duration)>,
     /// How long ago the pane last produced output, which a working report goes stale from.
     pub output_ago: Option<Duration>,
+    /// Where telling that the rules cannot read the screen stands.
+    pub drift: Drift,
 }
 
 /// What checking the foreground came to.

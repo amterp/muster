@@ -42,6 +42,16 @@ pub(crate) struct SelfReport {
     pub(crate) at: Instant,
 }
 
+/// How far along drift is, for another process to go on from: how long ago each of its spans
+/// began, and the seconds of the last [`DRIFT`] in which the pane produced output.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Drift {
+    pub rules_idle_ago: Option<Duration>,
+    pub unmatched_ago: Option<Duration>,
+    pub working_ago: Option<Duration>,
+    pub active_ago: Vec<Duration>,
+}
+
 #[derive(Debug, Default)]
 pub(crate) struct Reporting {
     report: Option<SelfReport>,
@@ -185,16 +195,33 @@ impl Reporting {
         (report, self.last_output_at.map(|at| now.duration_since(at)))
     }
 
+    /// Where drift stands, so the process a pane is handed to neither clears `unreadable` while
+    /// it learns the screen again nor says it a second time.
+    pub(crate) fn drift(&self, now: Instant) -> Drift {
+        let ago = |at: Instant| now.saturating_duration_since(at);
+        Drift {
+            rules_idle_ago: self.rules_idle_since.map(ago),
+            unmatched_ago: self.unmatched_since.map(ago),
+            working_ago: self.working_since.map(ago),
+            active_ago: self.active_seconds.iter().copied().map(ago).collect(),
+        }
+    }
+
     pub(crate) fn resumed(
         report: Option<(Agent, State, Duration)>,
         output_ago: Option<Duration>,
+        drift: Drift,
         now: Instant,
     ) -> Reporting {
+        let at = |ago: Duration| now.checked_sub(ago);
         Reporting {
-            report: report.and_then(|(agent, state, ago)| {
-                Some(SelfReport { agent, state, at: now.checked_sub(ago)? })
-            }),
-            last_output_at: output_ago.and_then(|ago| now.checked_sub(ago)),
+            report: report
+                .and_then(|(agent, state, ago)| Some(SelfReport { agent, state, at: at(ago)? })),
+            last_output_at: output_ago.and_then(at),
+            rules_idle_since: drift.rules_idle_ago.and_then(at),
+            unmatched_since: drift.unmatched_ago.and_then(at),
+            working_since: drift.working_ago.and_then(at),
+            active_seconds: drift.active_ago.into_iter().filter_map(at).collect(),
             ..Reporting::default()
         }
     }

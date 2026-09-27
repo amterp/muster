@@ -13,7 +13,7 @@ use muster_core::diagnostics::{log, poison};
 use muster_core::fields;
 use muster_daemon_proto as proto;
 use muster_detect::{
-    Agent, Carried, Detector, Manifests, Pane, Progress, Publication, State, System,
+    Agent, Carried, Detector, Drift, Manifests, Pane, Progress, Publication, State, System,
 };
 
 use crate::pane::PaneIo;
@@ -156,6 +156,10 @@ impl Detection {
             output_ms_ago: carried.output_ago.map(millis),
             emitted_reported: carried.emitted.as_ref().is_some_and(|emitted| emitted.reported),
             emitted_unreadable: carried.emitted.as_ref().is_some_and(|emitted| emitted.unreadable),
+            rules_idle_ms_ago: carried.drift.rules_idle_ago.map(millis),
+            unmatched_ms_ago: carried.drift.unmatched_ago.map(millis),
+            working_ms_ago: carried.drift.working_ago.map(millis),
+            active_ms_ago: carried.drift.active_ago.iter().copied().map(millis).collect(),
         }
     }
 
@@ -201,6 +205,12 @@ impl Detection {
             concluded,
             report,
             output_ago: carried.output_ms_ago.map(millis),
+            drift: Drift {
+                rules_idle_ago: carried.rules_idle_ms_ago.map(millis),
+                unmatched_ago: carried.unmatched_ms_ago.map(millis),
+                working_ago: carried.working_ms_ago.map(millis),
+                active_ago: carried.active_ms_ago.iter().copied().map(millis).collect(),
+            },
         };
         let mut progress = Progress::default();
         if !carried.progress.is_empty() {
