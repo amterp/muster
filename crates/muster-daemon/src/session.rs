@@ -19,7 +19,7 @@
 //! manifests and reads the override directory without it, and `pane.read` formats its page
 //! without it.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
 use std::ops::{Deref, DerefMut};
 use std::os::fd::OwnedFd;
@@ -525,24 +525,7 @@ impl Session {
             None => neighbour.and_then(Pane::live_cwd).unwrap_or_else(|| self.home.clone()),
         };
 
-        let shell = self.settings.shell.clone().unwrap_or_default();
-        let login = shell.mode() != proto::ShellMode::NonLogin;
-        let environment = spawn::environment(
-            &self.inherited,
-            &create.env,
-            &create.pane,
-            create.command.as_deref(),
-            &self.data.terminfo(),
-            &self.reachable,
-            self.settings.cursor.as_ref(),
-        );
-        let (argv, environment) = spawn::start(
-            &pty::shell(shell.command.as_deref(), &self.inherited),
-            login,
-            create.command.is_some(),
-            environment,
-            &self.data.shell_integration(),
-        );
+        let (argv, environment) = self.launch(&create.pane, create.command.as_deref(), &create.env);
 
         self.reserved.insert(create.pane.clone());
         if let Target::NewTab { name, .. } = &target {
@@ -558,6 +541,34 @@ impl Session {
             argv,
             environment,
         })
+    }
+
+    /// The program a pane starts, and its environment: the configured shell, running `command`
+    /// first when there is one.
+    fn launch(
+        &self,
+        pane: &str,
+        command: Option<&str>,
+        requested: &HashMap<String, String>,
+    ) -> (Vec<String>, Vec<(OsString, OsString)>) {
+        let shell = self.settings.shell.clone().unwrap_or_default();
+        let login = shell.mode() != proto::ShellMode::NonLogin;
+        let environment = spawn::environment(
+            &self.inherited,
+            requested,
+            pane,
+            command,
+            &self.data.terminfo(),
+            &self.reachable,
+            self.settings.cursor.as_ref(),
+        );
+        spawn::start(
+            &pty::shell(shell.command.as_deref(), &self.inherited),
+            login,
+            command.is_some(),
+            environment,
+            &self.data.shell_integration(),
+        )
     }
 
     /// Finishes a create once its process has started, or failed to. The names it reserved are
@@ -598,12 +609,30 @@ impl Session {
             command: starting.command,
             ..proto::Pane::default()
         };
-        let screen = match Screen::new(starting.grid, &self.settled) {
+        if let Err(reply) = self.open(record, starting.grid, master, child, program) {
+            return reply;
+        }
+        self.place(&starting.pane, starting.target);
+        Reply::done()
+    }
+
+    /// Watches a pane whose process has started, and announces it. It is in no tab yet.
+    fn open(
+        &mut self,
+        record: proto::Pane,
+        grid: Grid,
+        master: OwnedFd,
+        child: Child,
+        program: &str,
+    ) -> Result<(), Reply> {
+        let name = record.pane.clone();
+        let cwd = PathBuf::from(&record.cwd);
+        let screen = match Screen::new(grid, &self.settled) {
             Ok(screen) => screen,
             Err(error) => {
                 pty::abandon(child.id().cast_signed());
                 let error = std::io::Error::other(error.to_string());
-                return Self::could_not_start(&starting.pane, program, &starting.cwd, &error);
+                return Err(Self::could_not_start(&name, program, &cwd, &error));
             }
         };
         self.next_serial += 1;
@@ -614,19 +643,12 @@ impl Session {
             host: &self.host,
             detecting: &self.detecting,
         };
-        let started =
-            Pane::start(record, serial, master, screen, starting.grid, Some(child), &watching);
-        let pane = match started {
-            Ok(pane) => pane,
-            Err(error) => {
-                return Self::could_not_start(&starting.pane, program, &starting.cwd, &error);
-            }
-        };
-        log::info("daemon.pane.started", fields! { "pane" => starting.pane, "serial" => serial });
+        let pane = Pane::start(record, serial, master, screen, grid, Some(child), &watching)
+            .map_err(|error| Self::could_not_start(&name, program, &cwd, &error))?;
+        log::info("daemon.pane.started", fields! { "pane" => name, "serial" => serial });
         self.emit(Payload::PaneOpened(proto::PaneOpened { pane: Some(pane.record.clone()) }));
         self.panes.push(pane);
-        self.place(&starting.pane, starting.target);
-        Reply::done()
+        Ok(())
     }
 
     fn could_not_start(pane: &str, program: &str, cwd: &Path, error: &std::io::Error) -> Reply {
