@@ -5,7 +5,7 @@ use std::io;
 use std::os::fd::AsRawFd;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use muster_core::diagnostics::log;
@@ -19,6 +19,13 @@ use crate::hold::{Hold, Leaving};
 use crate::input;
 use crate::session::Shared;
 use crate::stream;
+
+/// What whoever started this daemon asked it to repeat in its welcome (`--launch`).
+static LAUNCH: OnceLock<String> = OnceLock::new();
+
+pub(crate) fn set_launch(token: String) {
+    let _ = LAUNCH.set(token);
+}
 
 /// How long a connection may take to say hello. Past it, whatever dialed is not a Muster client
 /// and is not worth a thread.
@@ -137,6 +144,7 @@ fn open(mut stream: UnixStream, shared: &Arc<Shared>) {
             install: install::INSTALL.to_string(),
             instance: shared.instance,
             pid: std::process::id(),
+            launch: LAUNCH.get().cloned().unwrap_or_default(),
         }),
         Err(reason) => {
             log::warn(

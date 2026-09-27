@@ -150,12 +150,13 @@ pub fn ensure_running(
     loop {
         if let Ok(welcome) = probe(local_socket) {
             // A rival starter's daemon can take the socket first, and this one then exits.
-            let reached = if welcome.pid == pid { Reached::Started } else { Reached::Adopted };
+            let reached =
+                if welcome.launch == marker { Reached::Started } else { Reached::Adopted };
             log::info(
                 "daemon.remote.started",
                 fields! {
                     "host" => remote.host(),
-                    "pid" => welcome.pid,
+                    "daemon_pid" => welcome.pid,
                     "instance" => welcome.instance,
                     "reached" => format!("{reached:?}"),
                 },
@@ -283,7 +284,8 @@ fn said(remote: &impl Far, installed: &Installed, marker: &str) -> String {
 /// Both exec the daemon, so `$!` is the daemon itself. The brace group keeps the redirects on
 /// the daemon: dash execs the last command of a backgrounded list, and without the group ssh
 /// would wait on pipes the daemon holds open. The stderr file is appended to, under `marker`,
-/// because another start may be writing to it at the same moment. `env -i` starts the daemon
+/// because another start may be writing to it at the same moment, and the daemon repeats
+/// `marker` in its welcome so a start knows its own daemon from a rival's. `env -i` starts the daemon
 /// with `environment` and nothing of the ssh session that ran the script; it execs too.
 pub fn start_script(
     installed: &Installed,
@@ -297,11 +299,12 @@ pub fn start_script(
     let errors = path(&installed.stderr());
     let directory = path(installed.socket.parent().unwrap_or(Path::new("/")));
     let marker = quoted(marker);
+    let daemon = format!("{command} --socket {socket} --launch {marker}");
     format!(
         "mkdir -p {directory} && echo {marker} >> {errors} && \
          if command -v setsid >/dev/null 2>&1; then \
-         {{ setsid {command} --socket {socket} >> {errors} 2>&1 < /dev/null & }}; else \
-         {{ nohup {command} --socket {socket} >> {errors} 2>&1 < /dev/null & }}; fi; echo $!"
+         {{ setsid {daemon} >> {errors} 2>&1 < /dev/null & }}; else \
+         {{ nohup {daemon} >> {errors} 2>&1 < /dev/null & }}; fi; echo $!"
     )
 }
 
@@ -473,7 +476,11 @@ mod tests {
             let printed = String::from_utf8_lossy(&output.stdout);
             assert_eq!(
                 lines.next().unwrap_or_default(),
-                format!("{} --socket {}", printed.trim(), installed.socket.display()),
+                format!(
+                    "{} --socket {} --launch --- a marker ---",
+                    printed.trim(),
+                    installed.socket.display()
+                ),
                 "{shell}: the pid printed is the daemon's own"
             );
             // What the daemon's own `sh` adds for itself is not what it was given.

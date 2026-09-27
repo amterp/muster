@@ -5,10 +5,9 @@
 //! (MIP-3, section 1). The daemon's lock file settles two starters racing, and the loser exits
 //! at once, so a caller that finds its own daemon gone simply dials the winner.
 //!
-//! Spawned directly, in a session of its own. On the Mac a daemon should be started through
-//! Launch Services, so macOS charges each pane's permission prompts to the daemon's own bundle
-//! rather than to the app (`docs/observations/macos-26.4.1.md`, section 8); until the helper
-//! bundle holds muster-daemon, a spawned daemon's prompts are charged to Muster.
+//! A bundle's daemon is started through Launch Services, and any other is spawned ([`Route`]).
+//! Either way the daemon repeats a token of this start's in its welcome, which is how a start
+//! tells its own daemon from a rival's without a pid to compare.
 
 use std::collections::BTreeMap;
 use std::io::Write;
@@ -20,7 +19,7 @@ use std::time::{Duration, Instant};
 use muster_core::diagnostics::log;
 use muster_core::fields;
 use muster_daemon_proto::connection::HandshakeError;
-use muster_daemon_proto::{ConnectionKind, Welcome};
+use muster_daemon_proto::{ConnectionKind, Welcome, install};
 
 /// How long a daemon just started may take to answer.
 ///
@@ -46,6 +45,12 @@ const DIAL_INTERVAL: Duration = Duration::from_millis(2);
 /// The daemon's exit status when another already serves its socket (`muster-daemon`'s
 /// `ALREADY_SERVING`).
 const ALREADY_SERVING: i32 = 3;
+
+/// How long a daemon started through Launch Services may say something and still not answer
+/// before what it said is taken as why it gave up.
+const SAID_AND_SILENT: Duration = Duration::from_millis(250);
+
+const OPEN: &str = "/usr/bin/open";
 
 /// What to start, if nothing answers.
 #[derive(Debug)]
@@ -97,44 +102,40 @@ pub fn ensure_running(launch: &Launch) -> Result<(Reached, Welcome), String> {
 
 fn start(launch: &Launch) -> Result<(Reached, Welcome), String> {
     let errors = stderr_path(launch.socket);
+    let route = route(launch.binary);
     log::info(
         "daemon.starting",
         fields! {
             "binary" => launch.binary.display(),
             "socket" => launch.socket.display(),
             "stderr" => errors.display(),
+            "route" => route.name(),
             "environment" => launch.environment.keys().cloned().collect::<Vec<_>>().join(","),
         },
     );
-    let marker = crate::start_marker();
-    let mut child = spawn(launch, &errors, &marker).map_err(|error| {
-        format!(
-            "could not run the daemon at {} ({error}), so this window has no session behind it. \
-             A build stages it beside the bridge; check that it is there and executable.",
-            launch.binary.display()
-        )
-    })?;
+    let mut attempt = Attempt::begin(launch, &route, &errors)?;
 
-    let started = Instant::now();
-    let deadline = started + START_PATIENCE;
+    let began = Instant::now();
+    let deadline = began + START_PATIENCE;
     let mut said_slow = false;
     // When this start's daemon found the socket's lock held, and nothing answered yet.
     let mut lost_the_race: Option<Instant> = None;
     loop {
         if let Ok(welcome) = probe(launch.socket) {
-            // A rival starter's daemon can answer before this one's exit says it lost.
+            // A rival starter's daemon can answer before this one's exit says it lost, and only
+            // the daemon this start launched repeats its token.
             let reached =
-                if welcome.pid == child.id() { Reached::Started } else { Reached::Adopted };
+                if welcome.launch == attempt.marker { Reached::Started } else { Reached::Adopted };
             log::info(
                 "daemon.started",
                 fields! {
                     "socket" => launch.socket.display(),
-                    "pid" => welcome.pid,
+                    "daemon_pid" => welcome.pid,
                     "instance" => welcome.instance,
                     "reached" => format!("{reached:?}"),
                 },
             );
-            reap_later(child);
+            attempt.let_go();
             return Ok((reached, welcome));
         }
         if let Some(since) = lost_the_race
@@ -142,28 +143,25 @@ fn start(launch: &Launch) -> Result<(Reached, Welcome), String> {
         {
             // Nothing came up behind the lock, so its holder was on its way out - a daemon just
             // asked to stop still holds it while it saves and closes. Try again now it is free.
-            child = spawn(launch, &errors, &marker).map_err(|error| {
-                format!("could not run the daemon at {} again ({error})", launch.binary.display())
-            })?;
+            attempt.let_go();
+            attempt = Attempt::begin(launch, &route, &errors)?;
             lost_the_race = None;
         }
-        if lost_the_race.is_none()
-            && let Ok(Some(status)) = child.try_wait()
-        {
-            if status.code() == Some(ALREADY_SERVING) {
-                // Another daemon holds the socket's lock: a rival starter's coming up, or one
-                // on its way out.
-                lost_the_race = Some(Instant::now());
-            } else {
-                return Err(format!(
-                    "the daemon exited with {status} before it answered on {}, so this window \
-                     has no session behind it. It said: {}",
-                    launch.socket.display(),
-                    said(&errors, &marker)
-                ));
+        if lost_the_race.is_none() {
+            match attempt.ended(&errors) {
+                Some(Ended::LostTheRace) => lost_the_race = Some(Instant::now()),
+                Some(Ended::Failed(how)) => {
+                    return Err(format!(
+                        "the daemon {how} before it answered on {}, so this window has no session \
+                         behind it. It said: {}",
+                        launch.socket.display(),
+                        said(&errors, &attempt.marker)
+                    ));
+                }
+                None => {}
             }
         }
-        if !said_slow && started.elapsed() >= SLOW_START {
+        if !said_slow && began.elapsed() >= SLOW_START {
             said_slow = true;
             log::warn(
                 "daemon.start.slow",
@@ -179,37 +177,194 @@ fn start(launch: &Launch) -> Result<(Reached, Welcome), String> {
             );
         }
         if Instant::now() >= deadline {
+            let said = said(&errors, &attempt.marker);
             // It may yet answer, and must not be left to linger as a zombie when it ends.
-            reap_later(child);
+            attempt.let_go();
             return Err(format!(
                 "the daemon was started but did not answer on {} within {}s, so this window \
                  has no session behind it. It may still be starting, and relaunching will find \
-                 it. It said: {}",
+                 it. It said: {said}",
                 launch.socket.display(),
                 START_PATIENCE.as_secs(),
-                said(&errors, &marker)
             ));
         }
         std::thread::sleep(DIAL_INTERVAL);
     }
 }
 
-fn spawn(launch: &Launch, errors: &Path, marker: &str) -> std::io::Result<Child> {
-    // The daemon makes its own directory when it claims the socket, but the stderr file beside
-    // the socket is opened first: on a machine that never ran a daemon it would not be there.
-    if let Some(directory) = launch.socket.parent() {
+/// How a daemon is started.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Route {
+    /// As a child in a session of its own: a build's daemon, or one named outright.
+    Spawn,
+    /// Through Launch Services, as the helper application it is inside: a bundle's daemon.
+    ///
+    /// So macOS charges each pane's permission prompts to that bundle for as long as the daemon
+    /// lives, under its own name, rather than to the app that spawned it and then to nothing
+    /// once the app quits (`docs/observations/macos-26.4.1.md`, section 8).
+    Open { bundle: PathBuf },
+}
+
+impl Route {
+    fn name(&self) -> &'static str {
+        match self {
+            Route::Spawn => "spawn",
+            Route::Open { .. } => "launch_services",
+        }
+    }
+}
+
+/// How `binary` is started: opened when it is the executable of an application bundle on a
+/// Mac, which is the only thing Launch Services starts, and spawned otherwise.
+pub fn route(binary: &Path) -> Route {
+    if !cfg!(target_os = "macos") {
+        return Route::Spawn;
+    }
+    let bundle = binary
+        .parent()
+        .filter(|directory| directory.ends_with("Contents/MacOS"))
+        .and_then(Path::parent)
+        .and_then(Path::parent)
+        .filter(|bundle| bundle.extension().is_some_and(|extension| extension == "app"));
+    match bundle {
+        Some(bundle) => {
+            Route::Open { bundle: std::path::absolute(bundle).unwrap_or(bundle.into()) }
+        }
+        None => Route::Spawn,
+    }
+}
+
+/// What `open` is given to start `bundle`'s daemon.
+///
+/// `-n`, since a running instance of the helper is a daemon on another socket, not this one.
+/// Its environment goes as `--env` and nothing else: `open` hands the application its own
+/// environment with these on top, so `open` itself runs with none (`start`). `--stderr` appends,
+/// which is what lets two starters share the file under a marker each.
+pub fn open_arguments(
+    bundle: &Path,
+    launch: &Launch,
+    errors: &Path,
+    marker: &str,
+) -> Vec<std::ffi::OsString> {
+    let mut arguments: Vec<std::ffi::OsString> =
+        vec!["-n".into(), "-a".into(), bundle.into(), "--stderr".into(), errors.into()];
+    for (name, value) in launch.environment {
+        arguments.push("--env".into());
+        arguments.push(format!("{name}={value}").into());
+    }
+    arguments.push("--args".into());
+    arguments.extend(daemon_arguments(launch, marker));
+    arguments
+}
+
+fn daemon_arguments(launch: &Launch, marker: &str) -> Vec<std::ffi::OsString> {
+    let mut arguments: Vec<std::ffi::OsString> = vec!["--socket".into(), launch.socket.into()];
+    if let Some(data) = launch.data {
+        arguments.push("--data".into());
+        arguments.push(data.into());
+    }
+    arguments.push("--launch".into());
+    arguments.push(marker.into());
+    arguments
+}
+
+/// One try at starting the daemon, under a marker of its own in the stderr file.
+struct Attempt {
+    marker: String,
+    /// The daemon itself when spawned. Through Launch Services there is no child to hold:
+    /// `open` has returned, and the daemon's parent is launchd.
+    child: Option<Child>,
+    /// When the daemon, opened, first said something while not answering.
+    said_since: Option<Instant>,
+}
+
+/// How an attempt ended without an answer.
+enum Ended {
+    /// Another daemon holds the socket's lock: a rival starter's coming up, or one on its way
+    /// out.
+    LostTheRace,
+    /// Anything else, said as the rest of a sentence: "exited with status 1".
+    Failed(String),
+}
+
+impl Attempt {
+    fn begin(launch: &Launch, route: &Route, errors: &Path) -> Result<Attempt, String> {
+        let marker = crate::start_marker();
+        mark(launch.socket, errors, &marker).map_err(|error| {
+            format!(
+                "could not write {} before starting the daemon ({error}), so this window has no \
+                 session behind it. Check that the directory is writable.",
+                errors.display()
+            )
+        })?;
+        let child = match route {
+            Route::Spawn => Some(spawn(launch, errors, &marker).map_err(|error| {
+                format!(
+                    "could not run the daemon at {} ({error}), so this window has no session \
+                     behind it. A build stages it beside the bridge; check that it is there and \
+                     executable.",
+                    launch.binary.display()
+                )
+            })?),
+            Route::Open { bundle } => {
+                open(bundle, launch, errors, &marker)?;
+                None
+            }
+        };
+        Ok(Attempt { marker, child, said_since: None })
+    }
+
+    /// Whether the daemon has given up without answering, and why.
+    fn ended(&mut self, errors: &Path) -> Option<Ended> {
+        if let Some(child) = &mut self.child {
+            let status = child.try_wait().ok()??;
+            return Some(if status.code() == Some(ALREADY_SERVING) {
+                Ended::LostTheRace
+            } else {
+                Ended::Failed(format!("exited with {status}"))
+            });
+        }
+        // Opened, so its exit is launchd's to see: what it wrote is the only sign. A daemon
+        // that answers writes nothing there, so words while it is silent are why - given a
+        // moment, since a daemon can write a line and then answer.
+        let text = std::fs::read_to_string(errors).unwrap_or_default();
+        let said = crate::after_marker(&text, &self.marker);
+        if said.is_empty() {
+            return None;
+        }
+        if said.contains(install::ANOTHER_SERVES) {
+            return Some(Ended::LostTheRace);
+        }
+        let since = *self.said_since.get_or_insert_with(Instant::now);
+        (since.elapsed() >= SAID_AND_SILENT).then(|| Ended::Failed("gave up".to_string()))
+    }
+
+    /// Stops watching the daemon, leaving it running.
+    fn let_go(self) {
+        if let Some(child) = self.child {
+            reap_later(child);
+        }
+    }
+}
+
+/// Appends this start's marker line to the stderr file, creating the directory beside the
+/// socket first: the daemon makes it when it claims the socket, but the file is opened before
+/// that, and on a machine that never ran a daemon it would not be there.
+fn mark(socket: &Path, errors: &Path, marker: &str) -> std::io::Result<()> {
+    if let Some(directory) = socket.parent() {
         std::fs::create_dir_all(directory)?;
     }
+    let mut errors = std::fs::OpenOptions::new().create(true).append(true).open(errors)?;
+    writeln!(errors, "{marker}")
+}
+
+fn spawn(launch: &Launch, errors: &Path, marker: &str) -> std::io::Result<Child> {
     // Appended to, under a line of this start's own: two starters racing share the file, and
     // each quotes only what its own daemon said.
-    let mut errors = std::fs::OpenOptions::new().create(true).append(true).open(errors)?;
-    writeln!(errors, "{marker}")?;
+    let errors = std::fs::OpenOptions::new().append(true).open(errors)?;
     let mut command = Command::new(launch.binary);
-    command.arg("--socket").arg(launch.socket);
-    if let Some(data) = launch.data {
-        command.arg("--data").arg(data);
-    }
     command
+        .args(daemon_arguments(launch, marker))
         .env_clear()
         .envs(launch.environment)
         .stdin(Stdio::null())
@@ -229,6 +384,34 @@ fn spawn(launch: &Launch, errors: &Path, marker: &str) -> std::io::Result<Child>
         });
     }
     command.spawn()
+}
+
+/// Has Launch Services start the helper, and returns once it has: `open` waits for the
+/// application to launch, not to answer.
+fn open(bundle: &Path, launch: &Launch, errors: &Path, marker: &str) -> Result<(), String> {
+    let output = Command::new(OPEN)
+        .env_clear()
+        .args(open_arguments(bundle, launch, errors, marker))
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|error| {
+            format!(
+                "could not run {OPEN} to start {} ({error}), so this window has no session \
+                 behind it.",
+                bundle.display()
+            )
+        })?;
+    if output.status.success() {
+        return Ok(());
+    }
+    Err(format!(
+        "Launch Services would not start {} ({}: {}), so this window has no session behind \
+         it. A damaged or unsigned helper is the usual cause; `codesign --verify --deep` on \
+         the app says which.",
+        bundle.display(),
+        output.status,
+        String::from_utf8_lossy(&output.stderr).trim()
+    ))
 }
 
 /// Waits for the daemon on a thread of its own, so that when it ends, however long from now, it

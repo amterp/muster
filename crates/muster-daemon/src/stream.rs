@@ -324,6 +324,7 @@ fn writer(stream: &UnixStream) -> std::io::Result<Sender<Vec<u8>>> {
     let mut writing = stream.try_clone()?;
     writing.set_write_timeout(Some(STALLED_WRITE))?;
     std::thread::Builder::new().name("stream write".to_string()).spawn(move || {
+        crate::priority::interactive();
         for frame in queued {
             if muster_frame::write_frame(&mut writing, &frame).is_err() {
                 break;

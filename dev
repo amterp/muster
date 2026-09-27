@@ -424,7 +424,7 @@ SKIPPED_SUITES = [
       "note": "a measurement, not a property; cargo test --release -p muster-daemon --test daemon -- flood::echo_latency --ignored --nocapture prints it" },
     { "language": "Rust", "suite": "muster-daemon's live Claude Code check", "skipped": 1,
       "note": "reaches the network and spends a model turn; ./dev --claude-code runs it" },
-    { "language": "Rust", "suite": "muster-contract's launch checks", "skipped": 9,
+    { "language": "Rust", "suite": "muster-contract's launch checks", "skipped": 10,
       "note": "need a logged-in session; ./dev --contract runs them" },
     { "language": "Swift", "suite": "SearchGUITests", "skipped": 1,
       "note": "needs a logged-in session; ./dev --contract runs it" },
@@ -843,11 +843,10 @@ fn check_bundle_is_whole(contents):
 // to Muster until Muster exits and then to nothing that can be named; opened, it is charged to
 // this bundle for as long as it lives, and every pane it ever makes with it.
 //
-// The app spawns it directly for now, so today its prompts are Muster's; starting it through
-// Launch Services is MIP-3's stage 3. The bundle is built now all the same, under the id it has
-// always had, so the grants people gave it stay attached to what they will be charged to.
+// The id is the one it has always had, so the grants people gave it stay attached to what they
+// are charged to.
 //
-// So the Info.plist below carries the same usage descriptions the app's does. macOS reads a
+// The Info.plist below carries the same usage descriptions the app's does. macOS reads a
 // usage string from the *responsible* process's bundle, and once the daemon is opened rather
 // than spawned that is this one - a missing string is not a worse prompt but a kill.
 //
@@ -859,6 +858,10 @@ fn check_bundle_is_whole(contents):
 // prompt is something on screen. A background-only daemon that could never present one would
 // turn every un-granted permission into a silent denial, which is the failure this whole card
 // is about.
+//
+// NSAppSleepDisabled, because an application with no window of its own is what App Nap exists
+// to slow down, and it would coalesce the daemon's timers and lower its priority while somebody
+// types into one of its panes.
 fn write_daemon_bundle(contents, swift_bin):
     bundle = "{contents}/Library/{DAEMON_BUNDLE}"
     $`mkdir -p {bundle}/Contents/MacOS {bundle}/Contents/Resources`
@@ -880,6 +883,7 @@ fn write_daemon_bundle(contents, swift_bin):
       <key>CFBundleVersion</key><string>{version}</string>
       <key>LSMinimumSystemVersion</key><string>14.0</string>
       <key>LSUIElement</key><true/>
+      <key>NSAppSleepDisabled</key><true/>
       <key>NSSupportsAutomaticTermination</key><false/>
       <key>NSSupportsSuddenTermination</key><false/>
     {usage_descriptions()}
@@ -1840,7 +1844,7 @@ if contract:
     // The only checks that run the app itself. Everything else stops short of the shell or
     // of a window; these launch the real binary against a real muster-daemon and read the
     // run log to see what actually connected. The gate compiles them and skips them, so this
-    // asks for its ignored tests, one at a time: each times a launch, and nine launching at
+    // asks for its ignored tests, one at a time: each times a launch, and ten launching at
     // once would time the machine instead. The paths are handed over rather than worked out
     // by the tests, so the app they judge is the one this run just built.
     swift_bin = $`swift build --show-bin-path`.stdout.trim()

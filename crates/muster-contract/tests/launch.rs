@@ -137,6 +137,10 @@ fn the_app_as_it_ships_paints_every_pane() {
 
     let mut app = Running::start(&bundled_app(), &scratch, &[("PATH", LAUNCHD_PATH)], &[]);
     app.until_settled();
+    // While the app runs, since once it quits a daemon it spawned is launchd's child as well.
+    let daemon_parent = of(&read_log(&app.log), "daemon.started")
+        .find_map(|record| field(record, "daemon_pid"))
+        .map(|pid| parent_of(&pid));
     let records = app.stop();
 
     let starting = expect_event(
@@ -160,6 +164,21 @@ fn the_app_as_it_ships_paints_every_pane() {
             refused.collect::<Vec<_>>()
         );
     }
+    // kan a_2XJ1ie3Ep: a pane's permission prompts are charged to the helper bundle only when
+    // Launch Services started it (docs/observations/macos-26.4.1.md, section 8).
+    assert_eq!(
+        field(starting, "route").as_deref(),
+        Some("launch_services"),
+        "the bundle's daemon was not started through Launch Services, so every pane's \
+         permission prompts are charged to Muster and lapse when it quits: check `route` in \
+         crates/muster-daemon-client/src/launch.rs"
+    );
+    assert_eq!(
+        daemon_parent.as_deref(),
+        Some("1"),
+        "the bundle's daemon is not launchd's child while the app runs, so Launch Services did \
+         not start it and macOS holds Muster responsible for its panes"
+    );
     if let Some(failed) = of(&records, "bridge.attach.failed").next() {
         panic!(
             "a bridge in the assembled bundle could not attach to its pane: {failed}. Every pane \
@@ -169,6 +188,49 @@ fn the_app_as_it_ships_paints_every_pane() {
         );
     }
     expect_nothing_wrong(&records, &[]);
+    expect_every_pane_painted(&records);
+    expect_no_daemon_left(&scratch);
+}
+
+#[test]
+#[ignore = "needs a logged-in GUI session: ./dev --contract"]
+fn a_bundle_macos_has_never_run_still_gets_its_daemon() {
+    // kan a_2XeHOgu7M. macOS holds the first exec of every binary it has not seen while it
+    // scans it, and a person's first launch after an install or an update is exactly that. The
+    // daemon's start once gave up after 10 s of it, leaving a window with nothing behind it.
+    //
+    // A copy is a binary macOS has not seen, whatever its contents: a `ditto` copy of the debug
+    // daemon took 23.5 s to print its version the first time and no time the second, at a load
+    // of 16. So a fresh copy of the bundle, launched with nothing warmed, is the first launch.
+    let scratch = Scratch::new("cold");
+    scratch.write_config(SHELL_CONFIG);
+    let bundled = bundled_app();
+    let bundle = bundled.ancestors().nth(3).expect("the app is in X.app/Contents/MacOS");
+    let copy = scratch.root.join("Muster.app");
+    let copied = Command::new("ditto").arg(bundle).arg(&copy).status().expect("ditto runs");
+    assert!(copied.success(), "could not copy {} for a cold launch", bundle.display());
+
+    let started = Instant::now();
+    let mut app = Running::launch(
+        &copy.join("Contents/MacOS/muster"),
+        &scratch,
+        &[("PATH", LAUNCHD_PATH)],
+        &[],
+    );
+    app.until_settled();
+    let records = app.stop();
+
+    if !has(&records, "daemon.started") {
+        let refused = of(&records, "core.refused").filter_map(|record| field(record, "reason"));
+        panic!(
+            "a bundle launched for the first time never reached its daemon, after {:?}, so a \
+             person's first launch after installing shows a window with nothing behind it. The \
+             app said: {:?}",
+            started.elapsed(),
+            refused.collect::<Vec<_>>()
+        );
+    }
+    expect_nothing_wrong(&records, &["daemon.start.slow"]);
     expect_every_pane_painted(&records);
     expect_no_daemon_left(&scratch);
 }
@@ -750,11 +812,21 @@ impl Running {
         environment: &[(&str, &str)],
         arguments: &[&str],
     ) -> Running {
+        warm(app);
+        Running::launch(app, scratch, environment, arguments)
+    }
+
+    /// The same, with nothing warmed first: for the check that the first launch is waited out.
+    fn launch(
+        app: &Path,
+        scratch: &Scratch,
+        environment: &[(&str, &str)],
+        arguments: &[&str],
+    ) -> Running {
         let log = scratch.log();
         let _ = std::fs::remove_file(&log);
         let stderr = std::fs::File::create(scratch.root.join("stderr.log"))
             .expect("the check can write the app's stderr beside its log");
-        warm(app);
         let mut command = Command::new(app);
         command.args(arguments).env_clear();
         for inherited in ["PATH", "USER", "LOGNAME", "SHELL", "TMPDIR"] {
@@ -1106,4 +1178,10 @@ fn leaves(node: &proto::Node) -> BTreeSet<String> {
 /// Where the window heard the agent go, in order.
 fn transitions(records: &[Value]) -> Vec<String> {
     of(records, "agent.state").filter_map(|record| field(record, "to")).collect()
+}
+
+/// The parent of process `pid`, as `ps` says it.
+fn parent_of(pid: &str) -> String {
+    let output = Command::new("ps").args(["-o", "ppid=", "-p", pid]).output().expect("ps runs");
+    String::from_utf8_lossy(&output.stdout).trim().to_string()
 }

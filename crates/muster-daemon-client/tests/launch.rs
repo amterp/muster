@@ -5,8 +5,12 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
-use muster_daemon_client::launch::{Launch, Reached, ensure_running, stop};
+use conformance::{CaseError, Conformance, fields};
+use muster_daemon_client::launch::{
+    Launch, Reached, Route, ensure_running, open_arguments, route, stop,
+};
 use muster_harness::{DAEMON_DATA, built_daemon};
+use serde_json::{Value, json};
 
 static NEXT: AtomicU32 = AtomicU32::new(0);
 
@@ -149,4 +153,56 @@ fn a_daemon_that_accepts_and_never_answers_is_not_waited_on_for_ever() {
     assert!(started.elapsed() < Duration::from_secs(8), "took {:?}", started.elapsed());
     assert!(error.contains("is not answering"), "{error}");
     drop(held.join().unwrap());
+}
+
+/// How a daemon is started from its path, and what `open` is given when it is a bundle's. Cases
+/// live in corpus/conformance/daemon-launch.json. A route is decided on macOS only.
+#[cfg(target_os = "macos")]
+#[test]
+fn daemon_launch_conformance() {
+    let corpus = Conformance::load("daemon-launch.json");
+    let ran = corpus.run(|given| {
+        let text = |name: &str| {
+            given
+                .get(name)
+                .and_then(Value::as_str)
+                .ok_or_else(|| CaseError::new(format!("`{name}` is missing")))
+        };
+        let binary = PathBuf::from(text("binary")?);
+        let socket = PathBuf::from(text("socket")?);
+        let stderr = PathBuf::from(text("stderr")?);
+        let data = given.get("data").and_then(Value::as_str).map(PathBuf::from);
+        let environment: BTreeMap<String, String> = given
+            .get("environment")
+            .and_then(Value::as_object)
+            .map(|pairs| {
+                pairs
+                    .iter()
+                    .map(|(name, value)| (name.clone(), value.as_str().unwrap_or_default().into()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let launch = Launch {
+            binary: &binary,
+            data: data.as_deref(),
+            socket: &socket,
+            environment: &environment,
+        };
+        Ok(match route(&binary) {
+            Route::Spawn => fields([("route", Some(json!("spawn")))]),
+            Route::Open { bundle } => {
+                let open: Vec<String> = open_arguments(&bundle, &launch, &stderr, text("marker")?)
+                    .iter()
+                    .map(|argument| argument.to_string_lossy().into_owned())
+                    .collect();
+                fields([
+                    ("route", Some(json!("launch_services"))),
+                    ("bundle", Some(json!(bundle.display().to_string()))),
+                    ("open", Some(json!(open))),
+                ])
+            }
+        })
+    });
+    assert_eq!(ran, corpus.cases.len());
+    assert!(ran > 0);
 }

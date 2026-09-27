@@ -279,9 +279,10 @@ a daemon gets the one built from the same commit: the tests spawn it, a build st
 directory, and `./dev --bundle` puts both inside `muster.app` as a helper application of its own. Deliberately **not**
 your PATH: a suite that passed did so against that daemon, and the app never meets another.
 `MUSTER_DAEMON_BINARY=/path/to/muster-daemon` overrides it - not `MUSTER_DAEMON`, which every pane's environment
-already carries, naming the daemon that pane runs on. The app starts the daemon itself for now. Starting it through
-Launch Services instead, so that macOS charges a pane's permission prompts to the daemon rather than to a Muster that
-will quit (`docs/observations/macos-26.4.1.md`), is not built yet.
+already carries, naming the daemon that pane runs on. A bundle's daemon is started through Launch Services, as the
+helper application `Contents/Library/MusterSessions.app`, so that macOS charges a pane's permission prompts to it
+rather than to a Muster that will quit (`docs/observations/macos-26.4.1.md`). Any other daemon, a SwiftPM build's
+included, is spawned.
 
 **A machine you attach over SSH gets this build's daemon.** The bundle carries a stripped release build for Linux on
 x86_64 and on aarch64 under `Contents/Resources/daemons/`, and a remote Mac gets the app's own daemon with the

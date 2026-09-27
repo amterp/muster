@@ -6,6 +6,36 @@
 //! launcher without the flag leaks the same way. So a new pane marks every descriptor above
 //! stderr close-on-exec itself, between fork and exec, whatever the daemon holds. Marked rather
 //! than closed, so std's own exec-error pipe still reports a failed exec.
+//!
+//! And how many a pane's programs may hold, which they inherit from the daemon.
+
+/// The soft `RLIMIT_NOFILE` the daemon asks for on macOS, and so every pane's programs with it.
+///
+/// Launch Services starts the daemon with launchd's 256. A daemon the app spawned inherited
+/// the app's own, which asks for this number (`DescriptorLimit.swift`), so asking here keeps a
+/// pane's programs where they were. Not elsewhere: a daemon on Linux starts from an ssh
+/// session's limit, which is what a shell on that machine has.
+const WANTED: libc::rlim_t = 4096;
+
+/// Raises the daemon's soft descriptor limit to [`WANTED`] where it is lower, and says what it
+/// is now.
+pub(crate) fn raise_limit() -> std::io::Result<libc::rlim_t> {
+    let mut limit = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+    // SAFETY: getrlimit writes one rlimit into `limit`.
+    if unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, &raw mut limit) } != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    let wanted = WANTED.min(limit.rlim_max);
+    if !cfg!(target_os = "macos") || limit.rlim_cur >= wanted {
+        return Ok(limit.rlim_cur);
+    }
+    let raised = libc::rlimit { rlim_cur: wanted, rlim_max: limit.rlim_max };
+    // SAFETY: setrlimit reads one rlimit, and a soft limit at or below the hard one is allowed.
+    if unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &raw const raised) } != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(wanted)
+}
 
 /// What the child needs to mark its descriptors, gathered in the parent: nothing may be
 /// allocated between fork and exec.

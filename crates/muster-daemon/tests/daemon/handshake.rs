@@ -16,6 +16,34 @@ fn a_control_client_is_welcomed_with_the_daemon_it_reached() {
     assert_eq!(welcome.install, muster_daemon_proto::install::INSTALL);
     assert_eq!(welcome.pid, daemon.pid());
     assert!(!welcome.daemon_version.is_empty());
+    assert_eq!(welcome.launch, "", "nobody started this daemon with --launch");
+}
+
+/// A daemon started through Launch Services is not its starter's child, so the starter knows it
+/// from a rival's by the token it was started with.
+#[test]
+fn a_daemon_repeats_the_token_it_was_launched_with() {
+    let root = std::path::PathBuf::from(format!("/tmp/muster-test/h{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join("home")).unwrap();
+    let socket = root.join("d.sock");
+    let mut process = std::process::Command::new(env!("CARGO_BIN_EXE_muster-daemon"))
+        .args(["--launch", "--- a start of its own ---", "--data", DAEMON_DATA, "--socket"])
+        .arg(&socket)
+        .env_clear()
+        .env("HOME", root.join("home"))
+        .env("SHELL", "/bin/sh")
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let welcome = until_some("the daemon to answer", || {
+        connection::connect(&socket, proto::ConnectionKind::Control, "test").ok()
+    })
+    .1;
+    let _ = process.kill();
+    let _ = process.wait();
+    let _ = std::fs::remove_dir_all(&root);
+    assert_eq!(welcome.launch, "--- a start of its own ---");
 }
 
 #[test]

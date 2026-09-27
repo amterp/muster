@@ -23,6 +23,7 @@ use crate::writer::{Input, OwnedKey, Wheel};
 /// Serves a welcomed input connection until it hangs up.
 pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) {
     log::info("daemon.input.opened", fields! { "client" => client });
+    crate::priority::interactive();
     let mut panes = Panes::default();
     // Panes whose queue was full at the last event, so a stall is said once rather than per
     // keystroke.

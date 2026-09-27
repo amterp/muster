@@ -1,0 +1,104 @@
+{
+  "concept": "daemon.launch",
+  "source": "authored",
+  "citation": "docs/observations/macos-26.4.1.md, section 8; kan a_2XJ1ie3Ep",
+  "why": "macOS charges a permission prompt to the application responsible for the process that asked. A daemon the app spawns is the app's responsibility, so a pane asking for the camera is asked about as Muster, and once Muster quits the daemon belongs to nobody who can be asked at all. Started through Launch Services, the daemon is an application of its own - the helper bundle inside Muster's - and every pane's prompts are charged to it, under its name, for as long as it lives.\n\nOnly an executable inside an application bundle can be opened that way. A development build's daemon sits beside the app in a plain directory, and so does one named with MUSTER_DAEMON_BINARY, and those are spawned as they always were. The path decides, so nothing has to be configured.\n\n`open` hides the daemon's pid and its exit status. Its launcher tells its own daemon from a rival's by a token the daemon repeats in its welcome (`--launch`), and reads why it gave up from the stderr file it shares with other starts, under a marker line of its own. So `--stderr` names that file, and `open` runs with an empty environment of its own: the daemon's environment is exactly what `--env` hands it.\n\nCases give the daemon's path and what the start carries, and expect the route and, for a bundle, the arguments `open` is run with. A route is decided on macOS only; every other platform spawns.",
+  "cases": [
+    {
+      "name": "a bundle's daemon is opened as the helper it is inside",
+      "why": "The shipped layout: the helper application sits in the app's Contents/Library, and its executable is what DaemonLocation hands the core.",
+      "given": {
+        "binary": "/Applications/Muster.app/Contents/Library/MusterSessions.app/Contents/MacOS/muster-daemon",
+        "socket": "/Users/a/.muster/daemon/i1.sock",
+        "data": "/Applications/Muster.app/Contents/Library/MusterSessions.app/Contents/Resources/muster-daemon-data",
+        "stderr": "/Users/a/.muster/daemon/i1.stderr",
+        "environment": {
+          "HOME": "/Users/a",
+          "PATH": "/Users/a/.muster/bin:/usr/bin:/bin"
+        },
+        "marker": "--- start 1 ---"
+      },
+      "expect": {
+        "route": "launch_services",
+        "bundle": "/Applications/Muster.app/Contents/Library/MusterSessions.app",
+        "open": [
+          "-n",
+          "-a",
+          "/Applications/Muster.app/Contents/Library/MusterSessions.app",
+          "--stderr",
+          "/Users/a/.muster/daemon/i1.stderr",
+          "--env",
+          "HOME=/Users/a",
+          "--env",
+          "PATH=/Users/a/.muster/bin:/usr/bin:/bin",
+          "--args",
+          "--socket",
+          "/Users/a/.muster/daemon/i1.sock",
+          "--data",
+          "/Applications/Muster.app/Contents/Library/MusterSessions.app/Contents/Resources/muster-daemon-data",
+          "--launch",
+          "--- start 1 ---"
+        ]
+      }
+    },
+    {
+      "name": "a development build's daemon is spawned",
+      "why": "SwiftPM stages the daemon beside the app's executable, in no bundle, and Launch Services has nothing to open.",
+      "given": {
+        "binary": "/src/muster/.build/debug/muster-daemon",
+        "socket": "/Users/a/.muster/daemon/i1.sock",
+        "stderr": "/Users/a/.muster/daemon/i1.stderr",
+        "environment": {},
+        "marker": "--- start 1 ---"
+      },
+      "expect": {
+        "route": "spawn"
+      }
+    },
+    {
+      "name": "an executable in a MacOS directory of something that is not an app is spawned",
+      "why": "Only an application is opened. A framework or a plug-in bundle has the same inner layout and Launch Services would refuse it, silently: `open` exits 0 having started nothing.",
+      "given": {
+        "binary": "/opt/tools/Daemon.bundle/Contents/MacOS/muster-daemon",
+        "socket": "/Users/a/.muster/daemon/i1.sock",
+        "stderr": "/Users/a/.muster/daemon/i1.stderr",
+        "environment": {},
+        "marker": "--- start 1 ---"
+      },
+      "expect": {
+        "route": "spawn"
+      }
+    },
+    {
+      "name": "a daemon with no data directory is given none",
+      "why": "Without --data the daemon looks beside its own executable, which is where a bundle keeps it; passing an empty one would be read as a directory named nothing.",
+      "given": {
+        "binary": "/Applications/Muster.app/Contents/Library/MusterSessions.app/Contents/MacOS/muster-daemon",
+        "socket": "/Users/a/.muster/daemon/i1.sock",
+        "stderr": "/Users/a/.muster/daemon/i1.stderr",
+        "environment": {
+          "HOME": "/Users/a"
+        },
+        "marker": "--- start 2 ---"
+      },
+      "expect": {
+        "route": "launch_services",
+        "bundle": "/Applications/Muster.app/Contents/Library/MusterSessions.app",
+        "open": [
+          "-n",
+          "-a",
+          "/Applications/Muster.app/Contents/Library/MusterSessions.app",
+          "--stderr",
+          "/Users/a/.muster/daemon/i1.stderr",
+          "--env",
+          "HOME=/Users/a",
+          "--args",
+          "--socket",
+          "/Users/a/.muster/daemon/i1.sock",
+          "--launch",
+          "--- start 2 ---"
+        ]
+      }
+    }
+  ]
+}

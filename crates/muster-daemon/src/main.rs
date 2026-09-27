@@ -17,6 +17,7 @@ mod hold;
 mod input;
 mod pane;
 mod persist;
+mod priority;
 mod process;
 mod pty;
 mod replace;
@@ -67,12 +68,14 @@ const LAST_WRITE: Duration = Duration::from_secs(5);
 /// thread to finish telling its subscribers: that thread's own flush, and its requester's.
 const HANDED_OFF_FLUSH: Duration = Duration::from_secs(4);
 
-const USAGE: &str = "usage: muster-daemon [--socket PATH] [--data DIR]\n       muster-daemon report ...\n       \
+const USAGE: &str = "usage: muster-daemon [--socket PATH] [--data DIR] [--launch TOKEN]\n       muster-daemon report ...\n       \
     muster-daemon replace ...\n\n\
     Serves Muster's panes on this machine. Without --socket, listens where this install's \
     daemon listens: $MUSTER_HOME/daemon/<install>.sock. Its log and its saved tabs are beside \
     the socket, as <name>.log and <name>.state.json; MUSTER_LOG=0 turns the log off. Without \
-    --data, gives its shells the muster-daemon-data directory beside its executable. `report` \
+    --data, gives its shells the muster-daemon-data directory beside its executable. --launch \
+    is repeated to every client in its welcome, so whoever started it can tell it from a \
+    daemon somebody else started on the same socket. `report` \
     tells the daemon of the pane it runs in what the agent there says about itself; \
     `muster-daemon report --help` says how. `replace` hands a running daemon's panes to another \
     daemon without ending any; `muster-daemon replace --help` says how.";
@@ -97,6 +100,10 @@ fn main() -> ExitCode {
             "--data" => match arguments.next() {
                 Some(path) => data = Some(PathBuf::from(path)),
                 None => return usage("--data needs a directory"),
+            },
+            "--launch" => match arguments.next() {
+                Some(token) => server::set_launch(token),
+                None => return usage("--launch needs a token"),
             },
             // Given only by a daemon starting its successor (`handoff.rs`).
             "--handoff" => match arguments.next().and_then(|fd| fd.parse::<i32>().ok()) {
@@ -124,14 +131,17 @@ fn main() -> ExitCode {
     // Before any thread exists, so every thread inherits the mask and only the one waiting for
     // these signals ever receives them.
     let signals = block_signals();
+    // Before any pane exists, since each inherits it. A successor inherits it from the daemon
+    // it takes over from.
+    let descriptors = descriptors::raise_limit();
     let ran = match handoff {
         Some(link) => take_over(link, &socket, data.as_deref(), signals),
-        None => run(&socket, data.as_deref(), signals),
+        None => run(&socket, data.as_deref(), signals, descriptors),
     };
     match ran {
         Ok(()) => ExitCode::SUCCESS,
         Err(Failure::AlreadyServing) => {
-            eprintln!("muster-daemon: another daemon is already serving {}", socket.display());
+            eprintln!("muster-daemon: {} {}", install::ANOTHER_SERVES, socket.display());
             ExitCode::from(ALREADY_SERVING)
         }
         Err(Failure::Other(message)) => {
@@ -152,7 +162,12 @@ enum Failure {
     Other(String),
 }
 
-fn run(socket: &Path, data: Option<&Path>, signals: libc::sigset_t) -> Result<(), Failure> {
+fn run(
+    socket: &Path,
+    data: Option<&Path>,
+    signals: libc::sigset_t,
+    descriptors: std::io::Result<libc::rlim_t>,
+) -> Result<(), Failure> {
     refuse_anything_but_a_socket(socket)?;
     let claim = claim(socket)?;
     // Only once the socket is this daemon's: the log beside it has one writer, and a second
@@ -189,12 +204,25 @@ fn run(socket: &Path, data: Option<&Path>, signals: libc::sigset_t) -> Result<()
         None => persister.arm(),
     }
 
+    let descriptors = descriptors.unwrap_or_else(|error| {
+        log::warn(
+            "daemon.descriptors.not_raised",
+            fields! {
+                "error" => error,
+                "impact" => "a pane's programs may hold fewer files open than in a terminal, \
+                             and a build or a language server can fail with too many open files",
+                "check" => "`launchctl limit maxfiles`",
+            },
+        );
+        0
+    });
     log::info(
         "daemon.started",
         fields! {
             "socket" => shared.socket.path.display(),
             "version" => env!("CARGO_PKG_VERSION"),
             "install" => install::INSTALL,
+            "descriptors" => descriptors,
         },
     );
     wait(&shared, &stop, &persister);

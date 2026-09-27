@@ -657,7 +657,10 @@ impl Pane {
         );
         std::thread::Builder::new()
             .name(format!("write {pane}"))
-            .spawn(move || writer.write(&queued, &writing, &writer_wake))
+            .spawn(move || {
+                crate::priority::interactive();
+                writer.write(&queued, &writing, &writer_wake);
+            })
             .map_err(failed)?;
 
         let reader = Reader {
@@ -678,7 +681,10 @@ impl Pane {
         };
         std::thread::Builder::new()
             .name(format!("read {pane}"))
-            .spawn(move || reader.run())
+            .spawn(move || {
+                crate::priority::interactive();
+                reader.run();
+            })
             .map_err(failed)?;
 
         if let Some(pid) = process.filter(|_| child) {

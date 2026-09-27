@@ -109,6 +109,10 @@ message Welcome {
   // This daemon lifetime. Sequence numbers from a different instance are not comparable.
   uint64 instance = 4;
   uint32 pid = 5;
+  // What the daemon was started with `--launch`, empty when it was not. A starter passes a
+  // token of its own and tells its daemon from another start's by it, where it cannot see a
+  // pid: a daemon started through Launch Services is not its child.
+  string launch = 6;
 }
 
 message HelloRefused {

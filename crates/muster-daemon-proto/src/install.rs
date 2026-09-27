@@ -16,6 +16,13 @@ use std::path::{Path, PathBuf};
 /// This build's install.
 pub const INSTALL: &str = env!("MUSTER_DAEMON_INSTALL");
 
+/// What a daemon says on its stderr when it finds another serving its socket, and exits.
+///
+/// A start that can see the daemon's exit status reads the same thing from that. One through
+/// Launch Services cannot, so it reads this line instead, and the daemon and its launcher share
+/// the words rather than each spelling them.
+pub const ANOTHER_SERVES: &str = "another daemon is already serving";
+
 /// The socket this build's daemon listens on, under a Muster home.
 pub fn socket_path(muster_home: &Path) -> PathBuf {
     muster_home.join("daemon").join(format!("{INSTALL}.sock"))
