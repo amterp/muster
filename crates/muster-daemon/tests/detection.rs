@@ -458,6 +458,27 @@ fn state_reported(control: &mut Control) -> bool {
     snapshot(control).panes.into_iter().find(|record| record.pane == "p1").unwrap().state_reported
 }
 
+/// A report goes with the pane: after a handoff the new daemon holds the agent at what it said,
+/// not at what the rules read, until something ends the report.
+#[test]
+fn an_agents_own_report_survives_a_handoff() {
+    use proto::AgentState::{Blocked, Idle};
+    let home = Home::new("reported-handoff", &[("claude.toml", PROBE_MANIFEST)], &["claude"]);
+    let mut daemon = home.daemon();
+    let mut control = daemon.connect();
+    let mut input = Input::connect(daemon.socket_path());
+    run_agent(&mut control, &mut input, "p1", &home.agent("claude"));
+    until_detected(&mut control, "p1", Some("claude"), Idle);
+    assert_eq!(report_state(&mut control, "claude", Blocked).outcome(), proto::Outcome::Done);
+    until_detected(&mut control, "p1", Some("claude"), Blocked);
+
+    let answer = daemon.replace(None);
+    assert_eq!(answer.outcome(), proto::Outcome::Done, "{}", answer.reason);
+    let mut control = daemon.connect();
+    assert_eq!(detected(&mut control, "p1"), (Some("claude".to_string()), Blocked));
+    assert!(state_reported(&mut control), "the successor says whose word it is");
+}
+
 /// An agent's own word on its state outranks what its screen reads while it is fresh. A
 /// working report the screen stops moving under goes stale - an agent interrupted mid-turn
 /// says nothing - and the rules take over again.

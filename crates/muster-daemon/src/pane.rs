@@ -786,10 +786,17 @@ impl Reader {
         let mut due: Option<Instant> = None;
         loop {
             // Here, with every byte read so far in the terminal, is where a handoff stops it.
-            // What detection knows goes with the pane if it is being handed over.
-            self.io.hold.park(
-                || self.io.is_closed(),
-                || self.io.carry(self.detection.carried(Instant::now())),
+            // What detection knows goes with the pane if it is being handed over, a report the
+            // agent made just before included.
+            let (io, detection) = (&self.io, &mut self.detection);
+            io.hold.park(
+                || io.is_closed(),
+                || {
+                    if let Some((agent, state)) = io.take_self_report() {
+                        detection.report(&agent, state, Instant::now());
+                    }
+                    io.carry(detection.carried(Instant::now()));
+                },
             );
             if let Some((agent, state)) = self.io.take_self_report() {
                 self.detection.report(&agent, state, Instant::now());
