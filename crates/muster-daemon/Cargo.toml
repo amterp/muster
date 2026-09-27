@@ -1,0 +1,25 @@
+[package]
+name = "muster-daemon"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "muster-daemon"
+path = "src/main.rs"
+
+[dependencies]
+libc.workspace = true
+muster-core.workspace = true
+muster-daemon-proto.workspace = true
+muster-frame.workspace = true
+prost.workspace = true
+
+# The daemon's tests live here because cargo only hands `CARGO_BIN_EXE_muster-daemon` to tests
+# in the package that owns the binary, and every one of them runs the real binary.
+[dev-dependencies]
+libc.workspace = true
+muster-harness.workspace = true
+
+[lints]
+workspace = true

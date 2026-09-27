@@ -6,6 +6,7 @@ members = [
     "crates/muster-bridge",
     "crates/muster-cli",
     "crates/muster-core",
+    "crates/muster-daemon",
     "crates/muster-daemon-proto",
     "crates/muster-frame",
     "crates/muster-harness",

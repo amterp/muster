@@ -4,5 +4,10 @@ version.workspace = true
 edition.workspace = true
 publish.workspace = true
 
+[dependencies]
+muster-daemon-proto.workspace = true
+muster-frame.workspace = true
+prost.workspace = true
+
 [lints]
 workspace = true

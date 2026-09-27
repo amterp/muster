@@ -396,7 +396,8 @@ message PaneChanged {
 message PaneClosed {
   string pane = 1;
   CloseReason reason = 2;
-  // How its process ended, when it ended on its own and the daemon saw it end.
+  // How its process ended, when it ended on its own and the daemon saw it end: its exit code,
+  // or 128 plus the signal that ended it, as a shell reports it in $?.
   optional int32 exit_status = 3;
 }
 

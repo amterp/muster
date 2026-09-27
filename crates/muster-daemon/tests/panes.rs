@@ -1,0 +1,267 @@
+//! Starting a pane, what it runs, and how it ends.
+
+mod support;
+
+use std::collections::HashMap;
+
+use proto::Side;
+use support::*;
+
+#[test]
+fn a_pane_in_a_new_tab_is_announced_before_its_answer() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let subscribed = expect(&mut control, subscribe_request(), proto::Outcome::Done);
+    let before = subscribed.answer.seq;
+
+    let asked = make(&mut control, create("p1", in_new_tab("t1")));
+    assert_eq!(names(&asked.events), ["pane_opened:p1", "tab_opened:t1"]);
+    let numbers: Vec<u64> = asked.events.iter().map(|event| event.seq).collect();
+    assert_eq!(numbers, [before + 1, before + 2]);
+    assert_eq!(asked.answer.seq, before + 2, "the answer names the last event it produced");
+    assert_eq!(tab_shape(&mut control, "t1"), "p1");
+}
+
+#[test]
+fn a_pane_goes_on_the_side_asked_and_its_neighbour_keeps_the_share_asked() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    make(&mut control, create("a", in_new_tab("t1")));
+    let mut right = create("b", beside("a", Side::Right));
+    if let Some(proto::placement::Where::Beside(beside)) =
+        right.placement.as_mut().and_then(|placement| placement.r#where.as_mut())
+    {
+        beside.ratio = Some(0.7);
+    }
+    make(&mut control, right);
+    assert_eq!(tab_shape(&mut control, "t1"), "[a|b 0.70]");
+    make(&mut control, create("c", beside("b", Side::Up)));
+    assert_eq!(tab_shape(&mut control, "t1"), "[a|[c/b 0.50] 0.70]");
+    make(&mut control, create("d", beside("a", Side::Left)));
+    make(&mut control, create("e", beside("a", Side::Down)));
+    assert_eq!(tab_shape(&mut control, "t1"), "[[d|[a/e 0.50] 0.50]|[c/b 0.50] 0.70]");
+}
+
+#[test]
+fn a_create_repeated_or_placed_nowhere_says_so() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    let again = expect(
+        &mut control,
+        create_request(create("p1", in_new_tab("t2"))),
+        proto::Outcome::AlreadySo,
+    );
+    assert!(again.events.is_empty(), "a repeated create starts nothing");
+    expect(
+        &mut control,
+        create_request(create("p2", beside("missing", Side::Right))),
+        proto::Outcome::NotThere,
+    );
+    expect(&mut control, create_request(create("p2", in_new_tab("t1"))), proto::Outcome::Refused);
+    expect(
+        &mut control,
+        create_request(create("has space", in_new_tab("t3"))),
+        proto::Outcome::Refused,
+    );
+    assert_eq!(snapshot(&mut control).panes.len(), 1);
+}
+
+#[test]
+fn a_pane_is_told_its_name_and_its_window_and_nothing_stale() {
+    let daemon = daemon_with(&[("MUSTER_PANE", "p-stale"), ("MUSTER_SOCKET", "/stale.sock")]);
+    let mut control = daemon.connect();
+    let out = daemon.root().join("env");
+    let mut asked = create("p1", in_new_tab("t1"));
+    asked.env = HashMap::from([("MUSTER_SOCKET".to_string(), "/window.sock".to_string())]);
+    asked.command = Some(format!("env > {}", out.display()));
+    make(&mut control, asked);
+
+    let environment = written(&out);
+    let lines: Vec<&str> = environment.lines().collect();
+    for expected in ["MUSTER_PANE=p1", "MUSTER_SOCKET=/window.sock", "COLORTERM=truecolor"] {
+        assert!(lines.contains(&expected), "{expected} missing from:\n{environment}");
+    }
+    assert!(
+        !environment.contains("stale"),
+        "an inherited name leaked into the pane:\n{environment}"
+    );
+}
+
+#[test]
+fn a_command_runs_and_the_pane_becomes_its_shell_afterwards() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let pid = daemon.root().join("pid");
+    let mut asked = create("p1", in_new_tab("t1"));
+    asked.command = Some(format!("echo $$ > {}", pid.display()));
+    make(&mut control, asked);
+
+    let pid = written(&pid);
+    // The same process, having replaced itself with the interactive shell the pane drops to.
+    until(
+        "the command's shell to exec an interactive shell",
+        || process_state(&pid).ends_with("/bin/sh -l -i"),
+        || format!("ps says: {:?}", process_state(&pid)),
+    );
+    assert_eq!(snapshot(&mut control).panes.len(), 1);
+}
+
+#[test]
+fn a_pane_is_its_grid_from_birth_and_a_split_inherits_its_neighbours() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let first = daemon.root().join("first");
+    let mut asked = create("p1", in_new_tab("t1"));
+    asked.grid = Some(proto::Grid { cols: 100, rows: 30, width_px: 800, height_px: 600 });
+    asked.command = Some(format!("stty size > {}", first.display()));
+    make(&mut control, asked);
+    assert_eq!(written(&first), "30 100\n");
+
+    let second = daemon.root().join("second");
+    let mut asked = create("p2", beside("p1", Side::Down));
+    asked.command = Some(format!("stty size > {}", second.display()));
+    make(&mut control, asked);
+    assert_eq!(written(&second), "30 100\n");
+
+    let mut asked = create("p3", in_new_tab("t2"));
+    asked.grid = Some(proto::Grid { cols: 0, rows: 30, width_px: 0, height_px: 0 });
+    expect(&mut control, create_request(asked), proto::Outcome::Refused);
+}
+
+#[test]
+fn a_pane_starts_where_asked_or_where_its_neighbour_is_now() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let asked_for = daemon.root().join("asked-for");
+    let wandered = daemon.root().join("wandered");
+    std::fs::create_dir_all(&asked_for).unwrap();
+    std::fs::create_dir_all(&wandered).unwrap();
+
+    let marker = daemon.root().join("moved");
+    let mut first = create("p1", in_new_tab("t1"));
+    first.cwd = Some(asked_for.display().to_string());
+    first.command = Some(format!(
+        "pwd > {} && cd {} && echo > {}",
+        asked_for.join("pwd").display(),
+        wandered.display(),
+        marker.display()
+    ));
+    make(&mut control, first);
+    assert_eq!(written(&asked_for.join("pwd")).trim(), canonical(&asked_for).display().to_string());
+    written(&marker);
+
+    let out = daemon.root().join("inherited");
+    let mut second = create("p2", beside("p1", Side::Right));
+    second.command = Some(format!("pwd > {}", out.display()));
+    make(&mut control, second);
+    assert_eq!(written(&out).trim(), canonical(&wandered).display().to_string());
+}
+
+#[test]
+fn a_pane_inherits_no_other_panes_descriptors() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    // Not a login shell: bash started with both -l and -i closes descriptors it inherited,
+    // which would hide a leak from this test while a person's zsh kept it.
+    let shell = proto::Shell {
+        command: Some("/bin/sh".to_string()),
+        mode: proto::ShellMode::NonLogin.into(),
+    };
+    let set = proto::SetShell { shell: Some(shell) };
+    expect(
+        &mut control,
+        session(proto::session_request::Request::SetShell(set)),
+        proto::Outcome::Done,
+    );
+    make(&mut control, create("p1", in_new_tab("t1")));
+    let out = daemon.root().join("fds");
+    let mut asked = create("p2", beside("p1", Side::Right));
+    // The shell's own test builtin asks about each descriptor, so nothing it runs opens one of
+    // its own while it looks - including bash, which parks stdout on descriptor 10 while a
+    // redirection is in force, so each line is appended rather than the loop redirected. 255 is
+    // where an interactive bash keeps its terminal.
+    asked.command = Some(format!(
+        "i=3; while [ $i -lt 255 ]; do [ -e /dev/fd/$i ] && echo $i >> {out}; i=$((i+1)); done; \
+         echo end >> {out}",
+        out = out.display()
+    ));
+    make(&mut control, asked);
+    until(
+        "the pane to finish listing its descriptors",
+        || std::fs::read_to_string(&out).is_ok_and(|listed| listed.ends_with("end\n")),
+        (),
+    );
+    let listed = std::fs::read_to_string(&out).unwrap();
+    assert_eq!(listed, "end\n", "a pane holds descriptors it was never given");
+}
+
+#[test]
+fn closing_a_pane_hangs_up_its_processes_and_reaps_them() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    expect(&mut control, subscribe_request(), proto::Outcome::Done);
+    make(&mut control, create("p1", in_new_tab("t1")));
+    let pid = daemon.root().join("pid");
+    let hup = daemon.root().join("hup");
+    let mut asked = create("p2", beside("p1", Side::Right));
+    asked.command = Some(format!(
+        "trap 'echo hup > {}; exit' HUP; echo $$ > {}; while :; do sleep 1; done",
+        hup.display(),
+        pid.display()
+    ));
+    make(&mut control, asked);
+    let pid = written(&pid);
+
+    let closed = expect(&mut control, close_request("p2"), proto::Outcome::Done);
+    assert_eq!(names(&closed.events), ["tab_changed:t1", "pane_closed:p2"]);
+    assert_eq!(written(&hup), "hup\n");
+    until(
+        "the closed pane's shell to be reaped",
+        || process_state(&pid).is_empty(),
+        || format!("ps still says: {:?}", process_state(&pid)),
+    );
+    expect(&mut control, close_request("p2"), proto::Outcome::NotThere);
+}
+
+#[test]
+fn a_pane_whose_process_exits_closes_and_says_how() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    expect(&mut control, subscribe_request(), proto::Outcome::Done);
+    let mut asked = create("p1", in_new_tab("t1"));
+    asked.command = Some("exit 3".to_string());
+    control.send(create_request(asked));
+
+    let mut seen = Vec::new();
+    let closed = until_some("the pane to close", || {
+        match control.next_message(muster_harness::PATIENCE)? {
+            proto::control_message::Message::Event(event) => {
+                seen.push(named(&event));
+                match event.event {
+                    Some(proto::event::Event::PaneClosed(closed)) => Some(closed),
+                    _ => None,
+                }
+            }
+            proto::control_message::Message::Answer(_) => None,
+        }
+    });
+    assert_eq!(seen, ["pane_opened:p1", "tab_opened:t1", "tab_closed:t1", "pane_closed:p1"]);
+    assert_eq!(closed.reason(), proto::CloseReason::Exited);
+    assert_eq!(closed.exit_status, Some(3));
+
+    // A daemon with nothing in it is still a daemon.
+    assert!(snapshot(&mut control).tabs.is_empty());
+    make(&mut control, create("p2", in_new_tab("t2")));
+}
+
+#[test]
+fn a_pane_that_cannot_start_is_refused_and_leaves_nothing_behind() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let mut asked = create("p1", in_new_tab("t1"));
+    asked.cwd = Some("/no/such/directory".to_string());
+    let refused = expect(&mut control, create_request(asked), proto::Outcome::Refused);
+    assert!(refused.answer.reason.contains("/no/such/directory"), "{}", refused.answer.reason);
+    assert!(snapshot(&mut control).tabs.is_empty());
+}
