@@ -5,17 +5,18 @@
   "area": [
     "backend"
   ],
-  "column": "next",
+  "column": "in-progress",
   "created_at_millis": 1790469794257,
   "creator": "Alexander Terp",
   "description": "MIP-3 sections 4-7 and 11. `crates/muster-vt` today is a text-only headless terminal (write, resize, a per-cell `viewport`, cursor) plus the `KeyEncoder` the seam uses. The daemon needs one libghostty-vt terminal per pane, owned by that pane's threads, and every piece below is already in the pinned headers; the gap is bindings.\n\nNeeded:\n- `Send` for `Terminal`, justified the way `KeyEncoder` justifies it (`key_encoder.rs:57-60`);\n- the formatter, VT and plain text (the replay in a_2XJ1ffNcD and `muster pane read` both use it), and a plain-text screen read that does not cost three FFI calls per cell - agent detection reads the bottom of every pane every few hundred ms;\n- reads of modes, kitty keyboard flags, mouse tracking, active screen, scrollback rows, palette and default palette;\n- scrollback limits (`GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_BYTES`);\n- the write-back callback (`GHOSTTY_TERMINAL_OPT_WRITE_PTY`) for query answers, and the effect callbacks: bell, title, pwd, clipboard write, desktop notification, progress. They run synchronously inside `vt_write` and must not block (`terminal.h:75-80`);\n- key, mouse and paste encoders configured from a terminal (`ghostty_key_encoder_setopt_from_terminal`, `ghostty_mouse_encoder_setopt_from_terminal`);\n- XTGETTCAP / terminfo name, kitty graphics storage limit and media switches (`GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_MEDIUM_*`);\n- static linking of libghostty-vt for the daemon binary, while anything in the app process keeps the dylib (a static libghostty-vt collides with GhosttyKit there, `docs/observations/libghostty-9f9b8d1d.md` section 8).\n\nThe engine sets DEC mode 2027 at creation today to match herdr; keep that, since detection manifests were written against it.\n\nA fuzz target over the terminal with recorded pane output belongs here or with the daemon: one crash in this parser ends every agent on the machine.",
   "id": "a_2XJ1fr2cu",
   "parent": "a_2XJ1fUIyr",
-  "position": "a3",
+  "position": "Zy",
   "title": "muster-vt grows into the terminal a daemon runs per pane",
   "type": "feature",
-  "updated_at_millis": 1790469796750,
+  "updated_at_millis": 1790472199105,
   "history": [
-    {"field":"column","value":"next","at":1790469794257}
+    {"field":"column","value":"next","at":1790469794257},
+    {"field":"column","value":"in-progress","at":1790472199105}
   ]
 }
