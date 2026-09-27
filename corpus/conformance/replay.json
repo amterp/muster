@@ -236,6 +236,32 @@
       }
     },
     {
+      "name": "the cursor pending a wrap after a wide character at the last column",
+      "why": "A wide character ending in the last column leaves the cursor on its second half, waiting to wrap. Re-printing the character from that half cannot fit it, so the receiver wraps early and prints it on the next row, and the next character lands after it instead of starting a new row. CJK and emoji ending exactly at the edge are ordinary agent output.",
+      "given": {
+        "columns": 10,
+        "rows": 5,
+        "feed": "12345678\u4f60",
+        "after": "X"
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
+      "name": "the cursor pending a wrap after an emoji at the last column of the bottom row",
+      "why": "The same wait after a wide emoji, on the bottom row, where re-printing it wrongly would also scroll the receiver's screen and put its history one row out of step.",
+      "given": {
+        "columns": 10,
+        "rows": 3,
+        "feed": "\r\n\r\n12345678\ud83d\udc4d",
+        "after": "X"
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
       "name": "a status bar filled with a background color",
       "why": "An erase under a background color paints the whole row, with text only at its start. The replayed row must be painted to the edge too. The formatter writes the painted cells after the text as spaces in that background, which draws the same; the driver forgives exactly that difference and no other.",
       "given": {
