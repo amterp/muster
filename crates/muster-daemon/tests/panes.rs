@@ -320,7 +320,11 @@ fn a_pane_that_cannot_start_is_refused_and_leaves_nothing_behind() {
 
 /// Every pane after this runs `command` as its shell, in `mode`.
 fn use_shell(control: &mut Control, command: &str, mode: proto::ShellMode) {
-    let shell = proto::Shell { command: Some(command.to_string()), mode: mode.into() };
+    let shell = proto::Shell {
+        command: Some(command.to_string()),
+        mode: mode.into(),
+        ..proto::Shell::default()
+    };
     let set = proto::SetShell { shell: Some(shell) };
     let asked = control.ask(session(proto::session_request::Request::SetShell(set)));
     assert!(matches!(asked.outcome(), proto::Outcome::Done | proto::Outcome::AlreadySo));

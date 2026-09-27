@@ -56,8 +56,11 @@ fn ssh_from_a_pane_installs_the_entry_on_a_host_once() {
     let daemon = daemon();
     std::fs::write(daemon.root().join("home/.zshrc"), "PS1='local> '\n").unwrap();
     let mut control = daemon.connect();
-    let zsh =
-        proto::Shell { command: Some("zsh".to_string()), mode: proto::ShellMode::Login.into() };
+    let zsh = proto::Shell {
+        command: Some("zsh".to_string()),
+        mode: proto::ShellMode::Login.into(),
+        ..proto::Shell::default()
+    };
     expect(
         &mut control,
         session(proto::session_request::Request::SetShell(proto::SetShell { shell: Some(zsh) })),

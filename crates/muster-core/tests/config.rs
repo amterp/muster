@@ -124,6 +124,15 @@ fn panes(panes: &config::Panes) -> Vec<String> {
     if panes.shell.mode != config::ShellMode::default() {
         set.push(format!("shell.mode={}", panes.shell.mode.as_str()));
     }
+    for (key, value) in [
+        ("ssh_env", panes.shell.ssh_env),
+        ("ssh_terminfo", panes.shell.ssh_terminfo),
+        ("sudo", panes.shell.sudo),
+    ] {
+        if let Some(value) = value {
+            set.push(format!("shell.{key}={value}"));
+        }
+    }
     set
 }
 

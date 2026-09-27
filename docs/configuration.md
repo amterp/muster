@@ -25,6 +25,9 @@ scrollback_bytes = 50000000    # history a pane keeps; omit for the daemon's own
 [shell]
 command = "/opt/homebrew/bin/fish"  # omit for whatever this machine thinks your shell is
 mode = "login"                 # auto (the default) | login | non_login
+ssh_terminfo = true            # the default: ssh gives a host the terminal's terminfo entry
+ssh_env = true                 # the default: ssh tells a host the terminal's name and colors
+sudo = false                   # the default: sudo keeps the terminal's terminfo; needs SETENV
 
 [keymap]
 split_right = "cmd+d"          # the default; Ghostty's, wherever Ghostty has one
@@ -381,6 +384,19 @@ Muster translates them into a file of its own and hands that to the daemon, exac
 `[font]` and `[colors]` for the renderer. Before this you had to learn that herdr existed and
 find its config file, and a `default_shell` set for your own terminal quietly decided what
 every Muster pane ran.
+
+`ssh_terminfo`, `ssh_env` and `sudo` are Ghostty's shell integration features of the same
+names, which every pane's shell gets, and they answer one problem: a program on another machine,
+or running as root, that has never heard of `xterm-ghostty`. `ssh_terminfo` has a pane's `ssh`
+install the entry in the host's `~/.terminfo` the first time it reaches that host, over a
+connection of its own, and remember the host; `ssh_env` sends `TERM` and the terminal's name and
+colors along. Both are on, where Ghostty ships them off, because a Muster pane on a devenv is the
+case Muster exists for, and a host without the entry draws a broken screen. They leave alone any
+ssh that opens no terminal on the host, such as `ssh -N` for a tunnel or `ssh -G`. `sudo` wraps
+`sudo` to keep `TERMINFO`, pointed at your `~/.terminfo`, where Muster then puts the entry, so a
+root shell finds it. It is off because keeping `TERMINFO` needs a sudoers rule that allows it -
+`SETENV`, or `ALL` - and under a rule that names its commands without that, sudo refuses the
+command outright. Turn it on where your sudoers rules allow it.
 
 `scrollback_bytes` is bytes because that is what the buffer is measured in; a line has no
 fixed size, so a count of them would be a number that did not mean what it said. Zero is a

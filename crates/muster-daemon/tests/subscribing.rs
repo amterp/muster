@@ -174,6 +174,7 @@ fn a_pane_runs_the_shell_it_was_set_to_run() {
     let shell = proto::Shell {
         command: Some(script.display().to_string()),
         mode: proto::ShellMode::NonLogin.into(),
+        ..proto::Shell::default()
     };
     let set = session(session_request::Request::SetShell(proto::SetShell { shell: Some(shell) }));
     expect(&mut control, set.clone(), proto::Outcome::Done);

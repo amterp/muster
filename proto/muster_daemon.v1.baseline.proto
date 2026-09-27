@@ -354,6 +354,13 @@ message Shell {
   // The program. Absent: $SHELL, or the account's shell.
   optional string command = 1;
   ShellMode mode = 2;
+  // Ghostty's shell integration features, each absent for its default. ssh-env: ssh forwards the
+  // terminal's name and colors (on). ssh-terminfo: ssh installs xterm-ghostty on a host that
+  // lacks it (on). sudo: sudo keeps the terminal's terminfo, which needs a sudoers rule that
+  // allows SETENV (off).
+  optional bool ssh_env = 3;
+  optional bool ssh_terminfo = 4;
+  optional bool sudo = 5;
 }
 
 enum ShellMode {

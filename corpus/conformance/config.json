@@ -1013,6 +1013,40 @@
       }
     },
     {
+      "name": "the shell integration features, each set only where the file says",
+      "why": "sudo keeping the terminal's terminfo needs a sudoers rule that allows SETENV, and breaks sudo under one that does not, so it ships off; the ssh features ship on. A key left out keeps the daemon's default rather than being written down as false, so a later change of default reaches everyone who never chose.",
+      "given": {
+        "file": [
+          "[shell]",
+          "sudo = true",
+          "ssh_terminfo = false"
+        ]
+      },
+      "expect": {
+        "daemons": [],
+        "keymap": [],
+        "option_as_alt": "never",
+        "text": [],
+        "panes": [
+          "shell.ssh_terminfo=false",
+          "shell.sudo=true"
+        ]
+      }
+    },
+    {
+      "name": "a shell feature that is not true or false is refused",
+      "why": "A feature spelled as a string would otherwise read as whatever a parser guessed; the file is refused whole, as every other misspelled value is.",
+      "given": {
+        "file": [
+          "[shell]",
+          "sudo = \"yes\""
+        ]
+      },
+      "expect": {
+        "refused": "`sudo` in the config file's [shell] is a string, and it has to be true or false. None of the file was applied."
+      }
+    },
+    {
       "name": "a pane that remembers nothing is a real answer",
       "why": "Zero is defined rather than degenerate - herdr keeps only what is on screen, and has a test of its own saying so. Somebody who does not want an agent's output sitting in a buffer has to be able to say that, and refusing it would be Muster inventing a floor nobody asked for. Same reasoning as `pane_padding = 0`.",
       "given": {
@@ -1096,7 +1130,7 @@
     },
     {
       "name": "a misspelled shell key is refused against the block it was written in",
-      "why": "`shell_mode` is what somebody writes who read herdr's own config file, where the key is spelled that way and sits at the top of `[terminal]`. Naming the block and listing its two keys is the whole fix, and it is the one case where the person is likely to have been reading the daemon's documentation rather than Muster's.",
+      "why": "`shell_mode` is what somebody writes who read herdr's own config file, where the key is spelled that way and sits at the top of `[terminal]`. Naming the block and listing its keys is the whole fix, and it is the one case where the person is likely to have been reading the daemon's documentation rather than Muster's.",
       "given": {
         "file": [
           "[shell]",
@@ -1104,7 +1138,7 @@
         ]
       },
       "expect": {
-        "refused": "the config file's [shell] has a key called \"shell_mode\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: command, mode."
+        "refused": "the config file's [shell] has a key called \"shell_mode\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: command, mode, ssh_env, ssh_terminfo, sudo."
       }
     },
     {
@@ -1116,7 +1150,7 @@
         ]
       },
       "expect": {
-        "refused": "`shell` in the config file is a string, and it has to be a block - `[shell]` with its settings under it. None of the file was applied. Known keys there: command, mode."
+        "refused": "`shell` in the config file is a string, and it has to be a block - `[shell]` with its settings under it. None of the file was applied. Known keys there: command, mode, ssh_env, ssh_terminfo, sudo."
       }
     },
     {

@@ -388,6 +388,12 @@ pub struct Shell {
     pub command: Option<String>,
 
     pub mode: ShellMode,
+
+    /// Ghostty's shell integration features, each `None` for the daemon's default: `ssh_env`
+    /// and `ssh_terminfo` on, `sudo` off (`docs/configuration.md` says why).
+    pub ssh_env: Option<bool>,
+    pub ssh_terminfo: Option<bool>,
+    pub sudo: Option<bool>,
 }
 
 /// Whether a pane's shell starts as a login shell.
@@ -507,7 +513,7 @@ const COLOR_KEYS: [&str; 15] = [
 const CURSOR_KEYS: [&str; 2] = ["style", "blink"];
 
 /// The keys `[shell]` may carry.
-const SHELL_KEYS: [&str; 2] = ["command", "mode"];
+const SHELL_KEYS: [&str; 5] = ["command", "mode", "ssh_env", "ssh_terminfo", "sudo"];
 
 /// The keys `[notifications]` may carry.
 const NOTIFICATION_KEYS: [&str; 3] = ["blocked", "done", "muted"];
@@ -659,6 +665,22 @@ fn read_shell(block: Option<&toml::Table>) -> Result<Shell, String> {
                 quoted(&ShellMode::READABLE),
             )
         })?;
+    }
+
+    for (key, held) in [
+        ("ssh_env", &mut shell.ssh_env),
+        ("ssh_terminfo", &mut shell.ssh_terminfo),
+        ("sudo", &mut shell.sudo),
+    ] {
+        if let Some(value) = block.get(key) {
+            *held = Some(value.as_bool().ok_or_else(|| {
+                format!(
+                    "`{key}` in the config file's [shell] is {}, and it has to be true or false. \
+                     None of the file was applied.",
+                    described(value)
+                )
+            })?);
+        }
     }
 
     Ok(shell)

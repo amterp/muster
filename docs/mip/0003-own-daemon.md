@@ -277,11 +277,12 @@ shell builds on), less any `GHOSTTY_*` and `VTE_VERSION` it inherited from the t
 in, plus:
 
 - `TERM=xterm-ghostty`, with the terminfo entry carried by the daemon, on both machines, so no
-  host needs Ghostty installed. `TERMINFO` names the daemon's entry, replacing one inherited or
-  requested, as Ghostty.app sets it to its own: ncurses searches it before anything else, and
-  Ghostty's `sudo` feature carries it through sudo's reset environment, so `sudo vim` finds the
-  terminal on a host whose database lacks it. `TERMINFO_DIRS` names it too, first, with an empty
-  entry after it so the system database is still searched by a program that drops `TERMINFO`;
+  host needs Ghostty installed. `TERMINFO_DIRS` names it, first, with an empty entry after it so
+  the system database is still searched. `TERMINFO` does not, as it does in Ghostty.app, because
+  tic writes into `TERMINFO` when it can, and the daemon's data can be a signed bundle. It is
+  unset, replacing one inherited or requested, unless the `sudo` feature is on; then it is the
+  pane's `~/.terminfo`, which the daemon gives the entry where it has none, and which Ghostty's
+  wrapper carries through sudo's reset environment, so `sudo vim` finds the terminal;
 - `COLORTERM=truecolor`;
 - `TERM_PROGRAM=ghostty`, because a pane is a Ghostty terminal and programs key features on the
   name; Muster's identity is already in `MUSTER_PANE` and `MUSTER_SOCKET`. `TERM_PROGRAM_VERSION`
@@ -298,14 +299,16 @@ in, plus:
   executable's own path;
 - Ghostty's shell integration for bash, zsh and fish, injected the way Ghostty injects it, so
   prompts carry OSC 133 marks and `jump_to_prompt` and prompt-aware selection work. Its
-  `title` feature is on, as in Ghostty, and so are three Ghostty leaves off by default: `sudo`,
-  which makes `TERMINFO` survive sudo, and `ssh-terminfo` and `ssh-env`, whose `ssh` wrapper
-  installs the entry on the host it reaches and forwards the terminal's name. That wrapper runs
+  `title` feature is on, as in Ghostty. Three more are settings (`[shell]` in
+  `docs/configuration.md`): `ssh-terminfo` and `ssh-env`, on where Ghostty leaves them off, whose
+  `ssh` wrapper installs the entry on the host it reaches and forwards the terminal's name; and
+  `sudo`, off, which makes `TERMINFO` survive sudo but needs a sudoers rule allowing SETENV. That wrapper runs
   `$GHOSTTY_BIN_DIR/ghostty +ssh`, and a pane has no Ghostty, so `GHOSTTY_BIN_DIR` names a
   directory of the daemon's data holding Muster's own `ghostty`, which handles `+ssh` with
   `muster-daemon ssh`, a port of Ghostty's: install the entry in the host's `~/.terminfo` over a
   connection of its own unless the host is remembered as having it, then connect as
-  xterm-ghostty, or as xterm-256color where the install failed. `path`, which would put that
+  xterm-ghostty, or as xterm-256color where the install failed. An ssh that opens no terminal
+  on a host (`-N`, `-f`, `-W`, `-O`, `-G`, `-V`, `-Q`, `-s`) runs as given. `path`, which would put that
   directory on the `PATH`, is off, since it holds no Ghostty. Its `cursor` feature, which sets a bar at
   every prompt, follows the app's `[cursor]`: blinking or steady as `blink` says while no style
   is named, as Ghostty decides from `cursor-style-blink`, and off when a style is named, because

@@ -45,10 +45,7 @@ fn the_prompt_cursor_follows_the_cursor_the_app_sent() {
             std::fs::read_to_string(&out).ok().filter(|text| text.ends_with('\n'))
         })
     };
-    assert_eq!(
-        features(&mut control, "p1", "t1"),
-        "cursor:blink,ssh-env,ssh-terminfo,sudo,title\n"
-    );
+    assert_eq!(features(&mut control, "p1", "t1"), "cursor:blink,ssh-env,ssh-terminfo,title\n");
 
     let steady =
         proto::Cursor { style: proto::CursorStyle::Unspecified.into(), blink: Some(false) };
@@ -58,10 +55,7 @@ fn the_prompt_cursor_follows_the_cursor_the_app_sent() {
         session(proto::session_request::Request::SetCursor(set)),
         proto::Outcome::Done,
     );
-    assert_eq!(
-        features(&mut control, "p2", "t2"),
-        "cursor:steady,ssh-env,ssh-terminfo,sudo,title\n"
-    );
+    assert_eq!(features(&mut control, "p2", "t2"), "cursor:steady,ssh-env,ssh-terminfo,title\n");
 
     let bar = proto::Cursor { style: proto::CursorStyle::Bar.into(), blink: None };
     let set = proto::SetCursor { cursor: Some(bar) };
@@ -70,7 +64,7 @@ fn the_prompt_cursor_follows_the_cursor_the_app_sent() {
         session(proto::session_request::Request::SetCursor(set)),
         proto::Outcome::Done,
     );
-    assert_eq!(features(&mut control, "p3", "t3"), "ssh-env,ssh-terminfo,sudo,title\n");
+    assert_eq!(features(&mut control, "p3", "t3"), "ssh-env,ssh-terminfo,title\n");
 }
 
 #[test]
@@ -125,6 +119,7 @@ fn shell_prompts_are_marked(daemon: &Daemon, shell: &str, command: Option<&str>)
         shell: Some(proto::Shell {
             command: Some(shell.clone()),
             mode: proto::ShellMode::Login.into(),
+            ..proto::Shell::default()
         }),
     };
     expect(
@@ -223,7 +218,7 @@ fn a_shell_whose_path_has_an_equals_sign_runs_a_command_and_becomes_itself() {
 
 /// Starts `shell` with its integration and types `line` until the pane shows `wanted`: the
 /// integration defines its functions only once the shell has drawn a prompt.
-fn shell_says(shell: &str, line: &str, wanted: &str) -> String {
+fn shell_says(shell: &str, sudo: Option<bool>, line: &str, wanted: &str) -> (Daemon, String) {
     let daemon = daemon();
     std::fs::write(daemon.root().join("home/.zshrc"), "").unwrap();
     let mut control = daemon.connect();
@@ -231,6 +226,8 @@ fn shell_says(shell: &str, line: &str, wanted: &str) -> String {
         shell: Some(proto::Shell {
             command: Some(shell.to_string()),
             mode: proto::ShellMode::Login.into(),
+            sudo,
+            ..proto::Shell::default()
         }),
     };
     expect(
@@ -240,33 +237,53 @@ fn shell_says(shell: &str, line: &str, wanted: &str) -> String {
     );
     make(&mut control, create("p1", in_new_tab("t1")));
     let mut input = muster_harness::Input::connect(daemon.socket_path());
-    until_some(&format!("{shell} to say {wanted:?}"), || {
+    let text = until_some(&format!("{shell} to say {wanted:?}"), || {
         let send = proto::input_event::Send { text: line.to_string(), enter: true };
         input.send("p1", proto::input_event::Input::Send(send));
         std::thread::sleep(std::time::Duration::from_millis(300));
         let text = read_text(&mut control, "p1", 0, 0).text;
         text.contains(wanted).then_some(text)
-    })
+    });
+    drop(control);
+    (daemon, text)
 }
 
-/// Ghostty's `sudo` feature wraps sudo to keep `$TERMINFO`, which sudo's reset environment
-/// would drop, so a root shell on a machine without xterm-ghostty still finds the terminal. The
-/// daemon sets `$TERMINFO` to its own entry, as Ghostty.app sets it to its own. Its `ssh-*`
-/// features wrap ssh to give the host the entry (`tests/ssh_terminfo.rs`).
+/// Ghostty's `ssh-*` features wrap ssh to give the host the entry (`tests/ssh_terminfo.rs`), and
+/// are on unless the settings turn them off. Its `sudo` feature, which wraps sudo to keep
+/// `$TERMINFO`, is off unless turned on: preserving `TERMINFO` needs a sudoers rule that allows
+/// SETENV, and sudo refuses outright under one that does not. So by default sudo is the
+/// system's, and nothing sets `$TERMINFO`.
 #[test]
-fn sudo_and_ssh_in_a_pane_are_wrapped_to_carry_the_terminal() {
-    let data = std::path::Path::new(DAEMON_DATA).canonicalize().unwrap();
+fn by_default_ssh_is_wrapped_and_sudo_is_left_alone() {
     for shell in ["zsh", "bash"] {
         let Some(path) = installed(shell) else {
             eprintln!("skipped: {shell} with integration is not installed here");
             continue;
         };
-        let line = format!(
-            "type sudo ssh; [ \"$TERMINFO\" -ef '{}' ] && echo terminfo-ours",
-            data.join("terminfo").display()
-        );
-        let text = shell_says(&path, &line, "\nterminfo-ours");
-        assert!(text.contains("sudo is a"), "{shell}: sudo is not wrapped: {text}");
+        let line = "type sudo ssh; echo \"terminfo=[$TERMINFO]\"";
+        let (_daemon, text) = shell_says(&path, None, line, "\nterminfo=[]");
+        assert!(!text.contains("sudo is a shell function"), "{shell}: sudo is wrapped: {text}");
+        assert!(!text.contains("sudo is a function"), "{shell}: sudo is wrapped: {text}");
         assert!(text.contains("ssh is a"), "{shell}: ssh is not wrapped: {text}");
+    }
+}
+
+/// With `sudo` on, sudo is wrapped and `$TERMINFO` is the pane's `~/.terminfo`, where the daemon
+/// has put the entry: what root reads through the wrapper, and where tic writes, rather than the
+/// daemon's data directory, which can be a signed bundle.
+#[test]
+fn with_sudo_on_sudo_carries_the_home_terminfo_that_holds_the_entry() {
+    for shell in ["zsh", "bash"] {
+        let Some(path) = installed(shell) else {
+            eprintln!("skipped: {shell} with integration is not installed here");
+            continue;
+        };
+        let line = "type sudo; echo \"terminfo=[$TERMINFO]\"";
+        let (daemon, text) = shell_says(&path, Some(true), line, "/.terminfo]");
+        assert!(text.contains("sudo is a"), "{shell}: sudo is not wrapped: {text}");
+        let home = daemon.root().join("home/.terminfo");
+        assert!(text.contains(&format!("terminfo=[{}]", home.display())), "{shell}: {text}");
+        let entries = [home.join("78/xterm-ghostty"), home.join("x/xterm-ghostty")];
+        assert!(entries.iter().any(|entry| entry.exists()), "{shell}: no entry in {home:?}");
     }
 }

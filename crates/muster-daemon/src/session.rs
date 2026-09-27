@@ -1065,8 +1065,11 @@ impl Session {
             command,
             &self.data,
             &self.reachable,
-            self.settings.cursor.as_ref(),
+            spawn::Settings { shell, cursor: self.settings.cursor.as_ref() },
         );
+        if shell.sudo.unwrap_or(false) {
+            spawn::put_entry_in_home(&environment, &self.data);
+        }
         spawn::start(
             &pty::shell(shell.command.as_deref(), &self.inherited),
             login,

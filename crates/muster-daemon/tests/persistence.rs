@@ -57,7 +57,11 @@ fn until_saved(daemon: &Daemon, needle: &str) {
 
 /// Every setting but the palette, each away from its default.
 fn set_the_other_settings(control: &mut Control) {
-    let shell = proto::Shell { command: None, mode: proto::ShellMode::NonLogin.into() };
+    let shell = proto::Shell {
+        command: None,
+        mode: proto::ShellMode::NonLogin.into(),
+        ..proto::Shell::default()
+    };
     let set = proto::SetShell { shell: Some(shell) };
     expect(control, session(session_request::Request::SetShell(set)), proto::Outcome::Done);
     let set = proto::SetScrollback { bytes: Some(2_000_000) };
@@ -176,7 +180,7 @@ fn a_restart_brings_back_every_tab_its_names_and_directories_and_nothing_else() 
     // The kept cursor reaches a pane made after the restart, as the app's [cursor] would.
     make(&mut control, create("p4", in_new_tab("t3")));
     type_line(&mut input, "p4", "echo \"features=$GHOSTTY_SHELL_FEATURES\"");
-    until_text(&mut control, "p4", "features=cursor:steady,ssh-env,ssh-terminfo,sudo,title\n");
+    until_text(&mut control, "p4", "features=cursor:steady,ssh-env,ssh-terminfo,title\n");
 }
 
 #[test]
