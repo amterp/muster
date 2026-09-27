@@ -162,6 +162,30 @@ fn a_pane_starts_where_asked_or_where_its_neighbour_is_now() {
 fn a_pane_inherits_no_other_panes_descriptors() {
     let daemon = daemon();
     let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    assert_eq!(
+        descriptors_of_a_new_pane(&daemon, &mut control, beside("p1", Side::Right)),
+        "end\n"
+    );
+}
+
+/// Whatever the daemon holds open, a pane gets its terminal and nothing else - including a
+/// descriptor some other thread opened a moment before the fork and had not yet marked
+/// close-on-exec, which std's `accept` on macOS leaves open for exactly that moment. A
+/// descriptor the daemon inherited without the flag stands in for it, deterministically.
+#[test]
+fn a_descriptor_the_daemon_holds_without_close_on_exec_never_reaches_a_pane() {
+    let daemon = daemon_holding(9);
+    let mut control = daemon.connect();
+    assert_eq!(descriptors_of_a_new_pane(&daemon, &mut control, in_new_tab("t1")), "end\n");
+}
+
+/// Starts a pane that lists every descriptor it holds above stderr, and returns the list.
+fn descriptors_of_a_new_pane(
+    daemon: &Daemon,
+    control: &mut Control,
+    placement: proto::Placement,
+) -> String {
     // Not a login shell: bash started with both -l and -i closes descriptors it inherited,
     // which would hide a leak from this test while a person's zsh kept it.
     let shell = proto::Shell {
@@ -169,14 +193,12 @@ fn a_pane_inherits_no_other_panes_descriptors() {
         mode: proto::ShellMode::NonLogin.into(),
     };
     let set = proto::SetShell { shell: Some(shell) };
-    expect(
-        &mut control,
-        session(proto::session_request::Request::SetShell(set)),
-        proto::Outcome::Done,
-    );
-    make(&mut control, create("p1", in_new_tab("t1")));
+    let set = session(proto::session_request::Request::SetShell(set));
+    let asked = control.ask(set);
+    assert!(matches!(asked.outcome(), proto::Outcome::Done | proto::Outcome::AlreadySo));
+
     let out = daemon.root().join("fds");
-    let mut asked = create("p2", beside("p1", Side::Right));
+    let mut asked = create("listing", placement);
     // The shell's own test builtin asks about each descriptor, so nothing it runs opens one of
     // its own while it looks - including bash, which parks stdout on descriptor 10 while a
     // redirection is in force, so each line is appended rather than the loop redirected. 255 is
@@ -186,14 +208,13 @@ fn a_pane_inherits_no_other_panes_descriptors() {
          echo end >> {out}",
         out = out.display()
     ));
-    make(&mut control, asked);
+    make(control, asked);
     until(
         "the pane to finish listing its descriptors",
         || std::fs::read_to_string(&out).is_ok_and(|listed| listed.ends_with("end\n")),
         (),
     );
-    let listed = std::fs::read_to_string(&out).unwrap();
-    assert_eq!(listed, "end\n", "a pane holds descriptors it was never given");
+    std::fs::read_to_string(&out).unwrap()
 }
 
 #[test]

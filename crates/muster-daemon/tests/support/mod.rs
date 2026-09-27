@@ -19,6 +19,10 @@ pub fn daemon_with(environment: &[(&str, &str)]) -> Daemon {
     Daemon::start_with(env!("CARGO_BIN_EXE_muster-daemon"), environment)
 }
 
+pub fn daemon_holding(descriptor: i32) -> Daemon {
+    Daemon::start_holding(env!("CARGO_BIN_EXE_muster-daemon"), descriptor)
+}
+
 pub fn session(request: session_request::Request) -> Service {
     Service::Session(proto::SessionRequest { request: Some(request) })
 }

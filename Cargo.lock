@@ -624,6 +624,7 @@ version = "0.9.0"
 name = "muster-harness"
 version = "0.9.0"
 dependencies = [
+ "libc",
  "muster-daemon-proto",
  "muster-frame",
  "prost",

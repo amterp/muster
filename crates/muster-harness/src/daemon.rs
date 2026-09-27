@@ -5,6 +5,8 @@
 //! fresh for them. Isolated by giving it a scratch root: its own socket, its own HOME, its own
 //! log. Nothing here can reach a daemon somebody is working in.
 
+use std::os::fd::AsRawFd;
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::Arc;
@@ -51,6 +53,16 @@ impl Daemon {
 
     /// The same, with more in the daemon's environment - which every pane's starts from.
     pub fn start_with(binary: impl AsRef<Path>, environment: &[(&str, &str)]) -> Daemon {
+        Daemon::launch(binary, environment, None)
+    }
+
+    /// The same, with the daemon holding `descriptor` open and inheritable, as a launcher that
+    /// leaks one leaves it. For a test that nothing the daemon holds reaches a pane unasked.
+    pub fn start_holding(binary: impl AsRef<Path>, descriptor: i32) -> Daemon {
+        Daemon::launch(binary, &[], Some(descriptor))
+    }
+
+    fn launch(binary: impl AsRef<Path>, environment: &[(&str, &str)], held: Option<i32>) -> Daemon {
         let root = PathBuf::from(ROOT).join(format!(
             "d{}-{}",
             std::process::id(),
@@ -68,7 +80,7 @@ impl Daemon {
             process: None,
             started_in: Duration::ZERO,
         };
-        daemon.process = Some(daemon.spawn(environment));
+        daemon.process = Some(daemon.spawn(environment, held));
         daemon.started_in = daemon.wait_until_answering();
         daemon
     }
@@ -76,16 +88,31 @@ impl Daemon {
     /// Starts another daemon process on this daemon's socket, and hands it back unwaited: the
     /// one a test about a second daemon on a claimed socket watches exit.
     pub fn spawn_another(&self) -> Child {
-        self.spawn(&[])
+        self.spawn(&[], None)
     }
 
-    fn spawn(&self, environment: &[(&str, &str)]) -> Child {
+    fn spawn(&self, environment: &[(&str, &str)], held: Option<i32>) -> Child {
         let log = std::fs::File::options()
             .create(true)
             .append(true)
             .open(self.root.join("stderr.log"))
             .expect("could not open the harness's stderr log");
-        Command::new(&self.binary)
+        let mut command = Command::new(&self.binary);
+        if let Some(descriptor) = held {
+            let null = std::fs::File::open("/dev/null").expect("/dev/null opens");
+            // SAFETY: dup2 in the child between fork and exec is async-signal-safe, and the
+            // descriptor it copies from is open for the closure's whole life. dup2 leaves the
+            // copy without close-on-exec, which is the point.
+            unsafe {
+                command.pre_exec(move || {
+                    if libc::dup2(null.as_raw_fd(), descriptor) == -1 {
+                        return Err(std::io::Error::last_os_error());
+                    }
+                    Ok(())
+                });
+            }
+        }
+        command
             .arg("--socket")
             .arg(&self.socket_path)
             .env_clear()
