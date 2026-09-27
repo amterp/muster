@@ -129,7 +129,8 @@ impl Surface {
     /// returns what it has read so far on demand.
     pub(crate) fn read_in_background(self, pace: Pace) -> Background {
         let read = Arc::new(Mutex::new(Vec::new()));
-        let kept = Arc::clone(&read);
+        let tail = Arc::new(Mutex::new(Vec::new()));
+        let (kept, latest) = (Arc::clone(&read), Arc::clone(&tail));
         let Surface { mut master, child, .. } = self;
         std::thread::spawn(move || {
             let mut buffer = vec![0u8; pace.chunk];
@@ -140,6 +141,12 @@ impl Surface {
                 }
                 if pace.keep {
                     kept.lock().expect("the read bytes").extend_from_slice(&buffer[..count]);
+                    let mut latest = latest.lock().expect("the latest bytes");
+                    latest.extend_from_slice(&buffer[..count]);
+                    if latest.len() > 2 * TAIL {
+                        let excess = latest.len() - TAIL;
+                        latest.drain(..excess);
+                    }
                 }
                 since_stall += count;
                 if let Some((every, stall)) = pace.stall
@@ -151,9 +158,13 @@ impl Surface {
                 std::thread::sleep(pace.pause);
             }
         });
-        Background { _child: child, read }
+        Background { _child: child, read, tail }
     }
 }
+
+/// How much of what a background reader read is kept for [`Background::shows`]: more than a
+/// catch-up's screen, which is where text shows once a surface fell behind.
+const TAIL: usize = 64 * 1024;
 
 /// How a background reader reads.
 #[derive(Debug, Clone, Copy)]
@@ -176,11 +187,20 @@ impl Pace {
 pub(crate) struct Background {
     _child: Owned,
     read: Arc<Mutex<Vec<u8>>>,
+    /// The last bytes read, so that looking for text neither copies nor scans everything read,
+    /// nor holds up the reader, which takes the same lock on every chunk.
+    tail: Arc<Mutex<Vec<u8>>>,
 }
 
 impl Background {
+    /// Everything read. A copy of all of it, so only for once the reading is done.
     pub(crate) fn bytes(&self) -> Vec<u8> {
         self.read.lock().expect("the read bytes").clone()
+    }
+
+    /// Whether `text` shows among the last bytes read.
+    pub(crate) fn shows(&self, text: &str) -> bool {
+        glyph::shows_text(&self.tail.lock().expect("the latest bytes"), text)
     }
 }
 

@@ -3,6 +3,7 @@
 
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 
 use muster_daemon_proto::connection;
@@ -134,7 +135,12 @@ impl Daemon {
 
 /// A pane's stream read directly, with no bridge: what the daemon's share of an echo costs.
 pub(crate) struct Stream {
-    stream: UnixStream,
+    /// The writing half, for credit.
+    writing: UnixStream,
+    /// Every message the daemon sends, read whole by a thread of its own. A read timeout on
+    /// the socket itself could land partway through a frame, and every later read would then
+    /// start in the middle of one.
+    messages: Receiver<proto::StreamMessage>,
     /// Bytes of output frames received since the last [`Stream::take_bytes`], framing included.
     framed: u64,
 }
@@ -154,7 +160,19 @@ impl Stream {
         let request =
             proto::StreamRequest { request: Some(stream_request::Request::Attach(attach)) };
         connection::send(&mut stream, &request).expect("attaching");
-        let mut attached = Stream { stream, framed: 0 };
+        let mut reading = stream.try_clone().expect("a stream to read");
+        // Whatever the handshake left set, a read must never give up partway through a frame.
+        reading.set_read_timeout(None).expect("a blocking stream");
+        let (arrived, messages) = mpsc::channel();
+        std::thread::spawn(move || {
+            while let Ok(Some(message)) = connection::receive::<proto::StreamMessage>(&mut reading)
+            {
+                if arrived.send(message).is_err() {
+                    return;
+                }
+            }
+        });
+        let mut attached = Stream { writing: stream, messages, framed: 0 };
         attached.settle();
         attached
     }
@@ -185,8 +203,7 @@ impl Stream {
     /// The next message's output, crediting it; `Some(None)` for anything else.
     #[allow(clippy::option_option)]
     fn next(&mut self, within: Duration) -> Option<Option<Vec<u8>>> {
-        let _ = self.stream.set_read_timeout(Some(within.max(Duration::from_micros(100))));
-        let message = connection::receive::<proto::StreamMessage>(&mut self.stream).ok()??;
+        let message = self.messages.recv_timeout(within).ok()?;
         let framed = 4 + message.encoded_len() as u64;
         match message.message {
             Some(stream_message::Message::Output(bytes)) => {
@@ -194,7 +211,7 @@ impl Stream {
                 let credit = stream_request::Credit { bytes: bytes.len() as u64 };
                 let request =
                     proto::StreamRequest { request: Some(stream_request::Request::Credit(credit)) };
-                let _ = connection::send(&mut self.stream, &request);
+                let _ = connection::send(&mut self.writing, &request);
                 Some(Some(bytes))
             }
             _ => Some(None),

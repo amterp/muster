@@ -145,9 +145,8 @@ fn main() {
         eprintln!("{USAGE}");
         std::process::exit(2);
     };
-    let scratch = std::env::temp_dir().join(format!("muster-latency-{}", std::process::id()));
-    std::fs::create_dir_all(&scratch).expect("a scratch directory");
-    let log = scratch.join("bridge.jsonl");
+    let scratch = Scratch::new();
+    let log = scratch.0.join("bridge.jsonl");
     let mut daemon = match &options.daemon {
         Target::Spawn(binary) => Daemon::spawn(binary),
         Target::Socket(socket) => Daemon::at(socket),
@@ -168,13 +167,23 @@ fn main() {
     report.push(("a full window", crowded(&mut daemon, &options, &log)));
 
     let flooded = flood(&mut daemon, &options, &log);
-    verdicts.extend(stats::beside_flood(&flooded.rows[0], &flooded.rows[1]));
+    match &flooded.beside {
+        Some(beside) => verdicts.extend(stats::beside_flood(&flooded.alone, beside)),
+        None => verdicts.push(Verdict {
+            target: "echo beside a flood within 1 ms of the same echo alone".to_string(),
+            measured: "not sampled: the flood ended first; raise --flood-lines".to_string(),
+            met: false,
+        }),
+    }
     verdicts.push(Verdict {
         target: "a flooded surface catches up with the pane's screen".to_string(),
         measured: flooded.caught_up.clone().unwrap_or_else(|| "it did".to_string()),
         met: flooded.caught_up.is_none(),
     });
-    report.push(("beside a flood", flooded.rows.clone()));
+    report.push((
+        "beside a flood",
+        std::iter::once(flooded.alone.clone()).chain(flooded.beside.clone()).collect(),
+    ));
 
     if options.json {
         let sections: Vec<_> = report
@@ -223,6 +232,23 @@ fn main() {
 struct Bytes {
     surface: f64,
     stream: f64,
+}
+
+/// A directory of this run's own, for the bridges' log, removed when the run ends.
+struct Scratch(PathBuf);
+
+impl Scratch {
+    fn new() -> Scratch {
+        let path = std::env::temp_dir().join(format!("muster-latency-{}", std::process::id()));
+        std::fs::create_dir_all(&path).expect("a scratch directory");
+        Scratch(path)
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
 }
 
 fn idle(daemon: &mut Daemon, options: &Options, log: &Path) -> (Vec<Row>, Bytes) {
@@ -297,7 +323,9 @@ fn crowded(daemon: &mut Daemon, options: &Options, log: &Path) -> Vec<Row> {
 }
 
 struct Flood {
-    rows: Vec<Row>,
+    alone: Row,
+    /// None when the flood ended before the first sample beside it.
+    beside: Option<Row>,
     behind: usize,
     seconds: f64,
     /// Why the flooded surface did not end up showing the pane's screen, if it did not.
@@ -325,7 +353,7 @@ fn flood(daemon: &mut Daemon, options: &Options, log: &Path) -> Flood {
     daemon.send_line(&flooding, "go");
     let mut beside = Vec::new();
     for index in 0..options.samples {
-        if glyph::shows_text(&surface.bytes(), DONE) {
+        if surface.shows(DONE) {
             break;
         }
         let letter = ALPHABET[index % ALPHABET.len()];
@@ -333,7 +361,7 @@ fn flood(daemon: &mut Daemon, options: &Options, log: &Path) -> Flood {
         std::thread::sleep(TYPING_GAP);
     }
     let deadline = Instant::now() + Duration::from_mins(10);
-    while !glyph::shows_text(&surface.bytes(), DONE) {
+    while !surface.shows(DONE) {
         assert!(Instant::now() < deadline, "the flood never finished on its surface");
         std::thread::sleep(Duration::from_millis(100));
     }
@@ -347,15 +375,12 @@ fn flood(daemon: &mut Daemon, options: &Options, log: &Path) -> Flood {
         .count();
     daemon.close(&quiet);
     daemon.close(&flooding);
-    Flood {
-        rows: vec![
-            row("bridge glyph, alone", &alone[0]),
-            row(&format!("bridge glyph, beside a flood ({} samples)", beside.len()), &beside),
-        ],
-        behind,
-        seconds,
-        caught_up,
-    }
+    let alone = row("bridge glyph, alone", &alone[0]);
+    let beside = stats::summarize(
+        &format!("bridge glyph, beside a flood ({} samples)", beside.len()),
+        &beside,
+    );
+    Flood { alone, beside, behind, seconds, caught_up }
 }
 
 /// Whether a surface fed `bytes` shows `screen`, the daemon's own rows; the first difference if
