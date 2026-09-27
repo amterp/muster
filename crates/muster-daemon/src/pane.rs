@@ -297,11 +297,12 @@ impl PaneIo {
         }
     }
 
-    /// Clears the pane's screen as Ghostty's clear_screen does. Not while the pane is held for
-    /// a handoff, as [`PaneIo::resize`] says.
-    pub(crate) fn clear_screen(&self) -> Cleared {
+    /// Clears the pane's screen as Ghostty's clear_screen does, for a key that would have sent
+    /// `unconsumed`. Not while the pane is held for a handoff, as [`PaneIo::resize`] says.
+    pub(crate) fn clear_screen(&self, unconsumed: &[u8]) -> Cleared {
         let mut screen = self.screen();
-        if self.deferred_while_held(Performed::ClearScreen) {
+        let clear = Performed::ClearScreen { unconsumed: unconsumed.to_vec() };
+        if self.deferred_while_held(clear) {
             return Cleared::Deferred;
         }
         screen.clear_screen()
@@ -382,11 +383,15 @@ impl PaneIo {
         for performed in deferred.performed {
             match performed {
                 Performed::Reset => self.reset(),
-                Performed::ClearScreen => {
-                    if self.clear_screen() == Cleared::AtPrompt {
+                Performed::ClearScreen { unconsumed } => match self.clear_screen(&unconsumed) {
+                    Cleared::AtPrompt => {
                         self.queue(Input::Reply(vec![0x0c]));
                     }
-                }
+                    Cleared::Alternate => {
+                        self.queue(Input::Reply(unconsumed));
+                    }
+                    Cleared::Elsewhere | Cleared::Deferred => {}
+                },
             }
         }
     }
@@ -497,10 +502,23 @@ struct Deferred {
 }
 
 /// A binding the daemon performs on a pane's terminal.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) enum Performed {
     Reset,
-    ClearScreen,
+    /// With the bytes of the key that asked, which the program is sent on the alternate screen.
+    ClearScreen {
+        unconsumed: Vec<u8>,
+    },
+}
+
+/// Names the binding and never the key's bytes, which are typed input and stay out of the log.
+impl std::fmt::Debug for Performed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Performed::Reset => "Reset",
+            Performed::ClearScreen { .. } => "ClearScreen",
+        })
+    }
 }
 
 #[derive(Debug)]

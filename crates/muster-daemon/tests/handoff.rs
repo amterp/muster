@@ -654,6 +654,39 @@ fn clear_screen_during_a_handoff_that_fails_is_done_after_it() {
     until("the history to go", || !read_text(&mut control, "p1", 0, 0).text.contains("\n59\n"), ());
 }
 
+/// On the alternate screen that clear is the key's own bytes to the program, and they still
+/// reach it when the clear waited out a handoff that failed.
+#[test]
+fn clear_screen_on_the_alternate_screen_during_a_handoff_that_fails_sends_the_key() {
+    let mut daemon =
+        daemon_with(&[("MUSTER_DAEMON_HANDOFF_FAULT", "pause-before-ready,exit-before-ready")]);
+    let mut control = daemon.connect();
+    let heard = daemon.root().join("heard");
+    let script = format!(
+        "printf '\\033[?1049hvim'; stty raw -echo min 1 time 0; \
+         dd bs=1 count=1 of={} 2>/dev/null; sleep 30",
+        heard.display()
+    );
+    let vim = pane_request::Create { command: Some(script), ..create("p1", in_new_tab("t1")) };
+    make(&mut control, vim);
+    until_text(&mut control, "p1", "vim");
+    let mut input = Input::connect(daemon.socket_path());
+
+    let replacing = daemon.start_replacing(None);
+    daemon.paused();
+    let clear = input_event::perform::Action::ClearScreen(input_event::perform::ClearScreen {});
+    input.send(
+        "p1",
+        Event::Perform(input_event::Perform { action: Some(clear), unconsumed: b"k".to_vec() }),
+    );
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    daemon.resume();
+    let answer = daemon.finish_replacing(replacing);
+    assert_eq!(answer.outcome(), proto::Outcome::Refused, "{}", answer.reason);
+
+    assert_eq!(bytes_in(&heard), b"k", "the program gets the key");
+}
+
 /// A new daemon that fails before the commit never wrote the log's file, and what it logged is
 /// still there afterwards: the old daemon writes it in, ahead of its own word on the failure.
 #[test]

@@ -352,7 +352,7 @@ impl Writer {
         match input {
             Input::Reset => io.reset(),
             Input::ClearScreen { unconsumed } => {
-                return match io.clear_screen() {
+                return match io.clear_screen(unconsumed) {
                     Cleared::AtPrompt => vec![0x0c],
                     Cleared::Alternate => unconsumed.clone(),
                     Cleared::Elsewhere | Cleared::Deferred => Vec::new(),
