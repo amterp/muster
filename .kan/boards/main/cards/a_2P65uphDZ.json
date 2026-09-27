@@ -7,6 +7,14 @@
     "shell"
   ],
   "column": "uncommitted",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Seen again 2026-09-26 at load average 36-50 during MIP-3 round 1: muster pane send's Return timed out twice (text landed, Return did not; pane read also timed out), and an empty --enter retried moments later worked. Integrator sends timed out repeatedly the same way. Under herdr the keystroke waits on its one render thread (a_2KHGXkKSc); MIP-3's daemon removes that thread, so re-check this after the cut-over rather than tuning the budget now.",
+      "created_at_millis": 1790477155095,
+      "id": "c_2XM7AD0Jw"
+    }
+  ],
   "created_at_millis": 1789256867776,
   "creator": "Alexander Terp",
   "description": "Requests that come from the CLI still ride the 500ms budget `HerdrClient::DEFAULT_TIMEOUT` gives keystrokes. A CLI request is not on the typing path, so nobody is waiting on it at keystroke speed, but it times out as though it were.\n\nSince `5a5abb4` such a timeout reads as `unanswered` (exit 4) rather than as a refusal, which is honest. It still fails: the `daemon_settings` test flake is this. Whether CLI-originated intents should get the session's longer allowance instead is the decision this card is for.",
@@ -14,7 +22,7 @@
   "position": "aO",
   "title": "CLI requests time out on the 500ms budget keystrokes get",
   "type": "chore",
-  "updated_at_millis": 1789256867776,
+  "updated_at_millis": 1790477155095,
   "history": [
     {"field":"column","value":"uncommitted","at":1789256867776}
   ]

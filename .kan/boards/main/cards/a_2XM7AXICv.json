@@ -1,0 +1,22 @@
+{
+  "_v": 3,
+  "alias": "fuzz-muster-daemon-s",
+  "alias_explicit": false,
+  "area": [
+    "backend",
+    "testing"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1790477155322,
+  "creator": "Alexander Terp",
+  "description": "MIP-3 section 13. Every pane's untrusted output is parsed by libghostty-vt inside one daemon process, so one crash in that parser ends every agent on the machine. Deferred from a_2XJ1fr2cu to live with the daemon, where recorded pane output first exists. Needs a decision first: cargo-fuzz wants nightly and rust-toolchain.toml pins stable, so either a nightly-only tier out of the gate, or a seeded mutation test that runs in the gate on stable. Also decide the optimize mode libghostty-vt is built with for the daemon (a Zig safety panic aborts the process; ReleaseFast removes checks, ReleaseSafe keeps them).",
+  "id": "a_2XM7AXICv",
+  "parent": "a_2XJ1fUIyr",
+  "position": "ao",
+  "title": "Fuzz muster-daemon's headless terminal with recorded pane output",
+  "type": "chore",
+  "updated_at_millis": 1790477155322,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1790477155322}
+  ]
+}

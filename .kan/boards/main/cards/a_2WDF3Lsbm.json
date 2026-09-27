@@ -6,6 +6,14 @@
     "testing"
   ],
   "column": "backlog-lo",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "From round 1 (slot 1): new muster-perf costs need baselining too - vt.text_read, vt.cell_read, vt.replay_compose, vt.replay_parse. Measured at load average 40-50, where view.build also showed a 2.1x 'regression' that is load.",
+      "created_at_millis": 1790477135708,
+      "id": "c_2XM6ewttz"
+    }
+  ],
   "created_at_millis": 1790308245557,
   "creator": "Alexander Terp",
   "description": "perf/baseline.json dates from 2026-08-13 and has no roster.build entry, so ./dev --perf judges today's code against a machine and a codebase that no longer exist. Round 1 (2026-09-24) could not re-record it: the machine sat at load 27-185 and --perf refuses at that load, correctly. Re-record when the machine is quiet, and add the entries the harness now records.",
@@ -13,7 +21,7 @@
   "position": "aK",
   "title": "📉 Re-record perf/baseline.json on a quiet machine",
   "type": "chore",
-  "updated_at_millis": 1790308245557,
+  "updated_at_millis": 1790477135708,
   "history": [
     {"field":"column","value":"backlog-lo","at":1790308245557}
   ]

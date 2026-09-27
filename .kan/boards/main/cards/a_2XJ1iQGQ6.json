@@ -7,6 +7,14 @@
     "backend"
   ],
   "column": "backlog-hi",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "From round 1 (slot 2): muster-harness's Daemon::start takes the binary path explicitly and muster-daemon's own tests use CARGO_BIN_EXE; crates other than muster-daemon cannot (no cross-crate CARGO_BIN_EXE). Decide how they get it at the cut-over, e.g. ./dev builds muster-daemon and exports MUSTER_DAEMON the way MUSTER_HERDR works today.",
+      "created_at_millis": 1790477135230,
+      "id": "c_2XM6eBcsL"
+    }
+  ],
   "created_at_millis": 1790469795855,
   "creator": "Alexander Terp",
   "description": "MIP-3 stage 2, tests and removal. Lands with a_2XJ1hqla3 and a_2XJ1i5JiA.\n\n- Every daemon-backed test (about 200 of the workspace's 460 Rust tests, most of `muster-seam`) runs against `muster-daemon` through the neutral harness.\n- `corpus/herdr-0.8.0` becomes the migration reference: the probe's scenarios run against the new daemon for every behavior Muster keeps, and every difference is recorded in the corpus with its reason. The 8 recorded conformance files and the herdr-shaped authored ones (`backend-intent`, `daemon-*`, `remote-daemon`, `socket-discovery`, `own-socket`) are relabelled or replaced.\n- Delete: `crates/muster-herdr`, `crates/herdr-harness`, `deps/herdr.pin`, herdr steps in `./dev` (fetch, verify, schema check, staging) and CI caches, `HerdrLocation.swift` and the `--herdr-*` flags, herdr's license and NOTICE lines, `tools/herdr-probe` once the migration diff is done.\n- `muster-perf`: `frame.decode` goes; `frame.vt_parse` and `mirror.apply` need re-recorded input.\n- Close or retire the herdr-upstream cards in `uncommitted` that the cut-over makes moot.",
@@ -15,7 +23,7 @@
   "position": "ah",
   "title": "Cut-over: the suite runs on muster-daemon, and herdr is deleted",
   "type": "chore",
-  "updated_at_millis": 1790469797373,
+  "updated_at_millis": 1790477135230,
   "history": [
     {"field":"column","value":"backlog-hi","at":1790469795855}
   ]

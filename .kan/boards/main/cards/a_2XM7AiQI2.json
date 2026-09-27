@@ -1,0 +1,22 @@
+{
+  "_v": 3,
+  "alias": "replay-gaps-links",
+  "alias_explicit": false,
+  "area": [
+    "backend",
+    "renderer"
+  ],
+  "column": "uncommitted",
+  "created_at_millis": 1790477155428,
+  "creator": "Alexander Terp",
+  "description": "From the replay spike (a_2XJ1ffNcD, round 1). The replay (MIP-3 section 5) pins five known gaps as exact differences in corpus/conformance/replay.json: OSC 8 links on text already written, per-cell DECSCA protection, a row painted with a background and no text, the kitty keyboard stack beneath its current flags, and a DECSC-saved cursor. The first three need a change to the formatter's existing output, which the permanent libghostty patch deliberately does not make (it only adds C API); doing it additively means a new formatter option that touches formatter.zig's content loop, a bigger carry on every re-pin. The last two are not readable through the C API at all. Also found: mouse tracking modes replay in ascending order, so a program that enabled 1002 then 1000 comes back in 1002. Links in replayed scrollback are the one a person will notice. Open: which, if any, are worth the larger patch.",
+  "id": "a_2XM7AiQI2",
+  "parent": "a_2XJ1fUIyr",
+  "position": "aS",
+  "title": "Replay gaps: links, DECSCA and background-only rows do not survive an attach",
+  "type": "chore",
+  "updated_at_millis": 1790477155428,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1790477155428}
+  ]
+}
