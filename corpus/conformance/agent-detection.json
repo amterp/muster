@@ -1,7 +1,7 @@
 {
   "concept": "detection.bundledManifests",
   "source": "ported",
-  "citation": "herdr v0.8.0 src/detect/manifest/tests.rs, the tests of herdr's bundled manifests; each case names the test it came from.",
+  "citation": "herdr v0.8.0 src/detect/manifest/tests.rs, the tests of herdr's bundled manifests; each case names the test it came from. Codex cases follow the catalog manifest Muster vendors (2026.09.23.1) where it deliberately changed v0.8.0's verdict; each such case says so.",
   "why": "herdr's manifests are data written against herdr's engine, so the only evidence that this engine reads them the same way is herdr's own verdicts on the screens its authors wrote them for. Each case is a screen, a title and an OSC 9 payload in, and the state, deciding rule, visibility and skip flag out - the whole of what the publish loop acts on. `screen` is the region input as herdr's test passed it, not wrapped by screen_text. Where herdr's test asserted a state but not the deciding rule (the Devin idle, working and blocked screens other than the live footer and narrow welcome), the rule is this engine's reading of herdr's manifest, and a re-pin that moves it is worth a look rather than a rewrite.",
   "cases": [
     {
@@ -216,30 +216,26 @@
     },
     {
       "name": "codex: a plain title is idle",
-      "why": "A title with neither spinner nor Action Required is Codex at rest. (codex_osc_title_plain_is_idle)",
+      "why": "A title with neither spinner nor Action Required is Codex at rest. (codex_osc_title_plain_is_idle) herdr's catalog manifest codex 2026.09.23.1, which Muster vendors, dropped the osc_title_idle rule, so a plain title is now the idle fallback rather than visible idle; the state is unchanged.",
       "given": {
         "agent": "codex",
         "screen": "",
         "title": "llm-proxy"
       },
       "expect": {
-        "state": "idle",
-        "rule": "osc_title_idle",
-        "visible": true
+        "state": "idle"
       }
     },
     {
       "name": "codex: a background terminal does not make it look busy",
-      "why": "Background terminals can be long-lived helpers such as dev servers; the agent is idle once its foreground turn is. (codex_background_terminal_screen_does_not_override_osc_idle)",
+      "why": "Background terminals can be long-lived helpers such as dev servers; the agent is idle once its foreground turn is. (codex_background_terminal_screen_does_not_override_osc_idle) herdr's catalog manifest codex 2026.09.23.1, which Muster vendors, dropped the osc_title_idle rule, so a plain title is now the idle fallback rather than visible idle; the state is unchanged.",
       "given": {
         "agent": "codex",
         "screen": "background terminal running · /ps to view · /stop to close\n",
         "title": "llm-proxy"
       },
       "expect": {
-        "state": "idle",
-        "rule": "osc_title_idle",
-        "visible": true
+        "state": "idle"
       }
     },
     {
@@ -285,16 +281,17 @@
       }
     },
     {
-      "name": "codex: a y/n question outranks the working fallback",
-      "why": "A weaker blocker still outranks the working fallback, and is not visible chrome. (codex_weak_blocker_outranks_working_fallback)",
+      "name": "codex: a y/n question above the live prompt is stale",
+      "why": "herdr v0.8.0's test (codex_weak_blocker_outranks_working_fallback) had this blocked. herdr's catalog manifest codex 2026.09.23.1, which Muster vendors, reads weak_blocker only from above no current prompt (whole_recent_without_current_prompt_marker): a [y/n] with Codex's live › prompt below it is an answered question, and the Working line with its live timer is the truth.",
       "given": {
         "agent": "codex",
         "screen": "• Working (4s • esc to interrupt)\ndo you want to continue? [y/n]\n› Use /skills to list available skills\n",
         "title": "project"
       },
       "expect": {
-        "state": "blocked",
-        "rule": "weak_blocker"
+        "state": "working",
+        "rule": "screen_working_fallback",
+        "visible": true
       }
     },
     {
@@ -313,58 +310,50 @@
     },
     {
       "name": "codex: an interrupted Working line is stale",
-      "why": "A Working line followed by 'Conversation interrupted' belongs to a turn that is over. (codex_screen_working_fallback_ignores_stale_and_prompt_text)",
+      "why": "A Working line followed by 'Conversation interrupted' belongs to a turn that is over. (codex_screen_working_fallback_ignores_stale_and_prompt_text) herdr's catalog manifest codex 2026.09.23.1, which Muster vendors, dropped the osc_title_idle rule, so a plain title is now the idle fallback rather than visible idle; the state is unchanged.",
       "given": {
         "agent": "codex",
         "screen": "◦ Working (1m 16s • esc to interrupt)\n■ Conversation interrupted\n› Use /skills to list available skills\ngpt-5.6-sol default · /work\n",
         "title": "project"
       },
       "expect": {
-        "state": "idle",
-        "rule": "osc_title_idle",
-        "visible": true
+        "state": "idle"
       }
     },
     {
       "name": "codex: Working typed into the prompt is not working",
-      "why": "Text a person typed at the prompt is not the agent's chrome. (codex_screen_working_fallback_ignores_stale_and_prompt_text)",
+      "why": "Text a person typed at the prompt is not the agent's chrome. (codex_screen_working_fallback_ignores_stale_and_prompt_text) herdr's catalog manifest codex 2026.09.23.1, which Muster vendors, dropped the osc_title_idle rule, so a plain title is now the idle fallback rather than visible idle; the state is unchanged.",
       "given": {
         "agent": "codex",
         "screen": "› Explain the text ◦ Working (1m 16s • esc to interrupt)\ngpt-5.6-sol default · /work\n",
         "title": "project"
       },
       "expect": {
-        "state": "idle",
-        "rule": "osc_title_idle",
-        "visible": true
+        "state": "idle"
       }
     },
     {
       "name": "codex: an indented Working line is not the live one",
-      "why": "Codex draws the live Working line at column zero; an indented one is quoted output. (codex_screen_working_fallback_ignores_stale_and_prompt_text)",
+      "why": "Codex draws the live Working line at column zero; an indented one is quoted output. (codex_screen_working_fallback_ignores_stale_and_prompt_text) herdr's catalog manifest codex 2026.09.23.1, which Muster vendors, dropped the osc_title_idle rule, so a plain title is now the idle fallback rather than visible idle; the state is unchanged.",
       "given": {
         "agent": "codex",
         "screen": "  ◦ Working (1m 16s • esc to interrupt)\n› Use /skills to list available skills\ngpt-5.6-sol default · /work\n",
         "title": "project"
       },
       "expect": {
-        "state": "idle",
-        "rule": "osc_title_idle",
-        "visible": true
+        "state": "idle"
       }
     },
     {
       "name": "codex: an interrupted turn on a short terminal is idle",
-      "why": "On a short terminal the prompt is a bare ›, and the turn above it is still over. (codex_screen_working_fallback_ignores_interrupted_short_terminal)",
+      "why": "On a short terminal the prompt is a bare ›, and the turn above it is still over. (codex_screen_working_fallback_ignores_interrupted_short_terminal) herdr's catalog manifest codex 2026.09.23.1, which Muster vendors, dropped the osc_title_idle rule, so a plain title is now the idle fallback rather than visible idle; the state is unchanged.",
       "given": {
         "agent": "codex",
         "screen": "◦ Working (1m 16s • esc to interrupt)\n■ Conversation interrupted\n›\n",
         "title": "project"
       },
       "expect": {
-        "state": "idle",
-        "rule": "osc_title_idle",
-        "visible": true
+        "state": "idle"
       }
     },
     {

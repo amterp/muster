@@ -1,9 +1,9 @@
-# Changed by Muster from herdr v0.8.0: `script_paths` names pi's npm package, which herdr
+# Changed by Muster from herdr's catalog: `script_paths` names pi's npm package, which herdr
 # recognised in code, and so the manifest needs engine 4, the first to read that field.
 id = "pi"
-version = "2026.06.10.1"
+version = "2026.09.14.1"
 min_engine_version = 4
-updated_at = "2026-06-10T00:00:00Z"
+updated_at = "2026-09-14T00:00:00Z"
 aliases = ["herdr:pi"]
 script_paths = ["node_modules/@earendil-works/pi-coding-agent/dist/cli"]
 
@@ -14,3 +14,11 @@ priority = 100
 region = "whole_recent"
 visible_working = true
 contains = ["Working..."]
+
+[[rules]]
+id = "working_border"
+state = "working"
+priority = 100
+region = "bottom_non_empty_lines(12)"
+visible_working = true
+line_regex = ['^── [⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Working ─+$']
