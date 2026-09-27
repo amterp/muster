@@ -10,11 +10,12 @@ mod daemon;
 mod input;
 mod relay;
 mod relay_daemon;
+pub mod requests;
 mod stream;
 mod until;
 
 pub use control::{Asked, Control};
-pub use daemon::{DAEMON_DATA, Daemon, FIRST_ANSWER_BUDGET, Replacing};
+pub use daemon::{DAEMON_DATA, Daemon, FIRST_ANSWER_BUDGET, Replacing, built_daemon};
 pub use input::Input;
 pub use relay::{Holding, Pump, Relay};
 pub use stream::Stream;

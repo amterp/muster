@@ -36,7 +36,12 @@ Muster's principles, adapted to that evidence:
   on the spot. Both fail as silence rather than as an error, which is the shape of bug a fake is worst at.
 
   muster-daemon's tests work the same way through `crates/muster-harness`, with one difference: the daemon is built
-  from the same commit rather than pinned, and its tests hand the harness `CARGO_BIN_EXE_muster-daemon`. A spawned
+  from the same commit rather than pinned, and its tests hand the harness `CARGO_BIN_EXE_muster-daemon`. Cargo
+  gives that only to the daemon's own package, so a test anywhere else calls `built_daemon()`, which finds the
+  daemon in the target directory the test runs from. `./dev` builds the workspace before testing, so that daemon is
+  from the same commit; a narrowed `cargo test -p` builds only its own package and gets whichever daemon was built
+  last. The request builders the daemon's tests read with, such as `make`, `beside` and `until_text`, are in
+  `muster_harness::requests` for the same reason. A spawned
   one answers its first request in about 4 ms, and a test holds that under the 25 ms that keeps daemon-backed tests
   in the default gate. `muster-harness` also holds what both harnesses share, `until` and the relay below, and
   `herdr-harness` re-exports them until the cut-over deletes it. Beside the control connection it drives the other

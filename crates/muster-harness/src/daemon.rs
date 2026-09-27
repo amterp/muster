@@ -1,9 +1,9 @@
 //! A real muster-daemon, owned by one test.
 //!
-//! Built from the same commit as the test, never downloaded or pinned: the caller passes the
-//! binary, and the daemon's own tests pass `CARGO_BIN_EXE_muster-daemon`, which cargo builds
-//! fresh for them. Isolated by giving it a scratch root: its own socket, its own HOME, its own
-//! log. Nothing here can reach a daemon somebody is working in.
+//! Built from the same commit as the test, never downloaded or pinned. The daemon's own tests
+//! pass `CARGO_BIN_EXE_muster-daemon`, which cargo builds fresh for them; a test in any other
+//! package gets it from [`built_daemon`]. Isolated by giving it a scratch root: its own socket,
+//! its own HOME, its own log. Nothing here can reach a daemon somebody is working in.
 
 use std::os::fd::AsRawFd;
 use std::os::unix::process::CommandExt;
@@ -40,6 +40,30 @@ const SHELL: &str = "/bin/sh";
 
 static NEXT: AtomicU32 = AtomicU32::new(0);
 
+/// The `muster-daemon` built into the same target directory as the running test.
+///
+/// Cargo hands `CARGO_BIN_EXE_*` only to tests in the binary's own package, so a test anywhere
+/// else finds the daemon where cargo put it: beside the `deps/` directory the test executable
+/// runs from, which is `target/<profile>/`, or `target/<triple>/<profile>/` for a cross build.
+/// `./dev` builds the whole workspace before any test runs, so this is the daemon from the same
+/// commit. A narrowed `cargo test -p` builds only its own package, and gets whichever daemon was
+/// built last.
+pub fn built_daemon() -> PathBuf {
+    let test = std::env::current_exe().expect("a test knows its own executable");
+    let profile = test
+        .parent()
+        .and_then(Path::parent)
+        .unwrap_or_else(|| panic!("{} is not inside a target directory", test.display()));
+    let daemon = profile.join("muster-daemon");
+    assert!(
+        daemon.is_file(),
+        "no muster-daemon at {}.\n  Impact: this test needs a real daemon and cannot run.\n  \
+         Fix: run ./dev -t, which builds the workspace first, or cargo build -p muster-daemon.",
+        daemon.display()
+    );
+    daemon
+}
+
 /// One daemon, one test. Killed on drop, including when the test panics, and its root removed.
 #[derive(Debug)]
 pub struct Daemon {
@@ -59,6 +83,11 @@ pub struct Daemon {
 }
 
 impl Daemon {
+    /// Starts the daemon cargo built beside this test ([`built_daemon`]).
+    pub fn start_built() -> Daemon {
+        Daemon::start(built_daemon())
+    }
+
     /// Starts the daemon at `binary` and waits for it to answer a snapshot.
     pub fn start(binary: impl AsRef<Path>) -> Daemon {
         Daemon::start_with(binary, &[])
@@ -162,7 +191,7 @@ impl Daemon {
                 panic!(
                     "could not run muster-daemon at {}: {error}\n  Impact: this test has no \
                      daemon.\n  Fix: pass env!(\"CARGO_BIN_EXE_muster-daemon\") from a test in \
-                     the muster-daemon package, which cargo builds before running it.",
+                     the muster-daemon package, or built_daemon() from any other.",
                     self.binary.display()
                 )
             })
