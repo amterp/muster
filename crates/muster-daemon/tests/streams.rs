@@ -186,10 +186,11 @@ fn a_closed_pane_lets_go_of_its_terminal_even_when_its_bridge_has_stopped_readin
     let mut control = daemon.connect();
     let done = daemon.root().join("done");
     // Ignores the hangup a close sends and writes until its terminal is gone for good, which is
-    // when the daemon closes the pane's master.
+    // when the daemon closes the pane's master. The shell records that itself, with a builtin:
+    // dash, Debian's /bin/sh, never finishes starting another program once its terminal is gone.
     let flood = format!(
         "trap '' HUP; while printf 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'; do :; done; \
-         touch {}",
+         : > {}",
         done.display()
     );
     make(&mut control, running("p1", "t1", &flood));
