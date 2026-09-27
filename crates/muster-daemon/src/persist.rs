@@ -383,6 +383,11 @@ impl Persister {
     }
 
     /// The file this persister writes.
+    /// False once this persister will never write again this run, as one that is off.
+    pub(crate) fn saving(&self) -> bool {
+        self.pending().phase != Phase::Off
+    }
+
     pub(crate) fn path(&self) -> &Path {
         &self.path
     }

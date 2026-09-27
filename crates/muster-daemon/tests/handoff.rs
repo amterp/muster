@@ -395,3 +395,27 @@ fn a_new_daemon_keeps_serving_when_the_old_one_dies_after_the_commit() {
     assert_eq!(welcomed.cast_signed(), new, "the new daemon serves");
     the_same_shells_answer(&daemon, &pids, "after the old daemon died");
 }
+
+/// A daemon that saves nothing over its state file, because the file is a newer daemon's, hands
+/// that on: the new daemon saves nothing over it either.
+#[test]
+fn a_new_daemon_saves_nothing_where_the_old_one_would_not() {
+    let mut daemon = daemon();
+    stop_signal(daemon.pid());
+    daemon.wait_for_exit();
+    let file = daemon.root().join("daemon.state.json");
+    let newer = b"{\"version\": 999, \"tabs\": \"in a shape this daemon has never seen\"}";
+    std::fs::write(&file, newer).unwrap();
+    daemon.restart();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+
+    replaced(&mut daemon);
+
+    let mut control = daemon.connect();
+    make(&mut control, create("p2", in_new_tab("t2")));
+    // Past the persister's debounce.
+    std::thread::sleep(std::time::Duration::from_secs(2));
+    let now = std::fs::read(&file).unwrap();
+    assert_eq!(String::from_utf8_lossy(&now), String::from_utf8_lossy(newer), "the file changed");
+}

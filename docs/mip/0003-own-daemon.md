@@ -759,8 +759,9 @@ brings descriptors follows a single byte that carries them as `SCM_RIGHTS`. In o
    one answers `Accept`, or `Refused` with a reason, which it also does at any later step it cannot
    take.
 2. `Session`, bringing the listening socket and the lock file: the state as the file holds it
-   (section 2), read under the same rules - one in a newer format is refused - and the detection
-   manifests the app last sent.
+   (section 2), read under the same rules - one in a newer format is refused - the detection
+   manifests the app last sent, and whether the old daemon had stopped saving. A new daemon handed
+   one that had stops too, since the file it would write over is one the old daemon was keeping.
 3. For each pane, `Pane`, bringing its PTY master: the pane's record, its grid, its process's pid,
    and then a replay of its terminal (section 5) in pieces of a megabyte.
 4. `Ready`, from the new daemon; `Commit`, from the old; `Serving`, from the new.

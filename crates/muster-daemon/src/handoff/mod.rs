@@ -230,7 +230,11 @@ fn handed(
         .iter()
         .map(|(agent, toml)| proto::Manifest { agent: agent.clone(), toml: toml.clone() })
         .collect();
-    send(&mut link, handoff::Message::Session(handoff::Session { state, app_manifests }))?;
+    let saving_stopped = !handing.persister.saving();
+    send(
+        &mut link,
+        handoff::Message::Session(handoff::Session { state, app_manifests, saving_stopped }),
+    )?;
 
     for pane in &handing.panes {
         let name = &pane.record.pane;
@@ -475,7 +479,18 @@ fn build(
         Ok(socket) => socket,
         Err(error) => return refuse(link, format!("could not take the socket: {error}")),
     };
-    let persister = Persister::new(persist::path_for(&socket.path), false);
+    let persister = Persister::new(persist::path_for(&socket.path), session.saving_stopped);
+    if session.saving_stopped {
+        log::warn(
+            "daemon.state.not_saving",
+            fields! {
+                "path" => persister.path().display(),
+                "impact" => "the daemon handing over saved nothing over this file, and neither \
+                             does this one; a restart brings back what the file held",
+                "check" => "the handing daemon's log for why it stopped saving",
+            },
+        );
+    }
     let saved = Saved {
         persister: Arc::clone(&persister),
         settings: Some(state.settings.clone()),

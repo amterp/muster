@@ -976,6 +976,10 @@ message Handoff {
     bytes state = 1;
     // What the app last sent (SendManifests).
     repeated Manifest app_manifests = 2;
+    // The daemon handing over writes nothing to the state file: it is a newer daemon's, one it
+    // could not read or move aside, or one whose unrestored tabs it could not keep a copy of. The
+    // new daemon writes nothing to it either.
+    bool saving_stopped = 3;
   }
 
   message Pane {
