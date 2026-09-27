@@ -887,6 +887,7 @@ impl Session {
                 P::Move(moved) => self.move_pane(moved),
                 P::Rename(rename) => self.rename_pane(rename),
                 P::Report(report) => self.report(report),
+                P::Seen(seen) => self.seen(&seen.panes),
                 P::Read(read) => match self.pane_index(&read.pane) {
                     None => Reply::not_there(format!("no pane {} on this daemon", read.pane)),
                     Some(index) => {
@@ -1271,6 +1272,26 @@ impl Session {
         Reply::done()
     }
 
+    fn seen(&mut self, panes: &[String]) -> Reply {
+        if let Some(missing) = panes.iter().find(|pane| self.pane_index(pane).is_none()) {
+            return Reply::not_there(format!("no pane {missing} on this daemon"));
+        }
+        let mut cleared = Vec::new();
+        for pane in &mut self.panes {
+            if pane.record.finished_unseen && panes.contains(&pane.record.pane) {
+                pane.record.finished_unseen = false;
+                cleared.push(pane.record.clone());
+            }
+        }
+        if cleared.is_empty() {
+            return Reply::already();
+        }
+        for record in cleared {
+            self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
+        }
+        Reply::done()
+    }
+
     fn close_pane(&mut self, pane: &str) -> Reply {
         if self.pane_index(pane).is_none() {
             return Reply::not_there(format!("no pane {pane} on this daemon"));
@@ -1329,6 +1350,11 @@ impl Session {
                     if record.agent.is_some() && record.agent != agent {
                         record.facts = None;
                     }
+                    record.finished_unseen = finished_unseen(
+                        (record.agent.as_deref(), record.agent_state()),
+                        (agent.as_deref(), state),
+                        record.finished_unseen,
+                    );
                     record.agent = agent;
                     record.set_agent_state(state);
                     let record = record.clone();
@@ -2116,6 +2142,24 @@ fn node_record(node: &Node) -> proto::Node {
     proto::Node { node: Some(node) }
 }
 
+/// Whether a pane's agent has finished something nobody has seen, once its detection goes from
+/// `before` to `after`. An agent that was working or waiting on you has finished when it goes
+/// idle or leaves the pane, which is how a crash or a one-shot run ends; working or waiting
+/// again is new work, which a view shows as that instead. An idle agent leaving changes nothing.
+fn finished_unseen(
+    before: (Option<&str>, proto::AgentState),
+    after: (Option<&str>, proto::AgentState),
+    was: bool,
+) -> bool {
+    use proto::AgentState::{Blocked, Idle, Working};
+    let busy = |state| matches!(state, Working | Blocked);
+    if after.0.is_some() && busy(after.1) {
+        return false;
+    }
+    let stopped = after.1 == Idle || after.0 != before.0;
+    was || (before.0.is_some() && busy(before.1) && stopped)
+}
+
 /// The first of `panes` that none of `tabs` holds.
 fn in_no_tab<'a>(
     mut panes: impl Iterator<Item = &'a str>,
@@ -2171,6 +2215,26 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn an_agent_finishes_when_it_stops_working_or_waiting_by_going_idle_or_leaving() {
+        use proto::AgentState::{Blocked, Idle, Unknown, Working};
+        let claude = Some("claude");
+        let finished = |before, after| finished_unseen(before, after, false);
+        assert!(finished((claude, Working), (claude, Idle)), "a turn ends");
+        assert!(finished((claude, Blocked), (claude, Idle)), "a prompt answered, then idle");
+        assert!(finished((claude, Working), (None, Unknown)), "it ended while working");
+        assert!(finished((claude, Blocked), (None, Unknown)), "it ended waiting on you");
+        assert!(!finished((claude, Idle), (None, Unknown)), "an idle agent quit");
+        assert!(!finished((claude, Working), (claude, Blocked)), "waiting on you is not done");
+        assert!(!finished((None, Unknown), (claude, Idle)), "an agent appearing");
+        assert!(!finished((claude, Idle), (claude, Working)));
+
+        assert!(finished_unseen((claude, Idle), (None, Unknown), true), "kept until seen");
+        assert!(!finished_unseen((claude, Idle), (claude, Working), true), "new work clears it");
+        assert!(!finished_unseen((claude, Idle), (claude, Blocked), true), "so does a prompt");
+        assert!(!finished_unseen((claude, Idle), (Some("codex"), Working), true));
     }
 
     #[test]

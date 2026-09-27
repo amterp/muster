@@ -377,3 +377,69 @@ fn a_working_agent_stays_working_across_a_handoff() {
         (Some("claude".to_string()), proto::AgentState::Working)
     );
 }
+
+fn finished_unseen(control: &mut Control, pane: &str) -> bool {
+    snapshot(control).panes.into_iter().find(|record| record.pane == pane).unwrap().finished_unseen
+}
+
+fn seen(control: &mut Control, panes: &[&str], outcome: proto::Outcome) {
+    let seen =
+        proto::pane_request::Seen { panes: panes.iter().map(|pane| (*pane).to_string()).collect() };
+    expect(control, pane(proto::pane_request::Request::Seen(seen)), outcome);
+}
+
+/// An agent that stops working with nobody looking has finished something unseen. The daemon
+/// keeps that until somebody sees the pane, so it outlives the window that was not looking, and
+/// every client connecting later hears it.
+#[test]
+fn a_finish_nobody_has_seen_is_kept_until_somebody_sees_it() {
+    let home = Home::new("unseen", &[("claude.toml", PROBE_MANIFEST)], &["claude"]);
+    let daemon = home.daemon();
+    let mut control = daemon.connect();
+    let mut input = Input::connect(daemon.socket_path());
+    run_agent(&mut control, &mut input, "p1", &home.agent("claude"));
+    until_detected(&mut control, "p1", Some("claude"), proto::AgentState::Idle);
+    assert!(!finished_unseen(&mut control, "p1"), "an agent appearing has finished nothing");
+
+    settle(&mut control, &mut input, "working", proto::AgentState::Working);
+    settle(&mut control, &mut input, "idle", proto::AgentState::Idle);
+    assert!(finished_unseen(&mut control, "p1"));
+    drop(control);
+    let mut control = daemon.connect();
+    assert!(finished_unseen(&mut control, "p1"), "a client connecting later hears it");
+
+    seen(&mut control, &["p1"], proto::Outcome::Done);
+    assert!(!finished_unseen(&mut control, "p1"));
+    seen(&mut control, &["p1"], proto::Outcome::AlreadySo);
+    seen(&mut control, &["p1", "p9"], proto::Outcome::NotThere);
+
+    settle(&mut control, &mut input, "blocked", proto::AgentState::Blocked);
+    settle(&mut control, &mut input, "idle", proto::AgentState::Idle);
+    assert!(finished_unseen(&mut control, "p1"), "a prompt answered, then idle");
+    settle(&mut control, &mut input, "working", proto::AgentState::Working);
+    assert!(!finished_unseen(&mut control, "p1"), "working again is not done");
+
+    type_line(&mut input, "p1", "quit");
+    until_detected(&mut control, "p1", None, proto::AgentState::Unknown);
+    assert!(finished_unseen(&mut control, "p1"), "it ended while working");
+}
+
+/// What nobody has seen yet is still unseen after a handoff, since the pane's record goes over
+/// whole.
+#[test]
+fn a_finish_nobody_has_seen_is_still_unseen_after_a_handoff() {
+    let home = Home::new("unseen-handoff", &[("claude.toml", PROBE_MANIFEST)], &["claude"]);
+    let mut daemon = home.daemon();
+    let mut control = daemon.connect();
+    let mut input = Input::connect(daemon.socket_path());
+    run_agent(&mut control, &mut input, "p1", &home.agent("claude"));
+    until_detected(&mut control, "p1", Some("claude"), proto::AgentState::Idle);
+    settle(&mut control, &mut input, "working", proto::AgentState::Working);
+    settle(&mut control, &mut input, "idle", proto::AgentState::Idle);
+    assert!(finished_unseen(&mut control, "p1"));
+
+    let answer = daemon.replace(None);
+    assert_eq!(answer.outcome(), proto::Outcome::Done, "{}", answer.reason);
+
+    assert!(finished_unseen(&mut daemon.connect(), "p1"));
+}

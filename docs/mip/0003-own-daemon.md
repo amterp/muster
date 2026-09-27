@@ -189,7 +189,8 @@ one machine is unreachable, that machine's part returns as a tab of its own when
 because its processes are still running.
 
 **Per pane**: its name, cwd, the command it was started with, its title, its agent and agent
-state, whether its process is alive, and what its agent has said about itself.
+state, whether its agent finished something nobody has seen, whether its process is alive, and
+what its agent has said about itself.
 
 **An agent's own facts.** The agent in a pane can report how full its context window is, how many
 sub-agents it has running, its model, what its session has cost, and up to sixteen other named
@@ -684,8 +685,17 @@ match.
 priority, a region of the screen and a matcher (substrings, regexes, per-line regexes, nested
 all/any/not). Regions are named slices of the bottom of the screen and of the OSC title and
 progress. The highest-priority matching rule wins; a known agent with no matching rule is idle; an
-unknown process is unknown. The daemon reports four states, working, blocked, idle and unknown,
-and Muster derives `done` from seen-ness, as it already does.
+unknown process is unknown. The daemon reports four states, working, blocked, idle and unknown.
+
+**Done is the daemon's fact.** Done is idle plus unseen, and only the daemon can know it for
+every window at once, or for no window at all: a pane whose agent finished while no Muster was
+open used to come back idle. So a pane's record carries `finished_unseen`, set when its agent
+stops working or waiting on you, by going idle or by ending, and cleared when the agent works or
+waits on you again, or when a window with the keyboard shows the pane and says so with
+`PaneRequest.Seen`. The first window to see it clears it for all of them. The daemon keeps it for
+as long as it runs and hands it over with the record, and never writes it to the state file,
+since a restored pane has no agent to have finished anything. A window showing the pane when the
+fact arrives sends `Seen` at once, and draws the pane as seen meanwhile.
 
 **When.** A pane is checked every 500 ms with no agent identified and every 300 ms with one. A
 newly identified agent gets three seconds of grace. Working to idle is debounced: an idle that
