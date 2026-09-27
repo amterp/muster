@@ -1,0 +1,22 @@
+{
+  "_v": 3,
+  "alias": "keep-detection",
+  "alias_explicit": false,
+  "area": [
+    "backend",
+    "testing"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1790482013050,
+  "creator": "Alexander Terp",
+  "description": "Found in MIP-3 round 2 (a_2XJ1gk34C): herdr v0.8.0's bundled manifests were already stale - Claude Code 2.1.283's working spinner is now half-circles (U+25D0-25D3), which the bundled claude.toml reads as idle. herdr itself stays correct only because it fetches a remote catalog (herdr.dev/agent-detection/index.toml) that MIP-3 deliberately did not port. So muster-detect vendored the catalog's current versions for 8 agents. That fixes today and leaves the stream of fixes (herdr's changelog has ~60 detection entries) with nobody pulling it. A small tool (e.g. tools/sync-manifests) that fetches the catalog, filters to manifests whose min_engine_version muster-detect supports, shows the diff, and writes them into crates/muster-detect/manifests/ with provenance, turns a re-sync into a reviewed commit. The recorded fixtures (corpus agent-detection-recorded.json) are what catch a regression. This reads public data; nothing is sent upstream. Consider also refreshing the recorded Claude Code fixtures when its version moves.",
+  "id": "a_2XO9XaBwG",
+  "parent": "a_2XJ1fUIyr",
+  "position": "ar",
+  "title": "Keep detection manifests current: a tool that re-syncs them from herdr's catalog",
+  "type": "chore",
+  "updated_at_millis": 1790482013050,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1790482013050}
+  ]
+}

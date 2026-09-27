@@ -5,18 +5,19 @@
   "area": [
     "backend"
   ],
-  "column": "in-progress",
+  "column": "done",
   "created_at_millis": 1790469794804,
   "creator": "Alexander Terp",
   "description": "MIP-3 section 8. A pure library, `muster-detect`: screen text, OSC title/progress and foreground-process facts in, an agent and a state out. No PTY, no socket; the daemon drives it.\n\nIt is a port of herdr v0.8.0 (Apache-2.0), four parts, about 4-5k lines on herdr's side:\n- the manifest evaluator, `src/detect/manifest.rs` (1,514 production lines; tests in `manifest/tests.rs`). Regions (`whole_recent`, `bottom_lines(n)`, `prompt_box_body`, `osc_title`, `osc_progress`, the Codex marker regions...), case-folded `contains`, per-line `line_regex`, nested all/any/not, priority with first-rule-wins ties, idle fallback for a known agent, engine-version gate. Skip the remote catalog and `agent.explain`;\n- the publish state machine, `src/pane.rs` (~623-930, and the variant real panes use ~2089-2460) and `src/pane/agent_detection.rs`: 500/300/100 ms cadence, 3 s grace, working-to-idle debounce (three checks 100 ms apart or 700 ms, unless a visible idle/blocked rule matched), `skip_state_update`, skip unchanged screens, idle on return to the shell;\n- detection text and OSC capture: `src/pane/terminal.rs` (~2355, last N rows), the agent parts of `src/pane/osc.rs`;\n- process identification: `src/detect/mod.rs:206-600`, `src/platform/macos.rs` (~255-380: `e_tpgid`, `proc_listpids(PROC_PGRP_ONLY)`, `KERN_PROCARGS2`) and the Linux `/proc` equivalent; interpreter unwrapping for node/bun/python/shells; a `MUSTER_AGENT` env hint replaces `HERDR_AGENT`.\n\nDifferences from herdr the MIP asks for: the agent list is data (a manifest names its executables) rather than a compiled enum; four states only (Muster derives `done`); manifests are built in and also accepted from the app at connect; overrides in `~/.muster/agent-detection/` win.\n\nVendor all 19 manifests (`src/detect/manifests/*.toml`, 1,187 lines) and record them in `licenses/` and `tools/licenses.py`'s output. Port herdr's detection tests with the code, and add recorded screens from real harnesses at named versions as fixtures. Timing should be injectable so the state machine is testable without sleeping.\n\nWorth knowing: six agents (pi, omp, mastracode, opencode, kilo, kimi) take lifecycle state from hooks in herdr, so their manifests were not tuned to stand alone. Muster does not use herdr's hooks today, so this is no regression.",
   "id": "a_2XJ1gk34C",
   "parent": "a_2XJ1fUIyr",
-  "position": "Zw",
+  "position": "Zs",
   "title": "muster-detect: port herdr's agent detection",
   "type": "feature",
-  "updated_at_millis": 1790479318684,
+  "updated_at_millis": 1790482689227,
   "history": [
     {"field":"column","value":"backlog-hi","at":1790469794804},
-    {"field":"column","value":"in-progress","at":1790479318684}
+    {"field":"column","value":"in-progress","at":1790479318684},
+    {"field":"column","value":"done","at":1790482689227}
   ]
 }
