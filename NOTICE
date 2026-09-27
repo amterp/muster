@@ -65,18 +65,19 @@ Muster's source also carries herdr code, under the same license. The crate
 crates/muster-detect ports herdr v0.8.0's agent detection, and changes it:
 src/manifest.rs and src/manifests.rs port src/detect/manifest.rs and the version
 type in src/detect/manifest_update.rs; src/identify.rs ports the process
-identification in src/detect/mod.rs and src/pane.rs; src/process/ ports the
-macOS and Linux probes in src/platform/; src/osc.rs ports the OSC 9 capture in
-src/pane/osc.rs; src/detector.rs ports the detection loop in src/pane.rs and
-src/pane/agent_detection.rs. Each of those files names what it ports and says
-that it was changed. crates/muster-detect/manifests/ holds herdr's nineteen
-detection manifests. Eleven are v0.8.0's own, from src/detect/manifests/. Eight
-are the newer versions herdr's manifest catalog (https://herdr.dev/agent-detection/)
-serves, as herdr v0.8.0 fetched them onto the machine Muster was developed on:
-claude 2026.09.11.1, cline 2026.09.11.1, codex 2026.09.23.1, copilot
-2026.08.29.1 (github-copilot.toml), cursor 2026.08.03.1, grok 2026.09.18.1, kiro
-2026.09.19.1 and pi 2026.09.14.1. All are byte for byte except pi.toml and
-opencode.toml, which each open with a comment saying what Muster changed.
+identification in src/detect/mod.rs and src/pane.rs; src/process.rs and
+src/process/ port the macOS and Linux probes in src/platform/; src/osc.rs ports
+the OSC 9 capture in src/pane/osc.rs; src/detector.rs ports the detection loop
+in src/pane.rs and src/pane/agent_detection.rs. Each of those files names what
+it ports and says that it was changed. crates/muster-detect/manifests/ holds
+herdr's nineteen detection manifests. Eleven are v0.8.0's own, from
+src/detect/manifests/. Eight are the newer versions herdr's manifest catalog
+(https://herdr.dev/agent-detection/) serves, as herdr v0.8.0 fetched them onto
+the machine Muster was developed on: claude 2026.09.11.1, cline 2026.09.11.1,
+codex 2026.09.23.1, copilot 2026.08.29.1 (github-copilot.toml), cursor
+2026.08.03.1, grok 2026.09.18.1, kiro 2026.09.19.1 and pi 2026.09.14.1. All are
+byte for byte except pi.toml and opencode.toml, which each open with a comment
+saying what Muster changed.
 
 Muster links swift-protobuf (https://github.com/apple/swift-protobuf), licensed
 under the Apache License, Version 2.0, at the version pinned in
