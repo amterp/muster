@@ -10,7 +10,9 @@ use sha2::{Digest, Sha256};
 
 /// The messages a daemon writes into its persisted state as they are, so that a setting added
 /// to `Settings` is kept across a restart without anyone remembering to. A new message a
-/// setting uses goes here too.
+/// setting uses goes here too; a new enum needs nothing, since enum fields are `i32`s, but a
+/// oneof inside a persisted message is a Rust enum of its own and needs the same derive through
+/// `enum_attribute`. Derived only with the `serde` feature, which only the daemon enables.
 const PERSISTED: [&str; 5] = [
     ".muster.daemon.Settings",
     ".muster.daemon.Shell",
@@ -28,12 +30,14 @@ fn main() {
     let descriptors = protox::compile([&proto], [root]).expect("the schema compiles");
     let mut config = prost_build::Config::new();
     config.skip_protoc_run();
-    for message in PERSISTED {
-        // Defaults for what a file written before a field existed does not hold.
-        config.message_attribute(
-            message,
-            "#[derive(serde::Serialize, serde::Deserialize)] #[serde(default)]",
-        );
+    if std::env::var_os("CARGO_FEATURE_SERDE").is_some() {
+        for message in PERSISTED {
+            // Defaults for what a file written before a field existed does not hold.
+            config.message_attribute(
+                message,
+                "#[derive(serde::Serialize, serde::Deserialize)] #[serde(default)]",
+            );
+        }
     }
     config.compile_fds(descriptors).expect("the schema generates");
 

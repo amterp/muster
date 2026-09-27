@@ -11,7 +11,7 @@ The Rust set is every crate reachable along a normal dependency edge from `muste
 `muster-cli` or `muster-bridge`, resolved for `aarch64-apple-darwin`. Crates that only run at
 build time or under `cargo test` are not here, because they are not redistributed.
 
-**61 Rust crates** and **1 Swift package(s)**.
+**56 Rust crates** and **1 Swift package(s)**.
 
 ## What is in the binaries
 
@@ -39,14 +39,11 @@ build time or under `cargo test` are not here, because they are not redistribute
 | crypto-common | 0.1.7 | MIT OR Apache-2.0 | https://github.com/RustCrypto/traits |
 | digest | 0.10.7 | MIT OR Apache-2.0 | https://github.com/RustCrypto/traits |
 | either | 1.17.0 | MIT OR Apache-2.0 | https://github.com/rayon-rs/either |
-| equivalent | 1.0.2 | Apache-2.0 OR MIT | https://github.com/indexmap-rs/equivalent |
 | errno | 0.3.14 | MIT OR Apache-2.0 | https://github.com/lambda-fairy/rust-errno |
 | flexid | 0.1.0 | MIT | https://github.com/amterp/flexid-rs |
 | generic-array | 0.14.7 | MIT | https://github.com/fizyk20/generic-array.git |
 | getrandom | 0.4.3 | MIT OR Apache-2.0 | https://github.com/rust-random/getrandom |
-| hashbrown | 0.17.1 | MIT OR Apache-2.0 | https://github.com/rust-lang/hashbrown |
 | heck | 0.5.0 | MIT OR Apache-2.0 | https://github.com/withoutboats/heck |
-| indexmap | 2.14.0 | Apache-2.0 OR MIT | https://github.com/indexmap-rs/indexmap |
 | is_terminal_polyfill | 1.70.2 | MIT OR Apache-2.0 | https://github.com/polyfill-rs/is_terminal_polyfill |
 | itertools | 0.13.0 | MIT OR Apache-2.0 | https://github.com/rust-itertools/itertools |
 | itoa | 1.0.18 | MIT OR Apache-2.0 | https://github.com/dtolnay/itoa |
@@ -57,9 +54,7 @@ build time or under `cargo test` are not here, because they are not redistribute
 | prost-derive | 0.14.4 | Apache-2.0 | https://github.com/tokio-rs/prost |
 | quote | 1.0.47 | MIT OR Apache-2.0 | https://github.com/dtolnay/quote |
 | rustix | 1.1.4 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | https://github.com/bytecodealliance/rustix |
-| serde | 1.0.229 | MIT OR Apache-2.0 | https://github.com/serde-rs/serde |
 | serde_core | 1.0.229 | MIT OR Apache-2.0 | https://github.com/serde-rs/serde |
-| serde_derive | 1.0.229 | MIT OR Apache-2.0 | https://github.com/serde-rs/serde |
 | serde_json | 1.0.151 | MIT OR Apache-2.0 | https://github.com/serde-rs/json |
 | serde_spanned | 1.1.1 | MIT OR Apache-2.0 | https://github.com/toml-rs/toml |
 | sha2 | 0.10.9 | MIT OR Apache-2.0 | https://github.com/RustCrypto/hashes |
@@ -316,9 +311,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### base64 0.22.1 and 14 others - LICENSE, LICENSE-APACHE
+### base64 0.22.1 and 11 others - LICENSE, LICENSE-APACHE
 
-base64 0.22.1, bitflags 2.13.1, cfg-if 1.0.4, either 1.17.0, equivalent 1.0.2, errno 0.3.14, hashbrown 0.17.1, heck 0.5.0, indexmap 2.14.0, itertools 0.13.0, prost 0.14.4, prost-derive 0.14.4, rustix 1.1.4, unicase 2.9.0, unicode-width 0.2.2
+base64 0.22.1, bitflags 2.13.1, cfg-if 1.0.4, either 1.17.0, errno 0.3.14, heck 0.5.0, itertools 0.13.0, prost 0.14.4, prost-derive 0.14.4, rustix 1.1.4, unicase 2.9.0, unicode-width 0.2.2
 
 ```
 Apache License
@@ -524,9 +519,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### anyhow 1.0.104 and 12 others - LICENSE-MIT
+### anyhow 1.0.104 and 10 others - LICENSE-MIT
 
-anyhow 1.0.104, itoa 1.0.18, proc-macro2 1.0.107, quote 1.0.47, rustix 1.1.4, serde 1.0.229, serde_core 1.0.229, serde_derive 1.0.229, serde_json 1.0.151, syn 2.0.119, syn 3.0.3, unicode-ident 1.0.24, zmij 1.0.23
+anyhow 1.0.104, itoa 1.0.18, proc-macro2 1.0.107, quote 1.0.47, rustix 1.1.4, serde_core 1.0.229, serde_json 1.0.151, syn 2.0.119, syn 3.0.3, unicode-ident 1.0.24, zmij 1.0.23
 
 ```
 Permission is hereby granted, free of charge, to any
@@ -554,9 +549,9 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### anyhow 1.0.104 and 12 others - LICENSE-APACHE
+### anyhow 1.0.104 and 10 others - LICENSE-APACHE
 
-anyhow 1.0.104, itoa 1.0.18, libc 0.2.189, proc-macro2 1.0.107, quote 1.0.47, serde 1.0.229, serde_core 1.0.229, serde_derive 1.0.229, serde_json 1.0.151, syn 2.0.119, syn 3.0.3, unicode-ident 1.0.24, utf8parse 0.2.2
+anyhow 1.0.104, itoa 1.0.18, libc 0.2.189, proc-macro2 1.0.107, quote 1.0.47, serde_core 1.0.229, serde_json 1.0.151, syn 2.0.119, syn 3.0.3, unicode-ident 1.0.24, utf8parse 0.2.2
 
 ```
 Apache License
@@ -1095,66 +1090,6 @@ THE SOFTWARE.
 Copyright (c) 2006-2009 Graydon Hoare
 Copyright (c) 2009-2013 Mozilla Foundation
 Copyright (c) 2016 Artyom Pavlov
-
-Permission is hereby granted, free of charge, to any
-person obtaining a copy of this software and associated
-documentation files (the "Software"), to deal in the
-Software without restriction, including without
-limitation the rights to use, copy, modify, merge,
-publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software
-is furnished to do so, subject to the following
-conditions:
-
-The above copyright notice and this permission notice
-shall be included in all copies or substantial portions
-of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
-ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
-TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
-SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
-IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-DEALINGS IN THE SOFTWARE.
-```
-
-### equivalent 1.0.2 - LICENSE-MIT
-
-```
-Copyright (c) 2016--2023
-
-Permission is hereby granted, free of charge, to any
-person obtaining a copy of this software and associated
-documentation files (the "Software"), to deal in the
-Software without restriction, including without
-limitation the rights to use, copy, modify, merge,
-publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software
-is furnished to do so, subject to the following
-conditions:
-
-The above copyright notice and this permission notice
-shall be included in all copies or substantial portions
-of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
-ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
-TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
-SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
-IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-DEALINGS IN THE SOFTWARE.
-```
-
-### indexmap 2.14.0 - LICENSE-MIT
-
-```
-Copyright (c) 2016--2017
 
 Permission is hereby granted, free of charge, to any
 person obtaining a copy of this software and associated
@@ -1787,36 +1722,6 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-```
-
-### hashbrown 0.17.1 - LICENSE-MIT
-
-```
-Copyright (c) 2016 Amanieu d'Antras
-
-Permission is hereby granted, free of charge, to any
-person obtaining a copy of this software and associated
-documentation files (the "Software"), to deal in the
-Software without restriction, including without
-limitation the rights to use, copy, modify, merge,
-publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software
-is furnished to do so, subject to the following
-conditions:
-
-The above copyright notice and this permission notice
-shall be included in all copies or substantial portions
-of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
-ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
-TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
-SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
-IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-DEALINGS IN THE SOFTWARE.
 ```
 
 ### flexid 0.1.0 - LICENSE

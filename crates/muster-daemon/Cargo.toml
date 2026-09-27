@@ -11,7 +11,7 @@ path = "src/main.rs"
 [dependencies]
 libc.workspace = true
 muster-core.workspace = true
-muster-daemon-proto.workspace = true
+muster-daemon-proto = { workspace = true, features = ["serde"] }
 muster-detect.workspace = true
 muster-frame.workspace = true
 muster-vt.workspace = true

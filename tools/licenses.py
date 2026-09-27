@@ -190,11 +190,39 @@ def shipped_packages(meta: dict) -> tuple[list[dict], set[str]]:
                 continue
             stack.append(dep["pkg"])
 
+    built = built_with(SHIPPED_ROOTS)
+    seen = {i for i in seen if (by_id[i]["name"], by_id[i]["version"]) in built}
     third_party = sorted(
         (by_id[i] for i in seen if by_id[i]["name"] not in workspace),
         key=lambda p: (p["name"].lower(), p["version"]),
     )
     return third_party, {by_id[i]["name"] for i in seen} & workspace
+
+
+def built_with(roots: tuple[str, ...]) -> set[tuple[str, str]]:
+    """Every package, as (name, version), that building `roots` alone compiles in.
+
+    cargo metadata resolves features for the whole workspace at once, so an optional
+    dependency one crate turns on - serde, which only muster-daemon asks of the
+    protocol crate - shows as an edge for every crate that uses the other. cargo
+    tree resolves them as a build of just these crates would."""
+    command = ["cargo", "tree", "--offline", "-e", "normal", "--target", TARGET]
+    command += ["--prefix", "none", "--format", "{p}"]
+    for root in roots:
+        command += ["-p", root]
+    out = subprocess.run(command, cwd=ROOT, capture_output=True, text=True)
+    if out.returncode != 0:
+        sys.exit(
+            "cargo tree failed, so which crates the shipped binaries build is unknown.\n"
+            "Impact: licenses/THIRD-PARTY.md cannot be written or verified.\n\n"
+            + out.stderr.strip()
+        )
+    built = set()
+    for line in out.stdout.splitlines():
+        words = line.split()
+        if len(words) >= 2 and words[1].startswith("v"):
+            built.add((words[0], words[1][1:]))
+    return built
 
 
 def shipped_vendored(meta: dict, shipped_crates: set[str]) -> list[dict]:

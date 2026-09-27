@@ -7,7 +7,12 @@ publish.workspace = true
 [dependencies]
 muster-frame.workspace = true
 prost.workspace = true
-serde.workspace = true
+serde = { workspace = true, optional = true }
+
+[features]
+# Serde for the messages a daemon writes into its persisted state. Only the daemon persists them,
+# so only the daemon turns this on, and no client of the protocol carries serde for nothing.
+serde = ["dep:serde"]
 
 [build-dependencies]
 prost-build = "0.14"
