@@ -254,6 +254,7 @@ message PaneRequest {
   message Report {
     string pane = 1;
     optional float context_used = 2;
+    // Empty removes the model.
     optional string model = 3;
     optional double cost_usd = 4;
     SubagentChange subagent = 5;

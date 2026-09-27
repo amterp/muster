@@ -11,12 +11,13 @@ use std::collections::HashMap;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::sync::mpsc;
 use std::time::Duration;
 
 use muster_daemon_proto::{self as proto, ConnectionKind, connection, pane_request};
 
-/// How long a report waits for its daemon. A hook that runs on every sub-agent and a statusline
-/// that runs on every message must not hold their harness up.
+/// How long a report waits for its daemon, from dialing to the answer. A hook that runs on every
+/// sub-agent and a statusline that runs on every message must not hold their harness up.
 const PATIENCE: Duration = Duration::from_secs(2);
 
 const USAGE: &str = "usage: muster-daemon report [--pane NAME] [--context-used PERCENT] \
@@ -24,7 +25,7 @@ const USAGE: &str = "usage: muster-daemon report [--pane NAME] [--context-used P
     [--fact KEY=VALUE]... [--clear]\n\n\
     Tells the daemon that owns this pane what the agent in it says about itself. The pane is \
     $MUSTER_PANE unless --pane names another, and the daemon is the one at \
-    $MUSTER_DAEMON_SOCKET. A fact with an empty value is removed; --clear forgets everything \
+    $MUSTER_DAEMON_SOCKET. An empty model or fact value removes it; --clear forgets everything \
     reported before, and applies first.";
 
 pub(crate) fn run(arguments: impl Iterator<Item = String>) -> ExitCode {
@@ -46,7 +47,7 @@ pub(crate) fn run(arguments: impl Iterator<Item = String>) -> ExitCode {
         );
         return ExitCode::FAILURE;
     };
-    match send(&socket, report) {
+    match send_within(socket, report, PATIENCE) {
         Ok(()) => ExitCode::SUCCESS,
         Err(problem) => {
             eprintln!("muster-daemon report: {problem}");
@@ -86,8 +87,16 @@ fn parse(
                 report.cost_usd =
                     Some(given.parse().map_err(|_| format!("--cost-usd {given} is not a number"))?);
             }
-            "--subagent-started" => report.set_subagent(proto::SubagentChange::Started),
-            "--subagent-stopped" => report.set_subagent(proto::SubagentChange::Stopped),
+            "--subagent-started" | "--subagent-stopped" => {
+                if report.subagent() != proto::SubagentChange::None {
+                    return Err("--subagent-started or --subagent-stopped, not both".to_string());
+                }
+                report.set_subagent(if argument == "--subagent-started" {
+                    proto::SubagentChange::Started
+                } else {
+                    proto::SubagentChange::Stopped
+                });
+            }
             "--fact" => {
                 let given = value("--fact")?;
                 let (key, value) =
@@ -106,11 +115,31 @@ fn parse(
     Ok(Parsed::Report(report))
 }
 
+/// Sends the report, giving up once `patience` has passed since it started.
+///
+/// On a thread of its own, so that one deadline covers dialing as well as every read and
+/// write: std cannot time out a Unix socket's connect, and timeouts per step would add up. A
+/// report still running when the deadline passes ends with the process.
+fn send_within(
+    socket: PathBuf,
+    report: pane_request::Report,
+    patience: Duration,
+) -> Result<(), String> {
+    let (done, finished) = mpsc::channel();
+    std::thread::Builder::new()
+        .name("report".to_string())
+        .spawn(move || {
+            let _ = done.send(send(&socket, report));
+        })
+        .map_err(|error| format!("could not start a thread to report from: {error}"))?;
+    finished
+        .recv_timeout(patience)
+        .unwrap_or_else(|_| Err(format!("the daemon did not answer within {patience:?}")))
+}
+
 fn send(socket: &std::path::Path, report: pane_request::Report) -> Result<(), String> {
     let mut stream = UnixStream::connect(socket)
         .map_err(|error| format!("no daemon at {}: {error}", socket.display()))?;
-    stream.set_read_timeout(Some(PATIENCE)).map_err(|error| error.to_string())?;
-    stream.set_write_timeout(Some(PATIENCE)).map_err(|error| error.to_string())?;
     connection::open(&mut stream, ConnectionKind::Control, "muster-daemon report")
         .map_err(|error| error.to_string())?;
     let pane = report.pane.clone();
@@ -173,5 +202,52 @@ mod tests {
         assert!(parsed(&["--cost-usd", "lots"], Some("p1")).unwrap_err().contains("--cost-usd"));
         assert!(parsed(&["--fact", "novalue"], Some("p1")).unwrap_err().contains("KEY=VALUE"));
         assert!(parsed(&["--model"], Some("p1")).unwrap_err().contains("needs a value"));
+        let both = parsed(&["--subagent-started", "--subagent-stopped"], Some("p1"));
+        assert!(
+            both.unwrap_err().contains("not both"),
+            "a sub-agent cannot start and stop at once"
+        );
+    }
+
+    /// A daemon that answers each step just inside a per-step timeout would hold a hook up for
+    /// the sum of them: the whole report shares one deadline.
+    #[test]
+    fn a_report_gives_up_once_its_one_deadline_passes() {
+        let socket =
+            std::env::temp_dir().join(format!("muster-report-{}.sock", std::process::id()));
+        let _ = std::fs::remove_file(&socket);
+        let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+        let step = Duration::from_millis(300);
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let _ = connection::receive::<proto::Hello>(&mut stream);
+            std::thread::sleep(step);
+            let welcome = proto::HelloAnswer {
+                answer: Some(proto::hello_answer::Answer::Welcome(proto::Welcome::default())),
+            };
+            let _ = connection::send(&mut stream, &welcome);
+            let Ok(Some(request)) = connection::receive::<proto::Request>(&mut stream) else {
+                return;
+            };
+            std::thread::sleep(step);
+            let answer = proto::Answer {
+                id: request.id,
+                outcome: proto::Outcome::Done.into(),
+                ..proto::Answer::default()
+            };
+            let _ = connection::send(
+                &mut stream,
+                &proto::ControlMessage {
+                    message: Some(proto::control_message::Message::Answer(answer)),
+                },
+            );
+        });
+
+        let started = std::time::Instant::now();
+        let sent = send_within(socket.clone(), parsed(&[], Some("p1")).unwrap(), step + step / 3);
+        let took = started.elapsed();
+        let _ = std::fs::remove_file(&socket);
+        assert!(sent.unwrap_err().contains("did not answer"));
+        assert!(took < step * 2, "the report waited {took:?}");
     }
 }

@@ -30,9 +30,10 @@ pub(crate) fn apply(
         }
         facts.context_used = Some(context_used);
     }
+    // Empty, as for any other fact, removes it.
     if let Some(model) = report.model {
         text("model", &model, MODEL_BYTES)?;
-        facts.model = Some(model);
+        facts.model = Some(model).filter(|model| !model.is_empty());
     }
     if let Some(cost_usd) = report.cost_usd {
         if !cost_usd.is_finite() || cost_usd < 0.0 {
@@ -113,6 +114,14 @@ mod tests {
         assert_eq!(back.as_ref().map(|facts| facts.subagents), Some(1));
         let none = started(back.as_ref(), proto::SubagentChange::Stopped);
         assert_eq!(started(none.as_ref(), proto::SubagentChange::Stopped), None);
+    }
+
+    #[test]
+    fn an_empty_model_clears_the_model() {
+        let set =
+            applied(None, Report { model: Some("Opus".into()), cost_usd: Some(1.0), ..report() });
+        let cleared = applied(Some(&set), Report { model: Some(String::new()), ..report() });
+        assert_eq!((cleared.model, cleared.cost_usd), (None, Some(1.0)));
     }
 
     #[test]
