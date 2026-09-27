@@ -8,9 +8,9 @@ use crate::Version;
 
 /// The protocol this build speaks.
 ///
-/// Bump `minor` when adding a request or an event a client may rely on. Bump `major` when a
-/// message stops meaning what it meant, and replace `proto/muster_daemon.v<major>.baseline.proto`
-/// in the same change (the `compatible` test says how).
+/// Bump `minor` with any change to the schema once a release has shipped the daemon, and `major`
+/// when a message stops meaning what it meant. `proto/muster_daemon.proto`'s header says how the
+/// baseline follows, and the `compatible` test holds the two together.
 pub const PROTOCOL: Version = Version { major: 1, minor: 0 };
 
 /// Whether two ends speaking these versions can talk.

@@ -444,12 +444,14 @@ of its own.
 **App and daemon can differ in version.** The app adopts a running daemon whose protocol version it
 supports, so an app upgrade does not restart any agent. The version is a major and a minor. A client
 talks only to a daemon of its own major, and the daemon refuses the handshake otherwise; the minor
-grows when a request or event is added, so a client can tell whether an adopted daemon knows a request
+grows with any change to the schema, so a client can tell whether an adopted daemon knows a request
 before sending it. A daemon handed a request it does not know answers refused, never misreads it.
 Within a major, a field keeps its number and type: `proto/muster_daemon.v<major>.baseline.proto` is the
-schema as that major was first published, and a test fails when the schema no longer reads it. Until a
-release ships the daemon, an incompatible change replaces the baseline; after that it means a new
-major.
+schema as the last minor was published, recording which version that was, and a test fails when the
+schema no longer reads it or the two versions disagree. The baseline moves forward with every minor
+that ships, because it protects only what it holds: a field added in one minor and deleted without
+reserving its number could otherwise come back with another type. Until a release ships the daemon, a
+change simply replaces the baseline; after that an incompatible change means a new major.
 
 ### 10. Replacing a running daemon: handoff
 

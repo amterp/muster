@@ -1,6 +1,8 @@
-// The daemon protocol's schema as major version 1 was first published: what the
-// `compatible` test in muster-daemon-proto holds muster_daemon.proto to. Never edited by
-// hand; muster_daemon.proto's header says when it is replaced.
+// The daemon protocol's schema as it was last published: what the `compatible` test in
+// muster-daemon-proto holds muster_daemon.proto to. A copy, never edited by hand;
+// muster_daemon.proto's header says when it is replaced.
+//
+// Version: 1.0
 //
 // What Muster says to muster-daemon, and what the daemon says back (MIP-3, section 9).
 //
@@ -41,16 +43,18 @@
 //
 // `Version.major` changes when a message stops meaning what it meant. A client talks only to a
 // daemon with its own major, and the daemon refuses the handshake otherwise. `Version.minor`
-// grows when a request or an event is added, so a client can tell whether a daemon it adopted
-// knows a request before sending it. A daemon handed a request it does not know answers
-// REFUSED; it never reads it as something else.
+// grows with any change to this schema, so a client can tell whether a daemon it adopted knows a
+// request before sending it. A daemon handed a request it does not know answers REFUSED; it
+// never reads it as something else.
 //
 // So a field keeps its number and its type for as long as the major lasts. Removing one means
-// reserving its number. `muster_daemon.v<major>.baseline.proto` beside this file is the schema
-// as that major was first published, and a test in muster-daemon-proto fails when anything in
-// it has moved here. Until a release ships the daemon, nothing has adopted this schema, so an
-// incompatible change replaces the baseline; from that release on, replacing the baseline is
-// bumping the major.
+// reserving its number. `muster_daemon.v<major>.baseline.proto` beside this file is the schema as
+// the last minor was published, and records which version that was. A test in
+// muster-daemon-proto fails when anything in the baseline has moved here, and when the two
+// versions disagree: a schema that differs from its baseline is the next minor, and each minor
+// that ships becomes the baseline before the next one starts. Until a release ships the daemon,
+// nothing has adopted this schema, so a change simply replaces the baseline; from that release
+// on, an incompatible change is a new major.
 
 syntax = "proto3";
 

@@ -61,9 +61,9 @@ Muster's principles, adapted to that evidence:
 
   muster-daemon, which replaces herdr (MIP-3), is built from this repo, so its wire cannot drift from the code under
   test. What can drift is the wire between two builds, because an app adopts whichever daemon is running. So
-  `proto/muster_daemon.v<major>.baseline.proto` records the schema as its major version was first published, and a
-  test in `muster-daemon-proto` fails when a field's number or type moved or a number was freed without being
-  reserved.
+  `proto/muster_daemon.v<major>.baseline.proto` records the schema as its last minor version was published, and a
+  test in `muster-daemon-proto` fails when a field's number or type moved, a number was freed without being
+  reserved, or the schema changed without its minor version moving past the baseline's.
 - **Inject at the seams the code already has, not by impersonating a daemon.** Three different things get called
   fault injection, and only one needs machinery. *Daemon state* - a blocked agent, fifteen panes, a pane whose
   program died - is driven through herdr's own API, which can produce all of it on request. *Daemon-internal
