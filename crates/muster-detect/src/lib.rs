@@ -10,8 +10,12 @@
 //! screen rules that classify it - built in, sent by the app, or overridden in
 //! `~/.muster/agent-detection/`.
 
+mod manifest;
+
 use std::fmt;
 use std::sync::Arc;
+
+pub use manifest::{Detection, ENGINE_VERSION, Input, Manifest, Version};
 
 /// What an agent is doing, as far as its screen says.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -58,4 +62,17 @@ impl fmt::Display for Agent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.0)
     }
+}
+
+/// The detection text for a pane: its active screen as `muster_vt::Terminal::text(0, rows - 1)`
+/// reads it - each row without trailing whitespace, trailing blank rows dropped, joined by
+/// `\n` - and ended with a newline, as herdr's was. The newline is part of what the manifests
+/// mean: a regex anchored with `$` against the whole region matches before it or not at all.
+pub fn screen_text(rows: &str) -> String {
+    let mut text = String::with_capacity(rows.len() + 1);
+    text.push_str(rows);
+    if !text.is_empty() {
+        text.push('\n');
+    }
+    text
 }
