@@ -80,7 +80,12 @@ fn replaced(daemon: &mut Daemon) {
 fn every_pane_survives_a_handoff_with_its_process_screen_and_place() {
     let mut daemon = daemon();
     let (mut control, _input) = two_panes(&daemon);
-    let before = snapshot(&mut control);
+    // Settled first: a shell's directory, as the kernel names it, can still be on its way.
+    let before = until_some("the pane records to settle", || {
+        let first = snapshot(&mut control);
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        (snapshot(&mut control).panes == first.panes).then_some(first)
+    });
     let texts: Vec<String> =
         ["p1", "p2"].iter().map(|name| read_text(&mut control, name, 0, 0).text).collect();
     let old = (daemon.pid(), control.welcome().instance);
