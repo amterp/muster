@@ -7,9 +7,8 @@
 //! is the flake this rule exists to prevent" - and a copy per file is how the guesswork
 //! spreads, because the way a test gets written is by copying the nearest one.
 //!
-//! In the neutral harness rather than beside either daemon, because tests against herdr and
-//! tests against muster-daemon both wait, and one copy is the point. `herdr-harness` re-exports
-//! it until the cut-over deletes that crate.
+//! In the neutral harness rather than beside a daemon, because it was written while tests ran
+//! against herdr and muster-daemon both, and one copy was the point.
 
 use std::path::Path;
 use std::sync::LazyLock;

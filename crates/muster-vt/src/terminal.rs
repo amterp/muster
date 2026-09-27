@@ -274,8 +274,8 @@ impl Terminal {
     /// Feeds bytes through the VT parser.
     ///
     /// Never fails, by libghostty's own contract: this input is untrusted by definition, so
-    /// malformed sequences are logged and dropped rather than propagated. A frame stream
-    /// that has gone wrong shows up as a wrong grid, which is what the snapshot then
+    /// malformed sequences are logged and dropped rather than propagated. A stream that has
+    /// gone wrong shows up as a wrong grid, which is what the snapshot then
     /// catches.
     pub fn write(&mut self, bytes: &[u8]) {
         if bytes.is_empty() {

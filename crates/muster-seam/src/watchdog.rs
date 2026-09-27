@@ -129,13 +129,13 @@ fn nanos(deadline: Duration) -> u64 {
 /// matters rather than merely being tidy.
 static WAITING: Mutex<Waiting> = Mutex::new(Waiting::new());
 
-/// The panes that owe a frame, on the same terms as `WAITING` beside it.
+/// The panes that owe output, on the same terms as `WAITING` beside it.
 static PAINTING: Mutex<Painting> = Mutex::new(Painting::new());
 
 static KNOCK: Condvar = Condvar::new();
 static WATCHING: AtomicBool = AtomicBool::new(false);
 
-/// How long a pane may owe a frame before its silence is worth reporting, in milliseconds.
+/// How long a pane may owe output before its silence is worth reporting, in milliseconds.
 ///
 /// Ten seconds, and the number is chosen by the false alarm rather than by the healthy case. A
 /// working pane answers a keystroke in milliseconds, so any deadline at all catches a freeze;
@@ -149,7 +149,7 @@ const PAINTING_DEADLINE_MS: u64 = 10_000;
 ///
 /// `MUSTER_PAINTING_DEADLINE_MS` overrides it and `0` switches the watch off, on the same terms
 /// as the two knobs beside it: a suite proving this end to end should not cost ten seconds of
-/// gate, and a run with no frames to wait for should be able to say so.
+/// gate, and a run with no output to wait for should be able to say so.
 static PAINTING_DEADLINE: LazyLock<u64> = LazyLock::new(|| {
     let Ok(spelled) = std::env::var("MUSTER_PAINTING_DEADLINE_MS") else {
         return PAINTING_DEADLINE_MS * 1_000_000;
@@ -200,9 +200,9 @@ pub(crate) fn typeable(pane: &PaneKey) {
     KNOCK.notify_all();
 }
 
-/// Something reached this pane, so it owes a frame.
+/// Something reached this pane, so it owes output.
 ///
-/// On the input path, so it does as little as it can: a pane that already owed a frame is not
+/// On the input path, so it does as little as it can: a pane that already owed output is not
 /// news, and knocking on every keystroke would wake the thread for a reading it has already
 /// taken.
 pub(crate) fn typed(pane: &PaneKey) {
@@ -297,8 +297,7 @@ fn watch() {
         // The other watch, from a lock taken and dropped on its own. A warning rather than an
         // error: severity here decides whether a closed sidebar is forced open, and this is a
         // condition that may clear by itself and can be raised about a pane that turns out to
-        // have been fine - where a pane too big for a frame knows exactly what is wrong with it
-        // and will not fix itself.
+        // have been fine.
         let painted = {
             let mut painting = poison::lock(&PAINTING, "painting");
             painting.reconcile(clock::monotonic_now(), painting_deadline)

@@ -17,10 +17,10 @@ use crate::{Trouble, environment};
 
 /// How long to wait for a window to answer.
 ///
-/// Long, because one of these requests is slow by design: `pane new --run` waits for the new
-/// pane's shell to draw a prompt before it types anything, and that wait belongs to the window
-/// rather than to whoever asked. Everything else answers in a millisecond, so this is a deadline
-/// against a wedged window and not a budget anything spends.
+/// A deadline against a wedged window rather than a budget anything spends: a window answers in
+/// milliseconds. Longer than the deadline a window gives another window it carries a request to
+/// (`muster-seam`'s `forward::PATIENCE`), so a hang there is answered by the window that asked,
+/// naming the one that did not.
 const PATIENCE: Duration = Duration::from_mins(1);
 
 /// Sends one request to a window and hands back what it said.
@@ -34,9 +34,8 @@ pub fn ask(
 
 /// The same, under a deadline the caller sets.
 ///
-/// The shape `HerdrClient::request`/`request_within` already uses, and here for a narrower
-/// reason: [`PATIENCE`] is a minute, so what a lost answer exits with cannot be proved by a test
-/// that has to wait one out.
+/// Here because [`PATIENCE`] is a minute, so what a lost answer exits with cannot be proved by a
+/// test that has to wait one out.
 pub fn ask_within(
     request: &Request,
     socket: Option<&str>,

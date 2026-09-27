@@ -81,7 +81,7 @@ pub enum Cleared {
     /// A bridge dialed in, so the pane can be typed into.
     Dialed,
 
-    /// The pane is gone, or its daemon said its terminal is.
+    /// The pane is gone, or its daemon said it is.
     Closed,
 
     /// The window stopped drawing the pane, and a pane nothing draws is not accused.
@@ -181,7 +181,7 @@ impl Waiting {
     /// bridge, and a pane that stays dark for five seconds after a refused attach has a remedy
     /// where a pane at launch has only a deadline.
     ///
-    /// Except when the daemon said the terminal no longer exists. No bridge can dial in for that
+    /// Except when the daemon said the pane no longer exists. No bridge can dial in for that
     /// pane, so there is nothing to wait for - and a wait started here accused the network, five
     /// seconds later, about a pane somebody had just closed (kan a_2LMpvavhA).
     pub fn ended(&mut self, pane: PaneKey, at: u64, ended: Ended) {
@@ -210,7 +210,7 @@ impl Waiting {
 
     /// Which panes the window is drawing, as the view answered it.
     ///
-    /// What this raises is that a pane renders and discards everything typed into it. A pane
+    /// What this raises is that a pane shows nothing of what is typed into it. A pane
     /// nothing is drawing renders nothing, so the sentence is false about it however long its
     /// socket has been bound - and a watch that says it anyway is wrong on its own terms.
     /// That is the whole reason this exists; a zoomed tab is only where somebody noticed,
@@ -361,7 +361,7 @@ impl Waiting {
 /// One key per pane rather than one for the window, because that is the shape of the
 /// condition - fourteen panes working and one deaf is the case worth reporting precisely, and
 /// a window-wide answer would either accuse the working panes or say nothing while one of
-/// them swallowed everything typed into it.
+/// them showed nothing of what was typed into it.
 ///
 /// Public because two other things have to spell it the same way: the corpus, which names the
 /// keys it expects, and the seam's own test, which reads them back off the wire.
@@ -409,7 +409,7 @@ fn detail(pane: &PaneKey, deadline: u64, last: Option<&Ended>) -> String {
         // often a window somebody is looking at. Every replacement does.
         Some(Ending::Refused) => format!(
             "The pane {pane} has been dark for over {waited}: something else was drawing it when \
-             this window asked, and the daemon lets one client draw a pane at a time. The agent \
+             this window asked, and the daemon lets one bridge draw a pane at a time. The agent \
              behind it is untouched and every other pane in the window is unaffected. {reattach} \
              takes it over from whatever holds it."
         ),

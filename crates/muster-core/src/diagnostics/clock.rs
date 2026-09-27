@@ -3,7 +3,7 @@
 /// Nanoseconds on a clock that only moves forward, shared by every process on the machine.
 ///
 /// The log spans the app and one bridge per pane, and the questions worth timing cross
-/// that boundary: a keystroke leaves the app, a frame carrying its echo arrives at a
+/// that boundary: a keystroke leaves the app, the output carrying its echo arrives at a
 /// bridge. Wall-clock timestamps cannot answer those. They resolve milliseconds, the hops
 /// are tenths of one, and they are free to jump backwards when the system adjusts time.
 ///

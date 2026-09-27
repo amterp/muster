@@ -12,7 +12,7 @@ out what it did.
 
     local  connected
       this machine · started by Muster · 3 panes in ~/src/muster
-      /Users/you/.config/herdr/sessions/muster/herdr.sock
+      /Users/you/.muster/daemon/release.sock
 
 The tabs come first because that is what the window is: it holds an ordered list of them and
 shows one. The machines follow rather than heading the list, because a tab can hold panes on more
@@ -220,34 +220,31 @@ One entry per machine this window is attached to.
 - `host` is where it runs, empty for this machine.
 - `socket` is the path this window reaches it on. Over SSH that is the near end of the forward
   rather than the path over there, because it is the one you could dial from here.
-  `HERDR_SOCKET_PATH=<socket> herdr server stop` ends that daemon and not the one beside it.
 - `started_by_muster` says whether this window started the daemon or attached to one that was
   already answering. The second is ordinary and is the one worth knowing: a Muster launched
   today adopts a daemon started yesterday if it is still answering, so what is in it may
   predate the window.
 - `panes` and `directories` say how much it holds and where.
 
-Muster is the only thing that can answer the last three. You can ask a socket what it holds,
-and you can ask the OS which process holds a socket, and nothing gets from one to the other -
-herdr has no method that answers "which process are you". So pairing a herdr process with the
-work inside it is Muster's to keep, because Muster either started the daemon or chose to attach
-to it. Without it the choice is made on age, and age picks the wrong process: of twenty daemons
-on one machine, the one holding somebody's live agent was neither the oldest nor the youngest.
+The last three are here so that ending a daemon is a decision about what it holds rather than about
+its age. Age picks the wrong process: of twenty daemons measured on one machine, when Muster ran
+herdr, the one holding somebody's live agent was neither the oldest nor the youngest.
 
 # The daemons on this machine
 
 `muster window` is about one window. It cannot say which daemons are on this machine that no
-window is attached to, and those are the ones that accumulate: measured on one machine, twenty
-herdr daemons alive, nineteen holding nothing, and one holding somebody's live agent.
+window is attached to, and those are the ones that accumulate: measured on one machine when
+Muster ran herdr, twenty daemons alive, nineteen holding nothing, and one holding somebody's live
+agent.
 
     muster daemons
 
     answering · 3 pane(s) in ~/src/muster, ~/src/rad · this window
-      /Users/you/.config/herdr/sessions/muster/herdr.sock
+      /Users/you/.muster/daemon/release.sock
     answering · holding nothing
-      /private/tmp/muster-smoke/driving/config/herdr/sessions/muster/herdr.sock
+      /Users/you/.muster/daemon/dev-3f9a0c41be27.sock
 
-    End one with: HERDR_SOCKET_PATH=<socket> herdr server stop
+    End one with: kill $(lsof -t <socket>.lock)
 
 Every row is a daemon **Muster started**, checked by dialing its socket rather than believed
 from the file. A daemon Muster adopted is somebody else's to account for; `muster window` names

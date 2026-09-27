@@ -8,8 +8,8 @@
 //! spawns processes until somebody quits the app.
 //!
 //! Whether the daemon still holds the pane is asked before this and is not the answer: after a
-//! network change the daemon holds it and refuses the attach anyway, because the stream from
-//! before the change is still open on the far machine until its ssh notices. So the thing that
+//! network change the daemon holds it and an attach still fails, until the connection to the far
+//! machine is back. So the thing that
 //! separates them is how long the last bridge lasted. One that ran for an hour and then died
 //! is a connection; one that died on sight, three times inside half a minute, is not going to
 //! work on the fourth try either.
@@ -38,7 +38,7 @@ use crate::mirror::backend::PaneId;
 ///
 /// Three, because the case worth surviving is a network that comes back within a few seconds
 /// and the case worth stopping is one that never will. Two would give up on a machine that
-/// takes one extra moment to let go of a terminal; ten would be forty seconds of spawning
+/// takes one extra moment to let go of a pane; ten would be forty seconds of spawning
 /// processes at a pane nobody can rescue.
 pub const LIMIT: u32 = 3;
 
@@ -68,19 +68,19 @@ pub enum Ending {
     /// otherwise perfectly healthy (kan a_2I76eCrjw). A replacement takes the pane over.
     Refused,
 
-    /// Another client took the pane over, and the daemon handed it the stream.
+    /// Another bridge took the pane over, and the daemon handed it the stream.
     ///
     /// The one ending that must not be answered by attaching again. Somebody asked for this
     /// pane somewhere else and got it; taking it back would be answered the same way, and two
-    /// windows would trade one terminal until both gave up.
+    /// windows would trade one pane until both gave up.
     TakenOver,
 
-    /// The daemon says the terminal no longer exists, which is what a bridge hears when its pane
-    /// is closed under it.
+    /// The daemon says the pane no longer exists, which is what a bridge hears when its pane is
+    /// closed under it.
     ///
     /// Split from `Lost` because the daemon has answered the question `Lost` leaves open. Looking
     /// again is not enough: the window can still be drawing the pane when this arrives, so a
-    /// replacement goes to a terminal nothing can attach to, and its failure to dial was then
+    /// replacement goes to a pane nothing can attach to, and its failure to dial was then
     /// reported as a machine that could not be reached (kan a_2LMpvavhA).
     Gone,
 }
@@ -118,8 +118,8 @@ pub struct Ended {
 
     /// The daemon's own sentence about it, when the bridge lived long enough to pass one on.
     ///
-    /// Kept whole and untranslated, because it names the terminal and the machine and Muster
-    /// cannot compose either.
+    /// Kept whole and untranslated, because it names the pane and the machine in the daemon's
+    /// own words.
     pub reason: Option<String>,
 
     /// Whether that bridge ever painted anything.
@@ -131,8 +131,8 @@ impl Ended {
     ///
     /// `Lost`, because that is the ending whose answer is to look again and start another, and
     /// a bridge that was killed - by a signal, by the machine going away - has said nothing and
-    /// is exactly that case. A bridge refused its terminal, told its terminal has gone to
-    /// somebody else, or told it no longer exists, has a moment to say so and does.
+    /// is exactly that case. A bridge refused its pane, told its pane has gone to somebody
+    /// else, or told it no longer exists, has a moment to say so and does.
     pub fn unsaid() -> Ended {
         Ended { ending: Ending::Lost, reason: None, rendered: false }
     }
@@ -148,7 +148,7 @@ pub enum Decision {
     /// Stop. Carries how many were tried, for the sentence the run log carries.
     GiveUp(u32),
 
-    /// Leave this pane's terminal to whoever now has it.
+    /// Leave this pane to whichever bridge now has it.
     ///
     /// Carries nothing and publishes nothing, deliberately. The count is what makes the shell
     /// build a new surface, so a yield that moved it would start the bridge it is refusing to
@@ -157,11 +157,11 @@ pub enum Decision {
     /// purpose, and it looks from the outside exactly like a pane whose bridge never started.
     Yield,
 
-    /// Start nothing, because the daemon says this pane's terminal no longer exists.
+    /// Start nothing, because the daemon says this pane no longer exists.
     ///
     /// Carries nothing, publishes nothing and records that the bridge ended, on the same terms
     /// as `Yield` and for the same reasons. A separate answer because the run log says which it
-    /// was: that terminal has somebody else holding it, and this one is gone.
+    /// was: that pane has somebody else holding it, and this one is gone.
     Leave,
 }
 
@@ -215,13 +215,13 @@ impl Respawns {
     /// place.
     ///
     /// `ending` decides one thing and only one: whether attaching again is the right answer at
-    /// all. For two of the four it is - a connection that went and a terminal held by a client
-    /// that has not noticed its transport died are both recovered by attaching again, and the
-    /// second needs the `--takeover` a replacement carries. For the other two it is not. A
-    /// terminal handed to another client was handed to somebody who asked for it, and taking it
-    /// back would be answered the same way from the other side: two windows trading one terminal
-    /// at the speed a bridge starts, until both of them ran out of tries. And a terminal the
-    /// daemon says no longer exists has nothing to attach to at all.
+    /// all. For two of the four it is - a connection that went and a pane held by a bridge that
+    /// has not noticed its transport died are both recovered by attaching again, and the second
+    /// needs the `--takeover` a replacement carries. For the other two it is not. A pane handed
+    /// to another bridge was handed to somebody who asked for it, and taking it back would be
+    /// answered the same way from the other side: two windows trading one pane at the speed a
+    /// bridge starts, until both of them ran out of tries. And a pane the daemon says no longer
+    /// exists has nothing to attach to at all.
     pub fn ended(&mut self, pane: &PaneKey, now: u64, ending: Ending) -> Decision {
         let held = self.started.get(pane).copied().unwrap_or_default();
         match ending {
@@ -260,7 +260,7 @@ impl Respawns {
     /// Whether the last ask has *ended* is the whole of the rule, and it is what keeps
     /// [`LIMIT`] meaning what it says. A pane whose bridges are starting and dying on sight
     /// has been answered already - `ended` either started another or stopped - and asking here
-    /// would restart a ladder that has just stopped, or take back a terminal `Yield`
+    /// would restart a ladder that has just stopped, or take back a pane `Yield`
     /// deliberately left to another window. A pane whose ask produced nothing at all has
     /// spawned no process, so there is no storm to guard against and the answer is to ask
     /// again.
@@ -283,10 +283,9 @@ impl Respawns {
     /// Somebody has asked for this pane to get a bridge, and a person asking is not a retry.
     ///
     /// So the run of failures starts over rather than continuing: whoever ran this has usually
-    /// just done something about the cause - killed the client still holding the terminal on
-    /// the far machine, or brought the machine back - and the next bridge deserves its own
-    /// tries. It is also the only way back for a pane the ladder has stopped rebuilding, which
-    /// is what makes stopping affordable.
+    /// just done something about the cause - brought the machine back, or the network to it -
+    /// and the next bridge deserves its own tries. It is also the only way back for a pane the
+    /// ladder has stopped rebuilding, which is what makes stopping affordable.
     ///
     /// Returns what the view will publish, so the caller can say so.
     pub fn asked(&mut self, pane: &PaneKey, now: u64) -> u32 {
@@ -314,7 +313,7 @@ impl Respawns {
     ///
     /// What the view carries. The shell builds a new surface whenever it changes, and a
     /// non-zero one is what tells its bridge it is re-attaching a pane this window held - which
-    /// is when taking the terminal over is the right thing rather than stealing it.
+    /// is when taking the pane over is the right thing rather than stealing it.
     pub fn restarts(&self, pane: &PaneKey) -> u32 {
         self.started.get(pane).map_or(0, |started| started.restarts)
     }
@@ -330,21 +329,21 @@ impl Respawns {
     }
 }
 
-/// What to say about a pane whose terminal is now somebody else's.
+/// What to say about a pane another window is now drawing.
 ///
 /// Not a failure, and worded so nobody reads it as one: everything is working, the pane is
 /// being shown, and it is being shown somewhere else. What it has to carry is the way back,
 /// because there is one and it is not obvious - a bridge asked for after the first takes the
-/// terminal, the same way the other window's did.
+/// pane, the same way the other window's did.
 pub fn yielded(pane: &PaneKey) -> String {
     format!(
-        "Another client attached to the pane {pane} and took its terminal, so this window has \
+        "Another bridge attached to the pane {pane} and took it over, so this window has \
          stopped drawing it - most often a second Muster window that was opened onto the same \
-         machine. The daemon lets one client draw a pane at a time, so nothing here can show it \
+         machine. The daemon lets one bridge draw a pane at a time, so nothing here can show it \
          while that one does; the agent itself is untouched and every other pane in this window is \
-         unaffected. Whichever window is showing it now is the one to type into. To bring it \
+         unaffected. Whichever window is showing it now is the one to work in. To bring it \
          back here instead, run {} - that asks for a bridge, and a bridge after the first takes \
-         the terminal the way the other window's did.",
+         the pane over the way the other window's did.",
         reattach_command(&pane.pane),
     )
 }
@@ -360,8 +359,9 @@ pub fn yielded(pane: &PaneKey) -> String {
 pub fn gave_up(pane: &PaneKey, tried: u32) -> String {
     format!(
         "Muster started {tried} bridges for the pane {pane} and each one ended within \
-         {} seconds, so it has stopped. This pane shows what it last painted and takes no \
-         keystrokes; every other pane in the window is unaffected. The run log says why each \
+         {} seconds, so it has stopped. This pane shows what it last painted, and what is typed \
+         into it reaches the program without being drawn; every other pane in the window is \
+         unaffected. The run log says why each \
          one ended - most often the bridge could not reach the daemon, which for a pane on \
          another machine is the ssh connection to it being down. Once that is fixed, {} asks \
          for another bridge, which is the way back that keeps the agent - closing the pane also \

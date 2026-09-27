@@ -96,8 +96,9 @@ pub struct RosterTab {
 
     /// The name somebody gave this tab, if anybody has, on the same terms as a pane's.
     ///
-    /// Not derivable from `label` above, which may carry the tab's workspace in front of the
-    /// name and drops a name that is only digits. Renaming has to start from what was typed.
+    /// Not derivable from `label` above, which is `Tab <place>` when nobody has named the tab,
+    /// so a tab somebody named `Tab 3` reads the same as one nobody named. Renaming has to
+    /// start from what was typed.
     pub given_name: Option<String>,
 
     pub panes: Vec<RosterPane>,
@@ -641,15 +642,14 @@ fn ordered_panes<'a>(mirror: &'a Mirror, tab: &'a TabId) -> Vec<&'a Pane> {
 /// What to call a pane to somebody who did not open it.
 ///
 /// **A name somebody gave it wins**, because it is the only line here that was written by a
-/// person for this pane rather than derived from where it happens to be. It is also the
-/// durable one: herdr writes a name down, so it comes back after a daemon restart, where
-/// everything below is worked out afresh each time (`observations/herdr-0.8.0.md` section
-/// 16).
+/// person for this pane rather than derived from where it happens to be. It also survives a
+/// daemon restart, which the harness below does not: the daemon writes a name down (MIP-3,
+/// section 2).
 ///
 /// Failing that, the directory first, because for a window full of coding agents that is
-/// what tells two panes apart - the ids are `w1:p1` and `w1:p2`, which say nothing. The
-/// harness follows when one was detected, because "which of these is the one running claude"
-/// is the other question asked of a list like this.
+/// what tells two panes apart - the names are `p1w3r07bsd` and `p1w3r0ab2n`, which say
+/// nothing. The harness follows when one was detected, because "which of these is the one
+/// running claude" is the other question asked of a list like this.
 ///
 /// The id is the last resort rather than the first, and it is better than an empty row: a
 /// pane with no directory is still a pane somebody has to be able to point at.
@@ -687,8 +687,8 @@ fn harness_suffix(pane: &Pane) -> String {
 /// oh-my-zsh's default is `<user>@<host>:<path>` - the row's own first line, spelled longer.
 /// Suppressing that by matching on shell prompt conventions would be a guess about somebody's
 /// dotfiles; requiring a harness is a fact the daemon reports. What it costs is stated rather
-/// than hidden: a pane running something that titles itself usefully, which herdr recognized
-/// no agent in, stays on one line.
+/// than hidden: a pane running something that titles itself usefully, in which the daemon
+/// recognized no agent, stays on one line.
 ///
 /// **And only when it says something the first line does not.** A harness that titles itself
 /// after the directory - which Claude does - would otherwise draw the same word twice at

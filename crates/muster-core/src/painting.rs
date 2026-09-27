@@ -11,7 +11,7 @@
 //! What makes silence wrong is that something was asked of the pane: an intent that actually
 //! reached it - a keystroke, a paste, a scroll - and nothing painted afterwards. The app is the
 //! only thing that knows the first half, because it is the sender, and the bridge is the only
-//! thing that knows the second, because frames go from its stdout into a surface and never past
+//! thing that knows the second, because output goes from its stdout into a surface and never past
 //! the app. Both arrive here as facts and the rule is here.
 //!
 //! Two guards, each because the sentence would be false without it.
@@ -23,7 +23,7 @@
 //! That guard is about saying something new. A warning already raised stays raised when its pane
 //! leaves the screen, because looking away does not make it untrue: a wedged bridge used to lose
 //! its warning to a tab switch and stay frozen for three more minutes with nobody told (kan
-//! a_2LWqtPd8E). It goes when something answers it - a frame, the pane closing, or its machine
+//! a_2LWqtPd8E). It goes when something answers it - the pane painting, closing, or its machine
 //! going away - so a warning that went away says which of those happened.
 //!
 //! **Only while the pane's daemon is answering.** A machine that has gone away already raises one
@@ -61,7 +61,7 @@ pub struct Reported {
 /// Why a problem this watch raised was taken back.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Cleared {
-    /// A frame arrived.
+    /// The pane painted.
     Painted,
 
     /// The pane is gone.
@@ -86,7 +86,7 @@ impl Cleared {
     }
 }
 
-/// Every pane that owes a frame, and everything that decides whether owing one is worth saying.
+/// Every pane that owes output, and everything that decides whether owing it is worth saying.
 #[derive(Debug, Default)]
 pub struct Painting {
     /// When the earliest intent this pane has not painted since reached it.
@@ -103,7 +103,7 @@ pub struct Painting {
     /// stale error outlives the pane it was about.
     reported: BTreeSet<PaneKey>,
 
-    /// Why a reported pane stopped owing a frame since the last reading, for the clear that
+    /// Why a reported pane stopped owing output since the last reading, for the clear that
     /// takes its problem back. Written wherever `asked` loses a pane, because that is the one
     /// thing a reading cannot see afterwards.
     settled: BTreeMap<PaneKey, Cleared>,
@@ -130,7 +130,7 @@ impl Painting {
         }
     }
 
-    /// An intent reached this pane, so a frame is owed.
+    /// An intent reached this pane, so output is owed.
     ///
     /// Delivered rather than merely sent: input that went nowhere is a pane that cannot be typed
     /// into, which is `typeable`'s condition and has its own sentence. Accusing a pane of not
@@ -148,7 +148,7 @@ impl Painting {
 
     /// The pane painted, so it owes nothing.
     ///
-    /// No timestamp, because there is nothing to compare one against: a frame arriving is the
+    /// No timestamp, because there is nothing to compare one against: output arriving is the
     /// answer to whatever was outstanding, and the two facts reach this in the order they
     /// happened.
     pub fn painted(&mut self, pane: &PaneKey) -> bool {
@@ -170,7 +170,7 @@ impl Painting {
     /// what makes a watch worth switching off.
     ///
     /// Unless it has already been reported. That accusation was made while somebody was looking,
-    /// and it stays until a frame answers it: a warning that cleared on a tab switch read exactly
+    /// and it stays until the pane paints: a warning that cleared on a tab switch read exactly
     /// like a pane that had painted, about a bridge that was still wedged.
     pub fn showing(&mut self, visible: BTreeSet<PaneKey>) {
         self.asked.retain(|pane, _| visible.contains(pane) || self.reported.contains(pane));
@@ -179,8 +179,8 @@ impl Painting {
 
     /// Whether this daemon is answering, as the window's own health of it says.
     ///
-    /// A daemon that has gone stale takes its panes' frames with it, and says so once, naming the
-    /// machine. What it leaves behind is what this drops: panes that owe a frame nothing on that
+    /// A daemon that has gone stale takes its panes' output with it, and says so once, naming the
+    /// machine. What it leaves behind is what this drops: panes owed output that nothing on that
     /// machine is in a position to send.
     pub fn daemon_away(&mut self, daemon: &DaemonId, away: bool) {
         if away {
@@ -209,8 +209,8 @@ impl Painting {
 
     /// Compares the unanswered panes against the clock and says what the problem list owes.
     ///
-    /// `deadline` is how long a pane may owe a frame, in the caller's own units. Zero switches
-    /// this off, which is the honest answer for a run with no frames to wait for.
+    /// `deadline` is how long a pane may owe output, in the caller's own units. Zero switches
+    /// this off, which is the honest answer for a run with no output to wait for.
     pub fn reconcile(&mut self, now: u64, deadline: u64) -> Reported {
         let overdue: BTreeSet<PaneKey> = if deadline == 0 {
             BTreeSet::new()
@@ -271,7 +271,7 @@ impl Painting {
             .min()
     }
 
-    /// Records why a reported pane stopped owing a frame. A pane nobody was told about has
+    /// Records why a reported pane stopped owing output. A pane nobody was told about has
     /// nothing to take back, so nothing is kept for it.
     fn settle(&mut self, pane: &PaneKey, why: Cleared) {
         if self.reported.contains(pane) {
@@ -321,11 +321,11 @@ pub fn stopped(pane: &PaneKey, deadline: u64) -> String {
         "Input reached the pane {pane} over {waited} ago and it has painted nothing since. It \
          shows whatever it painted last, so it reads as a program that has stopped rather than a \
          pane that has - the agent behind it goes on working and every other pane in the window \
-         is unaffected. Usual causes: the bridge carrying this pane's frames has wedged or gone \
-         without saying so, or its daemon has stopped painting this one terminal while it goes \
-         on answering everything else. The run log carries `bridge.painted` for as long as \
-         frames arrive, and `bridge.closed` or `channel.bridge.gone` when a bridge ends; a frame \
-         the daemon decided not to send is in the daemon's own log on its own machine. \
+         is unaffected. Usual causes: the bridge carrying this pane's output has wedged or gone \
+         without saying so, or its daemon has stopped sending this one pane's output while it \
+         goes on answering everything else. The run log carries `bridge.painted` for as long as \
+         output arrives, and `bridge.ended` or `link.bridge.gone` when a bridge ends; output \
+         the daemon did not send is explained in the daemon's own log on its own machine. \
          {reattach} starts a new bridge and leaves the agent alone. A pane that is fine says \
          this too if what is running in it turned echo off - a password prompt - and takes it \
          back the moment anything paints."

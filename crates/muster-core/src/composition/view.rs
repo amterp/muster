@@ -368,8 +368,9 @@ impl Axis {
 /// A pane's place in the window, as fractions of it.
 ///
 /// Fractions and never points, on the rule the whole backend contract follows: a layout is
-/// proportions, and the cell rectangles a daemon publishes describe a viewport of its own that
-/// is nobody's window (`architecture.md`, the vocabulary). `x` and `y` are from the window's top
+/// proportions, and a daemon publishes a tree of ratios rather than rectangles, because cells
+/// on its side would describe a grid that is nobody's window (`architecture.md`, the
+/// vocabulary). `x` and `y` are from the window's top
 /// left, and the region weights are already folded in - so two panes on two machines are
 /// measured in one space, which is the only way "which of these is wider" has an answer.
 #[derive(Debug, Clone, Copy, PartialEq)]

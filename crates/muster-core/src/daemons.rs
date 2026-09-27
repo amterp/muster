@@ -9,8 +9,10 @@
 //! `./dev --doctor` answers it by walking processes to sockets with `pgrep` and `lsof`. That
 //! cannot be the answer here: it is two Unix tools in a build script, and this core is
 //! portable by construction. What Muster can do instead is write down what it started, which
-//! nothing else knows - herdr has no method answering "which process are you", so the pairing
-//! of a daemon with the work inside it exists only where Muster put it.
+//! nothing else knows: a daemon answers for itself once dialled, but only a list of sockets
+//! says what there is to dial. herdr, the daemon Muster ran first, could not even say which
+//! process it was, so the pairing of a daemon with the work inside it existed only where Muster
+//! put it.
 //!
 //! **A record is a hint that gets checked, never an answer.** It says a daemon was started on
 //! this socket; whether one is there now is settled by dialing, and a record that names a

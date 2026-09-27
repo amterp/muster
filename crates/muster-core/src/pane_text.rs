@@ -24,7 +24,7 @@ impl PaneText {
     ///
     /// A count rather than a ceiling, and that distinction is the whole of why this exists.
     /// A backend counts rows in the grid it draws, and the bottom of an idle pane is the
-    /// blank remainder of its viewport - so asking a daemon for the last forty rows of a
+    /// blank remainder of its screen - so asking a daemon for the last forty rows of a
     /// pane sitting at a prompt buys forty blank ones, which trim away to nothing. Blank is
     /// byte-identical to a pane that has printed nothing, and it cost this card's author a
     /// near-miss on closing a shell with twenty-four lines on it.

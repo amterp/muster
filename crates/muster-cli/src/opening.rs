@@ -76,10 +76,10 @@ fn open_a_window(environment: &BTreeMap<String, String>, fresh: bool) -> Result<
     // charges a permission prompt to.
     //
     // `env_clear` on `open` itself, on the same terms and for the same measured reason as the
-    // daemon's launch (`muster-herdr`'s `daemon::start`, and `observations/macos-26.4.1.md`
+    // daemon's launch (`muster-daemon-client`'s `launch`, and `observations/macos-26.4.1.md`
     // section 8): `open` hands the app *its own* environment, so without this every variable
     // the caller held reaches the new window - and the caller is usually a pane, which carries
-    // `MUSTER_PANE`, `MUSTER_SOCKET` and a `HERDR_SOCKET_PATH` naming a daemon. That is the
+    // `MUSTER_PANE`, `MUSTER_SOCKET` and a `MUSTER_DAEMON_SOCKET` naming a daemon. That is the
     // bug `a_28YgGqYq7` fixed arriving through a third door, and it is invisible, because the
     // window opens and works.
     //
@@ -91,9 +91,9 @@ fn open_a_window(environment: &BTreeMap<String, String>, fresh: bool) -> Result<
     opening.arg("--args");
     // `--fresh` when somebody asked for a window rather than for the one they closed. A window
     // Muster comes back to opens onto the tabs it was left on; a new one has to open onto tabs of
-    // its own, since the tabs the window it was asked from is showing are terminals herdr will
-    // not hand over twice. It also takes an arrangement of its own either way - the difference is
-    // whether that arrangement is one nothing has ever held.
+    // its own, since the tabs the window it was asked from is showing are panes the daemon lets
+    // one bridge draw at a time. It also takes an arrangement of its own either way - the
+    // difference is whether that arrangement is one nothing has ever held.
     if fresh {
         opening.arg(FRESH);
     }

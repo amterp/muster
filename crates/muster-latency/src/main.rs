@@ -1,8 +1,8 @@
 //! muster-latency: input-to-glyph through muster-daemon, beside the bare PTY it is judged
 //! against (MIP-3, section 13).
 //!
-//! `tools/latency.py` measures herdr's paths and goes with herdr at the cut-over; these rows are
-//! what the cut-over is judged by. A keystroke goes in as the app will send it, a key event on
+//! `tools/latency.py` measures herdr's paths, which Muster no longer runs; these rows are what
+//! the cut-over is judged by. A keystroke goes in as the app will send it, a key event on
 //! the daemon's input connection, and the glyph is the letter coming back: on the pane's stream
 //! read directly, which is the daemon's share, and on the PTY the real bridge writes to, where
 //! the surface would parse it. The surface's parse and the GPU are in no number here.

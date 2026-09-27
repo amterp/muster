@@ -19,7 +19,7 @@ use serde_json::{Map, Value};
 /// How much a file's expectations are worth trusting.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Source {
-    /// Captured from a real herdr, a real libghostty-vt, a real terminal. Re-derivable.
+    /// Captured from a real daemon, a real libghostty-vt, a real terminal. Re-derivable.
     Recorded,
     /// Lifted from an existing suite: trusted exactly as far as that implementation was.
     Ported,
@@ -53,7 +53,7 @@ impl Source {
 pub enum Numbers {
     /// JSON's own width, and what a file that says nothing gets.
     F64,
-    /// The width herdr's ratios and amounts reach the wire at.
+    /// The width a daemon's ratios and amounts reach the wire at.
     F32,
 }
 
@@ -527,10 +527,11 @@ mod tests {
 
     /// The number an `f32` file exists to let a case write.
     ///
-    /// 0.05 is herdr's own default resize step, and it is not spellable in binary, so a
-    /// driver whose quantity is an f32 answers with the long form. Both spellings name one
-    /// number at the width that quantity lives at, and a corpus that could not say so was
-    /// restricted to powers of two for a reason no reader of the case could see.
+    /// 0.05 is the daemon's own default resize step, as it was herdr's, and it is not
+    /// spellable in binary, so a driver whose quantity is an f32 answers with the long form.
+    /// Both spellings name one number at the width that quantity lives at, and a corpus that
+    /// could not say so was restricted to powers of two for a reason no reader of the case
+    /// could see.
     #[test]
     fn a_declared_f32_file_compares_at_the_width_the_wire_carries() {
         let mut document = good();

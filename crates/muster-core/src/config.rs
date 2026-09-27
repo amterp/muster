@@ -1,8 +1,8 @@
 //! Configuration, as a file.
 //!
 //! Parsing only, and deliberately. Reading a file is I/O, so it happens at the edge from a
-//! path the shell chose - the same division [`crate::mirror`]'s socket discovery already
-//! uses by taking an environment map rather than reading one. What is left here is text in
+//! path the shell chose - the same division `muster-daemon-client`'s environment rules draw by
+//! taking an environment map rather than reading one. What is left here is text in
 //! and records out, which is what makes configuration answerable to the corpus like
 //! everything else this core decides.
 //!
@@ -11,12 +11,12 @@
 //!
 //! A file is applied whole or not at all. Keeping the daemons that parsed and dropping the
 //! one that did not would leave a window whose contents depend on which line had the typo,
-//! and the caller's fallback - find the local daemon the way herdr's own client would - is
-//! close enough to what anyone wants that the partial answer buys nothing.
+//! and the caller's fallback - this install's own daemon on this machine - is close enough to
+//! what anyone wants that the partial answer buys nothing.
 //!
-//! Unknown keys are refused rather than ignored. Ignoring them is what herdr's socket API
-//! does, and the cost is a `target_pane_id` misspelled as `pane_id` that silently means
-//! something else (`docs/observations/herdr-0.8.0.md` section 6). A typo in a file someone
+//! Unknown keys are refused rather than ignored. Ignoring them is what herdr's socket API did,
+//! and the cost was a `target_pane_id` misspelled as `pane_id` that silently meant something
+//! else (`docs/observations/herdr-0.8.0.md` section 6). A typo in a file someone
 //! typed deserves a sentence naming it, not a daemon that never appears.
 
 use std::collections::BTreeMap;
@@ -224,7 +224,7 @@ pub struct Feel {
     /// How far a resize chord moves a divider.
     ///
     /// `None` leaves it to the daemon, which is what a keybinding meant before this existed
-    /// and remains the default: herdr sizes its own rectangles and has an answer already.
+    /// and remains the default: the daemon has a step of its own already.
     /// Naming a distance is for somebody who finds that answer too coarse or too fine.
     pub resize_step: Option<ResizeStep>,
 
@@ -367,8 +367,7 @@ pub struct Panes {
     ///
     /// Bytes rather than lines because that is what the buffer is measured in - a line has
     /// no fixed size, so a count of them would be a number that did not mean what it said.
-    /// Zero is a real answer, and herdr defines it: a pane that keeps only what is on
-    /// screen.
+    /// Zero is a real answer: a pane that keeps only what is on screen.
     pub scrollback_bytes: Option<u64>,
 
     /// `[shell]`.
@@ -628,9 +627,10 @@ fn read_shell(block: Option<&toml::Table>) -> Result<Shell, String> {
     let mut shell = Shell::default();
 
     if let Some(command) = string(block, "command", "the config file's [shell]")? {
-        // Refused here rather than left to the daemon, because herdr reads an empty
-        // `default_shell` as "whatever SHELL says" - so an empty string would silently mean
-        // the same as leaving the key out, and somebody who wrote one meant something by it.
+        // Refused here rather than left to the daemon, which refuses it too but a process and
+        // a machine away from whoever typed it. herdr, the daemon Muster ran first, read an
+        // empty shell as "whatever SHELL says", the same as leaving the key out - and somebody
+        // who wrote one meant something by it.
         if command.is_empty() {
             return Err("`command` in the config file's [shell] is empty, and a pane has to run \
                         something. None of the file was applied. Leave the key out for the shell \

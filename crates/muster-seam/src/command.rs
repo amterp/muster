@@ -8,8 +8,8 @@
 //!
 //! It has to be Muster's own socket rather than the daemon's. A daemon knows its panes and
 //! nothing about regions, tabs, focus, the arrangement, or the other daemon this same window
-//! is showing - so an agent talking to herdr can make a pane behind Muster's back and cannot
-//! ask what happened to it.
+//! is showing - so an agent talking to the daemon can make a pane behind Muster's back and
+//! cannot ask what happened to it.
 //!
 //! One request per connection. A caller runs one command and exits, so a session would be
 //! state to keep on both sides for no one's benefit, and framing a stream nobody reuses is
@@ -278,11 +278,13 @@ fn answer(mut stream: UnixStream) {
 
 /// Holds back an answer naming a pane the request made until this window holds that pane.
 ///
-/// A split answers as soon as the daemon has made the pane, and the daemon's event describing it
-/// reaches the window up to a herdr event pass later. A caller here names the pane in its next
-/// command - `muster pane read --pane "$(muster pane new)"` - and every lookup in the window
-/// refused a name it had not heard of yet (kan a_2P5nkSS8g). Waiting once here answers that for
-/// every verb, including ones written after this.
+/// A caller here names the pane in its next command - `muster pane read --pane "$(muster pane
+/// new)"` - and every lookup in the window refuses a name it has not heard of yet (kan
+/// a_2P5nkSS8g). A pane this window asked for is already held when the answer comes back, since
+/// a daemon's events are applied before its answer. One made through another window
+/// (`forward`) is not: that window's answer can arrive before this window's own connection to
+/// the daemon carries the event. Waiting once here answers that for every verb, including ones
+/// written after this.
 ///
 /// Not in the handler, because the shell reaches that on its main thread. The shell learns of the
 /// pane from the event and never names one before then, so a wait there would stop the window
@@ -319,9 +321,10 @@ fn after_the_window_holds_it(response: &[u8]) {
 
 /// How long a pane a request made is given to reach this window before it is answered anyway.
 ///
-/// A pane arrives within one herdr event pass, a tenth of a second, on a machine keeping up. Not
-/// measured beyond that: the whole wait is paid only when the window is not hearing from the
-/// daemon, and then nothing that names the pane would work however long this was.
+/// The daemon queues the event for every window before it answers the one that asked, so the
+/// wait is one event's delivery on a machine keeping up. Not measured beyond that: the whole
+/// wait is paid only when the window is not hearing from the daemon, and then nothing that
+/// names the pane would work however long this was.
 const TURNS_UP_WITHIN: Duration = Duration::from_secs(2);
 
 /// How often the window is asked, short because every `pane new` pays up to one interval of it.

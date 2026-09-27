@@ -12,12 +12,13 @@ so. Closing this means forwarding the endpoint over the ssh master Muster alread
 putting a `muster` on the far machine for it to reach - the command is built from this repo and
 nothing ships a Linux one.
 
-## A pane Muster did not create cannot say which pane it is
+## A pane restored after a daemon restart cannot say which window it is in
 
-A pane made by another herdr client, and a pane herdr restored after a daemon restart, both have
-Muster names and can be addressed by anybody. Neither has anything in its environment: herdr
-rebuilds a restored pane with no launch environment at all. So `muster` run inside one falls back
-to the pane the window's keyboard is on, which is usually not the pane you meant. Pass `--pane`.
+A daemon that restarts brings each pane back under its name, with a fresh shell, and gives it
+`$MUSTER_PANE` but not `$MUSTER_SOCKET`: that names a window, and the window that asked for the
+pane may be long gone. So `muster` run inside a restored pane knows which pane it is and not
+which window to tell, and finds a window the way a command outside every pane does (below). With
+one window open that is the right one; with two, pass `--socket`.
 
 ## A pane is not told which tab it is in
 
@@ -31,19 +32,19 @@ out of the window rather than out of its environment:
 `muster tab rename` with no `--tab` is not that. It means the tab the window's keyboard is in,
 which is what a chord means and is a different tab whenever the keyboard is somewhere else.
 
-## A read stops a thousand rows back
+## A read stops at 4 MiB
 
-`muster pane read` asks the daemon for a pane's recent rows, and herdr answers with at most a
-thousand of them however far back the pane goes. Asking for more is not refused and does not fail -
-it comes back with the same thousand - so `truncated` in the `--json` answer is the only thing that
-says there was more. A caller that reads the text and not that flag will conclude it has seen the
-whole pane.
+`muster pane read` answers with everything a pane still holds, as far back as its scrollback goes,
+up to 4 MiB of text: the most the daemon puts in one answer. A pane holding more comes back as its
+newest 4 MiB, and `truncated` in the `--json` answer is the only thing that says the oldest rows
+were left out. A caller that reads the text and not that flag will conclude it has seen the whole
+pane.
 
 `--rows N` is a count of rows the pane printed, and it is answered by Muster rather than by the
-daemon: every read asks for the whole thousand and the last N are taken here. That costs a thousand
-rows on the wire per read, which is the price of the flag meaning what it says - herdr counts rows
-of the *grid*, so the blank space under a quiet pane is rows to it, and a small number sent over
-the wire used to buy those and answer with nothing at all.
+daemon: every read asks for the whole history and the last N are taken here. That costs the
+pane's history on the wire per read, which is the price of the flag meaning what it says - a
+daemon counts rows of the *grid*, so the blank space under a quiet pane is rows to it, and asking
+it for a small number would buy those and answer with nothing at all.
 
 ## A send that exits 0 was taken, not necessarily received
 
@@ -55,9 +56,9 @@ A terminal in **canonical mode** - anything reading stdin without a line editor 
 its terminator, and **discards a longer one whole** rather than cutting it. The screen still
 echoes the first thousand-odd characters, so a pane read afterwards looks like a message that
 arrived and stopped. It did not arrive at all. This is the receiving terminal's limit rather
-than Muster's or the daemon's: both carry ten thousand bytes into a program that has taken the
-terminal for itself, which every agent harness has (`observations/herdr-0.8.0.md` section 25).
-An interactive shell is not affected - readline and zle run in raw mode.
+than Muster's or the daemon's, and a program that has taken the terminal for itself, which every
+agent harness has, is not held to it. An interactive shell is not affected - readline and zle run
+in raw mode.
 
 And a **harness that reads the text as a paste** may leave it unsubmitted. `--enter` presses
 Return, and whether Return submits is the harness's to decide: Claude Code has been measured
@@ -85,19 +86,18 @@ stdin, which leaves one way to send a lone hyphen: `printf - | muster pane send 
 
 ## A non-zero exit does not always mean nothing happened
 
-Exit 4 is a request that was taken and never answered. Either the window never answered, or it
-did and said its daemon never answered it - the window gives a daemon half a second, and a loaded
-machine carries out the request and answers after that. Both ways the request is on the far side,
-so whatever was asked for may already have happened and only the reply went missing - which is
-why it is a code of its own rather than filed under 3, "there was no window to ask", or 1, a
-refusal. Retrying a 4 is how a pane receives the same instruction twice, and it has: an agent
-driving other agents got one timeout on a message that had arrived, resent, and left the
-receiving harness with six copies of one instruction to reconcile.
+Exit 4 is a request that was taken and never answered. Either the window never answered, or it did
+and said its daemon never answered it - the window gives a daemon ten seconds, and a machine loaded
+enough carries out the request and answers after that. Both ways the request is on the far side, so
+whatever was asked for may already have happened and only the reply went missing - which is why it
+is a code of its own rather than filed under 3, "there was no window to ask", or 1, a refusal.
+Retrying a 4 is how a pane receives the same instruction twice, and it has: an agent driving other
+agents got one timeout on a message that had arrived, resent, and left the receiving harness with
+six copies of one instruction to reconcile.
 
-A `pane new` that exits 4 may still have made its pane. If the daemon's answer arrives late, the
-window binds it then, and the pane keeps the name in its own `$MUSTER_PANE`; `muster window` lists
-it under that name once it has. An answer that never arrives leaves the pane listed under a name
-the pane does not know, and `muster` commands run inside it are refused.
+A `pane new` that exits 4 may still have made its pane. The window names a pane in the request
+that makes it, so a pane that was made has its name from the start: `muster window` lists it
+under that name, and the pane has the same one in its own `$MUSTER_PANE`.
 
 What to do instead of sending it again: `muster pane read --pane X` shows what is on the pane,
 and `pane send --confirm` asks the window to read it back rather than deciding out here. With
@@ -109,9 +109,9 @@ been pressed, and a Return the daemon refuses exits 1 with the text already type
 read` shows which, and `muster pane send --pane X '' --enter` presses Return on its own. What
 proves a request did *not* happen is only exit 3, where nothing was dialled at all.
 
-A window is slow to answer for reasons that have nothing to do with the request - `pane new
---run` waits on a shell drawing its prompt, and a loaded machine makes every one of them
-slower - so a 4 says more about the moment than about the command.
+A window is slow to answer for reasons that have nothing to do with the request - a loaded
+machine makes every one of them slower, and a devenv is a round trip away - so a 4 says more
+about the moment than about the command.
 
 ## A directory for a pane on another machine has to be spelled out
 
@@ -123,8 +123,8 @@ often somewhere running another operating system. Give that machine's own absolu
 The gap this leaves is `--pane`, which addresses a pane by name and does not say which machine
 holds it - working that out would cost a round trip before the request. So a relative `--cwd`
 beside a `--pane` that lives on a devenv is resolved against a local directory the far machine
-has never had, and herdr answers a directory it cannot use with the home directory. Name the
-directory absolutely whenever the pane is not on this machine.
+has never had, and the daemon refuses to start a pane in a directory it cannot use, so the pane
+is not made. Name the directory absolutely whenever the pane is not on this machine.
 
 A path is tidied lexically, so `..` steps are worked out without asking the filesystem. That
 matches what a shell's own `cd ..` does, and differs from `realpath` where a symlink is in the
@@ -132,10 +132,10 @@ way.
 
 ## There is no search
 
-`muster` cannot search a pane. The window can, from `cmd+f`, and reading only the last thousand
-rows of a pane while saying nothing about the rest - so a match further back reads as no match at
-all. Putting that into this surface would mean promising it, and the promise is one Muster cannot
-currently keep.
+`muster` cannot search a pane. The window can, from `cmd+f`, but that is Ghostty's own search
+running in the pane's surface, which lives in the window and which nothing out here can reach.
+What `muster` has instead is `muster pane read`, the pane's history as the daemon holds it, and a
+caller can search that text itself.
 
 ## Closing with no --pane closes the pane you are in
 
@@ -153,29 +153,14 @@ attached to.
 in the tab in one request, and it reaches any tab the window holds. With no `--tab` it closes the
 tab the keyboard is in, which is what the menu item means.
 
-## Text stops shrinking before a pane gets too big to draw
-
-`muster font smaller` and its chord stop having an effect once a pane's grid reaches what one
-frame can carry - about a hundred thousand cells, which is herdr's 2 MiB frame cap at roughly
-twenty bytes each. Past that the daemon draws the pane and throws every frame away, so it freezes
-while its agent works on and nothing below Muster reports anything wrong. Saturating is the same
-answer the size range already gives at its ends: text that stops changing rather than a refusal
-for a keystroke whose result you cannot see.
-
-One press gets through. Muster offsets a font size it does not know - the renderer owns that
-number - so it cannot tell whether the next press crosses the line, only that the last one did.
-The press that crosses is the one that raises the problem naming the pane's grid; every press
-after it does nothing. `muster font larger` and `muster font reset` always work, including from
-over the line, because they are the way back.
-
-## Reattaching takes the terminal from whatever is holding it
+## Reattaching takes the pane from whatever is drawing it
 
 `muster pane reattach` asks for a bridge, and a bridge asked for after the first one takes the
-pane's terminal over rather than being refused. That is the whole point when the thing holding it
-is a herdr client whose ssh died - which is the usual case, and the one nobody guesses. But herdr
-allows one client per terminal and does not distinguish, so whatever else holds it loses it: a
-herdr TUI, or a Muster window that has not yet heard the pane's tab moved away from it. That one
-says so and stops drawing the pane; nothing is lost.
+pane over rather than being refused. That is the whole point when the thing holding it is a
+bridge whose connection died without the daemon noticing yet. But the daemon lets one bridge
+draw a pane at a time and does not distinguish, so whatever else holds it loses it: a Muster
+window that has not yet heard the pane's tab moved away from it, say. That one says so and stops
+drawing the pane; nothing is lost.
 
 What it cannot do is anything about the machine. It asks this window for a bridge and reaches no
 daemon, so a pane on a devenv you cannot currently reach gets a bridge that fails the same way the
@@ -202,11 +187,10 @@ treated as closed the next time anything needs to know - it keeps its tabs the s
 
 ## Every tab is in exactly one window
 
-A window lists the tabs it holds and no others, and no tab is in two windows. Only one client may
-hold a terminal, so a tab two windows both listed would be one whose terminals the second window
-took from the first at a click. A tab made from a window is that window's. A tab made outside
-Muster - in herdr's own TUI, say - joins the window that was in front most recently, of the ones
-attached to that tab's machine.
+A window lists the tabs it holds and no others, and no tab is in two windows. Only one bridge may
+draw a pane, so a tab two windows both listed would be one whose panes the second window took
+from the first at a click. A tab made from a window is that window's. A tab no window holds joins
+the window that was in front most recently, of the ones attached to that tab's machine.
 
 So the agent list, ⌘1 to ⌘9 and `next_tab` are about this window's tabs only. The rest are under
 their own window in `muster window`, and every verb still reaches them: a request naming a tab
@@ -227,13 +211,6 @@ Which window holds each tab is written in `~/.muster/state/holding/tabs.toml`. D
 windows are open costs them nothing, because each one writes itself and its tabs back. It costs the
 closed windows their tabs, which then join the window in front.
 
-## A name somebody typed does not cross windows straight away
-
-Panes and tabs have the same names in every window, and a name somebody *gives* one takes longer
-to arrive. The daemon announces a rename to nobody, so a second window learns it the next time it
-asks the daemon what it holds rather than at the moment it happens. Muster's own names are not
-affected: those are written down where every window reads them.
-
 ## Outside a pane, two open windows are ambiguous for a change that names nothing
 
 Each window listens on its own socket, named after its process. A caller inside a pane reaches
@@ -252,11 +229,9 @@ With one window open, both are exactly what they were.
 
 ## A zoom with nothing to zoom still succeeds
 
-`muster zoom` in a tab holding one pane exits 0 and changes nothing. A single pane already fills
-the tab, so there was nothing to hide and nothing went wrong; the run log names the daemon's
-own reason at info level if you want to see it. A change a daemon would not make does exit
-non-zero with what it said on stderr, so this is the one answer that reads like a refusal in the
-log and is a success on purpose.
+`muster zoom` in a tab holding one pane exits 0 and changes nothing you can see. A single pane
+already fills the tab, so there was nothing to hide and nothing went wrong. A change a daemon
+would not make does exit non-zero with what it said on stderr.
 
 ## The window's answer is a mirror
 
@@ -282,6 +257,4 @@ back, and anything it did in between - a finish followed by new work - is not he
 window quits, a watch ends with exit 3.
 
 `pane new` and `tab new` print a pane's name once the window has heard of the pane, so the next
-command can name it. A window hearing nothing from that daemon still prints the name after two
-seconds, because the pane exists, and until the window catches up every command naming the pane
-refuses it. A wait on a name no pane has is refused at once.
+command can name it. A wait on a name no pane has is refused at once.

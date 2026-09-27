@@ -31,11 +31,11 @@ use crate::session;
 
 /// How long the other window has to answer.
 ///
-/// `pane new --run` waits on a shell before it answers, so this has to be long, but it stays
-/// short of the CLI's own minute (`muster-cli`'s `dial::PATIENCE`): a window that hangs is then
-/// answered here with a refusal naming it, rather than the CLI giving up on this window without
-/// saying which one did not answer. Longer than the daemon's own deadline for an answer (30 s)
-/// and a shell's prompt (5 s) together.
+/// Long enough to cover the other window waiting out its own daemon's deadline for an answer
+/// (10 s, `muster-daemon-client`'s `backend::PATIENCE`), but short of the CLI's own minute
+/// (`muster-cli`'s `dial::PATIENCE`): a window that hangs is then answered here with a refusal
+/// naming it, rather than the CLI giving up on this window without saying which one did not
+/// answer.
 const PATIENCE: Duration = Duration::from_secs(45);
 
 /// The other open window a request is about, when it is about one.

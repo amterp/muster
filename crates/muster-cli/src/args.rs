@@ -208,7 +208,7 @@ enum What {
         doing: WithTab,
     },
 
-    /// Every herdr daemon Muster started on this machine, and whether it is still there
+    /// Every daemon Muster started on this machine, and whether it is still there
     //
     // Its own verb rather than a section of `muster window`, because the two answer different
     // questions about different things. `window` is about one window and everything in it;
@@ -390,7 +390,7 @@ enum Doing {
         #[arg(long, value_name = "DIR")]
         cwd: Option<String>,
 
-        /// A shell line to run in it, waiting for its prompt first
+        /// A shell line for its shell to run as it starts
         #[arg(long, value_name = "CMD")]
         run: Option<String>,
 
@@ -603,7 +603,7 @@ enum WithTab {
     // needs: naming a tab is something you do once, and sending into its pane is what comes
     // next. The tab's own name is one `muster window` away, on the row of the pane below.
     New {
-        /// The pane whose workspace the tab joins, or the one this is running in
+        /// The pane whose machine the tab is made on, or the one this is running in
         #[arg(long, value_name = "REF", group = "somewhere")]
         pane: Option<String>,
 
@@ -615,7 +615,7 @@ enum WithTab {
         #[arg(long, value_name = "DIR")]
         cwd: Option<String>,
 
-        /// A shell line to run in it, waiting for its prompt first
+        /// A shell line for its shell to run as it starts
         #[arg(long, value_name = "CMD")]
         run: Option<String>,
 

@@ -13,8 +13,8 @@
 //!
 //! This is the part that does not depend on which daemon is behind it: the socket, the accept
 //! loop, and the config naming it. A [`Pump`] carries each connection, and knows the wire well
-//! enough to find a request and its answer - JSON lines for herdr (`herdr-harness`), framed
-//! protobuf for muster-daemon.
+//! enough to find a request and its answer - framed protobuf for muster-daemon, as it was JSON
+//! lines for herdr.
 
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};

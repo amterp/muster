@@ -18,9 +18,10 @@ Neither split moved the keyboard. Making a pane is not the same act as looking a
 agent opening three panes should not drag somebody's cursor through all three. `--focus` asks
 for it.
 
-`--run` waits for the new pane's shell to print a prompt before typing, so a program still
-starting up does not miss the command. The wait belongs to the window rather than to the caller,
-which is why the command travels with the split instead of arriving as a `pane send` afterwards.
+`--run` hands the command to the daemon with the split, and the new pane's shell runs it as it
+starts rather than having it typed in, so a program still starting up cannot miss it. That is why
+the command travels with the split instead of arriving as a `pane send` afterwards. When the
+command exits, the pane drops to a shell.
 
 `--cwd` says where the new pane starts, and a relative path means what it means everywhere else:
 relative to the directory `muster` is running in. `muster pane new --cwd ../other-worktree` from
@@ -190,8 +191,9 @@ both.
 A pane draws what a bridge feeds it, and a bridge dies with the connection carrying it. Muster
 starts another one, and starts another after that if nothing dials - but it stops after a run of
 bridges that each die on sight, because at that point something outside Muster is in the way and
-spawning processes at it does not help. What is left is a pane that shows what it last painted,
-takes no keystrokes, and has an agent running behind it perfectly happily:
+spawning processes at it does not help. What is left is a pane that shows what it last painted
+and has an agent running behind it perfectly happily. What you type still reaches that agent; you
+just cannot see what it does with it:
 
     muster pane reattach --pane p1w3r07bsd
 
@@ -199,9 +201,9 @@ That asks for a bridge, and it is the only way back that keeps the agent. `muste
 gets the pane a fresh start, by ending what is running in it, which is rarely what somebody staring
 at a stuck agent wants - and quitting Muster does the same thing to every pane at once.
 
-The usual thing in the way is a herdr client from before: only one client may hold a terminal, and
-one whose ssh died goes on holding it without noticing. The window says so on the pane's row in the
-roster, with the command that releases it. Kill that, then reattach.
+The usual thing in the way is the connection to the pane's machine: a devenv that is down, or an
+ssh that has not come back. The window says so on the pane's row in the roster. Once the machine
+answers again, reattach: the new bridge takes the pane over from whatever still held it.
 
 `--pane` is the pane the command is running in when you leave it out, so this also works typed into
 a pane whose neighbour has gone quiet. It is safe on a pane that is working: the window builds a

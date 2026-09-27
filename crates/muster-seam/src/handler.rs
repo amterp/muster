@@ -100,8 +100,8 @@ fn handle(request: Request) -> Response {
 ///
 /// Split from [`handle`] so that the rule above it - which applies to every request alike -
 /// is not read as part of a table where each line is about one request only.
-// A table with one arm per request, for the reason `muster_herdr::intent::request` gives:
-// split into helpers it would be the same length with the correspondence broken up.
+// A table with one arm per request: split into helpers it would be the same length with the
+// correspondence broken up.
 #[allow(clippy::too_many_lines)]
 fn route(payload: request::Payload) -> Response {
     match payload {
@@ -298,10 +298,10 @@ fn read_pane(read: &proto::ReadPane) -> Response {
     }
 }
 
-/// Which herdr daemons Muster has started on this machine, and whether each is still there.
+/// Which daemons Muster has started on this machine, and whether each is still there.
 ///
 /// The half `read_window` cannot answer. That says what *this* window is attached to, which is
-/// what makes ending this window's sessions deliberate; a person about to end a stray herdr
+/// what makes ending this window's sessions deliberate; a person about to end a stray daemon
 /// needs the other half, and until now the only thing that answered it was a build script in
 /// this repository walking processes with `pgrep` and `lsof`.
 ///
@@ -625,7 +625,7 @@ fn act(
 ///   guessed at by each verb.
 ///
 /// The pane is optional, because a machine can have nothing on screen. What that means is the
-/// caller's to say: `tab new` and `pane new` turn it into a workspace, and the verbs that need
+/// caller's to say: `tab new` and `pane new` turn it into a new tab there, and the verbs that need
 /// something to act on refuse.
 fn target(daemon_id: &str, pane_id: &str) -> Result<Target, Box<Response>> {
     if !pane_id.is_empty() {
@@ -646,9 +646,9 @@ fn target(daemon_id: &str, pane_id: &str) -> Result<Target, Box<Response>> {
         return Ok(Target { daemon, pane: Some(pane), held });
     }
     let daemon = resolve_daemon(daemon_id)?;
-    // Checked here rather than inside `resolve_daemon`, which is also on the scroll path and
-    // pays for what it does per wheel notch. This is the one branch a name somebody typed
-    // arrives on; every other caller reads the daemon off the view it was drawn from.
+    // Checked here rather than inside `resolve_daemon`, because this is the one branch a name
+    // somebody typed arrives on; every other caller reads the daemon off the view it was drawn
+    // from.
     if !daemon_id.is_empty() && !session::is_following(&daemon) {
         return Err(Box::new(no_such_daemon(&daemon)));
     }
@@ -707,7 +707,7 @@ fn placed(answer: Result<Response, Refusal>, target: &Target) -> Response {
 /// A submitted request whose refusal is relayed as it stands.
 ///
 /// The twin of [`placed`], for the verbs that worked out what they were about before asking: a
-/// tab resolved by `holder_of`, a workspace on a machine somebody named. Those cannot have been
+/// tab resolved by `holder_of`, a new tab on a machine somebody named. Those cannot have been
 /// sent to a machine that never held what they named, so the daemon's own answer is about the
 /// request rather than about the routing.
 fn relayed(answer: Result<Response, Refusal>) -> Response {
@@ -845,9 +845,8 @@ fn open_a_tab(
 /// Empty is the ordinary case rather than an omission: every menu item sends it, because a
 /// menu item is about whatever is in front of the user. Only a window with nothing attached
 /// has no answer, and that is the renderer check.
-/// Boxed refusal, because this is on the scroll path: a wheel resolves a daemon for every
-/// notch, and a `Response` is large enough that returning one by value costs more than the
-/// refusal it almost never is.
+/// Boxed refusal, because a `Response` is large enough that returning one by value costs more
+/// than the refusal it almost never is.
 fn resolve_daemon(daemon_id: &str) -> Result<DaemonId, Box<Response>> {
     if !daemon_id.is_empty() {
         return Ok(DaemonId::new(daemon_id));
@@ -1175,11 +1174,11 @@ fn holder_of(tab: &TabId, daemon_id: &str) -> Option<DaemonId> {
 
 /// Why a tab name went nowhere.
 ///
-/// The same answer the registry gives for a name it has dropped, and it means the same thing:
-/// whoever said this name is talking about a tab that is not there. Refused rather than sent to
-/// whichever daemon happens to be focused, because herdr ignores a `tab_id` it does not
-/// recognize and acts on what it has focused instead - so a hopeful send would move or rename
-/// somebody else's tab and report success.
+/// Whoever said this name is talking about a tab that is not there. Refused here rather than
+/// sent to whichever daemon happens to be focused, whose refusal would be about a machine the
+/// tab was never on. herdr, the daemon Muster ran first, did worse: it ignored a `tab_id` it did
+/// not recognize and acted on what it had focused instead, so a hopeful send moved or renamed
+/// somebody else's tab and reported success.
 fn no_such_tab(tab: &TabId, verb: &str) -> Response {
     Response::failure(format!(
         "no daemon this window is following holds a tab called {tab}, so nothing was {verb}. \
@@ -1627,11 +1626,10 @@ fn resize_pane(resize: &proto::ResizePane) -> Response {
 
 /// The shell saying nothing is painting one of its panes any more.
 ///
-/// Answered by asking that daemon what it holds, because the commonest reason a bridge ends
-/// is that the pane it was painting is gone - and herdr can drop a pane without an event, so
-/// this is sometimes the only notice there is. A pane the daemon still holds survives the
-/// re-read unchanged and keeps its dead surface, which is the honest outcome: the shell can
-/// say the bridge died, and it cannot say the pane did.
+/// The renderer's report, and one that may never come: the bridge's link closing usually says
+/// so first (`session::bridge_ended`). A pane whose process is still alive had only its surface
+/// rebuilt, so the wait for its bridge starts again; otherwise the bridge is taken to have ended
+/// without saying why. The shell can say the bridge died, and it cannot say the pane did.
 ///
 /// Always `Ok`. Nothing was asked for, so there is nothing to refuse.
 fn bridge_exited(exited: &proto::BridgeExited) -> Response {

@@ -111,9 +111,9 @@ pub enum Action {
     ResizeDown,
     /// Opens the find bar over the pane with the keyboard.
     ///
-    /// Like [`Action::RenamePane`], what the chord means is "ask me": the needle arrives
-    /// afterwards as an ordinary find request, one per keystroke, and a CLI searching for
-    /// something outright sends that and never this.
+    /// Like [`Action::RenamePane`], what the chord means is "ask me". The search itself is
+    /// Ghostty's, in the pane's surface: find is a view action, so the needle never reaches the
+    /// core, and a CLI has no way to search at all.
     Find,
     /// Goes to the next match, and to the previous one.
     ///

@@ -71,7 +71,7 @@ pub struct Divider {
 
 /// How close a divider has to be to where it is wanted before it is left alone.
 ///
-/// A backend divides its own rectangle in cells, so a share this small does not move a divider
+/// A pane is laid out in whole cells, so a share this small does not move a divider
 /// by a whole cell in any window worth using - and a request that moves nothing still costs a
 /// round trip and a republished tree. Being slightly generous is what makes evening an already
 /// even tab free rather than a burst of requests that change nothing.

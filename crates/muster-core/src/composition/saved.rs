@@ -71,9 +71,9 @@ pub struct Saved {
     /// Empty for every file this Muster wrote. A version 3 arrangement is a column per machine
     /// and each column named a tab of its own, so reading one back as a window holding one tab
     /// per column would take away the side-by-side view somebody was using. It becomes one
-    /// Muster tab holding all of it instead, which needs those tabs grouped under one name in
-    /// the name registry - and the registry is not this file's to write. So the file says what
-    /// it implied, and whoever holds the registry acts on it.
+    /// Muster tab holding all of it instead, which needs those tabs grouped under one name - and
+    /// that was the name registry's to write, not this file's. So the file says what it implied.
+    /// Nothing applies it now: the registry went with herdr.
     pub grouped: Vec<(TabId, TabId)>,
     /// The window's own chrome, which needs no checking against a daemon.
     ///
@@ -175,14 +175,14 @@ impl Saved {
 /// window that opens the way a first launch does, and the cost of guessing is a window that
 /// opens wrong.
 ///
-/// **2 because `region.tab` changed meaning.** A version 1 file holds the backend's tab id,
+/// **2 because `region.tab` changed meaning.** A version 1 file holds herdr's tab id,
 /// which no longer resolves now that Muster mints its own (`crate::names`). Left at 1 the file
 /// still parses and every region silently fails its check, so the arrangement vanishes with
 /// nothing said; refused by version, the log names what it found and why the window opened
 /// fresh. One lost arrangement either way - this is the one that explains itself.
 ///
 /// **3 because a region stopped naming a workspace.** A version 2 file carries one and nothing
-/// reads it any more: a workspace is the backend's unit for a whole project, and a tab already
+/// reads it any more: a workspace was herdr's unit for a whole project, and a tab already
 /// says which one it is in (MIP-2). A version 2 file would parse and restore correctly with the
 /// key ignored, so this bump buys less than the last one - what it buys is that the file on
 /// disk and the format this reads never differ silently, which is the property a version is for.
@@ -496,7 +496,7 @@ fn into_tabs(rows: Vec<(TabId, SavedRegion)>) -> Vec<SavedTab> {
 /// purpose, once the new model is on screen to do it in.
 ///
 /// The tab that stays is the first column's, and the rest become members of it - which is the
-/// grouping reported in `Saved::grouped` for whoever holds the name registry to apply. Two
+/// grouping reported in `Saved::grouped`. Two
 /// columns on one machine collapse into one region, which is what a file written by a window
 /// that had drawn a pane twice looks like (kan a_2Ht74jTXV).
 fn into_one_tab(

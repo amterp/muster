@@ -4,25 +4,25 @@
 //! it is `idle` on a pane nobody has looked at, and whether anybody looked is a fact about
 //! a window rather than about a session.
 //!
-//! herdr derives it too, from its own two inputs - whether the pane's tab is the daemon's
-//! active tab, and whether the foreground client's host window has OS focus. Neither is
-//! reachable over its public JSON API: `pane.mark_seen`, `client.focus` and
-//! `client.outer_focus` are all unknown methods, and the DEC focus sequences go to the
+//! herdr, the daemon Muster ran first, derived it too, from its own two inputs - whether the
+//! pane's tab was the daemon's active tab, and whether the foreground client's host window had
+//! OS focus. Neither was reachable over its public JSON API: `pane.mark_seen`, `client.focus`
+//! and `client.outer_focus` were all unknown methods, and the DEC focus sequences went to the
 //! pane's program rather than to the client-focus machinery
 //! (`docs/observations/herdr-0.8.0.md` section 3). So a daemon asked to decide this for a
 //! window it cannot see answers from a client that never reported, and a Muster window
 //! sitting unfocused while an agent finishes gets `idle` - which reads as "nothing needs
 //! you" at the exact moment something does.
 //!
-//! Muster holds both halves already. The agent channel delivers every transition, and the
+//! Muster holds both halves already. The daemon's events deliver every transition, and the
 //! shell is the only thing that knows whether its own window had focus when one arrived.
-//! So `done` is computed here and herdr's own answer is normalized away on the way in.
-//! Two writers for one field is the failure `architecture.md` warns about, and of the two
-//! this one can actually see the window.
+//! So `done` is computed here, and muster-daemon reports only the other four. Two writers for
+//! one field is the failure `architecture.md` warns about, and of the two this one can
+//! actually see the window.
 //!
 //! What that costs, stated rather than hidden: ours is the only focus we can observe, so
-//! `done` means "nobody *we know of* saw it". A second Muster window, or a herdr TUI open
-//! beside us, is outside what this can answer.
+//! `done` means "nobody *we know of* saw it". A second Muster window is outside what this can
+//! answer.
 //!
 //! **And which of them are worth interrupting somebody for.** Glanceable states are the
 //! floor rather than the ceiling: a pane no region is showing is exactly the pane most
@@ -186,10 +186,10 @@ impl Attention {
     /// Records one transition: whether it counts as finishing unseen, and whether it changes
     /// what this pane is asking of the person.
     ///
-    /// Mirrors herdr's own rule, which is worth matching rather than improving on: anything
-    /// that is not idle means the agent is doing something, so the pane is no longer waiting
-    /// on anyone. Only a *completion* - working or blocked falling to idle - can leave a
-    /// pane unseen. An idle that arrives from anywhere else (a pane whose harness we could
+    /// Mirrors herdr's rule for its own `done`, which is worth matching rather than improving
+    /// on: anything that is not idle means the agent is doing something, so the pane is no
+    /// longer waiting on anyone. Only a *completion* - working or blocked falling to idle - can
+    /// leave a pane unseen. An idle that arrives from anywhere else (a pane whose harness we could
     /// not read, or a repeated idle) changes nothing, because nothing finished.
     ///
     /// `blocked` is the exception to "doing something means not waiting". It is the one busy
@@ -226,14 +226,13 @@ impl Attention {
     /// The one moment a backend's own `done` is worth taking, and the reason is that we have
     /// nothing better. Muster witnessed no transition for a pane that finished before it
     /// attached, and a daemon outlives the app, so quitting and coming back is the ordinary
-    /// case rather than a corner of one. The daemon does have evidence there: it knows the
-    /// pane's tab was in the background. Refusing that because we cannot personally vouch for
-    /// it would mean a window opened after a break reports that nothing needs anybody, at the
-    /// one moment several things do.
+    /// case rather than a corner of one. herdr, the daemon Muster ran first, had evidence there:
+    /// it knew the pane's tab was in the background. Refusing that because we cannot personally
+    /// vouch for it would mean a window opened after a break reports that nothing needs anybody,
+    /// at the one moment several things do. muster-daemon reports no `done`, so on it this
+    /// adopts nothing.
     ///
-    /// The same shape as the rule the mirror already follows for the field itself: structure
-    /// sets agent state only for a pane it is seeing for the first time, and the agent channel
-    /// owns it from then on. Here, first sight adopts and every observation after it is ours.
+    /// First sight adopts, and every observation after it is ours.
     pub fn first_seen(&mut self, pane: &PaneKey, backend: AgentState) {
         if backend == AgentState::Done && !self.seen(pane) {
             self.unseen.insert(pane.clone());
@@ -242,9 +241,9 @@ impl Attention {
 
     /// What the window should show for a pane, given what the daemon says about it.
     ///
-    /// The daemon's `done` is normalized away first. It is a guess about a client that never
-    /// reported its focus, so keeping it would leave two answers to one question and no way
-    /// to tell which was which.
+    /// A backend's `done` is normalized away first. herdr's was a guess about a client that
+    /// never reported its focus, so keeping it would leave two answers to one question and no
+    /// way to tell which was which.
     pub fn presented(&self, pane: &PaneKey, backend: AgentState) -> AgentState {
         let backend = settled(backend);
         if backend == AgentState::Idle && self.unseen.contains(pane) {
@@ -279,11 +278,11 @@ impl Attention {
 
     /// Lets go of a pane the backend no longer holds.
     ///
-    /// Called when a pane closes or exits, and it matters for more than the bookkeeping. Ids
-    /// are the backend's and the backend reuses them - a restarted herdr hands out `w1:p1`
-    /// again - so an entry left behind is not merely dead weight: the next pane to be given
-    /// that id inherits it, and a brand-new agent renders as `done` before it has done
-    /// anything. Waiting to be looked at is the one piece of state here, and a pane that is
+    /// Called when a pane closes or exits, and it matters for more than the bookkeeping. A name
+    /// can come back: a daemon that restarts brings each pane back under its old name with a
+    /// new shell in it, so an entry left behind is not merely dead weight - the pane that
+    /// returns under that name inherits it, and a fresh shell renders as `done` before it has
+    /// done anything. Waiting to be looked at is the one piece of state here, and a pane that is
     /// gone is not waiting for anybody.
     ///
     /// Says so when the pane was asking for somebody, because a notification outliving its

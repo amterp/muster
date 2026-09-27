@@ -28,11 +28,11 @@ impl AgentState {
 
     /// Reads a backend's spelling of a state, treating anything unrecognized as `Unknown`.
     ///
-    /// Backends are free to grow states we have never heard of - herdr's API is explicitly
-    /// unstable and ships weekly. Failing closed onto `Unknown` means a Muster running
-    /// against a newer daemon shows an honest "we don't know" instead of crashing or, far
-    /// worse, quietly reading a novel state as `Idle` and telling the user nothing needs
-    /// them.
+    /// Backends are free to grow states we have never heard of - herdr's API, which Muster ran
+    /// on first, was explicitly unstable and shipped weekly. Failing closed onto `Unknown`
+    /// means a Muster running against a newer daemon shows an honest "we don't know" instead
+    /// of crashing or, far worse, quietly reading a novel state as `Idle` and telling the user
+    /// nothing needs them.
     pub fn from_backend(value: &str) -> AgentState {
         match value {
             "working" => AgentState::Working,

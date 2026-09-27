@@ -95,23 +95,17 @@ message Carried {
   Request request = 2;
 }
 
-// This process is going away, and its panes should be handed back.
+// This process is going away.
 //
 // The one thing the core cannot see for itself. A dylib does not get to notice its host
 // terminating, and everything the core would want to do about it has to happen before the
 // window's bridges are killed - so the shell says, synchronously, and the core answers when
 // it has finished.
 //
-// What it does is put each pane's grid back. A backend holds a pane's terminal at whatever
-// size the last controlling client set and does not release it, so a Muster that quits leaves
-// every pane it touched sized to a window that no longer exists and whoever picks the session
-// up next inherits that (`observations/herdr-0.8.0.md` section 4). "Sessions outlive the app"
-// is the promise this protects: a rough Muster should never cost a workday, and handing back
-// mis-sized panes costs one.
-//
-// Muster's own, until the backend does it. This is a defect upstream rather than a design, and
-// the day it releases the hold itself is the day this becomes a no-op rather than a second
-// answer.
+// What it does is tell the other windows this one has closed, so it keeps its tabs for a
+// reopen, and end the sessions when asked to. It used to put each pane's grid back as well,
+// because herdr held a pane's terminal at whatever size the last controlling client set
+// (`observations/herdr-0.8.0.md` section 4); that went with herdr.
 //
 // Nothing is published in reply. The window is closing; a view it would repaint has nowhere to
 // go, and a shell waiting on this is waiting to exit.
@@ -125,8 +119,8 @@ message Quitting {
   // with `pgrep` and kill it, which is how somebody's working agent was lost once already
   // (kan a_28YghIUw2).
   //
-  // A clean stop, measured rather than assumed: `server.stop` gives a pane's process a
-  // catchable SIGHUP and a moment to act, not a SIGKILL. What each harness does with that is
+  // A clean stop: the daemon's stop request gives a pane's process a catchable SIGHUP and a
+  // moment to act, not a SIGKILL. What each harness does with that is
   // its own business - Claude Code exits within about 300ms and restores the terminal on its
   // way out, so it is asked and it goes rather than being shot.
   bool close_sessions = 1;
@@ -302,8 +296,8 @@ message MoveTab {
 // Calls a tab what somebody wants to call it.
 //
 // Separate from RenamePane rather than one verb over a target, because the two are not the
-// same operation underneath: a tab rename is announced to every client and a pane rename is
-// announced to none, and only a pane's can be fully undone.
+// same operation underneath: a tab's name is held on every machine the tab spans, with a
+// generation so the newest wins, and a pane's is held on the one machine its pane is on.
 message RenameTab {
   // Empty finds the daemon from the tab, which is what a caller naming only a tab means. Only
   // read when no tab is named, where it decides whose keyboard's tab this is about.
@@ -315,9 +309,8 @@ message RenameTab {
   // Empty means the tab the keyboard's pane is in.
   string tab_id = 2;
 
-  // Empty asks for the name to be taken away. How completely that happens is the backend's
-  // answer rather than a promise made here: herdr leaves such a tab nameless rather than
-  // restoring its number, and Muster's own caption then draws the place.
+  // Empty asks for the name to be taken away. The tab is left nameless, and Muster's own
+  // caption then draws the place.
   string name = 3;
 }
 
@@ -523,14 +516,12 @@ message ZoomPane {
 // The subprocess painting a pane has ended.
 //
 // An observation rather than a request: a bridge is the shell's own subprocess and its death
-// says nothing on its own about whether the daemon still holds the pane. What makes it worth
-// sending is that the commonest reason for one to end is that the daemon does not - a pane
-// whose terminal has gone - and herdr does not always say so on its own. So this is the
-// shell handing over the one piece of evidence it has, and the core decides what it means by
-// asking the daemon what it holds.
+// says nothing on its own about whether the daemon still holds the pane. The bridge's link to
+// the window closing usually says so first, and this is the renderer's report, which may never
+// come (kan a_2IRcMjFs0); the core decides what either means.
 //
-// The pane is named because the shell knows which surface died, and the daemon because two
-// daemons hand out the same pane ids.
+// The pane is named because the shell knows which surface died, and the daemon because every
+// message here that names a pane says both.
 message BridgeExited {
   string daemon_id = 1;
   string pane_id = 2;
@@ -541,17 +532,18 @@ message BridgeExited {
 
 // Show whatever there is to show.
 //
-// What a bare `muster` asks for, and the ordinary way to open the app: no pane is named, so
-// each attached daemon gets a region on the tab it is already focused on. A daemon Muster
-// had to start holds nothing at all, and this is what asks it for a first workspace.
+// What a bare `muster` asks for, and the ordinary way to open the app: no pane is named, so the
+// window opens onto the arrangement it was left in, or failing that the first tab it is free to
+// show. A daemon Muster had to start holds nothing at all, and this is what asks it for a first
+// tab, once it has finished restoring.
 //
 // Its own message rather than an AttachPane with an empty pane id. Everywhere else in this
 // schema an empty pane means "the one this window's keyboard is on", and at open there is no
 // keyboard yet - so the same spelling would mean two different things one message apart.
 //
 // Nothing comes back but Ok. What the window ends up showing arrives as a ViewChanged, like
-// every other answer about what is on screen, and a first workspace lands there a moment
-// later when the daemon has made it.
+// every other answer about what is on screen, and a first tab lands there a moment later when
+// the daemon has made it.
 message OpenWindow {}
 
 // Moves the line between two regions of the window.
@@ -577,11 +569,11 @@ message SetRegionBoundary {
 // Whether this window has the OS's focus.
 //
 // The one input to the vocabulary that no daemon can supply and no core can observe. `done`
-// is `idle` on a pane nobody looked at, and herdr derives it from the foreground client's
-// window focus - which its JSON API has no method for, so a daemon deciding it for a Muster
-// window is answering from a client that never reported. The consequence is not cosmetic: an
-// agent finishing while this window sits behind a browser reads as `idle`, which says nothing
-// needs you at the moment something does.
+// is `idle` on a pane nobody looked at, and no daemon can see a window's focus: herdr derived
+// `done` from the foreground client's window focus, which its JSON API had no method for, so it
+// answered for a Muster window from a client that never reported. The consequence is not
+// cosmetic: an agent finishing while this window sits behind a browser reads as `idle`, which
+// says nothing needs you at the moment something does.
 //
 // So the shell reports what only it can see and the core decides what it means. Nothing else
 // crosses this seam about focus: which pane the keyboard feeds is Muster's own cursor and
@@ -603,9 +595,10 @@ message WindowFocus {
 //
 // A pane is named by two things, and every message below that names one says both.
 //
-// Two daemons hand out the same ids - `w1:p1` means something on each - so a bare pane id
-// stops being an answer the moment a window shows more than one daemon. The daemon is
-// Muster's own name from the config file, because herdr has no notion of its own identity.
+// A pane's name is Muster's own and unique across machines, but it was not always: when daemons
+// named their own panes, two of them both handed out `w1:p1`, and the pair is what every message
+// here still carries. The daemon is Muster's own name from the config file, because a daemon
+// has no name for itself.
 //
 // Both halves spell absence as the empty string, and both mean "the one this window's
 // keyboard is on", because that is what a keybinding means. The pair is what a menu item
@@ -631,12 +624,11 @@ message SplitPane {
   // What to run in it, or empty for whatever a new pane runs anyway.
   //
   // Part of making the pane rather than something to send afterwards, and that is the whole
-  // reason it is here. A backend need not be able to spawn a program with a pane - herdr
-  // cannot, so this becomes a wait for the pane's shell to draw its prompt and then the text -
-  // and a caller that did it itself would be racing that prompt with no way to see it. One
-  // call owns the wait, in one place, for every caller.
+  // reason it is here: the daemon hands it to the pane's shell as it starts, so no program
+  // starting up can miss it, and a caller that typed it in itself would be racing the shell's
+  // prompt with no way to see it.
   //
-  // Sent as typed input, so it is what somebody would have typed: a shell line, not an argv.
+  // A shell line, not an argv: the pane's shell runs it, then stays when it exits.
   string run = 6;
 
   // What to call it, or empty for nothing.
@@ -760,40 +752,36 @@ message ReadPane {
   // How many rows back to ask for, newest first. Zero means as far as the daemon will go,
   // which is what a caller with nothing particular in mind wants.
   //
-  // A ceiling rather than a promise: a daemon is free to answer with fewer, and herdr clamps
-  // anything above a thousand rather than refusing it (observations/herdr-0.8.0.md section
-  // 17). So asking for more than there is costs nothing and lies about nothing.
+  // A ceiling rather than a promise: the window reads the pane's whole history from the daemon,
+  // up to the 4 MiB it puts in one answer, and keeps the last this many rows of text. So asking
+  // for more than there is costs nothing and lies about nothing.
   uint32 rows = 3;
 }
 
 // Makes a tab beside a pane, with one pane in it, and shows it.
 //
-// The unit somebody reaches for several times an hour, and until now the one thing that
+// The unit somebody reaches for several times an hour, and before this the one thing that
 // meant dropping to the herdr CLI: splitting was the only way to make a pane, so anything
 // that did not belong in the tab you were in had nowhere to go.
-//
-// A workspace is deliberately not here. It is herdr's unit for a whole project rather than
-// something a window makes several times an hour, and Muster makes one only when it would
-// otherwise have nothing at all to show.
 message CreateTab {
   string daemon_id = 1;
 
-  // The pane whose workspace the tab joins. Empty means the one this window's keyboard is
+  // The pane whose machine the tab is made on. Empty means the one this window's keyboard is
   // on, which is what a keybinding means.
   string pane_id = 2;
 
   // Where its pane starts. Empty means that pane's own directory, which is the useful answer
   // mid-flow and the one a split already gives. Unlike a split this is resolved by the core
-  // rather than left to the daemon: a new tab has nothing to inherit from, and herdr's own
+  // rather than left to the daemon: a new tab has nothing to inherit from, and the daemon's own
   // answer is a home directory nobody asked for.
   string cwd = 3;
 
   // The three below are SplitPane's, and mean there exactly what they mean here. A tab is the
   // other way to make a pane, so a caller that can equip a split and not a tab has to make the
-  // tab and then race its shell - which is the wait SplitPane.run exists to own.
+  // tab and then race its shell - which is what SplitPane.run exists to spare it.
 
-  // What to run in it, or empty for whatever a new pane runs anyway. Sent as typed input after
-  // the pane's shell has drawn a prompt, exactly as a split's is.
+  // What to run in it, or empty for whatever a new pane runs anyway. Run by the pane's shell as
+  // it starts, exactly as a split's is.
   string run = 4;
 
   // What to call it, or empty for nothing.
@@ -820,7 +808,7 @@ message ClosePane {
 // started has nothing that can ask for one. Muster asks on its own now, a deadline after
 // nothing dials, and this is the same ask from the keyboard: for a pane whose bridges are
 // starting and dying on sight, which the window has stopped rebuilding on purpose, somebody
-// who has just killed the client holding its terminal is the only one who knows to try again.
+// who has just brought its machine back is the only one who knows to try again.
 //
 // Deliberately not ClosePane, which is the other thing that gets a pane a fresh bridge and
 // ends the agent to do it.
@@ -834,13 +822,10 @@ message ReattachPane {
   string pane_id = 2;
 }
 
-// Points this window's keyboard at a pane, and tells the daemon somebody looked.
+// Points this window's keyboard at a pane.
 //
-// Both halves, because they are one thing to the person who clicked. Muster routes input by
-// its own view-local cursor and never reads the daemon's back - daemon focus is a single
-// value shared with every client, so a herdr TUI in another window could otherwise yank this
-// window's keyboard. It is still *written*, because a daemon deciding whether an agent was
-// seen is watching it (architecture.md, cursors are written, not read).
+// Muster routes input by its own view-local cursor, and the daemon keeps no focus of its own,
+// so nothing is sent to it: which pane the keyboard feeds is this window's alone.
 message FocusPane {
   string daemon_id = 2;
   string pane_id = 1;
@@ -1081,7 +1066,7 @@ message Made {
 // What a pane has printed, as far back as the daemon went.
 //
 // Its own answer rather than a string in an Ok, because two facts come back and the second one
-// changes what the first means: a caller told a thousand rows and not told there are more will
+// changes what the first means: a caller told a page of rows and not told there are more will
 // conclude it has read the pane.
 message PaneText {
   // Newest row last, the way the pane draws it.
@@ -1096,12 +1081,13 @@ message PaneText {
   bool truncated = 3;
 }
 
-// Asks which herdr daemons Muster has started on this machine, and whether each is still there.
+// Asks which daemons Muster has started on this machine, and whether each is still there.
 //
 // The half `ReadWindow` cannot answer. That says which daemons *this* window is attached to,
 // which is what makes ending this window's sessions deliberate; this says which daemons are on
 // the machine at all, including the ones nothing is attached to. Those are the ones that
-// accumulate - twenty alive, nineteen holding nothing, one holding somebody's work.
+// accumulate - when Muster ran herdr, twenty alive on one machine, nineteen holding nothing,
+// one holding somebody's work.
 //
 // A read, and only a read. Nothing here ends a daemon, and nothing ever will: a process
 // holding somebody's live agent is the wrong thing to reap on a schedule, in a tool whose
@@ -1120,8 +1106,8 @@ message Daemons {
 
 // One daemon Muster started, and what it is doing now.
 message KnownDaemon {
-  // The socket it binds, which is the handle for everything anyone can do to it.
-  // `HERDR_SOCKET_PATH=<socket> herdr server stop` ends this one and not the one beside it.
+  // The socket it binds, which is the handle for everything anyone can do to it. Ending the
+  // process that holds `<socket>.lock` ends this one and not the one beside it.
   string socket = 1;
 
   // When Muster started it, in seconds since the epoch. Zero when the record does not say.
@@ -1176,12 +1162,11 @@ message Window {
   // from in an hour looks exactly like a current one. A caller told a window's shape and not
   // told that is a caller acting on a picture Muster itself does not vouch for.
   //
-  // The rest is here because Muster is the only thing that knows it. A daemon's socket can be
-  // asked what it holds, and the OS can be asked which process holds a socket, and nothing
-  // gets from one to the other - herdr's schema has no method that answers "which process are
-  // you". So a person with eight herdr processes cannot pair one with the work it is holding,
-  // and the one that mattered was neither the oldest nor the youngest (kan a_28YghIUw2).
-  // Muster started the daemon, or chose to attach to it, so Muster can say.
+  // The rest is here so that a person deciding what to end can pair a daemon with the work it
+  // holds. When Muster ran herdr nothing else could: herdr's schema had no method that answered
+  // "which process are you", so a person with eight herdr processes could not pair one with the
+  // work it was holding, and the one that mattered was neither the oldest nor the youngest (kan
+  // a_28YghIUw2). Muster started the daemon, or chose to attach to it, so Muster can say.
   repeated Machine daemons = 4;
 
   // Where each pane on screen sits, as fractions of the window. One entry per pane the window
@@ -1224,10 +1209,10 @@ message OtherWindow {
 // Where one pane sits, as fractions of the window.
 //
 // Fractions and never points, on the rule the backend contract already follows: a layout is
-// proportions, and the cell rectangles a daemon publishes are for a viewport of its own that is
-// nobody's window. `x` and `y` are from the top left, and the region weights are folded in - so
-// two panes on two machines are measured in one space, which is what makes "which of these is
-// wider" answerable at all.
+// proportions, and a daemon publishes a tree of ratios rather than rectangles in cells, which
+// would describe a grid that is nobody's window. `x` and `y` are from the top left, and the
+// region weights are folded in - so two panes on two machines are measured in one space, which
+// is what makes "which of these is wider" answerable at all.
 //
 // This is the same arithmetic the four directional focus moves are decided by, so a script
 // reading it and a person pressing a chord are looking at one arrangement rather than two.
@@ -1344,7 +1329,7 @@ message Startup {
   // same reason it decides where the log goes; the core decides what it means.
   //
   // Empty is the ordinary case rather than a problem: a Muster with no config file attaches
-  // the daemon on this machine the way herdr's own client would find it.
+  // this install's own daemon on this machine.
   string config_path = 4;
 
   // The daemon binary this Muster ships, or empty if the shell found none.
@@ -1437,8 +1422,8 @@ message Startup {
   // Where every window writes which window holds each tab, or empty for nowhere.
   //
   // One file for every window, because the rule it keeps spans them: a tab belongs to exactly
-  // one window, and a window lists only its own (kan a_2Mhi0EZlv). herdr allows one client per
-  // terminal, so a tab two windows both listed is a tab one of them takes from the other at the
+  // one window, and a window lists only its own (kan a_2Mhi0EZlv). A daemon lets one bridge draw
+  // a pane, so a tab two windows both listed is a tab one of them takes from the other at the
   // first click. No daemon can hold this - none knows which windows exist.
   //
   // In a directory of its own so the shell can watch it, and send ReadTabHolders when another
@@ -1474,12 +1459,11 @@ message LogRecord {
 // Point this window's keyboard at a daemon-owned pane.
 //
 // Everything about what a keystroke means lives behind this: the core opens the socket the
-// pane's bridge will dial, finds the daemon if there is one, and owns the keymap and the
-// encoder from here on. The shell's remaining job is to say that a key was pressed.
+// pane's bridge will report on, finds the daemon if there is one, and owns the keymap from here
+// on. The shell's remaining job is to say that a key was pressed.
 // No daemon here either, and for the opposite reason: at attach nobody knows yet. This is
 // the bootstrap, before any daemon is being followed, so the core finds which one holds the
-// pane. It stops being unambiguous the day a window attaches several daemons that both hold
-// a `w1:p1`, and gains a daemon then rather than now.
+// pane - which a Muster name settles, since it is unique across machines.
 message AttachPane {
   string pane_id = 1;
 }
@@ -1558,9 +1542,9 @@ message KeyDown {
 
 // A key release.
 //
-// Only reported when the pane asked for release events, which the encoder decides from the
-// mode profile - sending them unconditionally is how a program that never asked ends up
-// with every keystroke twice.
+// Only reported when the pane asked for release events, which the daemon's encoder decides
+// from the pane's own terminal modes - sending them unconditionally is how a program that never
+// asked ends up with every keystroke twice.
 message KeyUp {
   KeyEvent key = 1;
 }
@@ -1871,8 +1855,8 @@ message RosterTab {
   // says it but this.
   bool armed = 11;
 
-  // What to call this tab to somebody who did not open it: the workspace it belongs to when
-  // the daemon holds more than one, and the tab's own name otherwise.
+  // What to call this tab to somebody who did not open it: the name somebody gave it, or
+  // `Tab <place>` when nobody has.
   string label = 4;
 
   // Whether this is the tab the window is showing. Exactly one tab carries it, because a
@@ -1884,7 +1868,7 @@ message RosterTab {
   repeated RosterPane panes = 6;
 
   // The name somebody gave this tab, empty when nobody has. Not recoverable from `label`,
-  // which may carry the workspace in front of it - a rename has to start from what was
+  // which is `Tab <place>` for a tab nobody named - a rename has to start from what was
   // typed rather than from what is drawn.
   string given_name = 7;
 }
@@ -2008,9 +1992,9 @@ message ViewRegion {
   // resolved, so a shell that ignores this renders the right thing; it exists so the chrome
   // can say so, because a zoomed tab and a one-pane tab are otherwise identical on screen.
   //
-  // The pane filling it is `pane_id` above - the one this window's keyboard feeds. A backend
-  // spells zoom as a flag beside its own focused pane, and that cursor is shared with every
-  // client, so which pane fills the region is Muster's answer rather than the daemon's.
+  // The pane filling it is `pane_id` above - the one this window's keyboard feeds. The daemon
+  // records which pane is zoomed, but moving the keyboard inside a zoomed tab moves what fills
+  // it, so which pane fills the region is Muster's answer rather than the daemon's.
   bool zoomed = 6;
 
   // Where this region's bridges dial to draw its panes: the daemon's own socket, or for a
@@ -2035,12 +2019,12 @@ message ViewNode {
 
 message ViewSplit {
   // columns (children side by side, first is left) or rows (first is upper). Muster's
-  // spelling, not a backend's: herdr says right and down, which describe the moment of
+  // spelling, not a backend's: herdr said right and down, which describe the moment of
   // splitting rather than how to lay two children out long afterwards.
   string axis = 1;
 
   // The first child's share of the region, between 0 and 1. Proportions rather than cells,
-  // because a backend sizes its rectangles for a viewport of its own.
+  // because the daemon's tree is ratios and the window lays them out at whatever size it has.
   float ratio = 2;
 
   ViewNode first = 3;
@@ -2088,9 +2072,9 @@ message ViewPane {
   // since the last view means the bridge behind this pane is gone and the surface running it
   // has to be built again - a bridge is a surface's command, so there is no other way to start
   // one. A number that is not zero means this window has had a bridge for this pane before,
-  // which is when herdr's `--takeover` is the right thing: the terminal it is taking is one
-  // this window was already showing, most often still held by a client on the far side of a
-  // connection that died. A first bridge never takes over, so a terminal another window is
+  // which is when the bridge's `--takeover` is the right thing: the pane it is taking is one
+  // this window was already showing, most often still held by a bridge on the far side of a
+  // connection that died. A first bridge never takes over, so a pane another window is
   // legitimately showing is never stolen.
   //
   // Counted by the core because only the core can tell a bridge that died from a surface Muster
@@ -2110,8 +2094,8 @@ message ViewPane {
 // same feed with somewhere to put it.
 message PaneStateChanged {
   // Unlike a ViewPane, which arrives inside the region that names its daemon, this travels
-  // on its own - so it carries the daemon rather than leaving the shell to guess which
-  // `w1:p1` went to work.
+  // on its own - so it carries the daemon rather than leaving the shell to look up which
+  // machine holds the pane.
   string daemon_id = 3;
   string pane_id = 1;
 

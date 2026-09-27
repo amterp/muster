@@ -7,10 +7,10 @@ use crate::mirror::backend::{PaneId, TabId};
 
 /// Muster's name for one attached daemon.
 ///
-/// Muster's own name, unlike every other id here: herdr has no notion of its own identity,
-/// and two daemons on one machine differ only by socket path. What a config file will
+/// The window's name for a daemon, which the daemon itself never hears: a daemon has no name
+/// of its own, and two on one machine differ only by socket path. What a config file will
 /// carry and what a log line has to be readable with, so `local` and `devenv` rather than
-/// `/var/folders/…/herdr.sock`.
+/// `~/.muster/daemon/release.sock`.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct DaemonId(String);
 
@@ -45,12 +45,12 @@ impl From<&str> for DaemonId {
 /// observation). Where a path was actually found is the runtime's business and lives beside
 /// the connection it opened.
 ///
-/// That is why both variants take an optional path. Absent means "the daemon herdr's own
-/// client would find", which is what someone running one daemon means and the only thing
-/// they should have to say.
+/// That is why both variants take an optional path. Absent means "this install's own daemon,
+/// on its own socket", which is what someone running one daemon means and the only thing they
+/// should have to say.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Endpoint {
-    /// A daemon on this machine, reached by its control socket.
+    /// A daemon on this machine, reached by its socket.
     Local { socket_path: Option<String> },
     /// A daemon on another machine, reached by ssh.
     ///
@@ -101,10 +101,10 @@ impl std::fmt::Display for RegionId {
 
 /// One pane, named the way anything spanning daemons has to name one.
 ///
-/// Two daemons both hand out `w1:p1`, so anything keyed by pane alone lets one machine's
-/// pane answer for the other's. Every message across the seam that names a pane already
-/// carries both halves; this is the same pair when it needs to be one value - a set, a map
-/// key, a log field.
+/// Both halves because, when daemons named panes themselves, two of them both handed out
+/// `w1:p1`. A pane's name is Muster's now and unique across machines, but every message across
+/// the seam that names a pane still carries both halves; this is the same pair when it needs to
+/// be one value - a set, a map key, a log field.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PaneKey {
     pub daemon: DaemonId,
@@ -118,9 +118,8 @@ impl PaneKey {
 }
 
 impl std::fmt::Display for PaneKey {
-    /// `local/w1:p1`, so a log line or a corpus case can name a pane unambiguously in one
-    /// token. Split at the first slash to read one back: a daemon id is Muster's own and
-    /// holds none, where a pane id is the backend's string and Muster never parses it.
+    /// `local/p1w3r07bsd`, so a log line or a corpus case can name a pane unambiguously in one
+    /// token. Split at the first slash to read one back: a daemon id holds none.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}/{}", self.daemon, self.pane)
     }
@@ -128,9 +127,10 @@ impl std::fmt::Display for PaneKey {
 
 /// One tab, named the way anything spanning daemons has to name one.
 ///
-/// The same pair as [`PaneKey`] and for the same reason: two daemons both hand out `w1:t1`,
-/// so a tab named by id alone lets one machine's tab answer for the other's. What a keystroke
-/// asking for the third tab in the window resolves to, and what a sidebar row carries.
+/// The same pair as [`PaneKey`], and one a tab needs for more than history: a tab grouped
+/// across two machines is one name held by both daemons (MIP-3, section 2), so a tab named
+/// alone cannot say which machine's part is meant. What a keystroke asking for the third tab in
+/// the window resolves to, and what a sidebar row carries.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct TabKey {
     pub daemon: DaemonId,
@@ -144,7 +144,7 @@ impl TabKey {
 }
 
 impl std::fmt::Display for TabKey {
-    /// `local/w1:t1`, on the same terms as [`PaneKey`].
+    /// `local/t1w3r07bsd`, on the same terms as [`PaneKey`].
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}/{}", self.daemon, self.tab)
     }
@@ -155,7 +155,7 @@ impl std::fmt::Display for TabKey {
 /// A region divides a tab and not the window (MIP-2). A tab holding panes on one machine has one
 /// region, which is every tab until somebody groups two; a tab holding a laptop pane beside a
 /// devenv pane has one for each, side by side in this order. What a region shows is that
-/// machine's half of the tab, which is one herdr tab and one pane tree.
+/// machine's part of the tab, which is one pane tree on that machine's daemon.
 ///
 /// It does not name the tab: the tab owns the list it is in, and a region carrying the answer as
 /// well would be one fact written twice.
@@ -180,21 +180,18 @@ pub struct Region {
     pub weight: f32,
     /// The pane in this region Muster's keyboard feeds while the region is focused.
     ///
-    /// View-local, and never read back from the daemon's own cursor. Daemon focus is a
-    /// single value shared with every client, so routing input by it would let a herdr TUI
-    /// in another window yank this window's keyboard (`architecture.md`, cursors are
-    /// written, not read). Muster *writes* daemon focus as the user moves around here, and
-    /// then ignores what it wrote.
+    /// View-local. The daemon keeps no focus of its own, so which pane the keyboard feeds is
+    /// this window's alone, and another window showing the same machine cannot move it.
     pub pane: Option<PaneId>,
 }
 
 /// One Muster tab this window holds, and how it is divided when it is on screen.
 ///
 /// A named set of panes a window shows together (MIP-2). Muster mints the name the way it mints
-/// a pane's, and which herdr tab that name means on each machine is the name registry's answer
-/// (`crate::names`) - so a tab holding panes on two machines is one name over two herdr tabs,
-/// and a tab holding panes on one is the same thing with one member, which is every tab until
-/// somebody groups two.
+/// a pane's, and each machine holding panes in the tab keeps its part under that same name
+/// (MIP-3, section 2) - so a tab holding panes on two machines is one name over two daemons'
+/// parts, and a tab holding panes on one is the same thing with one member, which is every tab
+/// until somebody groups two.
 ///
 /// The regions are held per tab rather than per window because they are the tab's arrangement:
 /// how wide each machine's half is, and which pane the keyboard was on. Switching away and back

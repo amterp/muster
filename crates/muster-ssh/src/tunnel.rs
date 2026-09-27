@@ -42,8 +42,8 @@ pub struct Forward {
     /// Handed to ssh verbatim, after Muster's own options. Connection details belong in
     /// `~/.ssh/config`; this is the escape hatch for what a host alias cannot cover.
     pub options: Vec<String>,
-    /// Where the master's control socket goes, so that a bridge can run a command through
-    /// this connection rather than opening one of its own.
+    /// Where the master's control socket goes, so that a command on the far machine ([`Remote`])
+    /// can run through this connection rather than opening one of its own.
     pub control_path: String,
     /// The path on this machine that will answer as though it were the daemon's own.
     pub local_socket: String,
@@ -135,7 +135,7 @@ impl Tunnel {
     ///
     /// What is *not* verified here is that anything answers on the far end. That is the
     /// adapter's first request, and it already says what a silent daemon means - checking it
-    /// here would put herdr's vocabulary in a crate that has none.
+    /// here would put the daemon's vocabulary in a crate that has none.
     pub fn open(forward: Forward, report: Report) -> Result<Tunnel, String> {
         if forward.local_socket.len() > SUN_PATH_LIMIT {
             return Err(format!(
@@ -171,12 +171,10 @@ impl Tunnel {
         &self.forward.local_socket
     }
 
-    /// The daemon's own socket, over there.
+    /// The daemon's own socket, over there, as the far side spells it.
     ///
-    /// Public for the one caller that runs on the far machine rather than on this one: a pane's
-    /// bridge starts a herdr CLI over the master, and that process needs the path as the far
-    /// side spells it. Everything else takes [`Tunnel::local_socket_path`] and never learns ssh
-    /// was involved.
+    /// Everything on this machine takes [`Tunnel::local_socket_path`] and never learns ssh was
+    /// involved.
     pub fn remote_socket_path(&self) -> &str {
         &self.forward.remote_socket
     }
