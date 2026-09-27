@@ -13,6 +13,8 @@ mod grid;
 mod key_encoder;
 mod key_mapping;
 mod modes;
+mod mouse_encoder;
+mod paste;
 mod replay;
 mod state;
 mod terminal;
@@ -23,5 +25,7 @@ pub use formatter::{Extras, Format, FormatOptions, ScreenExtras, ScreenFormatOpt
 pub use grid::{Cell, Color, Cursor, Grid, Row, Style, Width};
 pub use key_encoder::{EncoderError, KeyEncoder};
 pub use modes::Mode;
+pub use mouse_encoder::{MouseAction, MouseButton, MouseEncoder, MouseEvent, MouseGeometry};
+pub use paste::{encode_paste, paste_is_safe};
 pub use state::{Palette, Rgb, Screen};
 pub use terminal::{Terminal, TerminalError, TerminalOptions};

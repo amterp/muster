@@ -109,3 +109,15 @@ fn scrollback_keeps_what_the_byte_limit_allows() {
     assert!(rows_kept(64 * 1024 * 1024) > 19_000);
     assert_eq!(rows_kept(0), 0);
 }
+
+#[test]
+fn text_reads_a_range_of_rows_in_one_call() {
+    let mut terminal = Terminal::new(20, 6).expect("libghostty-vt gives us a terminal");
+    terminal.write(b"history\r\nzero\r\none\r\ntwo\r\n\x1b[1mthree\x1b[0m\r\nfour\r\nfive");
+    assert_eq!(terminal.text(3, 5), "three\nfour\nfive", "the bottom of the active area");
+    assert_eq!(terminal.text(0, 0), "zero", "the active area, not history");
+    let grid = terminal.viewport(20, 6);
+    let from_grid: Vec<String> =
+        grid.rows.iter().map(|row| row.text().trim_end().to_string()).collect();
+    assert_eq!(terminal.text(0, 5).lines().collect::<Vec<_>>(), from_grid);
+}

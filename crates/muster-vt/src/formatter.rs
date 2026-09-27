@@ -217,6 +217,22 @@ impl Terminal {
         run(created, formatter)
     }
 
+    /// Rows `first` through `last` of the active area as plain text, one line per row, in
+    /// one call.
+    ///
+    /// What agent detection and `muster pane read` read a screen through: `viewport` costs
+    /// several FFI calls per cell, and detection reads the bottom of every pane every few
+    /// hundred milliseconds. Blank rows at the end of the range are left out, as the
+    /// formatter leaves them out everywhere.
+    pub fn text(&self, first: u16, last: u16) -> String {
+        let columns = self.columns();
+        let options = FormatOptions {
+            selection: Some(Selection::rows(u32::from(first), u32::from(last), columns)),
+            ..FormatOptions::plain()
+        };
+        String::from_utf8_lossy(&self.format(options)).into_owned()
+    }
+
     /// The extras `options` asks for, with no screen content at all: the terminal's state
     /// on its own, for a replay that formats each screen separately.
     ///

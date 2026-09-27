@@ -16,6 +16,7 @@ use muster_core::input::{
 
 use crate::ffi;
 use crate::key_mapping::ghostty_key;
+use crate::terminal::Terminal;
 
 /// 128 covers every sequence the protocol can produce for an ordinary keystroke. The retry
 /// past it is not dead code: with associated-text reporting on, a key can carry arbitrary
@@ -82,6 +83,23 @@ impl KeyEncoder {
         let encoder = KeyEncoder { encoder, event };
         encoder.apply(profile);
         Ok(encoder)
+    }
+
+    /// Takes the pane's real input modes from its terminal - cursor and keypad application
+    /// modes, alt-escape, modifyOtherKeys and kitty flags - instead of a profile. Option as
+    /// alt is not terminal state, so it is set again from `option_as_alt`.
+    pub fn configure_from(&mut self, terminal: &Terminal, option_as_alt: OptionAsAlt) {
+        let mut option_as_alt = ghostty_option_as_alt(option_as_alt);
+        // SAFETY: both handles are live; libghostty only reads the terminal. It resets
+        // option-as-alt, which is why the call after it puts it back.
+        unsafe {
+            ffi::ghostty_key_encoder_setopt_from_terminal(self.encoder, terminal.handle());
+            ffi::ghostty_key_encoder_setopt(
+                self.encoder,
+                ffi::GhosttyKeyEncoderOption_GHOSTTY_KEY_ENCODER_OPT_MACOS_OPTION_AS_ALT,
+                (&raw mut option_as_alt).cast(),
+            );
+        }
     }
 
     fn apply(&self, profile: TerminalModeProfile) {

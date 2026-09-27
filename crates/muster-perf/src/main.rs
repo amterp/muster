@@ -298,6 +298,58 @@ fn roster_cost() -> Cost {
     })
 }
 
+/// What agent detection pays to read a pane's screen, which it does for every pane every
+/// few hundred milliseconds. The same 24 rows two ways: the formatter in one call, and the
+/// per-cell read tests use, which is what detection would cost without the formatter.
+fn screen_reads() -> Vec<Cost> {
+    let mut costs = Vec::new();
+    if let Ok(mut terminal) = Terminal::new(80, 24) {
+        let screen: Vec<u8> = (0..24)
+            .flat_map(|row| format!("\r\n{row:>3} {}", "agent output ".repeat(5)).into_bytes())
+            .collect();
+        terminal.write(&screen);
+        costs.push(measure("vt.text_read", "ns/row", 24, 200, 20, || {
+            black_box(terminal.text(0, 23).len());
+        }));
+        costs.push(measure("vt.cell_read", "ns/row", 24, 20, 5, || {
+            black_box(terminal.viewport(80, 24).rows.len());
+        }));
+    }
+    costs
+}
+
+/// What attaching to a pane costs per row of its history: composing the replay in the
+/// daemon, and parsing it in the surface. MIP-3 section 13's attach target is set from
+/// these; ten thousand rows is the history that target names.
+fn replay_costs() -> Vec<Cost> {
+    const HISTORY: usize = 10_000;
+    let mut costs = Vec::new();
+    if let Ok(mut terminal) = Terminal::with_options(muster_vt::TerminalOptions {
+        scrollback_bytes: Some(usize::MAX),
+        ..muster_vt::TerminalOptions::new(80, 24)
+    }) {
+        let history: Vec<u8> = (0..HISTORY)
+            .flat_map(|row| {
+                format!("{row:>6} \x1b[32magent\x1b[0m output {}\r\n", "x".repeat(40)).into_bytes()
+            })
+            .collect();
+        terminal.write(&history);
+        let replay = terminal.replay();
+        costs.push(measure("vt.replay_compose", "ns/row", HISTORY, 10, 2, || {
+            black_box(terminal.replay().len());
+        }));
+        costs.push(measure("vt.replay_parse", "ns/row", HISTORY, 10, 2, || {
+            if let Ok(mut surface) = Terminal::with_options(muster_vt::TerminalOptions {
+                scrollback_bytes: Some(usize::MAX),
+                ..muster_vt::TerminalOptions::new(80, 24)
+            }) {
+                surface.write(&replay);
+            }
+        }));
+    }
+    costs
+}
+
 fn measure_everything(streams: &[Vec<u8>]) -> Vec<Cost> {
     let wire_bytes: usize = streams.iter().map(Vec::len).sum();
     let frames: Vec<PaneFrame> = streams
@@ -331,6 +383,9 @@ fn measure_everything(streams: &[Vec<u8>]) -> Vec<Cost> {
             }
         }),
     ];
+
+    costs.extend(screen_reads());
+    costs.extend(replay_costs());
 
     // What every keystroke pays before it reaches a socket. Small by construction - the
     // encoder is built once and holds the pane's modes - and worth a standing number because
