@@ -1557,12 +1557,21 @@ fn assemble_daemon_data():
         quiet $`rm -rf {staged}`
         return
     // Either may fail to a run swapping at the same moment, which leaves an equal copy in place.
+    // Any other failure leaves no directory at all, and every daemon this checkout starts then
+    // refuses to, so that is checked for rather than assumed away.
+    why = ""
     if get_path(DAEMON_DATA).exists:
-        aside = quiet $`mv {DAEMON_DATA} {staged}.old`.code
+        stdout, stderr, code = quiet $`mv {DAEMON_DATA} {staged}.old` catch:
+            why = stderr.trim()
     rename = "import os, sys; os.rename(sys.argv[1], sys.argv[2])"
-    swapped = quiet $`python3 -c {rename} {staged} {DAEMON_DATA} 2>/dev/null`.code
-    if swapped != 0:
+    stdout, stderr, code = quiet $`python3 -c {rename} {staged} {DAEMON_DATA}` catch:
+        why = stderr.trim()
         quiet $`rm -rf {staged}`
+    if not get_path(DAEMON_DATA).exists:
+        print_err(red("Could not put {DAEMON_DATA} in place, and no daemon starts without it."))
+        print_err("The copy it replaced, if there was one, is at {staged}.old.")
+        print_err(why)
+        exit(1)
     quiet $`rm -rf {staged}.old`
 
 // The contract tier is opt-in and never part of the gate: it needs a real herdr on PATH
