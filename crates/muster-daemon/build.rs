@@ -1,5 +1,6 @@
 //! The Ghostty version a pane says it runs in (`TERM_PROGRAM_VERSION`), read from the pinned
-//! checkout: the version its `build.zig.zon` declares, and the pinned commit.
+//! checkout: the version its `build.zig.zon` declares, and the pinned commit. And, on a Mac,
+//! where the daemon looks for libghostty-vt besides the checkout.
 //!
 //! Ghostty's own build says different things for one commit depending on how it was built - a
 //! branch name, `HEAD`, or no commit at all - so none of those is the answer for a daemon built
@@ -30,4 +31,11 @@ fn main() {
     let pin = std::fs::read_to_string(&pin).expect("deps/ghostty.pin is checked in");
     let commit = pin.trim().get(..8).expect("deps/ghostty.pin holds a full commit hash");
     println!("cargo:rustc-env=MUSTER_GHOSTTY_VERSION={version}+{commit}");
+
+    // Beside itself, which is how a remote Mac has it: the app copies this daemon there with
+    // the libghostty-vt it links (muster-daemon-client's `install`), and the checkout's own
+    // rpaths name nothing on that machine.
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
+        println!("cargo:rustc-link-arg-bins=-Wl,-rpath,@executable_path");
+    }
 }

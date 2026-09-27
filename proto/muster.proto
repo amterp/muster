@@ -1450,6 +1450,11 @@ message Startup {
   // keeps it among the helper's resources instead, since a code directory may hold only code.
   string daemon_data_path = 17;
 
+  // A directory holding the Linux daemons this app installs on another machine, one per
+  // architecture as `linux-x86_64/muster-daemon` and `linux-aarch64/muster-daemon`. Empty
+  // means a build that carries none, and a Linux machine with no daemon is then refused.
+  string remote_daemons_path = 18;
+
   // trace, debug, info, warn, error. Empty means debug.
   string log_level = 2;
 

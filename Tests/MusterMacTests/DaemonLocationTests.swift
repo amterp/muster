@@ -40,6 +40,35 @@ func theBundleCarriesTheDaemon() throws {
         data: helper.appendingPathComponent("Resources/muster-daemon-data").path))
 }
 
+@Test("the Linux daemons a remote install sends are found where each kind of build keeps them")
+func theCarriedDaemonsAreFound() throws {
+  // Missed, a devenv with no daemon on it is refused as a machine the app carries nothing for,
+  // which is a lie about the app.
+  let built = try scratchDirectory()
+  _ = try executable(built.appendingPathComponent("muster-daemon"))
+  let staged = built.appendingPathComponent("daemons/linux-x86_64")
+  try FileManager.default.createDirectory(at: staged, withIntermediateDirectories: true)
+  let beside = daemonLocation(
+    executable: built.appendingPathComponent("muster").path, environment: [:])
+  #expect(beside?.remote == built.appendingPathComponent("daemons").path)
+
+  let contents = try scratchDirectory().appendingPathComponent("Contents", isDirectory: true)
+  let executables = contents.appendingPathComponent("MacOS", isDirectory: true)
+  try FileManager.default.createDirectory(at: executables, withIntermediateDirectories: true)
+  let helper = contents.appendingPathComponent("Library/MusterSessions.app/Contents")
+  _ = try executable(helper.appendingPathComponent("MacOS/muster-daemon"))
+  let resources = contents.appendingPathComponent("Resources/daemons/linux-aarch64")
+  try FileManager.default.createDirectory(at: resources, withIntermediateDirectories: true)
+  let bundled = daemonLocation(
+    executable: executables.appendingPathComponent("muster").path, environment: [:])
+  #expect(bundled?.remote == contents.appendingPathComponent("Resources/daemons").path)
+
+  let overridden = daemonLocation(
+    executable: built.appendingPathComponent("muster").path,
+    environment: ["MUSTER_DAEMON_BINARY": "/elsewhere/muster-daemon"])
+  #expect(overridden?.remote == beside?.remote, "an override names a local daemon only")
+}
+
 @Test("the helper bundle wins over a daemon beside the app")
 func theBundleIsPreferred() throws {
   // A bundle is what ships, and its data directory is where only the bundle case looks. A

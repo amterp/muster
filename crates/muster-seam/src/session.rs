@@ -11,6 +11,7 @@
 //! in the key is what says which machine to ask.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 
@@ -38,7 +39,7 @@ use muster_core::respawn::{self, Decision, Ended, Ending, Respawns};
 use muster_core::roster::{Numbering, Roster, RosterTab, TabStep};
 use muster_daemon_client::backend::{DaemonBackend, DaemonInput};
 use muster_daemon_client::follow::{Follower, Following, Notice};
-use muster_daemon_client::{environment, launch, records, remote};
+use muster_daemon_client::{environment, install as remote_install, launch, records, remote};
 use muster_daemon_proto::install;
 use muster_ssh::{Forward, State as TunnelState, Tunnel, remote_environment};
 
@@ -85,6 +86,32 @@ static DAEMON_DATA: Mutex<Option<String>> = Mutex::new(None);
 pub(crate) fn set_daemon_data(path: &str) {
     let mut held = poison::lock(&DAEMON_DATA, "daemon-data");
     *held = if path.is_empty() { None } else { Some(path.to_string()) };
+}
+
+/// Where the shell keeps the Linux daemons it can install on another machine: a directory
+/// holding one per architecture. None is a build that carries none.
+static REMOTE_DAEMONS: Mutex<Option<String>> = Mutex::new(None);
+
+pub(crate) fn set_remote_daemons(path: &str) {
+    let mut held = poison::lock(&REMOTE_DAEMONS, "remote-daemons");
+    *held = if path.is_empty() { None } else { Some(path.to_string()) };
+}
+
+/// Every daemon this app can put on another machine, and the files that go with them.
+///
+/// A remote Mac runs this Mac's own daemon, so it is sent that, with the libghostty-vt this
+/// process loaded, which is the one the daemon was built against.
+fn carried() -> remote_install::Carried {
+    let mac = daemon_binary().map(PathBuf::from);
+    let data = poison::lock(&DAEMON_DATA, "daemon-data").clone().map(PathBuf::from).or_else(|| {
+        mac.as_deref().and_then(Path::parent).map(|beside| beside.join("muster-daemon-data"))
+    });
+    remote_install::Carried {
+        linux: poison::lock(&REMOTE_DAEMONS, "remote-daemons").clone().map(PathBuf::from),
+        mac: mac.filter(|_| cfg!(all(target_os = "macos", target_arch = "aarch64"))),
+        mac_library: muster_vt::library_path(),
+        data,
+    }
 }
 
 /// What locale this machine is set to, as the shell read it off the platform.
@@ -545,7 +572,7 @@ fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, String> {
             let data = poison::lock(&DAEMON_DATA, "daemon-data").clone();
             let (reached, _) = launch::ensure_running(&launch::Launch {
                 binary: binary.as_ref(),
-                data: data.as_deref().map(std::path::Path::new),
+                data: data.as_deref().map(Path::new),
                 socket: &socket,
                 environment: &given,
             })?;
@@ -585,10 +612,11 @@ fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, String> {
             // is not there yet costs nothing until something dials it.
             let tunnel =
                 open_tunnel(daemon, host, options, installed.socket.display().to_string())?;
-            let local = std::path::PathBuf::from(tunnel.local_socket_path());
+            let local = PathBuf::from(tunnel.local_socket_path());
             let (reached, _) = remote::ensure_running(
                 &tunnel.remote(),
                 &installed,
+                &carried(),
                 &local,
                 &environment::for_far_daemon(&far),
             )?;
@@ -3490,9 +3518,9 @@ fn save(composition: &Composition, presentation: Presentation, font_sizes: &Font
         return;
     }
 
-    let file = std::path::PathBuf::from(&*path);
+    let file = PathBuf::from(&*path);
     let staged = file.with_extension("writing");
-    let result = std::fs::create_dir_all(file.parent().unwrap_or(std::path::Path::new(".")))
+    let result = std::fs::create_dir_all(file.parent().unwrap_or(Path::new(".")))
         .and_then(|()| std::fs::write(&staged, &text))
         .and_then(|()| std::fs::rename(&staged, &file));
 

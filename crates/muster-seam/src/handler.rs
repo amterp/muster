@@ -1785,6 +1785,7 @@ fn start(startup: &proto::Startup) -> Response {
     // local one may have to start it.
     session::set_daemon_binary(&startup.daemon_path);
     session::set_daemon_data(&startup.daemon_data_path);
+    session::set_remote_daemons(&startup.remote_daemons_path);
     // Before the config too, and for a sharper reason: applying a config attaches daemons,
     // attaching publishes, and a publish before this is one that would write the arrangement
     // out to nowhere - or worse, read it back after it had been replaced.

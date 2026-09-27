@@ -45,16 +45,15 @@ macOS corpus is how "local and remote render identically" stops being an aspirat
 
 ## No daemon is installed here
 
-That absence is the fixture. Muster puts its own herdr on a machine it attaches to, so a
+That absence is the fixture. Muster puts its own daemon on a machine it attaches to, so a
 container that arrived with one would exercise the adopt path and never the install path -
 and a person setting up a real devenv installs nothing either.
 
 Two things put a daemon in, and neither is the image. Muster does it on attach, under
-`~/.muster/herdr/<version>/herdr`, having downloaded it on the machine running Muster and
-copied it over the ssh master. And `./dev --ssh` does it with `install-daemon` afterwards,
-for the corpus probe, which starts a herdr of its own rather than going through Muster.
-Both take the version and the checksum from `deps/herdr.pin`, so re-pinning is one file
-rather than three - the Dockerfile used to keep its own copy of the checksums by hand.
+`~/.muster/daemon/<version>/`, copying the Linux build the app carries over the ssh master;
+`./dev --ssh`'s remote tests go through that same install. And `./dev --ssh` puts a herdr in
+with `install-daemon` afterwards, for the corpus probe, which starts a herdr of its own rather
+than going through Muster, with the version and checksum from `deps/herdr.pin`.
 
 Update checks are off in `devenv/config.toml` and in the file Muster writes, so a container
 that has been up for a week behaves like one started this morning.

@@ -2,7 +2,8 @@
 
 What `muster-daemon` gives every shell it starts, beyond the binary: Ghostty's terminfo entry and
 Ghostty's shell integration for bash, zsh and fish. The daemon reads this directory from beside its
-own executable, or from `--data`. Copy it with the daemon when installing one somewhere.
+own executable, or from `--data`. Muster sends it with the daemon when it installs one on another
+machine.
 
 Everything here is copied unchanged from Ghostty, at the commit Muster pins, except `bin/ghostty`,
 which is Muster's. None of it is compiled into the daemon.

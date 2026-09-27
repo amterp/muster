@@ -58,7 +58,7 @@ Muster's principles, adapted to that evidence:
   beside the bare PTY measured in the same run, idle, in a window of fifteen panes and beside a pane flooding into
   a surface that reads slowly. It starts its own daemon from `target/release`, directly rather than through Launch
   Services, until stage 3 puts the daemon in a helper bundle. `--socket` measures a daemon already running instead,
-  which is how a devenv's is measured through a forwarded socket until the SSH tier installs one itself, and
+  which is how a devenv's is measured through a forwarded socket, and
   `--flood-surface fast` floods a surface that keeps up, so the flood's time is what the link and the daemon's flow
   control allow. Agent detection is checked the way the herdr probe checked herdr's: its `detection` scenario runs
   again against the daemon, the same fake agent and override manifest, and prints each state's settle time beside
@@ -148,16 +148,16 @@ Muster's principles, adapted to that evidence:
   daemon spawn one and stay in the default gate, because 25 ms is not a tier boundary. What remains genuinely out
   of the gate is what needs something a developer's machine cannot be assumed to have: `--contract` needs a
   logged-in GUI session to launch the app - and to draw the one Swift test that stands up a real libghostty
-  surface, `ClickRedriveTests`, which skips itself in an ordinary run and says so - `--latency` and `--perf`
+  surface, `SearchGUITests`, which skips itself in an ordinary run and says so - `--latency` and `--perf`
   measure timing and would be flaky as
   assertions (`--latency` prints verdicts against MIP-3's targets and fails only when it cannot measure),
-  `--corpus-linux` and the SSH tier need the devenv container - where the SSH tier also puts this build's Linux
-  muster-daemon, at the path a remote machine keeps it, since Muster does not yet copy it over itself - `--linux`,
-  which runs the daemon's and detection's suites on Linux, needs docker, and `--claude-code` needs the network and
-  a model: it drives the Claude Code installed here for one turn, in a pane with Muster's hooks and one without,
-  and checks both read working and then idle. It runs with `ANTHROPIC_API_KEY` and `--bare` when that is set, and
-  otherwise with `claude`'s own login and only project settings, so nobody's own hooks take part; with neither it
-  fails and says which is missing. The gate still compiles the Linux daemons and lints their Linux code,
+  `--corpus-linux` and the SSH tier need the devenv container - which holds no muster-daemon, so the SSH tier's
+  tests install this build's the way the app does - `--linux`, which runs the daemon's and detection's suites on
+  Linux, needs docker, and `--claude-code` needs the network and a model: it drives the Claude Code installed here
+  for one turn, in a pane with Muster's hooks and one without, and checks both read working and then idle. It runs
+  with `ANTHROPIC_API_KEY` and `--bare` when that is set, and otherwise with `claude`'s own login and only project
+  settings, so nobody's own hooks take part; with neither it fails and says which is missing. The gate still
+  compiles the Linux daemons and lints their Linux code,
   so what `--linux` alone catches is behavior: dash as `/bin/sh`, `/proc`, `close_range`. That is the real line, and it is
   narrower than the one drawn when the backend was going to be faked.
 

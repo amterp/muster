@@ -135,24 +135,23 @@ not, so a fourth way of making a pane fails the gate rather than leaking quietly
 Muster did not make: one herdr restores after a daemon restart is built with no launch environment at all. That is a
 stated limit, not a gap to chase.
 
-**The guarantee reaches the far machine too, by putting the daemon there.** An SSH endpoint runs a platform this
-bundle carries no binary for, so for a while a remote daemon was whatever somebody had installed - and a window's two
-halves could be running different versions with nothing saying so. On attach Muster now asks that machine what it is,
-works out which release asset the pin names for it, and pushes that over the master it already holds open, to
-`~/.muster/herdr/<version>/herdr`. The same sequence as here follows: write the config, start the daemon on Muster's
-own herdr session, adopt one that is already answering rather than starting a second.
+**The guarantee reaches the far machine too, by putting the daemon there.** For a while a remote daemon was
+whatever somebody had installed, and a window's two halves could run different versions with nothing saying so. On
+attach Muster asks that machine what it is with `uname -sm`, and sends it the daemon this app carries for it over the
+master it already holds open, to `~/.muster/daemon/<version>/`: a static Linux build for x86_64 or aarch64 from
+`Contents/Resources/daemons/`, or for a remote Mac the app's own daemon with the libghostty-vt it links. The daemon
+and its data directory travel as one archive, and a SHA-256 of that archive stays beside them, so a machine holding
+any other build - two development builds share a version - gets this one instead. Then the same sequence as here
+follows: adopt a daemon already answering, and otherwise start this one, in a session of its own.
 
-**This machine fetches, and the far one never reaches the network.** Whoever is running Muster demonstrably has web
-access, while a devenv is often a container or a build box with no route out - so the asset is downloaded here,
-verified against `deps/herdr.pin` here, and kept in `~/.muster/cache` here. A checksum that does not match is a
-refusal rather than a warning, on the same terms as `./dev`'s: the point of a pin is that the daemon Muster runs is
-the daemon its corpus was recorded against, and a warning nobody reads turns that into a preference. Bundling all
-four pinned platforms was the alternative and was rejected at about 72 MB of app, most of it daemons for machines
-nobody using that copy will ever attach to.
+**Nothing is downloaded, by either machine.** A devenv is often a container or a build box with no route out, and
+the app already holds every daemon it can install: two stripped static builds of about 2.5 MB each, where bundling
+the four herdr assets a download once fetched would have cost 72 MB. So there is no pin and no checksum file, and an
+app and the daemon it installs are one tested unit - which a pin could not make them, since a daemon built from this
+repository has no checksum until the commit that would record it is built.
 
-Two consequences worth stating. The pin is compiled into the app rather than read from the repo, because "the pin
-decides the version" has to be true of the thing people run. And a `socket` named in the config file still attaches
-whatever is listening there, on either machine - that is the deliberate way out of the whole arrangement, and it
+One consequence worth stating: a `socket` named in the config file still attaches whatever is listening there, on
+either machine - that is the deliberate way out of the whole arrangement, and it
 would be no escape hatch if a remote one behaved differently from a local one.
 
 **Reaching a remote daemon is a transport concern and stops there.** A remote herdr speaks the same socket a local

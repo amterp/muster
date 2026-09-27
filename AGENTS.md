@@ -14,9 +14,8 @@ of the first nine, renaming, trading two agents' places by dragging a row, confi
 it, a CLI that drives the window from inside a pane, a notification when an agent needs you that takes you to the
 pane that asked, a second daemon on an SSH machine in the same window - where one tab can hold a laptop pane beside
 a devenv pane - and several windows that each hold their own tabs and hand them to each other. Not built, and worth
-knowing before you install rather than after: the shape of a split cannot be changed once it is made, a pane on a
-devenv cannot drive the window it is drawn in, and Muster does not yet put its daemon on an SSH machine, so one of
-the same version has to be installed there already.
+knowing before you install rather than after: the shape of a split cannot be changed once it is made, and a pane on
+a devenv cannot drive the window it is drawn in.
 
 `docs/origin.md` is why this exists, `docs/architecture.md` is the shape, `docs/configuration.md` is every
 setting, and `docs/cli/limits.md` is the same honest account for the CLI.
@@ -201,8 +200,9 @@ the daemon moves into `Contents/Library/` - and 0.3.0 shipped a cask where no pa
 was green against the other layout.
 
 `./dev --ssh` is the remote tier, and sits out of the gate for the same reason: it needs docker rather than a GUI
-session. It recreates the devenv container, puts this build's Linux muster-daemon where Muster looks for it over
-there, runs the remote tests against it, and then drops the pinned Linux herdr in for the corpus half below. It
+session. It recreates the devenv container, which holds no muster-daemon, so the remote tests install this build's
+there the way the app does and then run against it; after them it drops the pinned Linux herdr in for the corpus half
+below. It
 leaves that container running, deliberately: a devenv is a thing you keep, and recreating it per run is what `up` is
 for. The tier says so on the way out, because the thing most likely to run next is `--perf`, and a container running
 beside a benchmark is enough to move the numbers it judges - `./devenv/devenv down` when you are finished with it.
@@ -283,8 +283,14 @@ already carries, naming the daemon that pane runs on. The app starts the daemon 
 Launch Services instead, so that macOS charges a pane's permission prompts to the daemon rather than to a Muster that
 will quit (`docs/observations/macos-26.4.1.md`), is not built yet.
 
-A machine you attach over SSH needs this build's daemon installed at `~/.muster/daemon/<version>/`, since Muster
-does not yet copy it there; `./dev --ssh` puts it in place before its tests run.
+**A machine you attach over SSH gets this build's daemon.** The bundle carries a stripped release build for Linux on
+x86_64 and on aarch64 under `Contents/Resources/daemons/`, and a remote Mac gets the app's own daemon with the
+libghostty-vt it links. Muster asks the machine what it is with `uname -sm`, and sends the matching one with the data
+directory as one archive over the ssh connection, into `~/.muster/daemon/<version>/`. Nothing is downloaded, so there
+is no pin to keep and a machine with no internet access can be installed to. The install leaves a SHA-256 of that
+archive beside the daemon, and a machine holding any other build gets this one in its place: two development builds
+share a version, and a version alone would start whichever was there first. A SwiftPM build stages the gate's debug
+Linux daemons beside the app, in `daemons/`.
 
 herdr is still pinned, for the two things that have not moved off it: `./dev --corpus-linux` and `./dev --doctor`.
 `deps/herdr.pin` names a release and a checksum per platform. The corpus diff downloads the container's asset once

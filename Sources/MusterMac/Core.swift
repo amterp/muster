@@ -36,6 +36,7 @@ public enum Core {
     startup.configPath = configPath ?? ""
     startup.daemonPath = daemon?.binary ?? ""
     startup.daemonDataPath = daemon?.data ?? ""
+    startup.remoteDaemonsPath = daemon?.remote ?? ""
     startup.statePath = statePath ?? ""
     startup.commandSocketPath = commandSocketPath ?? ""
     startup.commandsPath = commandsPath ?? ""

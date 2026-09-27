@@ -64,6 +64,36 @@ pub fn built_daemon() -> PathBuf {
     daemon
 }
 
+/// The Linux daemons this checkout cross-built, laid out as an app carries them: a directory
+/// holding `linux-x86_64/muster-daemon` and `linux-aarch64/muster-daemon`, each a link to
+/// `target/<triple>/<profile>/muster-daemon`. The gate builds both, so a remote install in a
+/// test sends the daemon from the same commit as the test.
+pub fn built_linux_daemons() -> PathBuf {
+    let native = built_daemon();
+    let profile = native.parent().expect("a daemon is in a profile directory");
+    let target = profile.parent().expect("a profile directory is in a target directory");
+    let name = profile.file_name().expect("a profile directory has a name");
+    let carried = PathBuf::from(format!("{ROOT}/linux-daemons-{}", std::process::id()));
+    for (build, triple) in [
+        ("linux-x86_64", "x86_64-unknown-linux-musl"),
+        ("linux-aarch64", "aarch64-unknown-linux-musl"),
+    ] {
+        let daemon = target.join(triple).join(name).join("muster-daemon");
+        assert!(
+            daemon.is_file(),
+            "no muster-daemon at {}.\n  Impact: a remote install has nothing to send.\n  Fix: \
+             run ./dev -b, which cross-builds both Linux daemons.",
+            daemon.display()
+        );
+        let directory = carried.join(build);
+        std::fs::create_dir_all(&directory).expect("the test root is writable");
+        let link = directory.join("muster-daemon");
+        let _ = std::fs::remove_file(&link);
+        std::os::unix::fs::symlink(&daemon, &link).expect("the test root is writable");
+    }
+    carried
+}
+
 /// One daemon, one test. Killed on drop, including when the test panics, and its root removed.
 #[derive(Debug)]
 pub struct Daemon {

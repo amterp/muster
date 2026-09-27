@@ -109,8 +109,6 @@ write instead. `docs/configuration.md` is every key.
 Muster is young, and these are the gaps worth knowing about before you install rather than
 after:
 
-- Muster does not yet install its session daemon on an SSH machine: one of the same version has
-  to be at `~/.muster/daemon/<version>/` over there already.
 - A pane on an SSH machine cannot drive the window it is drawn in.
 - Reopen Closed Window brings back the most recent closed window. An older one comes back when you
   go to one of its tabs - `muster window` lists them under the closed window's name.

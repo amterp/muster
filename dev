@@ -506,8 +506,6 @@ fn run_ssh_tier():
     // time it is rebuilt, so pinning its host key would mean editing a file per rebuild.
     options = "-p 2222 -i {key} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 
-    place_muster_daemon()
-
     // Spelled out at both call sites rather than built into a variable first: Rad quotes an
     // interpolated value as one shell word, so a variable holding the whole prefix arrives as
     // a command name nothing can run.
@@ -580,20 +578,6 @@ fn run_linux_tier():
 
 // The pinned daemon built for the container rather than for this machine, on this machine.
 //
-// This build's Linux muster-daemon, where a remote machine keeps it: Muster starts it from there
-// over ssh, and does not yet copy it over itself. The build step has cross-built it for both
-// architectures; which one goes in is asked of the container, as for herdr below.
-fn place_muster_daemon():
-    machine = $`./devenv/devenv ssh uname -m`.stdout.trim()
-    target = machine == "arm64" or machine == "aarch64" ? "aarch64-unknown-linux-musl" : "x86_64-unknown-linux-musl"
-    binary = "target/{target}/debug/muster-daemon"
-    version = workspace_version()
-    $`./devenv/devenv place-muster-daemon {binary} {DAEMON_DATA} {version}` catch:
-        print_err(red("This build's muster-daemon could not be put in the devenv container."))
-        print_err("Impact: the remote tests for muster-daemon have no daemon to start.")
-        print_err("Check that {binary} was built: ./dev -b cross-builds it.")
-        exit(1)
-
 // Not deps/herdr/<version>/herdr - that one is this laptop's, and the container is Linux. The
 // corpus probe wants a binary to put in the container, because it starts a daemon of its own
 // rather than going through Muster.
@@ -685,6 +669,16 @@ fn stage_helpers(profile):
     // bridge, as they sit in a bundle.
     stage(target = "target/{profile}/muster-daemon", into = "{swift_bin}/muster-daemon")
     $`rsync -a --delete {DAEMON_DATA}/ {swift_bin}/muster-daemon-data/`
+    // The daemons a remote install sends (MIP-3, section 12), laid out as DaemonLocation.swift
+    // and muster-daemon-client's `install` expect them: one directory per Linux build.
+    for target in LINUX_DAEMONS.keys():
+        carried = "{swift_bin}/daemons/{carried_name(target)}"
+        $`mkdir -p {carried}`
+        stage(target = "target/{target}/{profile}/muster-daemon", into = "{carried}/muster-daemon")
+
+// What the app calls a Linux build it carries: `linux-x86_64` for x86_64-unknown-linux-musl.
+fn carried_name(target):
+    return "linux-{target.split("-")[0]}"
 
 // Copies a binary into place without disturbing anyone running the old one.
 //
@@ -723,6 +717,9 @@ fn build_bundle():
     $`cp {swift_bin}/muster-cli {contents}/MacOS/muster-cli`
     $`cp target/release/libmuster.dylib {contents}/Frameworks/libmuster.dylib`
     $`cp {GHOSTTY_DIR}/zig-out/lib/libghostty-vt.dylib {contents}/Frameworks/libghostty-vt.dylib`
+    // Resources rather than Library, because a Linux ELF is not code to codesign: it is sealed
+    // as a resource like the icon, and is only ever run on another machine.
+    $`rsync -a --copy-links {swift_bin}/daemons/ {contents}/Resources/daemons/`
 
     // muster-daemon's agent detection is a port of herdr's, and Apache-2.0 asks that its terms
     // travel with the binary. The copy is checked in rather than downloaded so that assembling
@@ -816,6 +813,10 @@ fn check_bundle_is_whole(contents):
         // A bundle without the daemon opens a window in which no pane renders.
         daemon,
         "{contents}/Library/{DAEMON_BUNDLE}/Contents/Resources/muster-daemon-data/README.md",
+        // What a remote install sends a Linux machine. Without them a devenv with no daemon
+        // on it shows no panes, and says the app carries none.
+        "{contents}/Resources/daemons/linux-x86_64/muster-daemon",
+        "{contents}/Resources/daemons/linux-aarch64/muster-daemon",
         "{contents}/Frameworks/libmuster.dylib",
         "{contents}/Frameworks/libghostty-vt.dylib",
         "{contents}/Info.plist",
@@ -1695,6 +1696,10 @@ if bundle:
     // app people ran was the one binary nothing had measured: the perf and latency tiers
     // build release. libghostty is ReleaseFast either way (build_deps).
     $`cargo build --release -p muster-seam -p muster-bridge -p muster-cli -p muster-daemon`
+    // Stripped, since the app carries both to machines that will only ever run them: 2.8 MB
+    // and 2.4 MB rather than several times that with the release profile's debug info.
+    for target in LINUX_DAEMONS.keys():
+        $`CARGO_PROFILE_RELEASE_STRIP=symbols cargo build --release -p muster-daemon --target {target}`
     $`swift build -c release`
     stage_helpers("release")
     build_bundle()

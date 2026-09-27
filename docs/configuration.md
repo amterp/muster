@@ -445,9 +445,10 @@ process itself rather than on a system shell that runs it. herdr's equivalent is
 **Both work on a devenv too**, where the daemon reads that machine's own
 `~/.muster/agent-detection/`. A `[[daemon]]` with a `host` starts the daemon of this Muster's
 version over there, `~/.muster/daemon/<version>/muster-daemon` with its data beside it, or reuses
-one still running from last time, agents and all. Muster does not copy it there yet, so it has
-to be installed first; without it the window shows nothing from that host, and the run log names
-the path it looked for. Naming a `socket` in a `[[daemon]]` block still attaches whatever is
+one still running from last time, agents and all. The first time, or when that directory holds
+another build, Muster copies its own daemon there over the same ssh connection; nothing is
+downloaded. Linux on x86_64 or aarch64 and macOS on Apple silicon are the machines it carries a
+daemon for, and the run log says so for any other. Naming a `socket` in a `[[daemon]]` block still attaches whatever is
 listening at it, on either machine - that is how you ask for somebody else's daemon on purpose.
 
 **Saving the file is enough.** Muster watches it and reads it again, and `cmd+shift+,` or

@@ -8,6 +8,7 @@ pub mod convert;
 pub mod environment;
 pub mod follow;
 pub mod input;
+pub mod install;
 pub mod launch;
 pub mod records;
 pub mod remote;

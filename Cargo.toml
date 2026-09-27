@@ -55,6 +55,9 @@ serde_json = "1"
 # share a socket. Pure Rust rather than forking a digest tool, because that tool is `shasum`
 # on macOS and `sha256sum` everywhere else.
 sha2 = "0.10"
+# The daemon a remote install sends, with its data directory, as one archive on one ssh round
+# trip. Written here and read by the far machine's own `tar`, so only the writer is needed.
+tar = { version = "0.4", default-features = false }
 # Configuration is files, and a file people hand-edit needs comments - which is the whole
 # argument against reusing serde_json for it. Every refusal is worded by us rather than by
 # the parser. `display` is here for the one thing Muster writes rather than reads: the window

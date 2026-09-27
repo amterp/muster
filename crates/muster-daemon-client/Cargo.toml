@@ -10,6 +10,8 @@ muster-core.workspace = true
 muster-daemon-proto.workspace = true
 muster-ssh.workspace = true
 prost.workspace = true
+sha2.workspace = true
+tar.workspace = true
 
 [dev-dependencies]
 conformance.workspace = true

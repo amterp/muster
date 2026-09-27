@@ -26,6 +26,14 @@ pub struct Platform {
     pub machine: String,
 }
 
+impl Platform {
+    /// What `uname -sm` printed, as a system and a machine; `None` when it is not two words.
+    pub fn from_uname(said: &str) -> Option<Platform> {
+        let (system, machine) = said.trim().split_once(' ')?;
+        Some(Platform { system: system.trim().to_string(), machine: machine.trim().to_string() })
+    }
+}
+
 impl Remote {
     pub fn over(host: &str, control_path: &str) -> Remote {
         Remote { host: host.to_string(), control_path: control_path.to_string() }
@@ -135,15 +143,14 @@ impl Remote {
     /// What the far machine is, so a caller can work out what to send it.
     pub fn platform(&self) -> Result<Platform, String> {
         let answer = self.run(&["uname", "-sm"])?;
-        let said = answer.trim();
-        let (system, machine) = said.split_once(' ').ok_or_else(|| {
+        Platform::from_uname(&answer).ok_or_else(|| {
             format!(
-                "{} answered `uname -sm` with {said:?}, which is not a system and a machine. \
-                 There is no way to tell what binary that host would run.",
+                "{} answered `uname -sm` with {:?}, which is not a system and a machine. There \
+                 is no way to tell what binary that host would run.",
                 self.host,
+                answer.trim(),
             )
-        })?;
-        Ok(Platform { system: system.trim().to_string(), machine: machine.trim().to_string() })
+        })
     }
 }
 

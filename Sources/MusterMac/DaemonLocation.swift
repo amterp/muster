@@ -21,6 +21,16 @@ public struct DaemonLocation: Equatable {
   /// Nil for the directory beside the binary, which is where a build stages it and where the
   /// daemon looks when it is told nothing.
   public let data: String?
+
+  /// The Linux daemons a remote install sends, one directory per build, or nil for a build
+  /// that carries none.
+  public let remote: String?
+
+  public init(binary: String, data: String?, remote: String? = nil) {
+    self.binary = binary
+    self.data = data
+    self.remote = remote
+  }
 }
 
 /// This build's daemon, or nil if it has none.
@@ -44,11 +54,11 @@ public func daemonLocation(
   executable: String,
   environment: [String: String] = ProcessInfo.processInfo.environment
 ) -> DaemonLocation? {
-  if let explicit = environment["MUSTER_DAEMON_BINARY"], !explicit.isEmpty {
-    return DaemonLocation(binary: explicit, data: nil)
-  }
-
   let macOS = URL(fileURLWithPath: executable).deletingLastPathComponent()
+  let remote = carriedDaemons(macOS: macOS)
+  if let explicit = environment["MUSTER_DAEMON_BINARY"], !explicit.isEmpty {
+    return DaemonLocation(binary: explicit, data: nil, remote: remote)
+  }
 
   let contents = macOS.deletingLastPathComponent()
     .appendingPathComponent("Library")
@@ -59,10 +69,26 @@ public func daemonLocation(
     return DaemonLocation(
       binary: bundled.path,
       data: contents.appendingPathComponent("Resources")
-        .appendingPathComponent("muster-daemon-data").path)
+        .appendingPathComponent("muster-daemon-data").path,
+      remote: remote)
   }
 
   let beside = macOS.appendingPathComponent("muster-daemon").path
   return FileManager.default.isExecutableFile(atPath: beside)
-    ? DaemonLocation(binary: beside, data: nil) : nil
+    ? DaemonLocation(binary: beside, data: nil, remote: remote) : nil
+}
+
+/// Where this build keeps the Linux daemons it installs on other machines: among the app's
+/// resources in a bundle, where a Linux binary is a file rather than code to sign, and beside
+/// the executable for a SwiftPM build, where `./dev` stages them.
+private func carriedDaemons(macOS: URL) -> String? {
+  let candidates = [
+    macOS.deletingLastPathComponent().appendingPathComponent("Resources/daemons"),
+    macOS.appendingPathComponent("daemons"),
+  ]
+  var isDirectory: ObjCBool = false
+  return candidates.first {
+    FileManager.default.fileExists(atPath: $0.path, isDirectory: &isDirectory)
+      && isDirectory.boolValue
+  }?.path
 }
