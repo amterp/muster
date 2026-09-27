@@ -166,7 +166,8 @@ const GHOSTTY_VERSION: &str = env!("MUSTER_GHOSTTY_VERSION");
 
 /// The features Ghostty's shell integration is told to use, which its scripts read, and which
 /// Ghostty sets whether or not a script was loaded. `sudo` and the `ssh-*` features stay off, as
-/// they do in Ghostty, and would need a Ghostty binary if they were on.
+/// they do in Ghostty: `sudo` works by carrying `$TERMINFO` through sudo's reset environment,
+/// and a pane finds its entry through `TERMINFO_DIRS` instead, which sudo drops.
 ///
 /// `cursor` makes every prompt set a bar cursor, blinking or steady as `cursor-style-blink` is,
 /// which is Ghostty's rule and applies here while the app's `[cursor]` names no shape. A shape it
@@ -214,11 +215,8 @@ pub(crate) fn environment(
             put(&mut environment, name, value);
         }
     }
-    let mut dirs = OsString::from(terminfo);
-    dirs.push(":");
-    if let Some((_, existing)) = environment.iter().find(|(name, _)| name == "TERMINFO_DIRS") {
-        dirs.push(existing);
-    }
+    let existing = environment.iter().find(|(name, _)| name == "TERMINFO_DIRS");
+    let dirs = terminfo_dirs(terminfo, existing.map(|(_, dirs)| dirs.as_os_str()));
     put(&mut environment, "TERMINFO_DIRS", dirs);
     put(&mut environment, "TERM", TERM);
     put(&mut environment, "COLORTERM", "truecolor");
@@ -231,11 +229,29 @@ pub(crate) fn environment(
     }
     // Another terminal's claim, which Ghostty drops for the same reason.
     environment.retain(|(name, _)| name != "VTE_VERSION");
+    // ncurses searches TERMINFO before anything else, and Ghostty.app sets it in its shells, so
+    // one inherited or asked for would decide which xterm-ghostty entry a pane gets.
+    environment.retain(|(name, _)| name != "TERMINFO");
     if let Some(daemon) = &reachable.daemon {
         put(&mut environment, DAEMON, daemon);
     }
     put(&mut environment, DAEMON_SOCKET, &reachable.socket);
     environment
+}
+
+/// The daemon's terminfo directory, then `existing`, then an empty entry, which ncurses reads as
+/// its own compiled-in database. Without one, setting `TERMINFO_DIRS` at all would stop the
+/// system's entries being found. An `existing` list that already has one keeps its own place.
+fn terminfo_dirs(terminfo: &Path, existing: Option<&OsStr>) -> OsString {
+    let mut dirs = OsString::from(terminfo);
+    dirs.push(":");
+    if let Some(existing) = existing.filter(|existing| !existing.is_empty()) {
+        dirs.push(existing);
+        if !existing.to_string_lossy().split(':').any(str::is_empty) {
+            dirs.push(":");
+        }
+    }
+    dirs
 }
 
 /// Sets `name`, replacing any value it had.
@@ -353,10 +369,12 @@ mod tests {
             ("VTE_VERSION", "7600"),
             ("GHOSTTY_RESOURCES_DIR", "/Applications/Ghostty.app/Contents/Resources/ghostty"),
             ("TERMINFO_DIRS", "/opt/terminfo"),
+            ("TERMINFO", "/Applications/Ghostty.app/Contents/Resources/terminfo"),
         ]);
         let requested = HashMap::from([
             ("TERM".to_string(), "vt100".to_string()),
             ("GHOSTTY_ASKED".to_string(), "kept".to_string()),
+            ("TERMINFO".to_string(), "/mine".to_string()),
         ]);
         let environment = environment(
             &inherited,
@@ -376,7 +394,7 @@ mod tests {
                 ("MUSTER_DAEMON_SOCKET", "/run/daemon.sock"),
                 ("MUSTER_PANE", "p1"),
                 ("TERM", "xterm-ghostty"),
-                ("TERMINFO_DIRS", "/data/terminfo:/opt/terminfo"),
+                ("TERMINFO_DIRS", "/data/terminfo:/opt/terminfo:"),
                 ("TERM_PROGRAM", "ghostty"),
                 ("TERM_PROGRAM_VERSION", GHOSTTY_VERSION),
                 ("GHOSTTY_SHELL_FEATURES", "cursor:blink,path,title"),
@@ -394,6 +412,17 @@ mod tests {
         let block = cursor(proto::CursorStyle::Block, Some(false));
         assert_eq!(shell_features(Some(&block)), "path,title");
         assert_eq!(shell_features(Some(&cursor(proto::CursorStyle::Bar, None))), "path,title");
+    }
+
+    #[test]
+    fn the_systems_terminfo_is_still_searched_after_the_daemons() {
+        let dirs = |existing: Option<&str>| {
+            terminfo_dirs(Path::new(TERMINFO), existing.map(OsStr::new)).into_string().unwrap()
+        };
+        assert_eq!(dirs(None), "/data/terminfo:");
+        assert_eq!(dirs(Some("")), "/data/terminfo:");
+        assert_eq!(dirs(Some("/opt/terminfo")), "/data/terminfo:/opt/terminfo:");
+        assert_eq!(dirs(Some("/a::/b")), "/data/terminfo:/a::/b");
     }
 
     #[test]

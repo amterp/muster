@@ -207,7 +207,8 @@ in, plus:
 - `TERM=xterm-ghostty`, with the terminfo entry carried by the daemon and reached through
   `TERMINFO_DIRS`, on both machines, so no host needs Ghostty installed. The daemon's entry comes
   first and an empty entry after it, so the system database is still searched and a person's
-  `~/.terminfo` still wins;
+  `~/.terminfo` still wins. `TERMINFO` is dropped, inherited or requested: ncurses searches it
+  before anything else, and Ghostty.app sets it to its own copy of the entry;
 - `COLORTERM=truecolor`;
 - `TERM_PROGRAM=ghostty`, because a pane is a Ghostty terminal and programs key features on the
   name; Muster's identity is already in `MUSTER_PANE` and `MUSTER_SOCKET`. `TERM_PROGRAM_VERSION`
