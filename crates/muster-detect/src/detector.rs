@@ -5,8 +5,8 @@
 //! synchronous state machine the caller ticks, with the time passed in, rather than a task
 //! that sleeps; hook authority, graceful release, the handoff-restored agent and the host
 //! theme are gone; a publication is only an agent and a state, emitted when either changes;
-//! and the title's reset on an agent change is kept here, since the title lives in the
-//! caller's terminal.
+//! and the title's reset on an agent change is kept here, counted in the terminal's title writes,
+//! since the title lives in the caller's terminal.
 //!
 //! What the loop is for is flicker. A screen is read a few times a second, and an agent's
 //! chrome is not drawn atomically, so a verdict taken at face value would bounce - working,
@@ -44,8 +44,10 @@ pub trait Pane {
     /// The terminal's foreground process group, or none if the terminal will not say.
     fn foreground_group(&self) -> Option<u32>;
 
-    /// A count that moves whenever the pane's output does: the daemon bumps it for every
-    /// non-empty read from the PTY. An unchanged count lets an idle pane skip its screen read.
+    /// A count that moves whenever the screen may have: for every non-empty read from the PTY,
+    /// and for every resize, which rewraps the screen without a byte of output from an agent
+    /// that does not redraw on SIGWINCH. An unchanged count lets an idle pane skip its screen
+    /// read.
     fn content_seq(&self) -> u64;
 
     /// The active screen's rows, as `muster_vt::Terminal::text(0, rows - 1)` reads them.
@@ -53,6 +55,10 @@ pub trait Pane {
 
     /// The terminal's title, as the program in the pane last set it.
     fn title(&self) -> String;
+
+    /// How many times a program has set the title (OSC 0 and 2), counting a write that repeats
+    /// the title it already had.
+    fn title_writes(&self) -> u64;
 
     /// The last OSC 9 payload (`crate::Progress::get`).
     fn progress(&self) -> String;
@@ -98,9 +104,10 @@ pub struct Detector {
     last_screen_scan_content_seq: Option<u64>,
     startup_grace_until: Option<Instant>,
     pending_idle: PendingIdle,
-    /// The title when the agent last changed, which reads as no title until the terminal's
-    /// changes: herdr cleared its copy of the title here, and this one belongs to the caller.
-    stale_title: Option<String>,
+    /// How many title writes the pane had seen when the agent last changed. The title reads as
+    /// empty until the next write, even one that repeats it: herdr dropped its copy of the title
+    /// here and took the next OSC 0 or 2 as it came, and this title is the caller's.
+    title_writes_at_change: Option<u64>,
     last_emitted: Option<Publication>,
     /// A reset forgot what was known, so the next tick publishes what it finds, even when it
     /// finds nothing that would count as a change. Otherwise a pane whose agent went with its
@@ -130,7 +137,7 @@ impl Detector {
             last_screen_scan_content_seq: None,
             startup_grace_until: None,
             pending_idle: PendingIdle::default(),
-            stale_title: None,
+            title_writes_at_change: None,
             last_emitted: None,
             owed: false,
         }
@@ -332,7 +339,7 @@ impl Detector {
             self.last_screen_scan_content_seq = None;
             // A new agent must not inherit the last one's title or progress.
             pane.clear_progress();
-            self.stale_title = Some(title(&pane.title()));
+            self.title_writes_at_change = Some(pane.title_writes());
             if agent.is_some() {
                 self.startup_grace_until = Some(now + STARTUP_GRACE);
                 self.published = PublishState { state: State::Idle, visible: true };
@@ -375,12 +382,11 @@ impl Detector {
     }
 
     fn current_title(&mut self, pane: &impl Pane) -> String {
-        let current = title(&pane.title());
-        if self.stale_title.as_ref() == Some(&current) {
+        if self.title_writes_at_change == Some(pane.title_writes()) {
             return String::new();
         }
-        self.stale_title = None;
-        current
+        self.title_writes_at_change = None;
+        title(&pane.title())
     }
 
     fn emit(&mut self, agent: Option<Agent>, state: State) -> Option<Publication> {

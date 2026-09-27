@@ -389,8 +389,16 @@ struct FakePane {
     content_seq: u64,
     screen: String,
     title: String,
+    title_writes: u64,
     progress: String,
     screen_reads: usize,
+}
+
+impl FakePane {
+    fn set_title(&mut self, title: &str) {
+        self.title = title.to_string();
+        self.title_writes += 1;
+    }
 }
 
 impl Pane for FakePane {
@@ -406,6 +414,9 @@ impl Pane for FakePane {
     }
     fn title(&self) -> String {
         self.title.clone()
+    }
+    fn title_writes(&self) -> u64 {
+        self.title_writes
     }
     fn progress(&self) -> String {
         self.progress.clone()
@@ -682,7 +693,7 @@ fn an_agent_is_forgotten_only_after_six_probes_miss_it() {
 fn a_new_agent_does_not_inherit_the_last_title_or_progress() {
     let mut run = Run::new();
     run.tick();
-    run.pane.title = "⠂ left over".to_string();
+    run.pane.set_title("⠂ left over");
     run.pane.progress = "4;1;50".to_string();
     run.start_agent();
     assert_eq!(run.pane.progress, "", "progress was cleared on the agent change");
@@ -690,7 +701,7 @@ fn a_new_agent_does_not_inherit_the_last_title_or_progress() {
     run.paint("nothing");
     assert_eq!(run.until_published(Duration::from_secs(1)), None, "the stale title counted");
 
-    run.pane.title = "⠄ fresh".to_string();
+    run.pane.set_title("⠄ fresh");
     run.paint("nothing still");
     assert_eq!(run.tick(), Some(published(Some(claude()), State::Working)));
 }
@@ -743,4 +754,19 @@ contains = ["busy"]
     run.next = Duration::ZERO;
     assert_eq!(run.tick(), Some(published(None, State::Unknown)));
     assert_eq!(run.until_published(Duration::from_secs(2)), None, "said once");
+}
+
+#[test]
+fn a_title_written_again_after_an_agent_change_counts_though_it_is_the_same() {
+    let mut run = Run::new();
+    run.tick();
+    run.pane.set_title("⠂ working on it");
+    run.start_agent();
+    run.paint("nothing");
+    assert_eq!(run.until_published(Duration::from_secs(1)), None, "the old agent's title");
+
+    // A restarted agent writing the title its predecessor left, word for word.
+    run.pane.set_title("⠂ working on it");
+    run.paint("nothing still");
+    assert_eq!(run.tick(), Some(published(Some(claude()), State::Working)));
 }
