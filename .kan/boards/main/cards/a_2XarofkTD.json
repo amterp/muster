@@ -1,0 +1,18 @@
+{
+  "_v": 3,
+  "alias": "agent-state-from",
+  "alias_explicit": false,
+  "column": "backlog-hi",
+  "created_at_millis": 1790512314357,
+  "creator": "Alexander Terp",
+  "description": "Detection reads agent state off the screen with per-agent rules (crates/muster-detect/manifests), so a harness update that changes its UI text breaks it: claude.toml already carries a spinner rule patched for Claude Code 2.1.228. amterp wants Muster built so harness updates do not break it (2026-09-27).\n\nDirection: where a harness has a documented integration point, it reports its own state and that wins. For Claude Code that is its hooks (prompt submitted -\u003e working, permission prompt -\u003e blocked, turn stopped -\u003e idle), sent through the daemon's existing Report request with a new state field. Screen rules stay as the fallback for harnesses without hooks and for panes where they are not installed, and a fresh self-report outranks them (MIP-3 section 8 currently says 'no hooks'; herdr's hook arbitration was not ported, so this is new design: say how a stale report expires and how the two sources hand over).\n\nAlso wanted: when the screen rules stop matching a known agent (identified, screen changing, no rule firing for a long stretch, or an agent version newer than the manifest was checked against), say so on the pane and in the daemon log rather than showing a confident wrong state. And an out-of-gate check that runs the current Claude Code against the manifest, so drift is found by us before a user.\n\nOpen: how the hooks get installed (a Claude Code plugin under extras/ that absorbs hooks.json, versus merging into settings). Related: done-unseen a_2XYi76eVz, facts a_2XQXk8sou.",
+  "id": "a_2XarofkTD",
+  "parent": "a_2XJ1fUIyr",
+  "position": "b01",
+  "title": "Agent state from harness hooks first, screen rules as fallback",
+  "type": "enhancement",
+  "updated_at_millis": 1790512323643,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1790512314357}
+  ]
+}
