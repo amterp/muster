@@ -1251,6 +1251,13 @@ impl Session {
     // -----------------------------------------------------------------------------------------
     // Persistence
 
+    /// What a restart needs of the session now, unless the daemon has begun to stop: then the
+    /// session is being closed, and what it held was handed to the persister first
+    /// ([`Session::close_everything`]).
+    pub(crate) fn persisted_unless_stopping(&self) -> Option<persist::State> {
+        (!self.stopping).then(|| self.persisted())
+    }
+
     /// What a restart needs of the session now.
     pub(crate) fn persisted(&self) -> persist::State {
         persist::State {

@@ -7,6 +7,17 @@
 //! renamed over the last, so a crash at any point leaves either the old file or the new one. The
 //! write happens on a thread of its own, a second after the first change it covers, with the
 //! session locked only long enough to copy the state out.
+//!
+//! **The format outlives the code that wrote it**, so changing it follows rules, and
+//! `tests/fixtures/state-v1.json` holds this code to them:
+//! - A field is added only with `#[serde(default)]`, so a file written before it existed still
+//!   reads. A field every file has is required, and its absence means a damaged file.
+//! - A field is never renamed or retyped. The settings are the protocol's own messages, keyed by
+//!   their field names, so renaming a `Settings` field - which the protocol allows - needs a
+//!   `#[serde(alias)]` naming the old one, added in `muster-daemon-proto/build.rs`. Enums are
+//!   stored as numbers, which a renamed enum value leaves alone.
+//! - Anything else bumps [`VERSION`], and [`load`] goes on reading every earlier version.
+//! - A fixture is frozen once written. A new version gets a fixture of its own.
 
 use std::collections::HashSet;
 use std::fs::File;
@@ -210,6 +221,18 @@ pub(crate) struct Persister {
     path: PathBuf,
     pending: Mutex<Pending>,
     woken: Condvar,
+    /// Every state written, for tests to see what the file held along the way.
+    #[cfg(test)]
+    writes: Mutex<Vec<State>>,
+}
+
+/// What the persist thread took out of the session.
+pub(crate) enum Copied {
+    State(Box<State>),
+    /// The daemon has begun to stop, and has handed over what to leave behind.
+    Stopping,
+    /// The session is gone.
+    Gone,
 }
 
 #[derive(Debug)]
@@ -243,6 +266,8 @@ impl Persister {
             path,
             pending: Mutex::new(Pending { phase, changed: None, last: None }),
             woken: Condvar::new(),
+            #[cfg(test)]
+            writes: Mutex::new(Vec::new()),
         })
     }
 
@@ -257,10 +282,18 @@ impl Persister {
             return;
         }
         let persister = Arc::clone(self);
-        let started = std::thread::Builder::new()
-            .name("persist".to_string())
-            .spawn(move || persister.run(&shared));
+        let started = std::thread::Builder::new().name("persist".to_string()).spawn(move || {
+            persister.run(|| match shared.upgrade() {
+                None => Copied::Gone,
+                Some(shared) => shared
+                    .lock()
+                    .persisted_unless_stopping()
+                    .map_or(Copied::Stopping, |state| Copied::State(Box::new(state))),
+            });
+        });
         if let Err(error) = started {
+            // Nothing will ever write, so a stop must not wait for a write.
+            self.pending().phase = Phase::Off;
             log::error(
                 "daemon.state.no_thread",
                 fields! {
@@ -314,7 +347,9 @@ impl Persister {
             .wait_timeout_while(pending, within, |pending| pending.phase == Phase::Stopping);
     }
 
-    fn run(&self, shared: &Weak<Shared>) {
+    /// Writes whatever `copy` takes out of the session, a second after each change, until the
+    /// daemon stops.
+    fn run(&self, copy: impl Fn() -> Copied) {
         let mut written = Vec::new();
         let mut pending = self.pending();
         loop {
@@ -351,17 +386,34 @@ impl Persister {
             }
             pending.changed = None;
             drop(pending);
-            let Some(shared) = shared.upgrade() else { return };
-            let state = shared.lock().persisted();
-            drop(shared);
-            self.write_if_changed(&state, &mut written);
+            match copy() {
+                Copied::State(state) => self.write_if_changed(&state, &mut written),
+                // What the daemon held before it began to stop is the state to leave, and it
+                // was handed over in the same hold of the session's lock that this copy saw.
+                Copied::Stopping => {}
+                Copied::Gone => return,
+            }
             pending = self.pending();
         }
     }
 
     /// Writes `state` unless it is exactly what was written last: a title changing moves no
-    /// byte of the file, and costs no write.
+    /// byte of the file, and costs no write. Never a state this daemon's next start would refuse:
+    /// that would lose every tab, where keeping the last file loses only the latest change.
     fn write_if_changed(&self, state: &State, written: &mut Vec<u8>) {
+        if let Err(why) = validate(state) {
+            log::error(
+                "daemon.state.invalid",
+                fields! {
+                    "why" => why,
+                    "impact" => "this change is not written down; the file keeps the last state \
+                                 that was",
+                    "check" => "this is a bug: the session holds a state its own restart would \
+                                refuse",
+                },
+            );
+            return;
+        }
         let bytes = match serde_json::to_vec_pretty(state) {
             Ok(mut bytes) => {
                 bytes.push(b'\n');
@@ -383,7 +435,11 @@ impl Persister {
             return;
         }
         match write(&self.path, &bytes) {
-            Ok(()) => *written = bytes,
+            Ok(()) => {
+                *written = bytes;
+                #[cfg(test)]
+                poison::lock(&self.writes, "daemon.persist.writes").push(state.clone());
+            }
             Err(error) => log::warn(
                 "daemon.state.not_written",
                 fields! {
@@ -492,6 +548,99 @@ mod tests {
         std::fs::write(scratch.file(), b"not json").unwrap();
         assert!(matches!(load(&scratch.file()), Loaded::Corrupt(_)));
         assert_eq!(load(&scratch.0.join("absent")), Loaded::Nothing);
+    }
+
+    /// The stop takes the session's lock to hand over what it held and close every tab; a write
+    /// that fell due meanwhile gets the lock next and must not write the closed session, even
+    /// for the moment before the handed-over state replaces it.
+    #[test]
+    fn a_write_due_as_the_daemon_stops_never_writes_the_closed_session() {
+        let scratch = Scratch::new("stopping");
+        let persister = Persister::new(scratch.file(), false);
+        persister.arm();
+        persister.changed();
+        // The session: whether it has begun to stop, and what it holds.
+        let session = Arc::new(Mutex::new((false, state())));
+        let (writing, held) = (Arc::clone(&persister), Arc::clone(&session));
+        let thread = std::thread::spawn(move || {
+            writing.run(|| {
+                let mut session = held.lock().unwrap();
+                if !session.0 {
+                    // The stop ran first: `close_everything`.
+                    writing.stopping(session.1.clone());
+                    session.0 = true;
+                    session.1.tabs.clear();
+                    session.1.panes.clear();
+                }
+                if session.0 {
+                    Copied::Stopping
+                } else {
+                    Copied::State(Box::new(session.1.clone()))
+                }
+            });
+        });
+        thread.join().unwrap();
+        assert_eq!(*persister.writes.lock().unwrap(), [state()], "only what it held");
+    }
+
+    #[test]
+    fn a_state_the_next_start_would_refuse_is_never_written() {
+        let scratch = Scratch::new("invalid");
+        let persister = Persister::new(scratch.file(), false);
+        let mut invalid = state();
+        invalid.tabs[0].zoomed = Some("p9".to_string());
+        persister.write_if_changed(&invalid, &mut Vec::new());
+        assert_eq!(load(&scratch.file()), Loaded::Nothing, "the last file stays");
+    }
+
+    /// The state `tests/fixtures/state-v1.json` holds: every setting other than its default, a
+    /// zoomed split and labels.
+    fn fixture_v1() -> State {
+        State {
+            version: 1,
+            daemon: "0.9.0".to_string(),
+            settings: proto::Settings {
+                shell: Some(proto::Shell {
+                    command: Some("/bin/zsh".to_string()),
+                    mode: proto::ShellMode::NonLogin.into(),
+                }),
+                scrollback_bytes: Some(5_000_000),
+                palette: Some(proto::Palette {
+                    entries: vec![0x10_20_30, 0xc0_40_40],
+                    foreground: 0xdd_dd_dd,
+                    background: 0x11_11_11,
+                    cursor: Some(0xff_00_ff),
+                    scheme: proto::ColorScheme::Dark.into(),
+                }),
+                clipboard_write: Some(false),
+                cursor: Some(proto::Cursor {
+                    style: proto::CursorStyle::Bar.into(),
+                    blink: Some(false),
+                }),
+            },
+            ..state()
+        }
+    }
+
+    /// A file an earlier daemon wrote is read as it was meant, whatever has changed since. The
+    /// file is frozen: a later format gets a fixture of its own, never an edit to this one.
+    #[test]
+    fn a_version_1_file_reads_as_it_was_written() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/state-v1.json");
+        assert_eq!(load(&path), Loaded::State(fixture_v1()));
+    }
+
+    /// Every setting the fixture holds is one a restart must keep, so each must differ from its
+    /// default, or a renamed field would read back as the default and pass. A setting added
+    /// later goes in a later version's fixture.
+    #[test]
+    fn the_version_1_fixture_sets_every_setting_it_has() {
+        let set = serde_json::to_value(fixture_v1().settings).unwrap();
+        let default = serde_json::to_value(proto::Settings::default()).unwrap();
+        let (set, default) = (set.as_object().unwrap(), default.as_object().unwrap());
+        for (name, value) in default {
+            assert_ne!(set.get(name), Some(value), "{name} is its default in the fixture");
+        }
     }
 
     #[test]

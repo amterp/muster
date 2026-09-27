@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "daemon": "0.9.0",
+  "settings": {
+    "shell": {
+      "command": "/bin/zsh",
+      "mode": 2
+    },
+    "scrollback_bytes": 5000000,
+    "palette": {
+      "entries": [
+        1056816,
+        12599360
+      ],
+      "foreground": 14540253,
+      "background": 1118481,
+      "cursor": 16711935,
+      "scheme": 1
+    },
+    "clipboard_write": false,
+    "cursor": {
+      "style": 2,
+      "blink": false
+    }
+  },
+  "tabs": [
+    {
+      "tab": "t1",
+      "label": {
+        "text": "work",
+        "generation": 2
+      },
+      "zoomed": "p2",
+      "root": {
+        "split": {
+          "axis": "columns",
+          "ratio": 0.3,
+          "first": {
+            "pane": "p1"
+          },
+          "second": {
+            "pane": "p2"
+          }
+        }
+      }
+    }
+  ],
+  "panes": [
+    {
+      "pane": "p1",
+      "label": "A",
+      "cwd": "/tmp",
+      "grid": {
+        "cols": 80,
+        "rows": 24,
+        "width_px": 800,
+        "height_px": 480
+      }
+    },
+    {
+      "pane": "p2",
+      "cwd": "/tmp",
+      "grid": {
+        "cols": 80,
+        "rows": 24,
+        "width_px": 800,
+        "height_px": 480
+      }
+    }
+  ]
+}
