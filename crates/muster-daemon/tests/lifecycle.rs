@@ -76,3 +76,45 @@ fn sighup_does_not_stop_the_daemon() {
     let mut control = daemon.connect();
     snapshot(&mut control);
 }
+
+#[test]
+fn a_socket_path_naming_a_file_is_refused_rather_than_deleted() {
+    let daemon = daemon();
+    let mistyped = daemon.root().join("notes.txt");
+    std::fs::write(&mistyped, "somebody's notes\n").unwrap();
+    let mut refused = std::process::Command::new(env!("CARGO_BIN_EXE_muster-daemon"))
+        .arg("--socket")
+        .arg(&mistyped)
+        .env_clear()
+        .env("HOME", daemon.root().join("home"))
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut status = None;
+    let exited = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        until(
+            "a daemon given a regular file as its socket to exit",
+            || {
+                status = refused.try_wait().unwrap();
+                status.is_some()
+            },
+            (),
+        );
+    }));
+    if exited.is_err() {
+        let _ = refused.kill();
+        let _ = refused.wait();
+    }
+    assert_eq!(
+        std::fs::read_to_string(&mistyped).ok().as_deref(),
+        Some("somebody's notes\n"),
+        "the file at the socket path was replaced"
+    );
+    assert!(
+        !status.expect("the daemon exited").success(),
+        "a daemon took a regular file as its socket"
+    );
+    let mut said = String::new();
+    std::io::Read::read_to_string(&mut refused.stderr.take().unwrap(), &mut said).unwrap();
+    assert!(said.contains("not a socket"), "{said}");
+}
