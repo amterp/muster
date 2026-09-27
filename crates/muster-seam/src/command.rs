@@ -184,8 +184,21 @@ impl CommandEndpoint {
                     return;
                 }
                 // A caller that hangs up mid-answer would otherwise raise SIGPIPE and take the
-                // whole window with it. macOS spells it as a socket option.
-                set_nosigpipe(&stream);
+                // whole window with it, so a connection that cannot be protected is not served.
+                if let Err(error) = muster_daemon_client::silence_sigpipe(&stream) {
+                    log::warn(
+                        "command.unprotected",
+                        fields! {
+                            "error" => error,
+                            "impact" => "this one command was refused unanswered, since \
+                                         answering a caller that hangs up could end the window",
+                            "check" => "the error names why the socket option failed; this is \
+                                        likely a bug, since it succeeds on every socket macOS \
+                                        hands out",
+                        },
+                    );
+                    continue;
+                }
                 std::thread::spawn(move || answer(stream));
             }
         });
@@ -367,19 +380,4 @@ fn hung_up(stream: &UnixStream) -> bool {
         std::io::Error::last_os_error().kind(),
         std::io::ErrorKind::WouldBlock | std::io::ErrorKind::Interrupted
     )
-}
-
-fn set_nosigpipe(stream: &UnixStream) {
-    let on: libc::c_int = 1;
-    // SAFETY: the fd is owned by `stream` and outlives the call; the option value is an int of
-    // the size reported.
-    unsafe {
-        libc::setsockopt(
-            stream.as_raw_fd(),
-            libc::SOL_SOCKET,
-            libc::SO_NOSIGPIPE,
-            std::ptr::from_ref(&on).cast(),
-            u32::try_from(size_of::<libc::c_int>()).expect("an int fits a socklen"),
-        );
-    }
 }

@@ -19,6 +19,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 muster-core.workspace = true
+muster-daemon-client.workspace = true
 muster-herdr.workspace = true
 muster-proto.workspace = true
 muster-ssh.workspace = true

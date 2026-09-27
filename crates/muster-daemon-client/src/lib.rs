@@ -20,12 +20,8 @@ use muster_daemon_proto::{ConnectionKind, Welcome};
 const HANDSHAKE_PATIENCE: Duration = Duration::from_secs(5);
 
 /// Dials a daemon and opens a connection of `kind`, on a socket whose writes cannot kill the
-/// process. The handshake is bounded, so a daemon that accepts and never answers fails the dial
-/// rather than holding its caller for ever.
-///
-/// The app hosts these connections, and a Swift process does not ignore SIGPIPE the way a Rust
-/// binary does: a write to a daemon that has just died would end the window, and every pane's
-/// surface with it.
+/// process ([`silence_sigpipe`]). The handshake is bounded, so a daemon that accepts and never
+/// answers fails the dial rather than holding its caller for ever.
 fn dial(
     socket: &Path,
     kind: ConnectionKind,
@@ -34,7 +30,12 @@ fn dial(
     let mut stream = UnixStream::connect(socket).map_err(|error| {
         HandshakeError::Unreachable(format!("could not connect to {}: {error}", socket.display()))
     })?;
-    silence_sigpipe(&stream);
+    silence_sigpipe(&stream).map_err(|error| {
+        HandshakeError::Unreachable(format!(
+            "could not stop a write to {} from ending this process ({error}), so it was not used",
+            socket.display()
+        ))
+    })?;
     bounded(&stream, Some(HANDSHAKE_PATIENCE)).map_err(|error| {
         HandshakeError::Unreachable(format!("could not bound the handshake: {error}"))
     })?;
@@ -80,24 +81,36 @@ fn bounded(stream: &UnixStream, patience: Option<Duration>) -> std::io::Result<(
     stream.set_write_timeout(patience)
 }
 
+/// Makes a write to `stream` whose far end has gone fail with `EPIPE` rather than raise
+/// SIGPIPE, which by default ends the process.
+///
+/// Needed because the app hosts these sockets in a Swift process, which does not ignore SIGPIPE
+/// the way a Rust binary does: a write to a daemon, bridge or CLI that had just gone would end
+/// the window and every pane's surface with it. macOS spells this as a socket option.
 #[cfg(target_vendor = "apple")]
-fn silence_sigpipe(stream: &UnixStream) {
+pub fn silence_sigpipe(stream: &UnixStream) -> std::io::Result<()> {
     use std::os::fd::AsRawFd;
     let on: libc::c_int = 1;
     // SAFETY: the fd is owned by `stream` and outlives the call; the option value is an int of
     // the size reported.
-    unsafe {
+    let set = unsafe {
         libc::setsockopt(
             stream.as_raw_fd(),
             libc::SOL_SOCKET,
             libc::SO_NOSIGPIPE,
             std::ptr::from_ref(&on).cast(),
             u32::try_from(size_of::<libc::c_int>()).expect("an int fits a socklen"),
-        );
-    }
+        )
+    };
+    if set == 0 { Ok(()) } else { Err(std::io::Error::last_os_error()) }
 }
 
-/// Linux has no such socket option, only a flag on each send; nothing hosts these connections
-/// there but Rust binaries, which ignore SIGPIPE.
+/// Linux has no such socket option, only a flag on each send, and nothing here needs one today:
+/// every process that holds these sockets on Linux is a Rust binary (the daemon, the bridge, the
+/// CLI, the tests), and Rust's runtime ignores SIGPIPE before `main`. libmuster, the one library
+/// a foreign process loads, is loaded only by the macOS shell. A Linux shell that hosts it must
+/// ignore SIGPIPE itself before opening any connection.
 #[cfg(not(target_vendor = "apple"))]
-fn silence_sigpipe(_stream: &UnixStream) {}
+pub fn silence_sigpipe(_stream: &UnixStream) -> std::io::Result<()> {
+    Ok(())
+}
