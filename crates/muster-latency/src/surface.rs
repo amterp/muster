@@ -181,6 +181,15 @@ impl Pace {
     /// As fast as it comes, discarded: a hidden pane's surface.
     pub(crate) const DRAIN: Pace =
         Pace { chunk: 65536, pause: Duration::ZERO, stall: None, keep: false };
+    /// A surface slower than the flood into it: 4 KiB a millisecond, stopping 250 ms every MiB.
+    pub(crate) const SLOW: Pace = Pace {
+        chunk: 4096,
+        pause: Duration::from_millis(1),
+        stall: Some((1 << 20, Duration::from_millis(250))),
+        keep: true,
+    };
+    /// As fast as it comes, kept.
+    pub(crate) const FAST: Pace = Pace { keep: true, ..Pace::DRAIN };
 }
 
 /// A surface read by a thread of its own.

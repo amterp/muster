@@ -24,12 +24,16 @@ use surface::{Pace, Surface};
 
 const USAGE: &str = "\
 usage: muster-latency (--daemon <path> | --socket <path>) --bridge <path>
-                      [--samples <n>] [--panes <n>] [--flood-lines <n>] [--json]
+                      [--samples <n>] [--panes <n>] [--flood-lines <n>]
+                      [--flood-surface slow|fast] [--json]
 
 Times input-to-glyph through muster-daemon beside the bare PTY: the pane's stream read
 directly, and the real bridge (muster-bridge --daemon-socket) onto a PTY. Idle, in a
 window of --panes panes (15) with the others attached and then detached, and beside a
-pane flooding --flood-lines lines (3000000) into a bridge whose surface reads slowly.
+pane flooding --flood-lines lines (3000000) into a bridge whose surface reads slowly:
+4 KiB a millisecond, stopping 250 ms every MiB. --flood-surface fast reads it as fast as it
+comes instead, so the flood's time is the program's, held only by the link and the daemon's
+flow control: how a remote window is judged.
 
 --daemon starts that muster-daemon for the run. --socket measures one already running,
 such as a devenv's through a forwarded socket; the bare PTY is still this machine's.";
@@ -46,6 +50,8 @@ struct Options {
     samples: usize,
     panes: usize,
     flood_lines: u64,
+    /// How the flooded pane's surface reads.
+    flood_pace: Pace,
     json: bool,
 }
 
@@ -58,6 +64,7 @@ impl Options {
     fn parse(arguments: &[String]) -> Option<Options> {
         let (mut daemon, mut bridge, mut json) = (None, None, false);
         let (mut samples, mut panes, mut flood_lines) = (60, 15, 3_000_000);
+        let mut flood_pace = Pace::SLOW;
         let mut read = arguments.iter();
         while let Some(flag) = read.next() {
             if flag == "--json" {
@@ -72,10 +79,25 @@ impl Options {
                 "--samples" => samples = value.parse().ok().filter(|&n| n > 0)?,
                 "--panes" => panes = value.parse().ok().filter(|&n| n >= 2)?,
                 "--flood-lines" => flood_lines = value.parse().ok()?,
+                "--flood-surface" => {
+                    flood_pace = match value.as_str() {
+                        "slow" => Pace::SLOW,
+                        "fast" => Pace::FAST,
+                        _ => return None,
+                    };
+                }
                 _ => return None,
             }
         }
-        Some(Options { daemon: daemon?, bridge: bridge?, samples, panes, flood_lines, json })
+        Some(Options {
+            daemon: daemon?,
+            bridge: bridge?,
+            samples,
+            panes,
+            flood_lines,
+            flood_pace,
+            json,
+        })
     }
 }
 
@@ -218,9 +240,13 @@ fn main() {
          the byte and its framing.",
         bytes.surface, bytes.stream
     );
+    let surface = if options.flood_pace.stall.is_some() {
+        "a surface reading 4 KiB a millisecond, stopping 250 ms every MiB"
+    } else {
+        "a surface reading as fast as it came"
+    };
     println!(
-        "the flood took {:.1} s through a surface reading 4 KiB a millisecond, stopping 250 ms \
-         every MiB; its bridge fell behind {} times.\n",
+        "the flood took {:.1} s through {surface}; its bridge fell behind {} times.\n",
         flooded.seconds, flooded.behind
     );
     println!("against MIP-3 section 13's targets:");
@@ -343,12 +369,7 @@ fn flood(daemon: &mut Daemon, options: &Options, log: &Path) -> Flood {
     let flooding =
         daemon.pane(&format!("read go; seq 1 {}; echo {DONE}; exec cat", options.flood_lines));
     let surface = Surface::bridge(&options.bridge, daemon.socket(), &flooding, log)
-        .read_in_background(Pace {
-            chunk: 4096,
-            pause: Duration::from_millis(1),
-            stall: Some((1 << 20, Duration::from_millis(250))),
-            keep: true,
-        });
+        .read_in_background(options.flood_pace);
     let started = Instant::now();
     daemon.send_line(&flooding, "go");
     let mut beside = Vec::new();
