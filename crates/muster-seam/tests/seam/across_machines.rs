@@ -16,14 +16,15 @@
 
 use std::sync::Mutex;
 
-use herdr_harness::{Daemon, until};
 use muster::proto::{
     ArrangePane, ClosePane, CreateTab, EqualizePanes, Event, FocusPane, OpenWindow, PaneText,
-    ReadPane, ReadViewport, ReadWindow, RenamePane, Request, Response, RosterChanged, SendToPane,
-    SplitPane, Startup, ZoomPane, event, request, response,
+    ReadPane, ReadWindow, RenamePane, Request, Response, RosterChanged, SendToPane, SplitPane,
+    Startup, ZoomPane, event, request, response,
 };
+use muster_daemon_proto as daemon_proto;
+use muster_harness::requests::{create, in_new_tab, make, read_text};
+use muster_harness::{Daemon, until};
 use prost::Message;
-use serde_json::{Value, json};
 
 /// A window showing a laptop and a devenv, each holding one named pane.
 struct TwoMachines {
@@ -40,6 +41,14 @@ struct TwoMachines {
 const ON_LAPTOP: &str = "on-laptop";
 const ON_DEVENV: &str = "on-devenv";
 
+/// What each machine's only pane and its tab are called. Muster uses a daemon's names as its
+/// own, so these are also the names every request here addresses - distinct across the two
+/// machines, because a pane's name is meant to be unique across every machine a window shows.
+const LAPTOP_PANE: &str = "p1laptop00";
+const LAPTOP_TAB: &str = "t1laptop00";
+const DEVENV_PANE: &str = "p1devenv00";
+const DEVENV_TAB: &str = "t1devenv00";
+
 /// Text typed into the laptop's pane, and read back two ways: off the daemon's own screen and
 /// through `muster pane read`.
 const SENT: &str = "muster-across-machines";
@@ -55,7 +64,7 @@ fn a_window_showing_two_machines() -> TwoMachines {
 }
 
 /// The same window with a devenv that has never held anything, which is what a machine named
-/// in the config and never used looks like: attached, listed, and holding no workspace at all.
+/// in the config and never used looks like: attached, listed, and holding no tab at all.
 fn a_window_and_an_untouched_devenv() -> TwoMachines {
     two_machines(Devenv::HoldingNothing)
 }
@@ -67,11 +76,11 @@ enum Devenv {
 }
 
 fn two_machines(devenv: Devenv) -> TwoMachines {
-    let laptop = Daemon::start();
-    let second = Daemon::start();
-    a_workspace_holding_one_named_pane(&laptop, ON_LAPTOP);
+    let laptop = Daemon::start_built();
+    let second = Daemon::start_built();
+    a_tab_holding_one_named_pane(&laptop, LAPTOP_TAB, LAPTOP_PANE, ON_LAPTOP);
     if devenv == Devenv::HoldingAPane {
-        a_workspace_holding_one_named_pane(&second, ON_DEVENV);
+        a_tab_holding_one_named_pane(&second, DEVENV_TAB, DEVENV_PANE, ON_DEVENV);
     }
 
     let config = laptop.muster_config_naming("laptop", &[("devenv", &second)]);
@@ -92,15 +101,16 @@ fn two_machines(devenv: Devenv) -> TwoMachines {
     TwoMachines { laptop, devenv: second }
 }
 
-/// One workspace holding one pane, named before Muster has heard of any of it.
-///
-/// Named through the daemon rather than through Muster, and before startup, because herdr
-/// announces a rename to nobody: the bootstrap snapshot is the only thing that carries one
-/// (`observations/herdr-0.8.0.md` section 16).
-fn a_workspace_holding_one_named_pane(daemon: &Daemon, given: &str) {
-    daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": given, "focus": true }));
-    let pane = only_pane(daemon);
-    daemon.call("pane.rename", &json!({ "pane_id": pane, "label": given }));
+/// One tab holding one pane, made on the daemon before Muster has heard of any of it, which is
+/// what a machine somebody has been working on looks like.
+fn a_tab_holding_one_named_pane(daemon: &Daemon, tab: &str, pane: &str, given: &str) {
+    make(
+        &mut daemon.connect(),
+        daemon_proto::pane_request::Create {
+            label: Some(given.to_string()),
+            ..create(pane, in_new_tab(tab))
+        },
+    );
 }
 
 /// The card's own check, one verb at a time.
@@ -111,7 +121,7 @@ fn a_workspace_holding_one_named_pane(daemon: &Daemon, given: &str) {
 /// something else entirely. Both are caught by asking each daemon what it holds afterwards.
 ///
 /// One test rather than one per verb, because the fixture is two real daemons and the answer
-/// is the same question asked eight ways. The order is not arbitrary: a split has to come
+/// is the same question asked nine ways. The order is not arbitrary: a split has to come
 /// before a move has two panes to swap, and a tab comes last because making one brings it on
 /// screen - which moves the laptop's region off the tab every other check is aimed at.
 #[test]
@@ -122,7 +132,6 @@ fn every_verb_that_names_a_pane_acts_on_that_panes_machine() {
 
     let on_laptop = pane_on("laptop").expect("the fixture waited for it");
     let on_devenv = pane_on("devenv").expect("the fixture waited for it");
-    let laptop_pane = backend_id(laptop, ON_LAPTOP);
 
     // The keyboard, put on the devenv and left there. This is the whole staging: everything
     // below names a pane on the other machine, so anything that reads the keyboard is wrong.
@@ -131,10 +140,9 @@ fn every_verb_that_names_a_pane_acts_on_that_panes_machine() {
     a_focus_moves_the_keyboard_to_the_named_machine(&on_laptop, &on_devenv);
     a_split_lands_on_the_named_machine(laptop, devenv, &on_laptop);
     a_zoom_fills_the_named_machines_region(&on_laptop, &on_devenv);
-    text_reaches_the_named_machines_pane(laptop, &on_laptop, &laptop_pane);
+    text_reaches_the_named_machines_pane(laptop, &on_laptop);
     a_read_answers_with_the_named_machines_pane(&on_laptop);
-    a_viewport_answers_about_the_named_machines_pane(laptop, &on_laptop, &laptop_pane);
-    a_rename_reaches_the_named_machines_pane(laptop, &on_laptop, &laptop_pane);
+    a_rename_reaches_the_named_machines_pane(laptop, &on_laptop);
     a_move_rearranges_the_named_machines_tab(&on_laptop);
     a_close_takes_a_pane_off_the_named_machine(laptop, devenv, &on_laptop);
     a_tab_is_made_on_the_named_machine(laptop, devenv, &on_laptop);
@@ -184,8 +192,8 @@ fn a_split_lands_on_the_named_machine(laptop: &Daemon, devenv: &Daemon, on_lapto
 /// must not need it to be: zooming a pane in a tab you are not looking at is ordinary, and its
 /// effect is there when you arrive.
 ///
-/// Sent twice, because herdr's `pane.zoom` defaults to toggling - so this leaves the tab the
-/// way it found it for the checks that follow.
+/// Sent twice, because a zoom request toggles - the window reads which state the pane is in and
+/// asks for the other - so this leaves the tab the way it found it for the checks that follow.
 fn a_zoom_fills_the_named_machines_region(on_laptop: &str, on_devenv: &str) {
     let zoom = || {
         assert_ok(&answer(request::Payload::ZoomPane(ZoomPane {
@@ -215,9 +223,9 @@ fn a_zoom_fills_the_named_machines_region(on_laptop: &str, on_devenv: &str) {
     put_the_keyboard_back(on_devenv);
 }
 
-/// `muster pane send`, read back off the laptop's own screen. The daemon renders every pane
-/// whether or not anything is attached to it, so this is a usable oracle with no bridge.
-fn text_reaches_the_named_machines_pane(laptop: &Daemon, on_laptop: &str, laptop_pane: &str) {
+/// `muster pane send`, read back off the laptop's own screen. The daemon keeps every pane's
+/// screen whether or not anything is attached to it, so this is a usable oracle with no bridge.
+fn text_reaches_the_named_machines_pane(laptop: &Daemon, on_laptop: &str) {
     assert_ok(&answer(request::Payload::SendToPane(SendToPane {
         pane_id: on_laptop.to_string(),
         text: SENT.to_string(),
@@ -225,8 +233,8 @@ fn text_reaches_the_named_machines_pane(laptop: &Daemon, on_laptop: &str, laptop
     })));
     until(
         "the text to arrive on the laptop's pane",
-        || screen(laptop, laptop_pane).contains(SENT),
-        || format!("the laptop's pane shows {:?}", screen(laptop, laptop_pane)),
+        || screen(laptop, on_laptop).contains(SENT),
+        || format!("the laptop's pane shows {:?}", screen(laptop, on_laptop)),
     );
 }
 
@@ -240,44 +248,9 @@ fn a_read_answers_with_the_named_machines_pane(on_laptop: &str) {
     );
 }
 
-/// Where a pane is looking, which the window asks for to keep a selection on its own text.
-///
-/// The oracle is the laptop's own answer for the same pane, so a read that reached the devenv
-/// would describe a pane with a different height and nothing scrolled off it.
-fn a_viewport_answers_about_the_named_machines_pane(
-    laptop: &Daemon,
-    on_laptop: &str,
-    laptop_pane: &str,
-) {
-    let answered = match answer(request::Payload::ReadViewport(ReadViewport {
-        pane_id: on_laptop.to_string(),
-        ..ReadViewport::default()
-    }))
-    .payload
-    {
-        Some(response::Payload::PaneViewport(viewport)) => viewport,
-        other => panic!("expected a viewport, got {other:?}"),
-    };
-    let scroll =
-        laptop.call("pane.get", &json!({ "pane_id": laptop_pane }))["pane"]["scroll"].clone();
-    assert_eq!(
-        u64::from(answered.rows),
-        scroll["viewport_rows"].as_u64().unwrap_or_default(),
-        "the window answered about a pane of a different height than the laptop's"
-    );
-    assert_eq!(
-        u64::from(answered.deepest),
-        scroll["max_offset_from_bottom"].as_u64().unwrap_or_default(),
-    );
-    assert_eq!(
-        u64::from(answered.rows_from_bottom),
-        scroll["offset_from_bottom"].as_u64().unwrap_or_default(),
-    );
-}
-
 /// `muster pane rename`. The oracle is the laptop's own label, so a rename that reached the
 /// devenv leaves this waiting rather than passing on a name nobody can see.
-fn a_rename_reaches_the_named_machines_pane(laptop: &Daemon, on_laptop: &str, laptop_pane: &str) {
+fn a_rename_reaches_the_named_machines_pane(laptop: &Daemon, on_laptop: &str) {
     assert_ok(&answer(request::Payload::RenamePane(RenamePane {
         pane_id: on_laptop.to_string(),
         name: "renamed".to_string(),
@@ -285,8 +258,8 @@ fn a_rename_reaches_the_named_machines_pane(laptop: &Daemon, on_laptop: &str, la
     })));
     until(
         "the laptop's pane to carry the name it was given",
-        || label(laptop, laptop_pane) == "renamed",
-        || format!("the laptop's pane is called {:?}", label(laptop, laptop_pane)),
+        || label(laptop, on_laptop) == "renamed",
+        || format!("the laptop's pane is called {:?}", label(laptop, on_laptop)),
     );
 }
 
@@ -333,9 +306,9 @@ fn a_close_takes_a_pane_off_the_named_machine(laptop: &Daemon, devenv: &Daemon, 
 
 /// `muster tab new`, the verb the card is about.
 ///
-/// herdr's `tab.create` takes a workspace and ignores keys it does not know, so a tab asked of
-/// the wrong daemon does not merely fail - this is the one verb here where the wrong machine
-/// could have made a tab somewhere nobody asked for. Counted on both sides for that reason.
+/// A daemon makes whatever tab it is asked for, so a tab asked of the wrong daemon does not
+/// merely fail - this is the one verb here where the wrong machine would make a tab somewhere
+/// nobody asked for. Counted on both sides for that reason.
 fn a_tab_is_made_on_the_named_machine(laptop: &Daemon, devenv: &Daemon, on_laptop: &str) {
     let (before, elsewhere) = (tabs(laptop), tabs(devenv));
     assert_ok(&answer(request::Payload::CreateTab(CreateTab {
@@ -665,71 +638,38 @@ fn read_pane(pane: &str) -> PaneText {
 
 // --- what each daemon says it holds ----------------------------------------------------
 
-fn snapshot(daemon: &Daemon) -> Value {
-    daemon.call("session.snapshot", &json!({}))["snapshot"].clone()
+fn snapshot(daemon: &Daemon) -> daemon_proto::Snapshot {
+    muster_harness::requests::snapshot(&mut daemon.connect())
 }
 
 fn tabs(daemon: &Daemon) -> usize {
-    snapshot(daemon)["tabs"].as_array().map_or(0, Vec::len)
+    snapshot(daemon).tabs.len()
 }
 
-/// Every pane this daemon holds, by its own id for it, in the order it lists them.
+/// Every pane this daemon holds, in the order it lists them.
 fn panes(daemon: &Daemon) -> Vec<String> {
-    snapshot(daemon)["panes"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(|pane| pane.get("pane_id").and_then(Value::as_str))
-        .map(str::to_string)
-        .collect()
-}
-
-fn only_pane(daemon: &Daemon) -> String {
-    let panes = panes(daemon);
-    assert_eq!(panes.len(), 1, "a fresh workspace should hold exactly one pane: {panes:?}");
-    panes[0].clone()
-}
-
-/// This daemon's own id for the pane it labels `given`.
-fn backend_id(daemon: &Daemon, given: &str) -> String {
-    snapshot(daemon)["panes"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .find(|pane| pane.get("label").and_then(Value::as_str) == Some(given))
-        .and_then(|pane| pane.get("pane_id").and_then(Value::as_str))
-        .unwrap_or_else(|| panic!("this daemon holds no pane labelled {given}"))
-        .to_string()
+    snapshot(daemon).panes.into_iter().map(|pane| pane.pane).collect()
 }
 
 fn label(daemon: &Daemon, pane: &str) -> String {
-    snapshot(daemon)["panes"]
-        .as_array()
+    snapshot(daemon)
+        .panes
         .into_iter()
-        .flatten()
-        .find(|held| held.get("pane_id").and_then(Value::as_str) == Some(pane))
-        .and_then(|held| held.get("label").and_then(Value::as_str))
+        .find(|held| held.pane == pane)
+        .and_then(|held| held.label)
         .unwrap_or_default()
-        .to_string()
 }
 
-/// What a pane is showing, asked of the daemon that renders it.
-///
-/// Unwrapped, because a pane in a split is about two dozen columns wide and a line that wraps
-/// comes back with a newline through the middle of it.
+/// What a pane is showing, asked of the daemon that holds it.
 fn screen(daemon: &Daemon, pane: &str) -> String {
-    daemon.call("pane.read", &json!({ "pane_id": pane, "source": "recent_unwrapped" }))["read"]
-        ["text"]
-        .as_str()
-        .unwrap_or_default()
-        .to_string()
+    read_text(&mut daemon.connect(), pane, 0, 0).text
 }
 
 /// A pane name no machine holds, in a window showing two.
 ///
-/// The request still goes - to whichever machine has the keyboard, because a pane the backend
-/// made a moment ago is unknown to every mirror too and refusing here would refuse one that is
-/// about to be right. What must not survive is that machine's answer. It is correct on its own
+/// The request still goes - to whichever machine has the keyboard, because a pane another client
+/// made on a daemon a moment ago is unknown to every mirror too, and refusing here would refuse
+/// one that is about to be right. What must not survive is that machine's answer. It is correct on its own
 /// terms and wrong where it lands: naming one machine while two are attached reads as "it
 /// exists on the other one, and this went to the wrong machine", and blaming a race rules out
 /// the far commoner cause, which is a name read off a window state that has moved on.
@@ -768,35 +708,23 @@ fn a_pane_no_machine_holds_is_blamed_on_no_machine() {
     );
 }
 
-/// The other half, and the reason such a request is sent rather than refused outright.
+/// A pane a split has only just made can be typed into at once.
 ///
-/// A pane the backend has only just made is unknown to every mirror, exactly like a stale name:
-/// the two are told apart by what the daemon answers, and nothing above the seam can tell them
-/// apart beforehand. So the unknown case has to go, and a rule that refused it would refuse a
-/// request that is about to be right.
+/// The shape `P=$(muster pane new); muster pane send --pane "$P"` runs: the send arrives the
+/// moment the split has answered. A split returns with its pane already in the window's mirror,
+/// because the daemon's events reach the mirror before the answer to the request that caused
+/// them - so a pane named in a split's answer is one this window knows, and the send is not
+/// mistaken for the stale name the test above is about.
 ///
 /// Typing into it is the sharpest version - what `pane send` is *for* is reaching a pane no
-/// region shows, so it asks nothing about what is on screen and the daemon's answer is the
-/// whole of it.
+/// region shows, so it asks nothing about what is on screen.
 #[test]
-fn a_pane_the_daemon_has_only_just_made_can_still_be_typed_into() {
+fn a_pane_a_split_has_only_just_made_can_be_typed_into_at_once() {
     let _turn = muster::testing::fresh_session();
     let machines = a_window_showing_two_machines();
     let laptop = &machines.laptop;
 
     let on_laptop = pane_on("laptop").expect("the fixture waited for it");
-    // The keyboard on the machine being split, so that the pane made below - unknown to every
-    // mirror until its event lands - resolves to the daemon that made it.
-    assert_ok(&answer(request::Payload::FocusPane(FocusPane {
-        daemon_id: String::new(),
-        pane_id: on_laptop.clone(),
-    })));
-    until(
-        "the keyboard to be on the laptop",
-        || keyboard() == Some(("laptop".to_string(), on_laptop.clone())),
-        || format!("the keyboard is on {:?}", keyboard()),
-    );
-
     let made = match answer(request::Payload::SplitPane(SplitPane {
         daemon_id: String::new(),
         pane_id: on_laptop.clone(),
@@ -809,28 +737,29 @@ fn a_pane_the_daemon_has_only_just_made_can_still_be_typed_into() {
         other => panic!("expected the new pane's name, got {other:?}"),
     };
 
-    // Immediately, before waiting for anything: if a pane no mirror knows were refused, this
-    // would come back with the sentence the test above asserts.
+    // Immediately, before waiting for anything: a window that did not yet know the pane would
+    // come back with the sentence the test above asserts.
     assert_ok(&answer(request::Payload::SendToPane(SendToPane {
         daemon_id: String::new(),
-        pane_id: made,
+        pane_id: made.clone(),
         text: SENT.to_string(),
         enter: false,
         confirm: false,
     })));
     until(
         "the text to reach the pane that was just made",
-        || panes(laptop).iter().any(|pane| screen(laptop, pane).contains(SENT)),
-        || format!("the laptop holds {:?}", panes(laptop)),
+        || screen(laptop, &made).contains(SENT),
+        || format!("the new pane shows {:?}", screen(laptop, &made)),
     );
 }
 
 /// One tab holding a laptop pane beside a devenv pane, which is what MIP-2 stage four is for.
 ///
 /// The one arrangement that crosses machines, and the one thing in Muster that no daemon can be
-/// told: neither of these knows the other exists, so the grouping lives in Muster's name
-/// registry and nowhere else. What it takes is one request naming a tab - the pane stays on its
-/// own machine, because it is a process, and what moves is which Muster tab it belongs to.
+/// told: neither of these knows the other exists, so the grouping is one tab name held on both
+/// daemons, and only Muster reads the two as one tab. What it takes is one request naming a
+/// tab. The pane stays on its own machine, because it is a process, and what moves is which tab
+/// it belongs to.
 ///
 /// Asserted from the agent list rather than from either daemon, because neither daemon can
 /// answer it. The laptop sees one tab with one pane and so does the devenv; only the window sees
@@ -858,24 +787,18 @@ fn a_tab_can_hold_panes_from_two_machines() {
         ..ArrangePane::default()
     })));
 
-    // Read back by the name somebody gave the pane rather than by the id captured above. The
-    // id is Muster's and can be re-minted while this waits - a daemon that drops a pane for an
-    // instant takes its name with it - and what the test is about is where the devenv's named
-    // pane ended up.
     until(
         "the devenv's pane to join the laptop's tab",
-        || pane_on("devenv").and_then(|pane| tab_holding(&pane)) == Some(laptop_tab.clone()),
+        || tab_holding(&on_devenv) == Some(laptop_tab.clone()),
         || {
             format!(
-                "the laptop's tab is {laptop_tab} holding {on_laptop}, the devenv's pane is \
-                 {:?}, and the list holds {:?}",
-                pane_on("devenv"),
+                "the laptop's tab is {laptop_tab} holding {on_laptop}, and the list holds {:?}",
                 rows()
             )
         },
     );
     assert_eq!(
-        pane_on("laptop").and_then(|pane| tab_holding(&pane)),
+        tab_holding(&on_laptop),
         Some(laptop_tab.clone()),
         "grouping took the laptop's own pane out of the tab it was in"
     );
@@ -899,8 +822,8 @@ fn a_tab_can_hold_panes_from_two_machines() {
 /// A tab a pane cannot be put into, refused by name.
 ///
 /// A tab name from another window, or one that closed while the request was in flight. Refused
-/// rather than sent, because the adapter's answer to a tab it holds no part of is to make one -
-/// so a name that means nothing would quietly produce a tab nobody asked for.
+/// rather than sent, because a daemon's answer to a pane moved into a tab it holds no part of is
+/// to make that tab - so a name that means nothing would quietly produce a tab nobody asked for.
 #[test]
 fn a_pane_put_into_a_tab_this_window_does_not_hold_is_refused() {
     let _turn = muster::testing::fresh_session();

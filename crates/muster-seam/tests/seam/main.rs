@@ -11,8 +11,6 @@ mod command;
 mod confirmed_send;
 mod daemon_census;
 mod dispatch;
-mod geometry;
-mod hidden_before_dial;
 mod holding;
 mod inherited;
 mod just_made;

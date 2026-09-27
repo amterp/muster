@@ -1,30 +1,34 @@
 //! Opening onto a daemon that holds nothing, which is what a fresh machine is.
 //!
-//! The path a bare launch takes on a machine where Muster just started its own herdr: nothing
-//! to attach to, so a workspace is asked for, and the pane it makes arrives on the event
-//! stream some milliseconds later. Every other test here starts from a daemon that already
-//! holds panes, so this is the only one that exercises the order those events come in.
+//! The path a bare launch takes on a machine where Muster just started its own daemon: nothing
+//! to attach to, so the window asks the daemon for a tab once it has said it holds nothing.
+//! Every other test here starts from a daemon that already holds panes, so this is the only one
+//! that exercises the window filling itself.
 //!
-//! What it asserts is an invariant rather than a sequence: a published view names a control
-//! socket for every pane it shows. A shell must not spawn a bridge without one - it would
-//! paint and then swallow every keystroke - so a pane published without one is a blank pane
-//! that nothing republishes, which is exactly how this shipped once.
+//! What it asserts is an invariant rather than a sequence: a published view names a link
+//! socket for every pane it shows. A shell must not spawn a bridge without one - the bridge
+//! would have nowhere to say it attached, so the pane would never be counted typeable - and a
+//! pane published without one is a blank pane that nothing republishes, which is exactly how
+//! this shipped once.
 //!
 //! `fresh_session` gives it a session that has never seen a pane, which is what it needs.
 
 use std::sync::Mutex;
 
-use herdr_harness::{Daemon, until};
 use muster::proto::{
     Event, OpenWindow, Request, Response, Startup, ViewChanged, ViewNode, event, request, response,
     view_node,
 };
+use muster_harness::{Daemon, until};
 use prost::Message;
 
+/// A bare launch onto a daemon holding nothing ends with a tab on screen, the keyboard on a pane
+/// in it, and a link socket for every pane shown - which is what a first launch on a fresh
+/// machine has to look like before anybody can type anything.
 #[test]
 fn a_window_opened_on_an_empty_daemon_can_be_typed_into() {
     let _turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     let config = daemon.muster_config();
 
     muster::ffi::muster_set_event_callback(Some(note_view));
@@ -37,7 +41,7 @@ fn a_window_opened_on_an_empty_daemon_can_be_typed_into() {
     assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
 
     until(
-        "the window to show the workspace it asked for",
+        "the window to show the tab it asked for",
         || latest_view().is_some_and(|view| !panes(&view).is_empty()),
         || format!("the last view the core published: {:?}", latest_view()),
     );
@@ -63,7 +67,7 @@ fn a_window_opened_on_an_empty_daemon_can_be_typed_into() {
         .collect();
     assert!(
         unreachable.is_empty(),
-        "the view names {unreachable:?} with no control socket, so the shell cannot start a \
+        "the view names {unreachable:?} with no link socket, so the shell cannot start a \
          bridge for them and they render as empty panes. The whole view: {view:?}"
     );
 }
@@ -76,7 +80,7 @@ fn panes(view: &ViewChanged) -> Vec<(String, String)> {
 fn leaves(node: &ViewNode) -> Vec<(String, String)> {
     match &node.node {
         Some(view_node::Node::Pane(pane)) => {
-            vec![(pane.pane_id.clone(), pane.control_socket_path.clone())]
+            vec![(pane.pane_id.clone(), pane.link_socket_path.clone())]
         }
         Some(view_node::Node::Split(split)) => {
             split.first.iter().chain(split.second.iter()).flat_map(|child| leaves(child)).collect()

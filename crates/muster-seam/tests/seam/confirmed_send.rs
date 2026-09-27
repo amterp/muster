@@ -17,12 +17,13 @@
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
-use herdr_harness::{Daemon, until};
 use muster::proto::{
     OpenWindow, ReadPane, Request, Response, SendToPane, Startup, request, response,
 };
+use muster_daemon_proto::pane_request;
+use muster_harness::requests::{create, in_new_tab, make};
+use muster_harness::{Daemon, until};
 use prost::Message;
-use serde_json::json;
 
 /// How much of a message the fixture draws before it starts dropping.
 ///
@@ -42,12 +43,13 @@ const READING: &str = "fixture-is-reading";
 /// on a runner slower than the machine it was written on.
 const DRAWS_AFTER: f32 = 0.3;
 
+/// A confirmed send to a pane that draws what it is handed, only later than an echo would, is
+/// confirmed: slow is not the same as deaf.
 #[test]
 fn a_send_the_pane_draws_late_is_confirmed_rather_than_refused() {
     let _turn = muster::testing::fresh_session();
     let drawing = scratch("confirmed-send-late");
-    let daemon = Daemon::start_running(&slow_fixture(&drawing).to_string_lossy());
-    daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "late", "focus": true }));
+    let daemon = daemon_running(&slow_fixture(&drawing));
 
     assert_ok(&answer(request::Payload::Startup(Startup {
         config_path: daemon.muster_config().to_string_lossy().into_owned(),
@@ -72,12 +74,13 @@ fn a_send_the_pane_draws_late_is_confirmed_rather_than_refused() {
     let _ = std::fs::remove_dir_all(&drawing);
 }
 
+/// A confirmed send the pane drew only the start of is refused, naming the pane, while the same
+/// send unconfirmed and a short one confirmed both succeed - so only the length explains it.
 #[test]
 fn a_send_the_pane_never_showed_is_refused_rather_than_reported_as_done() {
     let _turn = muster::testing::fresh_session();
     let drawing = scratch("confirmed-send");
-    let daemon = Daemon::start_running(&fixture(&drawing).to_string_lossy());
-    daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "confirmed", "focus": true }));
+    let daemon = daemon_running(&fixture(&drawing));
 
     assert_ok(&answer(request::Payload::Startup(Startup {
         config_path: daemon.muster_config().to_string_lossy().into_owned(),
@@ -124,6 +127,19 @@ fn a_send_the_pane_never_showed_is_refused_rather_than_reported_as_done() {
     })));
 
     let _ = std::fs::remove_dir_all(&drawing);
+}
+
+/// A daemon holding one pane, running `program` in place of an interactive shell.
+fn daemon_running(program: &Path) -> Daemon {
+    let daemon = Daemon::start_built();
+    make(
+        &mut daemon.connect(),
+        pane_request::Create {
+            command: Some(program.to_string_lossy().into_owned()),
+            ..create("p1", in_new_tab("t1"))
+        },
+    );
+    daemon
 }
 
 /// The window's only pane, by Muster's name for it.
@@ -209,8 +225,8 @@ fn scratch(name: &str) -> PathBuf {
 /// that discards an over-long line both look exactly like this from outside, and both answered
 /// exit 0 before this flag existed.
 ///
-/// It must not exit - herdr closes a pane whose process ends, then the workspace, then the
-/// daemon - so it loops rather than returning.
+/// It must not exit - the pane would drop back to its shell, and what the pane shows would
+/// stop being this program's - so it loops rather than returning.
 fn fixture(drawing: &Path) -> PathBuf {
     let script = drawing.join("draws-the-first-of-it.py");
     std::fs::write(

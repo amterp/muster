@@ -16,20 +16,23 @@
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 
-use herdr_harness::{Daemon, until, until_file};
 use muster::proto::frame::{LARGEST_MESSAGE, read_frame, write_frame};
 use muster::proto::{
     OpenWindow, ReadWindow, Request, Response, SendToPane, SplitPane, Startup, Window, request,
     response,
 };
+use muster_harness::requests::{create, in_new_tab, make};
+use muster_harness::{Daemon, until, until_file};
 use prost::Message;
-use serde_json::json;
 
+/// A caller dialing the window's socket learns what it shows, makes a pane that runs what it
+/// asked under the name it asked, and types into that pane by name - the whole of what a script
+/// or an agent driving a window does, through the real endpoint.
 #[test]
 fn a_caller_outside_this_process_can_ask_what_the_window_is_showing() {
     let _turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
-    daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "driven", "focus": true }));
+    let daemon = Daemon::start_built();
+    make(&mut daemon.connect(), create("p1", in_new_tab("t1")));
 
     // Inside the daemon's own scratch directory, so the run leaves nothing behind and two runs
     // of this test in parallel cannot collide on one path.
@@ -104,8 +107,8 @@ fn a_caller_outside_this_process_can_ask_what_the_window_is_showing() {
         "a split that did not ask for focus took it anyway: {window:?}"
     );
 
-    // Named, and named in the window rather than only on the daemon - herdr announces a rename
-    // to nobody, so this is the assertion that the reply was read.
+    // Named, and named in the window rather than only on the daemon, which is the assertion that
+    // the name reached the list a person reads.
     until_window(
         "the window to list the pane under the name the split asked for",
         &socket,
@@ -154,11 +157,12 @@ fn the_answer_carries_what_a_caller_needs(window: &Window) -> Vec<String> {
         "the region the window draws should name the pane the keyboard is on, by the name \
          Muster calls it - which is the name a caller would send back: {window:?}"
     );
-    assert!(
-        panes[0].starts_with('p'),
-        "a caller is answered with Muster's own name for a pane, never the daemon's - a herdr \
-         id is not unique across machines and is not addressable. Got {:?}",
-        panes[0]
+    assert_eq!(
+        panes,
+        vec!["p1".to_string()],
+        "a caller is answered with the name the daemon holds the pane by, which is the only name \
+         a pane has - a second one would be one more thing for a caller to send back wrong: \
+         {window:?}"
     );
     assert_eq!(
         window.panes.iter().map(|pane| pane.pane_id.clone()).collect::<Vec<_>>(),

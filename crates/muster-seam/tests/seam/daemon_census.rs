@@ -1,6 +1,6 @@
 //! What `muster daemons` answers, and the one thing only a window can add to it.
 //!
-//! The record and the dial are the herdr adapter's and are tested there. What this is about is
+//! The record and the dial are the daemon client's and are tested there. What this is about is
 //! the half a file cannot hold: whether the window answering is attached to the daemon in the
 //! row. That is the field the decision turns on - ending a daemon nothing is attached to costs
 //! whoever started it, and ending the one this window is drawing costs the person reading the
@@ -10,24 +10,26 @@
 
 use std::path::PathBuf;
 
-use herdr_harness::{Daemon, until};
 use muster::proto::{OpenWindow, ReadDaemons, Request, Response, Startup, request, response};
+use muster_harness::requests::{create, in_new_tab, make};
+use muster_harness::{Daemon, until};
 use prost::Message;
-use serde_json::json;
 
+/// Of two daemons in the record, only the one this window follows is marked as attached here,
+/// and the other is still a full row.
 #[test]
 fn a_daemon_this_window_is_using_is_marked_and_the_rest_are_not() {
     let _turn = muster::testing::fresh_session();
-    let attached = Daemon::start();
-    let elsewhere = Daemon::start();
-    attached.call("workspace.create", &json!({ "cwd": "/tmp", "label": "here", "focus": true }));
+    let attached = Daemon::start_built();
+    let elsewhere = Daemon::start_built();
+    make(&mut attached.connect(), create("p1", in_new_tab("t1")));
 
     // Written by hand rather than by starting a window's own daemon. What the window does when
     // it starts one is the contract tier's to prove, since only a real launch takes that path;
     // what this is about is the answer, and the answer reads the same record either way.
     let directory = scratch("census");
-    muster_herdr::records::started(&directory, &attached.socket_path().to_string_lossy());
-    muster_herdr::records::started(&directory, &elsewhere.socket_path().to_string_lossy());
+    muster_daemon_client::records::started(&directory, &attached.socket_path().to_string_lossy());
+    muster_daemon_client::records::started(&directory, &elsewhere.socket_path().to_string_lossy());
 
     assert_ok(&answer(request::Payload::Startup(Startup {
         config_path: attached.muster_config().to_string_lossy().into_owned(),
@@ -68,15 +70,17 @@ fn a_daemon_this_window_is_using_is_marked_and_the_rest_are_not() {
         .find(|daemon| !daemon.attached_here)
         .expect("the second daemon is in the answer");
     assert_eq!(idle.state, "answering");
-    assert_eq!(idle.panes, 0, "a daemon nothing has asked for a workspace holds nothing");
+    assert_eq!(idle.panes, 0, "a daemon nothing has asked for a tab holds nothing");
 
     let _ = std::fs::remove_dir_all(&directory);
 }
 
+/// A window given no records directory says the census is empty because nothing was written
+/// down, rather than answering as though the machine had no daemons.
 #[test]
 fn a_window_with_nowhere_to_write_says_so_rather_than_answering_with_an_empty_machine() {
     let _turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     assert_ok(&answer(request::Payload::Startup(Startup {
         config_path: daemon.muster_config().to_string_lossy().into_owned(),
         ..Startup::default()

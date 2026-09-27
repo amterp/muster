@@ -13,17 +13,19 @@
 
 use std::sync::Mutex;
 
-use herdr_harness::{Daemon, until};
 use muster::proto::{
     CloseTab, CreateTab, Event, OpenWindow, Request, Response, RosterChanged, SplitPane, Startup,
     ViewChanged, event, request, response,
 };
+use muster_harness::{Daemon, until};
 use prost::Message;
 
+/// A pane in a tab behind the one on screen can be split by name, and the keyboard stays in
+/// the tab somebody is looking at.
 #[test]
 fn a_pane_in_a_tab_nothing_is_showing_can_be_split() {
     let _turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
 
     muster::ffi::muster_set_event_callback(Some(note));
     assert_ok(&answer(request::Payload::Startup(Startup {
@@ -32,7 +34,7 @@ fn a_pane_in_a_tab_nothing_is_showing_can_be_split() {
     })));
     assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
     until(
-        "the window to open onto a workspace",
+        "the window to open onto a tab",
         || panes_of_tabs().len() == 1,
         || format!("the last roster the core published: {:?}", tabs()),
     );
@@ -42,10 +44,12 @@ fn a_pane_in_a_tab_nothing_is_showing_can_be_split() {
     // arrangement the failure happens in and it is an ordinary one: a person made a tab, and
     // the agent's own pane is in the tab they left.
     assert_ok(&answer(request::Payload::CreateTab(CreateTab::default())));
-    until(
-        "the new tab to come on screen and the first one to go behind it",
-        || tabs().len() == 2 && tabs().iter().filter(|(_, on_screen)| *on_screen).count() == 1,
-        || format!("the last roster the core published: {:?}", tabs()),
+    // A request returns with its effect already in the window, so this is true on the answer.
+    assert!(
+        tabs().len() == 2 && tabs().iter().filter(|(_, on_screen)| *on_screen).count() == 1,
+        "the new tab was not on screen with the first one behind it when the request returned: \
+         {:?}",
+        tabs()
     );
     let keyboard_was = keyboard();
 
@@ -80,7 +84,7 @@ fn a_pane_in_a_tab_nothing_is_showing_can_be_split() {
 #[test]
 fn a_split_still_refuses_a_pane_no_daemon_holds() {
     let _turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
 
     muster::ffi::muster_set_event_callback(Some(note));
     assert_ok(&answer(request::Payload::Startup(Startup {
@@ -89,7 +93,7 @@ fn a_split_still_refuses_a_pane_no_daemon_holds() {
     })));
     assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
     until(
-        "the window to open onto a workspace",
+        "the window to open onto a tab",
         || panes_of_tabs().len() == 1,
         || format!("the last roster the core published: {:?}", tabs()),
     );
@@ -122,7 +126,7 @@ fn a_split_still_refuses_a_pane_no_daemon_holds() {
 #[test]
 fn closing_a_tab_ends_it_whether_or_not_it_is_the_one_on_screen() {
     let _turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
 
     muster::ffi::muster_set_event_callback(Some(note));
     assert_ok(&answer(request::Payload::Startup(Startup {
@@ -131,17 +135,19 @@ fn closing_a_tab_ends_it_whether_or_not_it_is_the_one_on_screen() {
     })));
     assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
     until(
-        "the window to open onto a workspace",
+        "the window to open onto a tab",
         || panes_of_tabs().len() == 1,
         || format!("the last roster the core published: {:?}", tabs()),
     );
     let first = panes_of_tabs()[0].0.clone();
 
     assert_ok(&answer(request::Payload::CreateTab(CreateTab::default())));
-    until(
-        "the new tab to come on screen and the first one to go behind it",
-        || tabs().len() == 2 && tabs().iter().filter(|(_, on_screen)| *on_screen).count() == 1,
-        || format!("the last roster the core published: {:?}", tabs()),
+    // A request returns with its effect already in the window, so this is true on the answer.
+    assert!(
+        tabs().len() == 2 && tabs().iter().filter(|(_, on_screen)| *on_screen).count() == 1,
+        "the new tab was not on screen with the first one behind it when the request returned: \
+         {:?}",
+        tabs()
     );
 
     let second = tabs()

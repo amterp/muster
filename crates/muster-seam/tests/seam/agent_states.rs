@@ -3,20 +3,22 @@
 //! A snapshot answering `working` twice cannot say whether that was one turn or two with a finish
 //! between them, and a caller that wants to know when an agent finishes has had nothing to do but
 //! poll (kan a_2M9T8O6dL). These tests are against a real daemon, which is where agent states
-//! come from, and they drive states through herdr's own `pane.report_agent`.
+//! come from, and they drive states the way a real agent does: a fake agent in the pane paints
+//! them, and the daemon's detection reads them off its screen.
 
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use herdr_harness::{Daemon, PATIENCE, until, until_some};
 use muster::proto::frame::{LARGEST_MESSAGE, read_frame, write_frame};
 use muster::proto::{
     BackendHealth, ClosePane, OpenWindow, PaneStateChanged, ReadWindow, Request, Response,
     SplitPane, Startup, WatchPanes, Window, WindowFocus, request, response,
 };
+use muster_daemon_proto::AgentState;
+use muster_harness::requests::{create, in_new_tab, make};
+use muster_harness::{Daemon, PATIENCE, until, until_some};
 use prost::Message;
-use serde_json::{Value, json};
 
 /// A pane's agent says since when it has been doing what it is doing, and a look does not move it.
 ///
@@ -38,7 +40,7 @@ fn a_pane_says_since_when_its_agent_has_been_doing_it() {
     );
 
     let before = now_ms();
-    open.report("working");
+    open.report(AgentState::Working);
     let working = until_state(&open, "working");
     let after = now_ms();
     assert!(
@@ -49,7 +51,7 @@ fn a_pane_says_since_when_its_agent_has_been_doing_it() {
     );
 
     // Nothing has told the window it has focus, so a finish nobody saw is `done`.
-    open.report("idle");
+    open.report(AgentState::Idle);
     let finished = until_state(&open, "done");
     assert!(
         finished.since_ms >= working.since_ms,
@@ -86,7 +88,7 @@ fn a_watch_starts_from_every_pane_and_hears_each_change() {
          starting one cannot tell what it is waiting on: {first:?}"
     );
 
-    open.report("working");
+    open.report(AgentState::Working);
     let working = state_frame(&mut watch);
     assert_eq!(
         working.state, "working",
@@ -99,7 +101,7 @@ fn a_watch_starts_from_every_pane_and_hears_each_change() {
          one pane"
     );
 
-    open.report("idle");
+    open.report(AgentState::Idle);
     let finished = state_frame(&mut watch);
     assert_eq!(
         finished.state, "done",
@@ -152,7 +154,7 @@ fn a_wait_ends_when_a_pane_gets_where_it_was_asked_to() {
     );
     assert_ended(&mut already);
 
-    open.report("working");
+    open.report(AgentState::Working);
     until_state(&open, "working");
     let mut finish = watching(
         &open.socket,
@@ -164,8 +166,8 @@ fn a_wait_ends_when_a_pane_gets_where_it_was_asked_to() {
         || muster::testing::watchers() == 1,
         || format!("{} watches are open", muster::testing::watchers()),
     );
-    open.report("blocked");
-    open.report("idle");
+    open.report(AgentState::Blocked);
+    open.report(AgentState::Idle);
     let finished = state_frame(&mut finish);
     assert_eq!(
         finished.state, "done",
@@ -181,7 +183,7 @@ fn a_wait_on_a_pane_that_closes_is_refused() {
     let _turn = muster::testing::fresh_session();
     let open = a_window_onto_one_pane();
     // Straight after the split, the way `P=$(muster pane new); muster pane wait --pane "$P"`
-    // runs: the split answers with the name before the window's mirror has heard of the pane.
+    // runs.
     let made = split(&open);
 
     // Blocked, because a plain shell never is, so nothing but the close can end this.
@@ -210,9 +212,9 @@ fn a_wait_on_a_pane_that_closes_is_refused() {
 /// A watch hears a daemon stop answering, and hears it come back, once each.
 ///
 /// While a daemon is stale nothing about its panes reaches the window, so a watch that said
-/// nothing would read as agents that had all gone quiet at once. Restarted rather than killed so
-/// that it does come back - and the subscription says a daemon is stale on every reconnect it
-/// tries and connected twice on the way back, which a caller should hear as one change each.
+/// nothing would read as agents that had all gone quiet at once. Restarted rather than only killed
+/// so that it does come back - and the follower says a daemon is stale on every reconnect it
+/// tries, which a caller should hear as one change each way.
 #[test]
 fn a_watch_hears_a_daemon_stop_answering_and_come_back() {
     let _turn = muster::testing::fresh_session();
@@ -220,6 +222,7 @@ fn a_watch_hears_a_daemon_stop_answering_and_come_back() {
     let mut watch = watching(&open.socket, WatchPanes::default());
     let daemon = state_frame(&mut watch).daemon_id;
 
+    open.daemon.kill();
     open.daemon.restart();
     let gone = health_frame(&mut watch);
     assert_eq!(
@@ -340,34 +343,28 @@ fn a_caller_that_hangs_up_is_let_go() {
     );
 }
 
-/// One window, showing one pane, whose herdr and Muster names are both known.
+/// One window, showing one pane with an agent in it.
 struct Open {
     daemon: Daemon,
     socket: PathBuf,
-    /// What Muster calls the pane, which is what every request addresses.
+    /// The pane's name, which the daemon and the window both know it by.
     pane: String,
-    /// What the daemon calls it, which is what `pane.report_agent` addresses.
-    backend: String,
 }
 
 impl Open {
-    /// Tells the daemon the pane's agent is in `state`, the way a harness hook would.
-    fn report(&self, state: &str) {
-        self.daemon.call(
-            "pane.report_agent",
-            &json!({ "pane_id": self.backend, "agent": "probe", "source": "probe", "state": state }),
-        );
+    /// Has the pane's agent paint `state`, and waits until the daemon has read it.
+    fn report(&self, state: AgentState) {
+        self.daemon.set_agent_state(&self.pane, state);
     }
 }
 
 fn a_window_onto_one_pane() -> Open {
-    let daemon = Daemon::start();
-    daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "agents", "focus": true }));
-    let backend = only_pane(&daemon);
-    // Named before startup so this test can find it again: Muster mints its own name for the
-    // pane, and herdr announces a rename to nobody, so the bootstrap snapshot is the only thing
-    // that carries one (`observations/herdr-0.8.0.md` section 16).
-    daemon.call("pane.rename", &json!({ "pane_id": backend, "label": "agent" }));
+    let daemon = Daemon::start_detecting();
+    let pane = "p1".to_string();
+    make(&mut daemon.connect(), create(&pane, in_new_tab("t1")));
+    // Before the window opens, so the agent is already idle when it is first seen and the only
+    // state changes a test hears are the ones it makes.
+    daemon.run_agent(&pane);
 
     let socket = daemon.root().join("command.sock");
     assert_ok(&dispatch(request::Payload::Startup(Startup {
@@ -377,16 +374,17 @@ fn a_window_onto_one_pane() -> Open {
     })));
     assert_ok(&dispatch(request::Payload::OpenWindow(OpenWindow {})));
 
-    let pane = until_some("the window to list the pane called agent", || {
-        read_window(&socket)
-            .roster
-            .iter()
-            .flat_map(|roster| roster.tabs.iter())
-            .flat_map(|tab| tab.panes.iter())
-            .find(|pane| pane.given_name == "agent")
-            .map(|pane| pane.pane_id.clone())
-    });
-    Open { daemon, socket, pane, backend }
+    until(
+        "the window to say the pane's agent is idle",
+        || {
+            read_window(&socket)
+                .panes
+                .iter()
+                .any(|agent| agent.pane_id == pane && agent.state == "idle")
+        },
+        || format!("the window reads {:?}", read_window(&socket)),
+    );
+    Open { daemon, socket, pane }
 }
 
 /// Opens a watch, and hands back the connection its answers arrive on.
@@ -493,19 +491,6 @@ fn dialed(socket: &std::path::Path, payload: request::Payload) -> Response {
         .expect("the endpoint takes a request");
     let reply = read_frame(&mut stream, LARGEST_MESSAGE).expect("the endpoint answers it");
     Response::decode(reply.as_slice()).expect("the answer is a response this build knows")
-}
-
-fn only_pane(daemon: &Daemon) -> String {
-    let snapshot = daemon.call("session.snapshot", &json!({}));
-    let panes: Vec<String> = snapshot["snapshot"]["panes"]
-        .as_array()
-        .unwrap_or_else(|| panic!("no panes in {snapshot}"))
-        .iter()
-        .filter_map(|pane| pane.get("pane_id").and_then(Value::as_str))
-        .map(str::to_string)
-        .collect();
-    assert_eq!(panes.len(), 1, "a fresh workspace should hold exactly one pane: {panes:?}");
-    panes[0].clone()
 }
 
 fn now_ms() -> i64 {

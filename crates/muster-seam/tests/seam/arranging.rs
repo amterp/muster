@@ -1,16 +1,15 @@
 //! Dragging a row, through the seam, against a real daemon.
 //!
 //! The gesture the suite could describe from every angle and never perform. Its pieces are
-//! each covered: `SidebarTests` decides which drops are legal, `backend-intent.json` pins the
-//! envelope the adapter builds, and `pane_arranging.rs` drives herdr's own verbs and reads
-//! the mirror. Between the protobuf a window sends and the roster a window draws there was
+//! each covered: `SidebarTests` decides which drops are legal, and the daemon client's own
+//! tests pin the requests it builds. Between the protobuf a window sends and the roster a window draws there was
 //! nothing, so nothing could be wrong about it - which is the shape of every bug this tier
 //! was added for.
 //!
 //! So this sends the bytes a shell sends and reads the bytes a shell renders. `ArrangePane`
-//! in, `RosterChanged` out, a real herdr behind it, and no daemon verb named anywhere in the
-//! test: which of `pane.swap` and `pane.move` a drop becomes is the core's decision and is
-//! exactly what would go unnoticed.
+//! in, `RosterChanged` out, a real daemon behind it, and no daemon verb named anywhere in the
+//! test: which of a swap and a move a drop becomes is the core's decision and is exactly what
+//! would go unnoticed.
 //!
 //! Both destinations a move has are here, because both are decided on this side of the seam:
 //! whether a drop becomes a swap or a move is read off where the two panes are, and whether the
@@ -18,20 +17,21 @@
 
 use std::sync::Mutex;
 
-use herdr_harness::{Daemon, until};
 use muster::proto::{
     ArrangePane, Event, OpenWindow, Request, Response, RosterChanged, Startup, event, request,
     response,
 };
+use muster_daemon_proto::Side;
+use muster_harness::requests::{beside, create, in_new_tab, make};
+use muster_harness::{Daemon, until};
 use prost::Message;
-use serde_json::json;
 
+/// A row dropped on another row in the same tab exchanges the two panes, and dropping it again
+/// puts them back - read off the roster the daemon's own tree produces.
 #[test]
 fn a_row_dropped_on_another_moves_the_pane_it_names() {
     let _turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
-    daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "one", "focus": true }));
-    daemon.call("pane.split", &json!({ "direction": "right" }));
+    let daemon = two_panes_side_by_side();
 
     muster::ffi::muster_set_event_callback(Some(note_roster));
     assert_ok(&answer(request::Payload::Startup(Startup {
@@ -48,8 +48,7 @@ fn a_row_dropped_on_another_moves_the_pane_it_names() {
     let before = rows();
     let (first, second) = (before[0].clone(), before[1].clone());
     // Named rather than left empty. A drag knows which machine it happened on, and the seam
-    // refuses a move that does not say - pane ids repeat across daemons, so "the focused
-    // one" would land the drop on whichever `w1:p1` was found first.
+    // refuses a move that does not say.
     let machine = daemon_id();
 
     // The drop: the first row onto the second. Same tab, so the two exchange places - and
@@ -106,9 +105,7 @@ fn a_row_dropped_on_another_moves_the_pane_it_names() {
 #[test]
 fn a_pane_pulled_into_a_tab_of_its_own_costs_no_pane_and_no_keyboard() {
     let _turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
-    daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "one", "focus": true }));
-    daemon.call("pane.split", &json!({ "direction": "right" }));
+    let daemon = two_panes_side_by_side();
 
     muster::ffi::muster_set_event_callback(Some(note_roster));
     assert_ok(&answer(request::Payload::Startup(Startup {
@@ -174,6 +171,15 @@ fn a_pane_pulled_into_a_tab_of_its_own_costs_no_pane_and_no_keyboard() {
         "the new tab did not take the name the move gave it: {:?}",
         tabs()
     );
+}
+
+/// A daemon holding one tab of two panes, `p1` on the left and `p2` on the right.
+fn two_panes_side_by_side() -> Daemon {
+    let daemon = Daemon::start_built();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    make(&mut control, create("p2", beside("p1", Side::Right)));
+    daemon
 }
 
 static ROSTER: Mutex<Option<RosterChanged>> = Mutex::new(None);

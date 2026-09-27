@@ -9,7 +9,6 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use herdr_harness::{Daemon, until};
 use muster::proto::{
     AttentionChanged, Carried, CloseTab, CreateTab, Event, FocusPane, FocusTab, MoveTab,
     OpenWindow, ReadTabHolders, ReadWindow, RenameTab, ReopenWindow, Request, Response, Startup,
@@ -18,15 +17,17 @@ use muster::proto::{
 use muster_core::composition::holding::{from_toml, to_toml};
 use muster_core::composition::{DaemonId, HeldWindow, Holders, WindowName};
 use muster_core::mirror::backend::TabId;
+use muster_daemon_proto::AgentState;
+use muster_harness::requests::{create, in_new_tab, make, snapshot};
+use muster_harness::{Daemon, until};
 use muster_proto::frame::{LARGEST_MESSAGE, read_frame, write_frame};
 use prost::Message;
-use serde_json::json;
 
 /// Going to, renaming and closing a tab another window holds all reach that window.
 #[test]
 fn a_request_about_another_windows_tab_is_carried_there() {
     let _turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     let other = Stand::in_for(&daemon, "window-9");
     let ours = open_a_window(&daemon, "window-1");
     let theirs = a_second_tab_given_to(&daemon, &ours, "window-9");
@@ -66,7 +67,7 @@ fn a_request_about_another_windows_tab_is_carried_there() {
 #[test]
 fn a_request_carried_here_is_answered_here() {
     let _turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     let other = Stand::in_for(&daemon, "window-9");
     let ours = open_a_window(&daemon, "window-1");
     let theirs = a_second_tab_given_to(&daemon, &ours, "window-9");
@@ -122,11 +123,11 @@ fn a_request_carried_here_is_answered_here() {
 #[test]
 fn a_notification_click_for_another_windows_pane_reaches_that_window() {
     let _turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     let other = Stand::in_for(&daemon, "window-9");
     let ours = open_a_window(&daemon, "window-1");
     let theirs = a_second_tab_given_to(&daemon, &ours, "window-9");
-    let (pane, _) = pane_of(&daemon, &theirs);
+    let pane = pane_of(&theirs);
     RAISED.lock().expect("a panicking test poisoned the log").clear();
 
     let focused = answer(request::Payload::FocusPane(FocusPane {
@@ -168,7 +169,7 @@ fn a_notification_click_for_another_windows_pane_reaches_that_window() {
 #[test]
 fn a_tab_moved_to_a_window_by_name_joins_its_list_without_coming_on_screen() {
     let _turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     let _other = Stand::in_for(&daemon, "window-9");
     let ours = open_a_window(&daemon, "window-1");
     let own = listed().first().cloned().expect("the window opened onto a tab");
@@ -193,7 +194,7 @@ fn a_tab_moved_to_a_window_by_name_joins_its_list_without_coming_on_screen() {
 #[test]
 fn a_closed_windows_tab_is_closed_from_here() {
     let _turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     let ours = open_a_window(&daemon, "window-1");
     let theirs = a_second_tab_given_to(&daemon, &ours, "window-8");
     let before = daemon_tabs(&daemon).len();
@@ -215,7 +216,7 @@ fn a_closed_windows_tab_is_closed_from_here() {
 #[test]
 fn a_tab_moves_between_windows_and_its_panes_keep_running() {
     let _turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     let _other = Stand::in_for(&daemon, "window-9");
     let ours = open_a_window(&daemon, "window-1");
     let theirs = a_second_tab_given_to(&daemon, &ours, "window-9");
@@ -244,7 +245,7 @@ fn a_tab_moves_between_windows_and_its_panes_keep_running() {
 #[test]
 fn a_tab_moves_to_a_closed_window_by_name() {
     let _turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     let ours = open_a_window(&daemon, "window-1");
     let _ = a_second_tab_given_to(&daemon, &ours, "window-8");
     let own = listed().first().cloned().expect("the window holds a tab");
@@ -277,7 +278,7 @@ fn a_tab_moves_to_a_closed_window_by_name() {
 #[test]
 fn the_window_says_what_every_other_window_holds() {
     let _turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     let _other = Stand::in_for(&daemon, "window-9");
     let ours = open_a_window(&daemon, "window-1");
     let theirs = a_second_tab_given_to(&daemon, &ours, "window-9");
@@ -313,7 +314,7 @@ fn the_window_says_what_every_other_window_holds() {
 #[test]
 fn going_to_a_closed_windows_tab_reopens_that_window() {
     let _turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     let ours = open_a_window(&daemon, "window-1");
     let theirs = a_second_tab_given_to(&daemon, &ours, "window-8");
     REOPENED.lock().expect("a panicking test poisoned the log").clear();
@@ -345,33 +346,33 @@ fn going_to_a_closed_windows_tab_reopens_that_window() {
 #[test]
 fn a_closed_windows_blocked_agent_is_announced_here_and_an_open_ones_is_not() {
     let _turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_detecting();
     let _other = Stand::in_for(&daemon, "window-9");
     let ours = open_a_window(&daemon, "window-1");
     let closed = a_second_tab_given_to(&daemon, &ours, "window-8");
     let open = a_second_tab_given_to(&daemon, &ours, "window-9");
+    let panes = [(pane_of(&closed), true), (pane_of(&open), false)];
+    for (pane, _) in &panes {
+        daemon.run_agent(pane);
+    }
     ASKED.lock().expect("a panicking test poisoned the log").clear();
 
-    for (tab, announced) in [(&closed, true), (&open, false)] {
-        let (muster, backend) = pane_of(&daemon, tab);
-        daemon.call(
-            "pane.report_agent",
-            &json!({ "pane_id": backend, "agent": "probe", "source": "probe", "state": "blocked" }),
-        );
+    for (pane, announced) in panes {
+        daemon.set_agent_state(&pane, AgentState::Blocked);
         until(
             "this window to hear the agent is blocked",
-            || state_of(&muster).as_deref() == Some("blocked"),
-            || format!("the window says {:?}", state_of(&muster)),
+            || state_of(&pane).as_deref() == Some("blocked"),
+            || format!("the window says {:?}", state_of(&pane)),
         );
         let asked = ASKED
             .lock()
             .expect("a panicking test poisoned the log")
             .iter()
-            .any(|asked| asked.pane_id == muster && asked.state == "blocked");
+            .any(|asked| asked.pane_id == pane && asked.state == "blocked");
         assert_eq!(
             asked,
             announced,
-            "a blocked agent in {tab} was {} announced here",
+            "a blocked agent in {pane} was {} announced here",
             if asked { "" } else { "not" }
         );
     }
@@ -384,7 +385,7 @@ fn a_closed_windows_blocked_agent_is_announced_here_and_an_open_ones_is_not() {
 #[test]
 fn a_tab_nobody_holds_is_announced_only_by_the_window_in_front() {
     let _turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_detecting();
     let _other = Stand::in_for(&daemon, "window-9");
     open_a_window(&daemon, "window-1");
     let own = listed().first().cloned().expect("the window opened onto a tab");
@@ -394,8 +395,9 @@ fn a_tab_nobody_holds_is_announced_only_by_the_window_in_front() {
     write_record(&path, &holders);
     assert_ok(&answer(request::Payload::ReadTabHolders(ReadTabHolders {})));
 
-    // The stand-in in front takes nothing, so this tab stays held by nobody.
-    daemon.call("tab.create", &json!({ "focus": false }));
+    // Made on the daemon rather than through a window, and the stand-in in front takes nothing,
+    // so this tab stays held by nobody.
+    make(&mut daemon.connect(), create("p1nobody00", in_new_tab("t1nobody00")));
     until(
         "this window to hear of the tab nobody asked for",
         || all_panes().len() == 2,
@@ -403,16 +405,15 @@ fn a_tab_nobody_holds_is_announced_only_by_the_window_in_front() {
     );
     let ours = panes_listed_in(&own);
     let nobodys = all_panes().into_iter().find(|pane| !ours.contains(pane)).expect("two panes");
+    for pane in [&nobodys, &ours[0]] {
+        daemon.run_agent(pane);
+    }
     ASKED.lock().expect("a panicking test poisoned the log").clear();
 
     // Nobody's first, then this window's own: the daemon announces them in that order, so once
     // the second is announced here the first has been decided.
     for pane in [&nobodys, &ours[0]] {
-        let backend = backend_of(&daemon, pane);
-        daemon.call(
-            "pane.report_agent",
-            &json!({ "pane_id": backend, "agent": "probe", "source": "probe", "state": "blocked" }),
-        );
+        daemon.set_agent_state(pane, AgentState::Blocked);
     }
     until(
         "this window to announce its own blocked agent",
@@ -459,25 +460,13 @@ fn panes_listed_in(tab: &str) -> Vec<String> {
     }
 }
 
-/// The daemon's own name for a pane, through the record both sides write names into.
-fn backend_of(daemon: &Daemon, muster: &str) -> String {
-    let names = std::fs::read_to_string(daemon.root().join("panes.toml"))
-        .expect("the window wrote its names");
-    let (panes, _) = muster_core::names::from_toml(&names, muster_core::names::Mint::Drawn)
-        .expect("the names read back");
-    panes.locate(&muster_core::mirror::backend::PaneId::new(muster)).map_or_else(
-        || panic!("{muster} has no backend name in the record"),
-        |located| located.backend.to_string(),
-    )
-}
-
 /// A window opened to show something shows it.
 ///
 /// What a closed window is reopened with when somebody went to one of its tabs from elsewhere.
 #[test]
 fn a_window_opened_to_show_a_tab_shows_it() {
     let turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     let ours = open_a_window(&daemon, "window-1");
     let first = listed().first().cloned().expect("the window holds a tab");
     let _ = a_second_tab_given_to(&daemon, &ours, "window-8");
@@ -490,7 +479,6 @@ fn a_window_opened_to_show_a_tab_shows_it() {
     assert_ok(&answer(request::Payload::Startup(Startup {
         config_path: daemon.muster_config().to_string_lossy().into_owned(),
         state_path: daemon.root().join("window-8.toml").to_string_lossy().into_owned(),
-        pane_names_path: daemon.root().join("panes.toml").to_string_lossy().into_owned(),
         tab_holders_path: record(&daemon).to_string_lossy().into_owned(),
         show: first.clone(),
         ..Startup::default()
@@ -503,13 +491,13 @@ fn a_window_opened_to_show_a_tab_shows_it() {
     );
 }
 
-/// A pane in a tab, by Muster's name and by the daemon's.
-fn pane_of(daemon: &Daemon, tab: &str) -> (String, String) {
+/// The first pane in a tab another window holds.
+fn pane_of(tab: &str) -> String {
     let window = match answer(request::Payload::ReadWindow(ReadWindow {})).payload {
         Some(response::Payload::Window(window)) => window,
         other => panic!("asking what the window is showing answered {other:?}"),
     };
-    let muster = window
+    window
         .windows
         .iter()
         .flat_map(|other| other.tabs.iter())
@@ -518,17 +506,7 @@ fn pane_of(daemon: &Daemon, tab: &str) -> (String, String) {
         .map_or_else(
             || panic!("no other window lists {tab}: {:?}", window.windows),
             |pane| pane.pane_id.clone(),
-        );
-    // The daemon's own name for it, through the record both sides write names into.
-    let names = std::fs::read_to_string(daemon.root().join("panes.toml"))
-        .expect("the window wrote its names");
-    let (panes, _) = muster_core::names::from_toml(&names, muster_core::names::Mint::Drawn)
-        .expect("the names read back");
-    let backend = panes.locate(&muster_core::mirror::backend::PaneId::new(&muster)).map_or_else(
-        || panic!("{muster} has no backend name in the record"),
-        |located| located.backend.to_string(),
-    );
-    (muster, backend)
+        )
 }
 
 fn state_of(pane: &str) -> Option<String> {
@@ -549,13 +527,8 @@ fn holder(daemon: &Daemon, tab: &str) -> Option<String> {
 }
 
 fn daemon_panes(daemon: &Daemon) -> Vec<String> {
-    let snapshot = daemon.call("session.snapshot", &json!({}));
-    let mut panes: Vec<String> = snapshot["snapshot"]["panes"]
-        .as_array()
-        .map(|panes| {
-            panes.iter().filter_map(|pane| pane["pane_id"].as_str().map(str::to_string)).collect()
-        })
-        .unwrap_or_default();
+    let mut panes: Vec<String> =
+        snapshot(&mut daemon.connect()).panes.into_iter().map(|pane| pane.pane).collect();
     panes.sort();
     panes
 }
@@ -626,12 +599,12 @@ fn a_second_tab_given_to(daemon: &Daemon, ours: &Path, window: &str) -> String {
         .payload,
         Some(response::Payload::Made(_) | response::Payload::Ok(_))
     ));
-    // The pane as well as the tab: herdr can announce a tab before the pane in it, and callers
-    // go on to name that pane.
-    until(
-        "the second tab and its pane to arrive",
-        || listed().len() == 2 && listed().last().is_some_and(|tab| has_a_pane(tab)),
-        || format!("this window lists {:?}", listed()),
+    // A submit returns with its effect already in the window, so the tab and the pane in it -
+    // which callers go on to name - are listed by the time the request is answered.
+    assert!(
+        listed().len() == 2 && listed().last().is_some_and(|tab| has_a_pane(tab)),
+        "a new tab and its pane were not listed when the request making them was answered: {:?}",
+        listed()
     );
     let theirs = listed().last().cloned().expect("just waited for it");
     let path = record(daemon);
@@ -649,7 +622,6 @@ fn open_a_window(daemon: &Daemon, name: &str) -> PathBuf {
     assert_ok(&answer(request::Payload::Startup(Startup {
         config_path: daemon.muster_config().to_string_lossy().into_owned(),
         state_path: daemon.root().join(format!("{name}.toml")).to_string_lossy().into_owned(),
-        pane_names_path: daemon.root().join("panes.toml").to_string_lossy().into_owned(),
         tab_holders_path: record(daemon).to_string_lossy().into_owned(),
         command_socket_path: socket.to_string_lossy().into_owned(),
         ..Startup::default()
@@ -677,13 +649,7 @@ fn ask(socket: &Path, payload: request::Payload) -> Response {
 }
 
 fn daemon_tabs(daemon: &Daemon) -> Vec<String> {
-    let snapshot = daemon.call("session.snapshot", &json!({}));
-    snapshot["snapshot"]["tabs"]
-        .as_array()
-        .map(|tabs| {
-            tabs.iter().filter_map(|tab| tab["tab_id"].as_str().map(str::to_string)).collect()
-        })
-        .unwrap_or_default()
+    snapshot(&mut daemon.connect()).tabs.into_iter().map(|tab| tab.tab).collect()
 }
 
 fn record(daemon: &Daemon) -> PathBuf {
