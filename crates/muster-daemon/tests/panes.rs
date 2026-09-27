@@ -107,6 +107,35 @@ fn a_command_runs_and_the_pane_becomes_its_shell_afterwards() {
     assert_eq!(snapshot(&mut control).panes.len(), 1);
 }
 
+/// A command the shell cannot parse fails as a shell error, and the pane still drops to its
+/// shell rather than closing. Every login shell sources `~/.profile`, so the shell that ran the
+/// command and the one it became each leave a line.
+#[test]
+fn a_command_the_shell_cannot_parse_still_leaves_a_shell() {
+    let daemon = daemon();
+    let shells = daemon.root().join("shells");
+    std::fs::write(
+        daemon.root().join("home/.profile"),
+        format!("echo $$ >> {}\n", shells.display()),
+    )
+    .unwrap();
+    let mut control = daemon.connect();
+    for (name, command) in
+        [("quote", "echo 'unclosed"), ("backslash", "echo \\"), ("heredoc", "cat <<END")]
+    {
+        let _ = std::fs::remove_file(&shells);
+        let mut asked = create(name, in_new_tab(name));
+        asked.command = Some(command.to_string());
+        make(&mut control, asked);
+        until(
+            &format!("the pane running {command:?} to become its shell"),
+            || std::fs::read_to_string(&shells).is_ok_and(|started| started.lines().count() == 2),
+            || format!("shells started: {:?}", std::fs::read_to_string(&shells).ok()),
+        );
+        assert!(snapshot(&mut control).panes.iter().any(|pane| pane.pane == name));
+    }
+}
+
 #[test]
 fn a_pane_is_its_grid_from_birth_and_a_split_inherits_its_neighbours() {
     let daemon = daemon();
