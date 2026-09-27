@@ -991,6 +991,37 @@ message Handoff {
     optional int32 process = 3;
     // How many bytes of replay follow, in replay_piece frames.
     uint64 replay_length = 4;
+    // Where the pane's agent detection stood, so the new daemon goes on from there rather than
+    // recognising the agent anew. Absent from a daemon that sends none: detection starts over.
+    Detection detection = 5;
+  }
+
+  // One pane's agent detection, as `muster-detect`'s detector holds it. Times are carried as
+  // durations, since an instant means nothing in another process.
+  message Detection {
+    // The agent the pane runs, by manifest name, and how many probes in a row have missed it.
+    optional string agent = 1;
+    uint32 misses = 2;
+    // The state detection last decided, and whether the agent drew it.
+    AgentState state = 3;
+    bool visible = 4;
+    // What was last published, if anything.
+    bool emitted = 5;
+    optional string emitted_agent = 6;
+    AgentState emitted_state = 7;
+    // What is left of the grace a newly recognised agent gets.
+    optional uint32 grace_left_ms = 8;
+    // An idle not yet believed: how long ago it was first seen, and how often since.
+    optional uint32 idle_seen_ms_ago = 9;
+    uint32 idle_confirmations = 10;
+    optional uint32 foreground_group = 11;
+    bool probed = 12;
+    bool shell_clear_pending = 13;
+    bool shell_exit_reported = 14;
+    // The agent changed and its title reads empty until the next title write.
+    bool title_pending = 15;
+    // The last OSC 9 payload.
+    string progress = 16;
   }
 
   message Ready {}

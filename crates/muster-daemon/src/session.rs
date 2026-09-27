@@ -1148,6 +1148,7 @@ impl Session {
             detecting: &self.detecting,
             persister: &self.persister,
             held: false,
+            detection: None,
         };
         let pane = Pane::start(
             record,
@@ -1935,6 +1936,7 @@ impl Session {
         master: OwnedFd,
         process: Option<i32>,
         replay: &[u8],
+        detection: Option<&proto::handoff::Detection>,
     ) -> Result<(), String> {
         let mut screen = Screen::new(grid, &self.settled).map_err(|error| error.to_string())?;
         drop(screen.output(replay));
@@ -1946,6 +1948,7 @@ impl Session {
             detecting: &self.detecting,
             persister: &self.persister,
             held: true,
+            detection,
         };
         let name = record.pane.clone();
         let pane = Pane::start(

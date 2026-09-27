@@ -162,6 +162,49 @@ impl Detector {
         self.owed = true;
     }
 
+    /// Where this detector stands, for another process to go on from with [`Detector::resumed`]:
+    /// a daemon handing its panes to another.
+    pub fn carried(&self, now: Instant) -> Carried {
+        let until = |at: Instant| at.saturating_duration_since(now);
+        Carried {
+            agent: self.presence.current.clone(),
+            misses: self.presence.consecutive_misses,
+            state: self.published.state,
+            visible: self.published.visible,
+            emitted: self.last_emitted.clone(),
+            grace_left: self.startup_grace_until.map(until),
+            idle_seen_ago: self.pending_idle.started_at.map(|at| now.saturating_duration_since(at)),
+            idle_confirmations: self.pending_idle.confirmations,
+            foreground_group: self.last_foreground_group,
+            probed: self.has_process_probe,
+            shell_clear_pending: self.pending_foreground_shell_clear,
+            shell_exit_reported: self.foreground_shell_exit_reported,
+            title_pending: self.title_writes_at_change.is_some(),
+        }
+    }
+
+    /// A detector going on from `carried`, for the pane whose process is `shell`, at `now`.
+    /// `title_writes` is the pane's count here, which a title still pending is counted from.
+    /// The screen is read afresh at the next tick, which finds the same agent and so publishes
+    /// nothing unless its state has moved.
+    pub fn resumed(shell: u32, carried: Carried, now: Instant, title_writes: u64) -> Detector {
+        let mut detector = Detector::new(shell, now);
+        detector.presence = Presence { current: carried.agent, consecutive_misses: carried.misses };
+        detector.published = PublishState { state: carried.state, visible: carried.visible };
+        detector.last_emitted = carried.emitted;
+        detector.startup_grace_until = carried.grace_left.map(|left| now + left);
+        detector.pending_idle = PendingIdle {
+            started_at: carried.idle_seen_ago.and_then(|ago| now.checked_sub(ago)),
+            confirmations: carried.idle_confirmations,
+        };
+        detector.last_foreground_group = carried.foreground_group;
+        detector.has_process_probe = carried.probed;
+        detector.pending_foreground_shell_clear = carried.shell_clear_pending;
+        detector.foreground_shell_exit_reported = carried.shell_exit_reported;
+        detector.title_writes_at_change = carried.title_pending.then_some(title_writes);
+        detector
+    }
+
     pub fn agent(&self) -> Option<&Agent> {
         self.presence.current.as_ref()
     }
@@ -397,6 +440,27 @@ impl Detector {
         self.last_emitted = Some(publication.clone());
         Some(publication)
     }
+}
+
+/// Where a [`Detector`] stands, as another process needs it to go on ([`Detector::carried`]).
+/// What only this process could use - when it last looked, the screen text it last read - is
+/// left out, and read again.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[expect(clippy::struct_excessive_bools, reason = "the detector's own flags, one each")]
+pub struct Carried {
+    pub agent: Option<Agent>,
+    pub misses: u8,
+    pub state: State,
+    pub visible: bool,
+    pub emitted: Option<Publication>,
+    pub grace_left: Option<Duration>,
+    pub idle_seen_ago: Option<Duration>,
+    pub idle_confirmations: u8,
+    pub foreground_group: Option<u32>,
+    pub probed: bool,
+    pub shell_clear_pending: bool,
+    pub shell_exit_reported: bool,
+    pub title_pending: bool,
 }
 
 /// What checking the foreground came to.

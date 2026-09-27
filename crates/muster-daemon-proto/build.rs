@@ -41,6 +41,11 @@ fn main() {
     }
     // A handoff's pane dwarfs every other message it sends.
     config.boxed(".muster.daemon.Handoff.message.pane");
+    // Mirrors the detector's own flags, which are herdr's.
+    config.message_attribute(
+        ".muster.daemon.Handoff.Detection",
+        "#[expect(clippy::struct_excessive_bools, reason = \"the detector's flags, one each\")]",
+    );
     config.compile_fds(descriptors).expect("the schema generates");
 
     println!("cargo:rerun-if-env-changed=MUSTER_INSTALL");

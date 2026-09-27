@@ -333,3 +333,47 @@ fn what_an_agent_reported_about_itself_stays_while_it_runs_and_goes_with_it() {
     until_detected(&mut control, "p1", None, proto::AgentState::Unknown);
     assert_eq!(facts(&mut control), None, "the agent's facts left with it");
 }
+
+/// A working agent stays working across a handoff: the new daemon goes on from where the old
+/// one's detection was, rather than finding the agent anew and passing it through the grace a
+/// newly recognised agent gets, as idle.
+#[test]
+fn a_working_agent_stays_working_across_a_handoff() {
+    let home = Home::new("handoff", &[("claude.toml", PROBE_MANIFEST)], &["claude"]);
+    let mut daemon = home.daemon();
+    let mut control = daemon.connect();
+    let mut input = Input::connect(daemon.socket_path());
+    run_agent(&mut control, &mut input, "p1", &home.agent("claude"));
+    until_detected(&mut control, "p1", Some("claude"), proto::AgentState::Idle);
+    settle(&mut control, &mut input, "working", proto::AgentState::Working);
+
+    let answer = daemon.replace(None);
+    assert_eq!(answer.outcome(), proto::Outcome::Done, "{}", answer.reason);
+
+    let mut control = daemon.connect();
+    let subscribed = control.ask(subscribe_request());
+    let Some(proto::answer::Detail::Snapshot(snapshot)) = subscribed.answer.detail else {
+        panic!("no snapshot in {:?}", subscribed.answer)
+    };
+    let record = snapshot.panes.iter().find(|record| record.pane == "p1").unwrap();
+    assert_eq!(record.agent_state(), proto::AgentState::Working, "handed over as working");
+    // Past the three seconds a newly recognised agent is held idle for.
+    let deadline = Instant::now() + Duration::from_secs(4);
+    let mut published = Vec::new();
+    while let Some(left) = deadline.checked_duration_since(Instant::now()) {
+        if let Some(proto::control_message::Message::Event(event)) = control.next_message(left)
+            && let Some(proto::event::Event::PaneChanged(changed)) = event.event
+            && let Some(record) = changed.pane.filter(|record| record.pane == "p1")
+        {
+            published.push(record.agent_state());
+        }
+    }
+    assert!(
+        published.iter().all(|state| *state == proto::AgentState::Working),
+        "published after the handoff: {published:?}"
+    );
+    assert_eq!(
+        detected(&mut control, "p1"),
+        (Some("claude".to_string()), proto::AgentState::Working)
+    );
+}

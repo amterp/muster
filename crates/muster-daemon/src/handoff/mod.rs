@@ -274,6 +274,7 @@ fn handed(
                 grid: Some(grid),
                 process: pane.process,
                 replay_length: replay.len() as u64,
+                detection: pane.io.carried_detection(),
             })),
         )?;
         for piece in replay.chunks(PIECE) {
@@ -561,7 +562,14 @@ fn adopt_panes(link: &mut UnixStream, shared: &Shared, panes: u32) -> Result<(),
             height_px: u16::try_from(grid.height_px).unwrap_or(u16::MAX),
         };
         let record = pane.record.unwrap_or_default();
-        let adopted = shared.lock().adopt(record, grid, master, pane.process, &replay);
+        let adopted = shared.lock().adopt(
+            record,
+            grid,
+            master,
+            pane.process,
+            &replay,
+            pane.detection.as_ref(),
+        );
         if let Err(problem) = adopted {
             return refuse(link, problem);
         }

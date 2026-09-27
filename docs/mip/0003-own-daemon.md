@@ -242,10 +242,10 @@ what did not come back. The app waits for that before it decides a tab of its gr
 gone or makes a pane under a saved name, since a name a client takes first is not restored.
 Nothing is written until every saved tab is back, so a crash or a stop while restoring loses
 nothing. A directory that no longer exists starts its pane's shell at home, as does one that has
-not said whether it exists within two seconds, such as one on a hung mount - every saved directory
-is asked at once, so any number of them on a hung mount cost those two seconds once - and a shell that will
-not start - one uninstalled since the last run, a directory it may not enter - is tried again as
-the default shell, in the same directory and then at home. What still does not come back, the next
+not said whether it exists within two seconds, such as one on a hung mount. Every saved directory
+is asked about at once, so any number of them on a hung mount cost those two seconds once. A shell
+that will not start - one uninstalled since the last run, a directory it may not enter - is tried
+again as the default shell, in the same directory and then at home. What still does not come back, the next
 write leaves out, so the file as it was is first copied to `<file>.unrestored-<seconds>` and the
 daemon's log names it; if the copy fails, the daemon saves nothing that run rather than lose the
 only record, and `restored` says so. It says so too if restoring fails partway, which is a bug,
@@ -826,8 +826,10 @@ not yet written, a held paste among it, is lost. What the app does across a hand
 the process ended from the PTY closing, and says so without an exit status. When the old daemon
 exits, whoever adopts its children reaps them: launchd on macOS, init or the nearest subreaper on
 Linux, as for any orphan, including a daemon started with `setsid` over ssh. The Linux suite runs
-under a reaping init for that reason. Each pane's agent detection starts over in the new daemon, so
-an agent's state can pass through detection's startup grace once.
+under a reaping init for that reason. Each pane's agent detection goes with it: the reader, as it
+is held, writes down where detection stands - the agent, the state it published, what is left of a
+new agent's grace, an idle not yet believed - and the new daemon goes on from there, so a working
+agent stays working rather than being recognised anew and shown idle through the grace.
 
 **Not yet measured:** whether macOS charges a pane's permission prompts (TCC) to the new daemon when
 the process asking is the old one's child, which the stage that puts the daemon in its helper

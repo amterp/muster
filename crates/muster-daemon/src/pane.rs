@@ -142,6 +142,8 @@ pub(crate) struct PaneIo {
     hold: Hold,
     /// The size a bridge asked for while the pane was held, applied only if the handoff fails.
     deferred_resize: Mutex<Option<Grid>>,
+    /// Where the reader's agent detection stood when it was last held.
+    carried: Mutex<Option<proto::handoff::Detection>>,
 }
 
 /// A count of changes to a pane's bridge - attached, detached, credited, closed - that a reader
@@ -333,6 +335,16 @@ impl PaneIo {
         (screen.terminal().replay(), self.grid())
     }
 
+    fn carry(&self, detection: proto::handoff::Detection) {
+        *poison::lock(&self.carried, "daemon.pane.carried") = Some(detection);
+    }
+
+    /// Where the pane's agent detection stood when its reader was held, for the daemon it is
+    /// handed to.
+    pub(crate) fn carried_detection(&self) -> Option<proto::handoff::Detection> {
+        poison::lock(&self.carried, "daemon.pane.carried").take()
+    }
+
     pub(crate) fn master(&self) -> BorrowedFd<'_> {
         self.master.as_fd()
     }
@@ -457,6 +469,8 @@ pub(crate) struct Watching<'a> {
     pub(crate) persister: &'a Arc<Persister>,
     /// Whether the reader starts held, as a pane handed over is until the handoff commits.
     pub(crate) held: bool,
+    /// Where a pane handed over had got to in detecting its agent.
+    pub(crate) detection: Option<&'a proto::handoff::Detection>,
 }
 
 impl Pane {
@@ -477,6 +491,12 @@ impl Pane {
     ) -> io::Result<Pane> {
         let child = matches!(process, Some(Process::Child(_)));
         let process = process.map(|process| process.pid());
+        let detection = match watching.detection {
+            Some(carried) => {
+                Detection::resumed(process, carried, Instant::now(), screen.title_writes())
+            }
+            None => Detection::new(process, Instant::now()),
+        };
         // Every way this can fail leaves a started process nobody will wait for, so each one
         // ends and reaps it before saying so. An adopted one is still its own daemon's.
         let failed = |error: io::Error| {
@@ -507,6 +527,7 @@ impl Pane {
             persister: Some(Arc::clone(watching.persister)),
             hold,
             deferred_resize: Mutex::new(None),
+            carried: Mutex::new(None),
         });
         let pane = record.pane.clone();
 
@@ -535,7 +556,7 @@ impl Pane {
                 reports_directory: false,
                 unsent: None,
             },
-            detection: Detection::new(process, Instant::now()),
+            detection,
             detecting: Arc::clone(watching.detecting),
             unsent: None,
         };
@@ -684,7 +705,11 @@ impl Reader {
         let mut due: Option<Instant> = None;
         loop {
             // Here, with every byte read so far in the terminal, is where a handoff stops it.
-            self.io.hold.park(|| self.io.is_closed());
+            // What detection knows goes with the pane if it is being handed over.
+            self.io.hold.park(
+                || self.io.is_closed(),
+                || self.io.carry(self.detection.carried(Instant::now())),
+            );
             let master = self.io.master.as_raw_fd();
             let mut watched = [
                 libc::pollfd { fd: master, events: libc::POLLIN, revents: 0 },
@@ -874,6 +899,7 @@ impl PaneIo {
             persister: None,
             hold: Hold::new(false).expect("a pipe"),
             deferred_resize: Mutex::new(None),
+            carried: Mutex::new(None),
         })
     }
 }

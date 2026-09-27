@@ -770,3 +770,38 @@ fn a_title_written_again_after_an_agent_change_counts_though_it_is_the_same() {
     run.paint("nothing still");
     assert_eq!(run.tick(), Some(published(Some(claude()), State::Working)));
 }
+
+/// A detector resumed from where another stood stands there too, its timers run on by however
+/// long passed since.
+#[test]
+fn a_resumed_detector_goes_on_from_where_it_was_carried() {
+    let carried = Carried {
+        agent: Some(claude()),
+        misses: 2,
+        state: State::Working,
+        visible: true,
+        emitted: Some(Publication { agent: Some(claude()), state: State::Working }),
+        grace_left: Some(Duration::from_millis(1500)),
+        idle_seen_ago: Some(Duration::from_millis(200)),
+        idle_confirmations: 1,
+        foreground_group: Some(4242),
+        probed: true,
+        shell_clear_pending: false,
+        shell_exit_reported: false,
+        title_pending: true,
+    };
+    let now = Instant::now();
+    let detector = Detector::resumed(100, carried.clone(), now, 7);
+    assert_eq!(detector.agent(), Some(&claude()));
+    assert_eq!(detector.title_writes_at_change, Some(7));
+
+    let later = detector.carried(now + Duration::from_millis(100));
+    assert_eq!(
+        later,
+        Carried {
+            grace_left: Some(Duration::from_millis(1400)),
+            idle_seen_ago: Some(Duration::from_millis(300)),
+            ..carried
+        }
+    );
+}

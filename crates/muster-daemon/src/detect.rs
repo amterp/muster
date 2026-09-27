@@ -7,12 +7,14 @@
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use muster_core::diagnostics::{log, poison};
 use muster_core::fields;
 use muster_daemon_proto as proto;
-use muster_detect::{Agent, Detector, Manifests, Pane, Progress, Publication, State, System};
+use muster_detect::{
+    Agent, Carried, Detector, Manifests, Pane, Progress, Publication, State, System,
+};
 
 use crate::pane::PaneIo;
 
@@ -115,6 +117,72 @@ impl Detection {
         }
     }
 
+    /// Where this pane's detection stands, for the daemon it is handed to.
+    pub(crate) fn carried(&self, now: Instant) -> proto::handoff::Detection {
+        let carried = self.detector.carried(now);
+        let millis = |at: Duration| u32::try_from(at.as_millis()).unwrap_or(u32::MAX);
+        let (emitted_agent, emitted_state) =
+            carried.emitted.as_ref().map_or((None, proto::AgentState::Unknown), recorded);
+        proto::handoff::Detection {
+            agent: carried.agent.as_ref().map(|agent| agent.id().to_string()),
+            misses: carried.misses.into(),
+            state: agent_state(carried.state).into(),
+            visible: carried.visible,
+            emitted: carried.emitted.is_some(),
+            emitted_agent,
+            emitted_state: emitted_state.into(),
+            grace_left_ms: carried.grace_left.map(millis),
+            idle_seen_ms_ago: carried.idle_seen_ago.map(millis),
+            idle_confirmations: carried.idle_confirmations.into(),
+            foreground_group: carried.foreground_group,
+            probed: carried.probed,
+            shell_clear_pending: carried.shell_clear_pending,
+            shell_exit_reported: carried.shell_exit_reported,
+            title_pending: carried.title_pending,
+            progress: self.progress.get().to_string(),
+        }
+    }
+
+    /// Detection going on from where the daemon that handed the pane over left it.
+    /// `title_writes` is the pane's count in this daemon.
+    pub(crate) fn resumed(
+        shell: Option<i32>,
+        carried: &proto::handoff::Detection,
+        now: Instant,
+        title_writes: u64,
+    ) -> Detection {
+        let shell = shell.and_then(|pid| u32::try_from(pid).ok()).unwrap_or(0);
+        let millis = |ms: u32| Duration::from_millis(ms.into());
+        let emitted = carried.emitted.then(|| Publication {
+            agent: carried.emitted_agent.as_deref().map(Agent::new),
+            state: state_of(carried.emitted_state()),
+        });
+        let carried_here = Carried {
+            agent: carried.agent.as_deref().map(Agent::new),
+            misses: u8::try_from(carried.misses).unwrap_or(u8::MAX),
+            state: state_of(carried.state()),
+            visible: carried.visible,
+            emitted,
+            grace_left: carried.grace_left_ms.map(millis),
+            idle_seen_ago: carried.idle_seen_ms_ago.map(millis),
+            idle_confirmations: u8::try_from(carried.idle_confirmations).unwrap_or(u8::MAX),
+            foreground_group: carried.foreground_group,
+            probed: carried.probed,
+            shell_clear_pending: carried.shell_clear_pending,
+            shell_exit_reported: carried.shell_exit_reported,
+            title_pending: carried.title_pending,
+        };
+        let mut progress = Progress::default();
+        if !carried.progress.is_empty() {
+            progress.observe(format!("\x1b]9;{}\x07", carried.progress).as_bytes());
+        }
+        Detection {
+            detector: Detector::resumed(shell, carried_here, now, title_writes),
+            progress,
+            due: now + Detector::FIRST_TICK,
+        }
+    }
+
     /// Every chunk of the pane's output, in order.
     pub(crate) fn observe(&mut self, bytes: &[u8]) {
         self.progress.observe(bytes);
@@ -152,13 +220,26 @@ impl Detection {
 
 /// A publication as the pane's record holds it.
 pub(crate) fn recorded(publication: &Publication) -> (Option<String>, proto::AgentState) {
-    let state = match publication.state {
+    let state = agent_state(publication.state);
+    (publication.agent.as_ref().map(|agent| agent.id().to_string()), state)
+}
+
+fn agent_state(state: State) -> proto::AgentState {
+    match state {
         State::Working => proto::AgentState::Working,
         State::Blocked => proto::AgentState::Blocked,
         State::Idle => proto::AgentState::Idle,
         State::Unknown => proto::AgentState::Unknown,
-    };
-    (publication.agent.as_ref().map(|agent| agent.id().to_string()), state)
+    }
+}
+
+fn state_of(state: proto::AgentState) -> State {
+    match state {
+        proto::AgentState::Working => State::Working,
+        proto::AgentState::Blocked => State::Blocked,
+        proto::AgentState::Idle => State::Idle,
+        proto::AgentState::Unknown => State::Unknown,
+    }
 }
 
 /// A pane as detection reads it.

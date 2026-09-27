@@ -82,7 +82,7 @@ pub(crate) fn accept(shared: &Arc<Shared>) {
     let socket = &shared.socket;
     let _leaving = Leaving(&socket.accepting);
     loop {
-        socket.accepting.park(|| false);
+        socket.accepting.park(|| false, || {});
         let mut watched = [
             libc::pollfd { fd: socket.listener.as_raw_fd(), events: libc::POLLIN, revents: 0 },
             libc::pollfd { fd: socket.accepting.polled(), events: libc::POLLIN, revents: 0 },

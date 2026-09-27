@@ -98,8 +98,9 @@ impl Hold {
     }
 
     /// Called by the held thread each time round its loop: waits here while it is held, or
-    /// until `ended` says it has been told to end some other way.
-    pub(crate) fn park(&self, ended: impl Fn() -> bool) {
+    /// until `ended` says it has been told to end some other way. `parking` runs first when it
+    /// is held, before whoever held it hears that it has stopped.
+    pub(crate) fn park(&self, ended: impl Fn() -> bool, parking: impl FnOnce()) {
         let mut drained = [0u8; 64];
         // SAFETY: reads into a live buffer of its length; the pipe is non-blocking.
         while unsafe { libc::read(self.nudged.as_raw_fd(), drained.as_mut_ptr().cast(), 64) } > 0 {}
@@ -107,6 +108,7 @@ impl Hold {
         if !state.held {
             return;
         }
+        parking();
         state.parked = true;
         self.changed.notify_all();
         while state.held && !ended() {
@@ -154,7 +156,7 @@ mod tests {
         std::thread::spawn(move || {
             let _leaving = Leaving(&hold);
             while !stop.load(Ordering::Acquire) {
-                hold.park(|| stop.load(Ordering::Acquire));
+                hold.park(|| stop.load(Ordering::Acquire), || {});
                 turns.fetch_add(1, Ordering::AcqRel);
                 let mut watched =
                     [libc::pollfd { fd: hold.polled(), events: libc::POLLIN, revents: 0 }];
