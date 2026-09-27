@@ -162,7 +162,17 @@ one machine is unreachable, that machine's part returns as a tab of its own when
 because its processes are still running.
 
 **Per pane**: its name, cwd, the command it was started with, its title, its agent and agent
-state, and whether its process is alive.
+state, whether its process is alive, and what its agent has said about itself.
+
+**An agent's own facts.** The agent in a pane can report how full its context window is, how many
+sub-agents it has running, its model, what its session has cost, and up to sixteen other named
+values, and the daemon keeps them on the pane's record and publishes each change like any other.
+They are the agent's own words, bounded and never read off its screen: a statusline is whatever
+its user configured, so reading one would be guessing. A harness reports from inside the pane with
+`"$MUSTER_DAEMON" report`, which reaches the daemon that owns the pane with no window involved,
+on a machine where the daemon is the only piece of Muster installed. The daemon counts sub-agents
+from their starts and stops, since that is what a harness's hooks see, and forgets the facts when
+detection sees the pane's agent change or leave. `extras/claude-code/` wires Claude Code to it.
 
 **What a restart needs is persisted, and nothing else.** The daemon writes one versioned file with
 an atomic rename, shortly after each change and on shutdown: tabs, trees, ratios, zoom, labels,
@@ -205,6 +215,8 @@ in, plus:
   gives one commit different versions depending on the branch it was built from, and those two
   parts are what stay true;
 - `MUSTER_PANE` and `MUSTER_SOCKET`;
+- `MUSTER_DAEMON` and `MUSTER_DAEMON_SOCKET`, the daemon's own executable and its socket, which
+  is how a program in the pane reaches the daemon that owns it (section 2, an agent's own facts);
 - Ghostty's shell integration for bash, zsh and fish, injected the way Ghostty injects it, so
   prompts carry OSC 133 marks and `jump_to_prompt` and prompt-aware selection work, with
   `GHOSTTY_SHELL_FEATURES` at Ghostty's default. A command pane's own shell runs the command
@@ -281,7 +293,11 @@ image the surface takes, or forget an id the surface still holds. The bytes are 
 whose programs send images, which the surface holds too. The daemon refuses the file, temporary-file and
 shared-memory transmission media, which name paths on the daemon's machine that a remote surface
 cannot read. Programs then fall back to sending images inline. An image is gone from the surface
-after a replay.
+after a replay. Three costs come with this. Ghostty's limit is per screen, so a pane can hold
+640 MB at worst, on its primary and alternate screens together. The surface holds the same images,
+so the machine does too, twice. And since a replay carries no images, after a reattach the
+daemon still reports ids the surface no longer has, which no store size fixes. If the app ever
+exposes Ghostty's `image-storage-limit`, the daemon takes the same value.
 
 ### 5. Attaching: the replay
 
@@ -522,7 +538,7 @@ text in pages addressed by absolute row, with no row cap but a 4 MiB cap on a pa
 answer never nears the largest message a client accepts, and the answer says how many rows it holds
 (row 0 is the oldest row still held, so rows move up once history reaches the scrollback limit:
 libghostty does not say how many it has trimmed); set the palette, the shell and the
-scrollback depth; send manifests; stop. There is no focus request: daemon focus existed for herdr's
+scrollback depth; send manifests; report what a pane's agent says about itself; stop. There is no focus request: daemon focus existed for herdr's
 own clients, and Muster never routes by it. Configuration arrives over the protocol, so no daemon
 reads a Muster config file and `~/.muster/state/herdr.toml` has no successor. Requests are
 namespaced by service (`pane.*`, `tab.*`, `session.*`), so a later message service takes a namespace
@@ -890,3 +906,6 @@ first.
   and `pane read`'s row numbering.
 - 2026-09-27 The Linux daemons and the pane's environment built: `TERM_PROGRAM` decided (section 3),
   the data directory beside the daemon, `command eval` for dash, and the release sizes in section 12.
+- 2026-09-27 Detection wired into the daemon (section 8) and agents' own facts added (section 2).
+  From the streams review: a bridge behind is caught up once it has room again, `pane read`
+  pages stop at 4 MiB, and nothing holding the session lock waits on a pane's (section 4).

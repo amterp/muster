@@ -297,8 +297,9 @@ regenerates on demand; a normal build does it only when the schema's hash change
   dependency was measured doing, one file per version, each claim citing raw transcripts in `corpus/`. Routine
   rationale lives in commit messages; open questions live in the kan board's `uncommitted` column. `docs/cli/` is
   the reference `muster docs` ships inside the CLI binary, so a file there is prose the gate checks is reachable.
-- `extras/` holds things that are Muster-adjacent rather than Muster: today one Claude Code skill pointing an agent
-  at `muster docs`.
+- `extras/` holds things that are Muster-adjacent rather than Muster: a Claude Code skill pointing an agent at
+  `muster docs`, and the Claude Code statusline and hooks that report a session's context, cost and sub-agents to
+  the daemon that owns its pane.
 - `packaging/` is everything that exists only so that Muster can leave this machine: the icon and its source, the
   entitlements a release is signed with, and the Homebrew cask - which lives here rather than only in the tap because
   it changes when the app does, and should be reviewed beside it.

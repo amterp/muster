@@ -28,6 +28,11 @@ pub(crate) const DEFAULT_SCROLLBACK: usize = 10_000_000;
 /// to make room and fails only when one image is larger than the whole store, so any smaller
 /// store refuses an image the surface would take, or forgets an id the surface still holds.
 /// The bytes are spent only by panes whose programs send images, which the surface holds too.
+///
+/// What that costs: the limit is per screen, so a pane holds 640 MB at worst on its primary and
+/// alternate screens, and the surface holds the same images again. A replay carries no images, so
+/// after a reattach this store answers for ids the surface no longer has, whatever its size. If
+/// the app ever exposes Ghostty's `image-storage-limit`, this takes the same value.
 const KITTY_IMAGE_BYTES: u64 = 320_000_000;
 
 /// Everything the app has said that each pane's terminal applies: what it draws with and
