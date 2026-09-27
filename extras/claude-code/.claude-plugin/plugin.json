@@ -1,0 +1,6 @@
+{
+  "name": "muster",
+  "description": "Reports Claude Code's state and sub-agents to the Muster daemon that owns its pane.",
+  "homepage": "https://github.com/amterp/muster",
+  "license": "Apache-2.0"
+}

@@ -1,14 +1,44 @@
 # Claude Code, telling Muster about itself
 
-Two pieces of Claude Code configuration that report what a session is doing to the Muster daemon
-that owns its pane: how full its context window is, which model it runs, what it has cost, and
-how many sub-agents it has running. The daemon keeps these on the pane's record, beside the
-agent state it detects from the screen, so they outlast the app and arrive from a devenv the same
-as from this machine.
+Claude Code configuration that reports what a session is doing to the Muster daemon that owns its
+pane. The hooks report whether it is working, waiting on you or idle, and how many sub-agents it
+runs. The statusline reports how full its context window is, which model it runs, and what it has
+cost. The daemon keeps all of it on the pane's record, so it outlasts the app and arrives from a
+devenv the same as from this machine.
 
-Both call `"$MUSTER_DAEMON" report`, which every Muster pane can reach: `$MUSTER_DAEMON` is the
-daemon's own executable, and `$MUSTER_DAEMON_SOCKET` says where it listens. Outside a Muster pane
-neither is set, and both pieces do nothing but what they did before.
+Everything here calls `"$MUSTER_DAEMON" report`, which every Muster pane can reach:
+`$MUSTER_DAEMON` is the daemon's own executable, and `$MUSTER_DAEMON_SOCKET` says where it
+listens. Outside a Muster pane neither is set, and nothing here does anything.
+
+## The hooks: working, waiting on you, idle, and sub-agents
+
+Install them as a Claude Code plugin, from this checkout:
+
+```sh
+claude plugin marketplace add /path/to/muster/extras
+claude plugin install muster@muster
+```
+
+Or merge the `hooks` in `hooks/hooks.json` into `~/.claude/settings.json`, or a project's
+`.claude/settings.json`, beside any hooks already there; the plugin's file is in the settings
+format.
+
+Each hook reports the state its event means, and that state outranks what Muster reads off
+Claude Code's screen, so a Claude Code update that changes its screen does not change what Muster
+shows:
+
+| Event | State |
+|---|---|
+| `UserPromptSubmit`, `PostToolUse` | working |
+| `PermissionRequest`, and `Notification` for a permission prompt or a question | waiting on you |
+| `Stop`, `StopFailure` | idle |
+
+A working state with nothing moving on the screen for ten seconds is let go, since pressing Esc
+mid-turn fires no hook, and Muster reads the screen again. `SubagentStart` and `SubagentStop`
+count sub-agents, and `SessionStart` forgets the last session's facts when a new one starts or
+`/clear` runs.
+
+A plugin cannot set a statusline, so that is a step of its own either way.
 
 ## The statusline: context, model and cost
 
@@ -28,13 +58,6 @@ them in the background, and then draws your statusline. Put your own command aft
 Your command gets the same JSON on stdin it always did. With nothing after it, `statusline.sh`
 draws the model and how full the context is. It needs `jq`, which macOS ships in `/usr/bin` and a
 Linux devenv may not.
-
-## The hooks: sub-agents
-
-A sub-agent's start and stop each fire a hook, so the daemon counts: `SubagentStart` adds one and
-`SubagentStop` takes one away. `hooks.json` holds both, and a `SessionStart` hook that forgets
-the last session's facts when a new one starts or `/clear` runs. Merge its `hooks` into
-`~/.claude/settings.json`, or a project's `.claude/settings.json`, beside any hooks already there.
 
 ## What was checked
 

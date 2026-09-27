@@ -1,0 +1,97 @@
+{
+  "description": "Tells the Muster daemon that owns this pane what Claude Code is doing: working, waiting on you or idle, and how many sub-agents it runs.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -z \"$MUSTER_DAEMON\" ] || \"$MUSTER_DAEMON\" report --clear >/dev/null 2>&1 || true"
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -z \"$MUSTER_DAEMON\" ] || \"$MUSTER_DAEMON\" report --subagent-started >/dev/null 2>&1 || true"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -z \"$MUSTER_DAEMON\" ] || \"$MUSTER_DAEMON\" report --subagent-stopped >/dev/null 2>&1 || true"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -z \"$MUSTER_DAEMON\" ] || \"$MUSTER_DAEMON\" report --agent claude --state working >/dev/null 2>&1 || true"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -z \"$MUSTER_DAEMON\" ] || \"$MUSTER_DAEMON\" report --agent claude --state working >/dev/null 2>&1 || true"
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -z \"$MUSTER_DAEMON\" ] || \"$MUSTER_DAEMON\" report --agent claude --state blocked >/dev/null 2>&1 || true"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "permission_prompt|elicitation_dialog",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -z \"$MUSTER_DAEMON\" ] || \"$MUSTER_DAEMON\" report --agent claude --state blocked >/dev/null 2>&1 || true"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -z \"$MUSTER_DAEMON\" ] || \"$MUSTER_DAEMON\" report --agent claude --state idle >/dev/null 2>&1 || true"
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -z \"$MUSTER_DAEMON\" ] || \"$MUSTER_DAEMON\" report --agent claude --state idle >/dev/null 2>&1 || true"
+          }
+        ]
+      }
+    ]
+  }
+}

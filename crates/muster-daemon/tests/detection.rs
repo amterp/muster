@@ -489,3 +489,56 @@ fn an_agents_own_report_wins_until_its_screen_stops_moving() {
     let refused = report_state(&mut control, "claude", proto::AgentState::Unknown);
     assert_eq!(refused.outcome(), proto::Outcome::Refused, "unknown is not reported");
 }
+
+const CLAUDE_CODE_HOOKS: &str =
+    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../extras/claude-code/hooks/hooks.json"));
+
+/// The one command `extras/claude-code/hooks/hooks.json` runs for `event`, and its matcher.
+fn claude_code_hook(event: &str) -> (Option<String>, String) {
+    let hooks: serde_json::Value = serde_json::from_str(CLAUDE_CODE_HOOKS).unwrap();
+    let groups = hooks["hooks"][event].as_array().unwrap_or_else(|| panic!("no {event} hook"));
+    assert_eq!(groups.len(), 1, "one {event} entry");
+    let matcher = groups[0]["matcher"].as_str().map(str::to_string);
+    let commands = groups[0]["hooks"].as_array().unwrap();
+    assert_eq!(commands.len(), 1, "one {event} command");
+    (matcher, commands[0]["command"].as_str().unwrap().to_string())
+}
+
+/// Claude Code's hooks, run as Claude Code runs a command hook - by `sh -c`, in the pane's
+/// environment - report the state each event means. The events and matchers are Claude Code's
+/// documented ones: a prompt submitted and a tool finished mean working, a permission prompt or
+/// a question waiting on you means blocked, and a turn that ended, well or not, means idle.
+#[test]
+fn claude_codes_hooks_report_working_blocked_and_idle() {
+    use proto::AgentState::{Blocked, Idle, Working};
+    let home = Home::new("hooks", &[("claude.toml", PROBE_MANIFEST)], &["claude"]);
+    let daemon = home.daemon();
+    let mut control = daemon.connect();
+    let mut input = Input::connect(daemon.socket_path());
+    run_agent(&mut control, &mut input, "p1", &home.agent("claude"));
+    until_detected(&mut control, "p1", Some("claude"), Idle);
+
+    let events = [
+        ("UserPromptSubmit", None, Working),
+        ("PermissionRequest", None, Blocked),
+        ("PostToolUse", None, Working),
+        ("Notification", Some("permission_prompt|elicitation_dialog"), Blocked),
+        ("Stop", None, Idle),
+        ("UserPromptSubmit", None, Working),
+        ("StopFailure", None, Idle),
+    ];
+    for (event, matcher, state) in events {
+        let (matched, command) = claude_code_hook(event);
+        assert_eq!(matched.as_deref(), matcher, "{event}'s matcher");
+        let ran = std::process::Command::new("/bin/sh")
+            .args(["-c", &command])
+            .env("MUSTER_DAEMON", env!("CARGO_BIN_EXE_muster-daemon"))
+            .env("MUSTER_DAEMON_SOCKET", daemon.socket_path())
+            .env("MUSTER_PANE", "p1")
+            .status()
+            .unwrap();
+        assert!(ran.success(), "{event}'s hook");
+        until_detected(&mut control, "p1", Some("claude"), state);
+        assert!(state_reported(&mut control), "{event} is the agent's own word");
+    }
+}

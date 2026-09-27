@@ -1,0 +1,14 @@
+{
+  "name": "muster",
+  "description": "Muster's wiring for coding-agent harnesses.",
+  "owner": {
+    "name": "Muster"
+  },
+  "plugins": [
+    {
+      "name": "muster",
+      "source": "./claude-code",
+      "description": "Reports Claude Code's state and sub-agents to the Muster daemon that owns its pane."
+    }
+  ]
+}
