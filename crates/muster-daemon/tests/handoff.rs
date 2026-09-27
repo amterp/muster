@@ -346,6 +346,10 @@ fn copies_of_the_daemon(names: [&str; 2]) -> [std::path::PathBuf; 2] {
             target.join(format!("handoff-{}-{name}", std::process::id())).join("muster-daemon");
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::copy(built, &path).unwrap();
+        // macOS checks a binary the first time it runs, which took 1.6 to 12.6 s on a busy
+        // machine against the 10 s a successor has to answer each step of a handoff. Run once
+        // here, it is checked before anything is timed.
+        let _ = std::process::Command::new(&path).arg("--help").output();
         path
     })
 }
