@@ -381,6 +381,7 @@ impl Pane {
                 host: watching.host.to_string(),
                 directory: PathBuf::from(&record.cwd),
                 reports_directory: false,
+                unsent: None,
             },
             detection: Detection::new(process, Instant::now()),
             detecting: Arc::clone(watching.detecting),
@@ -437,16 +438,32 @@ struct Heard {
     /// Whether the program reports its directory itself (OSC 7), after which the reader stops
     /// asking the kernel.
     reports_directory: bool,
+    /// A directory the queue dropped, to send again at the next check.
+    unsent: Option<PathBuf>,
 }
 
 impl Heard {
-    /// Publishes a directory unless it is the last one published. One the queue dropped is not
-    /// published, so the next check sends it again.
+    /// Publishes a directory unless it is the last one published. One the queue dropped is kept
+    /// for the next check to send again, which the reader schedules ([`retry_due`]).
     fn moved_to(&mut self, directory: PathBuf, serial: u64, reports: &Reports) {
-        if directory != self.directory && reports.send(serial, Reported::Cwd(directory.clone())) {
+        self.unsent = None;
+        if directory == self.directory {
+            return;
+        }
+        if reports.send(serial, Reported::Cwd(directory.clone())) {
             self.directory = directory;
+        } else {
+            self.unsent = Some(directory);
         }
     }
+}
+
+/// When the reader next checks the directory: as scheduled, or a cadence from now when a
+/// directory the queue dropped is waiting. Not only after output, which is when the check is
+/// otherwise scheduled: a pane that has gone quiet would never send it, and a restart would
+/// bring the pane back in the directory before.
+fn retry_due(due: Option<Instant>, heard: &Heard, now: Instant) -> Option<Instant> {
+    due.or_else(|| heard.unsent.is_some().then(|| now + CWD_CADENCE))
 }
 
 struct Reader {
@@ -479,6 +496,7 @@ impl Reader {
                 libc::pollfd { fd: master, events: libc::POLLIN, revents: 0 },
                 libc::pollfd { fd: self.wake.as_raw_fd(), events: libc::POLLIN, revents: 0 },
             ];
+            due = retry_due(due, &self.heard, Instant::now());
             let next = due.map_or(self.detection.due(), |due| due.min(self.detection.due()));
             let left = next.saturating_duration_since(Instant::now()).as_millis();
             let timeout = i32::try_from(left).unwrap_or(i32::MAX);
@@ -542,12 +560,15 @@ impl Reader {
         publish_agent(&self.reports, self.io.serial, published, &mut self.unsent);
     }
 
-    /// Publishes the directory the pane's program is in, for a shell that does not say.
+    /// Publishes the directory the pane's program is in: the kernel's word for a shell that
+    /// does not say, or again what a shell that does said last, if the queue dropped it.
     fn check_directory(&mut self) {
-        if self.heard.reports_directory {
-            return;
-        }
-        if let Some(directory) = live_cwd(self.io.master.as_fd(), self.process) {
+        let latest = if self.heard.reports_directory {
+            self.heard.unsent.take()
+        } else {
+            live_cwd(self.io.master.as_fd(), self.process)
+        };
+        if let Some(directory) = latest {
             self.heard.moved_to(directory, self.io.serial, &self.reports);
         }
     }
@@ -661,7 +682,12 @@ mod tests {
     use super::*;
 
     fn heard() -> Heard {
-        Heard { host: String::new(), directory: PathBuf::from("/"), reports_directory: false }
+        Heard {
+            host: String::new(),
+            directory: PathBuf::from("/"),
+            reports_directory: false,
+            unsent: None,
+        }
     }
 
     /// The queue to the session drops a report when it is full. A directory dropped there must
@@ -682,6 +708,19 @@ mod tests {
             received.try_recv().map(|report| report.what),
             Ok(Reported::Cwd(PathBuf::from("/tmp")))
         );
+    }
+
+    #[test]
+    fn a_dropped_directory_is_checked_again_even_in_a_quiet_pane() {
+        let (reports, _received) = Reports::with_depth(1);
+        reports.send(1, Reported::Title("filler".to_string()));
+        let mut heard = Heard { reports_directory: true, ..heard() };
+        let now = Instant::now();
+        assert_eq!(retry_due(None, &heard, now), None, "nothing waiting, nothing scheduled");
+        heard.moved_to(PathBuf::from("/tmp"), 1, &reports);
+        assert_eq!(retry_due(None, &heard, now), Some(now + CWD_CADENCE));
+        let sooner = now + Duration::from_millis(1);
+        assert_eq!(retry_due(Some(sooner), &heard, now), Some(sooner), "a check already due");
     }
 
     #[test]
