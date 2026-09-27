@@ -124,6 +124,15 @@ fn close_on_exec(fd: &OwnedFd) -> io::Result<()> {
     if set == -1 { Err(io::Error::last_os_error()) } else { Ok(()) }
 }
 
+/// Tells a pane's terminal, and so its program, a new size.
+pub(crate) fn set_size(master: BorrowedFd<'_>, grid: Grid) -> io::Result<()> {
+    let size = grid.winsize();
+    // SAFETY: TIOCSWINSZ reads one winsize, which outlives the call. `as _` as for TIOCSCTTY.
+    #[allow(clippy::cast_lossless)]
+    let set = unsafe { libc::ioctl(master.as_raw_fd(), libc::TIOCSWINSZ as _, &raw const size) };
+    if set == -1 { Err(io::Error::last_os_error()) } else { Ok(()) }
+}
+
 /// The process group in the foreground of a pane's terminal: the shell at its prompt, or
 /// whatever the shell is running.
 pub(crate) fn foreground_group(master: BorrowedFd<'_>) -> Option<i32> {

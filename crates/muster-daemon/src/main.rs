@@ -15,6 +15,7 @@ mod screen;
 mod server;
 mod session;
 mod spawn;
+mod stream;
 mod tree;
 mod writer;
 

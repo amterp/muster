@@ -27,7 +27,9 @@ use muster_daemon_proto as proto;
 use crate::effects::{self, Happened, Reported, Reports};
 use crate::process;
 use crate::pty;
+use crate::pty::Grid;
 use crate::screen::Screen;
+use crate::stream::{Bridge, Refusal};
 use crate::writer::{self, Input};
 
 /// Told when a pane's process has ended, with the pane's serial and, when this daemon saw the
@@ -59,6 +61,54 @@ impl PaneIo {
         match self.input.try_send(input) {
             Ok(()) => true,
             Err(TrySendError::Full(_) | TrySendError::Disconnected(_)) => false,
+        }
+    }
+
+    /// Attaches a bridge to the pane, at `grid` when it says one.
+    pub(crate) fn attach(
+        &self,
+        bridge: Bridge,
+        grid: Option<Grid>,
+        takeover: bool,
+    ) -> Result<(), Refusal> {
+        let mut screen = self.screen();
+        if let Some(grid) = grid.filter(|&grid| grid != screen.grid()) {
+            self.resize_locked(&mut screen, grid);
+        }
+        screen.attach(bridge, takeover)
+    }
+
+    pub(crate) fn detach(&self, bridge: u64) {
+        self.screen().detach(bridge);
+    }
+
+    pub(crate) fn acknowledge(&self, bridge: u64, bytes: u64) {
+        self.screen().acknowledge(bridge, bytes);
+    }
+
+    /// The pane's program and its terminal, both at a new size. A pane keeps its last size
+    /// when its bridge goes.
+    pub(crate) fn resize(&self, grid: Grid) {
+        let mut screen = self.screen();
+        if grid != screen.grid() {
+            self.resize_locked(&mut screen, grid);
+        }
+    }
+
+    fn resize_locked(&self, screen: &mut Screen, grid: Grid) {
+        let resized = pty::set_size(self.master.as_fd(), grid)
+            .map_err(|error| error.to_string())
+            .and_then(|()| screen.resize(grid).map_err(|error| error.to_string()));
+        if let Err(error) = resized {
+            log::warn(
+                "daemon.pane.not_resized",
+                fields! {
+                    "serial" => self.serial,
+                    "error" => error,
+                    "impact" => "the pane's program and its surface may disagree about its size \
+                                 until the next resize",
+                },
+            );
         }
     }
 
@@ -187,9 +237,11 @@ impl Pane {
         live_cwd(self.io.master.as_fd(), self.process)
     }
 
-    /// Ends the pane: SIGHUP to its shell's process group and to whatever holds its terminal's
-    /// foreground, then its master closed once the reader and writer let go of it.
-    pub(crate) fn hang_up(self) {
+    /// Ends the pane: its bridge told why, SIGHUP to its shell's process group and to whatever
+    /// holds its terminal's foreground, then its master closed once the reader and writer let
+    /// go of it.
+    pub(crate) fn hang_up(self, reason: proto::DetachReason) {
+        self.io.screen().close(reason);
         let foreground = pty::foreground_group(self.io.master.as_fd())
             .filter(|group| Some(*group) != self.process);
         for group in self.process.into_iter().chain(foreground) {
@@ -275,7 +327,7 @@ impl Reader {
             let read = unsafe { libc::read(master, buffer.as_mut_ptr().cast(), buffer.len()) };
             if read > 0 {
                 let chunk = &buffer[..read.cast_unsigned()];
-                let happened = self.io.screen().feed(chunk);
+                let happened = self.io.screen().output(chunk);
                 self.io.dispatch(happened, &mut self.heard, &self.reports);
                 if !self.heard.reports_directory && due.is_none() {
                     due = Some(Instant::now() + CWD_CADENCE);

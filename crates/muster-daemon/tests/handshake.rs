@@ -43,15 +43,18 @@ fn a_client_of_another_major_is_refused_with_both_versions() {
 }
 
 #[test]
-fn input_and_stream_connections_are_refused_until_they_are_served() {
+fn control_and_stream_connections_are_welcomed_and_input_is_refused_until_it_is_served() {
     let daemon = daemon();
-    for kind in [proto::ConnectionKind::Input, proto::ConnectionKind::Stream] {
-        match connection::connect(daemon.socket_path(), kind, "test") {
-            Err(HandshakeError::Refused(refused)) => {
-                assert!(refused.reason.contains("control connections only"), "{}", refused.reason);
-            }
-            other => panic!("a {kind:?} connection was not refused: {other:?}"),
+    for kind in [proto::ConnectionKind::Control, proto::ConnectionKind::Stream] {
+        if let Err(error) = connection::connect(daemon.socket_path(), kind, "test") {
+            panic!("a {kind:?} connection was not welcomed: {error:?}");
         }
+    }
+    match connection::connect(daemon.socket_path(), proto::ConnectionKind::Input, "test") {
+        Err(HandshakeError::Refused(refused)) => {
+            assert!(refused.reason.contains("input connections"), "{}", refused.reason);
+        }
+        other => panic!("an input connection was not refused: {other:?}"),
     }
 }
 

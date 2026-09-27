@@ -231,3 +231,108 @@ pub fn events_until(
     }
     events
 }
+
+pub use muster_harness::Stream;
+use proto::stream_message::Message as Streamed;
+
+/// What a bridge's surface would show: a terminal fed every replay and every byte of output
+/// its stream carries, and what else the stream said.
+pub struct Surface {
+    pub terminal: muster_vt::Terminal,
+    /// Output fed and not yet acknowledged.
+    pub unacknowledged: u64,
+    /// Output fed since attaching.
+    pub output: u64,
+    pub attached: Option<u64>,
+    pub replays: usize,
+    pub behind: usize,
+    pub detached: Option<proto::DetachReason>,
+    pub refused: Option<String>,
+    /// The daemon hung up.
+    pub ended: bool,
+}
+
+impl Surface {
+    pub fn new(cols: u16, rows: u16) -> Surface {
+        let mut options = muster_vt::TerminalOptions::new(cols, rows);
+        options.scrollback_bytes = Some(64 << 20);
+        Surface {
+            terminal: muster_vt::Terminal::with_options(options).expect("a terminal"),
+            unacknowledged: 0,
+            output: 0,
+            attached: None,
+            replays: 0,
+            behind: 0,
+            detached: None,
+            refused: None,
+            ended: false,
+        }
+    }
+
+    pub fn take(&mut self, message: Option<Streamed>) {
+        match message {
+            Some(Streamed::Attached(attached)) => self.attached = Some(attached.offset),
+            Some(Streamed::Replay(bytes)) => {
+                self.replays += 1;
+                self.terminal.write(&bytes);
+            }
+            Some(Streamed::Output(bytes)) => {
+                self.unacknowledged += bytes.len() as u64;
+                self.output += bytes.len() as u64;
+                self.terminal.write(&bytes);
+            }
+            Some(Streamed::Behind(_)) => self.behind += 1,
+            Some(Streamed::Detached(detached)) => self.detached = Some(detached.reason()),
+            Some(Streamed::Refused(refused)) => self.refused = Some(refused.reason),
+            None => self.ended = true,
+        }
+    }
+
+    /// Everything the surface holds, history first, as text.
+    pub fn text(&self) -> String {
+        self.terminal.screen_text(0, u32::MAX)
+    }
+
+    /// What the surface shows, without its history: cheap enough to check after every message.
+    pub fn screen(&self) -> String {
+        self.terminal.text(0, self.terminal.rows().saturating_sub(1))
+    }
+
+    /// Takes messages until `done` says so, acknowledging output as it goes when `credit`.
+    pub fn follow(
+        &mut self,
+        stream: &mut Stream,
+        what: &str,
+        credit: bool,
+        mut done: impl FnMut(&Surface) -> bool,
+    ) {
+        let deadline = std::time::Instant::now() + muster_harness::PATIENCE;
+        while !done(self) {
+            if credit && self.unacknowledged > 0 {
+                stream.credit(self.unacknowledged);
+                self.unacknowledged = 0;
+            }
+            assert!(
+                !self.ended,
+                "{what}: the daemon hung up; the surface shows {:?}",
+                self.screen()
+            );
+            let left = deadline.saturating_duration_since(std::time::Instant::now());
+            assert!(
+                !left.is_zero(),
+                "{what}: not within the suite's patience; {:?}",
+                self.screen()
+            );
+            if let Some(message) = stream.next_within(left) {
+                self.take(message);
+            }
+        }
+    }
+}
+
+/// A stream attached to `name`.
+pub fn attached(daemon: &Daemon, name: &str, takeover: bool) -> Stream {
+    let mut stream = Stream::connect(daemon.socket_path());
+    stream.attach(name, None, takeover);
+    stream
+}

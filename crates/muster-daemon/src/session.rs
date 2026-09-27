@@ -647,7 +647,10 @@ impl Session {
             reason: reason.into(),
             exit_status,
         }));
-        removed.hang_up();
+        removed.hang_up(match reason {
+            proto::CloseReason::Exited => proto::DetachReason::Exited,
+            _ => proto::DetachReason::Closed,
+        });
     }
 
     fn resize(&mut self, resize: &pane_request::Resize) -> Reply {
@@ -905,6 +908,11 @@ impl Session {
     // -----------------------------------------------------------------------------------------
     // Lookups
 
+    /// What a stream or input connection needs of a pane, found by name.
+    pub(crate) fn pane_io(&self, pane: &str) -> Option<Arc<PaneIo>> {
+        self.pane_index(pane).map(|index| Arc::clone(&self.panes[index].io))
+    }
+
     fn pane_index(&self, pane: &str) -> Option<usize> {
         self.panes.iter().position(|candidate| candidate.record.pane == pane)
     }
@@ -937,7 +945,7 @@ fn valid_ratio(ratio: f32) -> Result<f32, String> {
     }
 }
 
-fn grid(grid: proto::Grid) -> Result<Grid, String> {
+pub(crate) fn grid(grid: proto::Grid) -> Result<Grid, String> {
     let cells = |count: u32| u16::try_from(count).ok().filter(|&count| count > 0);
     let pixels = |count: u32| u16::try_from(count).ok();
     match (cells(grid.cols), cells(grid.rows), pixels(grid.width_px), pixels(grid.height_px)) {

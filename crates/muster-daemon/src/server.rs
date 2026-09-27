@@ -12,6 +12,7 @@ use muster_daemon_proto::{self as proto, ConnectionKind, hello_answer, install};
 
 use crate::control;
 use crate::session::Shared;
+use crate::stream;
 
 /// How long a connection may take to say hello. Past it, whatever dialed is not a Muster client
 /// and is not worth a thread.
@@ -82,7 +83,10 @@ fn open(mut stream: UnixStream, shared: &Arc<Shared>) {
         return;
     }
     let _ = stream.set_read_timeout(None);
-    control::serve(stream, shared, &hello.client);
+    match ConnectionKind::try_from(hello.kind) {
+        Ok(ConnectionKind::Stream) => stream::serve(stream, shared),
+        _ => control::serve(stream, shared, &hello.client),
+    }
 }
 
 /// Whether this daemon will serve a connection that says hello this way.
@@ -97,10 +101,10 @@ fn judge(hello: &proto::Hello) -> Result<(), String> {
         ));
     }
     match ConnectionKind::try_from(hello.kind) {
-        Ok(ConnectionKind::Control) => Ok(()),
-        Ok(ConnectionKind::Input | ConnectionKind::Stream) => {
-            Err("this daemon serves control connections only; input and stream connections arrive \
-             in a later version"
+        Ok(ConnectionKind::Control | ConnectionKind::Stream) => Ok(()),
+        Ok(ConnectionKind::Input) => {
+            Err("this daemon serves control and stream connections only; input connections \
+             arrive in a later version"
                 .to_string())
         }
         Ok(ConnectionKind::Unspecified) | Err(_) => {

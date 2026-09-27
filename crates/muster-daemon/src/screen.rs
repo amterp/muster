@@ -14,6 +14,7 @@ use muster_vt::{Answers, ColorScheme, Palette, Rgb, Terminal, TerminalError, Ter
 
 use crate::effects::Happened;
 use crate::pty::Grid;
+use crate::stream::{Bridge, Refusal};
 
 /// History a pane keeps when the app has not said: Ghostty's own `scrollback-limit`, so the
 /// daemon's copy holds what the surface beside it holds.
@@ -106,6 +107,8 @@ pub(crate) struct Screen {
     /// Every byte the terminal has been fed, which is where a stream attached now picks up.
     offset: u64,
     grid: Grid,
+    /// The bridge drawing this pane, if one is attached.
+    bridge: Option<Bridge>,
 }
 
 impl std::fmt::Debug for Screen {
@@ -136,14 +139,21 @@ impl Screen {
         terminal.set_effect_handler(move |effect| {
             poison::lock(&heard, "daemon.pane.effects").push(Happened::from_effect(&effect));
         });
-        let mut screen = Screen { terminal, happened, offset: 0, grid };
+        let mut screen = Screen { terminal, happened, offset: 0, grid, bridge: None };
         screen.appear(appearance);
         Ok(screen)
     }
 
-    /// Parses bytes the program wrote, or bytes the daemon writes on its behalf, and returns
-    /// what they asked for.
-    pub(crate) fn feed(&mut self, bytes: &[u8]) -> Vec<Happened> {
+    /// Output for the pane: to the attached bridge first, so a surface never waits on the
+    /// parse, then to the terminal. Returns what it asked for.
+    pub(crate) fn output(&mut self, bytes: &[u8]) -> Vec<Happened> {
+        if let Some(bridge) = &mut self.bridge {
+            bridge.offer(bytes);
+        }
+        self.feed(bytes)
+    }
+
+    fn feed(&mut self, bytes: &[u8]) -> Vec<Happened> {
         self.terminal.write(bytes);
         self.offset += bytes.len() as u64;
         std::mem::take(&mut *poison::lock(&self.happened, "daemon.pane.effects"))
@@ -161,6 +171,54 @@ impl Screen {
 
     pub(crate) fn set_scrollback(&mut self, bytes: usize) -> Result<(), TerminalError> {
         self.terminal.set_scrollback_bytes(bytes)
+    }
+
+    /// Attaches a bridge where the stream stands: told the offset, then a replay composed now,
+    /// so no byte is lost or doubled between the replay and the output after it. A bridge
+    /// already attached stays unless `takeover`, and is told why it goes.
+    pub(crate) fn attach(&mut self, bridge: Bridge, takeover: bool) -> Result<(), Refusal> {
+        if self.bridge.is_some() && !takeover {
+            return Err(bridge.refused(
+                "another bridge is drawing this pane; attach with takeover to replace it"
+                    .to_string(),
+            ));
+        }
+        if let Some(displaced) = self.bridge.take() {
+            displaced.detach(proto::DetachReason::TakenOver);
+        }
+        bridge.attached(self.offset);
+        bridge.replay(&self.terminal.replay());
+        self.bridge = Some(bridge);
+        Ok(())
+    }
+
+    /// Lets go of bridge `id`, if it is still the one attached.
+    pub(crate) fn detach(&mut self, id: u64) {
+        if self.bridge.as_ref().is_some_and(|bridge| bridge.id() == id) {
+            self.bridge = None;
+        }
+    }
+
+    /// Tells the attached bridge why the pane is going.
+    pub(crate) fn close(&mut self, reason: proto::DetachReason) {
+        if let Some(bridge) = self.bridge.take() {
+            bridge.detach(reason);
+        }
+    }
+
+    /// Takes a bridge's acknowledgement, and catches it up with the screen once a bridge that
+    /// fell behind has acknowledged everything it was sent.
+    pub(crate) fn acknowledge(&mut self, id: u64, bytes: u64) {
+        let Some(bridge) = self.bridge.as_mut().filter(|bridge| bridge.id() == id) else { return };
+        if bridge.acknowledge(bytes) {
+            bridge.replay(&self.terminal.catch_up());
+        }
+    }
+
+    pub(crate) fn resize(&mut self, grid: Grid) -> Result<(), TerminalError> {
+        self.terminal.resize(grid.cols, grid.rows, cell_pixels(grid))?;
+        self.grid = grid;
+        Ok(())
     }
 
     /// A page of the active screen's text, rows counted from the oldest history still held.
