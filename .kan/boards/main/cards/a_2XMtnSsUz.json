@@ -1,0 +1,22 @@
+{
+  "_v": 3,
+  "alias": "link-libghostty-vt",
+  "alias_explicit": false,
+  "area": [
+    "backend",
+    "renderer"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1790479024633,
+  "creator": "Alexander Terp",
+  "description": "Found by slot 1 in MIP-3 round 1 (a_2XJ1fr2cu fixes). The MIP assumed a static libghostty-vt collides with GhosttyKit in the app process (docs/observations/libghostty-9f9b8d1d.md section 8). It does not: libmuster.dylib is a cdylib exporting only include/muster.h's three symbols, so a static libghostty-vt inside it is invisible (verified: no ghostty or ubsan symbols exported, depends only on libSystem and libiconv). The 35 duplicate symbols in section 8 need both archives in one image. So the MUSTER_VT_LINK=static switch exists only to keep the app on a dylib it no longer needs. Linking statically everywhere would delete the env var and its rule, the dylib, both rpaths (.cargo/config.toml, Package.swift), and the bundle's Frameworks/libghostty-vt.dylib, at the cost of a copy of the library in libmuster and in the bridge. Worth doing as part of MIP-3's zero-debt goal; it touches bundle and release plumbing the gate does not exercise, so it needs ./dev --bundle and --contract to prove it. Probably alongside the distribution card (a_2XJ1ie3Ep).",
+  "id": "a_2XMtnSsUz",
+  "parent": "a_2XJ1fUIyr",
+  "position": "aq",
+  "title": "Link libghostty-vt statically everywhere, and delete the dylib plumbing",
+  "type": "chore",
+  "updated_at_millis": 1790479024633,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1790479024633}
+  ]
+}

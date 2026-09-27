@@ -7,6 +7,14 @@
     "renderer"
   ],
   "column": "uncommitted",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "From slot 1's round-1 fixes: background-only rows are cheap on their own - the formatter drops a row with no text at the row level (formatter.zig:1180, hasTextAny); a sibling default-off option counting a styled cell as content, plus the same predicate in the patch's trailing-blank-rows count, is about six lines. OSC 8 on existing text is not cheap: VT output writes no hyperlinks at all (the hyperlink block is HTML-only), so it is ~30-40 lines across both paths of the core content loop, the file most likely to conflict on re-pin. Per-cell DECSCA is similar to links. The kitty stack and DECSC-saved cursor stay unreadable. Round 1 also fixed a style bleed across gaps behind formatter.Options.unstyled_blanks (default off, on only in the patched screen formatter).",
+      "created_at_millis": 1790479024268,
+      "id": "c_2XMtn0UB2"
+    }
+  ],
   "created_at_millis": 1790477155428,
   "creator": "Alexander Terp",
   "description": "From the replay spike (a_2XJ1ffNcD, round 1). The replay (MIP-3 section 5) pins five known gaps as exact differences in corpus/conformance/replay.json: OSC 8 links on text already written, per-cell DECSCA protection, a row painted with a background and no text, the kitty keyboard stack beneath its current flags, and a DECSC-saved cursor. The first three need a change to the formatter's existing output, which the permanent libghostty patch deliberately does not make (it only adds C API); doing it additively means a new formatter option that touches formatter.zig's content loop, a bigger carry on every re-pin. The last two are not readable through the C API at all. Also found: mouse tracking modes replay in ascending order, so a program that enabled 1002 then 1000 comes back in 1002. Links in replayed scrollback are the one a person will notice. Open: which, if any, are worth the larger patch.",
@@ -15,7 +23,7 @@
   "position": "aS",
   "title": "Replay gaps: links, DECSCA and background-only rows do not survive an attach",
   "type": "chore",
-  "updated_at_millis": 1790477155428,
+  "updated_at_millis": 1790479024268,
   "history": [
     {"field":"column","value":"uncommitted","at":1790477155428}
   ]
