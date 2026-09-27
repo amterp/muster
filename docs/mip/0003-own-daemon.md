@@ -313,8 +313,8 @@ attached to the pane, then written into the pane's headless libghostty-vt termin
 writes the chunk to its stdout, which is the surface's PTY, so the surface's own libghostty parses
 exactly the bytes the program wrote.
 
-**Nothing on this path waits for another pane or for a request.** No render loop, no shared thread,
-no throttle. The reader hands each chunk to a queue drained by the stream's own writer thread, which
+**Nothing on this path waits for another pane or for a request.** No render loop and no shared
+thread. The reader hands each chunk to a queue drained by the stream's own writer thread, which
 credit bounds, so a bridge that stops reading costs its own queue and holds the reader for one
 grace period at most (below). Requests
 and agent detection take the pane's lock briefly, and `pane read` a batch of rows at a time.
@@ -324,42 +324,80 @@ terminals - hanging one up, applying new settings - runs once the session lock i
 the request is answered, so a long replay never stalls another connection.
 
 **Flow control is by credit.** A bridge acknowledges the bytes it has written to the surface. The
-daemon lets a fixed window of unacknowledged output per pane (256 KiB) reach the bridge, and when
-the window is full the pane's reader waits for credit, for at most a grace period (100 ms), holding
+daemon lets a window of unacknowledged output per pane reach the bridge, and when the window is
+full the pane's reader waits for credit, for at most a grace period (100 ms) on each read, holding
 no lock. Credit that arrives in time lets it go on: the program is slowed to the bridge's pace and
-nothing is lost, which is what Ghostty's own reader does when it waits for its parser. Without the
-wait, any burst larger than the window reached a surface only in part, however fast the bridge
-was, because four of the reader's reads fill the window before the first credit can come back: in
-the vertical slice a bridge crediting every message at once received 80% of a 3 MB burst, fell
-behind 5,621 times, and was caught up as often. With it, the same bridge receives every byte and
-never falls behind. Credit, counted this way, also detects a slow reader on the far side of ssh,
-where the daemon's own queue depth does not, because sshd and TCP buffer megabytes before the
-daemon's writes block. It counts output only, not a replay's bytes: a replay is bounded by the
-pane's scrollback and comes once per attach, and counting it would put every large attach
-straight behind.
+nothing is lost, which is what Ghostty's own reader does when it waits for its parser and what
+ssh does when its channel window is full. Without the wait, any burst larger than the window
+reached a surface only in part, however fast the bridge was, because four of the reader's reads
+fill the window before the first credit can come back: in the vertical slice a bridge crediting
+every message at once received 80% of a 3 MB burst, fell behind 5,621 times, and was caught up as
+often. With it, the same bridge receives every byte and never falls behind. Credit, counted this
+way, also detects a slow reader on the far side of ssh, where the daemon's own queue depth does
+not, because sshd and TCP buffer megabytes before the daemon's writes block. It counts output
+only, not a replay's bytes: a replay is bounded by the pane's scrollback and comes once per
+attach, and counting it would put every large attach straight behind.
+
+The grace is per read, not per episode. One grace per episode - a total the waits add up to,
+restored once the bridge caught up - was built and rejected: a bridge slower than its program, a
+local surface parsing a large file, waits on every read with its window never draining, so it used
+the grace up partway through and lost the middle of the output, where Ghostty would have slowed
+the program and shown all of it. Per read, a bridge that keeps crediting holds its program to its
+own pace for as long as the output lasts, which is the bar Ghostty and ssh set.
+
+The cost is that a far bridge holds its program to about one window per round trip, so **a bridge
+chooses its window when it attaches**. The default is 256 KiB, which suits a bridge on the
+daemon's machine; the daemon keeps a request between 64 KiB and 4 MiB, since every byte of a
+window can be queued for the bridge at once. A bridge whose daemon is reached over ssh asks for
+2 MiB, the window ssh's own channels use, so Muster's flow control is not the tighter of the two.
+Measured on 2026-09-27 through an ssh-forwarded socket to a container whose outgoing traffic
+`netem` delayed, flooding ten million lines (79 MB) into a surface that read as fast as it came,
+with a second pane's echo timed through its bridge meanwhile:
+
+| Delay | Window | Flood | Fell behind | Echo alone, median / p95 | Echo beside it |
+|---|---|---|---|---|---|
+| 40 ms | 256 KiB | 18.2 s, 4.3 MB/s | 3 | 46 / 52 ms | 66 / 86 ms |
+| 40 ms | 1 MiB | 4.4 s, 18 MB/s | 0 | 48 / 147 ms | 45 / 57 ms |
+| 40 ms | 2 MiB | 4.9 s, 16 MB/s | 0 | 47 / 52 ms | 44 / 87 ms |
+| 150 ms | 256 KiB | 9.3 s | 36 | 158 / 360 ms | 159 / 300 ms |
+| 150 ms | 1 MiB | 11.6 s | 4 | 160 / 379 ms | 157 / 293 ms |
+| 150 ms | 2 MiB | 5.4 s | 2 | 159 / 165 ms | 160 / 627 ms |
+
+With no delay the same link carried a 21 MB flood at 23 MB/s with either window. The echo columns
+come from a machine at a load average of 11 to 15, and from as few as 14 samples beside the
+shortest floods, so they say no more than that a larger window does not make the echo beside a
+flood worse: at 40 ms the default window made it 20 ms worse, because the flood held the link
+four times as long.
+
+**A round trip longer than the grace** changes what a full window does. Credit cannot come back
+within 100 ms, so each time the window fills the program stalls for the grace, the bridge falls
+behind, and it is caught up once half its window is credited, a round trip later. The program runs
+unthrottled while its bridge is behind, which is why at 150 ms the default window finished the
+flood faster than 1 MiB, by falling behind 36 times: the surface showed a screen at each catch-up
+rather than the output. A 2 MiB window fills eight times less often, so the same flood fell behind
+twice.
 
 A bridge still short of room when the grace ends is behind: it is told once, gets no output, and
-the reader does not wait on it again until it is caught up, so a stalled or far-away bridge holds
-its program up by one grace per episode and no more. It is caught up once its acknowledgements
-free half the window: with the screen only, not its history (section 5), and then output resumes.
-Half, so a slow bridge is not flipped between behind and caught up at the window's edge, each flip
-a catch-up composed under the pane's lock. Not zero: a bridge may acknowledge in batches, and one
-that is behind is sent nothing more to finish its last batch with, so waiting for every byte
-would leave its pane blank for good. Any bridge that acknowledges at all reaches half, so none is
-wedged. Bytes that scrolled off while a bridge was behind are in the daemon, where `muster pane
-read` reaches them, and not in the surface's scrollback. The wait ends as soon as anything about
-the bridge changes - credit, a detach, a takeover, the pane closing - and a pane with no bridge
-never waits.
+the reader does not wait on it again until it is caught up. It is caught up once its
+acknowledgements free half the window: with the screen only, not its history (section 5), and then
+output resumes. Half, so a slow bridge is not flipped between behind and caught up at the window's
+edge, each flip a catch-up composed under the pane's lock. Not zero: a bridge may acknowledge in
+batches, and one that is behind is sent nothing more to finish its last batch with, so waiting for
+every byte would leave its pane blank for good. So a bridge credits in batches of at most half its
+window, and one that does is never wedged; one batching more can be left behind for good, holding
+less than a batch it will never complete. Bytes that scrolled off while a bridge was behind are in
+the daemon, where `muster pane read` reaches them, and not in the surface's scrollback. The wait
+ends as soon as anything about the bridge changes - credit, a detach, a takeover, the pane closing
+- and a pane with no bridge never waits.
 
-Measured through a forwarded socket to the devenv container at the vertical slice: a pane flooding 5 million lines into a surface that reads 4 KiB a millisecond
-and stops 250 ms every MiB fell behind only at those stops, was caught up with the pane's screen
-each time and ended showing it exactly, and slowed a second pane's echo by nothing at the median.
-Its p95 rose 4 ms (6.4 ms against 2.3 ms alone, at a load average of 14), where the daemon without
-the wait left the link idle while its bridge was behind and fell behind 141 times. Every stream
-over one machine's ssh connection shares its TCP stream, so a flood's bytes in flight are queued
-ahead of another pane's echo; whether that p95 holds on a quiet machine, and whether a remote
-window should be smaller than a local one, is measured again once the SSH tier installs the
-daemon itself.
+Measured through a forwarded socket to the devenv container at the vertical slice, with no delay: a
+pane flooding 5 million lines into a surface that reads 4 KiB a millisecond and stops 250 ms every
+MiB fell behind only at those stops, was caught up with the pane's screen each time and ended
+showing it exactly, and slowed a second pane's echo by nothing at the median. Its p95 rose 4 ms
+(6.4 ms against 2.3 ms alone, at a load average of 14), where the daemon without the wait left the
+link idle while its bridge was behind and fell behind 141 times. Every stream over one machine's
+ssh connection shares its TCP stream, so a flood's bytes in flight are queued ahead of another
+pane's echo.
 
 **One bridge per pane.** A bridge holds a pane at a time, and its grid is the pane's size. A second
 attach must ask for takeover or is refused; the displaced bridge is told why. A pane keeps its last
@@ -1053,3 +1091,6 @@ first.
   protocol's own message, and what happens to a file from a newer daemon or a damaged one.
 - 2026-09-27 The daemon's log decided and built (section 1): a bounded file of its own, followed
   over the control connection into each run's log.
+- 2026-09-27 Remote flow control measured with real latency (section 4): the grace stays per
+  read, one per episode having been built and rejected, and a bridge chooses its window, 2 MiB
+  over ssh.

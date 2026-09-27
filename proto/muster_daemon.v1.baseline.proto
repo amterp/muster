@@ -845,9 +845,10 @@ message StreamRequest {
     // refused.
     bool takeover = 3;
     // How much output the bridge may have unacknowledged, in bytes. Absent or 0 is the
-    // daemon's default, 256 KiB, which suits a bridge on the daemon's machine; a bridge across
-    // a slow link asks for more, since the pane's program is held to about one window per
-    // round trip. The daemon keeps it between 64 KiB and 4 MiB.
+    // daemon's default, 256 KiB, which suits a bridge on the daemon's machine. The pane's
+    // program is held to about one window per round trip, so a bridge reaching the daemon over
+    // ssh asks for 2 MiB, ssh's own channel window (MIP-3 section 4). The daemon keeps it
+    // between 64 KiB and 4 MiB.
     optional uint64 window = 4;
   }
 
