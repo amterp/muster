@@ -631,4 +631,33 @@ mod tests {
              exec '/usr/bin/fish' -i"
         );
     }
+
+    /// The same line, read by a real fish: it parses, and the value it exports is the one given.
+    /// Skipped where fish is not installed, which a Mac without Homebrew's fish and CI both are.
+    #[test]
+    fn fish_reads_back_the_value_it_was_given() {
+        let data = r"/it's\";
+        let (argv, _) = start("/usr/bin/fish", false, true, Vec::new(), Path::new(data));
+        let line = &argv[3];
+        let fish = |script: &str, check_only: bool| {
+            let mut command = std::process::Command::new("fish");
+            if check_only {
+                command.arg("--no-execute");
+            }
+            command.arg("-c").arg(script).output()
+        };
+        let Ok(parsed) = fish(line, true) else {
+            eprintln!("fish is not installed here, so its reading of the exec line goes unchecked");
+            return;
+        };
+        assert!(parsed.status.success(), "{}", String::from_utf8_lossy(&parsed.stderr));
+
+        let exports: Vec<&str> = line.lines().filter(|line| line.starts_with("set -gx")).collect();
+        let echoed = fish(
+            &format!("{}\nprintf '%s' \"$GHOSTTY_SHELL_INTEGRATION_XDG_DIR\"", exports.join("\n")),
+            false,
+        )
+        .expect("fish ran once already");
+        assert_eq!(String::from_utf8_lossy(&echoed.stdout), data);
+    }
 }
