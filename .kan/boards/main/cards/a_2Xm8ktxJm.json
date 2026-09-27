@@ -1,17 +1,17 @@
 {
   "_v": 3,
-  "alias": "show-an-agent",
+  "alias": "an-agent-can-say-it",
   "alias_explicit": false,
   "column": "backlog-hi",
   "created_at_millis": 1790539181584,
   "creator": "Alexander Terp",
-  "description": "amterp (2026-09-27), looking at two workers that read idle in the sidebar while each waited on a background shell it had started (Claude Code shows '1 shell still running' under its prompt and '· 2 shells ·' in its footer): an agent in that state is doing what it should, and Muster should say so rather than show it as having nothing to do.\n\nWhat seems to be wanted: a fact beside the agent state, like the sub-agent count, saying how many background tasks the agent has running, and a sidebar rendering of idle-with-background-work distinct from idle. Worth deciding with it: whether done (finished_unseen, a_2XYi76eVz) should fire when a turn ends with background work still running, since the agent will be woken again when that work finishes, so done at that moment is often premature.\n\nWhere the count could come from, most stable first: a harness report (check Claude Code's hook and statusline documentation for anything that exposes background tasks; do not assume one exists), then the screen (the footer text above, as a detection fact rather than a state rule). Daemon side belongs with a_2XarofkTD (harness-reported state); the sidebar with a_2XQXk8sou (agent facts).",
+  "description": "amterp (2026-09-27): two workers read idle in the sidebar while each waited on a gate it had started in the background. An agent in that state is doing what it should, and Muster should say so.\n\nA background-task count cannot tell this apart from an agent that left a dev server running and is finished: both show '1 shell still running' in Claude Code, which treats them the same. Only the agent knows whether it is waiting, so the agent says so (decided with amterp):\n- When an agent ends its turn to wait on something it started, it runs \"$MUSTER_DAEMON\" report with a short waiting fact (for example 'waiting on: full gate'). Report already carries free-form facts that the daemon stores and publishes per pane.\n- The hook that fires when a turn starts (UserPromptSubmit, and whatever else starts a turn) clears it, so a stale 'waiting' cannot outlive the wait.\n- The instruction reaches only Muster panes: a SessionStart hook adds it when $MUSTER_PANE is set, in the same plugin as the state hooks (a_2XarofkTD). Keep it to one short trigger and one line: amterp's concern is added load on the model, and an agent that forgets reads as done, which is today's behavior, so forgetting is harmless.\n- The sidebar shows an idle row with that fact as waiting, with its text, distinct from idle (a_2XQXk8sou). done (finished_unseen, a_2XYi76eVz) holds off while it is set: an agent that declared it is waiting has not finished.\n- Worth recording in the report: how often agents actually declare it in practice.",
   "id": "a_2Xm8ktxJm",
   "parent": "a_2XJ1fUIyr",
   "position": "b04",
-  "title": "Show an agent waiting on its own background work, not idle",
+  "title": "An agent can say it is waiting on its own work, so it does not read idle",
   "type": "feature",
-  "updated_at_millis": 1790539181674,
+  "updated_at_millis": 1790539519784,
   "history": [
     {"field":"column","value":"backlog-hi","at":1790539181584}
   ]
