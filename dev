@@ -506,21 +506,15 @@ fn run_ssh_tier():
     // time it is rebuilt, so pinning its host key would mean editing a file per rebuild.
     options = "-p 2222 -i {key} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 
-    version = pinned_version()
-    cache_root = container_cache(root, version)[1]
     place_muster_daemon()
 
-    // The cache is handed over so that the tier proves the install over ssh and still reaches
-    // nothing itself. `./dev` is the one thing in this repo that downloads anything, and this
-    // keeps it that way.
-    //
     // Spelled out at both call sites rather than built into a variable first: Rad quotes an
     // interpolated value as one shell word, so a variable holding the whole prefix arrives as
     // a command name nothing can run.
     //
     // muster-contract is left out because its ignored tests are the contract tier's: they
     // launch the app, and need a GUI session rather than a container.
-    stdout = $`MUSTER_DEVENV_HOST=dev@localhost MUSTER_DEVENV_SSH_OPTIONS={options} MUSTER_DEVENV_CACHE={cache_root} cargo test --workspace --exclude muster-contract -- --ignored --list`
+    stdout = $`MUSTER_DEVENV_HOST=dev@localhost MUSTER_DEVENV_SSH_OPTIONS={options} cargo test --workspace --exclude muster-contract -- --ignored --list`
     names = stdout.split("\n").filter(fn(line) line.ends_with(": test"))
     if len(names) == 0:
         print_err(red("The remote tier discovered no tests."))
@@ -531,9 +525,9 @@ fn run_ssh_tier():
         exit(1)
     print(dim("{len(names)} remote test(s) discovered"))
 
-    $`MUSTER_DEVENV_HOST=dev@localhost MUSTER_DEVENV_SSH_OPTIONS={options} MUSTER_DEVENV_CACHE={cache_root} cargo test --workspace --exclude muster-contract -- --ignored`
+    $`MUSTER_DEVENV_HOST=dev@localhost MUSTER_DEVENV_SSH_OPTIONS={options} cargo test --workspace --exclude muster-contract -- --ignored`
 
-    run_linux_corpus_diff(root, version)
+    run_linux_corpus_diff(root, pinned_version())
 
     // Said here because this is where it matters and nothing else says it. The container is
     // left up deliberately - a devenv is a thing you keep - but it goes on costing the machine
@@ -600,10 +594,9 @@ fn place_muster_daemon():
         print_err("Check that {binary} was built: ./dev -b cross-builds it.")
         exit(1)
 
-// Not deps/herdr/<version>/herdr - that one is this laptop's, and the container is Linux.
-// Two things want this, and both want it here: the tests want a cache Muster can install
-// from without reaching the network, and the corpus probe wants a binary to put in the
-// container, because it starts a daemon of its own rather than going through Muster.
+// Not deps/herdr/<version>/herdr - that one is this laptop's, and the container is Linux. The
+// corpus probe wants a binary to put in the container, because it starts a daemon of its own
+// rather than going through Muster.
 //
 // Which asset is asked of the container rather than assumed. Docker runs the image for the
 // host's architecture, and a tier that guessed would fail as a binary that will not exec.
@@ -612,15 +605,13 @@ fn container_cache(root, version):
     arch = machine == "arm64" or machine == "aarch64" ? "aarch64" : "x86_64"
     asset = "herdr-linux-{arch}"
 
-    // The layout Muster's own cache uses, because that is what the tests hand to it. Under
-    // deps/ so it survives between runs and is gitignored with everything else there.
-    cache_root = "{root}/deps/herdr-cache"
-    cached = "{cache_root}/herdr/{version}/{asset}/herdr"
+    // Under deps/ so it survives between runs and is gitignored with everything else there.
+    cached = "{root}/deps/herdr-cache/herdr/{version}/{asset}/herdr"
     want = pinned_checksum(asset)
     if not get_path(cached).exists:
         fetch_herdr(version, asset, cached)
     verify_herdr_checksum(want, cached)
-    return [cached, cache_root]
+    return cached
 
 // Replay the recorded scenarios against the container's Linux daemon and diff what it did
 // against what the macOS one did.
@@ -637,7 +628,7 @@ fn container_cache(root, version):
 // check that rewrites its own oracle can only ever pass. Re-recording the checked-in one is a
 // deliberate step, taken when herdr is re-pinned (tools/herdr-probe/probe --remote).
 fn run_linux_corpus_diff(root, version):
-    cached = container_cache(root, version)[0]
+    cached = container_cache(root, version)
     $`./devenv/devenv install-daemon {cached}` catch:
         print_err(red("The pinned Linux herdr could not be put in the devenv container."))
         print_err("Impact: the corpus diff has no daemon to record against, so a herdr")
@@ -1240,13 +1231,12 @@ fn generate_proto():
     $`{bin}/protoc --plugin=protoc-gen-swift={bin}/protoc-gen-swift --swift_out={PROTO_OUT} --proto_path=proto {PROTO}`
     write_file(PROTO_STAMP, proto_hash())
 
-// The herdr pin, read once per call. Two things want pieces of it and a third wants a whole
-// platform's asset, so reading it lives here rather than being inlined at each.
+// The herdr pin, read once per call, for the two things that want pieces of it.
 fn read_herdr_pin():
     pin = read_file(HERDR_PIN) catch:
         print_err(red("{HERDR_PIN} is missing or unreadable."))
-        print_err("It names the herdr release the suite is judged against, so without it no")
-        print_err("daemon-backed test can run. Restore it from git.")
+        print_err("It names the herdr release the Linux corpus diff and --doctor use, so")
+        print_err("neither can run without it. Restore it from git.")
         exit(1)
     parsed = parse_json(pin.content) catch:
         print_err(red("{HERDR_PIN} is not valid JSON, so the pinned herdr cannot be resolved."))
@@ -1261,58 +1251,11 @@ fn pinned_checksum(asset):
     checksums = read_herdr_pin().checksums
     want = checksums[asset] catch:
         print_err(red("{HERDR_PIN} has no checksum for {asset}."))
-        print_err("Impact: that platform has no pinned herdr, so no daemon-backed test can")
-        print_err("run against it and the suite cannot verify the backend adapter or mirror.")
+        print_err("Impact: that platform has no pinned herdr, so the Linux corpus diff cannot")
+        print_err("run against it.")
         print_err("Fix: download the asset, add its sha256 to the pin, and re-run.")
         exit(1)
     return want
-
-// herdr is consumed as a binary rather than as source - it publishes no library target -
-// so the suite reproduces one from a pin instead of asking what happens to be installed.
-//
-// Deliberately not the developer's PATH. herdr ships weekly and a person working on
-// something else wants the latest one; a suite that hijacks that choice makes the two
-// jobs fight. So the pinned binary lives under deps/ like libghostty does, and the herdr
-// on your PATH is never consulted.
-//
-// Returns the path every daemon-backed test should run against.
-fn herdr_binary():
-    version = pinned_version()
-    asset = herdr_asset_name()
-    cached = "{HERDR_DIR}/{version}/herdr"
-
-    // An override for someone bisecting herdr itself or testing an unreleased build. Its
-    // bytes are not the pinned ones, so the version is still checked and the substitution
-    // is announced - a run that quietly used a different daemon would make its own result
-    // unreadable.
-    override = get_env("MUSTER_HERDR")
-    if override != "":
-        check_herdr_version(override, version, "MUSTER_HERDR")
-        print(dim("using MUSTER_HERDR={override} instead of the pinned build"))
-        return get_path(override).full_path
-
-    want = pinned_checksum(asset)
-
-    if not get_path(cached).exists:
-        fetch_herdr(version, asset, cached)
-    verify_herdr_checksum(want, cached)
-    check_herdr_version(cached, version, cached)
-    check_herdr_schema(cached, version)
-    // Absolute, because the tests that read this run from wherever cargo puts them: an
-    // integration test's working directory is its own package root, so a repo-relative
-    // path resolves under crates/<name>/ and every daemon-backed test dies at startup.
-    return get_path(cached).full_path
-
-// The release assets are named for platform, and there is one binary per pair.
-fn herdr_asset_name():
-    // Trimmed, because `uname -s` answers "Darwin\n" and an untrimmed compare makes every
-    // platform look like Linux. The gate died on these two lines once, when they went
-    // through a capture that handed back the exit code rather than the output.
-    os = $`uname -s`.stdout.trim()
-    machine = $`uname -m`.stdout.trim()
-    system = os == "Darwin" ? "macos" : "linux"
-    arch = machine == "arm64" or machine == "aarch64" ? "aarch64" : "x86_64"
-    return "herdr-{system}-{arch}"
 
 fn fetch_herdr(version, asset, cached):
     url = "{HERDR_RELEASES}/v{version}/{asset}"
@@ -1325,8 +1268,7 @@ fn fetch_herdr(version, asset, cached):
     // -f so an HTML error page never lands on disk looking like a binary.
     stdout, stderr, code = $`curl -fsSL -o {cached}.part {url}` catch:
         print_err(red("could not download herdr {version} from {url}"))
-        print_err("Impact: no daemon-backed test can run, so the suite cannot verify the")
-        print_err("backend adapter, the mirror, or the input path.")
+        print_err("Impact: the Linux corpus diff has no daemon to put in the container.")
         print_err("This is the one step that needs the network; everything after it is")
         print_err("offline. Check connectivity, or place the binary at {cached} yourself.")
         print_err(stderr.trim())
@@ -1342,49 +1284,10 @@ fn verify_herdr_checksum(want, cached):
         print_err(red("{cached} is not the herdr this repo pins."))
         print_err("  expected {want}")
         print_err("  found    {found}")
-        print_err("Impact: the corpus was recorded against the pinned bytes, so tests would")
-        print_err("be judging a different daemon than the one their oracles came from.")
+        print_err("Impact: the corpus was recorded against the pinned bytes, so the diff would")
+        print_err("be judging a different daemon than the one its oracles came from.")
         print_err("Fix: delete {cached} and re-run to fetch it again.")
         exit(1)
-
-fn check_herdr_version(binary, want, label):
-    stdout, stderr, code = $`{binary} --version` catch:
-        print_err(red("{label} would not run, so no daemon-backed test can."))
-        print_err("Impact: the suite cannot verify the backend adapter, the mirror, or the")
-        print_err("input path - the layers most likely to break.")
-        print_err(stderr.trim())
-        exit(1)
-    found = stdout.trim().split(" ")[-1]
-    if found != want:
-        print_err(red("herdr {want} is required; {label} is {found}."))
-        print_err("Impact: herdr's API is explicitly unstable, so a different daemon answers")
-        print_err("differently and the suite would be judging the wrong contract.")
-        print_err("Fix: unset MUSTER_HERDR to use the pinned build, or re-pin deliberately -")
-        print_err("change {HERDR_PIN}, re-record with tools/herdr-probe/probe, read what moved.")
-        exit(1)
-
-// herdr generates this from its own request types and fails its own build when the two
-// disagree, so it is the daemon's account of its wire rather than ours. Comparing it costs
-// a subprocess and catches a whole class of drift before any test runs.
-fn check_herdr_schema(binary, version):
-    recorded_path = "corpus/herdr-{version}/api-schema.json"
-    recorded = read_file(recorded_path) catch:
-        print_err(red("{recorded_path} is missing, so nothing pins herdr's wire format."))
-        print_err("Impact: a daemon that changed its API would be discovered by a confusing")
-        print_err("test failure rather than by a diff naming the method that moved.")
-        print_err("Fix: {binary} api schema --json > {recorded_path}")
-        exit(1)
-    reported = $`{binary} api schema --json`.stdout.trim()
-    if reported != recorded.content.trim():
-        print_err(red("herdr {version} reports a different API schema than the one recorded."))
-        print_err("Impact: this daemon's wire is not the wire the corpus was recorded")
-        print_err("against, so passing tests would prove less than they appear to.")
-        print_err("Look at what moved - the schema is one JSON object per method:")
-        print_err("  {binary} api schema --json | diff {recorded_path} -")
-        print_err("If the change is real and wanted, re-record the corpus in the same")
-        print_err("commit so the two never disagree.")
-        exit(1)
-    print(dim("herdr {version} verified, schema unchanged"))
 
 fn read_pin():
     result = read_file("deps/ghostty.pin") catch:
