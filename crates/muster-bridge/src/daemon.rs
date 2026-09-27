@@ -106,7 +106,7 @@ pub(crate) fn run(arguments: &Arguments) -> ! {
         ),
         Happened::CaughtUp(bytes) => log::info("bridge.caught_up", fields! { "bytes" => bytes }),
     });
-    match ended {
+    match &ended {
         Ended::Detached(reason) => {
             log::info("bridge.detached", fields! { "reason" => reason.as_str_name() });
         }
@@ -119,7 +119,16 @@ pub(crate) fn run(arguments: &Arguments) -> ! {
             },
         ),
     }
-    std::process::exit(0);
+    std::process::exit(exit_status(&ended));
+}
+
+/// A stream that broke is a failure, like an attach that never happened. The daemon letting
+/// the pane go, for any reason, and hanging up are how a bridge is meant to end.
+fn exit_status(ended: &Ended) -> i32 {
+    match ended {
+        Ended::Detached(_) | Ended::HungUp => 0,
+        Ended::Failed(_) => 1,
+    }
 }
 
 /// The surface's grid, from the PTY libghostty sized for it.
@@ -170,5 +179,15 @@ mod tests {
         assert!(parse(&["p1", "--daemon-socket", "/s", "--control-socket", "/c"]).is_none());
         assert!(parse(&["p1", "--daemon-socket"]).is_none(), "a socket names a path");
         assert!(parse(&["--daemon-socket", "/s"]).is_none(), "a pane comes first");
+    }
+
+    #[test]
+    fn only_a_broken_stream_exits_as_a_failure() {
+        use muster_daemon_proto::DetachReason;
+        assert_eq!(exit_status(&Ended::Failed("reading p1's stream: reset".into())), 1);
+        assert_eq!(exit_status(&Ended::HungUp), 0);
+        for reason in [DetachReason::Closed, DetachReason::Exited, DetachReason::TakenOver] {
+            assert_eq!(exit_status(&Ended::Detached(reason)), 0, "{reason:?}");
+        }
     }
 }
