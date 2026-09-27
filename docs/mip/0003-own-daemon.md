@@ -242,7 +242,8 @@ what did not come back. The app waits for that before it decides a tab of its gr
 gone or makes a pane under a saved name, since a name a client takes first is not restored.
 Nothing is written until every saved tab is back, so a crash or a stop while restoring loses
 nothing. A directory that no longer exists starts its pane's shell at home, as does one that has
-not said whether it exists within two seconds, such as one on a hung mount, and a shell that will
+not said whether it exists within two seconds, such as one on a hung mount - every saved directory
+is asked at once, so any number of them on a hung mount cost those two seconds once - and a shell that will
 not start - one uninstalled since the last run, a directory it may not enter - is tried again as
 the default shell, in the same directory and then at home. What still does not come back, the next
 write leaves out, so the file as it was is first copied to `<file>.unrestored-<seconds>` and the

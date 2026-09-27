@@ -194,12 +194,20 @@ pub(crate) fn move_aside(path: &Path) -> std::io::Result<PathBuf> {
 /// will leave the rest out.
 pub(crate) fn keep_aside(path: &Path) -> std::io::Result<PathBuf> {
     let aside = aside(path, "unrestored");
-    // Copied under another name and renamed, so no copy is ever found half written.
+    copy_as(path, &aside)?;
+    Ok(aside)
+}
+
+/// Copies `path` to `copy` under another name first and renames it, so no copy is ever found
+/// half written, and none is left behind when either step fails.
+fn copy_as(path: &Path, copy: &Path) -> std::io::Result<()> {
     let mut copying = path.as_os_str().to_owned();
     copying.push(".copying");
-    std::fs::copy(path, &copying)?;
-    std::fs::rename(&copying, &aside)?;
-    Ok(aside)
+    let copied = std::fs::copy(path, &copying).and_then(|_| std::fs::rename(&copying, copy));
+    if copied.is_err() {
+        let _ = std::fs::remove_file(&copying);
+    }
+    copied
 }
 
 fn aside(path: &Path, why: &str) -> PathBuf {
@@ -677,6 +685,20 @@ mod tests {
 
     /// While saved tabs are coming back the session holds less than the file, so a change
     /// long overdue writes nothing until restoring ends, and then writes at once.
+    #[test]
+    fn a_copy_that_fails_leaves_nothing_half_written() {
+        let dir = std::env::temp_dir().join(format!("muster-copy-as-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("in-the-way")).unwrap();
+        std::fs::write(dir.join("in-the-way").join("file"), "").unwrap();
+        let file = dir.join("state.json");
+        std::fs::write(&file, "{}").unwrap();
+
+        assert!(copy_as(&file, &dir.join("in-the-way")).is_err());
+        assert!(!dir.join("state.json.copying").exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn a_pause_says_so_when_a_write_under_way_does_not_finish() {
         let persister = Persister::new(PathBuf::from("/nonexistent/state.json"), false);

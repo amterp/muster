@@ -533,12 +533,12 @@ impl Restoring {
     /// may not enter - is tried again as the default shell, in the same directory and then at
     /// home, so a setting that went bad between runs costs neither the panes nor where they
     /// start, and a directory that did costs only where they start.
-    fn start(&self) -> Vec<Restarted> {
+    fn start(&self, directories: &HashMap<PathBuf, Option<bool>>) -> Vec<Restarted> {
         self.panes
             .iter()
             .map(|pane| {
                 let saved = &pane.saved.cwd;
-                let cwd = match is_dir_within(saved, DIRECTORY_PATIENCE, Path::is_dir) {
+                let cwd = match directories.get(saved).copied().flatten() {
                     Some(true) => saved.clone(),
                     Some(false) => {
                         log::warn(
@@ -598,23 +598,38 @@ impl Restoring {
 /// mount that has hung never answers, and would otherwise hold every tab after it back.
 const DIRECTORY_PATIENCE: std::time::Duration = std::time::Duration::from_secs(2);
 
-/// Whether `path` is a directory, asked by `probe` on a thread of its own so a hung mount costs
-/// `within` rather than the restore. None when it did not answer in time; the thread is left
-/// waiting, one per such directory.
-fn is_dir_within(
-    path: &Path,
+/// Whether each of `paths` is a directory, asked by `probe` on a thread per path, all at once
+/// and given `within` between them: N panes on a hung mount cost `within`, not N times it. None
+/// for a path that did not answer in time; its thread is left waiting, one per such directory.
+fn probe_directories(
+    paths: impl IntoIterator<Item = PathBuf>,
     within: std::time::Duration,
     probe: fn(&Path) -> bool,
-) -> Option<bool> {
+) -> HashMap<PathBuf, Option<bool>> {
+    let deadline = std::time::Instant::now() + within;
     let (answer, answered) = std::sync::mpsc::channel();
-    let path = path.to_path_buf();
-    std::thread::Builder::new()
-        .name("probe directory".to_string())
-        .spawn(move || {
-            let _ = answer.send(probe(&path));
-        })
-        .ok()?;
-    answered.recv_timeout(within).ok()
+    let mut found = HashMap::new();
+    let mut waiting = 0;
+    for path in paths {
+        if found.contains_key(&path) {
+            continue;
+        }
+        found.insert(path.clone(), None);
+        let answer = answer.clone();
+        let spawned =
+            std::thread::Builder::new().name("probe directory".to_string()).spawn(move || {
+                let is_dir = probe(&path);
+                let _ = answer.send((path, is_dir));
+            });
+        waiting += usize::from(spawned.is_ok());
+    }
+    while waiting > 0 {
+        let left = deadline.saturating_duration_since(std::time::Instant::now());
+        let Ok((path, is_dir)) = answered.recv_timeout(left) else { break };
+        found.insert(path, Some(is_dir));
+        waiting -= 1;
+    }
+    found
 }
 
 fn start_launched((argv, environment): &Launched, cwd: &Path, grid: Grid) -> Restarted {
@@ -649,13 +664,20 @@ pub(crate) fn restore(shared: &Shared, state: persist::State) {
         .iter()
         .map(|tab| (tab.name.clone(), tab.root.panes().into_iter().map(str::to_string).collect()))
         .collect();
+    // Every directory asked about up front, together: a hung mount then costs the restore one
+    // wait rather than one per pane in it.
+    let directories = probe_directories(
+        saved.values().map(|pane| pane.cwd.clone()),
+        DIRECTORY_PATIENCE,
+        Path::is_dir,
+    );
     let mut lost = Lost::default();
     let mut done = 0;
     let finished = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         for tab in state.tabs {
             let restoring = shared.lock().prepare_restore(tab, &saved, &mut lost);
             if let Some(restoring) = restoring {
-                let started = restoring.start();
+                let started = restoring.start(&directories);
                 shared.lock().restored(restoring, started, &mut lost);
             }
             done += 1;
@@ -2146,20 +2168,30 @@ mod tests {
     }
 
     /// A directory on a hung mount never answers whether it is there, and restoring must not
-    /// wait on it: the pane starts at home instead.
+    /// wait on it: the pane starts at home instead. Several of them cost one wait, not one each.
     #[test]
-    fn a_directory_that_does_not_answer_is_given_up_on() {
+    fn directories_that_do_not_answer_are_given_up_on_together() {
         let hung = |_: &Path| {
             std::thread::sleep(std::time::Duration::from_secs(30));
             true
         };
         let asked = std::time::Instant::now();
-        let patience = std::time::Duration::from_millis(50);
-        assert_eq!(is_dir_within(Path::new("/"), patience, hung), None);
-        assert!(asked.elapsed() < std::time::Duration::from_secs(5));
-        assert_eq!(is_dir_within(Path::new("/"), DIRECTORY_PATIENCE, Path::is_dir), Some(true));
-        let gone = Path::new("/nonexistent/directory");
-        assert_eq!(is_dir_within(gone, DIRECTORY_PATIENCE, Path::is_dir), Some(false));
+        let patience = std::time::Duration::from_millis(500);
+        let paths = (0..5).map(|n| PathBuf::from(format!("/hung/{n}")));
+        let found = probe_directories(paths, patience, hung);
+        assert_eq!(found.len(), 5);
+        assert!(found.values().all(Option::is_none));
+        assert!(asked.elapsed() < patience * 2, "{:?} for five", asked.elapsed());
+
+        let gone = PathBuf::from("/nonexistent/directory");
+        let found = probe_directories(
+            [PathBuf::from("/"), gone.clone(), PathBuf::from("/")],
+            DIRECTORY_PATIENCE,
+            Path::is_dir,
+        );
+        assert_eq!(found.len(), 2);
+        assert_eq!(found[Path::new("/")], Some(true));
+        assert_eq!(found[&gone], Some(false));
     }
 
     fn replace_request() -> Service {
