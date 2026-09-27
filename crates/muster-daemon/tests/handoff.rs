@@ -372,3 +372,26 @@ fn a_stop_signal_during_a_handoff_that_fails_stops_the_daemon_after_it() {
         until_some("the pane's shell to end", || process_state(pid).is_empty().then_some(()));
     }
 }
+
+/// A new daemon whose predecessor dies after the commit keeps serving: it holds every pane by
+/// then, and nothing but it could.
+#[test]
+fn a_new_daemon_keeps_serving_when_the_old_one_dies_after_the_commit() {
+    let mut daemon = daemon_with(&[("MUSTER_DAEMON_HANDOFF_FAULT", "pause-before-serving")]);
+    let (mut control, _input) = two_panes(&daemon);
+    let pids = pids_of_both(&mut control);
+    let old = daemon.pid();
+
+    let replacing = daemon.start_replacing(None);
+    let new = daemon.paused();
+    // SAFETY: kill signals one process this test started.
+    unsafe { libc::kill(old.cast_signed(), libc::SIGKILL) };
+    let answer = daemon.finish_replacing(replacing);
+    assert_ne!(answer.outcome(), proto::Outcome::Done);
+    daemon.served_by(new);
+    daemon.resume();
+
+    let welcomed = daemon.connect().welcome().pid;
+    assert_eq!(welcomed.cast_signed(), new, "the new daemon serves");
+    the_same_shells_answer(&daemon, &pids, "after the old daemon died");
+}

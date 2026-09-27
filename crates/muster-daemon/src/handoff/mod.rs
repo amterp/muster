@@ -403,7 +403,21 @@ pub(crate) fn take_over(
     if faults.has("exit-after-commit") {
         std::process::exit(1);
     }
-    send(&mut link, handoff::Message::Serving(handoff::Serving {}))?;
+    // This daemon holds every pane from the commit on, so a daemon handing over that has gone
+    // since is no reason to stop: exiting now would hang up every pane with nobody to take them.
+    if let Err(why) = send(&mut link, handoff::Message::Serving(handoff::Serving {})) {
+        log::warn(
+            "daemon.handoff.unconfirmed",
+            fields! {
+                "from_pid" => offer.pid,
+                "error" => why,
+                "impact" => "none for the panes: this daemon serves every one of them; the \
+                             request that asked for the handoff was not answered",
+                "check" => "how the daemon handing over ended, on its stderr, since it went away \
+                            between committing and exiting on its own",
+            },
+        );
+    }
     log::info(
         "daemon.handoff.serving",
         fields! {

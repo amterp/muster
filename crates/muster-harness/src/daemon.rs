@@ -253,11 +253,25 @@ impl Daemon {
         };
         let mut control = self.connect();
         Replacing(std::thread::spawn(move || {
-            control
-                .ask(Service::Session(proto::SessionRequest {
-                    request: Some(session_request::Request::Replace(replace)),
-                }))
-                .answer
+            let id = control.send(Service::Session(proto::SessionRequest {
+                request: Some(session_request::Request::Replace(replace)),
+            }));
+            // A daemon killed mid-handoff hangs up rather than answering, which a test of that
+            // expects.
+            loop {
+                match control.next_message(PATIENCE) {
+                    Some(proto::control_message::Message::Answer(answer)) if answer.id == id => {
+                        return answer;
+                    }
+                    Some(_) => {}
+                    None => {
+                        return proto::Answer {
+                            reason: "the daemon hung up without answering".to_string(),
+                            ..proto::Answer::default()
+                        };
+                    }
+                }
+            }
         }))
     }
 
