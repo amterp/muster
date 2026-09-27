@@ -13,6 +13,7 @@
 //! renders every attached client whether or not anybody can see it.
 
 mod attachment;
+mod daemon;
 mod pty;
 mod tally;
 
@@ -66,14 +67,31 @@ only when re-attaching a pane it was already showing, never on a first attach.
 
 With --pane-name, knows what Muster calls this pane, which is not <pane-id>: that is the
 daemon's id. Only used in what this prints for a person, whose `muster` commands take
-Muster's name.";
+Muster's name.
+
+       muster-bridge <pane> --daemon-socket <path> [--takeover]
+
+Draws the pane Muster calls <pane> from the muster-daemon listening on <path> instead
+(MIP-3): its replay and then the program's own bytes onto stdout, acknowledging what it
+wrote, and the surface's grid and pixels back to the daemon on every resize. What the
+surface writes to stdin is read and discarded, since the daemon is the only writer to a
+pane. Takes no other flag. The app does not start bridges this way yet; ./dev --latency
+does.";
 
 /// herdr's stdin, which two threads write to - the resize watcher and the app's relay - and
 /// which is not there at all while the pane is parked.
 type HerdrInput = Arc<Attachment>;
 
 fn main() {
-    let Some(arguments) = Arguments::parse(&std::env::args().skip(1).collect::<Vec<_>>()) else {
+    let arguments: Vec<String> = std::env::args().skip(1).collect();
+    if arguments.iter().any(|argument| argument == "--daemon-socket") {
+        let Some(arguments) = daemon::Arguments::parse(&arguments) else {
+            eprintln!("{USAGE}");
+            std::process::exit(2);
+        };
+        daemon::run(&arguments);
+    }
+    let Some(arguments) = Arguments::parse(&arguments) else {
         eprintln!("{USAGE}");
         std::process::exit(2);
     };

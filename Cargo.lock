@@ -589,6 +589,8 @@ dependencies = [
  "herdr-harness",
  "libc",
  "muster-core",
+ "muster-daemon-client",
+ "muster-daemon-proto",
  "muster-herdr",
  "muster-seam",
  "muster-ssh",

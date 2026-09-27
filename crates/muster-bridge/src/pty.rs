@@ -7,16 +7,31 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 /// This is why resize needs no channel of its own: libghostty sizes the PTY from the
 /// surface's pixels and font metrics, so asking the PTY is asking the surface.
 pub(crate) fn terminal_size() -> (u16, u16) {
+    let size = window_size();
+    (size.ws_col, size.ws_row)
+}
+
+/// The surface's grid with the pixels it covers, which libghostty sets on the PTY too. 80x24 and
+/// no pixels when the PTY does not say, as for a bridge run by hand on a pipe.
+pub(crate) fn window_size() -> libc::winsize {
     let mut size = libc::winsize { ws_row: 0, ws_col: 0, ws_xpixel: 0, ws_ypixel: 0 };
     // SAFETY: TIOCGWINSZ writes a winsize we own, and writes nothing when it fails.
     let queried = unsafe { libc::ioctl(libc::STDOUT_FILENO, libc::TIOCGWINSZ, &raw mut size) };
-    if queried != 0 || size.ws_col == 0 { (80, 24) } else { (size.ws_col, size.ws_row) }
+    if queried != 0 || size.ws_col == 0 {
+        libc::winsize { ws_row: 24, ws_col: 80, ws_xpixel: 0, ws_ypixel: 0 }
+    } else {
+        size
+    }
 }
 
-/// Stops the line discipline echoing what libghostty writes to our stdin.
+/// Stops the line discipline echoing what libghostty writes to our stdin, and translating what
+/// we write to stdout.
 ///
-/// Nothing reads stdin - input takes the control plane - but without this the discipline
-/// would echo and buffer whatever arrives there, painting over the frames just rendered.
+/// Without it the discipline would echo and buffer whatever arrives on stdin, painting over what
+/// was just drawn. Raw mode also clears output processing on the one terminal stdin and stdout
+/// share, so a bare line feed a full-screen program wrote reaches the surface as itself rather
+/// than as a carriage return and a line feed; drawing from muster-daemon, whose bytes are the
+/// program's own, depends on that.
 pub(crate) fn make_stdin_raw() {
     // SAFETY: both calls take a termios we own, and a failure leaves it unchanged.
     unsafe {
