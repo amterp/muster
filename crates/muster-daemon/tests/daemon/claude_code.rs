@@ -62,11 +62,14 @@ fn a_daemon_that_never_answers_never_holds_the_statusline_up() {
         "the wrapped command gets Claude Code's input byte for byte"
     );
     assert!(took < Duration::from_secs(1), "the statusline took {took:?}");
-    let deadline = Instant::now() + Duration::from_secs(5);
-    while !reported.exists() {
-        assert!(Instant::now() < deadline, "the report never ran, so this proved nothing");
-        std::thread::sleep(Duration::from_millis(10));
-    }
+    // A minute, because the fake daemon is a file macOS has never run, and it holds a new
+    // executable's first run while it scans it: 23 s has been measured on a loaded machine.
+    muster_harness::until_within(
+        "the report to run, without which this proved nothing",
+        Duration::from_mins(1),
+        || reported.exists(),
+        || format!("{} was never touched", reported.display()),
+    );
 }
 
 const HOOKS: &str =
