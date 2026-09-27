@@ -260,25 +260,51 @@ screen shows an empty main screen when the program exits.
 
 The replay is, in order:
 
-1. a reset;
-2. the main screen and its history, formatted with modes, tabstops and palette off and soft wraps
-   unwrapped, followed by enough newlines that the active area lines up with the original;
-3. if the alternate screen is active, the switch to it and its content;
-4. terminal modes, scrolling region, tabstops (followed by a carriage return), charsets, the
-   current style and hyperlink;
-5. only the palette entries and OSC 10/11/12 colors a program changed from their defaults;
-6. the cursor position, last.
+1. a reset, then grapheme clustering (mode 2027) as the original has it, since it decides
+   where every later cell lands;
+2. the primary screen and its history, always, with soft wraps unwrapped and down to its last
+   row, blank rows included, so the receiver's history holds the same number of rows. While
+   the alternate screen is active, the primary screen's cursor and pen come with it, because
+   entering the alternate screen saved them and leaving it restores them;
+3. if the alternate screen is active, the mode the program entered it with (1049, 1047 or
+   47), the cursor home, and its content;
+4. every terminal mode stated outright, after the content so insert mode and wrapping off do
+   not apply to it; stated rather than diffed, because the defaults that matter are the
+   receiver's. Left out: the screen switches, already made in step 3; 1048, which saves the
+   cursor rather than holding a state; DECCOLM, which resizes; synchronized output, which would
+   freeze the receiver; and origin mode, which comes in step 5;
+5. tabstops, the scrolling region and modifyOtherKeys, then origin mode, which is relative to
+   that region;
+6. only the palette entries and OSC 10/11/12 colors a program changed, then the title and the
+   directory;
+7. the cursor, relative to the region under origin mode, re-printing its cell when it is
+   waiting to wrap, since no position sequence leaves it waiting;
+8. the pen: style, hyperlink, protection, kitty keyboard flags and charsets, last, because the
+   re-printed cell carries its own style.
+
+The primary screen while the alternate is active, and state without content, need two
+formatters the pinned C API does not expose, although the Zig formatter has both
+(`formatter.zig:301-304` asks for them). Muster carries them as a patch on the pin,
+`deps/ghostty-patches/0001`, for good and not for upstream: it only adds C API and changes
+nothing that exists, and stays small so that a re-pin rebases it. The snapshot API was the
+alternative, and reaches the primary screen but still cannot emit state without content.
+
+Five things are not replayed, and the oracle pins each as its exact difference so a fix shows
+up as a failing case: OSC 8 links on text already written (the formatter writes them for HTML
+only), per-cell DECSCA protection, a row painted with a background and no text, the kitty
+keyboard stack beneath its current flags, and a cursor saved with DECSC. Carrying the first
+three would change the formatter's existing output, which the patch does not do; the last two
+are not readable at all. The first three last until the program redraws those cells, the other
+two until it next pushes kitty flags or saves the cursor.
+`docs/observations/libghostty-9f9b8d1d.md` section 14 has the evidence.
 
 The daemon registers the bridge at the recorded stream offset while holding the pane's lock, so
-no byte between the replay and the live stream is lost or sent twice. When formatting a long
-history would hold the lock too long, the daemon copies the terminal under the lock and formats
-the copy outside it.
-
-Step 2 needs the main screen while the alternate one is active, which the pinned C API cannot
-format. The first task of the replay spike is to pick the route: a field on the formatter's C
-options selecting the screen (the Zig formatter already supports it, and an upstream comment asks
-for it), sent upstream and carried as a patch on the pin until it lands; or a detour through the
-snapshot API. The spike also measures what a replay of deep history costs.
+no byte between the replay and the live stream is lost or sent twice, and it formats the replay
+under that lock. Measured on one pane, composing costs about 0.2 µs per 80-column row, and
+parsing it in a fresh headless terminal, standing in for the surface, about the same: 3 ms each for 10,000 rows, 30 ms each for 100,000, twice that
+at 200 columns. The lock stalls only the pane being attached, whose surface is waiting for the
+replay anyway, so no copy of the terminal is taken, and history is not capped: the pane's
+scrollback limit already bounds it.
 
 ### 6. Input
 
@@ -434,7 +460,9 @@ run old daemons for weeks. So replacing a daemon hands its panes to the new one:
 1. the old daemon starts the new one and passes each pane's PTY master over `SCM_RIGHTS`, with the
    pane's persisted fields and a replay of its headless terminal;
 2. the new daemon rebuilds each headless terminal by parsing the replay, takes over the socket, and
-   tells the old one to exit.
+   tells the old one to exit. It parses with no effect handler attached, because a replay can
+   provoke a reply of its own - setting mode 2033 sends a visibility report - and nothing the
+   replay provokes belongs on the pane's input.
 
 A replay rather than libghostty-vt's snapshot format carries the terminal, because a VT stream
 means the same thing to both libghostty versions and the snapshot format has no compatibility
@@ -455,10 +483,11 @@ PTY closing rather than from `waitpid`.
   state out. No PTY, no socket.
 - `muster-vt`: gains `Send` for its terminal, the formatter (VT and plain text), mode and kitty
   keyboard reads, scrollback limits, the write-back callback for query answers, the effect
-  callbacks, the encoders configured from a terminal, and a plain-text screen read that does not
-  cost three FFI calls per cell. The daemon links libghostty-vt statically; nothing in the app
-  process does, because a static libghostty-vt collides with GhosttyKit there
-  (`docs/observations/libghostty-9f9b8d1d.md` section 8).
+  callbacks, the encoders configured from a terminal, a plain-text screen read that does not
+  cost three FFI calls per cell, and the replay. The daemon links libghostty-vt statically, by
+  building with `MUSTER_VT_LINK=static`; nothing in the app process does, because a static
+  libghostty-vt collides with GhosttyKit there (`docs/observations/libghostty-9f9b8d1d.md`
+  section 8).
 
 **The backend seam survives, with one implementation.** `muster-core` keeps its backend-neutral
 traits (`BackendChannel`, `PaneChannel` and the event vocabulary), reshaped to the new protocol's
@@ -501,12 +530,15 @@ recording would be an oracle the code rewrites for itself. What stays external:
   new daemon for every behavior Muster keeps, and every difference is recorded in the corpus with
   its reason, never removed by editing the recording to match.
 
-**The replay has its own oracle.** Feed recorded bytes to terminal A, replay A into terminal B, and
-compare grids, cursors, modes, and what happens when both receive the same bytes afterwards. The
+**The replay has its own oracle**, `crates/muster-vt/tests/replay.rs` over
+`corpus/conformance/replay.json`. Feed a case's bytes to terminal A, replay A into terminal B,
+and compare everything either can be asked - every row with its styles, links, protection and
+wraps, the cursor, every mode, the colors - then feed both the same bytes and compare again. The
 cases include, by name: the alternate screen and then its exit; trailing blank rows below history;
 insert mode, autowrap off and origin mode; custom tabstops; an untouched palette and then a theme
-switch; a program that set OSC 11; a wide character at the last column of a soft-wrapped row. The
-formatter probe written for this MIP is the first fixture.
+switch; a program that set OSC 11; a wide character at the last column of a soft-wrapped row;
+kitty keyboard flags on both screens. The gaps section 5 lists are cases too, each expecting its
+exact difference.
 
 **The headless terminal is fuzzed** with recorded pane output. It parses every pane's untrusted
 output in one process, so a crash in it ends every agent on the machine; the optimize mode it is
@@ -522,7 +554,7 @@ herdr's. The targets, at one pane and at fifteen:
 | input-to-glyph, p95 | within 1 ms of the bare PTY, with no second mode |
 | bytes on the stream per echoed byte | 1, plus framing |
 | keystroke echo on one remote pane while another remote pane floods | within 1 ms of the same echo with no flood, plus network time |
-| attach to a painted replay, full screen and 10,000 rows of history | measured by the replay spike, then set |
+| attach to a painted replay, full screen and 10,000 rows of history at 200 columns | within 20 ms; composing and parsing measure 10 ms together headless |
 
 The tier also gains a flood case: a pane running `cat` on a large file, attached to a bridge that
 reads slowly.
@@ -722,10 +754,10 @@ first.
 
 ## Open Questions
 
-- **Which route to the main screen while the alternate one is active**: an upstream formatter field,
-  carried as a patch until it lands, or the snapshot detour. The replay spike decides it first.
-- **What a replay of deep history costs.** Fifteen panes attaching at launch, each with megabytes of
-  history, may need history capped or streamed after the screen.
+- **Whether a remote attach should replay less history than the pane holds.** A replay is
+  about 2 MB per 10,000 rows at 200 columns, so fifteen deep panes attaching over a slow link
+  wait on bandwidth rather than CPU. Locally there is nothing to cap (section 5). The ssh tier
+  measures it once a daemon exists.
 - **Size of a detached pane.** It keeps its last size (`a_29ryxUDCY`). Whether a pane should grow to
   a default when nothing is attached is undecided.
 - **`TERM_PROGRAM`.** Programs key features on it. Whether a pane should claim `ghostty`, whose
@@ -753,3 +785,6 @@ first.
 ## History
 - 2026-09-26 Draft, from four research passes over Muster, herdr v0.8.0 and the pinned libghostty,
   a prose review, and a design review that probed the pinned formatter.
+- 2026-09-26 The replay spike: the route to the primary screen is a patch Muster carries on the
+  pin, the replay's order and gaps are as section 5 states, the attach target is set, and
+  history is not capped.

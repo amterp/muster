@@ -462,3 +462,76 @@ pty - prints two rows of known words, and reads back what each drive selected: a
 column, a word for the same column one row down, the whole line for the same cell twice, and a
 word again after the interval expires. The rest is source, at the lines named above, in
 `deps/ghostty` at the commit `deps/ghostty.pin` names.
+
+## 14. The formatter is not a replay, and a terminal's state is not all readable
+
+Probed 2026-09-26 for MIP-3's replay (`docs/mip/0003-own-daemon.md`, section 5): feed bytes
+to one libghostty-vt terminal, replay it into a fresh one, and compare everything either can
+be asked. The comparison is now a permanent test, `crates/muster-vt/tests/replay.rs` over
+`corpus/conformance/replay.json`, so each finding below is also a named case.
+
+**The C formatter reaches only the active screen, and never emits state without content.**
+`ghostty_formatter_terminal_new` formats "a terminal's active screen" (`formatter.h:120` at
+the pin) and builds its screen formatter from `screens.active` (`formatter.zig:483`). Its
+content is the whole screen or a selection; the Zig formatter's `Content.none` is not
+exposed. Tabstops, the scrolling region, charsets and the pen have no
+`ghostty_terminal_get` query either. So through the pinned C API a pane attached while a
+program holds the alternate screen replays with an empty primary screen, and terminal state
+can only be had wrapped around a second copy of the content. `formatter.zig:301-304` names
+the fix: a no-content terminal formatter followed by screen formatters. Upstream `main` had
+neither on 2026-09-26. Muster carries it as `deps/ghostty-patches/0001`, additive C API only.
+
+**Its all-in-one output replays wrong in five ways**, each measured:
+
+- Palette, modes and tabstops come before the content (`formatter.zig:359`, `:408`, `:446`),
+  so content replays in whatever insert and wrap modes the program left, and origin mode
+  offsets it.
+- Tabstops are set by moving the cursor (`CSI n G`, then HTS) and never moving it back, so
+  replayed content starts at the last tabstop: column 17 with the defaults.
+- The scrolling region (DECSTBM, `:496`) is emitted after the cursor position (`:778`), and
+  DECSTBM homes the cursor. The position is absolute (`CSI y;x H`) even under origin mode.
+- Trailing blank rows are always dropped (`:93`), while the cursor is restored absolutely,
+  so after `clear` with history above, typing lands on a history row.
+- The palette extra writes all 256 entries as OSC 4, 5.5 KB for a pane nobody recolored,
+  and each becomes an override that stops following the app's theme.
+
+**What no formatter output carries, patched or not:**
+
+- OSC 8 on text already written. The content formatter emits hyperlinks for HTML only,
+  and says so (`formatter.zig:1435`). Links in replayed scrollback stop being clickable.
+- Per-cell DECSCA protection. Only the pen's protection is emitted.
+- A row with a background and no text. A row is blank when no cell has text
+  (`formatter.zig:1180`), whatever its colors, so an empty painted band replays unpainted.
+  Painted cells after text on a row do come out, as spaces in that background.
+- The kitty keyboard stack. The extra writes the current flags as a set (`CSI = n ; 1 u`,
+  `:727`), not the pushes that made them.
+- A cursor saved with DECSC. The cursor `?1049h` saves on entry is reproducible by setting
+  the primary screen's cursor before entering; one saved explicitly is not readable.
+
+**State that is per screen.** Each screen has its own cursor, pen and kitty keyboard flags:
+flags pushed on the primary screen read as 0 while the alternate one is active. Entering the
+alternate screen keeps the primary's cursor column, so content written straight after
+`?1049h` does not start at column 0.
+
+**Two defaults an embedder has to know.** Scrollback defaults to about 1,065 rows at 80
+columns, and `SCROLLBACK_MAX_BYTES` prunes in pages of about 400 KB, so a limit under that
+does nothing. And a query libghostty-vt leaves to its embedder is silence when no callback
+is set: device attributes return early (`stream_terminal.zig:541-542`), and a program that
+fences on DA1 before drawing waits forever.
+
+**DEC mode 2027 written as a sequence does not survive RIS.** Writing `CSI ? 2027 h` at
+creation sets the mode but not its reset default, so the first `reset` a program runs turns
+grapheme clustering off here while a surface configured for it keeps it on.
+`GHOSTTY_TERMINAL_OPT_MODE_DEFAULT` sets both.
+
+**What a replay costs.** Headless, release build, one pane, a machine at load average 40:
+
+| columns | history rows | compose | parse | bytes |
+|---|---|---|---|---|
+| 80 | 10,000 | 2.8 ms | 3.2 ms | 1.0 MB |
+| 80 | 100,000 | 27.6 ms | 32.3 ms | 9.5 MB |
+| 200 | 10,000 | 5.0 ms | 4.7 ms | 2.2 MB |
+| 200 | 100,000 | 59.1 ms | 51.4 ms | 21.5 MB |
+
+Linear in rows, about 0.2 µs per 80-column row to compose and the same to parse
+(`vt.replay_compose` and `vt.replay_parse` in `crates/muster-perf`).
