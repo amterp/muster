@@ -11,29 +11,43 @@ import Foundation
 /// which defaults to 256 soft against an effectively unlimited hard - so this only bites once
 /// there is a bundle to double-click, and it bites as a pane that silently never opens.
 ///
-/// A full window is closer to that 256 than it looks. Each agent watcher costs two
-/// descriptors rather than one, because herdr's `watch()` clones the stream so the watcher
-/// can shut itself down (`docs/observations/herdr-0.8.0.md`, section 11) - so fifteen panes on
-/// each of two daemons is 60 before the structure subscription per daemon, the control socket
-/// per pane in a tab some region shows, and the bridge behind each.
+/// A full window is closer to that 256 than it looks, because every pane costs eleven:
 ///
-/// A bridge now outlives the switch away from its tab, so the count follows the panes a window
-/// has shown rather than the panes on screen at one moment. It is bounded by the same number:
-/// a window cannot hold more panes than its daemons do, and that is what the arithmetic above
+/// - Eight for its libghostty surface, measured by opening five more in a window and counting
+///   forty. Seven of them are accounted for: the PTY master its bridge writes to, a kqueue each
+///   for the surface's IO and renderer threads, and two pipes its reader keeps
+///   (`termio/Exec.zig`).
+/// - Three for the link its bridge reports on: the listener, the accepted connection, and the
+///   clone its reader thread reads (`crates/muster-seam/src/bridge_link.rs`, `PaneLink::bind`).
+///
+/// And every daemon five: the control connection with the clones its writer and reader threads
+/// hold (`crates/muster-daemon-client/src/control.rs`, `Control::over`), and the input
+/// connection with its writer's clone (`input.rs`, `Input::over`). A daemon on another machine
+/// costs no more, since its ssh master is a child process with nothing piped back. The bridges
+/// are processes of their own and count against their own limit.
+///
+/// So fifteen panes on each of two daemons is 340, before the dozen or so the process holds
+/// whatever it shows: standard streams, the log file, the command socket, and the watches on
+/// the config file and the tab holders.
+///
+/// A bridge outlives the switch away from its tab, so the count follows the panes a window has
+/// shown rather than the panes on screen at one moment. It is bounded by the same number: a
+/// window cannot hold more panes than its daemons do, and that is what the arithmetic above
 /// already counts.
 public enum DescriptorLimit {
   /// What Muster asks for.
   ///
-  /// About ten times the busiest window anybody can fill, which leaves room for the panes,
-  /// the bridges, the ssh masters and whatever a future arc opens without this number needing
-  /// to be revisited. Not unlimited: macOS caps a process at `kern.maxfilesperproc` anyway,
+  /// About ten times the busiest window anybody can fill, which leaves room for more panes
+  /// and daemons than that and whatever a future arc opens without this number needing to be
+  /// revisited. Not unlimited: macOS caps a process at `kern.maxfilesperproc` anyway,
   /// and a request for everything is a request nobody can reason about afterwards.
   public static let wanted: UInt64 = 4096
 
   /// Below this, a full window is at risk rather than merely tight.
   ///
-  /// Two daemons of fifteen panes each cost roughly 190 descriptors by the arithmetic above,
-  /// so this is that with room for the process itself. Its job is to make an unraisable
+  /// Two daemons of fifteen panes each cost roughly 350 descriptors by the arithmetic above,
+  /// so this is that with room for the process itself - AppKit, a CLI waiting on a pane, a
+  /// connection being replaced. Its job is to make an unraisable
   /// ceiling say so at launch instead of surfacing as one blank pane in an hour's time.
   public static let needed: UInt64 = 512
 
