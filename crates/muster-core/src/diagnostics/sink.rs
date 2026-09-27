@@ -33,11 +33,12 @@ impl JsonLinesSink {
     /// it diagnoses is worse than no diagnostic.
     pub fn open(path: &str) -> Option<JsonLinesSink> {
         let c_path = CString::new(path).ok()?;
+        // Close-on-exec, and atomically with the open: a process that logs goes on to start
+        // daemons and panes, and a flag set a moment later would lose a race to one of them.
+        let flags = libc::O_WRONLY | libc::O_APPEND | libc::O_CREAT | libc::O_CLOEXEC;
         // SAFETY: the path is a NUL-terminated string we own for the duration of the call,
         // and open touches nothing else.
-        let fd = unsafe {
-            libc::open(c_path.as_ptr(), libc::O_WRONLY | libc::O_APPEND | libc::O_CREAT, 0o644)
-        };
+        let fd = unsafe { libc::open(c_path.as_ptr(), flags, 0o644) };
         if fd < 0 { None } else { Some(JsonLinesSink { fd }) }
     }
 }
