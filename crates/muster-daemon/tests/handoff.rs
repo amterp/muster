@@ -535,6 +535,19 @@ fn a_resize_during_a_handoff_waits_and_is_dropped_when_it_succeeds() {
     assert_eq!(tty_size(&daemon, "p1", "after"), before);
 }
 
+/// A report queued as the last reader parks is applied under the session's lock, so the
+/// handoff waits for it without holding that lock, and neither it nor any request stalls.
+#[test]
+fn a_report_queued_as_the_readers_stop_does_not_stall_the_handoff() {
+    let mut daemon = daemon_with(&[("MUSTER_DAEMON_HANDOFF_FAULT", "report-before-settle")]);
+    let (_control, _input) = two_panes(&daemon);
+
+    let started = std::time::Instant::now();
+    replaced(&mut daemon);
+    let took = started.elapsed();
+    assert!(took < std::time::Duration::from_secs(5), "the handoff took {took:?}");
+}
+
 /// The same resize, when the handoff fails, takes effect once the old daemon goes on.
 #[test]
 fn a_resize_during_a_handoff_that_fails_takes_effect_after_it() {

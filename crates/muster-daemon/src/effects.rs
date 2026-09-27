@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use std::sync::Weak;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use muster_core::diagnostics::log;
 use muster_core::fields;
@@ -215,14 +215,27 @@ impl Reports {
     }
 
     /// Waits, at most `within`, until the session has applied every report queued before this
-    /// call. Waits for room in the queue rather than dropping, which is safe only for a caller
-    /// holding no lock the publisher takes. True when a publisher that has gone applies nothing
-    /// more either.
+    /// call, waiting for room in the queue rather than dropping. The caller may hold no lock the
+    /// publisher takes, the session's above all, or it waits out the deadline for nothing. True
+    /// when a publisher that has gone applies nothing more either.
     pub(crate) fn settle(&self, within: Duration) -> bool {
+        let deadline = Instant::now() + within;
         let (settled, answer) = mpsc::sync_channel(1);
-        let queued =
-            self.sender.send(Report { serial: 0, what: Reported::Settled(Settle(settled)) });
-        queued.is_err() || answer.recv_timeout(within).is_ok()
+        let mut marker = Report { serial: 0, what: Reported::Settled(Settle(settled)) };
+        loop {
+            match self.sender.try_send(marker) {
+                Ok(()) => break,
+                Err(TrySendError::Disconnected(_)) => return true,
+                Err(TrySendError::Full(unsent)) => {
+                    if Instant::now() >= deadline {
+                        return false;
+                    }
+                    marker = unsent;
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+            }
+        }
+        answer.recv_timeout(deadline.saturating_duration_since(Instant::now())).is_ok()
     }
 }
 
@@ -271,6 +284,18 @@ mod tests {
         assert_eq!(applied.lock().unwrap().len(), 3);
         drop(reports);
         publisher.join().unwrap();
+    }
+
+    #[test]
+    fn a_settle_gives_up_at_its_deadline_when_the_queue_stays_full() {
+        let (reports, _received) = Reports::with_depth(1);
+        assert!(reports.send(1, Reported::Title("fills the queue".to_string())));
+        let (done, answer) = mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = done.send(reports.settle(Duration::from_millis(100)));
+        });
+        let settled = answer.recv_timeout(Duration::from_secs(2));
+        assert_eq!(settled, Ok(false), "a full queue must not hold the caller past its deadline");
     }
 
     #[test]

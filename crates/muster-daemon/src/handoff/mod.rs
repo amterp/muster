@@ -28,6 +28,7 @@ use muster_daemon_proto::{self as proto, connection, handoff};
 use crate::daemon_log::DaemonLog;
 use crate::data::Data;
 use crate::descriptors::Sealing;
+use crate::effects::Reported;
 use crate::persist::{self, Persister};
 use crate::pty::Grid;
 use crate::server::Socket;
@@ -48,7 +49,8 @@ const FLUSH: Duration = Duration::from_secs(1);
 /// Test-only faults, a comma-separated list read by both daemons, each acting on its own: the
 /// daemon taking over `refuse`, `exit-before-ready`, `exit-after-commit`, `pause-after-accept`,
 /// `pause-before-ready` and `pause-before-serving`, and the daemon handing over
-/// `pause-after-serving`.
+/// `pause-after-serving` and `report-before-settle`, which queues a report just before it waits
+/// for the reports, as a reader does that reports as it parks.
 const FAULT: &str = "MUSTER_DAEMON_HANDOFF_FAULT";
 
 /// The faults this daemon was started with. Read only by a debug build, which is what every test
@@ -236,7 +238,11 @@ fn handed(
             return Err(format!("pane {}'s reader did not stop", pane.record.pane));
         }
     }
-    if !shared.lock().reports().settle(STEP) {
+    let reports = shared.lock().reports();
+    if Faults::read().has("report-before-settle") {
+        reports.send(0, Reported::Title(String::new()));
+    }
+    if !reports.settle(STEP) {
         return Err("what the panes reported was not applied in time".to_string());
     }
     shared.lock().recapture(handing);
