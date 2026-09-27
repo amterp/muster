@@ -227,6 +227,39 @@ fn an_agent_whose_manifest_is_deleted_is_published_as_no_agent() {
     until_detected(&mut control, "p1", None, proto::AgentState::Unknown);
 }
 
+/// Loading manifests reads the override directory, which can sit on a mount that hangs. A FIFO
+/// stands in for one: reading it waits until somebody opens its other end.
+#[test]
+fn a_manifest_load_that_hangs_holds_up_no_other_request() {
+    let home = Home::new("hung", &[], &[]);
+    let daemon = home.daemon();
+    until(
+        "the daemon's first manifest load",
+        || written(&daemon.root().join("daemon.log")).contains("daemon.detect.loaded"),
+        (),
+    );
+    let fifo = home.overrides().join("claude.toml");
+    let path = std::ffi::CString::new(fifo.to_str().unwrap()).unwrap();
+    // SAFETY: mkfifo reads a NUL-terminated path the test owns.
+    assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+
+    let mut sending = daemon.connect();
+    sending.send(session(proto::session_request::Request::SendManifests(
+        proto::SendManifests::default(),
+    )));
+    std::thread::sleep(Duration::from_millis(200));
+    let (answered, answer) = std::sync::mpsc::channel();
+    let socket = daemon.socket_path().to_path_buf();
+    std::thread::spawn(move || {
+        let mut control = Control::connect(&socket);
+        let _ = answered.send(snapshot(&mut control));
+    });
+    let took = answer.recv_timeout(Duration::from_secs(1));
+    // Lets the load finish, whatever the verdict.
+    drop(std::fs::OpenOptions::new().write(true).open(&fifo));
+    assert!(took.is_ok(), "a snapshot waited on a manifest load reading a hung file");
+}
+
 #[test]
 fn manifests_sent_at_connect_leave_an_unchanged_agents_state_alone() {
     let home = Home::new("connect", &[("claude.toml", PROBE_MANIFEST)], &["claude"]);

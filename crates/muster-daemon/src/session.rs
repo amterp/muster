@@ -11,11 +11,13 @@
 //! it up, applying new settings - is left on the session as [`Deferred`] and done by the
 //! [`Locked`] guard once the lock is let go, before the connection answers.
 //!
-//! A pane create is the one request that lets go of the lock part way. Starting a process waits
-//! for it to change directory and exec, and a directory on a hung mount would otherwise stall
-//! every connection and every exit with it. So the create is checked and its names reserved
-//! under the lock, the process starts without it, and the pane is placed - its events emitted
-//! and its answer queued - under the lock again.
+//! Three requests let go of the lock part way, because each waits on something slow that would
+//! otherwise stall every connection and every exit with it. A pane create waits for its process
+//! to change directory and exec, and a directory can be on a hung mount: the create is checked
+//! and its names reserved under the lock, the process starts without it, and the pane is
+//! placed, its events emitted and its answer queued, under the lock again. `send_manifests` compiles
+//! manifests and reads the override directory without it, and `pane.read` formats its page
+//! without it.
 
 use std::collections::HashSet;
 use std::ffi::OsString;
@@ -45,6 +47,7 @@ use crate::pty::{self, Grid, Launch};
 use crate::screen::{self, Appearance, Screen, Settled};
 use crate::spawn;
 use crate::tree::{self, Node, Resized};
+use muster_detect::Manifests;
 
 /// Where the daemon finds and is found.
 #[derive(Debug)]
@@ -117,6 +120,8 @@ impl Shared {
                     deferred: Vec::new(),
                     detecting: Detecting::start(overrides),
                     app_manifests: Vec::new(),
+                    manifest_loads: 0,
+                    manifests_adopted: 0,
                     subscribers: Vec::new(),
                     inherited,
                     home,
@@ -203,6 +208,10 @@ pub(crate) struct Session {
     detecting: Arc<Detecting>,
     /// The manifests the app last sent, by name, which every reload layers in.
     app_manifests: Vec<(String, String)>,
+    /// How many `send_manifests` have been asked for, and which of them last put its manifests
+    /// in use.
+    manifest_loads: u64,
+    manifests_adopted: u64,
     subscribers: Vec<Outbox>,
     /// The daemon's own environment, which every pane's starts from.
     inherited: Vec<(OsString, OsString)>,
@@ -297,6 +306,25 @@ pub(crate) enum Handled {
     /// A pane's text to read with the session unlocked, since a long page takes a while to
     /// format. It holds the pane's lock a batch of rows at a time.
     Read(Box<Reading>),
+    /// Manifests to compile with the session unlocked, then put in use with
+    /// [`Session::manifests_loaded`].
+    Manifests(Box<Loading>),
+}
+
+/// A `send_manifests` whose manifests have yet to be compiled.
+#[derive(Debug)]
+pub(crate) struct Loading {
+    detecting: Arc<Detecting>,
+    app: Vec<(String, String)>,
+    /// Which `send_manifests` this is, so one that finishes loading after a later one does not
+    /// replace what the later one put in use.
+    load: u64,
+}
+
+impl Loading {
+    pub(crate) fn load(&self) -> Manifests {
+        self.detecting.load(&self.app)
+    }
 }
 
 /// A `pane.read` whose pane has been found.
@@ -370,7 +398,7 @@ impl Session {
                 S::SetShell(set) => self.set_shell(set),
                 S::SetScrollback(set) => self.set_scrollback(set),
                 S::SetPalette(set) => self.set_palette(set),
-                S::SendManifests(manifests) => self.send_manifests(manifests),
+                S::SendManifests(manifests) => return self.send_manifests(manifests),
                 S::SetClipboardWrite(set) => self.set_clipboard_write(set),
                 S::SetCursor(set) => self.set_cursor(set),
                 S::Stop(_) => {
@@ -1034,16 +1062,34 @@ impl Session {
         Reply::done()
     }
 
-    /// Loads the manifests again with the app's, and starts detection over in the panes whose
-    /// agent is detected differently now. A pane whose agent's manifest is unchanged keeps its
-    /// state: the app sends its manifests on every connect, and starting every pane over would
-    /// publish each working agent idle through a startup grace, then working again.
-    fn send_manifests(&mut self, sent: proto::SendManifests) -> Reply {
-        let app: Vec<(String, String)> =
-            sent.manifests.into_iter().map(|manifest| (manifest.agent, manifest.toml)).collect();
-        let changed = self.detecting.reload(&app);
-        let unchanged = changed.is_empty() && app == self.app_manifests;
-        self.app_manifests = app;
+    /// Has the manifests loaded again with the app's, with the session unlocked
+    /// ([`Loading::load`]), then finished by [`Session::manifests_loaded`].
+    fn send_manifests(&mut self, sent: proto::SendManifests) -> Handled {
+        self.manifest_loads += 1;
+        Handled::Manifests(Box::new(Loading {
+            detecting: Arc::clone(&self.detecting),
+            app: sent
+                .manifests
+                .into_iter()
+                .map(|manifest| (manifest.agent, manifest.toml))
+                .collect(),
+            load: self.manifest_loads,
+        }))
+    }
+
+    /// Puts loaded manifests in use, and starts detection over in the panes whose agent is
+    /// detected differently now. A pane whose agent's manifest is unchanged keeps its state:
+    /// the app sends its manifests on every connect, and starting every pane over would publish
+    /// each working agent idle through a startup grace, then working again.
+    pub(crate) fn manifests_loaded(&mut self, loading: Loading, loaded: Manifests) -> Reply {
+        if loading.load < self.manifests_adopted {
+            // A later send already put its manifests in use, and they supersede these.
+            return Reply::done();
+        }
+        self.manifests_adopted = loading.load;
+        let changed = self.detecting.adopt(loaded);
+        let unchanged = changed.is_empty() && loading.app == self.app_manifests;
+        self.app_manifests = loading.app;
         if unchanged {
             return Reply::already();
         }

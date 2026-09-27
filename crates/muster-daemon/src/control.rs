@@ -162,6 +162,11 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
                 shared.lock().started(*starting, started)
             }
             Handled::Read(reading) => reading.read(),
+            // Outside the lock too: compiling reads the override directory, which can hang.
+            Handled::Manifests(loading) => {
+                let loaded = loading.load();
+                shared.lock().manifests_loaded(*loading, loaded)
+            }
         };
         answer(&shared.lock(), &outbox, request.id, reply);
         if stopping {

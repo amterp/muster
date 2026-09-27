@@ -56,10 +56,16 @@ impl Detecting {
         poison::lock(&self.manifests, "daemon.detect.manifests").clone()
     }
 
-    /// Loads the manifests again, with the app's, and returns the agents whose manifest in use
+    /// Compiles the manifests again, with the app's. Tens of milliseconds, and it reads the
+    /// override directory, which can be on a mount that hangs: never done under the session
+    /// lock.
+    pub(crate) fn load(&self, app: &[(String, String)]) -> Manifests {
+        load(app, self.overrides.as_deref())
+    }
+
+    /// Puts manifests from [`Detecting::load`] in use, and returns the agents whose manifest
     /// changed: only their panes need detecting afresh.
-    pub(crate) fn reload(&self, app: &[(String, String)]) -> Vec<Agent> {
-        let loaded = load(app, self.overrides.as_deref());
+    pub(crate) fn adopt(&self, loaded: Manifests) -> Vec<Agent> {
         let mut manifests = poison::lock(&self.manifests, "daemon.detect.manifests");
         // Before the first load, nothing has been detected by anything.
         let changed = manifests.as_ref().map(|current| loaded.changed_since(current));
@@ -71,11 +77,20 @@ impl Detecting {
 }
 
 fn load(app: &[(String, String)], overrides: Option<&std::path::Path>) -> Manifests {
+    let started = Instant::now();
     let (manifests, warnings) = Manifests::load(app, overrides);
-    for warning in warnings {
+    for warning in &warnings {
         // A warning's text already says what it costs and what to do.
         log::warn("daemon.detect.manifest_ignored", fields! { "warning" => warning });
     }
+    log::info(
+        "daemon.detect.loaded",
+        fields! {
+            "from_app" => app.len(),
+            "ignored" => warnings.len(),
+            "ms" => started.elapsed().as_millis(),
+        },
+    );
     manifests
 }
 
@@ -117,11 +132,15 @@ impl Detection {
         detecting: &Detecting,
         now: Instant,
     ) -> Option<Publication> {
+        // Taken before the manifests are read, so a reset asked for by a reload runs against
+        // the manifests that reload put in use, never the ones it replaced.
+        let reset = io.take_detection_reset();
         let Some(manifests) = detecting.manifests() else {
+            // Nothing has been detected yet, so a reset has nothing to undo.
             self.due = now + Detector::FIRST_TICK;
             return None;
         };
-        if io.take_detection_reset() {
+        if reset {
             self.detector.reset();
         }
         let mut observed = Observed { io, progress: &mut self.progress };
