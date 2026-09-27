@@ -274,6 +274,12 @@ impl PaneIo {
         self.output(b"\x1bc");
     }
 
+    /// Clears the pane's screen as Ghostty's clear_screen does. True at a prompt, where the
+    /// shell is to be sent a form feed.
+    pub(crate) fn clear_screen(&self) -> bool {
+        self.screen().clear_screen()
+    }
+
     /// Attaches a bridge to the pane, at `grid` when it says one.
     pub(crate) fn attach(
         &self,

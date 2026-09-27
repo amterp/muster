@@ -44,7 +44,7 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
                 break;
             }
         };
-        let Some(input) = event.input.and_then(|input| input_of(input, &event.pane)) else {
+        let Some(input) = event.input.and_then(input_of) else {
             continue;
         };
         let Some(io) = panes.get(&event.pane, || shared.lock().pane_io(&event.pane)) else {
@@ -94,7 +94,7 @@ impl Panes {
 }
 
 /// What an event asks the pane's writer for. Nothing for an event that names nothing to do.
-fn input_of(input: input_event::Input, pane: &str) -> Option<Input> {
+fn input_of(input: input_event::Input) -> Option<Input> {
     use input_event::Input as Event;
     let modifiers = |bits: u32| Modifiers(u16::try_from(bits).unwrap_or(0));
     match input {
@@ -150,18 +150,7 @@ fn input_of(input: input_event::Input, pane: &str) -> Option<Input> {
         Event::Perform(input_event::Perform { action: Some(action) }) => match action {
             perform::Action::Raw(bytes) => Some(Input::Reply(bytes)),
             perform::Action::Reset(_) => Some(Input::Reset),
-            perform::Action::ClearScreen(_) => {
-                log::warn(
-                    "daemon.input.clear_screen_unsupported",
-                    fields! {
-                        "pane" => pane,
-                        "impact" => "the pane's screen and history were not cleared",
-                        "check" => "clear_screen needs to know whether the cursor is at a \
-                                    prompt, which arrives with shell integration",
-                    },
-                );
-                None
-            }
+            perform::Action::ClearScreen(_) => Some(Input::ClearScreen),
         },
         Event::Perform(input_event::Perform { action: None }) => None,
     }

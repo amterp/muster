@@ -58,6 +58,9 @@ pub(crate) enum Input {
     /// A full reset of the terminal, as Ghostty's `reset` does: the surface and the daemon's
     /// copy are reset, and the program is not told.
     Reset,
+    /// Ghostty's clear_screen: the daemon's terminal cleared and the surface sent the result,
+    /// and a shell at its prompt sent a form feed to draw the prompt again.
+    ClearScreen,
 }
 
 /// A key as it arrives: libghostty's numbering, and the app's option-as-alt setting.
@@ -316,14 +319,24 @@ impl Writer {
                 }
                 if focused { b"\x1b[I".to_vec() } else { b"\x1b[O".to_vec() }
             }
-            Input::Reset => {
+            Input::Reset | Input::ClearScreen => {
                 drop(encoding);
-                if let Some(io) = self.io.upgrade() {
-                    io.reset();
-                }
-                Vec::new()
+                self.perform(&input)
             }
         }
+    }
+
+    /// What is done to the pane itself rather than encoded for its program, with whatever the
+    /// program is to be sent after it: a form feed, for a shell whose screen was cleared at its
+    /// prompt, to draw the prompt again.
+    fn perform(&self, input: &Input) -> Vec<u8> {
+        let Some(io) = self.io.upgrade() else { return Vec::new() };
+        match input {
+            Input::Reset => io.reset(),
+            Input::ClearScreen if io.clear_screen() => return vec![0x0c],
+            _ => {}
+        }
+        Vec::new()
     }
 
     fn track_buttons(&mut self, event: &MouseEvent) {

@@ -587,9 +587,13 @@ Muster's keymap. Muster's keymap offers Ghostty's binding actions in three group
 the surface (scrolling, `jump_to_prompt`, `select_all`, search), actions the daemon performs
 because they write to the program or change the pane's state (`clear_screen`; `reset`, which
 resets the headless terminal and the surface and tells the program nothing; `text:`, `csi:`,
-`esc:`), and actions not offered. `clear_screen` waits for shell integration (section 3): Ghostty's
-action depends on whether the cursor is at a prompt, from OSC 133, and on an erase the C API does
-not expose, so the daemon logs it as not performed rather than doing half of it.
+`esc:`), and actions not offered. `clear_screen` is Ghostty's own, done to the daemon's terminal
+through the carried patch, since it needs the cursor's prompt state from OSC 133 and an erase the
+C API does not expose: history goes; at a prompt the screen is scrolled away and the shell sent a
+form feed to draw its prompt again; elsewhere the rows above the cursor go, with every kitty
+image. The surface is then sent the cleared screen as a replay, since no byte in the stream says
+what happened. On the alternate screen Ghostty does nothing and leaves the key to the program, so
+the app sends the key itself there, and `Perform{clear_screen}` only otherwise.
 
 **Mouse and wheel events go to both, always.** The surface scrolls its own viewport or selects,
 and its reports are discarded. The daemon decides from the pane's modes what the program gets: a

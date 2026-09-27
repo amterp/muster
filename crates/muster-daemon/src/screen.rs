@@ -269,6 +269,19 @@ impl Screen {
         Ok(())
     }
 
+    /// Ghostty's clear_screen ([`Terminal::clear_screen`]), and the surface drawing the pane
+    /// sent the result, since nothing in the output stream says what happened. True at a prompt,
+    /// where the shell is to be asked to draw its prompt again.
+    pub(crate) fn clear_screen(&mut self) -> bool {
+        self.content_seq += 1;
+        let at_prompt = self.terminal.clear_screen();
+        if let Some(bridge) = &self.bridge {
+            bridge.replay(&self.terminal.replay());
+            self.terminal.forget_kitty_images();
+        }
+        at_prompt
+    }
+
     /// Lets go of bridge `id`, if it is still the one attached.
     pub(crate) fn detach(&mut self, id: u64) {
         if self.bridge.as_ref().is_some_and(|bridge| bridge.id() == id) {

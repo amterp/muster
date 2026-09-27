@@ -182,6 +182,18 @@ impl Terminal {
         Ok(terminal)
     }
 
+    /// Ghostty's clear_screen binding, as its own Termio does it to a terminal: nothing on the
+    /// alternate screen; otherwise history goes, and at a prompt (shell integration's marks) the
+    /// whole screen, or elsewhere the rows above the cursor and every kitty image. True at a
+    /// prompt, when Ghostty sends the shell a form feed to draw its prompt again.
+    pub fn clear_screen(&mut self) -> bool {
+        let mut at_prompt = false;
+        // SAFETY: the terminal is live and exclusively borrowed, and the output is the type
+        // muster.h documents.
+        unsafe { ffi::ghostty_terminal_clear_screen(self.terminal, true, &raw mut at_prompt) };
+        at_prompt
+    }
+
     /// Forgets every kitty image on both screens, placements and all, keeping the limit: what
     /// a terminal that has only seen a replay holds, since a replay carries no images. A program
     /// that places one by id from then on is told it is not there, and sends it again.

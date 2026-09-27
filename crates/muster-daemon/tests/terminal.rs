@@ -296,3 +296,75 @@ fn xtversion_is_answered_as_ghostty_with_term_program_version() {
     let answered = String::from_utf8_lossy(&bytes_in(&answer)).into_owned();
     assert_eq!(answered, format!("\x1bP>|ghostty {version}\x1b\\"));
 }
+
+fn clear_screen(daemon: &Daemon, pane: &str) {
+    use proto::input_event::{Input as Event, Perform, perform};
+    let mut input = muster_harness::Input::connect(daemon.socket_path());
+    input.send(
+        pane,
+        Event::Perform(Perform {
+            action: Some(perform::Action::ClearScreen(perform::ClearScreen {})),
+        }),
+    );
+}
+
+/// Ghostty's clear_screen at a shell's prompt: the history goes, the screen is scrolled away,
+/// as Ghostty's own erase does at a prompt, and the shell is sent a form feed to draw its prompt
+/// again. The surface drawing the pane is sent the cleared screen.
+#[test]
+fn clear_screen_at_a_prompt_clears_everything_and_asks_the_shell_to_redraw() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let heard = daemon.root().join("heard");
+    // Output past the screen's height, then a prompt marked as shell integration marks one.
+    let script = format!(
+        "i=0; while [ $i -lt 40 ]; do echo old$i; i=$((i+1)); done; printf '\\033]133;A\\007$ '; \
+         stty raw -echo min 1 time 0; dd bs=1 count=1 of={} 2>/dev/null; sleep 30",
+        heard.display()
+    );
+    make(&mut control, running("p1", "t1", script));
+    until_text(&mut control, "p1", "old39\n$");
+    let mut stream = attached(&daemon, "p1", false);
+    let mut surface = Surface::new(80, 24);
+    surface.follow(&mut stream, "the replay", true, |surface| surface.replays > 0);
+    assert!(surface.screen().contains("old39"));
+
+    clear_screen(&daemon, "p1");
+
+    assert_eq!(bytes_in(&heard), b"\x0c", "the shell is asked to redraw its prompt");
+    let total = read_text(&mut control, "p1", 0, 0).total_rows;
+    assert!(total < 64, "the history before the clear is gone: {total} rows");
+    let screen = read_text(&mut control, "p1", total - 24, 0);
+    assert!(!screen.text.contains("old"), "nothing old on the screen: {:?}", screen.text);
+    surface.follow(&mut stream, "the cleared screen", true, |surface| surface.replays > 1);
+    assert!(!surface.screen().contains("old"), "the surface is cleared too");
+}
+
+/// Away from a prompt, clear_screen erases history and the rows above the cursor, and tells the
+/// program nothing.
+#[test]
+fn clear_screen_away_from_a_prompt_keeps_the_cursor_row_and_tells_nobody() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let heard = daemon.root().join("heard");
+    let script = format!(
+        "i=0; while [ $i -lt 40 ]; do echo old$i; i=$((i+1)); done; printf 'here'; \
+         stty raw -echo min 0 time 20; dd bs=1 count=1 of={} 2>/dev/null; sleep 30",
+        heard.display()
+    );
+    make(&mut control, running("p1", "t1", script));
+    until_text(&mut control, "p1", "here");
+
+    clear_screen(&daemon, "p1");
+
+    until_some("the clear", || {
+        let text = read_text(&mut control, "p1", 0, 0);
+        (!text.text.contains("old")).then_some(text)
+    });
+    let text = read_text(&mut control, "p1", 0, 0);
+    assert_eq!(text.total_rows, 24, "no history is left");
+    assert!(text.text.contains("here"), "the cursor's row stays: {:?}", text.text);
+    // The program read for two seconds and heard nothing.
+    until_some("the program to stop reading", || heard.exists().then_some(()));
+    assert_eq!(std::fs::read(&heard).unwrap(), b"");
+}
