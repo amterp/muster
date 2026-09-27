@@ -8,10 +8,18 @@
 //! The rule is wire compatibility, per protobuf's: every message, field number and enum value in
 //! the baseline is still here with the same type, or its number is reserved. Names may change,
 //! and anything may be added.
+//!
+//! That only protects what the baseline holds, so the baseline has to be the last schema that was
+//! published, not the first. It records its version, and the second test holds the two together:
+//! a schema that differs from its baseline is the next minor, and a minor past that means the
+//! baseline was never brought forward. Otherwise a field added in 1.1 and deleted without being
+//! reserved could come back in 1.3 under the same number with another type, and nothing here
+//! would notice.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+use muster_daemon_proto::Version;
 use muster_daemon_proto::version::PROTOCOL;
 use prost_types::field_descriptor_proto::{Label, Type};
 use prost_types::{DescriptorProto, EnumDescriptorProto, FileDescriptorSet};
@@ -45,6 +53,75 @@ fn the_schema_reads_everything_its_baseline_wrote() {
          once one has, bump PROTOCOL.major too.",
         breaks.join("\n  - ")
     );
+}
+
+#[test]
+fn the_baseline_is_the_last_published_schema() {
+    let baseline_name = format!("muster_daemon.v{}.baseline.proto", PROTOCOL.major);
+    let text = std::fs::read_to_string(proto_dir().join(&baseline_name))
+        .unwrap_or_else(|error| panic!("{baseline_name}: {error}"));
+    let recorded = recorded_version(&text).unwrap_or_else(|| {
+        panic!(
+            "{baseline_name} does not say which version it is.\n  Impact: nothing ties the \
+             baseline to a published schema, so it can fall behind.\n  Fix: its header carries \
+             a line `// Version: <major>.<minor>`."
+        )
+    });
+    let changed = !same_schema(
+        &compile(&proto_dir(), &baseline_name),
+        &compile(&proto_dir(), "muster_daemon.proto"),
+    );
+    if let Err(why) = version_rule(recorded, PROTOCOL, changed) {
+        panic!("{why}");
+    }
+}
+
+/// Whether the schema at `protocol` may sit on a baseline published as `baseline`.
+fn version_rule(baseline: (u32, u32), protocol: Version, changed: bool) -> Result<(), String> {
+    let (major, minor) = baseline;
+    let fix = "Before any release has shipped the daemon, copy proto/muster_daemon.proto over the \
+               baseline and keep its version line. After one has, the baseline is the schema as \
+               the last minor shipped, and a changed schema is the next minor.";
+    if major != protocol.major {
+        return Err(format!(
+            "the baseline says it is {major}.{minor}, and PROTOCOL.major is {}.\n  Fix: {fix}",
+            protocol.major
+        ));
+    }
+    match (protocol.minor.checked_sub(minor), changed) {
+        (Some(0), false) | (Some(1), _) => Ok(()),
+        (Some(0), true) => Err(format!(
+            "proto/muster_daemon.proto differs from its baseline, and both say {major}.{minor}.\n  \
+             Impact: a daemon and an app built from the two would claim one version and speak \
+             two.\n  Fix: {fix}"
+        )),
+        _ => Err(format!(
+            "PROTOCOL is {protocol} and the baseline is {major}.{minor}.\n  Impact: fields added \
+             in the minors between are protected by nothing.\n  Fix: {fix}"
+        )),
+    }
+}
+
+/// The `// Version: 1.0` line in a baseline's header.
+fn recorded_version(text: &str) -> Option<(u32, u32)> {
+    let line = text.lines().find_map(|line| line.strip_prefix("// Version: "))?;
+    let (major, minor) = line.trim().split_once('.')?;
+    Some((major.parse().ok()?, minor.parse().ok()?))
+}
+
+/// Whether two schemas declare the same things, whatever their comments say.
+fn same_schema(one: &FileDescriptorSet, other: &FileDescriptorSet) -> bool {
+    let bare = |set: &FileDescriptorSet| -> Vec<prost_types::FileDescriptorProto> {
+        set.file
+            .iter()
+            .map(|file| prost_types::FileDescriptorProto {
+                name: None,
+                source_code_info: None,
+                ..file.clone()
+            })
+            .collect()
+    };
+    bare(one) == bare(other)
 }
 
 fn compile(directory: &Path, file: &str) -> FileDescriptorSet {
@@ -146,6 +223,38 @@ fn declarations(set: &FileDescriptorSet) -> Declarations<'_> {
         walk(file.package(), &file.message_type, &file.enum_type, &mut found);
     }
     found
+}
+
+/// The version rule, on its own.
+mod the_version_rule {
+    use super::*;
+
+    const AT: Version = Version { major: 1, minor: 2 };
+
+    #[test]
+    fn an_unchanged_schema_keeps_its_baselines_version_or_the_next() {
+        assert!(version_rule((1, 2), AT, false).is_ok());
+        assert!(version_rule((1, 1), AT, false).is_ok());
+    }
+
+    #[test]
+    fn a_changed_schema_is_the_next_minor() {
+        assert!(version_rule((1, 1), AT, true).is_ok());
+        assert!(version_rule((1, 2), AT, true).is_err());
+    }
+
+    #[test]
+    fn a_baseline_two_minors_behind_or_of_another_major_is_refused() {
+        assert!(version_rule((1, 0), AT, false).is_err());
+        assert!(version_rule((1, 3), AT, false).is_err());
+        assert!(version_rule((2, 2), AT, false).is_err());
+    }
+
+    #[test]
+    fn the_version_line_is_read_from_the_header() {
+        assert_eq!(recorded_version("// intro\n// Version: 1.12\nsyntax"), Some((1, 12)));
+        assert_eq!(recorded_version("// Version: one"), None);
+    }
 }
 
 /// The check itself, against small schemas that each make one change.
