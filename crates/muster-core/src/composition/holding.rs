@@ -150,10 +150,16 @@ impl Holders {
 
     /// Drops the tabs that no longer exist anywhere.
     ///
-    /// `known` is whether a tab's name still resolves. Tab names are never reused, so a row for
-    /// one that resolves nowhere is a row nothing will ever read again.
-    pub fn prune(&mut self, known: impl Fn(&TabId) -> bool) {
-        self.tabs.retain(|tab, _| known(tab));
+    /// `answered` is the machines whose whole state is in hand, and `described` says whether
+    /// one of them holds a tab. Tab names are never reused, so a row for a tab none of them
+    /// holds is read by nothing again - unless its window follows a machine that has not
+    /// answered, which may be where the tab is.
+    pub fn prune(&mut self, answered: &BTreeSet<DaemonId>, described: impl Fn(&TabId) -> bool) {
+        let windows = &self.windows;
+        self.tabs.retain(|tab, holder| {
+            described(tab)
+                || windows.get(holder).is_none_or(|window| !window.daemons.is_subset(answered))
+        });
     }
 
     /// Which window takes a tab nobody holds on this machine, at this moment.

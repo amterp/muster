@@ -608,7 +608,7 @@
       }
     },
     {
-      "name": "a tab whose name resolves nowhere is dropped",
+      "name": "a tab no answering machine holds is dropped",
       "why": "Tab names are never reused, so a row for one that no longer exists is read by nothing ever again. Kept, the record would grow by a row for every tab anybody ever made.",
       "given": {
         "steps": [
@@ -635,7 +635,10 @@
           },
           {
             "do": "prune",
-            "known": [
+            "answered": [
+              "local"
+            ],
+            "described": [
               "t2"
             ]
           }
@@ -647,6 +650,46 @@
         ],
         "tabs": [
           "t2 window-1"
+        ]
+      }
+    },
+    {
+      "name": "a tab on a machine that has not answered is kept",
+      "why": "A window reads what the machines it follows hold, and a machine that has not answered yet - down, slow, or still restoring - holds tabs nobody here can see. A tab its holder follows that machine for may be one of them, and dropping its row would hand it to whichever window comes to the front next.",
+      "given": {
+        "steps": [
+          {
+            "do": "open",
+            "window": "window-1",
+            "arrangement": "/s/windows/window-1.toml",
+            "socket": "/s/command-11.sock",
+            "pid": 11,
+            "focused": 100,
+            "daemons": [
+              "local",
+              "devenv"
+            ]
+          },
+          {
+            "do": "take",
+            "tab": "t1",
+            "window": "window-1"
+          },
+          {
+            "do": "prune",
+            "answered": [
+              "local"
+            ],
+            "described": []
+          }
+        ]
+      },
+      "expect": {
+        "windows": [
+          "window-1 pid=11 socket=/s/command-11.sock arrangement=/s/windows/window-1.toml focused=100 daemons=devenv,local"
+        ],
+        "tabs": [
+          "t1 window-1"
         ]
       }
     }

@@ -79,8 +79,9 @@ fn act(holders: &mut Holders, step: &Value) -> Result<(), CaseError> {
             holders.forget(|window| gone.iter().any(|name| name == window.name.as_str()));
         }
         "prune" => {
-            let known = strings(step, "known");
-            holders.prune(|tab| known.iter().any(|name| name == tab.as_str()));
+            let answered = strings(step, "answered").into_iter().map(DaemonId::new).collect();
+            let described = strings(step, "described");
+            holders.prune(&answered, |tab| described.iter().any(|name| name == tab.as_str()));
         }
         other => {
             return Err(CaseError::new(format!(
