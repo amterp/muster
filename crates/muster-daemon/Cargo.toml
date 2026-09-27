@@ -13,6 +13,7 @@ libc.workspace = true
 muster-core.workspace = true
 muster-daemon-proto.workspace = true
 muster-frame.workspace = true
+muster-vt.workspace = true
 prost.workspace = true
 
 # The daemon's tests live here because cargo only hands `CARGO_BIN_EXE_muster-daemon` to tests

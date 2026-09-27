@@ -7,13 +7,16 @@
 
 mod control;
 mod descriptors;
+mod effects;
 mod pane;
 mod process;
 mod pty;
+mod screen;
 mod server;
 mod session;
 mod spawn;
 mod tree;
+mod writer;
 
 use std::fs::File;
 use std::os::fd::AsRawFd;

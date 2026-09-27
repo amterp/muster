@@ -1,57 +1,126 @@
-//! One pane: what the daemon publishes about it, and the PTY it runs on.
+//! One pane: what the daemon publishes about it, the PTY it runs on, and its terminal.
 //!
-//! [`Pane::start`] is the only way a pane comes to exist, and it takes a PTY master and an
-//! optional child rather than spawning anything. A pane this daemon started has its child. A
-//! pane handed over by a daemon being replaced (MIP-3, section 10) will arrive as a master and
-//! its record with no child, because its process is some other daemon's child - so nothing about
-//! a pane depends on this process being the PTY's parent.
+//! [`Pane::start`] is the only way a pane comes to exist, and it takes a PTY master, a terminal
+//! and an optional child rather than spawning anything. A pane this daemon started has its
+//! child. A pane handed over by a daemon being replaced (MIP-3, section 10) will arrive as a
+//! master, its record and a terminal rebuilt from a replay, with no child, because its process
+//! is some other daemon's child - so nothing about a pane depends on this process being the
+//! PTY's parent.
+//!
+//! Each pane runs three threads: a reader that feeds every chunk of output to the pane's
+//! terminal, a writer that is the only thing writing to the program, and, with a child, a
+//! waiter that reaps it. None of them takes the session lock except the waiter, whose pane
+//! has ended.
 
 use std::io;
-use std::os::fd::{AsFd, AsRawFd, FromRawFd, OwnedFd};
+use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, OwnedFd};
 use std::path::PathBuf;
 use std::process::Child;
-use std::sync::Arc;
+use std::sync::mpsc::{SyncSender, TrySendError};
+use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::{Duration, Instant};
 
-use muster_core::diagnostics::log;
+use muster_core::diagnostics::{log, poison};
 use muster_core::fields;
 use muster_daemon_proto as proto;
 
+use crate::effects::{self, Happened, Reported, Reports};
 use crate::process;
-use crate::pty::{self, Grid};
+use crate::pty;
+use crate::screen::Screen;
+use crate::writer::{self, Input};
 
 /// Told when a pane's process has ended, with the pane's serial and, when this daemon saw the
 /// process end, how it ended.
 pub(crate) type Ended = Arc<dyn Fn(u64, Option<i32>) + Send + Sync>;
+
+/// How long after output the reader looks at which directory the pane's program is in, for a
+/// shell that does not report it with OSC 7. Checked at most this often during a flood.
+const CWD_CADENCE: Duration = Duration::from_millis(100);
+
+/// What a pane's threads and the daemon's connections share.
+#[derive(Debug)]
+pub(crate) struct PaneIo {
+    pub(crate) serial: u64,
+    master: Arc<OwnedFd>,
+    /// The pane's lock: its terminal, and where its output stands.
+    screen: Mutex<Screen>,
+    input: SyncSender<Input>,
+}
+
+impl PaneIo {
+    pub(crate) fn screen(&self) -> MutexGuard<'_, Screen> {
+        poison::lock(&self.screen, "daemon.pane.screen")
+    }
+
+    /// Queues something for the program to read. False when the queue is full or the pane has
+    /// gone; the caller decides whether that is worth saying.
+    pub(crate) fn queue(&self, input: Input) -> bool {
+        match self.input.try_send(input) {
+            Ok(()) => true,
+            Err(TrySendError::Full(_) | TrySendError::Disconnected(_)) => false,
+        }
+    }
+
+    /// Sends what a write to the pane's terminal asked for where it goes: answers to the
+    /// program, everything else to the session.
+    fn dispatch(&self, happened: Vec<Happened>, heard: &mut Heard, reports: &Reports) {
+        for happening in happened {
+            match happening {
+                // Dropped when the queue is full rather than waiting for the program to read:
+                // the reader must never block on the program it is reading.
+                Happened::Reply(bytes) => {
+                    self.queue(Input::Reply(bytes));
+                }
+                Happened::Title(title) => reports.send(self.serial, Reported::Title(title)),
+                Happened::Pwd(url) => {
+                    if let Some(directory) = effects::local_directory(&url, &heard.host) {
+                        heard.reports_directory = true;
+                        heard.moved_to(directory, self.serial, reports);
+                    }
+                }
+                Happened::Shown(shown) => reports.send(self.serial, Reported::Shown(shown)),
+            }
+        }
+    }
+}
 
 #[derive(Debug)]
 pub(crate) struct Pane {
     /// What the protocol says about this pane. The fields a restart needs are persisted from
     /// here (a later card); the rest are observations.
     pub(crate) record: proto::Pane,
-    pub(crate) grid: Grid,
     /// Tells this pane's process apart from a later pane given the same name.
     pub(crate) serial: u64,
-    master: Arc<OwnedFd>,
-    /// The write end of a pipe the reader also polls. Dropping it ends the reader, which is how
-    /// a pane lets go of its master without closing a descriptor another thread is reading.
+    pub(crate) io: Arc<PaneIo>,
+    /// The write end of a pipe the reader and writer also poll. Dropping it ends them both,
+    /// which is how a pane lets go of its master without closing a descriptor another thread
+    /// is using.
     wake: OwnedFd,
     /// The process this daemon started, when it started one: the leader of its own session.
     process: Option<i32>,
 }
 
+/// What starts watching a pane.
+pub(crate) struct Watching<'a> {
+    pub(crate) ended: &'a Ended,
+    pub(crate) reports: &'a Reports,
+    pub(crate) host: &'a str,
+}
+
 impl Pane {
-    /// Starts watching `master`: a reader that drains it and, when there is a child, a waiter
-    /// that reaps it and says how it ended.
+    /// Starts watching `master`: a reader that feeds its output to `screen`, a writer for its
+    /// input and, when there is a child, a waiter that reaps it and says how it ended.
     ///
     /// With a child, the child ending is what ends the pane, even if a background job still
     /// holds the terminal. Without one, the PTY closing is the only word there will be.
     pub(crate) fn start(
         record: proto::Pane,
-        grid: Grid,
         serial: u64,
         master: OwnedFd,
+        screen: Screen,
         child: Option<Child>,
-        ended: &Ended,
+        watching: &Watching<'_>,
     ) -> io::Result<Pane> {
         let process = child.map(|child| child.id().cast_signed());
         // Every way this can fail leaves a started process nobody will wait for, so each one
@@ -62,19 +131,45 @@ impl Pane {
             }
             error
         };
+        nonblocking(&master).map_err(failed)?;
         let (wake_read, wake) = pipe().map_err(failed)?;
+        let writer_wake = writer::duplicate(&wake_read).map_err(failed)?;
         let master = Arc::new(master);
-
-        let reading = Arc::clone(&master);
-        let reader_ends_pane = process.is_none().then(|| Arc::clone(ended));
+        let (input, queued) = writer::queue();
+        let io = Arc::new(PaneIo {
+            serial,
+            master: Arc::clone(&master),
+            screen: Mutex::new(screen),
+            input,
+        });
         let pane = record.pane.clone();
+
+        let writing = Arc::clone(&master);
+        let name = pane.clone();
+        std::thread::Builder::new()
+            .name(format!("write {pane}"))
+            .spawn(move || writer::write(&name, &queued, &writing, &writer_wake))
+            .map_err(failed)?;
+
+        let reader = Reader {
+            io: Arc::clone(&io),
+            wake: wake_read,
+            ended: process.is_none().then(|| Arc::clone(watching.ended)),
+            reports: watching.reports.clone(),
+            process,
+            heard: Heard {
+                host: watching.host.to_string(),
+                directory: PathBuf::from(&record.cwd),
+                reports_directory: false,
+            },
+        };
         std::thread::Builder::new()
             .name(format!("read {pane}"))
-            .spawn(move || drain(&reading, &wake_read, serial, reader_ends_pane.as_ref()))
+            .spawn(move || reader.run())
             .map_err(failed)?;
 
         if let Some(pid) = process {
-            let ended = Arc::clone(ended);
+            let ended = Arc::clone(watching.ended);
             std::thread::Builder::new()
                 .name(format!("wait {pane}"))
                 .spawn(move || {
@@ -84,25 +179,133 @@ impl Pane {
                 .map_err(failed)?;
         }
 
-        Ok(Pane { record, grid, serial, master, wake, process })
+        Ok(Pane { record, serial, io, wake, process })
     }
 
     /// The directory the pane is working in now: its foreground job's, else its shell's.
     pub(crate) fn live_cwd(&self) -> Option<PathBuf> {
-        pty::foreground_group(self.master.as_fd())
-            .and_then(process::cwd)
-            .or_else(|| self.process.and_then(process::cwd))
+        live_cwd(self.io.master.as_fd(), self.process)
     }
 
     /// Ends the pane: SIGHUP to its shell's process group and to whatever holds its terminal's
-    /// foreground, then its master closed once the reader lets go of it.
+    /// foreground, then its master closed once the reader and writer let go of it.
     pub(crate) fn hang_up(self) {
-        let foreground =
-            pty::foreground_group(self.master.as_fd()).filter(|group| Some(*group) != self.process);
+        let foreground = pty::foreground_group(self.io.master.as_fd())
+            .filter(|group| Some(*group) != self.process);
         for group in self.process.into_iter().chain(foreground) {
             pty::hang_up(group);
         }
         drop(self.wake);
+    }
+}
+
+fn live_cwd(master: BorrowedFd<'_>, process: Option<i32>) -> Option<PathBuf> {
+    pty::foreground_group(master).and_then(process::cwd).or_else(|| process.and_then(process::cwd))
+}
+
+/// What the reader has heard about where the pane's program is.
+#[derive(Debug)]
+struct Heard {
+    host: String,
+    /// The last directory published.
+    directory: PathBuf,
+    /// Whether the program reports its directory itself (OSC 7), after which the reader stops
+    /// asking the kernel.
+    reports_directory: bool,
+}
+
+impl Heard {
+    fn moved_to(&mut self, directory: PathBuf, serial: u64, reports: &Reports) {
+        if directory != self.directory {
+            self.directory.clone_from(&directory);
+            reports.send(serial, Reported::Cwd(directory));
+        }
+    }
+}
+
+struct Reader {
+    io: Arc<PaneIo>,
+    wake: OwnedFd,
+    /// Told when the PTY closes, for a pane with no child to wait for.
+    ended: Option<Ended>,
+    reports: Reports,
+    process: Option<i32>,
+    heard: Heard,
+}
+
+impl Reader {
+    /// Reads the pane's output until its PTY closes or the pane lets go.
+    ///
+    /// Each chunk goes to the pane's terminal under the pane's lock; what it asked for is sent
+    /// on once the lock is released. Nothing on this path waits for the session lock.
+    fn run(mut self) {
+        let mut buffer = vec![0u8; 64 * 1024];
+        // When the directory is next worth checking. The poll's timeout is the cadence, so a
+        // check needs no thread of its own - and the detector's reads will want the same.
+        let mut due: Option<Instant> = None;
+        loop {
+            let master = self.io.master.as_raw_fd();
+            let mut watched = [
+                libc::pollfd { fd: master, events: libc::POLLIN, revents: 0 },
+                libc::pollfd { fd: self.wake.as_raw_fd(), events: libc::POLLIN, revents: 0 },
+            ];
+            let timeout = due.map_or(-1, |due| {
+                let left = due.saturating_duration_since(Instant::now()).as_millis();
+                i32::try_from(left).unwrap_or(i32::MAX)
+            });
+            // SAFETY: `watched` is a valid array of two pollfds for the length given.
+            let ready = unsafe { libc::poll(watched.as_mut_ptr(), 2, timeout) };
+            if ready == -1 {
+                if io::Error::last_os_error().kind() == io::ErrorKind::Interrupted {
+                    continue;
+                }
+                return;
+            }
+            if watched[1].revents != 0 {
+                return;
+            }
+            if due.is_some_and(|due| Instant::now() >= due) {
+                due = None;
+                self.check_directory();
+            }
+            if watched[0].revents == 0 {
+                continue;
+            }
+            // SAFETY: `buffer` is valid for writes of its length.
+            let read = unsafe { libc::read(master, buffer.as_mut_ptr().cast(), buffer.len()) };
+            if read > 0 {
+                let chunk = &buffer[..read.cast_unsigned()];
+                let happened = self.io.screen().feed(chunk);
+                self.io.dispatch(happened, &mut self.heard, &self.reports);
+                if !self.heard.reports_directory && due.is_none() {
+                    due = Some(Instant::now() + CWD_CADENCE);
+                }
+                continue;
+            }
+            if read == -1
+                && matches!(
+                    io::Error::last_os_error().kind(),
+                    io::ErrorKind::Interrupted | io::ErrorKind::WouldBlock
+                )
+            {
+                continue;
+            }
+            // End of file, or EIO: every process holding the terminal has closed it.
+            if let Some(ended) = &self.ended {
+                ended(self.io.serial, None);
+            }
+            return;
+        }
+    }
+
+    /// Publishes the directory the pane's program is in, for a shell that does not say.
+    fn check_directory(&mut self) {
+        if self.heard.reports_directory {
+            return;
+        }
+        if let Some(directory) = live_cwd(self.io.master.as_fd(), self.process) {
+            self.heard.moved_to(directory, self.io.serial, &self.reports);
+        }
     }
 }
 
@@ -133,46 +336,19 @@ fn wait(pid: i32, pane: &str) -> Option<i32> {
     }
 }
 
-/// Reads the pane's output until its PTY closes or the pane lets go.
-///
-/// Discarded for now. The pane's byte stream and its headless terminal (later cards) take each
-/// chunk here, and nothing on this path waits for the session lock.
-fn drain(master: &OwnedFd, wake: &OwnedFd, serial: u64, ended: Option<&Ended>) {
-    let mut buffer = vec![0u8; 64 * 1024];
-    loop {
-        let mut watched = [
-            libc::pollfd { fd: master.as_raw_fd(), events: libc::POLLIN, revents: 0 },
-            libc::pollfd { fd: wake.as_raw_fd(), events: libc::POLLIN, revents: 0 },
-        ];
-        // SAFETY: `watched` is a valid array of two pollfds for the length given.
-        let ready = unsafe { libc::poll(watched.as_mut_ptr(), 2, -1) };
-        if ready == -1 {
-            if io::Error::last_os_error().kind() == io::ErrorKind::Interrupted {
-                continue;
-            }
-            return;
-        }
-        if watched[1].revents != 0 {
-            return;
-        }
-        if watched[0].revents == 0 {
-            continue;
-        }
-        // SAFETY: `buffer` is valid for writes of its length.
-        let read =
-            unsafe { libc::read(master.as_raw_fd(), buffer.as_mut_ptr().cast(), buffer.len()) };
-        if read > 0 {
-            continue;
-        }
-        if read == -1 && io::Error::last_os_error().kind() == io::ErrorKind::Interrupted {
-            continue;
-        }
-        // End of file, or EIO: every process holding the terminal has closed it.
-        if let Some(ended) = ended {
-            ended(serial, None);
-        }
-        return;
+/// The master is shared by a reader that polls before reading and a writer that must never
+/// block past the pane's end, so neither wants a blocking descriptor.
+fn nonblocking(master: &OwnedFd) -> io::Result<()> {
+    // SAFETY: fcntl on a descriptor this process owns.
+    let flags = unsafe { libc::fcntl(master.as_raw_fd(), libc::F_GETFL) };
+    if flags == -1 {
+        return Err(io::Error::last_os_error());
     }
+    // SAFETY: as above.
+    if unsafe { libc::fcntl(master.as_raw_fd(), libc::F_SETFL, flags | libc::O_NONBLOCK) } == -1 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
 }
 
 /// A pipe whose two ends are close-on-exec. A pane forked in the moment before they are marked

@@ -172,3 +172,62 @@ pub fn process_state(pid: &str) -> String {
         .expect("ps runs");
     String::from_utf8_lossy(&output.stdout).trim().to_string()
 }
+
+pub fn read_request(name: &str, first_row: u64, rows: u32) -> Service {
+    pane(pane_request::Request::Read(pane_request::Read {
+        pane: name.to_string(),
+        first_row,
+        rows,
+    }))
+}
+
+/// A page of a pane's text, insisting it was read.
+#[track_caller]
+pub fn read_text(control: &mut Control, name: &str, first_row: u64, rows: u32) -> proto::PaneText {
+    match expect(control, read_request(name, first_row, rows), proto::Outcome::Done).answer.detail {
+        Some(proto::answer::Detail::Text(text)) => text,
+        other => panic!("a read answered with {other:?}"),
+    }
+}
+
+/// Every row of a pane's text, once it contains `needle`.
+pub fn until_text(control: &mut Control, name: &str, needle: &str) -> String {
+    until_some(&format!("pane {name} to show {needle:?}"), || {
+        Some(read_text(control, name, 0, 0).text).filter(|text| text.contains(needle))
+    })
+}
+
+/// A command that puts its terminal in raw mode, writes `query` (a printf format), and saves
+/// whatever comes back on its input to `out` - which is how a test sees the daemon answer a
+/// program's query as the program would.
+pub fn answer_to(query: &str, out: &Path) -> String {
+    format!(
+        "stty raw -echo min 0 time 50; printf '{query}'; dd bs=4096 count=1 of={} 2>/dev/null",
+        out.display()
+    )
+}
+
+/// What a file holds once something has been written to it.
+pub fn bytes_in(path: &Path) -> Vec<u8> {
+    until_some(&format!("something written to {}", path.display()), || {
+        std::fs::read(path).ok().filter(|bytes| !bytes.is_empty())
+    })
+}
+
+/// Events from a subscribed connection until `enough` says the ones gathered suffice.
+pub fn events_until(
+    control: &mut Control,
+    what: &str,
+    mut enough: impl FnMut(&[proto::Event]) -> bool,
+) -> Vec<proto::Event> {
+    let deadline = std::time::Instant::now() + muster_harness::PATIENCE;
+    let mut events = Vec::new();
+    while !enough(&events) {
+        let left = deadline.saturating_duration_since(std::time::Instant::now());
+        assert!(!left.is_zero(), "{what}: not within the suite's patience; heard {events:?}");
+        if let Some(proto::control_message::Message::Event(event)) = control.next_message(left) {
+            events.push(event);
+        }
+    }
+    events
+}

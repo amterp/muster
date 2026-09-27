@@ -30,10 +30,13 @@ use proto::request::Service;
 use proto::{Outcome, pane_request, session_request, tab_request};
 
 use crate::control::Outbox;
-use crate::pane::{Ended, Pane};
+use crate::effects::{self, Report, Reported, Reports};
+use crate::pane::{Ended, Pane, PaneIo, Watching};
 use crate::pty::{self, Grid, Launch};
+use crate::screen::{self, Appearance, Screen};
 use crate::spawn;
 use crate::tree::{self, Node, Resized};
+use crate::writer::Input;
 
 /// What every thread of the daemon shares.
 #[derive(Debug)]
@@ -52,6 +55,21 @@ impl Shared {
         home: PathBuf,
     ) -> Arc<Shared> {
         Arc::new_cyclic(|shared: &Weak<Shared>| {
+            let (reports, received) = Reports::channel();
+            let publishing = shared.clone();
+            let publisher = std::thread::Builder::new()
+                .name("publish".to_string())
+                .spawn(move || effects::publish(&received, &publishing));
+            if let Err(error) = publisher {
+                log::error(
+                    "daemon.publisher.no_thread",
+                    fields! {
+                        "error" => error,
+                        "impact" => "no pane's title, directory, bell or notification will be                                      published by this daemon",
+                        "check" => "whether the daemon is out of threads",
+                    },
+                );
+            }
             let shared = shared.clone();
             let ended: Ended = Arc::new(move |serial, status| {
                 if let Some(shared) = shared.upgrade() {
@@ -74,6 +92,8 @@ impl Shared {
                     home,
                     next_serial: 0,
                     ended,
+                    reports,
+                    host: effects::host_name(),
                     reserved: HashSet::new(),
                     stopping: false,
                 }),
@@ -106,6 +126,10 @@ pub(crate) struct Session {
     home: PathBuf,
     next_serial: u64,
     ended: Ended,
+    /// Where panes send what their programs asked for, for the publisher to apply here.
+    reports: Reports,
+    /// This machine's name, which OSC 7 URLs from a shell here carry.
+    host: String,
     /// Pane and tab names a create has claimed while its process starts, so a second create
     /// cannot claim them too.
     reserved: HashSet<String>,
@@ -182,6 +206,24 @@ pub(crate) enum Handled {
     Reply(Reply),
     /// A pane to start with the session unlocked, then finish with [`Session::started`].
     Start(Box<Starting>),
+    /// A pane's text to read with the session unlocked, since a long page takes a while to
+    /// format and holds only the pane's lock.
+    Read(Box<Reading>),
+}
+
+/// A `pane.read` whose pane has been found.
+#[derive(Debug)]
+pub(crate) struct Reading {
+    io: Arc<PaneIo>,
+    first_row: u64,
+    rows: u32,
+}
+
+impl Reading {
+    pub(crate) fn read(&self) -> Reply {
+        let text = self.io.screen().text(self.first_row, self.rows);
+        Reply { detail: Some(Box::new(Detail::Text(text))), ..Reply::done() }
+    }
 }
 
 /// A create that has been checked, with its names reserved, and whose process has yet to start.
@@ -239,7 +281,7 @@ impl Session {
                 S::SetScrollback(set) => self.set_scrollback(set),
                 S::SetPalette(set) => self.set_palette(set),
                 S::SendManifests(manifests) => self.send_manifests(manifests),
-                S::SetClipboardWrite(set) => self.set_clipboard_write(&set),
+                S::SetClipboardWrite(set) => self.set_clipboard_write(set),
                 S::Stop(_) => {
                     self.close_everything();
                     Reply::done()
@@ -260,10 +302,13 @@ impl Session {
                 P::Rename(rename) => self.rename_pane(rename),
                 P::Read(read) => match self.pane_index(&read.pane) {
                     None => Reply::not_there(format!("no pane {} on this daemon", read.pane)),
-                    Some(_) => Reply::refused(
-                        "reading a pane's text arrives with the pane's terminal, which this \
-                         daemon does not keep yet",
-                    ),
+                    Some(index) => {
+                        return Handled::Read(Box::new(Reading {
+                            io: Arc::clone(&self.panes[index].io),
+                            first_row: read.first_row,
+                            rows: read.rows,
+                        }));
+                    }
                 },
             },
             _ => Reply::unsupported(),
@@ -352,7 +397,7 @@ impl Session {
         };
         let grid = match create.grid.map(grid) {
             Some(grid) => grid.map_err(Reply::refused)?,
-            None => neighbour.map_or(Grid::FALLBACK, |pane| pane.grid),
+            None => neighbour.map_or(Grid::FALLBACK, |pane| pane.io.screen().grid()),
         };
         let cwd = match create.cwd.filter(|cwd| !cwd.is_empty()) {
             Some(cwd) => PathBuf::from(cwd),
@@ -424,15 +469,24 @@ impl Session {
             command: starting.command,
             ..proto::Pane::default()
         };
-        self.next_serial += 1;
-        let serial = self.next_serial;
-        let pane =
-            match Pane::start(record, starting.grid, serial, master, Some(child), &self.ended) {
-                Ok(pane) => pane,
+        let screen =
+            match Screen::new(starting.grid, self.scrollback(), &Appearance::of(&self.settings)) {
+                Ok(screen) => screen,
                 Err(error) => {
+                    pty::abandon(child.id().cast_signed());
+                    let error = std::io::Error::other(error.to_string());
                     return Self::could_not_start(&starting.pane, program, &starting.cwd, &error);
                 }
             };
+        self.next_serial += 1;
+        let serial = self.next_serial;
+        let watching = Watching { ended: &self.ended, reports: &self.reports, host: &self.host };
+        let pane = match Pane::start(record, serial, master, screen, Some(child), &watching) {
+            Ok(pane) => pane,
+            Err(error) => {
+                return Self::could_not_start(&starting.pane, program, &starting.cwd, &error);
+            }
+        };
         log::info("daemon.pane.started", fields! { "pane" => starting.pane, "serial" => serial });
         self.emit(Payload::PaneOpened(proto::PaneOpened { pane: Some(pane.record.clone()) }));
         self.panes.push(pane);
@@ -532,6 +586,39 @@ impl Session {
         }
         self.remove(pane, proto::CloseReason::Requested, None);
         Reply::done()
+    }
+
+    /// Something a pane's program asked for, from the publisher. Nothing to do if the pane has
+    /// closed since.
+    pub(crate) fn reported(&mut self, report: Report) {
+        let Some(index) = self.panes.iter().position(|pane| pane.serial == report.serial) else {
+            return;
+        };
+        let name = self.panes[index].record.pane.clone();
+        let record = &mut self.panes[index].record;
+        match report.what {
+            Reported::Title(title) => {
+                if record.title != title {
+                    record.title = title;
+                    let record = record.clone();
+                    self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
+                }
+            }
+            Reported::Cwd(directory) => {
+                let cwd = directory.display().to_string();
+                if record.cwd != cwd {
+                    record.cwd = cwd;
+                    let record = record.clone();
+                    self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
+                }
+            }
+            Reported::Shown(effect) => {
+                self.emit(Payload::PaneEffect(proto::PaneEffect {
+                    pane: name,
+                    effect: Some(effect),
+                }));
+            }
+        }
     }
 
     /// A pane's process ended. Nothing to do if the pane was already closed.
@@ -732,7 +819,44 @@ impl Session {
             return Reply::already();
         }
         self.settings.scrollback_bytes = set.bytes;
+        let bytes = self.scrollback();
+        for pane in &self.panes {
+            if let Err(error) = pane.io.screen().set_scrollback(bytes) {
+                log::warn(
+                    "daemon.pane.scrollback_unchanged",
+                    fields! {
+                        "pane" => pane.record.pane,
+                        "error" => error,
+                        "impact" => "this pane keeps the history limit it had; new panes get \
+                                     the new one",
+                    },
+                );
+            }
+        }
         self.settings_changed()
+    }
+
+    /// The history each pane keeps, in bytes.
+    fn scrollback(&self) -> usize {
+        self.settings.scrollback_bytes.map_or(screen::DEFAULT_SCROLLBACK, |bytes| {
+            usize::try_from(bytes).unwrap_or(usize::MAX)
+        })
+    }
+
+    /// Tells every pane's terminal what the app now draws with and allows, and tells each
+    /// program that asked (mode 2031) when light turned dark or back.
+    fn appearance_changed(&mut self, was: &Appearance) {
+        let appearance = Appearance::of(&self.settings);
+        let turned = appearance.scheme.filter(|&scheme| was.scheme != Some(scheme));
+        for pane in &self.panes {
+            let mut screen = pane.io.screen();
+            screen.appear(&appearance);
+            let asked = screen.terminal().mode(muster_vt::Mode::COLOR_SCHEME_REPORT);
+            drop(screen);
+            if let Some(scheme) = turned.filter(|_| asked) {
+                pane.io.queue(Input::Reply(screen::scheme_report(scheme).to_vec()));
+            }
+        }
     }
 
     fn set_palette(&mut self, set: proto::SetPalette) -> Reply {
@@ -748,15 +872,19 @@ impl Session {
         if self.settings.palette.as_ref() == Some(&palette) {
             return Reply::already();
         }
+        let was = Appearance::of(&self.settings);
         self.settings.palette = Some(palette);
+        self.appearance_changed(&was);
         self.settings_changed()
     }
 
-    fn set_clipboard_write(&mut self, set: &proto::SetClipboardWrite) -> Reply {
+    fn set_clipboard_write(&mut self, set: proto::SetClipboardWrite) -> Reply {
         if self.settings.clipboard_write.unwrap_or(true) == set.allowed {
             return Reply::already();
         }
+        let was = Appearance::of(&self.settings);
         self.settings.clipboard_write = Some(set.allowed);
+        self.appearance_changed(&was);
         self.settings_changed()
     }
 

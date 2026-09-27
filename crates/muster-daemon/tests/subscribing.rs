@@ -4,7 +4,7 @@ mod support;
 
 use std::time::Duration;
 
-use proto::{pane_request, session_request};
+use proto::session_request;
 use support::*;
 
 #[test]
@@ -113,22 +113,6 @@ fn a_pane_runs_the_shell_it_was_set_to_run() {
         "-i\n",
         "a non-login shell is started interactive and nothing else"
     );
-}
-
-#[test]
-fn reading_a_pane_is_refused_until_the_daemon_keeps_its_terminal() {
-    let daemon = daemon();
-    let mut control = daemon.connect();
-    make(&mut control, create("p1", in_new_tab("t1")));
-    let read = |name: &str| {
-        pane(pane_request::Request::Read(pane_request::Read {
-            pane: name.to_string(),
-            first_row: 0,
-            rows: 10,
-        }))
-    };
-    expect(&mut control, read("p1"), proto::Outcome::Refused);
-    expect(&mut control, read("missing"), proto::Outcome::NotThere);
 }
 
 #[test]

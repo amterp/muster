@@ -17,7 +17,7 @@ use muster_daemon_proto::connection;
 use muster_daemon_proto::{self as proto, request::Service, session_request};
 use prost::Message;
 
-use crate::session::{Handled, Reply, Session, Shared};
+use crate::session::{Handled, Reading, Reply, Session, Shared, Starting};
 
 /// How many messages a connection may have waiting before the daemon gives up on it.
 ///
@@ -157,16 +157,24 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
                     answer(&session, &outbox, request.id, reply);
                     None
                 }
-                Handled::Start(starting) => Some(starting),
+                Handled::Start(starting) => Some(Unlocked::Start(starting)),
+                Handled::Read(reading) => Some(Unlocked::Read(reading)),
             }
         };
-        // Outside the lock: starting a process waits for it to change directory and exec,
-        // and a directory on a hung mount would otherwise stall every connection with it.
-        if let Some(starting) = starting {
-            let started = starting.start();
-            let mut session = shared.lock();
-            let reply = session.started(*starting, started);
-            answer(&session, &outbox, request.id, reply);
+        match starting {
+            // Outside the lock: starting a process waits for it to change directory and exec,
+            // and a directory on a hung mount would otherwise stall every connection with it.
+            Some(Unlocked::Start(starting)) => {
+                let started = starting.start();
+                let mut session = shared.lock();
+                let reply = session.started(*starting, started);
+                answer(&session, &outbox, request.id, reply);
+            }
+            Some(Unlocked::Read(reading)) => {
+                let reply = reading.read();
+                answer(&shared.lock(), &outbox, request.id, reply);
+            }
+            None => {}
         }
         if stopping {
             outbox.flush(STOP_FLUSH);
@@ -178,6 +186,12 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
     shared.lock().unsubscribe(outbox.id);
     let _ = stream.shutdown(Shutdown::Both);
     log::info("daemon.connection.closed", fields! { "connection" => outbox.id });
+}
+
+/// A request's work to finish once the session is unlocked.
+enum Unlocked {
+    Start(Box<Starting>),
+    Read(Box<Reading>),
 }
 
 /// Queues the answer to request `id`. Called with the session locked, after the request's
