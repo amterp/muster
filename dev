@@ -416,10 +416,6 @@ SKIPPED_SUITES = [
       "note": "need the devenv container; ./dev --ssh runs them" },
     { "language": "Rust", "suite": "muster-daemon-client's devenv test", "skipped": 1,
       "note": "needs the devenv container; ./dev --ssh runs it" },
-    { "language": "Rust", "suite": "muster-herdr's devenv test", "skipped": 1,
-      "note": "needs the devenv container; ./dev --ssh runs it" },
-    { "language": "Rust", "suite": "muster-herdr's forking-shell devenv test", "skipped": 1,
-      "note": "needs the devenv container; ./dev --ssh runs it" },
     { "language": "Rust", "suite": "muster-daemon's ssh and sudo devenv tests", "skipped": 2,
       "note": "need the devenv container; ./dev --ssh runs them" },
     { "language": "Rust", "suite": "fresh_session's doc example", "skipped": 1,
@@ -524,8 +520,8 @@ fn run_ssh_tier():
     if len(names) == 0:
         print_err(red("The remote tier discovered no tests."))
         print_err("An empty tier passes, so this is a failure rather than a green run.")
-        print_err("Check that the #[ignore] tests in crates/muster-ssh/tests/ and")
-        print_err("crates/muster-herdr/tests/devenv*.rs and")
+        print_err("Check that the #[ignore] tests in crates/muster-ssh/tests/ssh/,")
+        print_err("crates/muster-daemon-client/tests/devenv.rs and")
         print_err("crates/muster-daemon/tests/daemon/devenv_terminfo.rs still exist.")
         exit(1)
     print(dim("{len(names)} remote test(s) discovered"))
@@ -691,6 +687,10 @@ fn stage_helpers(profile):
     // is already `muster`, and the two would collide in one directory. The app puts a link called
     // `muster` in ~/.muster/bin pointing here, which is what a pane finds on its PATH.
     stage(target = "target/{profile}/muster", into = "{swift_bin}/muster-cli")
+    // The daemon, and the data it hands every shell, where the app looks for them: beside the
+    // bridge, as they sit in a bundle.
+    stage(target = "target/{profile}/muster-daemon", into = "{swift_bin}/muster-daemon")
+    $`rsync -a --delete {DAEMON_DATA}/ {swift_bin}/muster-daemon-data/`
     herdr = herdr_binary()
     stage(target = herdr, into = "{swift_bin}/herdr")
 
@@ -1775,11 +1775,6 @@ if lint:
 if test:
     announce("test")
 
-    // Before anything, because a missing or mismatched daemon invalidates the run rather
-    // than failing one test in it. Every daemon-backed test spawns this exact binary,
-    // handed down through the environment rather than looked up on PATH.
-    herdr = herdr_binary()
-
     // Before the suite, because the corpus is what most of the suite asserts against. A
     // file nobody loads is checked in, never run, and indistinguishable from coverage -
     // and no driver can catch that, since the check is about the file it never opened.
@@ -1842,9 +1837,9 @@ if test:
     check_skipped("Rust", len(rust_ignored), rust_ignored,
         "Add or remove the row in SKIPPED_SUITES above, or take the #[ignore] off. Try: cargo test --workspace -- --list --ignored")
 
-    // Handed down rather than looked up: a test that found its own herdr could find a
-    // different one than the run verified, and would report on a daemon nobody pinned.
-    $`MUSTER_HERDR={herdr} cargo test --workspace`
+    // Every daemon-backed test runs the muster-daemon the build above made, which the harness
+    // finds beside the test binaries: the daemon under test is always this commit's.
+    $`cargo test --workspace`
 
     stdout, stderr, code = $`swift test list` catch:
         if matches(stderr, "no tests found", partial=true):

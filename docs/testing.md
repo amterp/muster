@@ -18,33 +18,36 @@ Muster's principles, adapted to that evidence:
   to test, it is in the wrong layer: move it, don't mock around it.
 - **Do not fake the backend. Run a real one.** This started as "fake only the seams, and audit the fakes against
   reality," on the reasoning that a real daemon would be too slow for the default gate. Measured, that reasoning was
-  wrong: a herdr daemon costs 25 ms to spawn and answer, a session snapshot 0.7 ms, and a full mirror bootstrap -
-  snapshot, subscribe, first event - 0.7 ms. Thirty repeated runs across serial and parallel execution produced no
-  failures. The seconds-per-test cost worth fearing belongs to agent *detection*, which screen-scrapes on a
-  hardcoded two-second timer; tests that report agent state through the API never touch it.
+  wrong: herdr, the daemon Muster ran first, cost 25 ms to spawn and answer, a session snapshot 0.7 ms, and a full
+  mirror bootstrap - snapshot, subscribe, first event - 0.7 ms. Thirty repeated runs across serial and parallel
+  execution produced no failures. muster-daemon answers its first request in about 4 ms. The seconds-per-test cost
+  worth fearing belongs to agent *detection*, which reads a pane's screen: a test that needs an agent state pays
+  the detector's three-second startup grace once per pane, and only those tests pay it.
 
-  So the backend seam is not faked at all. Tests that need a daemon spawn a real one under a scratch config
-  directory, through `crates/herdr-harness` - one daemon per test, killed on drop including on a panic, isolated by
-  pointing XDG at a scratch root because that is where herdr resolves its config and keeps its socket. What this
-  buys is the removal of a whole category: there is no hand-written herdr in this repo, so there is nothing to
-  drift, and "a drifted fake daemon is Muster's top false-green risk" stops being a risk we manage and becomes one
-  we do not have.
+  So the backend seam is not faked at all. Tests that need a daemon spawn a real one through
+  `crates/muster-harness` - one daemon per test, killed on drop including on a panic, isolated by a scratch root
+  holding its socket, its HOME and its log. What this buys is the removal of a whole category: there is no
+  hand-written daemon in this repo, so there is nothing to drift, and "a drifted fake daemon is Muster's top
+  false-green risk" stops being a risk we manage and becomes one we do not have.
 
-  It also catches what a stand-in cannot. Building the subscription against a real daemon turned up two facts no
+  It also catches what a stand-in cannot. Building the subscription against real herdr turned up two facts no
   invented one would have contradicted: a subscription is requested by a dotted name and answered with a snake one,
   and half-closing the write side - which is how every other herdr call signals it is finished - ends a subscription
   on the spot. Both fail as silence rather than as an error, which is the shape of bug a fake is worst at.
 
-  muster-daemon's tests work the same way through `crates/muster-harness`, with one difference: the daemon is built
-  from the same commit rather than pinned, and its tests hand the harness `CARGO_BIN_EXE_muster-daemon`. Cargo
-  gives that only to the daemon's own package, so a test anywhere else calls `built_daemon()`, which finds the
-  daemon in the target directory the test runs from. `./dev` builds the workspace before testing, so that daemon is
+  The daemon is built from the same commit rather than pinned: the daemon's own tests hand the harness
+  `CARGO_BIN_EXE_muster-daemon`, and cargo gives that only to the daemon's own package, so a test anywhere else -
+  the seam's, the CLI's, the bridge's - calls `Daemon::start_built()`, which finds the daemon in the target
+  directory the test runs from. `./dev` builds the workspace before testing, so that daemon is
   from the same commit; a narrowed `cargo test -p` builds only its own package and gets whichever daemon was built
   last. The request builders the daemon's tests read with, such as `make`, `beside` and `until_text`, are in
   `muster_harness::requests` for the same reason. A spawned
   one answers its first request in about 4 ms, and a test holds that under the 25 ms that keeps daemon-backed tests
-  in the default gate. `muster-harness` also holds what both harnesses share, `until` and the relay below, and
-  `herdr-harness` re-exports them until the cut-over deletes it. Beside the control connection it drives the other
+  in the default gate. A Muster config naming the daemon is `muster_config()`, and a window's test points the seam
+  at it the way a person's file would. Agent state is driven the way a real agent drives it:
+  `Daemon::start_detecting()` gives the daemon a home holding the herdr probe's fake agent under the name `claude`
+  and an override manifest that reads its markers, `run_agent` starts it in a pane, and `set_agent_state` tells it
+  what to paint - so no test sets a state the detector did not reach. Beside the control connection it drives the other
   two the way a bridge and the app will: a `Stream` that attaches and gives or withholds credit, and an `Input`.
   What a pane's program received is read from inside it - a program in raw mode copying its input to a file - and
   the bytes it should have received come from libghostty's own encoders, configured from a terminal fed the same
@@ -61,18 +64,16 @@ Muster's principles, adapted to that evidence:
   again against the daemon, the same fake agent and override manifest, and prints each state's settle time beside
   the one recorded in `corpus/herdr-0.8.0/detection/`.
 
-  A lost answer is staged the same way. `Daemon::withholding_answers_to` puts a relay in front of the real daemon
-  that passes every connection through and, for the methods a test names, reads herdr's answer and never delivers
-  it. The daemon does the work and every byte a caller receives is one herdr sent, so what is staged is a transport
+  A lost answer is staged the same way. `Daemon::withholding_answers_where` puts a relay in front of the real
+  daemon that passes every connection through and, for the requests a test picks out, reads the daemon's answer and
+  never delivers it. The daemon does the work and every byte a caller receives is one it sent, so what is staged is a transport
   fault - the thing a loaded machine produces and no request can ask for - rather than a daemon of Muster's
   invention.
 
-  The daemon is pinned rather than found. `deps/herdr.pin` carries a version and a checksum per platform, `./dev`
-  fetches that binary into `deps/herdr/` once and verifies it, and the path is handed down to the tests through
-  the environment. Nothing consults PATH, for two reasons: a contributor's own herdr should be free to be any
-  version, and a test that resolved its own daemon could quietly run against one nobody verified. The probe that
-  records the corpus uses the same pinned binary, so the oracle and the code being judged always come from one
-  daemon.
+  Nothing consults PATH for a daemon: a test that resolved its own could quietly run against one nobody built
+  from this commit. herdr is still pinned (`deps/herdr.pin`, fetched into `deps/herdr/` and verified) for the
+  app the shell builds, the contract and latency tiers and the corpus probe until they move to muster-daemon, and
+  no Rust test runs it.
 - **Detect wire drift mechanically, not by waiting for a test to fail.** herdr generates a canonical JSON Schema of
   its whole API from its own request types, fails its own build when the two disagree, and embeds it in the binary
   (`herdr api schema --json`). A copy sits in `corpus/herdr-<version>/api-schema.json`, and `./dev` diffs the two
@@ -86,7 +87,8 @@ Muster's principles, adapted to that evidence:
   reserved, or the schema changed without its minor version moving past the baseline's.
 - **Inject at the seams the code already has, not by impersonating a daemon.** Three different things get called
   fault injection, and only one needs machinery. *Daemon state* - a blocked agent, fifteen panes, a pane whose
-  program died - is driven through herdr's own API, which can produce all of it on request. *Daemon-internal
+  program died - is driven through the daemon's own requests and the fake agent, which can produce all of it on
+  request. *Daemon-internal
   timing* is not injectable at all, so nothing may depend on it. *Transport faults* are the real case, and they
   enter at two places: a parser that takes a reader rather than a socket, fed recorded bytes cut wherever a test
   wants, covers truncation, split reads and malformed lines offline; and process control covers the rest, since
@@ -182,8 +184,8 @@ Muster's principles, adapted to that evidence:
   through `muster::testing` and put back by `fresh_session`, and a test that uses the seam's one session takes that
   turn first; a bridge test's `Typing` takes it for you. A test that needs a process of its own stays a top-level
   file, which cargo builds as its own binary, and says why at the top: `muster-seam/tests/named_daemon.rs` is the
-  one. `muster-herdr` keeps a binary per file, since it goes with herdr. A file without its `mod` line compiles to
-  nothing and the gate stays green, so `tools/test-mods.py` fails the gate on one.
+  one. A file without its `mod` line compiles to nothing and the gate stays green, so `tools/test-mods.py` fails
+  the gate on one.
 - **A Swift test that points the seam somewhere holds it while it does.** `Core.dispatcher` is one mutable global
   for the process, so a test that swaps it is writing where every other test reads. These tests all run on the main
   actor and so are never truly concurrent - but a test that awaits gives the actor up, and another test's recorder

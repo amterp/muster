@@ -2,7 +2,6 @@
 resolver = "3"
 members = [
     "crates/conformance",
-    "crates/herdr-harness",
     "crates/muster-bridge",
     "crates/muster-cli",
     "crates/muster-core",
@@ -12,7 +11,6 @@ members = [
     "crates/muster-detect",
     "crates/muster-frame",
     "crates/muster-harness",
-    "crates/muster-herdr",
     "crates/muster-latency",
     "crates/muster-perf",
     "crates/muster-proto",
@@ -28,10 +26,8 @@ rust-version = "1.97"
 publish = false
 
 [workspace.dependencies]
-base64 = "0.22"
 conformance = { path = "crates/conformance" }
 flexid = "0.1"
-herdr-harness = { path = "crates/herdr-harness" }
 libc = "0.2"
 muster-cli = { path = "crates/muster-cli" }
 muster-core = { path = "crates/muster-core" }
@@ -40,7 +36,6 @@ muster-daemon-proto = { path = "crates/muster-daemon-proto" }
 muster-detect = { path = "crates/muster-detect" }
 muster-frame = { path = "crates/muster-frame" }
 muster-harness = { path = "crates/muster-harness" }
-muster-herdr = { path = "crates/muster-herdr" }
 muster-proto = { path = "crates/muster-proto" }
 muster-seam = { path = "crates/muster-seam" }
 muster-ssh = { path = "crates/muster-ssh" }
@@ -55,9 +50,9 @@ regex = "1"
 # key a refusal rather than a rule that silently never matches.
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-# Verifying the daemon this build pins, in the app rather than only in `./dev`. Pure Rust
-# rather than forking a digest tool, because that tool is `shasum` on macOS and `sha256sum`
-# everywhere else - a macOS-ism in the portable half is exactly what MIP-1 is for.
+# Naming a development build's install after its checkout, so two worktrees' daemons never
+# share a socket. Pure Rust rather than forking a digest tool, because that tool is `shasum`
+# on macOS and `sha256sum` everywhere else.
 sha2 = "0.10"
 # Configuration is files, and a file people hand-edit needs comments - which is the whole
 # argument against reusing serde_json for it. Every refusal is worded by us rather than by
