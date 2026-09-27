@@ -13,6 +13,12 @@
       "body": "From round 1 (slot 2): muster-daemon passes cargo check and clippy -D warnings for aarch64-unknown-linux-gnu (target added to the local toolchain) but has never run on Linux. Running its suite in the devenv container belongs here or right after.",
       "created_at_millis": 1790477135517,
       "id": "c_2XM6edbHg"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "From round 2 (slot 1): muster-detect's Linux process probes (/proc stat, task children BFS, cmdline, environ) are type-checked for aarch64-linux-gnu but never run; run them live on the devenv with the daemon.",
+      "created_at_millis": 1790482705138,
+      "id": "c_2XORXtst8"
     }
   ],
   "created_at_millis": 1790469795058,
@@ -23,7 +29,7 @@
   "position": "ac",
   "title": "Build muster-daemon for Linux x86_64 and aarch64",
   "type": "chore",
-  "updated_at_millis": 1790477135517,
+  "updated_at_millis": 1790482705138,
   "history": [
     {"field":"column","value":"backlog-hi","at":1790469795058}
   ]

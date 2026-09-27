@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "wire-muster-detect",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1790482705027,
+  "creator": "Alexander Terp",
+  "description": "MIP-3 section 8, the step after a_2XJ1gk34C (muster-detect, done) and a_2XJ1gZRTY (pane streams). muster-detect is a pure library; the daemon has to drive it. Per slot 1's round-2 report, the wiring is a timer and two trait implementations:\n- `Pane` over the pane's terminal: `foreground_group` (tcgetpgrp on the master, crates/muster-daemon/src/pty.rs), `content_seq` (bumped per non-empty read in the reader), `screen_text` = `Terminal::text(0, rows-1)`, `title` = `Terminal::title()` (the one title the daemon publishes - do not add a second), `progress`/`clear_progress` over a `muster_detect::Progress` fed every chunk in the reader.\n- `System` for `Processes`.\n- Tick first at `Detector::FIRST_TICK`, then after each `Tick::next`, from the reader's cadence hook slot 2 left; `reset()` and tick when manifests change.\n- Publications become the pane's `agent` and `AgentState` on the event stream (the protocol already carries both).\n- `session.send_manifests` feeds app-sent manifests into `Manifests::load`; `~/.muster/agent-detection/` overrides; `MUSTER_AGENT` hint. Document both in docs/configuration.md with this change.\nAlso: run the herdr probe's `detection` scenario (corpus/herdr-0.8.0/detection/) against the new daemon as the migration check, and fold in rich agent state (a_2XMXOShAA) if its design settles in time, since it reads the same screens on the same cadence.",
+  "id": "a_2XORXgBGa",
+  "parent": "a_2XJ1fUIyr",
+  "position": "at",
+  "title": "Wire muster-detect into muster-daemon: every pane reports its agent and state",
+  "type": "feature",
+  "updated_at_millis": 1790482705027,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1790482705027}
+  ]
+}
