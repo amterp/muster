@@ -39,7 +39,13 @@ Muster's principles, adapted to that evidence:
   from the same commit rather than pinned, and its tests hand the harness `CARGO_BIN_EXE_muster-daemon`. A spawned
   one answers its first request in about 4 ms, and a test holds that under the 25 ms that keeps daemon-backed tests
   in the default gate. `muster-harness` also holds what both harnesses share, `until` and the relay below, and
-  `herdr-harness` re-exports them until the cut-over deletes it.
+  `herdr-harness` re-exports them until the cut-over deletes it. Beside the control connection it drives the other
+  two the way a bridge and the app will: a `Stream` that attaches and gives or withholds credit, and an `Input`.
+  What a pane's program received is read from inside it - a program in raw mode copying its input to a file - and
+  the bytes it should have received come from libghostty's own encoders, configured from a terminal fed the same
+  modes, so no test spells an escape sequence the encoder is the authority on. The flood test holds the structure
+  that keeps one pane's flood from delaying another's echo and times nothing; an ignored test beside it prints the
+  latency.
 
   A lost answer is staged the same way. `Daemon::withholding_answers_to` puts a relay in front of the real daemon
   that passes every connection through and, for the methods a test names, reads herdr's answer and never delivers

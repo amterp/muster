@@ -209,17 +209,22 @@ writes the chunk to its stdout, which is the surface's PTY, so the surface's own
 exactly the bytes the program wrote.
 
 **Nothing on this path waits for another pane or for a request.** No render loop, no shared thread,
-no throttle. The reader writes to the bridge's connection directly. Requests, agent detection and
-attaching take the pane's lock briefly, and never while formatting a long history.
+no throttle. The reader hands each chunk to a queue drained by the stream's own writer thread, which
+credit bounds, so a bridge that stops reading costs its own queue and never the reader. Requests,
+agent detection and attaching take the pane's lock briefly, and never while formatting a long
+history.
 
 **Flow control is by credit.** A bridge acknowledges the bytes it has written to the surface. The
 daemon keeps at most a fixed window of unacknowledged bytes per pane (256 KB to start, tuned by
 measurement), and when the window is full it stops sending and marks the pane as behind. Credit
 detects a slow reader on the far side of ssh, where the daemon's own queue depth does not, because
-sshd and TCP buffer megabytes before the daemon's writes block. A pane that falls behind is caught
-up with the screen only, not its history: bytes that scrolled off during a flood are in the daemon,
-where `muster pane read` reaches them, and not in the surface's scrollback. The PTY reader never
-blocks on a bridge.
+sshd and TCP buffer megabytes before the daemon's writes block. Credit counts output only, not a
+replay's bytes: a replay is bounded by the pane's scrollback and comes once per attach, and counting
+it would put every large attach straight behind. A bridge is told once that it is behind, and gets
+no output until it has acknowledged everything it was sent; then it is caught up with the screen
+only, not its history (section 5), and output resumes. Bytes that scrolled off during a flood are
+in the daemon, where `muster pane read` reaches them, and not in the surface's scrollback. The PTY
+reader never blocks on a bridge.
 
 **One bridge per pane.** A bridge holds a pane at a time, and its grid is the pane's size. A second
 attach must ask for takeover or is refused; the displaced bridge is told why. A pane keeps its last
@@ -241,8 +246,12 @@ the same race with one copy; here the copies can differ until the next replay, w
 surface from the daemon's copy. The daemon's copy is what agent detection and `muster pane read`
 see. The surface's copy is what Ghostty's search and selection see. `scrollback_bytes` sizes both.
 
-**Kitty graphics pass through and are not replayed.** The daemon stores images with a small limit,
-so a program that probes support gets a truthful answer, and refuses the file, temporary-file and
+**Kitty graphics pass through and are not replayed.** The daemon stores images so a program that
+probes support gets a truthful answer. Its store is Ghostty's own default, 320 MB, and not smaller:
+the daemon's answers are the ones a program sees, libghostty evicts the oldest image to make room
+and fails only when one image is larger than the whole store, so a smaller store would refuse an
+image the surface takes, or forget an id the surface still holds. The bytes are spent only by panes
+whose programs send images, which the surface holds too. The daemon refuses the file, temporary-file and
 shared-memory transmission media, which name paths on the daemon's machine that a remote surface
 cannot read. Programs then fall back to sending images inline. An image is gone from the surface
 after a replay.
@@ -309,7 +318,19 @@ under that lock. Measured on one pane, composing costs about 0.2 µs per 80-colu
 parsing it in a fresh headless terminal, standing in for the surface, about the same: 3 ms each for 10,000 rows, 30 ms each for 100,000, twice that
 at 200 columns. The lock stalls only the pane being attached, whose surface is waiting for the
 replay anyway, so no copy of the terminal is taken, and history is not capped: the pane's
-scrollback limit already bounds it.
+scrollback limit already bounds it. A replay can be larger than a frame may be, so it travels in
+pieces of 1 MiB that the bridge writes in order.
+
+**A bridge that fell behind is caught up with the screen, keeping its history.** A replay opens
+with RIS, which erases the receiver's history, so a catch-up resets instead, piece by piece,
+whatever RIS would: the primary screen, the pen, hyperlink, protection and charsets, margins and
+the scrolling region, synchronized output, kitty flags and modifyOtherKeys, and every color a
+program set. It then erases the screen, and composes the replay's own steps from the active area
+alone, stating the title and directory even when they are empty. The screen formatter leaves
+history out through one more field on the carried patch, `history`, which adds C API only.
+`corpus/conformance/catch_up.json` is its oracle: a receiver left in a stale state and caught up
+must agree with the source on every active row and everything else either can be asked, before
+and after both receive the same bytes, and keep the history it had.
 
 ### 6. Input
 
@@ -317,9 +338,10 @@ The core resolves every keystroke against the keymap as it does today (`docs/arc
 input precedence). An event the keymap does not bind goes two places:
 
 - **To the daemon**, on the core's input connection (section 9), as the structured event libghostty
-  carries: key, modifiers, consumed modifiers, text, unshifted codepoint, composing state. The
-  daemon encodes it with libghostty-vt's key encoder configured from the pane's modes
-  (`ghostty_key_encoder_setopt_from_terminal`) and queues the bytes for the PTY.
+  carries: key, modifiers, consumed modifiers, text, unshifted codepoint, composing state, and the
+  app's option-as-alt setting, which travels with each key so it can never race the keys it
+  applies to. The daemon encodes it with libghostty-vt's key encoder configured from the pane's
+  modes (`ghostty_key_encoder_setopt_from_terminal`) and queues the bytes for the PTY.
 - **To the surface**, through `ghostty_surface_key`, so the surface does what Ghostty does on a
   keystroke: scrolls its viewport to the bottom, clears its selection, hides the mouse, resets the
   cursor blink. The bytes the surface encodes are discarded by the bridge, as today. There is still
@@ -328,15 +350,21 @@ input precedence). An event the keymap does not bind goes two places:
 The surface's generated configuration sets `keybind = clear`, so no Ghostty binding fires beneath
 Muster's keymap. Muster's keymap offers Ghostty's binding actions in three groups: actions local to
 the surface (scrolling, `jump_to_prompt`, `select_all`, search), actions the daemon performs
-because they write to the program or change the pane's state (`clear_screen` clears the headless
-terminal's history and writes a form feed; `reset`; `text:`, `csi:`, `esc:`), and actions not
-offered.
+because they write to the program or change the pane's state (`clear_screen`; `reset`, which
+resets the headless terminal and the surface and tells the program nothing; `text:`, `csi:`,
+`esc:`), and actions not offered. `clear_screen` waits for shell integration (section 3): Ghostty's
+action depends on whether the cursor is at a prompt, from OSC 133, and on an erase the C API does
+not expose, so the daemon logs it as not performed rather than doing half of it.
 
 **Mouse and wheel events go to both, always.** The surface scrolls its own viewport or selects,
 and its reports are discarded. The daemon decides from the pane's modes what the program gets: a
 mouse report, arrow keys for alternate scroll when a program on the alternate screen asked for
 none (`less`, `man`, git's pager), or nothing. That is the decision Ghostty's `Surface.zig` makes,
-made once, by the side that writes.
+made once, by the side that writes, with Ghostty's counting: a discrete wheel tick is three rows,
+and a precise turn moves a row per cell height of pixels. A click with shift held is never
+reported, because shift belongs to the surface's selection under Ghostty's default
+`mouse-shift-capture`; a program that asks to capture shift (XTSHIFTESCAPE) cannot be honored,
+since the request is not readable from the headless terminal.
 
 **Each pane has one writer thread and one queue**, carrying keystrokes, pastes, `muster pane send`
 text and query answers in order. The encoder reads a copy of the pane's input modes that the
@@ -345,11 +373,19 @@ full, query answers are dropped rather than blocking the reader, which is what p
 deadlock where a program floods output containing queries while not reading its input.
 
 **`muster pane send` uses this same path**, so text an agent sends and text a person types are
-encoded by the same code against the same modes.
+encoded by the same code against the same modes. The text goes as a paste, fenced when the program
+asked for bracketed paste and never held, since a program or agent is speaking rather than a
+clipboard; Return, when asked, follows as the key. Written raw, a multi-line send into a program
+reading bracketed paste would submit at its first newline.
 
 **Paste** goes to the daemon, which fences it for bracketed paste when the pane asked for it. When
 the pane has not, and the text contains a newline, the daemon reports the paste as unsafe instead
-of writing it, and the shell asks for confirmation as Ghostty does.
+of writing it, and the shell asks for confirmation as Ghostty does; a paste the person confirmed
+comes back marked so, and is written.
+
+A full queue drops a person's input for that pane too, with one warning per stall, rather than
+stall the input connection, which carries every pane's input, behind one program that stopped
+reading.
 
 **IME gets better.** The surface now knows the cursor, so composition can be drawn inline with
 `ghostty_surface_preedit` and the candidate window placed with `ghostty_surface_ime_point`.
@@ -439,7 +475,9 @@ every pane travels on this one stream. A client that sees a gap resubscribes.
 **Requests in the first version**: snapshot and subscribe; create a pane beside another on any of
 four sides, or in a new tab, with a ratio, grid, cwd, environment, command and name; close a pane or
 a tab; resize, zoom, swap and move panes; set a split ratio; rename a pane or tab; read a pane's
-text in pages addressed by absolute row, with no row cap; set the palette, the shell and the
+text in pages addressed by absolute row, with no row cap (row 0 is the oldest row still held, so
+rows move up once history reaches the scrollback limit: libghostty does not say how many it has
+trimmed); set the palette, the shell and the
 scrollback depth; send manifests; stop. There is no focus request: daemon focus existed for herdr's
 own clients, and Muster never routes by it. Configuration arrives over the protocol, so no daemon
 reads a Muster config file and `~/.muster/state/herdr.toml` has no successor. Requests are
@@ -567,7 +605,10 @@ herdr's. The targets, at one pane and at fifteen:
 | attach to a painted replay, full screen and 10,000 rows of history at 200 columns | within 20 ms; composing and parsing measure 10 ms together headless |
 
 The tier also gains a flood case: a pane running `cat` on a large file, attached to a bridge that
-reads slowly.
+reads slowly. The gate holds the structure beneath these numbers without timing anything
+(`crates/muster-daemon/tests/flood.rs`): a pane behind its flood is told once and sent nothing
+more, and another pane's echo still comes back through a writer, reader and stream of its own. An
+ignored test there prints the echo's latency, alone and beside the flood.
 
 ### 14. What Muster deletes
 
@@ -798,3 +839,7 @@ first.
 - 2026-09-26 The replay spike: the route to the primary screen is a patch Muster carries on the
   pin, the replay's order and gaps are as section 5 states, the attach target is set, and
   history is not capped.
+- 2026-09-26 Streams, input and replies built: credit counts output only, the catch-up and its
+  patch field (section 5), the kitty store's size, option-as-alt per key, `pane send` as a
+  paste, shift and the wheel as Ghostty has them, `clear_screen` waiting for shell integration,
+  and `pane read`'s row numbering.
