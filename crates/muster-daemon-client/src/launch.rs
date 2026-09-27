@@ -26,6 +26,10 @@ use muster_daemon_proto::{ConnectionKind, Welcome};
 /// machine so loaded that starting any process is slow.
 const START_PATIENCE: Duration = Duration::from_secs(10);
 
+/// How long a daemon that found the socket's lock held waits for the holder to answer before
+/// trying again. A rival's daemon answers in milliseconds; one that does not was exiting.
+const RIVAL_PATIENCE: Duration = Duration::from_millis(250);
+
 /// How often a starting daemon is dialled.
 const DIAL_INTERVAL: Duration = Duration::from_millis(2);
 
@@ -102,7 +106,8 @@ fn start(launch: &Launch) -> Result<(Reached, Welcome), String> {
     })?;
 
     let deadline = Instant::now() + START_PATIENCE;
-    let mut lost_the_race = false;
+    // When this start's daemon found the socket's lock held, and nothing answered yet.
+    let mut lost_the_race: Option<Instant> = None;
     loop {
         if let Ok(welcome) = probe(launch.socket) {
             // A rival starter's daemon can answer before this one's exit says it lost.
@@ -120,10 +125,23 @@ fn start(launch: &Launch) -> Result<(Reached, Welcome), String> {
             reap_later(child);
             return Ok((reached, welcome));
         }
-        if !lost_the_race && let Ok(Some(status)) = child.try_wait() {
+        if let Some(since) = lost_the_race
+            && since.elapsed() >= RIVAL_PATIENCE
+        {
+            // Nothing came up behind the lock, so its holder was on its way out - a daemon just
+            // asked to stop still holds it while it saves and closes. Try again now it is free.
+            child = spawn(launch, &errors, &marker).map_err(|error| {
+                format!("could not run the daemon at {} again ({error})", launch.binary.display())
+            })?;
+            lost_the_race = None;
+        }
+        if lost_the_race.is_none()
+            && let Ok(Some(status)) = child.try_wait()
+        {
             if status.code() == Some(ALREADY_SERVING) {
-                // Another starter won; its daemon is coming up on this socket.
-                lost_the_race = true;
+                // Another daemon holds the socket's lock: a rival starter's coming up, or one
+                // on its way out.
+                lost_the_race = Some(Instant::now());
             } else {
                 return Err(format!(
                     "the daemon exited with {status} before it answered on {}, so this window \
