@@ -522,6 +522,8 @@ fn claude_codes_hooks_report_working_blocked_and_idle() {
         ("UserPromptSubmit", None, Working),
         ("PermissionRequest", None, Blocked),
         ("PostToolUse", None, Working),
+        ("PermissionRequest", None, Blocked),
+        ("PostToolUseFailure", None, Working),
         ("Notification", Some("permission_prompt|elicitation_dialog"), Blocked),
         ("Stop", None, Idle),
         ("UserPromptSubmit", None, Working),

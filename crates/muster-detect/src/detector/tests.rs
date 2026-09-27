@@ -894,6 +894,46 @@ fn a_blocked_or_idle_report_holds_however_still_the_screen() {
     }
 }
 
+/// A permission prompt approved: nothing reports until the tool finishes, and the tool can run
+/// for minutes with the screen moving. A report of waiting on you stops counting then, and the
+/// rules read what the screen shows.
+#[test]
+fn a_blocked_report_yields_to_a_screen_that_keeps_moving() {
+    let mut run = Run::new();
+    run.tick();
+    run.start_agent();
+    run.paint("allow?");
+    run.until_published(Duration::from_secs(2));
+    run.report(State::Blocked);
+    assert_eq!(run.tick(), Some(reported(State::Blocked)));
+
+    let running = run.run_for(Duration::from_mins(4), Some("busy"));
+    let last = running.last().expect("something was published");
+    assert_eq!((last.state, last.reported), (State::Working, false), "{running:?}");
+    assert!(
+        running
+            .iter()
+            .all(|publication| !publication.reported || publication.state != State::Blocked),
+        "{running:?}"
+    );
+}
+
+/// An idle report while a background task keeps the screen moving is the rules' to read.
+#[test]
+fn an_idle_report_yields_to_a_screen_that_keeps_moving() {
+    let mut run = Run::new();
+    run.tick();
+    run.start_agent();
+    run.paint("ready>");
+    run.until_published(Duration::from_secs(2));
+    run.report(State::Idle);
+    assert_eq!(run.tick(), Some(reported(State::Idle)));
+
+    let running = run.run_for(Duration::from_secs(10), Some("busy"));
+    let last = running.last().expect("something was published");
+    assert_eq!((last.state, last.reported), (State::Working, false), "{running:?}");
+}
+
 #[test]
 fn a_report_stops_counting_when_the_agent_leaves() {
     let mut run = Run::new();

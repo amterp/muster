@@ -29,12 +29,14 @@ shows:
 
 | Event | State |
 |---|---|
-| `UserPromptSubmit`, `PostToolUse` | working |
+| `UserPromptSubmit`, `PostToolUse`, `PostToolUseFailure` | working |
 | `PermissionRequest`, and `Notification` for a permission prompt or a question | waiting on you |
 | `Stop`, `StopFailure` | idle |
 
 A working state with nothing moving on the screen for ten seconds is let go, since pressing Esc
-mid-turn fires no hook, and Muster reads the screen again. `SubagentStart` and `SubagentStop`
+mid-turn fires no hook, and Muster reads the screen again. Waiting on you or idle is let go once
+the screen has moved for three seconds running: an approved tool fires no hook until it finishes,
+and a background task can keep the screen busy after `Stop`. `SubagentStart` and `SubagentStop`
 count sub-agents, and `SessionStart` forgets the last session's facts when a new one starts or
 `/clear` runs.
 

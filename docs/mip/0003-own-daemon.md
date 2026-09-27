@@ -727,8 +727,11 @@ reader, which gives it to detection at once, and it counts until one of these:
   has identified its agent waits two seconds for it;
 - for working, ten seconds pass with no output from the pane. A working agent animates something,
   and one interrupted mid-turn, which no hook reports, sits still at its prompt. This asks only
-  that the screen move, not that a rule match it, so it holds when the rules have broken. Blocked
-  and idle never go stale this way, since a prompt waiting on you is still by nature.
+  that the screen move, not that a rule match it, so it holds when the rules have broken;
+- for blocked or idle, the pane produces output in each of three seconds running after the report.
+  A prompt waiting on you and an idle prompt both sit still. An approved tool fires no hook until
+  it ends, and can run for minutes with the screen moving; a background task keeps the screen
+  moving after an idle report. Either way the rules read that screen instead.
 
 While a report counts, its state is published as it stands, with no startup grace and no idle
 debounce, and the pane's record says `state_reported`. The rules still read the screen underneath,

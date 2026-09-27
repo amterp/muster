@@ -17,6 +17,12 @@ use crate::{Agent, State};
 /// rule match it, so it holds when the rules do not.
 pub(crate) const QUIET: Duration = Duration::from_secs(10);
 
+/// A blocked or idle report stops counting once the pane has produced output in this many
+/// seconds running since the report came. A prompt waiting on you and an idle prompt both sit
+/// still, while an approved tool, or a background task the idle report knows nothing of, keeps
+/// the screen moving and fires no hook until it ends; the rules read that screen instead.
+pub(crate) const RESTLESS_SECONDS: usize = 3;
+
 /// How long a report from an agent the pane is not yet known to run waits to be confirmed: a
 /// hook can fire before detection's first probe of a new process.
 pub(crate) const UNCONFIRMED: Duration = Duration::from_secs(2);
@@ -98,7 +104,8 @@ impl Reporting {
     /// The state the agent reported, while that still counts for `agent`, the agent the pane
     /// runs. A report stops counting when a newer one comes, when the pane's agent is not the
     /// one that reported (after [`UNCONFIRMED`] for one not yet identified), when the agent's
-    /// process has exited, and for working, after [`QUIET`] without output.
+    /// process has exited, for working after [`QUIET`] without output, and for blocked or idle
+    /// after [`RESTLESS_SECONDS`] of output running.
     pub(crate) fn in_force(
         &mut self,
         agent: Option<&Agent>,
@@ -108,13 +115,33 @@ impl Reporting {
         let report = self.report.as_ref()?;
         let confirmed = agent == Some(&report.agent);
         let quiet_since = self.last_output_at.map_or(report.at, |at| at.max(report.at));
-        let stale = report.state == State::Working && now.duration_since(quiet_since) >= QUIET;
+        let stale = if report.state == State::Working {
+            now.duration_since(quiet_since) >= QUIET
+        } else {
+            self.restless_since(report.at, now)
+        };
         let unconfirmed = !confirmed && now.duration_since(report.at) >= UNCONFIRMED;
         if exited || stale || unconfirmed {
             self.report = None;
             return None;
         }
         confirmed.then_some(report.state)
+    }
+
+    /// Whether the pane has produced output in each of the last [`RESTLESS_SECONDS`] seconds,
+    /// all of them after `since`.
+    fn restless_since(&self, since: Instant, now: Instant) -> bool {
+        let gap = Duration::from_secs(2);
+        let mut next = now;
+        let mut running = 0;
+        for &start in self.active_seconds.iter().rev() {
+            if start < since || next.duration_since(start) > gap {
+                break;
+            }
+            running += 1;
+            next = start;
+        }
+        running >= RESTLESS_SECONDS
     }
 
     /// Whether the rules have stopped reading `agent`'s screen, given the state its own report

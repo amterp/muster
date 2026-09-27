@@ -52,6 +52,16 @@
         ]
       }
     ],
+    "PostToolUseFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -z \"$MUSTER_DAEMON\" ] || \"$MUSTER_DAEMON\" report --agent claude --state working >/dev/null 2>&1 || true"
+          }
+        ]
+      }
+    ],
     "PermissionRequest": [
       {
         "hooks": [
