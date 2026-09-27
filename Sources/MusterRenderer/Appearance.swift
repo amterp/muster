@@ -152,11 +152,15 @@ public func ghosttyConfiguration(_ appearance: Appearance) -> [String] {
 ///
 /// No bindings: every key a surface sees has already been given to the program, and a Ghostty
 /// binding firing on it underneath Muster's would act twice on one keystroke. No clipboard: a
-/// program's OSC 52 reaches the daemon too, and the daemon's is the one that is applied.
+/// program's OSC 52 reaches the daemon too, and the daemon's is the one that is applied. No
+/// right or middle click of its own: Ghostty's selects a word for a context menu Muster does not
+/// have, and pastes into a surface whose writes the bridge drops.
 private let embedded = [
   "keybind = clear",
   "clipboard-read = deny",
   "clipboard-write = deny",
+  "right-click-action = ignore",
+  "middle-click-action = ignore",
 ]
 
 /// A number as somebody would write it: no trailing `.0`, and a `.` whatever the locale.

@@ -434,13 +434,15 @@ public final class Surface {
       surface, Double(point.x), Double(point.y), ghosttyMods(modifiers))
   }
 
-  /// Presses or releases the left button, which is what starts and ends a selection.
-  ///
-  /// Only the left one. The others mean nothing to a selection, and a right-click that
-  /// reached the surface would be a context menu Muster has not built.
-  public func leftMouse(pressed: Bool, modifiers: NSEvent.ModifierFlags) {
+  /// Presses or releases a button, named by AppKit's `buttonNumber`, and says whether libghostty
+  /// consumed it - which for the right button decides whether AppKit may still treat it as
+  /// asking for a context menu.
+  @discardableResult
+  public func mouseButton(
+    _ number: Int, pressed: Bool, modifiers: NSEvent.ModifierFlags
+  ) -> Bool {
     ghostty_surface_mouse_button(
-      surface, pressed ? GHOSTTY_MOUSE_PRESS : GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT,
+      surface, pressed ? GHOSTTY_MOUSE_PRESS : GHOSTTY_MOUSE_RELEASE, ghosttyButton(number),
       ghosttyMods(modifiers))
   }
 
@@ -511,5 +513,25 @@ private func write(_ lines: [String], to path: String) -> Bool {
     return true
   } catch {
     return false
+  }
+}
+
+/// AppKit's button numbers in libghostty's spelling, as Ghostty's app maps them
+/// (Ghostty.Input.swift, `MouseButton(fromNSEventButtonNumber:)`): the back and forward buttons
+/// are eight and nine, as X11 numbers them.
+private func ghosttyButton(_ number: Int) -> ghostty_input_mouse_button_e {
+  switch number {
+  case 0: GHOSTTY_MOUSE_LEFT
+  case 1: GHOSTTY_MOUSE_RIGHT
+  case 2: GHOSTTY_MOUSE_MIDDLE
+  case 3: GHOSTTY_MOUSE_EIGHT
+  case 4: GHOSTTY_MOUSE_NINE
+  case 5: GHOSTTY_MOUSE_SIX
+  case 6: GHOSTTY_MOUSE_SEVEN
+  case 7: GHOSTTY_MOUSE_FOUR
+  case 8: GHOSTTY_MOUSE_FIVE
+  case 9: GHOSTTY_MOUSE_TEN
+  case 10: GHOSTTY_MOUSE_ELEVEN
+  default: GHOSTTY_MOUSE_UNKNOWN
   }
 }

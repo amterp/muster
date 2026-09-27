@@ -148,7 +148,11 @@ import Testing
     let defaults = try loaded([])
     defer { ghostty_config_free(defaults) }
 
-    #expect(lines == ["keybind = clear", "clipboard-read = deny", "clipboard-write = deny"])
+    #expect(
+      lines == [
+        "keybind = clear", "clipboard-read = deny", "clipboard-write = deny",
+        "right-click-action = ignore", "middle-click-action = ignore",
+      ])
     #expect(ghostty_config_diagnostics_count(config) == 0)
     #expect(color(config, "background") == color(defaults, "background"))
   }
@@ -176,6 +180,17 @@ import Testing
 
     #expect(name(config, "clipboard-read") == "deny")
     #expect(name(config, "clipboard-write") == "deny")
+  }
+
+  @Test func aSurfaceLeavesTheOtherButtonsToTheProgram() throws {
+    // Ghostty's own right click selects a word for a context menu Muster does not have, and its
+    // middle click pastes into a surface whose writes the bridge drops. Both buttons still reach
+    // the pane's program through its daemon when it asked for the mouse.
+    let config = try loaded(ghosttyConfiguration(Appearance()))
+    defer { ghostty_config_free(config) }
+
+    #expect(name(config, "right-click-action") == "ignore")
+    #expect(name(config, "middle-click-action") == "ignore")
   }
 
   @Test func theWheelScalesOnBothKindsOfDevice() throws {

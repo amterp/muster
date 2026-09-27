@@ -62,7 +62,10 @@ public protocol PaneSurface: AnyObject {
   /// which is not where AppKit measures from. The caller converts.
   func mouseMoved(to point: NSPoint, modifiers: NSEvent.ModifierFlags)
 
-  func leftMouse(pressed: Bool, modifiers: NSEvent.ModifierFlags)
+  /// Presses or releases a button, by AppKit's `buttonNumber` for it, and says whether the
+  /// renderer consumed it.
+  @discardableResult
+  func mouseButton(_ number: Int, pressed: Bool, modifiers: NSEvent.ModifierFlags) -> Bool
 
   /// Scrolls the surface's own history, or lets it answer as the pane's modes say. Deltas are
   /// positive right and up, and `momentum` is in libghostty's numbering.

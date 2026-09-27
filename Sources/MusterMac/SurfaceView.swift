@@ -45,14 +45,15 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
   /// rather than takes. The responder move follows from the view the core publishes back.
   public var onClick: (@MainActor () -> Void)?
 
-  /// Called when the wheel moves over this view, after the surface has been handed it.
+  /// Called when the wheel turns, a button goes down or up, or the pointer moves over this view,
+  /// after the surface has been handed the same event.
   ///
   /// Reported rather than sent, for the same reason a click is: the view under the pointer
   /// knows the gesture happened and nothing else, and which pane that is belongs to the chrome
-  /// around it. AppKit hit-tests `scrollWheel` to the view the pointer is over, so this fires
+  /// around it. AppKit hit-tests pointer events to the view the pointer is over, so this fires
   /// on the right surface whether or not it is the one with the keyboard - which is what lets
   /// somebody read one agent while typing into another.
-  public var onWheel: (@MainActor (Core.Wheel) -> Void)?
+  public var onPointer: (@MainActor (Core.Pointer) -> Void)?
 
   /// Called when this pane's search has counted its matches or moved to one. Held here rather
   /// than on the surface, because the find bar can open before the pane's surface exists.
@@ -65,6 +66,7 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
     // AppKit for one from there trips a dispatch-queue assertion. ghostty's own app never
     // hits this because SwiftUI has already made its view hierarchy layer-backed.
     wantsLayer = true
+    updateTrackingAreas()
   }
 
   required init?(coder: NSCoder) {
@@ -229,36 +231,102 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
   /// again to pick the pane - a papercut on every switch back.
   public override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-  // A drag makes a selection, and libghostty paints it on the surface's own copy of the pane.
+  // Every button and every movement goes to the surface and to the pane's daemon, and neither
+  // is decided here.
   //
-  // The surface sees the pane's real byte stream, so it knows the program's modes: when the
-  // program has asked for the mouse, libghostty answers a drag the way a terminal does rather
-  // than selecting. What it writes back is dropped by the bridge - the daemon is the only writer
-  // to a pane.
+  // The surface sees the pane's real byte stream, so it knows the program's modes: a drag over
+  // a program that asked for the mouse is a report rather than a selection, and what the
+  // surface writes for it is dropped by the bridge. The program gets its report from the
+  // daemon, which holds the same modes and applies them - shift included, so a shift-drag
+  // selects even there.
 
   public override func mouseDown(with event: NSEvent) {
     onClick?()
-    reportMouse(event, pressed: true)
-  }
-
-  public override func mouseDragged(with event: NSEvent) {
-    reportMousePosition(event)
+    button(event, 0, pressed: true)
   }
 
   public override func mouseUp(with event: NSEvent) {
-    reportMouse(event, pressed: false)
+    button(event, 0, pressed: false)
   }
 
-  private func reportMouse(_ event: NSEvent, pressed: Bool) {
-    // The position first, because a button event is about wherever the pointer already is
-    // and libghostty holds that separately - a press reported without one starts the
-    // selection at the last place the pointer was seen.
-    reportMousePosition(event)
-    surface?.leftMouse(pressed: pressed, modifiers: event.modifierFlags)
+  public override func rightMouseDown(with event: NSEvent) {
+    // Not consumed is libghostty leaving the click to the host, which is AppKit's context menu
+    // - none today, and whatever `menu(for:)` answers if that changes.
+    if !button(event, 1, pressed: true) { super.rightMouseDown(with: event) }
   }
 
-  private func reportMousePosition(_ event: NSEvent) {
+  public override func rightMouseUp(with event: NSEvent) {
+    if !button(event, 1, pressed: false) { super.rightMouseUp(with: event) }
+  }
+
+  public override func otherMouseDown(with event: NSEvent) {
+    button(event, event.buttonNumber, pressed: true)
+  }
+
+  public override func otherMouseUp(with event: NSEvent) {
+    button(event, event.buttonNumber, pressed: false)
+  }
+
+  public override func mouseMoved(with event: NSEvent) { moved(event) }
+  public override func mouseDragged(with event: NSEvent) { moved(event) }
+  public override func rightMouseDragged(with event: NSEvent) { moved(event) }
+  public override func otherMouseDragged(with event: NSEvent) { moved(event) }
+
+  /// Asks for `mouseMoved` with no button held, which AppKit sends only to a view that tracks
+  /// it. Ghostty's options: the visible rect, so a pane half behind the sidebar is not reported
+  /// through it, and always, because a program asking for motion gets it whether or not this
+  /// window is key.
+  public override func updateTrackingAreas() {
+    trackingAreas.forEach(removeTrackingArea)
+    addTrackingArea(
+      NSTrackingArea(
+        rect: bounds, options: [.mouseMoved, .inVisibleRect, .activeAlways], owner: self))
+    super.updateTrackingAreas()
+  }
+
+  /// Hands a button to the surface and then to the pane's daemon, and says whether the surface
+  /// consumed it.
+  @discardableResult
+  private func button(_ event: NSEvent, _ number: Int, pressed: Bool) -> Bool {
+    // The position first, because a button event is about wherever the pointer already is and
+    // libghostty holds that separately - a press reported without one starts the selection at
+    // the last place the pointer was seen.
     surface?.mouseMoved(to: flipped(event), modifiers: event.modifierFlags)
+    let consumed =
+      surface?.mouseButton(number, pressed: pressed, modifiers: event.modifierFlags) ?? false
+    report(event, pressed ? .press : .release)
+    return consumed
+  }
+
+  private func moved(_ event: NSEvent) {
+    surface?.mouseMoved(to: flipped(event), modifiers: event.modifierFlags)
+    report(event, .motion)
+  }
+
+  private func report(_ event: NSEvent, _ action: Core.Mouse.Action) {
+    guard isTypeable, let button = Self.reportedButton(event) else { return }
+    let (x, y) = pixels(event)
+    onPointer?(
+      .mouse(
+        Core.Mouse(
+          action: action, button: button, modifiers: event.modifierFlags.musterNames, x: x, y: y)
+      ))
+  }
+
+  /// The button a pane's daemon is told about: the one pressed or released, or for a drag the
+  /// one held.
+  ///
+  /// Nil for the buttons past the middle one. A terminal reports only three, and a back button
+  /// sent as "none" would be a lie a program could act on - motion while a button is held
+  /// reported as motion with nothing held.
+  private static func reportedButton(_ event: NSEvent) -> Core.Mouse.Button? {
+    switch event.type {
+    // Spelled out, because a bare `.none` here is the optional's nil.
+    case .mouseMoved: Core.Mouse.Button.none
+    case .leftMouseDown, .leftMouseUp, .leftMouseDragged: .left
+    case .rightMouseDown, .rightMouseUp, .rightMouseDragged: .right
+    default: event.buttonNumber == 2 ? .middle : nil
+    }
   }
 
   /// Where an event landed, measured from this view's top left.
@@ -268,6 +336,14 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
   private func flipped(_ event: NSEvent) -> NSPoint {
     let point = convert(event.locationInWindow, from: nil)
     return NSPoint(x: point.x, y: frame.height - point.y)
+  }
+
+  /// Where an event landed in the pixels a pane's daemon measures its terminal in: backing
+  /// pixels, from the top left.
+  private func pixels(_ event: NSEvent) -> (x: Double, y: Double) {
+    let scale = window?.backingScaleFactor ?? 2
+    let at = flipped(event)
+    return (Double(at.x * scale), Double(at.y * scale))
   }
 
   public override func scrollWheel(with event: NSEvent) {
@@ -284,14 +360,12 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
     // it wrote back is dropped. The program in the pane is owed the same gesture, and only its
     // daemon may write to it. The renderer check has no daemon to tell.
     guard isTypeable else { return }
-    // Backing pixels, because the daemon compares this against the terminal's own size.
-    let pixels = window?.backingScaleFactor ?? 2
-    let at = flipped(event)
-    onWheel?(
-      Core.Wheel(
-        dx: dx, dy: dy, precise: precise, momentum: momentum,
-        modifiers: event.modifierFlags.musterNames,
-        x: Double(at.x * pixels), y: Double(at.y * pixels)))
+    let (x, y) = pixels(event)
+    onPointer?(
+      .wheel(
+        Core.Wheel(
+          dx: dx, dy: dy, precise: precise, momentum: momentum,
+          modifiers: event.modifierFlags.musterNames, x: x, y: y)))
   }
 
   /// The clipboard, on its way to the pane.

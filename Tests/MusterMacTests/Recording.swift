@@ -18,7 +18,8 @@ import Testing
 @MainActor
 final class RecordingSurface: PaneSurface {
   var positions: [NSPoint] = []
-  var buttons: [Bool] = []
+  /// Every button pressed or released, by AppKit's number for it.
+  var buttons: [(number: Int, pressed: Bool)] = []
   var selectedText: String?
   var onProcessExited: (@MainActor (Bool) -> Void)?
   /// Every offset asked for, in order, so a test can tell "sized once" from "sized twice".
@@ -55,7 +56,10 @@ final class RecordingSurface: PaneSurface {
   }
   func navigateSearch(next: Bool) { navigations.append(next) }
   func mouseMoved(to point: NSPoint, modifiers: NSEvent.ModifierFlags) { positions.append(point) }
-  func leftMouse(pressed: Bool, modifiers: NSEvent.ModifierFlags) { buttons.append(pressed) }
+  func mouseButton(_ number: Int, pressed: Bool, modifiers: NSEvent.ModifierFlags) -> Bool {
+    buttons.append((number, pressed))
+    return false
+  }
   func scroll(dx: Double, dy: Double, precise: Bool, momentum: UInt32) {
     scrolls.append((dx, dy, precise, momentum))
   }

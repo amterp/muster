@@ -223,7 +223,7 @@ struct PaneChromeTests {
     chrome.attach(paneID: "w1:p3")
     var scrolled: [String] = []
     var focused: [String] = []
-    chrome.onWheelRequested = { paneID, _ in scrolled.append(paneID) }
+    chrome.onPointerRequested = { paneID, _ in scrolled.append(paneID) }
     chrome.onFocusRequested = { focused.append($0) }
     // A view with no pane behind it reports nothing at all, which is a separate rule and one
     // the renderer check relies on.

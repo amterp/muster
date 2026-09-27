@@ -321,6 +321,34 @@ struct RegionViewTests {
     }
     #expect(focuses.isEmpty)
   }
+
+  @MainActor
+  @Test("a click reaches the daemon of the pane it landed on")
+  func aClickReachesThePaneUnderIt() {
+    // The same path the wheel takes, so a program that asked for the mouse in a pane without
+    // the keyboard is told about a click in it - which is also the click that moves the
+    // keyboard there.
+    let recorder = recorder()
+    let (view, _) = region()
+    let tree = PaneTree.split(
+      axis: .columns, ratio: 0.5, first: leaf("w1:p1"), second: leaf("w1:p2"))
+    view.apply(contents(tree, keyboard: "w1:p1"), focused: true)
+    guard let clicked = view.chrome(for: "w1:p2") else { return }
+    clicked.surface.attach(typeable: true)
+    let mark = recorder.requests.count
+
+    clicked.surface.mouseDown(
+      with: NSEvent.mouseEvent(
+        with: .leftMouseDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0,
+        context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!)
+
+    let mice = recorder.sent(since: mark) {
+      if case .mouse = $0.payload { true } else { false }
+    }
+    #expect(mice.map { $0.mouse.paneID } == ["w1:p2"])
+    #expect(mice.map { $0.mouse.daemonID } == ["local"])
+    #expect(mice.map { $0.mouse.action } == ["press"])
+  }
 }
 
 @Suite("a region says which daemon its panes come from")

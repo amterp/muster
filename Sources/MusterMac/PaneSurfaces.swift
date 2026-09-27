@@ -92,7 +92,7 @@ public final class PaneSurfaces {
   /// would never hear that it died.
   public func borrow(
     daemonID: String, daemonSocket: String?, leaf: PaneTree.Leaf,
-    focus: @escaping (String) -> Void, wheel: @escaping (String, Core.Wheel) -> Void
+    focus: @escaping (String) -> Void, pointer: @escaping (String, Core.Pointer) -> Void
   ) -> (chrome: PaneChrome, isNew: Bool) {
     let key = PaneKey(daemon: daemonID, pane: leaf.paneID)
     if let existing = held[key] {
@@ -119,7 +119,7 @@ public final class PaneSurfaces {
     let chrome = PaneChrome(frame: .zero, surface: SurfaceView(frame: .zero))
     chrome.attach(paneID: leaf.paneID)
     chrome.onFocusRequested = focus
-    chrome.onWheelRequested = wheel
+    chrome.onPointerRequested = pointer
     held[key] = Held(
       chrome: chrome, linkSocketPath: leaf.linkSocketPath, daemonSocket: daemonSocket,
       bridgeRestarts: leaf.bridgeRestarts)

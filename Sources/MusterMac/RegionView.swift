@@ -111,7 +111,7 @@ public final class RegionView: NSView {
       let taken = surfaces.borrow(
         daemonID: daemon, daemonSocket: daemonSocket, leaf: leaf,
         focus: { paneID in Core.focus(daemonID: daemon, paneID: paneID) },
-        wheel: { paneID, wheel in Core.wheel(daemonID: daemon, paneID: paneID, wheel) })
+        pointer: { paneID, pointer in Core.pointer(daemonID: daemon, paneID: paneID, pointer) })
       if taken.chrome.superview !== self {
         taken.chrome.frame = bounds
         addSubview(taken.chrome)

@@ -297,6 +297,58 @@ public enum Core {
     send(request)
   }
 
+  /// A button pressed or released over a pane, or the pointer moving over it.
+  ///
+  /// Sent for every one, whether or not the program asked for the mouse: the daemon holds the
+  /// program's mouse modes and applies them, shift included, and the shell cannot see either.
+  public struct Mouse: Equatable, Sendable {
+    public enum Action: String, Sendable {
+      case press, release, motion
+    }
+
+    /// The button pressed or released, or for motion the one held. Only the three a terminal
+    /// reports have names.
+    public enum Button: String, Sendable {
+      case none, left, right, middle
+    }
+
+    public let action: Action
+    public let button: Button
+    public let modifiers: [String]
+    /// Where the pointer is, in the same pixels as a wheel's.
+    public let x: Double
+    public let y: Double
+  }
+
+  /// Tells a pane's daemon about the mouse over it, on the same terms as a wheel.
+  public static func mouse(daemonID: String, paneID: String, _ mouse: Mouse) {
+    var sent = Muster_Mouse()
+    sent.daemonID = daemonID
+    sent.paneID = paneID
+    sent.action = mouse.action.rawValue
+    sent.button = mouse.button.rawValue
+    sent.modifiers = mouse.modifiers
+    sent.x = mouse.x
+    sent.y = mouse.y
+    var request = Muster_Request()
+    request.mouse = sent
+    send(request)
+  }
+
+  /// What the pointer did over a pane: everything the pane's daemon is told about it, as one
+  /// value so a gesture travels from a view to the core along one path.
+  public enum Pointer: Equatable, Sendable {
+    case wheel(Wheel)
+    case mouse(Mouse)
+  }
+
+  public static func pointer(daemonID: String, paneID: String, _ pointer: Pointer) {
+    switch pointer {
+    case .wheel(let turned): wheel(daemonID: daemonID, paneID: paneID, turned)
+    case .mouse(let moved): mouse(daemonID: daemonID, paneID: paneID, moved)
+    }
+  }
+
   // What the user can do to a pane. None of these changes a window: they ask the daemon, and
   // the window changes when the view that comes back says it did. An empty pane id means the
   // one this window's keyboard feeds, which is what a keybinding means.

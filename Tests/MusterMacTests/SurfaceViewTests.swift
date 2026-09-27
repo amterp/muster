@@ -82,7 +82,7 @@ private func view(_ recorder: RecordingDispatcher) -> SurfaceView {
   let recording = RecordingSurface()
   let surface = view(surface: recording, clipboard: NSPasteboard.general)
   var reported: [Core.Wheel] = []
-  surface.onWheel = { reported.append($0) }
+  surface.onPointer = { if case .wheel(let wheel) = $0 { reported.append(wheel) } }
   guard let event = wheel(deltaY: 3, modifiers: .maskAlternate) else { return }
 
   surface.scrollWheel(with: event)
@@ -100,7 +100,7 @@ private func view(_ recorder: RecordingDispatcher) -> SurfaceView {
   // row at half the distance.
   let surface = view(surface: RecordingSurface(), clipboard: NSPasteboard.general)
   var reported: [Core.Wheel] = []
-  surface.onWheel = { reported.append($0) }
+  surface.onPointer = { if case .wheel(let wheel) = $0 { reported.append(wheel) } }
   guard let event = wheel(deltaY: 3, at: NSPoint(x: 30, y: 20)) else { return }
 
   surface.scrollWheel(with: event)
@@ -119,7 +119,7 @@ private func view(_ recorder: RecordingDispatcher) -> SurfaceView {
   let surface = view(surface: recording, clipboard: NSPasteboard.general)
   surface.attach(typeable: false)
   var reported: [Core.Wheel] = []
-  surface.onWheel = { reported.append($0) }
+  surface.onPointer = { if case .wheel(let wheel) = $0 { reported.append(wheel) } }
   guard let event = wheel(deltaY: 3) else { return }
 
   surface.scrollWheel(with: event)
@@ -293,7 +293,8 @@ private func scratchClipboard(_ name: String) -> NSPasteboard {
       NSPoint(x: 10, y: 10), NSPoint(x: 50, y: 60), NSPoint(x: 50, y: 60),
     ])
   // Pressed, then released. A press with no release leaves the surface selecting forever.
-  #expect(surface.buttons == [true, false])
+  #expect(surface.buttons.map(\.pressed) == [true, false])
+  #expect(surface.buttons.map(\.number) == [0, 0])
 }
 
 @Test(.ownsTheSeam) @MainActor func aPressCarriesThePointerBeforeTheButton() {
@@ -307,6 +308,112 @@ private func scratchClipboard(_ name: String) -> NSPasteboard {
 
   #expect(surface.positions.count == 1)
   #expect(surface.buttons.count == 1)
+}
+
+// The pane's program is owed the mouse too, when it asked for it, and only its daemon can say
+// whether it did - so every button and movement goes to the core as well as to the surface, and
+// nothing is filtered here.
+
+/// A pane on the seam, reporting its pointer the way a region wires it.
+@MainActor
+private func paneOnTheSeam(_ recording: RecordingSurface, _ recorder: RecordingDispatcher)
+  -> SurfaceView
+{
+  let pane = view(surface: recording, clipboard: NSPasteboard.general, recorder: recorder)
+  pane.onPointer = { Core.pointer(daemonID: "local", paneID: "p1w3r07bsd", $0) }
+  return pane
+}
+
+private func mice(_ recorder: RecordingDispatcher) -> [Muster_Mouse] {
+  recorder.requests.compactMap { if case .mouse(let mouse) = $0.payload { mouse } else { nil } }
+}
+
+@Test(.ownsTheSeam) @MainActor func aDragReachesThePanesDaemonMeasuredFromTheTop() {
+  // The daemon compares the pointer against the terminal's size, which it knows in backing
+  // pixels from the top left. Points from the bottom left would put a click on the mirror-image
+  // row at half the distance.
+  let recorder = RecordingDispatcher()
+  let pane = paneOnTheSeam(RecordingSurface(), recorder)
+
+  pane.mouseDown(with: click(at: NSPoint(x: 10, y: 90)))
+  pane.mouseDragged(with: drag(to: NSPoint(x: 50, y: 40)))
+  pane.mouseUp(with: release(at: NSPoint(x: 50, y: 40)))
+
+  let sent = mice(recorder)
+  #expect(sent.map(\.action) == ["press", "motion", "release"])
+  #expect(sent.map(\.button) == ["left", "left", "left"])
+  // No window, so the view falls back to the 2x it assumes everywhere else it needs a scale.
+  #expect(sent.map(\.x) == [20, 100, 100])
+  #expect(sent.map(\.y) == [20, 120, 120])
+  #expect(sent.allSatisfy { $0.daemonID == "local" && $0.paneID == "p1w3r07bsd" })
+}
+
+@Test(.ownsTheSeam) @MainActor func shiftIsSentRatherThanDecidedHere() {
+  // A shift-drag selects even over a program that asked for the mouse, and the daemon is what
+  // applies that rule. A shell that dropped shifted events would decide it a second time.
+  let recorder = RecordingDispatcher()
+  let pane = paneOnTheSeam(RecordingSurface(), recorder)
+
+  pane.mouseDown(with: mouse(.leftMouseDown, at: NSPoint(x: 10, y: 90), modifiers: [.shift]))
+
+  #expect(mice(recorder).map(\.modifiers) == [["shift"]])
+}
+
+@Test(.ownsTheSeam) @MainActor func theRightAndMiddleButtonsCarryTheirNames() {
+  let recorder = RecordingDispatcher()
+  let recording = RecordingSurface()
+  let pane = paneOnTheSeam(recording, recorder)
+
+  pane.rightMouseDown(with: mouse(.rightMouseDown, at: NSPoint(x: 10, y: 90)))
+  pane.rightMouseUp(with: mouse(.rightMouseUp, at: NSPoint(x: 10, y: 90)))
+  pane.otherMouseDown(with: button(.otherMouseDown, .center))
+  pane.otherMouseUp(with: button(.otherMouseUp, .center))
+
+  #expect(mice(recorder).map(\.button) == ["right", "right", "middle", "middle"])
+  #expect(mice(recorder).map(\.action) == ["press", "release", "press", "release"])
+  #expect(recording.buttons.map(\.number) == [1, 1, 2, 2])
+}
+
+@Test(.ownsTheSeam) @MainActor func aButtonATerminalCannotReportReachesOnlyTheSurface() {
+  // A terminal reports three buttons. Sent as "none", a back button would tell a program that
+  // nothing was pressed, and its drag that nothing was held.
+  let recorder = RecordingDispatcher()
+  let recording = RecordingSurface()
+  let pane = paneOnTheSeam(recording, recorder)
+
+  pane.otherMouseDown(with: button(.otherMouseDown, CGMouseButton(rawValue: 3)!))
+  pane.otherMouseDragged(with: button(.otherMouseDragged, CGMouseButton(rawValue: 3)!))
+
+  #expect(mice(recorder).isEmpty)
+  #expect(recording.buttons.map(\.number) == [3])
+}
+
+@Test(.ownsTheSeam) @MainActor func movingWithNothingHeldIsReportedToo() {
+  // What a program asking for every movement - a TUI's hover - is owed. AppKit sends it only
+  // to a view that tracks it.
+  let recorder = RecordingDispatcher()
+  let pane = paneOnTheSeam(RecordingSurface(), recorder)
+
+  pane.mouseMoved(with: mouse(.mouseMoved, at: NSPoint(x: 10, y: 90)))
+
+  #expect(pane.trackingAreas.contains { $0.options.contains(.mouseMoved) })
+  #expect(mice(recorder).map(\.action) == ["motion"])
+  #expect(mice(recorder).map(\.button) == ["none"])
+}
+
+@Test(.ownsTheSeam) @MainActor func aViewWithNoPaneTellsNoDaemonAboutTheMouse() {
+  // The renderer check's shell is its surface's own, and no daemon holds it.
+  let recorder = RecordingDispatcher()
+  let recording = RecordingSurface()
+  let pane = paneOnTheSeam(recording, recorder)
+  pane.attach(typeable: false)
+
+  pane.mouseDown(with: click(at: NSPoint(x: 10, y: 90)))
+  pane.mouseMoved(with: mouse(.mouseMoved, at: NSPoint(x: 10, y: 90)))
+  pane.rightMouseDown(with: mouse(.rightMouseDown, at: NSPoint(x: 10, y: 90)))
+
+  #expect(mice(recorder).isEmpty)
+  #expect(recording.buttons.map(\.number) == [0, 1])
 }
 
 @Test(.ownsTheSeam) @MainActor func copyPutsTheSelectionOnTheClipboard() {
@@ -428,13 +535,23 @@ private func click(at point: NSPoint) -> NSEvent { mouse(.leftMouseDown, at: poi
 private func drag(to point: NSPoint) -> NSEvent { mouse(.leftMouseDragged, at: point) }
 private func release(at point: NSPoint) -> NSEvent { mouse(.leftMouseUp, at: point) }
 
-private func mouse(_ type: NSEvent.EventType, at point: NSPoint) -> NSEvent {
+private func mouse(
+  _ type: NSEvent.EventType, at point: NSPoint, modifiers: NSEvent.ModifierFlags = []
+) -> NSEvent {
   // Window coordinates, which is what AppKit hands a view. With no window behind this one and
   // the view at the origin, the two spaces coincide - so what these assert on is the flip and
   // nothing else.
   NSEvent.mouseEvent(
-    with: type, location: point, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil,
-    eventNumber: 0, clickCount: 1, pressure: 1)!
+    with: type, location: point, modifierFlags: modifiers, timestamp: 0, windowNumber: 0,
+    context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+}
+
+/// A button past the right one. AppKit's own constructor has no way to say which, so this goes
+/// through CoreGraphics, which does.
+private func button(_ type: CGEventType, _ button: CGMouseButton) -> NSEvent {
+  NSEvent(
+    cgEvent: CGEvent(
+      mouseEventSource: nil, mouseType: type, mouseCursorPosition: .zero, mouseButton: button)!)!
 }
 
 // Sizing the text, which is a Muster action rather than a terminal setting - so it is
