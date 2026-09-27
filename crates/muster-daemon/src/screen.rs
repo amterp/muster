@@ -120,6 +120,10 @@ pub(crate) struct Screen {
     happened: Arc<Mutex<Vec<Happened>>>,
     /// Every byte the terminal has been fed, which is where a stream attached now picks up.
     offset: u64,
+    /// Moves whenever the screen may have: every write, and every resize, which rewraps it.
+    content_seq: u64,
+    /// How many times a program has set the title, counting a repeat of the same title.
+    title_writes: u64,
     /// The settings last applied, by generation, with the two a newer one is compared with.
     generation: u64,
     scheme: Option<ColorScheme>,
@@ -157,6 +161,8 @@ impl Screen {
             terminal,
             happened,
             offset: 0,
+            content_seq: 0,
+            title_writes: 0,
             generation: settled.generation,
             scheme: settled.appearance.scheme,
             scrollback: settled.scrollback,
@@ -178,7 +184,22 @@ impl Screen {
     fn feed(&mut self, bytes: &[u8]) -> Vec<Happened> {
         self.terminal.write(bytes);
         self.offset += bytes.len() as u64;
-        std::mem::take(&mut *poison::lock(&self.happened, "daemon.pane.effects"))
+        if !bytes.is_empty() {
+            self.content_seq += 1;
+        }
+        let happened = std::mem::take(&mut *poison::lock(&self.happened, "daemon.pane.effects"));
+        self.title_writes +=
+            happened.iter().filter(|happening| matches!(happening, Happened::Title(_))).count()
+                as u64;
+        happened
+    }
+
+    pub(crate) fn content_seq(&self) -> u64 {
+        self.content_seq
+    }
+
+    pub(crate) fn title_writes(&self) -> u64 {
+        self.title_writes
     }
 
     /// Applies settings newer than the ones the terminal has, and says what changed: whether
@@ -260,6 +281,7 @@ impl Screen {
     }
 
     pub(crate) fn resize(&mut self, grid: Grid) -> Result<(), TerminalError> {
+        self.content_seq += 1;
         self.terminal.resize(grid.cols, grid.rows, cell_pixels(grid))
     }
 
@@ -428,6 +450,19 @@ mod tests {
         let two = read(1, 2);
         assert_eq!((two.first_row, two.text.as_str(), two.total_rows, two.rows), (1, "b\nc", 5, 2));
         assert_eq!(read(3, 0).text, "d\ne", "zero rows reads to the end");
+    }
+
+    #[test]
+    fn output_and_a_resize_move_the_content_count_and_title_writes_are_counted() {
+        let grid = Grid { cols: 20, rows: 3, width_px: 0, height_px: 0 };
+        let mut screen =
+            Screen::new(grid, &settled(0, &proto::Settings::default())).expect("a terminal");
+        screen.feed(b"hello");
+        let written = screen.content_seq();
+        screen.resize(Grid { cols: 10, ..grid }).expect("a resize");
+        assert!(screen.content_seq() > written, "a resize rewraps the screen");
+        screen.feed(b"\x1b]2;same\x07\x1b]0;same\x07");
+        assert_eq!(screen.title_writes(), 2, "a repeated title is still a write");
     }
 
     #[test]

@@ -406,6 +406,22 @@ manifests up front and check for none, so a recorded corpus is still judged agai
 rules. A daemon that has already started keeps the manifests it loaded, so a machine picks a
 new set up when its daemon next restarts rather than immediately.
 
+**`~/.muster/agent-detection/` is where you correct detection yourself, on Muster's own daemon**
+(MIP-3), which takes over from herdr at the cut-over. It has no catalog to fetch from: its
+manifests are built in, the app sends its own when it connects, and a file here beats both. A
+file is one agent's manifest in herdr's format, named for the agent - `claude.toml` replaces the
+built-in claude, and a new name adds an agent Muster never knew. A file named for a different
+agent than its `id`, or needing a newer detection engine than the daemon has, is ignored and the
+daemon's log says why. The directory is read when the daemon starts and again whenever the app
+sends manifests, which it does on connect; only panes running an agent whose manifest changed
+start their detection over, so reconnecting never makes a working agent flash idle.
+
+**`MUSTER_AGENT` names the agent a process is, whatever its executable is called.** Set it in
+the environment a wrapper script starts its agent with - `MUSTER_AGENT=claude` - and the daemon
+reads it off that process and matches it against the manifests' names. macOS does not show the
+environment of its own binaries (`/bin/sh`, `/bin/sleep`), so the variable has to be on the agent
+process itself rather than on a system shell that runs it. herdr's equivalent is `HERDR_AGENT`.
+
 **Both reach a devenv pane too, and so does the pinned daemon itself.** A `[[daemon]]` with a
 `host` used to attach whatever herdr somebody had installed over there, at whatever version and
 with whatever settings, so a window's two halves could disagree about a setting you wrote once.

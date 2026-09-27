@@ -470,9 +470,24 @@ not changed since its last check is not read again. The headless terminal sets D
 herdr's patched libghostty does, so the detection text for a grapheme cluster matches what herdr's
 manifests were written against.
 
+**Where it runs.** Each pane's reader thread ticks its pane's detection on its poll's timeout
+(section 4), so detection has no thread of its own. A tick reads the terminal under the pane's
+lock a piece at a time and probes processes with no lock held, and its publications reach the
+session through the publisher like any other report: the pane's `agent` and `agent_state`
+change on its record. What a manifest calls the title is the terminal's own; after an agent
+changes it reads as empty until the next time a program writes one, even the same text, as
+herdr's did. A resize counts as a change to the screen, so an idle agent that does not redraw on
+SIGWINCH is still read again.
+
 **Manifests travel with the app.** The daemon has built-in manifests, and the app sends its own at
 connect, versioned by engine version, so a detection fix reaches a daemon the app adopted without
-restarting it. A person's overrides in `~/.muster/agent-detection/` win over both.
+restarting it. A person's overrides in `~/.muster/agent-detection/` win over both, and are read
+again whenever the app sends manifests. Only the panes whose agent's manifest in use changed start
+their detection over, as herdr resets only the agents its catalog updated: starting every pane
+over would publish each working agent idle through its grace, then working again, on every app
+launch. A pane with no agent starts over whenever anything changed, since it may be running an
+agent that only a new manifest names. A reset always ends in a publication of what is true, so a
+pane whose agent went with its manifest reads as no agent rather than keeping its last state.
 
 ### 9. The protocol
 

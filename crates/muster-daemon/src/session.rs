@@ -37,6 +37,7 @@ use proto::{Outcome, pane_request, session_request, tab_request};
 
 use crate::control::Outbox;
 use crate::data::Data;
+use crate::detect::Detecting;
 use crate::effects::{self, Report, Reported, Reports};
 use crate::pane::{Ended, Pane, PaneIo, Watching};
 use crate::pty::{self, Grid, Launch};
@@ -60,6 +61,7 @@ impl Shared {
         inherited: Vec<(OsString, OsString)>,
         home: PathBuf,
         data: Data,
+        overrides: Option<PathBuf>,
     ) -> Arc<Shared> {
         Arc::new_cyclic(|shared: &Weak<Shared>| {
             let (reports, received) = Reports::channel();
@@ -101,7 +103,8 @@ impl Shared {
                     settings,
                     settled,
                     deferred: Vec::new(),
-                    manifests: None,
+                    detecting: Detecting::start(overrides),
+                    app_manifests: Vec::new(),
                     subscribers: Vec::new(),
                     inherited,
                     home,
@@ -183,8 +186,10 @@ pub(crate) struct Session {
     settled: Arc<Settled>,
     /// Work on panes' terminals to do once the lock is let go ([`Locked`]).
     deferred: Vec<Deferred>,
-    /// Held for agent detection, which is a later card.
-    manifests: Option<proto::SendManifests>,
+    /// The manifests every pane's agent is detected by, which each pane's reader reads.
+    detecting: Arc<Detecting>,
+    /// The manifests the app last sent, by name, which every reload layers in.
+    app_manifests: Vec<(String, String)>,
     subscribers: Vec<Outbox>,
     /// The daemon's own environment, which every pane's starts from.
     inherited: Vec<(OsString, OsString)>,
@@ -555,7 +560,12 @@ impl Session {
         };
         self.next_serial += 1;
         let serial = self.next_serial;
-        let watching = Watching { ended: &self.ended, reports: &self.reports, host: &self.host };
+        let watching = Watching {
+            ended: &self.ended,
+            reports: &self.reports,
+            host: &self.host,
+            detecting: &self.detecting,
+        };
         let started =
             Pane::start(record, serial, master, screen, starting.grid, Some(child), &watching);
         let pane = match started {
@@ -697,6 +707,14 @@ impl Session {
             }
             Reported::PasteHeld(text) => {
                 self.emit(Payload::PasteHeld(proto::PasteHeld { pane: name, text }));
+            }
+            Reported::Agent { agent, state } => {
+                if record.agent != agent || record.agent_state() != state {
+                    record.agent = agent;
+                    record.set_agent_state(state);
+                    let record = record.clone();
+                    self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
+                }
             }
         }
     }
@@ -961,11 +979,31 @@ impl Session {
         Reply::done()
     }
 
-    fn send_manifests(&mut self, manifests: proto::SendManifests) -> Reply {
-        if self.manifests.as_ref() == Some(&manifests) {
+    /// Loads the manifests again with the app's, and starts detection over in the panes whose
+    /// agent is detected differently now. A pane whose agent's manifest is unchanged keeps its
+    /// state: the app sends its manifests on every connect, and starting every pane over would
+    /// publish each working agent idle through a startup grace, then working again.
+    fn send_manifests(&mut self, sent: proto::SendManifests) -> Reply {
+        let app: Vec<(String, String)> =
+            sent.manifests.into_iter().map(|manifest| (manifest.agent, manifest.toml)).collect();
+        let changed = self.detecting.reload(&app);
+        let unchanged = changed.is_empty() && app == self.app_manifests;
+        self.app_manifests = app;
+        if unchanged {
             return Reply::already();
         }
-        self.manifests = Some(manifests);
+        for pane in &self.panes {
+            // A pane with no agent may be running one that only a new manifest names, and its
+            // foreground may never change to prompt another probe. Starting it over costs it
+            // nothing, since it publishes only what differs.
+            let reset = match &pane.record.agent {
+                Some(agent) => changed.iter().any(|changed| changed.id() == agent),
+                None => !changed.is_empty(),
+            };
+            if reset {
+                pane.io.reset_detection();
+            }
+        }
         Reply::done()
     }
 

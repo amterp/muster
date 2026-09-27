@@ -147,6 +147,11 @@ pub(crate) enum Reported {
     Shown(Shown),
     /// A paste with a newline, to a program that did not ask for bracketed paste.
     PasteHeld(String),
+    /// What agent detection now says the pane is running, and its state.
+    Agent {
+        agent: Option<String>,
+        state: proto::AgentState,
+    },
 }
 
 /// Where panes send their reports.
@@ -172,8 +177,8 @@ impl Reports {
                         "daemon.reports.overrun",
                         fields! {
                             "queued" => REPORTS_DEPTH,
-                            "impact" => "a pane's title, directory, bell or notification was \
-                                         dropped; later ones still arrive",
+                            "impact" => "a pane's title, directory, agent state, bell or \
+                                         notification was dropped; later ones still arrive",
                             "check" => "whether a request is holding the session lock for \
                                         seconds, which is a bug",
                         },

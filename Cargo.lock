@@ -634,6 +634,7 @@ dependencies = [
  "mimalloc",
  "muster-core",
  "muster-daemon-proto",
+ "muster-detect",
  "muster-frame",
  "muster-harness",
  "muster-vt",

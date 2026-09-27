@@ -12,6 +12,7 @@ path = "src/main.rs"
 libc.workspace = true
 muster-core.workspace = true
 muster-daemon-proto.workspace = true
+muster-detect.workspace = true
 muster-frame.workspace = true
 muster-vt.workspace = true
 prost.workspace = true

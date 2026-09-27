@@ -25,6 +25,7 @@ use muster_core::diagnostics::{log, poison};
 use muster_core::fields;
 use muster_daemon_proto as proto;
 
+use crate::detect::{self, Detecting, Detection};
 use crate::effects::{self, Happened, Reported, Reports};
 use crate::process;
 use crate::pty;
@@ -57,6 +58,9 @@ pub(crate) struct PaneIo {
     /// Set when the session forgets the pane, under the session's lock, before anything else of
     /// the pane is let go: after it, the pane's name may belong to another pane.
     closed: AtomicBool,
+    /// Set when the manifests this pane's agent is detected by have changed, for its reader to
+    /// start detection over on its next tick.
+    reset_detection: AtomicBool,
 }
 
 impl PaneIo {
@@ -70,6 +74,19 @@ impl PaneIo {
 
     pub(crate) fn mark_closed(&self) {
         self.closed.store(true, Ordering::Release);
+    }
+
+    pub(crate) fn reset_detection(&self) {
+        self.reset_detection.store(true, Ordering::Release);
+    }
+
+    pub(crate) fn take_detection_reset(&self) -> bool {
+        self.reset_detection.swap(false, Ordering::AcqRel)
+    }
+
+    /// The process group holding the pane's terminal, when it says.
+    pub(crate) fn foreground_group(&self) -> Option<i32> {
+        pty::foreground_group(self.master.as_fd())
     }
 
     pub(crate) fn grid(&self) -> Grid {
@@ -220,6 +237,7 @@ pub(crate) struct Watching<'a> {
     pub(crate) ended: &'a Ended,
     pub(crate) reports: &'a Reports,
     pub(crate) host: &'a str,
+    pub(crate) detecting: &'a Arc<Detecting>,
 }
 
 impl Pane {
@@ -262,6 +280,7 @@ impl Pane {
             encoding: Arc::clone(&encoding),
             input,
             closed: AtomicBool::new(false),
+            reset_detection: AtomicBool::new(false),
         });
         let pane = record.pane.clone();
 
@@ -289,6 +308,8 @@ impl Pane {
                 directory: PathBuf::from(&record.cwd),
                 reports_directory: false,
             },
+            detection: Detection::new(process, Instant::now()),
+            detecting: Arc::clone(watching.detecting),
         };
         std::thread::Builder::new()
             .name(format!("read {pane}"))
@@ -320,8 +341,7 @@ impl Pane {
     /// (`Bridge::detach`); an input connection holds it only weakly.
     pub(crate) fn hang_up(self, reason: proto::DetachReason) {
         self.io.screen().close(reason);
-        let foreground = pty::foreground_group(self.io.master.as_fd())
-            .filter(|group| Some(*group) != self.process);
+        let foreground = self.io.foreground_group().filter(|group| Some(*group) != self.process);
         for group in self.process.into_iter().chain(foreground) {
             pty::hang_up(group);
         }
@@ -361,6 +381,8 @@ struct Reader {
     reports: Reports,
     process: Option<i32>,
     heard: Heard,
+    detection: Detection,
+    detecting: Arc<Detecting>,
 }
 
 impl Reader {
@@ -370,8 +392,8 @@ impl Reader {
     /// on once the lock is released. Nothing on this path waits for the session lock.
     fn run(mut self) {
         let mut buffer = vec![0u8; 64 * 1024];
-        // When the directory is next worth checking. The poll's timeout is the cadence, so a
-        // check needs no thread of its own - and the detector's reads will want the same.
+        // When the directory is next worth checking. The poll's timeout is the cadence, so
+        // neither this check nor agent detection needs a thread of its own.
         let mut due: Option<Instant> = None;
         loop {
             let master = self.io.master.as_raw_fd();
@@ -379,10 +401,9 @@ impl Reader {
                 libc::pollfd { fd: master, events: libc::POLLIN, revents: 0 },
                 libc::pollfd { fd: self.wake.as_raw_fd(), events: libc::POLLIN, revents: 0 },
             ];
-            let timeout = due.map_or(-1, |due| {
-                let left = due.saturating_duration_since(Instant::now()).as_millis();
-                i32::try_from(left).unwrap_or(i32::MAX)
-            });
+            let next = due.map_or(self.detection.due(), |due| due.min(self.detection.due()));
+            let left = next.saturating_duration_since(Instant::now()).as_millis();
+            let timeout = i32::try_from(left).unwrap_or(i32::MAX);
             // SAFETY: `watched` is a valid array of two pollfds for the length given.
             let ready = unsafe { libc::poll(watched.as_mut_ptr(), 2, timeout) };
             if ready == -1 {
@@ -394,9 +415,13 @@ impl Reader {
             if watched[1].revents != 0 {
                 return;
             }
-            if due.is_some_and(|due| Instant::now() >= due) {
+            let now = Instant::now();
+            if due.is_some_and(|due| now >= due) {
                 due = None;
                 self.check_directory();
+            }
+            if now >= self.detection.due() {
+                self.detect(now);
             }
             if watched[0].revents == 0 {
                 continue;
@@ -405,6 +430,7 @@ impl Reader {
             let read = unsafe { libc::read(master, buffer.as_mut_ptr().cast(), buffer.len()) };
             if read > 0 {
                 let chunk = &buffer[..read.cast_unsigned()];
+                self.detection.observe(chunk);
                 let happened = self.io.output(chunk);
                 self.io.dispatch(happened, &mut self.heard, &self.reports);
                 if !self.heard.reports_directory && due.is_none() {
@@ -425,6 +451,14 @@ impl Reader {
                 ended(self.io.serial, None);
             }
             return;
+        }
+    }
+
+    /// Ticks the pane's agent detection, and publishes what it says changed.
+    fn detect(&mut self, now: Instant) {
+        if let Some(publication) = self.detection.tick(&self.io, &self.detecting, now) {
+            let (agent, state) = detect::recorded(&publication);
+            self.reports.send(self.io.serial, Reported::Agent { agent, state });
         }
     }
 
@@ -523,6 +557,7 @@ impl PaneIo {
             encoding: Arc::new(Mutex::new(encoding)),
             input,
             closed: AtomicBool::new(false),
+            reset_detection: AtomicBool::new(false),
         })
     }
 }

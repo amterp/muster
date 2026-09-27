@@ -8,6 +8,7 @@
 mod control;
 mod data;
 mod descriptors;
+mod detect;
 mod effects;
 mod input;
 mod pane;
@@ -127,7 +128,9 @@ fn run(socket: &Path, data: data::Data, signals: libc::sigset_t) -> Result<(), F
     let (stopping, stop) = mpsc::channel();
     let inherited: Vec<_> = std::env::vars_os().collect();
     let home = std::env::var_os("HOME").map_or_else(|| PathBuf::from("/"), PathBuf::from);
-    let shared = Shared::new(instance(), stopping.clone(), inherited, home, data);
+    let overrides = install::muster_home(|name| std::env::var(name).ok())
+        .map(|muster_home| muster_home.join("agent-detection"));
+    let shared = Shared::new(instance(), stopping.clone(), inherited, home, data, overrides);
 
     let waiting = signals;
     std::thread::Builder::new()

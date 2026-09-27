@@ -45,7 +45,9 @@ Muster's principles, adapted to that evidence:
   the bytes it should have received come from libghostty's own encoders, configured from a terminal fed the same
   modes, so no test spells an escape sequence the encoder is the authority on. The flood test holds the structure
   that keeps one pane's flood from delaying another's echo and times nothing; an ignored test beside it prints the
-  latency.
+  latency. Agent detection is checked the way the herdr probe checked herdr's: its `detection` scenario runs again
+  against the daemon, the same fake agent and override manifest, and prints each state's settle time beside the one
+  recorded in `corpus/herdr-0.8.0/detection/`.
 
   A lost answer is staged the same way. `Daemon::withholding_answers_to` puts a relay in front of the real daemon
   that passes every connection through and, for the methods a test names, reads herdr's answer and never delivers
