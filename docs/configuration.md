@@ -442,21 +442,13 @@ reads it off that process and matches it against the manifests' names. macOS doe
 environment of its own binaries (`/bin/sh`, `/bin/sleep`), so the variable has to be on the agent
 process itself rather than on a system shell that runs it. herdr's equivalent is `HERDR_AGENT`.
 
-**Both reach a devenv pane too, and so does the pinned daemon itself.** A `[[daemon]]` with a
-`host` used to attach whatever herdr somebody had installed over there, at whatever version and
-with whatever settings, so a window's two halves could disagree about a setting you wrote once.
-On attach Muster now asks that machine what platform it is, downloads the release its own pin
-names for it, verifies the checksum, and copies it across the connection it already has open -
-to `~/.muster/herdr/<version>/herdr`, with your settings in `~/.muster/state/herdr.toml` beside
-it. You install nothing over there. A machine you have attached before is quicker rather than
-different: the download is kept in `~/.muster/cache`, and a daemon still running from last time
-is reused, agents and all.
-
-Downloaded here rather than over there, because the machine running Muster demonstrably has web
-access and a devenv often has none. A checksum that does not match is a refusal: the whole point
-of the pin is that the daemon is the one everything was tested against. And naming a `socket` in
-a `[[daemon]]` block still attaches whatever is listening at it, on either machine - that is how
-you ask for somebody else's daemon on purpose.
+**Both work on a devenv too**, where the daemon reads that machine's own
+`~/.muster/agent-detection/`. A `[[daemon]]` with a `host` starts the daemon of this Muster's
+version over there, `~/.muster/daemon/<version>/muster-daemon` with its data beside it, or reuses
+one still running from last time, agents and all. Muster does not copy it there yet, so it has
+to be installed first; without it the window shows nothing from that host, and the run log names
+the path it looked for. Naming a `socket` in a `[[daemon]]` block still attaches whatever is
+listening at it, on either machine - that is how you ask for somebody else's daemon on purpose.
 
 **Saving the file is enough.** Muster watches it and reads it again, and `cmd+shift+,` or
 Reload Configuration asks for the same thing when you would rather say so yourself - the
