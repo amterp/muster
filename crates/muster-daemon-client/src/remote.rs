@@ -19,9 +19,14 @@ use muster_ssh::{Platform, Remote, quoted};
 use crate::install::{Carried, Payload};
 use crate::launch::Reached;
 
-/// How long a daemon started over there may take to answer through the forward. Longer than
-/// on this machine, since a devenv is often at the end of a VPN.
-const START_PATIENCE: Duration = Duration::from_secs(30);
+/// How long a daemon started over there may take to answer through the forward.
+///
+/// Longer than on this machine, since a devenv is often at the end of a VPN. And a Mac over
+/// there holds a daemon just installed while it scans it, as this one does its own: a reinstall
+/// of the debug daemon was first heard from 46 s after it was started, on a loaded machine. A
+/// daemon that dies meanwhile is caught by the liveness check, so this wait is only ever spent
+/// on one that is still running.
+const START_PATIENCE: Duration = Duration::from_secs(90);
 
 const DIAL_INTERVAL: Duration = Duration::from_millis(20);
 
@@ -424,9 +429,10 @@ mod tests {
         let error =
             ensure_running(&Here, &installed, &carried, &installed.socket, &BTreeMap::new())
                 .unwrap_err();
-        // Well inside the start's own 30 seconds, with room for a loaded machine's slow shells:
-        // it takes under a second alone, and once took twelve beside the rest of the suite.
-        assert!(started.elapsed() < Duration::from_secs(20), "took {:?}", started.elapsed());
+        // Well inside the start's own 90 seconds, with room for a loaded machine: it takes
+        // under a second alone, once took twelve beside the rest of the suite, and a new
+        // executable can wait over twenty for macOS to scan it before it runs at all.
+        assert!(started.elapsed() < Duration::from_mins(1), "took {:?}", started.elapsed());
         assert!(error.contains("no data directory beside me"), "{error}");
         assert!(error.contains("exited before it answered"), "{error}");
         let _ = std::fs::remove_dir_all(&root);
