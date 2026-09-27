@@ -167,6 +167,20 @@ pub(crate) fn hang_up(group: i32) {
     }
 }
 
+/// Whether any process is left in a process group.
+pub(crate) fn group_exists(group: i32) -> bool {
+    // SAFETY: killpg with signal 0 only asks whether the group has a process to signal.
+    unsafe { libc::killpg(group, 0) == 0 }
+}
+
+/// Kills what is left of a process group.
+pub(crate) fn kill_group(group: i32) {
+    // SAFETY: killpg with a positive group id signals that group and nothing else.
+    unsafe {
+        libc::killpg(group, libc::SIGKILL);
+    }
+}
+
 /// Ends a process started for a pane that will never exist, and reaps it: SIGKILL to its
 /// process group, since nothing it started has had a chance to matter yet.
 pub(crate) fn abandon(pid: i32) {

@@ -43,6 +43,78 @@ pub(crate) type Ended = Arc<dyn Fn(u64, Option<i32>) + Send + Sync>;
 /// shell that does not report it with OSC 7. Checked at most this often during a flood.
 const CWD_CADENCE: Duration = Duration::from_millis(100);
 
+/// How long what runs in a closed pane has to end after its hang-up before it is killed. A group
+/// id reused within it would be killed too, which the kernel makes unlikely: it hands out ids in
+/// order, and a group lives while any of its processes do.
+pub(crate) const KILL_GRACE: Duration = Duration::from_secs(3);
+
+/// How many hung-up panes may still have processes to kill, for a stopping daemon to wait on:
+/// once it exits, nothing would kill them.
+struct Killing {
+    outstanding: Mutex<usize>,
+    done: Condvar,
+}
+
+static KILLING: Killing = Killing { outstanding: Mutex::new(0), done: Condvar::new() };
+
+/// Waits until every process group hung up so far is gone or killed, at most `within`.
+pub(crate) fn wait_for_kills(within: Duration) {
+    let outstanding = poison::lock(&KILLING.outstanding, "daemon.pane.killing");
+    let _ = KILLING.done.wait_timeout_while(outstanding, within, |outstanding| *outstanding > 0);
+}
+
+/// Kills whatever of `groups` is still running [`KILL_GRACE`] after its hang-up: a program that
+/// ignores SIGHUP would otherwise outlive its pane for as long as the machine runs.
+fn kill_after_grace(mut groups: Vec<i32>, pane: &str) {
+    if groups.is_empty() {
+        return;
+    }
+    let finished = || {
+        *poison::lock(&KILLING.outstanding, "daemon.pane.killing") -= 1;
+        KILLING.done.notify_all();
+    };
+    *poison::lock(&KILLING.outstanding, "daemon.pane.killing") += 1;
+    let name = format!("kill {pane}");
+    let killing = pane.to_string();
+    let spawned = std::thread::Builder::new().name(name).spawn(move || {
+        let pane = killing;
+        let deadline = Instant::now() + KILL_GRACE;
+        loop {
+            groups.retain(|&group| pty::group_exists(group));
+            if groups.is_empty() || Instant::now() >= deadline {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        for group in groups {
+            pty::kill_group(group);
+            log::warn(
+                "daemon.pane.killed",
+                fields! {
+                    "pane" => pane,
+                    "group" => group,
+                    "impact" => "processes of a closed pane that were still running after its \
+                                 hang-up were killed",
+                    "check" => "whether the pane's program traps or ignores SIGHUP",
+                },
+            );
+        }
+        finished();
+    });
+    if let Err(error) = spawned {
+        finished();
+        log::error(
+            "daemon.pane.not_killed",
+            fields! {
+                "pane" => pane,
+                "error" => error,
+                "impact" => "a program in the closed pane that ignores its hang-up keeps running",
+                "check" => "whether the daemon is out of threads",
+            },
+        );
+    }
+}
+
 /// What a pane's threads and the daemon's connections share.
 #[derive(Debug)]
 pub(crate) struct PaneIo {
@@ -477,15 +549,18 @@ impl Pane {
     }
 
     /// Ends the pane: its bridge told why, SIGHUP to its shell's process group and to whatever
-    /// holds its terminal's foreground, then its master closed once its reader, its writer and
-    /// the connections that looked it up let go of it. Its bridge's connection lets go at once
-    /// (`Bridge::detach`); an input connection holds it only weakly.
+    /// holds its terminal's foreground, SIGKILL to either still there after [`KILL_GRACE`], and
+    /// its master closed once its reader, its writer and the connections that looked it up let
+    /// go of it. Its bridge's connection lets go at once (`Bridge::detach`); an input connection
+    /// holds it only weakly.
     pub(crate) fn hang_up(self, reason: proto::DetachReason) {
         self.io.close(reason);
         let foreground = self.io.foreground_group().filter(|group| Some(*group) != self.process);
-        for group in self.process.into_iter().chain(foreground) {
+        let groups: Vec<i32> = self.process.into_iter().chain(foreground).collect();
+        for &group in &groups {
             pty::hang_up(group);
         }
+        kill_after_grace(groups, &self.record.pane);
         drop(self.wake);
     }
 }

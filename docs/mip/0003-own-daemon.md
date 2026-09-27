@@ -314,6 +314,14 @@ than combined into it.
 The daemon's `GHOSTTY_TERMINAL_OPT_TERMINFO_NAME` matches `TERM`, so XTGETTCAP answers agree with
 it.
 
+Closing a pane sends SIGHUP to its shell's process group and to whatever group holds its
+terminal's foreground, as a terminal closing does, and SIGKILL to either still running three
+seconds later: a program that traps or ignores the hang-up would otherwise outlive its pane for
+as long as the machine runs. A daemon that stops waits for those before it exits, since nothing
+would kill them after. A group id the kernel reused within those three seconds would be killed
+too, which is accepted: ids are handed out in order, and a group lives while any of its
+processes do.
+
 ### 4. Output: passthrough
 
 Each pane has a reader thread. Every chunk it reads from the PTY is sent unchanged to the bridge

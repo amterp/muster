@@ -120,3 +120,61 @@ fn a_socket_path_naming_a_file_is_refused_rather_than_deleted() {
     std::io::Read::read_to_string(&mut refused.stderr.take().unwrap(), &mut said).unwrap();
     assert!(said.contains("not a socket"), "{said}");
 }
+
+/// A pane whose program ignores the hang-up, and its pid once the program has said it.
+fn deaf_pane(control: &mut Control) -> String {
+    let command = "echo pid=$$.; trap '' HUP; while :; do sleep 1; done";
+    let create = proto::pane_request::Create {
+        command: Some(command.to_string()),
+        ..create("p1", in_new_tab("t1"))
+    };
+    make(control, create);
+    let text = until_text(control, "p1", "pid=");
+    let at = text.rfind("pid=").unwrap() + 4;
+    text[at..].split('.').next().unwrap().to_string()
+}
+
+/// Past this after the hang-up, a program still running has been killed.
+const KILLED_WITHIN: std::time::Duration = std::time::Duration::from_secs(6);
+
+fn gone_within(pid: &str, within: std::time::Duration) -> bool {
+    let deadline = std::time::Instant::now() + within;
+    while std::time::Instant::now() < deadline {
+        if process_state(pid).is_empty() {
+            return true;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    // So a failed run leaves nothing behind.
+    let _ = std::process::Command::new("kill").args(["-9", pid]).status();
+    false
+}
+
+/// A program that ignores SIGHUP would otherwise outlive the pane that ran it, holding whatever
+/// it held, for as long as the machine runs.
+#[test]
+fn a_program_that_ignores_the_hang_up_is_killed_when_its_pane_closes() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let pid = deaf_pane(&mut control);
+    expect(&mut control, close_request("p1"), proto::Outcome::Done);
+    assert!(gone_within(&pid, KILLED_WITHIN), "pid {pid} outlived its pane");
+}
+
+/// The daemon stays until what it hung up is gone or killed, since nothing would kill it after.
+#[test]
+fn a_daemon_that_stops_kills_what_ignores_the_hang_up_before_it_exits() {
+    let mut daemon = daemon();
+    let mut control = daemon.connect();
+    let pid = deaf_pane(&mut control);
+    expect(
+        &mut control,
+        session(session_request::Request::Stop(session_request::Stop {})),
+        proto::Outcome::Done,
+    );
+    daemon.wait_for_exit();
+    assert!(
+        gone_within(&pid, std::time::Duration::from_millis(500)),
+        "pid {pid} outlived the daemon"
+    );
+}

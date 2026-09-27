@@ -236,6 +236,7 @@ fn wait(shared: &Shared, stop: &Receiver<Stop>, persister: &Persister) {
     }
     shared.lock().close_everything();
     persister.wait_until_stopped(LAST_WRITE);
+    pane::wait_for_kills(pane::KILL_GRACE + Duration::from_secs(1));
     let _ = std::fs::remove_file(socket);
     log::info("daemon.stopped", fields! { "socket" => socket.display() });
 }
