@@ -3,6 +3,7 @@
 //! a bridge draws a pane from.
 
 pub mod control;
+pub mod input;
 pub mod stream;
 
 use std::os::unix::net::UnixStream;
