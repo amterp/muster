@@ -29,7 +29,10 @@ fn main() {
         header.display()
     );
 
-    println!("cargo:rerun-if-changed={}", header.display());
+    // The directory rather than vt.h: vt.h only includes the headers that declare anything,
+    // and a change to one of those alone - a re-pin, a patch in deps/ghostty-patches/ - left
+    // the bindings stale. Cargo scans a directory for any file that changed.
+    println!("cargo:rerun-if-changed={}", include.join("ghostty").display());
     println!("cargo:rustc-link-search=native={}", lib.display());
     println!("cargo:rustc-link-lib=dylib=ghostty-vt");
     // Where a binary looks for the dylib at *runtime* is set in .cargo/config.toml, not
@@ -52,7 +55,6 @@ fn main() {
     bindings.write_to_file(out.join("bindings.rs")).expect("OUT_DIR should be writable");
 
     let modes = include.join("ghostty/vt/modes.h");
-    println!("cargo:rerun-if-changed={}", modes.display());
     std::fs::write(out.join("modes.rs"), mode_table(&modes)).expect("OUT_DIR should be writable");
 }
 
