@@ -16,17 +16,22 @@ use std::time::Duration;
 
 use muster_daemon_proto::{self as proto, ConnectionKind, connection, pane_request};
 
+use crate::session::HANDING_OVER;
+
 /// How long a report waits for its daemon, from dialing to the answer. A hook that runs on every
 /// sub-agent and a statusline that runs on every message must not hold their harness up.
 const PATIENCE: Duration = Duration::from_secs(2);
 
 const USAGE: &str = "usage: muster-daemon report [--pane NAME] [--context-used PERCENT] \
     [--model NAME] [--cost-usd DOLLARS] [--subagent-started | --subagent-stopped] \
-    [--fact KEY=VALUE]... [--clear]\n\n\
+    [--fact KEY=VALUE]... [--clear] [--agent NAME --state working|blocked|idle]\n\n\
     Tells the daemon that owns this pane what the agent in it says about itself. The pane is \
     $MUSTER_PANE unless --pane names another, and the daemon is the one at \
     $MUSTER_DAEMON_SOCKET. An empty model or fact value removes it; --clear forgets everything \
-    reported before, and applies first.";
+    reported before, and applies first. --state is the agent's own word on what it is doing, \
+    which outranks what detection reads off its screen while fresh; --agent names the agent, \
+    as its detection manifest does (claude), and the state counts only while that agent is \
+    the pane's.";
 
 pub(crate) fn run(arguments: impl Iterator<Item = String>) -> ExitCode {
     let report = match parse(arguments, |name| std::env::var(name).ok()) {
@@ -113,9 +118,22 @@ fn parse(
                 facts.insert(key.to_string(), value.to_string());
             }
             "--clear" => report.clear = true,
+            "--agent" => report.agent = value("--agent")?,
+            "--state" => {
+                let given = value("--state")?;
+                report.set_state(match given.as_str() {
+                    "working" => proto::AgentState::Working,
+                    "blocked" => proto::AgentState::Blocked,
+                    "idle" => proto::AgentState::Idle,
+                    _ => return Err(format!("--state {given} is not working, blocked or idle")),
+                });
+            }
             "--help" | "-h" => return Ok(Parsed::Help),
             other => return Err(format!("{other} is not an option")),
         }
+    }
+    if report.state.is_some() && report.agent.is_empty() {
+        return Err("--state needs --agent, naming the agent that is reporting".to_string());
     }
     report.facts = facts;
     report.pane = pane.or_else(|| environment("MUSTER_PANE")).ok_or(
@@ -138,7 +156,17 @@ fn send_within(
     std::thread::Builder::new()
         .name("report".to_string())
         .spawn(move || {
-            let _ = done.send(send(&socket, report));
+            // A handoff refuses what would change the pane until the new daemon serves the same
+            // socket, which is moments later; a hook's report of a state must not be lost to it.
+            let sent = loop {
+                match send(&socket, report.clone()) {
+                    Err(problem) if problem.ends_with(HANDING_OVER) => {
+                        std::thread::sleep(Duration::from_millis(50));
+                    }
+                    sent => break sent,
+                }
+            };
+            let _ = done.send(sent);
         })
         .map_err(|error| format!("could not start a thread to report from: {error}"))?;
     finished
@@ -202,6 +230,16 @@ mod tests {
         assert_eq!(
             (started.pane.as_str(), started.subagent()),
             ("p2", proto::SubagentChange::Started)
+        );
+    }
+
+    #[test]
+    fn a_state_is_reported_with_the_agent_reporting_it() {
+        let report = parsed(&["--agent", "claude", "--state", "blocked"], Some("p1")).unwrap();
+        assert_eq!((report.agent.as_str(), report.state()), ("claude", proto::AgentState::Blocked));
+        assert!(parsed(&["--state", "idle"], Some("p1")).unwrap_err().contains("--agent"));
+        assert!(
+            parsed(&["--agent", "x", "--state", "done"], Some("p1")).unwrap_err().contains("done")
         );
     }
 

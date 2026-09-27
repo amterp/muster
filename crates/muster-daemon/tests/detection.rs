@@ -443,3 +443,49 @@ fn a_finish_nobody_has_seen_is_still_unseen_after_a_handoff() {
 
     assert!(finished_unseen(&mut daemon.connect(), "p1"));
 }
+
+fn report_state(control: &mut Control, agent: &str, state: proto::AgentState) -> proto::Answer {
+    let mut report = proto::pane_request::Report {
+        pane: "p1".to_string(),
+        agent: agent.to_string(),
+        ..Default::default()
+    };
+    report.set_state(state);
+    control.ask(pane(proto::pane_request::Request::Report(report))).answer
+}
+
+fn state_reported(control: &mut Control) -> bool {
+    snapshot(control).panes.into_iter().find(|record| record.pane == "p1").unwrap().state_reported
+}
+
+/// An agent's own word on its state outranks what its screen reads while it is fresh. A
+/// working report the screen stops moving under goes stale - an agent interrupted mid-turn
+/// says nothing - and the rules take over again.
+#[test]
+fn an_agents_own_report_wins_until_its_screen_stops_moving() {
+    let home = Home::new("reported", &[("claude.toml", PROBE_MANIFEST)], &["claude"]);
+    let daemon = home.daemon();
+    let mut control = daemon.connect();
+    let mut input = Input::connect(daemon.socket_path());
+    run_agent(&mut control, &mut input, "p1", &home.agent("claude"));
+    until_detected(&mut control, "p1", Some("claude"), proto::AgentState::Idle);
+
+    let answer = report_state(&mut control, "claude", proto::AgentState::Working);
+    assert_eq!(answer.outcome(), proto::Outcome::Done, "{}", answer.reason);
+    until_detected(&mut control, "p1", Some("claude"), proto::AgentState::Working);
+    assert!(state_reported(&mut control));
+
+    // Nothing is drawn from here on, so the report goes stale after ten quiet seconds.
+    muster_harness::until_within(
+        "the report to go stale",
+        Duration::from_secs(15),
+        || detected(&mut control, "p1").1 == proto::AgentState::Idle,
+        (),
+    );
+    assert!(!state_reported(&mut control));
+
+    let refused = report_state(&mut control, "", proto::AgentState::Idle);
+    assert_eq!(refused.outcome(), proto::Outcome::Refused, "a state needs its agent");
+    let refused = report_state(&mut control, "claude", proto::AgentState::Unknown);
+    assert_eq!(refused.outcome(), proto::Outcome::Refused, "unknown is not reported");
+}

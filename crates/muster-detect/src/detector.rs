@@ -22,6 +22,10 @@ use crate::manifest::Detection;
 use crate::process::Processes;
 use crate::{Agent, Input, Manifests, State, screen_text, title};
 
+pub(crate) mod reporting;
+
+use reporting::Reporting;
+
 const TICK_UNIDENTIFIED: Duration = Duration::from_millis(500);
 const TICK_IDENTIFIED: Duration = Duration::from_millis(300);
 const PENDING_IDLE_RECHECK: Duration = Duration::from_millis(100);
@@ -80,6 +84,17 @@ pub struct Tick {
 pub struct Publication {
     pub agent: Option<Agent>,
     pub state: State,
+    /// The state is the agent's own report rather than the screen rules' reading.
+    pub reported: bool,
+    /// The screen rules have stopped reading this agent's screen ([`reporting`]).
+    pub unreadable: bool,
+}
+
+impl Publication {
+    /// What the screen rules concluded, before any report of the agent's own.
+    fn concluded(agent: Option<Agent>, state: State) -> Publication {
+        Publication { agent, state, reported: false, unreadable: false }
+    }
 }
 
 /// One pane's detection. Tick it `FIRST_TICK` after the pane starts, and then after each
@@ -109,6 +124,10 @@ pub struct Detector {
     /// here and took the next OSC 0 or 2 as it came, and this title is the caller's.
     title_writes_at_change: Option<u64>,
     last_emitted: Option<Publication>,
+    /// What the screen rules last concluded, which [`Detector::tick`] publishes unless the
+    /// agent's own report outranks it.
+    last_concluded: Option<Publication>,
+    reporting: Reporting,
     /// A reset forgot what was known, so the next tick publishes what it finds, even when it
     /// finds nothing that would count as a change. Otherwise a pane whose agent went with its
     /// manifest would go on showing the old agent's last state.
@@ -139,6 +158,8 @@ impl Detector {
             pending_idle: PendingIdle::default(),
             title_writes_at_change: None,
             last_emitted: None,
+            last_concluded: None,
+            reporting: Reporting::default(),
             owed: false,
         }
     }
@@ -166,6 +187,7 @@ impl Detector {
     /// a daemon handing its panes to another.
     pub fn carried(&self, now: Instant) -> Carried {
         let until = |at: Instant| at.saturating_duration_since(now);
+        let (report, output_ago) = self.reporting.carried(now);
         Carried {
             agent: self.presence.current.clone(),
             misses: self.presence.consecutive_misses,
@@ -180,6 +202,9 @@ impl Detector {
             shell_clear_pending: self.pending_foreground_shell_clear,
             shell_exit_reported: self.foreground_shell_exit_reported,
             title_pending: self.title_writes_at_change.is_some(),
+            concluded: self.last_concluded.clone(),
+            report,
+            output_ago,
         }
     }
 
@@ -202,11 +227,34 @@ impl Detector {
         detector.pending_foreground_shell_clear = carried.shell_clear_pending;
         detector.foreground_shell_exit_reported = carried.shell_exit_reported;
         detector.title_writes_at_change = carried.title_pending.then_some(title_writes);
+        detector.last_concluded = carried.concluded;
+        detector.reporting = Reporting::resumed(carried.report, carried.output_ago, now);
         detector
     }
 
     pub fn agent(&self) -> Option<&Agent> {
         self.presence.current.as_ref()
+    }
+
+    /// What the agent says about its own state, which outranks the screen rules while it counts
+    /// ([`reporting`]). Published at the next tick.
+    pub fn report(&mut self, agent: Agent, state: State, now: Instant) {
+        self.reporting.report(agent, state, now);
+    }
+
+    /// What the rules last concluded, with the agent's own report laid over it while that counts.
+    fn effective(&mut self, now: Instant) -> Option<Publication> {
+        let concluded = self.last_concluded.clone()?;
+        let agent = self.presence.current.as_ref();
+        let exited = self.pending_foreground_shell_clear;
+        let reported = self.reporting.in_force(agent, exited, now);
+        let unreadable = self.reporting.unreadable(agent, reported, now);
+        Some(Publication {
+            state: reported.unwrap_or(concluded.state),
+            reported: reported.is_some(),
+            unreadable,
+            ..concluded
+        })
     }
 
     pub fn tick(
@@ -216,10 +264,14 @@ impl Detector {
         processes: &impl Processes,
         manifests: &Manifests,
     ) -> Tick {
-        let mut publication = self.step(now, pane, processes, manifests);
-        if std::mem::take(&mut self.owed) && publication.is_none() {
-            publication = self.emit(self.presence.current.clone(), self.published.state);
+        let concluded = self.step(now, pane, processes, manifests);
+        if std::mem::take(&mut self.owed) && concluded.is_none() {
+            self.conclude(self.presence.current.clone(), self.published.state);
         }
+        if self.presence.current.is_some() {
+            self.reporting.output(pane.content_seq(), now);
+        }
+        let publication = self.effective(now).and_then(|effective| self.emit(effective));
         let next = if self.pending_idle.active() {
             PENDING_IDLE_RECHECK
         } else if self.presence.current.is_none() {
@@ -309,6 +361,9 @@ impl Detector {
             detection
         };
 
+        if !process_exited {
+            self.reporting.rules(detection.state, detection.rule.is_some(), now);
+        }
         let next = PublishState { state: detection.state, visible: detection.visible };
         if decide_transition(
             self.published,
@@ -322,7 +377,7 @@ impl Detector {
             if process_exited {
                 self.foreground_shell_exit_reported = true;
             }
-            emitted = self.emit(agent, next.state).or(emitted);
+            emitted = self.conclude(agent, next.state).or(emitted);
         }
         emitted
     }
@@ -378,6 +433,7 @@ impl Detector {
         foreground.agent_changed = true;
         let agent = self.presence.current.clone();
         if agent != previous || action == ForegroundShellAgentAction::ReportReplacementProcess {
+            self.reporting.agent_changed();
             self.pending_idle.clear();
             self.last_screen_scan_content_seq = None;
             // A new agent must not inherit the last one's title or progress.
@@ -386,7 +442,7 @@ impl Detector {
             if agent.is_some() {
                 self.startup_grace_until = Some(now + STARTUP_GRACE);
                 self.published = PublishState { state: State::Idle, visible: true };
-                foreground.emitted = self.emit(agent, State::Idle);
+                foreground.emitted = self.conclude(agent, State::Idle);
             } else {
                 self.startup_grace_until = None;
             }
@@ -432,8 +488,17 @@ impl Detector {
         title(&pane.title())
     }
 
-    fn emit(&mut self, agent: Option<Agent>, state: State) -> Option<Publication> {
-        let publication = Publication { agent, state };
+    /// Records what the rules concluded, returning it when it changed.
+    fn conclude(&mut self, agent: Option<Agent>, state: State) -> Option<Publication> {
+        let publication = Publication::concluded(agent, state);
+        if self.last_concluded.as_ref() == Some(&publication) {
+            return None;
+        }
+        self.last_concluded = Some(publication.clone());
+        Some(publication)
+    }
+
+    fn emit(&mut self, publication: Publication) -> Option<Publication> {
         if self.last_emitted.as_ref() == Some(&publication) {
             return None;
         }
@@ -461,6 +526,12 @@ pub struct Carried {
     pub shell_clear_pending: bool,
     pub shell_exit_reported: bool,
     pub title_pending: bool,
+    /// What the screen rules last concluded.
+    pub concluded: Option<Publication>,
+    /// The agent's own report, and how long ago it came.
+    pub report: Option<(Agent, State, Duration)>,
+    /// How long ago the pane last produced output, which a working report goes stale from.
+    pub output_ago: Option<Duration>,
 }
 
 /// What checking the foreground came to.

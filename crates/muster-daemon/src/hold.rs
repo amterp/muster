@@ -87,6 +87,14 @@ impl Hold {
         state.parked || state.gone
     }
 
+    /// Wakes the thread without holding it, for something it is to act on at once.
+    pub(crate) fn nudge(&self) {
+        // SAFETY: write of one byte from a live buffer. A full pipe has a nudge waiting already.
+        unsafe {
+            libc::write(self.nudge.as_raw_fd(), [0u8].as_ptr().cast(), 1);
+        }
+    }
+
     pub(crate) fn is_held(&self) -> bool {
         self.state().held
     }

@@ -146,6 +146,8 @@ pub(crate) struct PaneIo {
     deferred: Mutex<Deferred>,
     /// Where the reader's agent detection stood when it was last held.
     carried: Mutex<Option<proto::handoff::Detection>>,
+    /// What the pane's agent last said about its own state, for the reader to hand detection.
+    self_report: Mutex<Option<(String, muster_detect::State)>>,
 }
 
 /// A count of changes to a pane's bridge - attached, detached, credited, closed - that a reader
@@ -200,6 +202,16 @@ impl PaneIo {
 
     pub(crate) fn reset_detection(&self) {
         self.reset_detection.store(true, Ordering::Release);
+    }
+
+    /// What the pane's agent says about its own state: its reader hands it to detection at once.
+    pub(crate) fn report_state(&self, agent: String, state: muster_detect::State) {
+        *poison::lock(&self.self_report, "daemon.pane.self_report") = Some((agent, state));
+        self.hold.nudge();
+    }
+
+    fn take_self_report(&self) -> Option<(String, muster_detect::State)> {
+        poison::lock(&self.self_report, "daemon.pane.self_report").take()
     }
 
     pub(crate) fn take_detection_reset(&self) -> bool {
@@ -596,6 +608,7 @@ impl Pane {
             hold,
             deferred: Mutex::new(Deferred::default()),
             carried: Mutex::new(None),
+            self_report: Mutex::new(None),
         });
         let pane = record.pane.clone();
 
@@ -778,6 +791,9 @@ impl Reader {
                 || self.io.is_closed(),
                 || self.io.carry(self.detection.carried(Instant::now())),
             );
+            if let Some((agent, state)) = self.io.take_self_report() {
+                self.detection.report(&agent, state, Instant::now());
+            }
             let master = self.io.master.as_raw_fd();
             let mut watched = [
                 libc::pollfd { fd: master, events: libc::POLLIN, revents: 0 },
@@ -846,7 +862,8 @@ impl Reader {
     fn detect(&mut self, now: Instant) {
         let published = self.detection.tick(&self.io, &self.detecting, now).map(|publication| {
             let (agent, state) = detect::recorded(&publication);
-            Reported::Agent { agent, state }
+            let (reported, unreadable) = (publication.reported, publication.unreadable);
+            Reported::Agent { agent, state, reported, unreadable }
         });
         publish_agent(&self.reports, self.io.serial, published, &mut self.unsent);
     }
@@ -968,6 +985,7 @@ impl PaneIo {
             hold: Hold::new(false).expect("a pipe"),
             deferred: Mutex::new(Deferred::default()),
             carried: Mutex::new(None),
+            self_report: Mutex::new(None),
         })
     }
 }
@@ -1032,6 +1050,8 @@ mod tests {
         let working = Reported::Agent {
             agent: Some("claude".to_string()),
             state: proto::AgentState::Working,
+            reported: false,
+            unreadable: false,
         };
         let mut unsent = None;
         publish_agent(&reports, 1, Some(working.clone()), &mut unsent);

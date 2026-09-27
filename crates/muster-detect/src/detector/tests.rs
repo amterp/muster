@@ -567,7 +567,7 @@ impl Run {
 }
 
 fn published(agent: Option<Agent>, state: State) -> Publication {
-    Publication { agent, state }
+    Publication { agent, state, reported: false, unreadable: false }
 }
 
 #[test]
@@ -780,7 +780,7 @@ fn a_resumed_detector_goes_on_from_where_it_was_carried() {
         misses: 2,
         state: State::Working,
         visible: true,
-        emitted: Some(Publication { agent: Some(claude()), state: State::Working }),
+        emitted: Some(published(Some(claude()), State::Working)),
         grace_left: Some(Duration::from_millis(1500)),
         idle_seen_ago: Some(Duration::from_millis(200)),
         idle_confirmations: 1,
@@ -789,6 +789,9 @@ fn a_resumed_detector_goes_on_from_where_it_was_carried() {
         shell_clear_pending: false,
         shell_exit_reported: false,
         title_pending: true,
+        concluded: Some(published(Some(claude()), State::Idle)),
+        report: Some((claude(), State::Working, Duration::from_millis(500))),
+        output_ago: Some(Duration::from_millis(50)),
     };
     let now = Instant::now();
     let detector = Detector::resumed(100, carried.clone(), now, 7);
@@ -801,7 +804,160 @@ fn a_resumed_detector_goes_on_from_where_it_was_carried() {
         Carried {
             grace_left: Some(Duration::from_millis(1400)),
             idle_seen_ago: Some(Duration::from_millis(300)),
+            report: Some((claude(), State::Working, Duration::from_millis(600))),
+            output_ago: Some(Duration::from_millis(150)),
             ..carried
         }
     );
+}
+
+// ---- the agent's own reports ----
+
+fn reported(state: State) -> Publication {
+    Publication { agent: Some(claude()), state, reported: true, unreadable: false }
+}
+
+impl Run {
+    fn report(&mut self, state: State) {
+        self.detector.report(claude(), state, self.now);
+    }
+
+    /// Ticks for `span`, painting a new screen each tick when `moving`, and returns everything
+    /// published.
+    fn run_for(&mut self, span: Duration, moving: Option<&str>) -> Vec<Publication> {
+        let start = self.now;
+        let mut published = Vec::new();
+        let mut frame = 0;
+        while self.now - start < span {
+            if let Some(screen) = moving {
+                frame += 1;
+                self.paint(&format!("{screen} {frame}"));
+            }
+            published.extend(self.tick());
+        }
+        published
+    }
+}
+
+#[test]
+fn an_agents_own_report_outranks_the_rules() {
+    let mut run = Run::new();
+    run.tick();
+    run.start_agent();
+    run.paint("ready>");
+    run.until_published(Duration::from_secs(2));
+
+    run.report(State::Working);
+    assert_eq!(run.tick(), Some(reported(State::Working)));
+    run.report(State::Blocked);
+    assert_eq!(run.tick(), Some(reported(State::Blocked)));
+    run.report(State::Idle);
+    assert_eq!(run.tick(), Some(reported(State::Idle)));
+}
+
+#[test]
+fn a_report_during_the_grace_is_published_at_once() {
+    let mut run = Run::new();
+    run.tick();
+    run.pane.group = Some(AGENT_GROUP);
+    assert_eq!(run.tick(), Some(published(Some(claude()), State::Idle)));
+    run.report(State::Working);
+    assert_eq!(run.tick(), Some(reported(State::Working)));
+}
+
+#[test]
+fn a_working_report_goes_stale_once_the_screen_stops_moving() {
+    let mut run = Run::new();
+    run.tick();
+    run.start_agent();
+    run.paint("ready>");
+    run.until_published(Duration::from_secs(2));
+    run.report(State::Working);
+    run.tick();
+
+    assert_eq!(run.run_for(Duration::from_secs(20), Some("thinking")), []);
+    let quiet = run.run_for(reporting::QUIET + Duration::from_secs(1), None);
+    assert_eq!(quiet.last(), Some(&published(Some(claude()), State::Idle)), "{quiet:?}");
+}
+
+#[test]
+fn a_blocked_or_idle_report_holds_however_still_the_screen() {
+    let mut run = Run::new();
+    run.tick();
+    run.start_agent();
+    run.paint("busy");
+    run.until_published(Duration::from_secs(2));
+    for state in [State::Blocked, State::Idle] {
+        run.report(state);
+        assert_eq!(run.tick(), Some(reported(state)));
+        assert_eq!(run.run_for(Duration::from_secs(30), None), []);
+    }
+}
+
+#[test]
+fn a_report_stops_counting_when_the_agent_leaves() {
+    let mut run = Run::new();
+    run.tick();
+    run.start_agent();
+    run.report(State::Working);
+    assert_eq!(run.tick(), Some(reported(State::Working)));
+
+    run.pane.group = Some(SHELL);
+    let left = run.run_for(Duration::from_secs(3), None);
+    assert!(left.iter().all(|publication| !publication.reported), "{left:?}");
+    run.pane.group = Some(AGENT_GROUP);
+    let back = run.run_for(Duration::from_secs(5), None);
+    assert!(back.iter().all(|publication| !publication.reported), "{back:?}");
+}
+
+#[test]
+fn a_report_before_the_agent_is_found_waits_briefly_for_it() {
+    let mut run = Run::new();
+    run.tick();
+    run.report(State::Working);
+    run.tick();
+    run.pane.group = Some(AGENT_GROUP);
+    let found = run.run_for(Duration::from_millis(900), None);
+    assert!(found.contains(&reported(State::Working)), "{found:?}");
+
+    let mut run = Run::new();
+    run.tick();
+    run.report(State::Working);
+    run.run_for(reporting::UNCONFIRMED + Duration::from_millis(500), None);
+    run.pane.group = Some(AGENT_GROUP);
+    let late = run.run_for(Duration::from_secs(1), None);
+    assert!(late.iter().all(|publication| !publication.reported), "{late:?}");
+}
+
+#[test]
+fn a_moving_screen_no_rule_reads_is_said_to_be_unreadable() {
+    let mut run = Run::new();
+    run.tick();
+    run.start_agent();
+    let published = run.run_for(reporting::DRIFT + Duration::from_secs(2), Some("spinning"));
+    assert!(published.last().is_some_and(|last| last.unreadable), "{published:?}");
+
+    let read = run.run_for(Duration::from_secs(1), Some("ready>"));
+    assert!(read.last().is_some_and(|last| !last.unreadable), "a rule reads it again: {read:?}");
+}
+
+#[test]
+fn rules_reading_idle_while_the_agent_reports_working_are_unreadable() {
+    let mut run = Run::new();
+    run.tick();
+    run.start_agent();
+    run.report(State::Working);
+    let published = run.run_for(reporting::DRIFT + Duration::from_secs(2), Some("ready>"));
+    let last = published.last().expect("something was published");
+    assert_eq!((last.state, last.reported, last.unreadable), (State::Working, true, true));
+}
+
+#[test]
+fn a_still_screen_is_never_unreadable() {
+    let mut run = Run::new();
+    run.tick();
+    run.start_agent();
+    run.paint("nothing a rule knows");
+    let published = run.run_for(reporting::DRIFT * 2, None);
+    assert!(published.iter().all(|publication| !publication.unreadable), "{published:?}");
 }

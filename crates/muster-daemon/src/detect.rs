@@ -123,6 +123,13 @@ impl Detection {
         let millis = |at: Duration| u32::try_from(at.as_millis()).unwrap_or(u32::MAX);
         let (emitted_agent, emitted_state) =
             carried.emitted.as_ref().map_or((None, proto::AgentState::Unknown), recorded);
+        let (concluded_agent, concluded_state) =
+            carried.concluded.as_ref().map_or((None, proto::AgentState::Unknown), recorded);
+        let (report_agent, report_state, report_ago) =
+            carried.report.as_ref().map_or(
+                (None, proto::AgentState::Unknown, Duration::ZERO),
+                |(agent, state, ago)| (Some(agent.id().to_string()), agent_state(*state), *ago),
+            );
         proto::handoff::Detection {
             agent: carried.agent.as_ref().map(|agent| agent.id().to_string()),
             misses: carried.misses.into(),
@@ -140,6 +147,15 @@ impl Detection {
             shell_exit_reported: carried.shell_exit_reported,
             title_pending: carried.title_pending,
             progress: self.progress.get().to_string(),
+            concluded: carried.concluded.is_some(),
+            concluded_agent,
+            concluded_state: concluded_state.into(),
+            report_agent,
+            report_state: report_state.into(),
+            report_ms_ago: millis(report_ago),
+            output_ms_ago: carried.output_ago.map(millis),
+            emitted_reported: carried.emitted.as_ref().is_some_and(|emitted| emitted.reported),
+            emitted_unreadable: carried.emitted.as_ref().is_some_and(|emitted| emitted.unreadable),
         }
     }
 
@@ -156,6 +172,17 @@ impl Detection {
         let emitted = carried.emitted.then(|| Publication {
             agent: carried.emitted_agent.as_deref().map(Agent::new),
             state: state_of(carried.emitted_state()),
+            reported: carried.emitted_reported,
+            unreadable: carried.emitted_unreadable,
+        });
+        let concluded = carried.concluded.then(|| Publication {
+            agent: carried.concluded_agent.as_deref().map(Agent::new),
+            state: state_of(carried.concluded_state()),
+            reported: false,
+            unreadable: false,
+        });
+        let report = carried.report_agent.as_deref().map(|agent| {
+            (Agent::new(agent), state_of(carried.report_state()), millis(carried.report_ms_ago))
         });
         let carried_here = Carried {
             agent: carried.agent.as_deref().map(Agent::new),
@@ -171,6 +198,9 @@ impl Detection {
             shell_clear_pending: carried.shell_clear_pending,
             shell_exit_reported: carried.shell_exit_reported,
             title_pending: carried.title_pending,
+            concluded,
+            report,
+            output_ago: carried.output_ms_ago.map(millis),
         };
         let mut progress = Progress::default();
         if !carried.progress.is_empty() {
@@ -181,6 +211,12 @@ impl Detection {
             progress,
             due: now + Detector::FIRST_TICK,
         }
+    }
+
+    /// What the pane's agent says about its own state, ticked on at once.
+    pub(crate) fn report(&mut self, agent: &str, state: State, now: Instant) {
+        self.detector.report(Agent::new(agent), state, now);
+        self.due = now;
     }
 
     /// Every chunk of the pane's output, in order.
@@ -233,7 +269,7 @@ fn agent_state(state: State) -> proto::AgentState {
     }
 }
 
-fn state_of(state: proto::AgentState) -> State {
+pub(crate) fn state_of(state: proto::AgentState) -> State {
     match state {
         proto::AgentState::Working => State::Working,
         proto::AgentState::Blocked => State::Blocked,

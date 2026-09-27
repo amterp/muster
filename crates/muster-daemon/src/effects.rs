@@ -150,10 +150,13 @@ pub(crate) enum Reported {
     Shown(Shown),
     /// A paste with a newline, to a program that did not ask for bracketed paste.
     PasteHeld(String),
-    /// What agent detection now says the pane is running, and its state.
+    /// What agent detection now says the pane is running, and its state: whether that is the
+    /// agent's own report, and whether the screen rules can no longer read it.
     Agent {
         agent: Option<String>,
         state: proto::AgentState,
+        reported: bool,
+        unreadable: bool,
     },
     /// What the program says with XTSHIFTESCAPE, for the pane's record.
     ShiftCapture(Option<bool>),

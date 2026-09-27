@@ -40,7 +40,7 @@ use proto::{Outcome, pane_request, session_request, tab_request};
 use crate::control::Outbox;
 use crate::daemon_log::DaemonLog;
 use crate::data::Data;
-use crate::detect::Detecting;
+use crate::detect::{self, Detecting};
 use crate::effects::{self, Report, Reported, Reports};
 use crate::facts;
 use crate::pane::{Ended, Pane, PaneIo, Process, Watching};
@@ -446,6 +446,11 @@ pub(crate) struct HandedPane {
     pub(crate) io: Arc<PaneIo>,
 }
 
+/// Why a daemon being replaced refuses a request that changes anything. A caller that means to
+/// ask again once the new daemon serves knows the refusal by it.
+pub(crate) const HANDING_OVER: &str =
+    "the daemon is handing its panes to a new one; ask the new one once it serves";
+
 /// Whether a request changes anything, which a daemon being replaced refuses: what it holds
 /// has been, or is being, handed over as it stands.
 fn changes_anything(service: &Service) -> bool {
@@ -847,9 +852,7 @@ impl Session {
         use session_request::Request as S;
         use tab_request::Request as T;
         if self.replacing != Replacing::No && changes_anything(&service) {
-            return Handled::Reply(Reply::refused(
-                "the daemon is handing its panes to a new one; ask the new one once it serves",
-            ));
+            return Handled::Reply(Reply::refused(HANDING_OVER));
         }
         let reply = match service {
             Service::Session(proto::SessionRequest { request: Some(request) }) => match request {
@@ -1254,22 +1257,40 @@ impl Session {
     }
 
     /// Facts the agent in a pane states about itself.
-    fn report(&mut self, report: pane_request::Report) -> Reply {
+    fn report(&mut self, mut report: pane_request::Report) -> Reply {
         let Some(index) = self.pane_index(&report.pane) else {
             return Reply::not_there(format!("no pane {} on this daemon", report.pane));
         };
+        let own_state = match report.state.take().map(proto::AgentState::try_from) {
+            None => None,
+            Some(_) if report.agent.is_empty() => {
+                return Reply::refused("a state needs the name of the agent reporting it");
+            }
+            Some(Ok(
+                state @ (proto::AgentState::Working
+                | proto::AgentState::Blocked
+                | proto::AgentState::Idle),
+            )) => Some(detect::state_of(state)),
+            Some(_) => return Reply::refused("an agent reports itself working, blocked or idle"),
+        };
+        let agent = std::mem::take(&mut report.agent);
         let record = &mut self.panes[index].record;
         let facts = match facts::apply(record.facts.as_ref(), report) {
             Ok(facts) => facts,
             Err(why) => return Reply::refused(why),
         };
-        if record.facts == facts {
-            return Reply::already();
+        let facts_changed = record.facts != facts;
+        if facts_changed {
+            record.facts = facts;
+            let record = record.clone();
+            self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
         }
-        record.facts = facts;
-        let record = record.clone();
-        self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
-        Reply::done()
+        // Detection decides what the state comes to, and publishes it as any other change.
+        if let Some(state) = own_state {
+            self.panes[index].io.report_state(agent, state);
+            return Reply::done();
+        }
+        if facts_changed { Reply::done() } else { Reply::already() }
     }
 
     fn seen(&mut self, panes: &[String]) -> Reply {
@@ -1342,21 +1363,27 @@ impl Session {
             Reported::PasteHeld(text) => {
                 self.emit(Payload::PasteHeld(proto::PasteHeld { pane: name, text }));
             }
-            Reported::Agent { agent, state } => {
-                if record.agent != agent || record.agent_state() != state {
-                    // What an agent said about itself leaves with it. Not when a pane with no
-                    // agent is first recognised: its statusline can report before the first
-                    // probe lands, and that report is the new agent's.
-                    if record.agent.is_some() && record.agent != agent {
-                        record.facts = None;
-                    }
-                    record.finished_unseen = finished_unseen(
-                        (record.agent.as_deref(), record.agent_state()),
-                        (agent.as_deref(), state),
-                        record.finished_unseen,
-                    );
-                    record.agent = agent;
-                    record.set_agent_state(state);
+            Reported::Agent { agent, state, reported, unreadable } => {
+                let before = record.clone();
+                // What an agent said about itself leaves with it. Not when a pane with no agent
+                // is first recognised: its statusline can report before the first probe lands,
+                // and that report is the new agent's.
+                if record.agent.is_some() && record.agent != agent {
+                    record.facts = None;
+                }
+                record.finished_unseen = finished_unseen(
+                    (record.agent.as_deref(), record.agent_state()),
+                    (agent.as_deref(), state),
+                    record.finished_unseen,
+                );
+                record.agent = agent;
+                record.set_agent_state(state);
+                record.state_reported = reported;
+                record.screen_unreadable = unreadable;
+                if record.screen_unreadable && !before.screen_unreadable {
+                    unreadable_warning(&name, record.agent.as_deref());
+                }
+                if *record != before {
                     let record = record.clone();
                     self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
                 }
@@ -2140,6 +2167,24 @@ fn node_record(node: &Node) -> proto::Node {
         }
     };
     proto::Node { node: Some(node) }
+}
+
+/// Says once, when it starts, that detection's rules have stopped reading a pane's agent.
+fn unreadable_warning(pane: &str, agent: Option<&str>) {
+    log::warn(
+        "daemon.detection.unreadable",
+        fields! {
+            "pane" => pane,
+            "agent" => agent.unwrap_or_default(),
+            "why" => "for a minute the screen kept changing while no rule read it, or the rules \
+                      read idle while the agent reported working",
+            "impact" => "the pane's state comes only from the agent's own reports; without them \
+                         it reads idle while the agent may be working",
+            "check" => "whether the harness was updated past what its manifest knows (compare its \
+                        version with the manifest's), the manifest in \
+                        ~/.muster/agent-detection/, and whether the harness's hooks are installed",
+        },
+    );
 }
 
 /// Whether a pane's agent has finished something nobody has seen, once its detection goes from

@@ -299,6 +299,12 @@ message PaneRequest {
     // An empty value removes its key.
     map<string, string> facts = 6;
     bool clear = 7;
+    // The agent reporting, by its manifest's name, and the state it says it is in: working,
+    // blocked or idle. A state outranks what detection reads off the screen while it is fresh
+    // (MIP-3 section 8) and counts only while detection finds that agent in the pane. A state
+    // needs its agent.
+    string agent = 8;
+    optional AgentState state = 9;
   }
 }
 
@@ -656,6 +662,12 @@ message Pane {
   // Kept for as long as the daemon runs and across a handoff, and never written to the state
   // file: a restored pane has no agent to have finished anything.
   bool finished_unseen = 10;
+  // `agent_state` is what the agent reported of itself rather than detection's reading.
+  bool state_reported = 11;
+  // Detection's rules have stopped reading this agent's screen: it keeps changing while no rule
+  // reads it, or they read idle while the agent reports working. A harness update that changed
+  // its screen is the usual cause; the pane's state then comes only from the agent's reports.
+  bool screen_unreadable = 12;
 }
 
 // Facts an agent reports about itself (`PaneRequest.Report`), for a view to render beside its
@@ -1046,6 +1058,20 @@ message Handoff {
     bool title_pending = 15;
     // The last OSC 9 payload.
     string progress = 16;
+    // What the screen rules last concluded, which can differ from what was published while an
+    // agent's own report outranks it.
+    bool concluded = 17;
+    optional string concluded_agent = 18;
+    AgentState concluded_state = 19;
+    // The agent's own report, while it counts, and how long ago it came.
+    optional string report_agent = 20;
+    AgentState report_state = 21;
+    uint32 report_ms_ago = 22;
+    // How long ago the pane last produced output, which a working report goes stale from.
+    optional uint32 output_ms_ago = 23;
+    // Whether what was last published was a report, and said the screen was unreadable.
+    bool emitted_reported = 24;
+    bool emitted_unreadable = 25;
   }
 
   message Ready {}

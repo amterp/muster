@@ -665,8 +665,9 @@ clipboard gets no answer.
 
 ### 8. Agent detection
 
-Detection answers two questions per pane, which agent is running and what state it is in, with no
-hooks. It is a port of herdr's detection at v0.8.0, covering four parts: the manifest evaluator
+Detection answers two questions per pane, which agent is running and what state it is in. Where a
+harness can say its own state it does, and that outranks the screen (**The agent's own word**,
+below); the screen rules are the rest. They are a port of herdr's detection at v0.8.0, covering four parts: the manifest evaluator
 (`src/detect/manifest.rs`), the state machine that decides when a state is published (`src/pane.rs`
 and `src/pane/agent_detection.rs`), how the detection text and the OSC title and progress are
 extracted, and process identification (`src/detect/mod.rs` and the macOS and Linux probes). herdr
@@ -704,6 +705,33 @@ a row or 700 ms, while a matching idle or blocked rule publishes at once. A pane
 not changed since its last check is not read again. The headless terminal sets DEC mode 2027, as
 herdr's patched libghostty does, so the detection text for a grapheme cluster matches what herdr's
 manifests were written against.
+
+**The agent's own word.** A harness update that rewords its screen breaks the rules for it, and
+Claude Code's manifest already carries a spinner rule patched for one release. So a harness with a
+documented integration point reports its own state, and that wins: Claude Code's hooks run
+`"$MUSTER_DAEMON" report --agent claude --state working|blocked|idle` (`extras/claude-code/`),
+through the same `Report` request that carries an agent's facts. The report reaches the pane's
+reader, which gives it to detection at once, and it counts until one of these:
+- a newer report replaces it;
+- the pane's agent, identified from its processes rather than its screen, is not the one that
+  reported, which covers a harness that exited or crashed. A report that arrives before detection
+  has identified its agent waits two seconds for it;
+- for working, ten seconds pass with no output from the pane. A working agent animates something,
+  and one interrupted mid-turn, which no hook reports, sits still at its prompt. This asks only
+  that the screen move, not that a rule match it, so it holds when the rules have broken. Blocked
+  and idle never go stale this way, since a prompt waiting on you is still by nature.
+
+While a report counts, its state is published as it stands, with no startup grace and no idle
+debounce, and the pane's record says `state_reported`. The rules still read the screen underneath,
+and take over the moment the report stops counting. herdr arbitrated hooks too; nothing of its
+arbitration was recorded here beyond its API, and this is written from scratch.
+
+**Drift is shown, not guessed.** The rules also say when they have stopped reading an agent: for a
+minute, the screen changed in at least half the seconds while either no rule matched at all, or
+the agent reported working and the rules read every screen as idle. A still screen never counts,
+since idle is its right reading. The pane's record then says `screen_unreadable`, and the daemon
+logs `daemon.detection.unreadable` once as it starts, naming the agent and what to check. It
+clears when a rule reads the screen again, or the agent changes.
 
 **Where it runs.** Each pane's reader thread ticks its pane's detection on its poll's timeout
 (section 4), so detection has no thread of its own. A tick reads the terminal under the pane's
@@ -1163,7 +1191,6 @@ first.
   stable.
 - **Watching a pane from two windows**, which passthrough makes possible once a pane can have one
   size owner and several readers.
-- **Agent state reported by the agent**, through a hook, beside screen detection.
 - **Resuming agents after a daemon restart**, from the session reference an agent reports, instead of
   a bare shell.
 
