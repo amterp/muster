@@ -361,8 +361,13 @@ impl Session {
         let shell = self.settings.shell.clone().unwrap_or_default();
         let login = shell.mode() != proto::ShellMode::NonLogin;
         let argv =
-            pty::argv(shell.command.as_deref(), login, create.command.as_deref(), &self.inherited);
-        let environment = spawn::environment(&self.inherited, &create.env, &create.pane);
+            pty::argv(shell.command.as_deref(), login, create.command.is_some(), &self.inherited);
+        let environment = spawn::environment(
+            &self.inherited,
+            &create.env,
+            &create.pane,
+            create.command.as_deref(),
+        );
 
         self.reserved.insert(create.pane.clone());
         if let Target::NewTab { name, .. } = &target {

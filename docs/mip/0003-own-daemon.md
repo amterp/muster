@@ -183,8 +183,10 @@ where no window shows it gets the size of the pane it was split from.
 The daemon starts the user's shell as an interactive login shell. A pane given a command runs it
 through that shell and then replaces it with an interactive shell (`$SHELL -l -i -c '<command>;
 exec $SHELL -l -i'`), so the command starts immediately with no typed input for a program to
-discard, and the pane drops to a shell when the command exits. This removes the prompt polling
-Muster does today.
+discard, and the pane drops to a shell when the command exits. The command reaches that shell in
+`MUSTER_PANE_COMMAND` and runs through `eval`, so a command with an open quote or a trailing backslash
+fails as a shell error and still leaves the `exec` to run. This removes the prompt polling Muster does
+today.
 
 A pane's environment is the daemon's own (launchd's minimal environment on the Mac, which the login
 shell builds on), plus:

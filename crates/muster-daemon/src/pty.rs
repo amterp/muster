@@ -194,9 +194,9 @@ fn account_shell() -> Option<String> {
 pub(crate) fn argv(
     configured: Option<&str>,
     login: bool,
-    command: Option<&str>,
+    runs_command: bool,
     environment: &[(std::ffi::OsString, std::ffi::OsString)],
 ) -> Vec<String> {
     let shell = configured.map_or_else(|| default_shell(environment), str::to_string);
-    spawn::argv(&shell, login, command)
+    spawn::argv(&shell, login, runs_command)
 }
