@@ -802,7 +802,8 @@ unexpected is killed; the old daemon lets its readers go on, accepts again, resu
 takes the log's file back, and answers REFUSED, logging `daemon.handoff.failed`. No pane is ended at
 any point, and at no point does no daemon hold the panes. A new daemon that fails after `Commit` may
 have read some output the old one never sees. Once `Serving` arrives, the old daemon exits without
-closing a pane, writing its state or removing the socket.
+closing a pane, writing its state or removing the socket - once it has killed whatever of a pane
+closed before the handoff still ignored its hang-up, since nothing would after.
 
 **A stop signal waits for the handoff.** A SIGTERM or SIGINT to the old daemon while a handoff runs
 closes nothing: if the handoff succeeds the old daemon exits as it would have anyway, leaving the new

@@ -236,9 +236,12 @@ pub(crate) fn serve(
 /// asked for while a handoff runs waits for it to end.
 fn wait(shared: &Shared, stop: &Receiver<Stop>, persister: &Persister) {
     let socket = &shared.socket.path;
+    // Panes closed before a handoff may still have processes to kill, and nothing would kill
+    // them after this daemon exits. The new daemon serves meanwhile, so waiting costs nothing.
+    let handed_off = || pane::wait_for_kills(pane::KILL_GRACE + Duration::from_secs(1));
     loop {
         match stop.recv() {
-            Ok(Stop::HandedOff) => return,
+            Ok(Stop::HandedOff) => return handed_off(),
             Ok(Stop::Asked) => {
                 // Bound first: the lock must not be held while waiting below.
                 let stopping = shared.lock().stop_unless_replacing();
@@ -249,7 +252,7 @@ fn wait(shared: &Shared, stop: &Receiver<Stop>, persister: &Persister) {
                     // has.
                     Stopping::HandedOff => {
                         let _ = stop.recv_timeout(HANDED_OFF_FLUSH);
-                        return;
+                        return handed_off();
                     }
                 }
             }
