@@ -79,9 +79,24 @@ impl Attachment {
         takeover: bool,
         client: &str,
     ) -> Result<(Attachment, u64), AttachError> {
+        Attachment::open_with_window(socket, pane, grid, takeover, None, client)
+    }
+
+    /// As [`Attachment::open`], asking for a window of `window` bytes of unacknowledged output
+    /// rather than the daemon's default: more for a bridge across a slow link, whose pane's
+    /// program is held to about one window per round trip.
+    pub fn open_with_window(
+        socket: &Path,
+        pane: &str,
+        grid: Grid,
+        takeover: bool,
+        window: Option<u64>,
+        client: &str,
+    ) -> Result<(Attachment, u64), AttachError> {
         let (mut stream, _) = connection::connect(socket, ConnectionKind::Stream, client)
             .map_err(AttachError::Handshake)?;
-        let attach = stream_request::Attach { pane: pane.to_string(), grid: Some(grid), takeover };
+        let attach =
+            stream_request::Attach { pane: pane.to_string(), grid: Some(grid), takeover, window };
         send(&mut stream, stream_request::Request::Attach(attach))
             .map_err(|error| AttachError::Broken(error.to_string()))?;
         let offset = match connection::receive::<proto::StreamMessage>(&mut stream) {

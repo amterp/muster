@@ -26,10 +26,22 @@ impl Stream {
 
     /// Asks for a pane's stream, at `grid` if one is given.
     pub fn attach(&mut self, pane: &str, grid: Option<proto::Grid>, takeover: bool) {
+        self.attach_with_window(pane, grid, takeover, None);
+    }
+
+    /// Asks for a pane's stream with a window of `window` bytes, or the daemon's own.
+    pub fn attach_with_window(
+        &mut self,
+        pane: &str,
+        grid: Option<proto::Grid>,
+        takeover: bool,
+        window: Option<u64>,
+    ) {
         self.send(stream_request::Request::Attach(stream_request::Attach {
             pane: pane.to_string(),
             grid,
             takeover,
+            window,
         }));
     }
 

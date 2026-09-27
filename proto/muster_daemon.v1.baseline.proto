@@ -831,12 +831,19 @@ message StreamRequest {
     // Displace a bridge already attached, which is told why. Without it a second attach is
     // refused.
     bool takeover = 3;
+    // How much output the bridge may have unacknowledged, in bytes. Absent or 0 is the
+    // daemon's default, 256 KiB, which suits a bridge on the daemon's machine; a bridge across
+    // a slow link asks for more, since the pane's program is held to about one window per
+    // round trip. The daemon keeps it between 64 KiB and 4 MiB.
+    optional uint64 window = 4;
   }
 
   // Bytes of `output` written to the surface since the last credit; a replay's bytes are not
-  // counted. The daemon sends output while less than a window of it (256 KiB) is
-  // unacknowledged, so a bridge must credit what it has written before a window's worth waits
-  // on it. It may credit in batches smaller than that.
+  // counted. The daemon sends output while less than a window of it is unacknowledged, so a
+  // bridge must credit what it has written before a window's worth waits on it. A bridge that
+  // falls behind is caught up once half its window is free, so it must credit in batches of at
+  // most half the window: one that batches more can be left behind for good, holding less
+  // than a batch it will never complete.
   message Credit {
     uint64 bytes = 1;
   }
@@ -857,8 +864,8 @@ message StreamMessage {
     // The program's own bytes.
     bytes output = 4;
     // The window of unacknowledged output is full and output is being skipped. Once credit
-    // brings the unacknowledged output below the window again, a replay catches the surface up
-    // with the screen, not the history it missed, and output resumes.
+    // frees half the window, a replay catches the surface up with the screen, not the history
+    // it missed, and output resumes.
     Behind behind = 5;
     Detached detached = 6;
   }

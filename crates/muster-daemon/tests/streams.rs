@@ -206,39 +206,6 @@ fn a_closed_pane_lets_go_of_its_terminal_even_when_its_bridge_has_stopped_readin
     );
 }
 
-/// Output messages and behind notices from a stream, as a bridge that credits in batches of
-/// `batch` bytes, pausing `pause` before each, would see them. Stops at `until` in the output.
-fn read_crediting(
-    stream: &mut Stream,
-    batch: u64,
-    pause: std::time::Duration,
-    until: &str,
-) -> (Vec<u8>, u32) {
-    let (mut output, mut behind, mut owed) = (Vec::new(), 0, 0);
-    let deadline = std::time::Instant::now() + muster_harness::PATIENCE;
-    while !String::from_utf8_lossy(&output[output.len().saturating_sub(4096)..]).contains(until) {
-        assert!(std::time::Instant::now() < deadline, "{until:?} never arrived");
-        match stream.next_within(std::time::Duration::from_millis(100)) {
-            Some(Some(proto::stream_message::Message::Output(bytes))) => {
-                owed += bytes.len() as u64;
-                output.extend_from_slice(&bytes);
-            }
-            Some(Some(proto::stream_message::Message::Behind(_))) => behind += 1,
-            Some(Some(proto::stream_message::Message::Replay(bytes))) => {
-                output.extend_from_slice(&bytes);
-            }
-            Some(None) => panic!("the daemon hung up"),
-            _ => {}
-        }
-        while owed >= batch {
-            std::thread::sleep(pause);
-            stream.credit(batch);
-            owed -= batch;
-        }
-    }
-    (output, behind)
-}
-
 /// A bridge that stops acknowledging holds its program for a grace period and no longer: then it
 /// is behind, and the program goes on.
 #[test]
@@ -281,11 +248,13 @@ fn a_bridge_that_stops_acknowledging_is_behind_after_a_grace_and_the_program_goe
     assert_eq!(surface.behind, 0, "told once");
 }
 
-/// A slow bridge that credits in small batches keeps its program waiting on it rather than
-/// falling behind, and a bridge that does fall behind is caught up only once half its window
-/// is free, so it is not flipped between the two.
+/// A bridge that fell behind is caught up only once half its window is free, not at the window's
+/// edge, so a slow bridge crediting in batches is not flipped between the two: each flip is a
+/// catch-up composed under the pane's lock.
 #[test]
 fn a_slow_bridge_crediting_in_batches_is_not_thrashed() {
+    const WINDOW: u64 = 256 * 1024;
+    const BATCH: u64 = WINDOW / 8;
     let daemon = daemon();
     let mut control = daemon.connect();
     let flag = daemon.root().join("go");
@@ -295,9 +264,85 @@ fn a_slow_bridge_crediting_in_batches_is_not_thrashed() {
     );
     let mut stream = attached(&daemon, "p1", false);
     raise(&flag);
-    let (_, behind) =
-        read_crediting(&mut stream, 16 * 1024, std::time::Duration::from_millis(2), "flooded");
-    // The burst is some eighteen windows; a bridge flipped at every window's edge would be told
-    // that many times or more.
-    assert!(behind <= 2, "behind {behind} times");
+
+    let (mut received, mut credited, mut owed) = (0, 0, 0);
+    // Once a window has arrived the bridge stops crediting until it is told it is behind, which
+    // a stall past the grace brings; then it credits a batch at a time.
+    let (mut holding, mut behind, mut tail) = (false, false, Vec::new());
+    // What was unacknowledged when each catch-up came.
+    let mut caught_up = Vec::new();
+    let deadline = std::time::Instant::now() + muster_harness::PATIENCE;
+    while !String::from_utf8_lossy(&tail).contains("flooded") {
+        assert!(std::time::Instant::now() < deadline, "the flood never ended");
+        match stream.next_within(std::time::Duration::from_millis(100)) {
+            Some(Some(proto::stream_message::Message::Output(bytes))) => {
+                received += bytes.len() as u64;
+                owed += bytes.len() as u64;
+                tail.extend_from_slice(&bytes);
+            }
+            Some(Some(proto::stream_message::Message::Behind(_))) => {
+                (holding, behind) = (false, true);
+            }
+            Some(Some(proto::stream_message::Message::Replay(bytes))) if behind => {
+                behind = false;
+                caught_up.push(received - credited);
+                tail.extend_from_slice(&bytes);
+            }
+            Some(None) => panic!("the daemon hung up"),
+            _ => {}
+        }
+        tail.drain(..tail.len().saturating_sub(4096));
+        if caught_up.is_empty() && !behind && received >= WINDOW {
+            holding = true;
+        }
+        if holding {
+            continue;
+        }
+        // Behind, every byte sent before the notice has arrived and nothing more comes until the
+        // catch-up, so one batch at a time shows which credit brings it.
+        let batches = if behind { 1 } else { owed / BATCH };
+        for _ in 0..batches.min(owed / BATCH) {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            stream.credit(BATCH);
+            credited += BATCH;
+            owed -= BATCH;
+        }
+    }
+    assert!(!caught_up.is_empty(), "the stall never put the bridge behind");
+    assert!(
+        caught_up.iter().all(|&unacknowledged| unacknowledged <= WINDOW / 2),
+        "caught up with {caught_up:?} bytes unacknowledged; not before half the window is free"
+    );
+}
+
+/// A bridge across a slow link asks for a larger window, and gets it within the daemon's bounds.
+#[test]
+fn a_bridge_is_sent_the_window_it_asked_for_before_it_falls_behind() {
+    const KIB: u64 = 1024;
+    for (asked, window) in [(None, 256 * KIB), (Some(1024 * KIB), 1024 * KIB), (Some(1), 64 * KIB)]
+    {
+        let daemon = daemon();
+        let mut control = daemon.connect();
+        let flag = daemon.root().join("go");
+        make(&mut control, running("p1", "t1", &after(&flag, "yes | head -c 3000000")));
+        let mut stream = Stream::connect(daemon.socket_path());
+        stream.attach_with_window("p1", None, false, asked);
+        raise(&flag);
+        let mut sent = 0;
+        loop {
+            match stream.next_within(muster_harness::PATIENCE) {
+                Some(Some(proto::stream_message::Message::Output(bytes))) => {
+                    sent += bytes.len() as u64;
+                }
+                Some(Some(proto::stream_message::Message::Behind(_))) => break,
+                Some(Some(_)) => {}
+                Some(None) | None => panic!("never behind"),
+            }
+        }
+        // Output goes while there is room, so the last read may overshoot the window.
+        assert!(
+            (window..window + 64 * KIB).contains(&sent),
+            "asked for {asked:?}: sent {sent} bytes before falling behind, not a {window}-byte window"
+        );
+    }
 }

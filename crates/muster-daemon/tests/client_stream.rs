@@ -8,6 +8,7 @@ use std::io::Write;
 use std::sync::mpsc::{Receiver, channel};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::JoinHandle;
+use std::time::{Duration, Instant};
 
 use muster_daemon_client::stream::{AttachError, Attachment, Ended, Happened};
 use support::*;
@@ -27,6 +28,8 @@ fn running(name: &str, tab: &str, command: &str) -> proto::pane_request::Create 
 struct Surface {
     written: Arc<Mutex<Vec<u8>>>,
     closed: Arc<(Mutex<bool>, Condvar)>,
+    /// When the surface was last written to, and the longest it has gone between two writes.
+    pace: Arc<Mutex<(Option<Instant>, Duration)>>,
 }
 
 impl Surface {
@@ -52,6 +55,17 @@ impl Surface {
     fn shows(&self, text: &str) -> bool {
         self.screen().contains(text)
     }
+
+    /// Whether `text` is among the last bytes written, without parsing all of them.
+    fn ends_with(&self, text: &str) -> bool {
+        let written = self.written.lock().unwrap();
+        let tail = &written[written.len().saturating_sub(4096)..];
+        String::from_utf8_lossy(tail).contains(text)
+    }
+
+    fn longest_gap(&self) -> Duration {
+        self.pace.lock().unwrap().1
+    }
 }
 
 impl Write for Surface {
@@ -59,6 +73,12 @@ impl Write for Surface {
         let (closed, opened) = &*self.closed;
         drop(opened.wait_while(closed.lock().unwrap(), |closed| *closed).unwrap());
         self.written.lock().unwrap().extend_from_slice(bytes);
+        let mut pace = self.pace.lock().unwrap();
+        let now = Instant::now();
+        if let Some(last) = pace.0 {
+            pace.1 = pace.1.max(now - last);
+        }
+        pace.0 = Some(now);
         Ok(bytes.len())
     }
 
@@ -108,8 +128,32 @@ fn a_replay_then_the_panes_output_reach_the_surface_until_the_pane_closes() {
 
 /// A burst far larger than the window reaches a surface that keeps up whole, because the pane's
 /// program waits for the surface's credit rather than the surface missing output.
+///
+/// A surface that was itself held up for the daemon's grace (100 ms) has not kept up, and is
+/// rightly put behind; on a loaded machine that happens to the test's own thread. Such a run
+/// proves nothing either way, so it is tried again, and only a run where the surface never
+/// paused that long is judged.
 #[test]
 fn a_burst_reaches_a_surface_that_keeps_up_whole() {
+    const GRACE: Duration = Duration::from_millis(100);
+    for _ in 0..3 {
+        let (surface, happened, replayed) = burst();
+        if surface.longest_gap() >= GRACE {
+            continue;
+        }
+        assert_eq!(happened, [], "a surface that writes at once is never behind");
+        let written = surface.written.lock().unwrap();
+        // "y\n" reaches the terminal as "y\r\n".
+        let ys = String::from_utf8_lossy(&written[replayed..]).matches('y').count();
+        assert_eq!(ys, 1_500_000, "every line of the burst reached the surface");
+        return;
+    }
+    panic!("the surface was held up past the grace in every run: the machine is too busy to judge");
+}
+
+/// Runs a 3 MB burst into a surface that writes at once. Returns the surface, what the pump
+/// said happened, and how many of the surface's bytes were the replay.
+fn burst() -> (Surface, Vec<Happened>, usize) {
     let daemon = daemon();
     let mut control = daemon.connect();
     let flag = daemon.root().join("go");
@@ -123,17 +167,14 @@ fn a_burst_reaches_a_surface_that_keeps_up_whole() {
     let pumping = pump(open(&daemon, "p1", false), &surface);
     until("the replay", || !surface.written.lock().unwrap().is_empty(), || surface.screen());
     let replayed = surface.written.lock().unwrap().len();
+    // Measured from the burst's first write, not from the replay.
+    *surface.pace.lock().unwrap() = (None, Duration::ZERO);
     std::fs::write(&flag, "").unwrap();
-    until("the burst to end on the surface", || surface.shows("flooded"), || surface.screen());
+    until("the burst to end on the surface", || surface.ends_with("flooded"), || surface.screen());
     expect(&mut control, close_request("p1"), proto::Outcome::Done);
     pumping.ended.join().unwrap();
-
-    let happened: Vec<Happened> = pumping.happened.try_iter().collect();
-    assert_eq!(happened, [], "a surface that writes at once is never behind");
-    let written = surface.written.lock().unwrap();
-    // "y\n" reaches the terminal as "y\r\n".
-    let ys = String::from_utf8_lossy(&written[replayed..]).matches('y').count();
-    assert_eq!(ys, 1_500_000, "every line of the burst reached the surface");
+    let happened = pumping.happened.try_iter().collect();
+    (surface, happened, replayed)
 }
 
 #[test]

@@ -145,8 +145,12 @@ impl Stream {
             .unwrap_or_else(|error| {
                 panic!("could not open a stream to {}: {error}", socket.display())
             });
-        let attach =
-            stream_request::Attach { pane: pane.to_string(), grid: Some(GRID), takeover: false };
+        let attach = stream_request::Attach {
+            pane: pane.to_string(),
+            grid: Some(GRID),
+            takeover: false,
+            window: None,
+        };
         let request =
             proto::StreamRequest { request: Some(stream_request::Request::Attach(attach)) };
         connection::send(&mut stream, &request).expect("attaching");

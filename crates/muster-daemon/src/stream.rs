@@ -24,14 +24,35 @@ use prost::Message;
 use crate::pane::PaneIo;
 use crate::session::{self, Shared};
 
-/// Output a bridge may have unacknowledged before the pane's program waits for it.
+/// Output a bridge may have unacknowledged before the pane's program waits for it, unless the
+/// bridge asks for another window when it attaches.
 pub(crate) const WINDOW: u64 = 256 * 1024;
 
-/// How long a pane's reader waits for its bridge to make room in a full window before the bridge
-/// counts as behind. Long enough that a bridge keeping up locally never falls behind a burst,
-/// which reaches the surface whole as it does in Ghostty; short enough that a stalled or
-/// far-away bridge holds its program up only this long per episode.
+/// The windows a bridge may ask for. At least one read, so the window is not overshot many times
+/// over; at most enough to fill a long, fast link, since every byte of it can be queued for the
+/// bridge at once.
+const WINDOWS: std::ops::RangeInclusive<u64> = 64 * 1024..=4 * 1024 * 1024;
+
+/// How long a pane's reader waits, on each read, for its bridge to make room in a full window
+/// before the bridge counts as behind.
+///
+/// Per read, so that a program is held to its bridge's pace for as long as the bridge keeps
+/// crediting, as Ghostty holds a program to its parser and ssh to its channel window: a bridge
+/// that keeps up gets every byte, however long the output. Per episode was tried and rejected,
+/// because a bridge slower than its program - a local surface parsing a large file - then used
+/// up its grace partway through and lost the middle. The cost is that a far bridge holds its
+/// program to about a window per round trip, which is why a bridge may ask for a larger window;
+/// and a bridge whose credit takes longer than this to come back stalls its program this long,
+/// then falls behind, once per window (MIP-3 section 4).
 pub(crate) const GRACE: Duration = Duration::from_millis(100);
+
+/// The window a bridge asked for, within what the daemon allows.
+pub(crate) fn window(asked: Option<u64>) -> u64 {
+    match asked {
+        None | Some(0) => WINDOW,
+        Some(asked) => asked.clamp(*WINDOWS.start(), *WINDOWS.end()),
+    }
+}
 
 /// The most replay one message carries. A replay spans the pane's whole history, which can be
 /// larger than a frame may be, and the bridge writes the pieces to its surface in order.
@@ -69,7 +90,8 @@ impl Credit {
 
     /// Whether a chunk of `length` bytes goes to the bridge. While there is room it does, even
     /// past the window's edge, so the window is overshot by at most one read. A full window here
-    /// means the reader already waited out its grace.
+    /// normally means the reader already waited out its grace; a reset (`PaneIo::reset`) offers
+    /// without waiting, and puts a bridge whose window is full at that moment behind at once.
     pub(crate) fn offer(&mut self, length: usize) -> Offer {
         if self.behind {
             return Offer::Skip;
@@ -88,8 +110,9 @@ impl Credit {
     /// Half, so that a slow bridge is not flipped between behind and caught up at the window's
     /// edge, each flip a catch-up composed under the pane's lock. Not an empty window: a bridge
     /// may acknowledge in batches, and one that fell behind is sent nothing more to complete its
-    /// last batch with, so waiting for every byte would leave it blank for good. Any bridge that
-    /// acknowledges at all reaches half, so none is wedged.
+    /// last batch with, so waiting for every byte would leave it blank for good. A bridge that
+    /// credits in batches of at most half its window always reaches half; one that batches more
+    /// can be left behind for good, holding less than a batch it will never complete.
     pub(crate) fn acknowledge(&mut self, bytes: u64) -> bool {
         self.unacknowledged = self.unacknowledged.saturating_sub(bytes);
         if self.behind && self.unacknowledged <= self.window / 2 {
@@ -219,7 +242,7 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>) {
         }
     };
     let id = NEXT_BRIDGE.fetch_add(1, Ordering::Relaxed);
-    let bridge = Bridge { id, frames, credit: Credit::new(WINDOW), socket };
+    let bridge = Bridge { id, frames, credit: Credit::new(window(attach.window)), socket };
     if let Err(refusal) = io.attach(bridge, grid, attach.takeover) {
         refuse(refusal.frames, refusal.reason);
         return;
@@ -372,6 +395,15 @@ mod tests {
         credit.offer(1);
         assert_eq!(credit.offer(1), Offer::FallBehind, "the grace ran out");
         assert!(!credit.is_full(), "a bridge behind is not waited on again");
+    }
+
+    #[test]
+    fn a_bridge_gets_the_window_it_asks_for_within_bounds() {
+        assert_eq!(window(None), WINDOW);
+        assert_eq!(window(Some(0)), WINDOW, "zero is no answer");
+        assert_eq!(window(Some(1 << 20)), 1 << 20);
+        assert_eq!(window(Some(1)), 64 * 1024);
+        assert_eq!(window(Some(u64::MAX)), 4 << 20);
     }
 
     #[test]
