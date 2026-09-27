@@ -419,3 +419,63 @@ fn a_new_daemon_saves_nothing_where_the_old_one_would_not() {
     let now = std::fs::read(&file).unwrap();
     assert_eq!(String::from_utf8_lossy(&now), String::from_utf8_lossy(newer), "the file changed");
 }
+
+/// What `stty size` says in `name`, asked fresh.
+fn tty_size(daemon: &Daemon, name: &str, ask: &str) -> String {
+    let mut control = daemon.connect();
+    let mut input = Input::connect(daemon.socket_path());
+    type_line(&mut input, name, &format!("echo {ask}=$(stty size | tr ' ' x)."));
+    until_some(&format!("{name} to say its size"), || {
+        let text = read_text(&mut control, name, 0, 0).text;
+        text.lines().rev().find_map(|line| {
+            let size = line.rsplit_once(&format!("{ask}="))?.1.strip_suffix('.')?;
+            let digits = size.split_once('x')?;
+            let numeric = |part: &str| !part.is_empty() && part.chars().all(|c| c.is_ascii_digit());
+            (numeric(digits.0) && numeric(digits.1)).then(|| size.to_string())
+        })
+    })
+}
+
+fn bigger() -> proto::Grid {
+    proto::Grid { cols: 100, rows: 30, width_px: 0, height_px: 0 }
+}
+
+/// A bridge that resizes its pane while a handoff runs changes nothing yet: the pane the new
+/// daemon takes has the size its terminal was rebuilt at, and the bridge, told REPLACED,
+/// attaches again with its size.
+#[test]
+fn a_resize_during_a_handoff_waits_and_is_dropped_when_it_succeeds() {
+    let mut daemon = daemon_with(&[("MUSTER_DAEMON_HANDOFF_FAULT", "pause-before-ready")]);
+    let (_control, _input) = two_panes(&daemon);
+    let before = tty_size(&daemon, "p1", "before");
+    let mut stream = attached(&daemon, "p1", false);
+
+    let replacing = daemon.start_replacing(None);
+    daemon.paused();
+    stream.resize(bigger());
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    daemon.resume();
+    let answer = daemon.finish_replacing(replacing);
+    assert_eq!(answer.outcome(), proto::Outcome::Done, "{}", answer.reason);
+
+    assert_eq!(tty_size(&daemon, "p1", "after"), before);
+}
+
+/// The same resize, when the handoff fails, takes effect once the old daemon goes on.
+#[test]
+fn a_resize_during_a_handoff_that_fails_takes_effect_after_it() {
+    let mut daemon =
+        daemon_with(&[("MUSTER_DAEMON_HANDOFF_FAULT", "pause-before-ready,exit-before-ready")]);
+    let (_control, _input) = two_panes(&daemon);
+    let mut stream = attached(&daemon, "p1", false);
+
+    let replacing = daemon.start_replacing(None);
+    daemon.paused();
+    stream.resize(bigger());
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    daemon.resume();
+    let answer = daemon.finish_replacing(replacing);
+    assert_eq!(answer.outcome(), proto::Outcome::Refused, "{}", answer.reason);
+
+    assert_eq!(tty_size(&daemon, "p1", "after"), "30x100");
+}

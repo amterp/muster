@@ -88,6 +88,10 @@ impl Hold {
     }
 
     /// Lets the thread go on.
+    pub(crate) fn is_held(&self) -> bool {
+        self.state().held
+    }
+
     pub(crate) fn release(&self) {
         self.state().held = false;
         self.changed.notify_all();

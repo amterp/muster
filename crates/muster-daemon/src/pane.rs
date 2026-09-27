@@ -140,6 +140,8 @@ pub(crate) struct PaneIo {
     persister: Option<Arc<Persister>>,
     /// Stops the reader while the pane is handed to another daemon.
     hold: Hold,
+    /// The size a bridge asked for while the pane was held, applied only if the handoff fails.
+    deferred_resize: Mutex<Option<Grid>>,
 }
 
 /// A count of changes to a pane's bridge - attached, detached, credited, closed - that a reader
@@ -315,8 +317,13 @@ impl PaneIo {
         self.hold.hold(within)
     }
 
+    /// Lets the reader go on, and applies a resize asked for while it was held.
     pub(crate) fn release_reader(&self) {
         self.hold.release();
+        let deferred = poison::lock(&self.deferred_resize, "daemon.pane.deferred_resize").take();
+        if let Some(grid) = deferred {
+            self.resize(grid);
+        }
     }
 
     /// What a daemon taking the pane over rebuilds its terminal from: a replay of it, at its
@@ -332,8 +339,17 @@ impl PaneIo {
 
     /// The pane's program and its terminal, both at a new size. A pane keeps its last size
     /// when its bridge goes.
+    ///
+    /// Not while the pane is held for a handoff: its replay may already be composed at the old
+    /// size, and the new daemon's terminal would disagree with the PTY both daemons share. The
+    /// size waits for the handoff to fail; if it succeeds, the bridge is detached and attaches
+    /// again with its size.
     pub(crate) fn resize(&self, grid: Grid) {
         let mut screen = self.screen();
+        if self.hold.is_held() {
+            *poison::lock(&self.deferred_resize, "daemon.pane.deferred_resize") = Some(grid);
+            return;
+        }
         if grid != self.grid() {
             self.resize_locked(&mut screen, grid);
         }
@@ -488,6 +504,7 @@ impl Pane {
             flow: Flow::default(),
             persister: Some(Arc::clone(watching.persister)),
             hold,
+            deferred_resize: Mutex::new(None),
         });
         let pane = record.pane.clone();
 
@@ -823,6 +840,7 @@ impl PaneIo {
             flow: Flow::default(),
             persister: None,
             hold: Hold::new(false).expect("a pipe"),
+            deferred_resize: Mutex::new(None),
         })
     }
 }

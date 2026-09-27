@@ -771,7 +771,11 @@ holds, and stops accepting: a connection made meanwhile waits in the listener's 
 two daemons share, for whichever serves next. It pauses its persister once a write under way has
 finished. Each pane's reader is held at the top of its loop, with every byte it read already in the
 terminal; the replay is composed after that, under the pane's lock, and whatever the program writes
-from then on waits in the PTY for the new daemon to read. Its input is still written.
+from then on waits in the PTY for the new daemon to read. Its input is still written. A bridge's
+resize waits too: the replay may already be composed at the old size, and the two daemons share the
+PTY, so resizing it then would leave the new daemon's terminal at a size the PTY no longer has. A
+failed handoff applies the waiting size; after a successful one the bridge attaches again with its
+own.
 
 The new daemon rebuilds each terminal by parsing the replay with whatever the parse asked for thrown
 away, because a replay can provoke a reply of its own - setting mode 2033 sends a visibility report -
