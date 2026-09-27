@@ -2,7 +2,7 @@
 //! program set it. Each read is one libghostty call whose output type is ours to get right,
 //! and a wrong type there reads garbage rather than failing - these are what would notice.
 
-use muster_vt::{FormatOptions, Mode, Rgb, Screen, Terminal};
+use muster_vt::{FormatOptions, Mode, Rgb, Screen, Terminal, TerminalOptions};
 
 fn terminal_after(bytes: &[u8]) -> Terminal {
     let mut terminal = Terminal::new(20, 4).expect("libghostty-vt gives us a terminal");
@@ -90,4 +90,22 @@ fn a_terminal_moves_to_another_thread() {
         .join()
         .expect("the thread finishes");
     assert_eq!(text, b"hello");
+}
+
+#[test]
+fn scrollback_keeps_what_the_byte_limit_allows() {
+    // libghostty's default keeps about a thousand rows at this width, and prunes in pages of
+    // about 400 KB, so the limits here are far apart on purpose.
+    let lines: Vec<u8> = (0..20_000).flat_map(|n| format!("line {n}\r\n").into_bytes()).collect();
+    let rows_kept = |bytes: usize| {
+        let mut terminal = Terminal::with_options(TerminalOptions {
+            scrollback_bytes: Some(bytes),
+            ..TerminalOptions::new(80, 24)
+        })
+        .expect("libghostty-vt gives us a terminal");
+        terminal.write(&lines);
+        terminal.scrollback_rows()
+    };
+    assert!(rows_kept(64 * 1024 * 1024) > 19_000);
+    assert_eq!(rows_kept(0), 0);
 }

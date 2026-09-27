@@ -5,8 +5,10 @@
 //! oracle to be the terminal grid computed by that engine rather than by a second
 //! implementation written to agree with it, and this is where that comes from.
 
+use std::ffi::c_void;
 use std::fmt;
 
+use crate::effects::{self, Answers, Effect, Effects};
 use crate::ffi;
 use crate::grid::Cursor;
 use crate::modes::Mode;
@@ -33,66 +35,173 @@ impl fmt::Display for TerminalError {
 
 impl std::error::Error for TerminalError {}
 
-#[derive(Debug)]
+/// How a terminal is made.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TerminalOptions {
+    pub columns: u16,
+    pub rows: u16,
+    /// One cell's width and height in pixels, for size reports and images. Zero until a
+    /// surface says.
+    pub cell_pixels: (u32, u32),
+    /// DEC mode 2027 as the reset default. On, as herdr's patched libghostty and Ghostty's
+    /// own default config have it, so detection manifests see graphemes as they were written
+    /// against.
+    pub grapheme_clustering: bool,
+    /// The most scrollback kept, in bytes. None keeps libghostty's default.
+    pub scrollback_bytes: Option<usize>,
+    /// What an XTGETTCAP query for `TN` answers, which must agree with the pane's `TERM`.
+    pub terminfo_name: Option<String>,
+    /// Bytes of kitty graphics kept to answer a program's image queries. Zero turns the
+    /// protocol off; None keeps libghostty's default.
+    pub kitty_image_bytes: Option<u64>,
+    pub answers: Answers,
+}
+
+impl TerminalOptions {
+    pub fn new(columns: u16, rows: u16) -> TerminalOptions {
+        TerminalOptions {
+            columns,
+            rows,
+            cell_pixels: (0, 0),
+            grapheme_clustering: true,
+            scrollback_bytes: None,
+            terminfo_name: None,
+            kitty_image_bytes: None,
+            answers: Answers::default(),
+        }
+    }
+}
+
 pub struct Terminal {
     terminal: ffi::GhosttyTerminal,
+    /// Reached by libghostty's callbacks through the userdata pointer, so it lives in a box
+    /// whose address holds while the terminal moves, and is dropped after the handle.
+    effects: Box<Effects>,
+}
+
+impl fmt::Debug for Terminal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Terminal").field("terminal", &self.terminal).finish_non_exhaustive()
+    }
 }
 
 // SAFETY: the handle is owned by this value and freed only by its Drop, and libghostty-vt
 // keeps no thread-local state for a terminal, so moving it to another thread is moving a
-// pointer. It is deliberately not Sync: every method reaches the handle through `&self` or
-// `&mut self`, and two threads reading one terminal while a third writes it is exactly what
-// libghostty requires the embedder to prevent. The daemon owns each pane's terminal under
-// that pane's lock, the same external synchronization `KeyEncoder` relies on.
+// pointer; the effect handler it calls into is Send by its type. It is deliberately not
+// Sync: every method reaches the handle through `&self` or `&mut self`, and two threads
+// reading one terminal while a third writes it is exactly what libghostty requires the
+// embedder to prevent. The daemon owns each pane's terminal under that pane's lock, the same
+// external synchronization `KeyEncoder` relies on.
 unsafe impl Send for Terminal {}
 
 impl Terminal {
     /// A terminal with grapheme clustering on, which is what the panes Muster mirrors have.
-    ///
-    /// herdr patches its vendored libghostty-vt to make DEC mode 2027 the default
-    /// (`vendor/libghostty-vt.patches.md`, `0001-default-grapheme-cluster-mode`), and stock
-    /// libghostty-vt does not. Left off, a ZWJ emoji renders across several cells here and
-    /// one cell in the daemon, so a grid read here would describe a screen the user never
-    /// saw. Found by the cross-oracle test rather than by reading the patch.
     pub fn new(columns: u16, rows: u16) -> Result<Terminal, TerminalError> {
-        Terminal::with_grapheme_clustering(columns, rows, true)
+        Terminal::with_options(TerminalOptions::new(columns, rows))
     }
 
-    pub fn with_grapheme_clustering(
-        columns: u16,
-        rows: u16,
-        grapheme_clustering: bool,
-    ) -> Result<Terminal, TerminalError> {
+    pub fn with_options(options: TerminalOptions) -> Result<Terminal, TerminalError> {
         let mut handle: ffi::GhosttyTerminal = std::ptr::null_mut();
         // SAFETY: a null allocator asks for libghostty's default, and the out parameter is
         // a handle we own.
-        let result =
-            unsafe { ffi::ghostty_terminal_new(std::ptr::null(), &raw mut handle, columns, rows) };
+        let result = unsafe {
+            ffi::ghostty_terminal_new(
+                std::ptr::null(),
+                &raw mut handle,
+                options.columns,
+                options.rows,
+            )
+        };
         if result != ffi::GhosttyResult_GHOSTTY_SUCCESS || handle.is_null() {
             return Err(TerminalError::CreationFailed(result));
         }
 
-        let terminal = Terminal { terminal: handle };
+        let mut terminal = Terminal {
+            terminal: handle,
+            effects: Box::new(Effects { handler: None, answers: options.answers }),
+        };
+        // SAFETY: the box is owned by the terminal and outlives the handle, which Drop frees
+        // before the box goes.
+        unsafe { effects::register(handle, &raw mut *terminal.effects) };
+
         // As a reset default rather than a mode written at creation: a program's RIS restores
         // defaults, and a mode that was merely set would be lost to the first one while the
         // surface beside this terminal kept it.
-        let mut config = ffi::GhosttyTerminalModeConfig {
+        let mut grapheme = ffi::GhosttyTerminalModeConfig {
             mode: Mode::GRAPHEME_CLUSTER.packed(),
-            value: grapheme_clustering,
+            value: options.grapheme_clustering,
         };
-        // SAFETY: the handle is ours and the pointer is to a local of the type documented
-        // for MODE_DEFAULT; libghostty copies it.
-        let result = unsafe {
-            ffi::ghostty_terminal_set(
-                terminal.terminal,
-                ffi::GhosttyTerminalOption_GHOSTTY_TERMINAL_OPT_MODE_DEFAULT,
-                (&raw mut config).cast(),
-            )
-        };
-        if result != ffi::GhosttyResult_GHOSTTY_SUCCESS {
-            return Err(TerminalError::CreationFailed(result));
+        terminal.set(
+            ffi::GhosttyTerminalOption_GHOSTTY_TERMINAL_OPT_MODE_DEFAULT,
+            (&raw mut grapheme).cast(),
+        )?;
+
+        if let Some(mut bytes) = options.scrollback_bytes {
+            terminal.set(
+                ffi::GhosttyTerminalOption_GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_BYTES,
+                (&raw mut bytes).cast(),
+            )?;
+        }
+        if let Some(name) = &options.terminfo_name {
+            let mut raw = ffi::GhosttyString { ptr: name.as_ptr(), len: name.len() };
+            terminal.set(
+                ffi::GhosttyTerminalOption_GHOSTTY_TERMINAL_OPT_TERMINFO_NAME,
+                (&raw mut raw).cast(),
+            )?;
+        }
+        if let Some(mut bytes) = options.kitty_image_bytes {
+            terminal.set(
+                ffi::GhosttyTerminalOption_GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_STORAGE_LIMIT,
+                (&raw mut bytes).cast(),
+            )?;
+        }
+        // Images sent as a path name a file on the daemon's machine, which a surface on
+        // another machine cannot read; refused, so programs fall back to sending them inline
+        // (MIP-3 section 4). Temporary files are off because the option is null.
+        let mut off = false;
+        terminal.set(
+            ffi::GhosttyTerminalOption_GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_MEDIUM_FILE,
+            (&raw mut off).cast(),
+        )?;
+        terminal.set(
+            ffi::GhosttyTerminalOption_GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_MEDIUM_TEMP_FILE,
+            std::ptr::null_mut(),
+        )?;
+        terminal.set(
+            ffi::GhosttyTerminalOption_GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_MEDIUM_SHARED_MEM,
+            (&raw mut off).cast(),
+        )?;
+
+        if options.cell_pixels != (0, 0) {
+            terminal.resize(options.columns, options.rows, options.cell_pixels)?;
         }
         Ok(terminal)
+    }
+
+    fn set(
+        &mut self,
+        option: ffi::GhosttyTerminalOption,
+        value: *mut c_void,
+    ) -> Result<(), TerminalError> {
+        // SAFETY: every caller pairs the option with a pointer to a local of its documented
+        // input type (or null where the option documents null), and libghostty copies it.
+        let result = unsafe { ffi::ghostty_terminal_set(self.terminal, option, value) };
+        if result == ffi::GhosttyResult_GHOSTTY_SUCCESS {
+            Ok(())
+        } else {
+            Err(TerminalError::CreationFailed(result))
+        }
+    }
+
+    /// Who hears about the effects of what is written from now on: query answers, bells,
+    /// titles, notifications. Called synchronously inside `write`, so it must not block.
+    pub fn set_effect_handler(&mut self, handler: impl FnMut(Effect<'_>) + Send + 'static) {
+        self.effects.handler = Some(Box::new(handler));
+    }
+
+    /// What queries are answered with from now on.
+    pub fn set_answers(&mut self, answers: Answers) {
+        self.effects.answers = answers;
     }
 
     /// Feeds bytes through the VT parser.
@@ -112,11 +221,17 @@ impl Terminal {
         }
     }
 
-    pub fn resize(&mut self, columns: u16, rows: u16) -> Result<(), TerminalError> {
-        // Cell pixel dimensions feed image protocols and size reports, neither of which a
-        // headless grid reader has any use for.
+    /// A new grid, and the pixel size of one cell (zero while no surface has said).
+    pub fn resize(
+        &mut self,
+        columns: u16,
+        rows: u16,
+        cell_pixels: (u32, u32),
+    ) -> Result<(), TerminalError> {
+        let (width, height) = cell_pixels;
         // SAFETY: the handle is ours and the call takes only scalars besides.
-        let result = unsafe { ffi::ghostty_terminal_resize(self.terminal, columns, rows, 0, 0) };
+        let result =
+            unsafe { ffi::ghostty_terminal_resize(self.terminal, columns, rows, width, height) };
         if result == ffi::GhosttyResult_GHOSTTY_SUCCESS {
             Ok(())
         } else {

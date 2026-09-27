@@ -6,6 +6,7 @@
 
 mod build_info;
 mod cells;
+mod effects;
 mod ffi;
 mod formatter;
 mod grid;
@@ -17,9 +18,10 @@ mod state;
 mod terminal;
 
 pub use build_info::engine_version;
+pub use effects::{Answers, ClipboardContent, ClipboardLocation, ColorScheme, Effect, Progress};
 pub use formatter::{Extras, Format, FormatOptions, ScreenExtras, ScreenFormatOptions, Selection};
 pub use grid::{Cell, Color, Cursor, Grid, Row, Style, Width};
 pub use key_encoder::{EncoderError, KeyEncoder};
 pub use modes::Mode;
 pub use state::{Palette, Rgb, Screen};
-pub use terminal::{Terminal, TerminalError};
+pub use terminal::{Terminal, TerminalError, TerminalOptions};
