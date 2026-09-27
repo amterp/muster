@@ -6,6 +6,7 @@
 //! told to stop.
 
 mod control;
+mod daemon_log;
 mod data;
 mod descriptors;
 mod detect;
@@ -39,6 +40,7 @@ use muster_core::diagnostics::log;
 use muster_core::fields;
 use muster_daemon_proto::install;
 
+use crate::daemon_log::DaemonLog;
 use crate::session::{Places, Saved, Shared};
 
 // musl's own allocator serializes every allocation on one lock, and the daemon allocates from a
@@ -56,7 +58,8 @@ const LAST_WRITE: Duration = Duration::from_secs(5);
 
 const USAGE: &str = "usage: muster-daemon [--socket PATH] [--data DIR]\n       muster-daemon report ...\n\n\
     Serves Muster's panes on this machine. Without --socket, listens where this install's \
-    daemon listens: $MUSTER_HOME/daemon/<install>.sock. Without --data, gives its shells the \
+    daemon listens: $MUSTER_HOME/daemon/<install>.sock. Its log and its saved tabs are beside \
+    the socket, as <name>.log and <name>.state.json; MUSTER_LOG=0 turns the log off. Without --data, gives its shells the \
     muster-daemon-data directory beside its executable. `report` tells the daemon of the pane \
     it runs in what the agent there says about itself; `muster-daemon report --help` says how.";
 
@@ -95,19 +98,10 @@ fn main() -> ExitCode {
         return usage("neither MUSTER_HOME nor HOME is set, so there is no default socket");
     };
 
-    log::start_from_environment("daemon");
-    let data = match data::Data::locate(data.as_deref()) {
-        Ok(data) => data,
-        Err(message) => {
-            eprintln!("muster-daemon: {message}");
-            log::error("daemon.no_data", fields! { "error" => message });
-            return ExitCode::FAILURE;
-        }
-    };
     // Before any thread exists, so every thread inherits the mask and only the one waiting for
     // these signals ever receives them.
     let signals = block_signals();
-    match run(&socket, data, signals) {
+    match run(&socket, data.as_deref(), signals) {
         Ok(()) => ExitCode::SUCCESS,
         Err(Failure::AlreadyServing) => {
             eprintln!("muster-daemon: another daemon is already serving {}", socket.display());
@@ -131,9 +125,16 @@ enum Failure {
     Other(String),
 }
 
-fn run(socket: &Path, data: data::Data, signals: libc::sigset_t) -> Result<(), Failure> {
+fn run(socket: &Path, data: Option<&Path>, signals: libc::sigset_t) -> Result<(), Failure> {
     refuse_anything_but_a_socket(socket)?;
     let _claim = claim(socket)?;
+    // Only once the socket is this daemon's: the log beside it has one writer, and a second
+    // daemon turned away must not touch it.
+    let log = DaemonLog::start(socket);
+    let data = data::Data::locate(data).map_err(|message| {
+        log::error("daemon.no_data", fields! { "error" => message });
+        Failure::Other(message)
+    })?;
     let listener = listen(socket)?;
 
     let (stopping, stop) = mpsc::channel();
@@ -143,7 +144,7 @@ fn run(socket: &Path, data: data::Data, signals: libc::sigset_t) -> Result<(), F
         .map(|muster_home| muster_home.join("agent-detection"));
     let reachable =
         spawn::Reachable { daemon: std::env::current_exe().ok(), socket: socket.to_path_buf() };
-    let places = Places { home, overrides, reachable, data };
+    let places = Places { home, overrides, reachable, data, log };
     let (saved, state) = saved(socket);
     let persister = Arc::clone(&saved.persister);
     let shared = Shared::new(instance(), stopping.clone(), inherited, places, saved);

@@ -139,6 +139,33 @@ On a remote machine the app installs and starts it over ssh, in a session of its
 so it survives the ssh connection and logind's `KillUserProcesses` where a distribution enables
 it.
 
+**Its log is its own, and a run's log follows it.** A daemon outlives the run that started it, so
+it never writes into a run's log: that file would stop describing it when the run ended, and grow
+or dangle after. It ignores `MUSTER_LOG_FILE`, which it would otherwise inherit from whichever run
+started it. It writes a file of its own beside its socket, `~/.muster/daemon/<install>.log`, and
+rotates it itself to `<install>.log.1` past 4 MiB, so at most about 8 MiB is on disk; nothing else
+holds the file open, which is what makes renaming it enough. `MUSTER_LOG=0` turns it off and
+`MUSTER_LOG_LEVEL` sets its level, as for every Muster process. It also keeps its last thousand
+records, numbered from 1 for each run of the daemon, and a control connection that sends
+`FollowLog` gets them, then every record after, as `LogLine` messages. That is how each run's
+single timeline gets the daemon's side, for a daemon on a devenv as much as one on this machine,
+over the connection the app already holds. What a person typed is never in it: the daemon logs no
+input's content, and does not read `MUSTER_LOG_INPUT`.
+
+Merging the file into a run's log was the alternative. It fails twice: an app that crashes never
+merges, and a devenv daemon's file would need a second ssh channel to fetch. A stream alone fails
+the other way, recording nothing while no app is attached, which is when a daemon's own failures
+are hardest to explain afterwards. So the file is the record, and the stream carries it into the
+timeline.
+
+The app's part, at cut-over: start the daemon without `MUSTER_LOG_FILE`. On each connection,
+follow the log: from nothing on a daemon run it has not seen (a new `instance`), and after the
+last number it holds on a reconnect to the same one. Append each line to the run's log, adding the
+daemon's configured name. For a daemon on another machine, stamp each record's `mono_ns` with its
+own receipt time and keep the daemon's as another field, since the two machines' monotonic
+clocks do not compare. Say in the run's log when `LogFollowed.oldest` shows records it wanted had
+already left the daemon's memory; those are only in the daemon's file.
+
 ### 2. What the daemon holds
 
 **Muster's units, by Muster's names.** A daemon holds tabs and panes. There is no equivalent of
@@ -611,7 +638,8 @@ text in pages addressed by absolute row, with no row cap but a 4 MiB cap on a pa
 answer never nears the largest message a client accepts, and the answer says how many rows it holds
 (row 0 is the oldest row still held, so rows move up once history reaches the scrollback limit:
 libghostty does not say how many it has trimmed); set the palette, the shell and the
-scrollback depth; send manifests; report what a pane's agent says about itself; stop. There is no focus request: daemon focus existed for herdr's
+scrollback depth; send manifests; report what a pane's agent says about itself; follow the
+daemon's log (section 1); stop. There is no focus request: daemon focus existed for herdr's
 own clients, and Muster never routes by it. Configuration arrives over the protocol, so no daemon
 reads a Muster config file and `~/.muster/state/herdr.toml` has no successor. Requests are
 namespaced by service (`pane.*`, `tab.*`, `session.*`), so a later message service takes a namespace
@@ -782,7 +810,8 @@ herdr's own client measured 1.4 ms and 22.6 ms. The remote row is in section 4.
   the surface, while a pane's text read by the CLI or an agent comes from the daemon. The two have
   different reach and matching rules.
 - `docs/architecture.md`: control plane and data plane, ownership of truth, input precedence (the
-  wheel is no longer always an intent), the renderer seam, degradation, durability.
+  wheel is no longer always an intent), the renderer seam, degradation, durability, and the
+  diagnostic log, whose daemon writes a file of its own that each run follows (section 1).
 - `docs/glossary.md`: adapter, backend, daemon, devenv container, frame, pane channel, tab.
 
 ### Delivery
@@ -997,3 +1026,5 @@ first.
   bridge behind is caught up at half its window (section 4).
 - 2026-09-27 Persistence built (section 2): the file's place and format, the settings kept as the
   protocol's own message, and what happens to a file from a newer daemon or a damaged one.
+- 2026-09-27 The daemon's log decided and built (section 1): a bounded file of its own, followed
+  over the control connection into each run's log.

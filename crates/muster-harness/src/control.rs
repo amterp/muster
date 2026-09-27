@@ -6,7 +6,7 @@
 
 use std::os::unix::net::UnixStream;
 use std::path::Path;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use muster_daemon_proto::connection::{self, HandshakeError};
 use muster_daemon_proto::{self as proto, ConnectionKind, control_message, request::Service};
@@ -19,6 +19,9 @@ pub struct Control {
     stream: UnixStream,
     welcome: proto::Welcome,
     next_id: u64,
+    /// The daemon's log records this connection follows, set apart as they arrive so they never
+    /// stand between a test and the answer or event it waits for.
+    logged: Vec<proto::LogLine>,
 }
 
 /// An answer, and the events that arrived on the connection before it.
@@ -45,7 +48,7 @@ impl Control {
 
     pub fn try_connect(socket: &Path) -> Result<Control, HandshakeError> {
         let (stream, welcome) = connection::connect(socket, ConnectionKind::Control, "harness")?;
-        Ok(Control { stream, welcome, next_id: 0 })
+        Ok(Control { stream, welcome, next_id: 0, logged: Vec::new() })
     }
 
     pub fn welcome(&self) -> &proto::Welcome {
@@ -74,6 +77,9 @@ impl Control {
                 Some(control_message::Message::Answer(answer)) => {
                     panic!("an answer to request {} arrived while waiting for {id}", answer.id)
                 }
+                Some(control_message::Message::LogLine(_)) => {
+                    unreachable!("next_message sets log lines apart")
+                }
                 None => panic!(
                     "request {id} was not answered within {PATIENCE:?}; {} events arrived",
                     events.len()
@@ -89,17 +95,46 @@ impl Control {
             Some(control_message::Message::Answer(answer)) => {
                 panic!("expected an event and got the answer to request {}", answer.id)
             }
+            Some(control_message::Message::LogLine(_)) => {
+                unreachable!("next_message sets log lines apart")
+            }
             None => panic!("no event arrived within {PATIENCE:?}"),
         }
     }
 
-    /// Whatever the daemon sends next, or `None` if nothing arrives within `within` or the
-    /// daemon hung up.
+    /// The next answer or event, or `None` if neither arrives within `within` or the daemon
+    /// hung up. Log lines that arrive meanwhile are kept for [`Control::logged`].
     pub fn next_message(&mut self, within: Duration) -> Option<control_message::Message> {
-        self.stream.set_read_timeout(Some(within)).expect("a socket takes a read timeout");
-        match connection::receive::<proto::ControlMessage>(&mut self.stream) {
-            Ok(Some(message)) => message.message,
-            Ok(None) | Err(_) => None,
+        let deadline = Instant::now() + within;
+        loop {
+            let left = deadline.saturating_duration_since(Instant::now());
+            if left.is_zero() {
+                return None;
+            }
+            self.stream.set_read_timeout(Some(left)).expect("a socket takes a read timeout");
+            match connection::receive::<proto::ControlMessage>(&mut self.stream) {
+                Ok(Some(proto::ControlMessage {
+                    message: Some(control_message::Message::LogLine(line)),
+                })) => self.logged.push(line),
+                Ok(Some(message)) => return message.message,
+                Ok(None) | Err(_) => return None,
+            }
         }
+    }
+
+    /// The log lines that have arrived on this connection so far, reading for up to `within`
+    /// more until one holds `needle`. Every line read stays here.
+    pub fn logged_until(&mut self, needle: &str, within: Duration) -> &[proto::LogLine] {
+        let deadline = Instant::now() + within;
+        while !self.logged.iter().any(|line| line.line.contains(needle)) {
+            let left = deadline.saturating_duration_since(Instant::now());
+            if left.is_zero() {
+                break;
+            }
+            if let Some(message) = self.next_message(left) {
+                panic!("waiting for the log, the daemon sent {message:?}");
+            }
+        }
+        &self.logged
     }
 }

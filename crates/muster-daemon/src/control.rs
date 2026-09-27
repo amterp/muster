@@ -92,6 +92,21 @@ impl Outbox {
         }
     }
 
+    /// Queues a frame as [`Outbox::push`] does, and says nothing when it cannot: the daemon's
+    /// log uses this to hand on its own records, and a warning from here would come straight
+    /// back into the log. A connection that far behind is still hung up, and its closing is
+    /// logged by the thread serving it.
+    pub(crate) fn offer(&self, frame: Arc<[u8]>) -> bool {
+        match self.sender.try_send(Outbound::Frame(frame)) {
+            Ok(()) => true,
+            Err(TrySendError::Full(_)) => {
+                let _ = self.stream.shutdown(Shutdown::Both);
+                false
+            }
+            Err(TrySendError::Disconnected(_)) => false,
+        }
+    }
+
     /// Waits until everything queued so far has been written, or `within` has passed.
     fn flush(&self, within: Duration) {
         let (done, flushed) = mpsc::channel();

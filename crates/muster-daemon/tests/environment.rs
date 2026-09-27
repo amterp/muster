@@ -83,7 +83,8 @@ fn a_daemon_without_its_data_directory_refuses_to_start() {
     assert!(!output.status.success(), "it started: {stderr}");
     assert!(stderr.contains(&format!("{} is not a complete", scratch.display())), "{stderr}");
     assert!(!scratch.join("daemon.sock").exists(), "it claimed the socket anyway");
-    std::fs::remove_dir(&scratch).unwrap();
+    // The refusal is in the daemon's own log beside the socket, so the directory is not empty.
+    std::fs::remove_dir_all(&scratch).unwrap();
 }
 
 /// Where `name` is on this machine's PATH, leaving out Apple's /bin/bash, which Ghostty does not

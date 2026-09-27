@@ -145,7 +145,6 @@ impl Daemon {
             .env("PATH", std::env::var("PATH").unwrap_or_default())
             .env("HOME", self.root.join("home"))
             .env("SHELL", SHELL)
-            .env("MUSTER_LOG_FILE", self.root.join("daemon.log"))
             .envs(self.environment.iter().map(|(name, value)| (name, value)))
             .stdin(Stdio::null())
             .stdout(Stdio::null())

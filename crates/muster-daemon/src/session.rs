@@ -38,6 +38,7 @@ use proto::request::Service;
 use proto::{Outcome, pane_request, session_request, tab_request};
 
 use crate::control::Outbox;
+use crate::daemon_log::DaemonLog;
 use crate::data::Data;
 use crate::detect::Detecting;
 use crate::effects::{self, Report, Reported, Reports};
@@ -60,6 +61,8 @@ pub(crate) struct Places {
     pub(crate) reachable: spawn::Reachable,
     /// What the daemon gives its shells: the terminfo entry and the shell integration.
     pub(crate) data: Data,
+    /// The daemon's own log, which a client can follow. None when logging is off.
+    pub(crate) log: Option<Arc<DaemonLog>>,
 }
 
 /// What a daemon starts from besides its places: what it writes its state with, and the
@@ -87,7 +90,7 @@ impl Shared {
         places: Places,
         saved: Saved,
     ) -> Arc<Shared> {
-        let Places { home, overrides, reachable, data } = places;
+        let Places { home, overrides, reachable, data, log } = places;
         let Saved { persister, settings } = saved;
         Arc::new_cyclic(|shared: &Weak<Shared>| {
             let (reports, received) = Reports::channel();
@@ -144,6 +147,7 @@ impl Shared {
                     host: effects::host_name(),
                     reserved: HashSet::new(),
                     persister,
+                    log,
                     stopping: false,
                 }),
                 stopping,
@@ -244,6 +248,8 @@ pub(crate) struct Session {
     reserved: HashSet<String>,
     /// Writes down what a restart needs, whenever it changes.
     persister: Arc<Persister>,
+    /// The daemon's own log, which a connection can follow. None when logging is off.
+    log: Option<Arc<DaemonLog>>,
     /// Set once the daemon has begun to stop, after which no pane starts.
     stopping: bool,
 }
@@ -496,6 +502,7 @@ impl Session {
                 S::SendManifests(manifests) => return self.send_manifests(manifests),
                 S::SetClipboardWrite(set) => self.set_clipboard_write(set),
                 S::SetCursor(set) => self.set_cursor(set),
+                S::FollowLog(follow) => self.follow_log(asker, follow.after),
                 S::Stop(_) => {
                     self.close_everything();
                     Reply::done()
@@ -534,6 +541,21 @@ impl Session {
     /// Stops listening to a connection that has gone.
     pub(crate) fn unsubscribe(&mut self, connection: u64) {
         self.subscribers.retain(|subscriber| subscriber.id != connection);
+        if let Some(log) = &self.log {
+            log.unfollow(connection);
+        }
+    }
+
+    /// Hands a connection the daemon's recent log, and every record after it.
+    fn follow_log(&self, asker: &Outbox, after: Option<u64>) -> Reply {
+        let Some(log) = &self.log else {
+            return Reply::refused("this daemon's log is off: it was started with MUSTER_LOG=0");
+        };
+        let (oldest, newest) = log.follow(asker, after);
+        Reply {
+            detail: Some(Box::new(Detail::Followed(proto::LogFollowed { oldest, newest }))),
+            ..Reply::done()
+        }
     }
 
     /// Closes every tab, and so every pane, in the order they were opened, and starts no more.

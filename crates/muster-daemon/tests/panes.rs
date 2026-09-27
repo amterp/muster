@@ -294,7 +294,8 @@ fn a_pane_whose_process_exits_closes_and_says_how() {
                     _ => None,
                 }
             }
-            proto::control_message::Message::Answer(_) => None,
+            proto::control_message::Message::Answer(_)
+            | proto::control_message::Message::LogLine(_) => None,
         }
     });
     assert_eq!(seen, ["pane_opened:p1", "tab_opened:t1", "tab_closed:t1", "pane_closed:p1"]);

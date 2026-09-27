@@ -39,6 +39,14 @@
 // A tab's tree never names a pane the client has not been told about: a pane is opened before
 // any tree holds it, and leaves every tree before it is closed.
 //
+// ## The daemon's log
+//
+// A control connection that sends FollowLog also gets the daemon's own log, a LogLine per
+// record, interleaved with its answers and events and numbered apart from them. The daemon keeps
+// its log in a file of its own beside its socket, and never in a run's log, since it outlives
+// every run; this is how a run's log gets the daemon's side of the story, on this machine or
+// another. What a person typed is never in it.
+//
 // ## Compatibility
 //
 // `Version.major` changes when a message stops meaning what it meant. A client talks only to a
@@ -139,11 +147,20 @@ message SessionRequest {
     Stop stop = 7;
     SetClipboardWrite set_clipboard_write = 8;
     SetCursor set_cursor = 9;
+    // The daemon's recent log, then every record after it, on this connection.
+    FollowLog follow_log = 10;
   }
 
   message Snapshot {}
   message Subscribe {}
   message Stop {}
+
+  // Answered with LogFollowed. REFUSED when the daemon's log is off.
+  message FollowLog {
+    // The last record the client already has, from a connection to this same daemon run
+    // (`instance`). Absent: every record the daemon still holds, which is its last thousand.
+    optional uint64 after = 1;
+  }
 }
 
 message TabRequest {
@@ -260,6 +277,7 @@ message PaneRequest {
   message Report {
     string pane = 1;
     optional float context_used = 2;
+    // Empty removes the model.
     optional string model = 3;
     optional double cost_usd = 4;
     SubagentChange subagent = 5;
@@ -390,7 +408,16 @@ message ControlMessage {
   oneof message {
     Answer answer = 1;
     Event event = 2;
+    LogLine log_line = 3;
   }
+}
+
+// One record of the daemon's log, as the line its file holds: a JSON object, without the
+// newline.
+message LogLine {
+  // Counting from 1 for this daemon run, with no gaps.
+  uint64 number = 1;
+  string line = 2;
 }
 
 message Answer {
@@ -403,7 +430,17 @@ message Answer {
   oneof detail {
     Snapshot snapshot = 10;
     PaneText text = 11;
+    LogFollowed followed = 12;
   }
+}
+
+// What a FollowLog found. Records the client asked for that are older than `oldest` have left
+// the daemon's memory, and are only in its file.
+message LogFollowed {
+  // The oldest record the daemon holds, which the replay started from unless `after` was later.
+  uint64 oldest = 1;
+  // The last record written before following began. The replay ends with it.
+  uint64 newest = 2;
 }
 
 enum Outcome {

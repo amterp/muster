@@ -1,0 +1,256 @@
+//! The daemon's own log (MIP-3 section 1): a file beside its socket that it keeps bounded
+//! itself, and the same records handed to any control connection that follows them.
+//!
+//! Never a run's log. A daemon outlives the run that started it, so a run's file would stop
+//! describing it the moment that run ended, and would grow or dangle after. An app that wants
+//! the daemon's side in its run's timeline follows the log over its control connection, which
+//! reaches a daemon on a devenv the same way as one on this machine.
+//!
+//! What a person typed is never in it: nothing in the daemon logs input's content, and
+//! `MUSTER_LOG_INPUT` does not change that here.
+
+use std::collections::VecDeque;
+use std::fs::File;
+use std::io::Write as _;
+use std::os::unix::fs::OpenOptionsExt;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+
+use muster_core::diagnostics::log::{self, LogLevel, LogRecord, LogSink};
+use muster_core::diagnostics::sink;
+use muster_daemon_proto as proto;
+use prost::Message;
+
+use crate::control::Outbox;
+
+/// Past this the file is rotated to `<name>.log.1`, replacing the one before: at most twice this
+/// on disk.
+const FILE_BYTES: u64 = 4 << 20;
+
+/// How many records the daemon holds for a client that starts following.
+const KEPT: usize = 1000;
+
+/// The file beside a daemon's socket: `~/.muster/daemon/<install>.log`.
+pub(crate) fn path_for(socket: &Path) -> PathBuf {
+    socket.with_extension("log")
+}
+
+#[derive(Debug)]
+pub(crate) struct DaemonLog {
+    inner: Mutex<Inner>,
+}
+
+#[derive(Debug)]
+struct Inner {
+    file: Rotating,
+    /// The last [`KEPT`] records, by number.
+    kept: VecDeque<(u64, Arc<str>)>,
+    next: u64,
+    followers: Vec<Outbox>,
+}
+
+impl DaemonLog {
+    /// Starts the log beside the socket and sends every record of this process to it, unless
+    /// `MUSTER_LOG=0` turns logging off. `MUSTER_LOG_LEVEL` sets the level, as for every Muster
+    /// process. Called once the daemon holds its socket's lock, which makes it the file's only
+    /// writer.
+    pub(crate) fn start(socket: &Path) -> Option<Arc<DaemonLog>> {
+        if std::env::var("MUSTER_LOG").as_deref() == Ok("0") {
+            return None;
+        }
+        let level = std::env::var("MUSTER_LOG_LEVEL")
+            .ok()
+            .and_then(|name| LogLevel::parse(&name))
+            .unwrap_or(LogLevel::Debug);
+        let log = Arc::new(DaemonLog::new(Rotating::open(path_for(socket), FILE_BYTES)));
+        log::install(Box::new(Sink(Arc::clone(&log))), "daemon", level);
+        Some(log)
+    }
+
+    fn new(file: Rotating) -> DaemonLog {
+        DaemonLog {
+            inner: Mutex::new(Inner {
+                file,
+                kept: VecDeque::with_capacity(KEPT),
+                next: 1,
+                followers: Vec::new(),
+            }),
+        }
+    }
+
+    /// Recovered rather than reported when poisoned: reporting it would log, which is this.
+    fn inner(&self) -> MutexGuard<'_, Inner> {
+        self.inner.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn write(&self, record: &LogRecord) {
+        let line = sink::line(record);
+        let mut inner = self.inner();
+        inner.file.append(line.as_bytes());
+        let number = inner.next;
+        inner.next += 1;
+        let line: Arc<str> = line.trim_end_matches('\n').into();
+        if !inner.followers.is_empty() {
+            let frame = frame(number, &line);
+            inner.followers.retain(|follower| follower.offer(Arc::clone(&frame)));
+        }
+        if inner.kept.len() == KEPT {
+            inner.kept.pop_front();
+        }
+        inner.kept.push_back((number, line));
+    }
+
+    /// Hands `outbox` every record held after `after` (all of them when it is absent), then every
+    /// record from now on. Returns the oldest record held and the newest written.
+    pub(crate) fn follow(&self, outbox: &Outbox, after: Option<u64>) -> (u64, u64) {
+        let mut inner = self.inner();
+        for (number, line) in inner.replay(after) {
+            if !outbox.offer(frame(number, &line)) {
+                return inner.span();
+            }
+        }
+        if !inner.followers.iter().any(|follower| follower.id == outbox.id) {
+            inner.followers.push(outbox.clone());
+        }
+        inner.span()
+    }
+
+    /// Stops handing records to a connection that has gone.
+    pub(crate) fn unfollow(&self, connection: u64) {
+        self.inner().followers.retain(|follower| follower.id != connection);
+    }
+}
+
+impl Inner {
+    fn replay(&self, after: Option<u64>) -> Vec<(u64, Arc<str>)> {
+        self.kept
+            .iter()
+            .filter(|(number, _)| after.is_none_or(|after| *number > after))
+            .cloned()
+            .collect()
+    }
+
+    fn span(&self) -> (u64, u64) {
+        (self.kept.front().map_or(self.next, |(number, _)| *number), self.next - 1)
+    }
+}
+
+fn frame(number: u64, line: &str) -> Arc<[u8]> {
+    proto::ControlMessage {
+        message: Some(proto::control_message::Message::LogLine(proto::LogLine {
+            number,
+            line: line.to_string(),
+        })),
+    }
+    .encode_to_vec()
+    .into()
+}
+
+struct Sink(Arc<DaemonLog>);
+
+impl LogSink for Sink {
+    fn write(&self, record: &LogRecord) {
+        self.0.write(record);
+    }
+}
+
+/// A file the daemon appends to and rotates itself once it passes its limit. Nothing else
+/// holds it open, so a rename is all a rotation needs.
+#[derive(Debug)]
+struct Rotating {
+    path: PathBuf,
+    /// None when it could not be opened: the records still reach followers.
+    file: Option<File>,
+    size: u64,
+    limit: u64,
+}
+
+impl Rotating {
+    fn open(path: PathBuf, limit: u64) -> Rotating {
+        let file = append_to(&path).ok();
+        let size = file.as_ref().and_then(|file| file.metadata().ok()).map_or(0, |meta| meta.len());
+        Rotating { path, file, size, limit }
+    }
+
+    fn append(&mut self, line: &[u8]) {
+        let length = line.len() as u64;
+        if self.size > 0 && self.size + length > self.limit {
+            let mut previous = self.path.as_os_str().to_owned();
+            previous.push(".1");
+            let _ = std::fs::rename(&self.path, previous);
+            self.file = append_to(&self.path).ok();
+            self.size = 0;
+        }
+        // Nowhere to report a failed write to: it would be a record in this same file.
+        if let Some(file) = &mut self.file
+            && file.write_all(line).is_ok()
+        {
+            self.size += length;
+        }
+    }
+}
+
+/// Opened close-on-exec, as std opens every file, so no pane's program inherits it.
+fn append_to(path: &Path) -> std::io::Result<File> {
+    File::options().create(true).append(true).mode(0o600).open(path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeMap;
+
+    struct Scratch(PathBuf);
+
+    impl Scratch {
+        fn new(name: &str) -> Scratch {
+            let path =
+                std::env::temp_dir().join(format!("muster-log-{name}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&path);
+            std::fs::create_dir_all(&path).unwrap();
+            Scratch(path)
+        }
+    }
+
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn record(event: &str) -> LogRecord {
+        LogRecord::now(LogLevel::Info, "daemon", 1, event, BTreeMap::new())
+    }
+
+    #[test]
+    fn the_file_is_rotated_before_it_passes_its_limit_and_keeps_the_newest_records() {
+        let scratch = Scratch::new("rotate");
+        let path = scratch.0.join("daemon.log");
+        let log = DaemonLog::new(Rotating::open(path.clone(), 2000));
+        for index in 0..100 {
+            log.write(&record(&format!("test.record.{index}")));
+        }
+        let current = std::fs::read_to_string(&path).unwrap();
+        let previous = std::fs::read_to_string(scratch.0.join("daemon.log.1")).unwrap();
+        assert!(current.len() <= 2000 && previous.len() <= 2000);
+        assert!(current.contains("test.record.99\""), "the newest record is in the file");
+        assert!(!previous.contains("test.record.0\""), "the oldest is gone");
+        assert!(current.lines().chain(previous.lines()).all(|line| line.ends_with('}')));
+    }
+
+    #[test]
+    fn a_follower_is_replayed_what_it_has_not_seen_of_the_last_records() {
+        let scratch = Scratch::new("replay");
+        let log = DaemonLog::new(Rotating::open(scratch.0.join("daemon.log"), FILE_BYTES));
+        for index in 0..KEPT + 5 {
+            log.write(&record(&format!("test.record.{index}")));
+        }
+        let inner = log.inner();
+        assert_eq!(inner.span(), (6, (KEPT + 5) as u64), "the first five have left memory");
+        let all = inner.replay(None);
+        assert_eq!(all.len(), KEPT);
+        assert!(all[0].1.contains("test.record.5\""));
+        let later: Vec<u64> = inner.replay(Some(1000)).iter().map(|(number, _)| *number).collect();
+        assert_eq!(later, vec![1001, 1002, 1003, 1004, 1005]);
+    }
+}

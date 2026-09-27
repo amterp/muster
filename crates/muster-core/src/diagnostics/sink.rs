@@ -52,12 +52,7 @@ impl Drop for JsonLinesSink {
 
 impl LogSink for JsonLinesSink {
     fn write(&self, record: &LogRecord) {
-        let mut line = encode(record);
-        if line.len() > MAXIMUM_RECORD_BYTES {
-            line = truncated(&line);
-        }
-        line.push('\n');
-
+        let line = line(record);
         let bytes = line.as_bytes();
         let mut written = 0;
         while written < bytes.len() {
@@ -78,6 +73,17 @@ impl LogSink for JsonLinesSink {
             }
         }
     }
+}
+
+/// A record as a line of the file, newline included, cut to [`MAXIMUM_RECORD_BYTES`]: what every
+/// sink that writes lines writes, so their files read alike.
+pub fn line(record: &LogRecord) -> String {
+    let mut line = encode(record);
+    if line.len() > MAXIMUM_RECORD_BYTES {
+        line = truncated(&line);
+    }
+    line.push('\n');
+    line
 }
 
 /// Renders one record, with the identifying keys first and the payload after.
