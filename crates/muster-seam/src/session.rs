@@ -4081,8 +4081,13 @@ pub(crate) fn send_to_pane(
         }
         Arc::clone(&backend.input)
     };
-    input.send(pane, InputEvent::Send { text, enter });
-    Ok(())
+    input.send(pane, InputEvent::Send { text, enter }).map_err(|not_sent| {
+        Refusal::Declined(format!(
+            "nothing was sent to {pane}: {not_sent}. The window reconnects to a daemon on its \
+             own; `muster window` says whether {daemon} is connected, and sending again once it \
+             is sends it once."
+        ))
+    })
 }
 
 /// Reads a pane back, and changes nothing.

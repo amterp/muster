@@ -34,8 +34,39 @@ pub enum InputEvent {
 /// **Never blocks.** Sending happens on the window's own thread, so an event that cannot be
 /// queued is dropped rather than waited for, and the implementation says so in the log.
 pub trait InputSink: Send + Sync + std::fmt::Debug {
-    fn send(&self, pane: &PaneId, event: InputEvent);
+    /// Queues `event` for the pane's daemon, or says why it was not. Queued is not arrived: a
+    /// connection that ends after this returns loses what was still queued on it.
+    fn send(&self, pane: &PaneId, event: InputEvent) -> Result<(), NotSent>;
 
     /// What this sink is talking to, for the log.
     fn description(&self) -> &str;
+}
+
+/// Why an input event never left for the daemon.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NotSent {
+    /// The window has no working connection to the pane's daemon right now.
+    NotConnected,
+    /// The daemon stopped reading, and what is already waiting for it is at its bound.
+    Full,
+    /// Larger than the daemon reads in one message, which would close the connection every
+    /// pane on that daemon takes its input from.
+    TooLarge { bytes: usize, limit: usize },
+}
+
+impl std::fmt::Display for NotSent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NotSent::NotConnected => {
+                f.write_str("the window is not connected to the pane's daemon right now")
+            }
+            NotSent::Full => {
+                f.write_str("the daemon has stopped reading input, and its queue is full")
+            }
+            NotSent::TooLarge { bytes, limit } => write!(
+                f,
+                "it is {bytes} bytes, and the daemon reads at most {limit} bytes in one message"
+            ),
+        }
+    }
 }

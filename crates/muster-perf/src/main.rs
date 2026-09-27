@@ -17,7 +17,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use muster_core::AgentState;
 use muster_core::composition::{Composition, Daemon, DaemonId, Endpoint, View, ViewPane};
 use muster_core::input::{
-    InputEvent, InputSink, Key, KeyEvent, Modifiers, PaneInput, PaneInputSettings,
+    InputEvent, InputSink, Key, KeyEvent, Modifiers, NotSent, PaneInput, PaneInputSettings,
 };
 use muster_core::mirror::backend::{
     AgentFacts, LayoutNode, Pane, PaneId, Snapshot, SplitAxis, Tab, TabId,
@@ -630,8 +630,9 @@ impl Drop for Link {
 struct Discarded;
 
 impl InputSink for Discarded {
-    fn send(&self, _pane: &PaneId, event: InputEvent) {
+    fn send(&self, _pane: &PaneId, event: InputEvent) -> Result<(), NotSent> {
         black_box(event);
+        Ok(())
     }
 
     fn description(&self) -> &'static str {

@@ -6,7 +6,7 @@
 
 use std::sync::Mutex;
 
-use muster_core::input::{InputEvent, InputSink};
+use muster_core::input::{InputEvent, InputSink, NotSent};
 use muster_core::mirror::backend::PaneId;
 
 /// Every event sent, in order, with the pane it was for.
@@ -22,11 +22,12 @@ impl RecordingSink {
 }
 
 impl InputSink for RecordingSink {
-    fn send(&self, pane: &PaneId, event: InputEvent) {
+    fn send(&self, pane: &PaneId, event: InputEvent) -> Result<(), NotSent> {
         self.sent
             .lock()
             .expect("a panicking sender poisoned the recorder")
             .push((pane.clone(), event));
+        Ok(())
     }
 
     fn description(&self) -> &'static str {

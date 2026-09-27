@@ -99,15 +99,18 @@ A `pane new` that exits 4 may still have made its pane. The window names a pane 
 that makes it, so a pane that was made has its name from the start: `muster window` lists it
 under that name, and the pane has the same one in its own `$MUSTER_PANE`.
 
-What to do instead of sending it again: `muster pane read --pane X` shows what is on the pane,
-and `pane send --confirm` asks the window to read it back rather than deciding out here. With
-`--confirm`, a send whose daemon never answered is settled by that read-back and exits 0 if the
-text is on the pane. Not with `--enter` as well: Return is not pressed after text that may not
-have arrived, so a 4 there says the text may be sitting unsubmitted. A 4 also comes back when the
-text arrived and the answer about the Return after it went missing, so Return may or may not have
-been pressed, and a Return the daemon refuses exits 1 with the text already typed. `muster pane
-read` shows which, and `muster pane send --pane X '' --enter` presses Return on its own. What
-proves a request did *not* happen is only exit 3, where nothing was dialled at all.
+What to do instead of making the request again: `muster window` shows whether it happened, and
+`muster pane read --pane X` shows what is on a pane. What proves a request did *not* happen is
+only exit 3, where nothing was dialled at all.
+
+A daemon does not answer a send, so a `pane send` exits 4 only when the window itself did not
+answer: the window queues the text on its input connection to the pane's daemon and answers at
+once. Exit 0 says the text was queued for
+a daemon the window was connected to, which is not proof that it arrived - a connection that
+drops a moment later loses what was still queued on it. Exit 1 says nothing was queued, and the
+message says why: the window is not connected to that daemon right now, or the daemon has stopped
+reading. So a send that exited 1 is safe to send again once `muster window` shows the daemon
+`connected`, and `--confirm` is what turns a 0 into proof, by reading the text back off the pane.
 
 A window is slow to answer for reasons that have nothing to do with the request - a loaded
 machine makes every one of them slower, and a devenv is a round trip away - so a 4 says more

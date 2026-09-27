@@ -16,6 +16,6 @@ pub use key::Key;
 pub use key_event::{KeyAction, KeyEvent, Modifiers};
 pub use keymap::{Binding, Keymap, Resolution, TEXT_EDITING};
 pub use option_as_alt::OptionAsAlt;
-pub use pane_channel::{InputEvent, InputSink};
+pub use pane_channel::{InputEvent, InputSink, NotSent};
 pub use pane_input::PaneInput;
 pub use settings::PaneInputSettings;

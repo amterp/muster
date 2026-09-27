@@ -155,14 +155,16 @@ fn a_keystroke_reaches_the_program_and_its_echo_draws() {
     assert_eq!(window.next(), Report::Attached);
     let drawn = drawn(&mut child);
 
-    let input = Input::open(daemon.socket_path(), "test").unwrap();
-    input.send(proto::InputEvent {
-        pane: "p1".to_string(),
-        input: Some(input_event::Input::Send(input_event::Send {
-            text: "echo bridged-$((6*7))".to_string(),
-            enter: true,
-        })),
-    });
+    let input = Input::open(daemon.socket_path(), "test", Box::new(|| {})).unwrap();
+    input
+        .send(proto::InputEvent {
+            pane: "p1".to_string(),
+            input: Some(input_event::Input::Send(input_event::Send {
+                text: "echo bridged-$((6*7))".to_string(),
+                enter: true,
+            })),
+        })
+        .unwrap();
     until_drawn(&drawn, "bridged-42");
     let _ = child.kill();
 }

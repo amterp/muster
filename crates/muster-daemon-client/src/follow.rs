@@ -18,6 +18,7 @@ use std::time::Duration;
 use muster_core::daemon_settings::DaemonSettings;
 use muster_core::diagnostics::{log, monotonic_now};
 use muster_core::fields;
+use muster_core::input::NotSent;
 use muster_core::mirror::{Change, Mirror};
 use muster_core::reconnect::Attempts;
 use muster_daemon_proto::{self as proto, answer};
@@ -81,6 +82,10 @@ pub struct Connection {
     generation: AtomicU64,
     /// Why the current connection ended, once it has, which is what the follower waits on.
     ended: Mutex<Option<String>>,
+    /// Set when the daemon closed the input connection while the control one stayed up, which
+    /// the follower answers by opening another. Guarded by `ended`'s lock, so the follower
+    /// cannot miss the wake.
+    input_closed: AtomicBool,
     wake: Condvar,
     /// How many snapshots the mirror has been rebuilt from, for a caller waiting on the first.
     snapshots: Mutex<u64>,
@@ -93,12 +98,12 @@ impl Connection {
         lock(&self.control).clone()
     }
 
-    /// Sends an input event, or drops it while no input connection is open: nothing is
-    /// queued for a daemon that is not there, since keystrokes arriving late are worse than
-    /// keystrokes lost.
-    pub fn send_input(&self, event: proto::InputEvent) {
-        if let Some(input) = lock(&self.input).as_ref() {
-            input.send(event);
+    /// Queues an input event, or says why it was not: nothing is queued for a daemon that is
+    /// not there, since keystrokes arriving late are worse than keystrokes lost.
+    pub fn send_input(&self, event: proto::InputEvent) -> Result<(), NotSent> {
+        match lock(&self.input).as_ref() {
+            Some(input) if input.is_open() => input.send(event),
+            _ => Err(NotSent::NotConnected),
         }
     }
 
@@ -120,6 +125,28 @@ impl Connection {
         ended.get_or_insert(why);
         self.wake.notify_all();
     }
+
+    fn input_was_closed(&self, generation: u64) {
+        if generation != self.generation.load(Ordering::Relaxed) {
+            return;
+        }
+        let _ended = lock(&self.ended);
+        self.input_closed.store(true, Ordering::Relaxed);
+        self.wake.notify_all();
+    }
+}
+
+/// Opens an input connection that tells `connection` when the daemon closes it.
+fn open_input(following: &Following, connection: &Arc<Connection>) -> Result<Input, String> {
+    let generation = connection.generation.load(Ordering::Relaxed);
+    let told = Arc::downgrade(connection);
+    let on_closed = Box::new(move || {
+        if let Some(connection) = told.upgrade() {
+            connection.input_was_closed(generation);
+        }
+    });
+    Input::open(&following.socket, &following.client, on_closed)
+        .map_err(|error| format!("could not open an input connection: {error}"))
 }
 
 /// A daemon being followed. Dropping it hangs up and stops following.
@@ -211,11 +238,12 @@ fn follow(
     while !connection.stopping.load(Ordering::Relaxed) {
         connection.generation.fetch_add(1, Ordering::Relaxed);
         *lock(&connection.ended) = None;
+        connection.input_closed.store(false, Ordering::Relaxed);
         match connect(following, connection, mirror, notify, &log_position, connected_before) {
             Ok(()) => {
                 connected_before = true;
                 attempts.holding(monotonic_now());
-                let why = wait_for_end(connection);
+                let why = hold(following, connection);
                 attempts.holding(monotonic_now());
                 lock(&connection.control).take();
                 lock(&connection.input).take();
@@ -309,9 +337,7 @@ fn connect(
         send_settings(&control, None, &settings);
     }
 
-    let input = Input::open(&following.socket, &following.client)
-        .map_err(|error| format!("could not open an input connection: {error}"))?;
-    *lock(&connection.input) = Some(input);
+    *lock(&connection.input) = Some(open_input(following, connection)?);
     log::info(
         "daemon.followed",
         fields! {
@@ -371,11 +397,40 @@ fn delivery(
     }
 }
 
-fn wait_for_end(connection: &Connection) -> String {
+/// Keeps a followed daemon's input open until the connection ends, and returns why it did.
+fn hold(following: &Following, connection: &Arc<Connection>) -> String {
+    loop {
+        match wait_for_end(connection) {
+            Woke::Ended(why) => return why,
+            Woke::InputClosed => match open_input(following, connection) {
+                Ok(input) => {
+                    *lock(&connection.input) = Some(input);
+                    log::info(
+                        "daemon.input.reopened",
+                        fields! { "daemon" => following.daemon.clone() },
+                    );
+                }
+                // A daemon that takes a control connection and no input one is not usable, so
+                // the whole connection is made again.
+                Err(why) => return why,
+            },
+        }
+    }
+}
+
+enum Woke {
+    Ended(String),
+    InputClosed,
+}
+
+fn wait_for_end(connection: &Connection) -> Woke {
     let mut ended = lock(&connection.ended);
     loop {
         if let Some(why) = ended.take() {
-            return why;
+            return Woke::Ended(why);
+        }
+        if connection.input_closed.swap(false, Ordering::Relaxed) {
+            return Woke::InputClosed;
         }
         ended = connection.wake.wait(ended).unwrap_or_else(PoisonError::into_inner);
     }
@@ -409,4 +464,54 @@ fn send_settings(control: &Control, previous: Option<&DaemonSettings>, settings:
 
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use muster_harness::requests::{create, in_new_tab, make, read_text, until_text};
+    use muster_harness::{Daemon, until};
+
+    /// The daemon closes an input connection it cannot read and expects the client to open
+    /// another; until one opens, every pane on the daemon ignores the keyboard.
+    #[test]
+    fn input_the_daemon_closed_is_opened_again() {
+        let daemon = Daemon::start_built();
+        let mut control = daemon.connect();
+        make(&mut control, create("p1", in_new_tab("t1")));
+        until_text(&mut control, "p1", "$");
+        let follower = Follower::start(
+            Following {
+                socket: daemon.socket_path().to_path_buf(),
+                client: "test".to_string(),
+                daemon: "local".to_string(),
+                remote: false,
+            },
+            Arc::new(Mutex::new(Mirror::new())),
+            Arc::new(|_| {}),
+        )
+        .unwrap();
+        let connection = follower.connection();
+        assert!(connection.wait_for_snapshot(PATIENCE));
+        until("the input connection to open", || lock(&connection.input).is_some(), ());
+
+        lock(&connection.input).as_ref().unwrap().break_underneath();
+        let typed = |text: &str| proto::InputEvent {
+            pane: "p1".into(),
+            input: Some(proto::input_event::Input::Send(proto::input_event::Send {
+                text: text.into(),
+                enter: true,
+            })),
+        };
+        // Typed until it shows, as a person would: what went before the writer found the
+        // break is lost with the connection it was queued on.
+        until(
+            "typing to reach the pane again",
+            || {
+                let _ = connection.send_input(typed("echo REOPENED"));
+                read_text(&mut control, "p1", 0, 0).text.contains("REOPENED\n")
+            },
+            (),
+        );
+    }
 }

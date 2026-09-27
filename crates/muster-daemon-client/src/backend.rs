@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use muster_core::Key;
-use muster_core::input::{InputEvent, InputSink};
+use muster_core::input::{InputEvent, InputSink, NotSent};
 use muster_core::intent::{BackendChannel, BackendIntent, MoveDestination, Outcome, Refusal, Side};
 use muster_core::mirror::Mirror;
 use muster_core::mirror::backend::{PaneId, TabId};
@@ -318,8 +318,8 @@ impl DaemonInput {
 }
 
 impl InputSink for DaemonInput {
-    fn send(&self, pane: &PaneId, event: InputEvent) {
-        self.connection.send_input(convert::input(pane, event, self.key_code));
+    fn send(&self, pane: &PaneId, event: InputEvent) -> Result<(), NotSent> {
+        self.connection.send_input(convert::input(pane, event, self.key_code))
     }
 
     fn description(&self) -> &str {

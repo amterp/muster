@@ -17,7 +17,8 @@ fn sent(text: &str, enter: bool) -> input_event::Input {
 }
 
 fn open(daemon: &Daemon) -> Input {
-    Input::open(daemon.socket_path(), "test").expect("the daemon welcomes an input connection")
+    Input::open(daemon.socket_path(), "test", Box::new(|| {}))
+        .expect("the daemon welcomes an input connection")
 }
 
 fn running(name: &str, command: &str) -> proto::pane_request::Create {
@@ -34,17 +35,19 @@ fn a_send_and_a_key_reach_the_program() {
     make(&mut control, running("p1", "cat"));
     let input = open(&daemon);
 
-    input.send(event("p1", sent("hello", true)));
+    input.send(event("p1", sent("hello", true))).unwrap();
     until_text(&mut control, "p1", "hello\nhello");
-    input.send(event(
-        "p1",
-        input_event::Input::Key(input_event::Key {
-            action: proto::KeyAction::Press.into(),
-            key: KEY_A,
-            text: "a".into(),
-            ..input_event::Key::default()
-        }),
-    ));
+    input
+        .send(event(
+            "p1",
+            input_event::Input::Key(input_event::Key {
+                action: proto::KeyAction::Press.into(),
+                key: KEY_A,
+                text: "a".into(),
+                ..input_event::Key::default()
+            }),
+        ))
+        .unwrap();
     until_text(&mut control, "p1", "hello\na");
 }
 
@@ -63,7 +66,7 @@ fn events_arrive_in_the_order_they_were_sent() {
 
     let expected = (0..1000).map(|n| n.to_string()).collect::<Vec<_>>().join(",") + ",";
     for n in 0..1000 {
-        input.send(event("p1", sent(&format!("{n},"), false)));
+        input.send(event("p1", sent(&format!("{n},"), false))).unwrap();
     }
     until(
         "every send to reach the program, in order",
@@ -79,7 +82,7 @@ fn a_send_to_a_daemon_that_has_gone_returns_at_once() {
     daemon.kill();
     let started = std::time::Instant::now();
     for _ in 0..10_000 {
-        input.send(event("p1", sent("lost", false)));
+        let _ = input.send(event("p1", sent("lost", false)));
     }
     assert!(started.elapsed() < std::time::Duration::from_secs(1), "{:?}", started.elapsed());
 }

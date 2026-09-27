@@ -8,7 +8,7 @@
 
 use std::sync::{Arc, RwLock};
 
-use super::{InputEvent, InputSink, KeyEvent, Keymap, PaneInputSettings, Resolution};
+use super::{InputEvent, InputSink, KeyEvent, Keymap, NotSent, PaneInputSettings, Resolution};
 use crate::diagnostics::log;
 use crate::fields;
 use crate::mirror::backend::PaneId;
@@ -133,9 +133,28 @@ impl PaneInput {
     }
 
     fn deliver(&self, event: InputEvent) {
-        self.sink.send(&self.pane, event);
-        if let Some(delivered) = self.delivered.as_ref() {
-            delivered();
+        match self.sink.send(&self.pane, event) {
+            Ok(()) => {
+                if let Some(delivered) = self.delivered.as_ref() {
+                    delivered();
+                }
+            }
+            // Only a paste can be this large, and nothing else says it was dropped.
+            Err(not_sent @ NotSent::TooLarge { .. }) => log::warn(
+                "input.not_sent",
+                fields! {
+                    "pane" => self.pane.to_string(),
+                    "why" => not_sent.to_string(),
+                    "impact" => "the paste did not reach the pane; nothing of it was typed",
+                    "check" => "paste it in parts, or put it in a file and give the program \
+                                the file's path",
+                },
+            ),
+            // The connection says why once, where it ended or stalled, rather than per key.
+            Err(not_sent) => log::debug(
+                "input.not_sent",
+                fields! { "pane" => self.pane.to_string(), "why" => not_sent.to_string() },
+            ),
         }
     }
 }

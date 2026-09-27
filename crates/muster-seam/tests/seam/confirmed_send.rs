@@ -129,6 +129,39 @@ fn a_send_the_pane_never_showed_is_refused_rather_than_reported_as_done() {
     let _ = std::fs::remove_dir_all(&drawing);
 }
 
+/// A send to a daemon the window has lost is refused rather than answered as sent. Nothing
+/// was queued, so exit 0 would tell an agent its instruction landed when not a byte of it did
+/// (kan a_2LOHfLmsL, where a sender believed a lost message and never resent it).
+#[test]
+fn a_send_to_a_daemon_that_has_gone_is_refused() {
+    let _turn = muster::testing::fresh_session();
+    let mut daemon = Daemon::start_built();
+    make(&mut daemon.connect(), create("p1", in_new_tab("t1")));
+    assert_ok(&answer(request::Payload::Startup(Startup {
+        config_path: daemon.muster_config().to_string_lossy().into_owned(),
+        ..Startup::default()
+    })));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    let pane = the_only_pane();
+    daemon.kill();
+
+    let last = std::cell::RefCell::new(None);
+    until(
+        "a send to the stopped daemon to be refused",
+        || {
+            let sent = answer(request::Payload::SendToPane(SendToPane {
+                pane_id: pane.clone(),
+                text: "hello".to_string(),
+                ..SendToPane::default()
+            }));
+            let refused = matches!(sent.payload, Some(response::Payload::Failure(_)));
+            *last.borrow_mut() = Some(sent);
+            refused
+        },
+        || format!("the send kept answering {:?}", last.borrow()),
+    );
+}
+
 /// A daemon holding one pane, running `program` in place of an interactive shell.
 fn daemon_running(program: &Path) -> Daemon {
     let daemon = Daemon::start_built();

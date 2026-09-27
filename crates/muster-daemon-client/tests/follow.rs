@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 
 use muster_core::config::{Cursor, CursorStyle};
 use muster_core::daemon_settings::DaemonSettings;
+use muster_core::input::NotSent;
 use muster_core::intent::{BackendChannel, BackendIntent, Side};
 use muster_core::mirror::Mirror;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -17,7 +18,7 @@ use muster_daemon_client::backend::DaemonBackend;
 use muster_daemon_client::follow::{Follower, Following, Notice};
 use muster_daemon_client::records;
 use muster_daemon_proto as proto;
-use muster_harness::requests::snapshot;
+use muster_harness::requests::{snapshot, until_text};
 use muster_harness::{Daemon, until_some};
 
 struct Followed {
@@ -293,4 +294,44 @@ fn a_reaction_to_a_notice_can_ask_the_same_daemon() {
 
     let made = answers.recv_timeout(std::time::Duration::from_secs(20)).unwrap();
     assert_eq!(made, Ok(Some(TabId::new("t1"))));
+}
+
+fn typed(pane: &PaneId, text: &str) -> proto::InputEvent {
+    proto::InputEvent {
+        pane: pane.to_string(),
+        input: Some(proto::input_event::Input::Send(proto::input_event::Send {
+            text: text.into(),
+            enter: true,
+        })),
+    }
+}
+
+/// A paste larger than the daemon reads in one message is refused here, before it can close
+/// the input connection every pane on the daemon shares.
+#[test]
+fn a_paste_too_large_to_send_leaves_typing_working() {
+    let daemon = Daemon::start_built();
+    let followed = follow(&daemon);
+    let made = followed.backend.submit(&BackendIntent::CreateTab {
+        tab: TabId::new(format!("t{}", NEXT_TAB.fetch_add(1, Ordering::Relaxed))),
+        cwd: None,
+        run: None,
+        name: None,
+    });
+    let pane = made.unwrap().created.unwrap();
+    let mut control = daemon.connect();
+    until_text(&mut control, pane.as_str(), "$");
+
+    let paste = proto::InputEvent {
+        pane: pane.to_string(),
+        input: Some(proto::input_event::Input::Paste(proto::input_event::Paste {
+            text: "x".repeat(17 << 20),
+            confirmed: true,
+        })),
+    };
+    let connection = followed.follower.connection();
+    let refused = connection.send_input(paste);
+    assert!(matches!(refused, Err(NotSent::TooLarge { .. })), "{refused:?}");
+    connection.send_input(typed(&pane, "echo AFTER-THE-PASTE")).unwrap();
+    until_text(&mut control, pane.as_str(), "AFTER-THE-PASTE\n");
 }
