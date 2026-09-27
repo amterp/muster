@@ -121,6 +121,7 @@ fn named(payload: &response::Payload) -> &'static str {
         response::Payload::PaneClosed(_) => "a closed pane",
         response::Payload::Unanswered(_) => "a request nobody answered",
         response::Payload::BackendHealth(_) => "a daemon's health",
+        response::Payload::KeyHandled(_) => "a keystroke's outcome",
     }
 }
 

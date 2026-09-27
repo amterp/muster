@@ -71,6 +71,8 @@ message Request {
     ReadTabHolders read_tab_holders = 49;
     Carried carried = 50;
     MoveTab move_tab = 51;
+    Wheel wheel = 52;
+    Mouse mouse = 53;
   }
 
   // Find, stepping through its matches, reading where a pane is scrolled to, and scrolling it.
@@ -389,6 +391,11 @@ message Appearance {
   // What each agent state is painted in, where the window paints it. Empty means the legend
   // Muster ships, which lives in the shell because the window is the canonical surface.
   AgentColors agent_colors = 15;
+
+  // How far the wheel scrolls, scaling what the device reported: 1 is the device's own answer.
+  // The surface scrolls itself by it, and the core scales what reaches the program by the same,
+  // so the two move together.
+  double scroll_multiplier = 17;
 }
 
 // The five agent states, as a person coloured them.
@@ -1046,6 +1053,7 @@ message Response {
     PaneClosed pane_closed = 14;
     Unanswered unanswered = 15;
     BackendHealth backend_health = 16;
+    KeyHandled key_handled = 17;
   }
 
   // What a find and a viewport read answered, which the renderer now answers for itself.
@@ -1437,6 +1445,11 @@ message Startup {
   // window (ReopenWindow). Muster's names say which noun they are, so one field serves both.
   string show = 16;
 
+  // The directory of terminfo and shell integration the daemon gives each shell it starts.
+  // Empty means the one beside the daemon's binary, which is where a build puts it; a bundle
+  // keeps it among the helper's resources instead, since a code directory may hold only code.
+  string daemon_data_path = 17;
+
   // trace, debug, info, warn, error. Empty means debug.
   string log_level = 2;
 
@@ -1555,12 +1568,61 @@ message SendText {
   string text = 1;
 }
 
+// What came of a press: whether the pane's program got it, as the key itself or as the text a
+// binding writes. The shell hands the pane's surface exactly those keys, so the surface does
+// what Ghostty does on a keystroke - scroll to the bottom, clear a selection - for the keys a
+// program saw, and for no chord Muster kept.
+message KeyHandled {
+  bool to_pane = 1;
+}
+
 // The clipboard, on its way to the pane.
 message Paste {
   string text = 1;
 
   // Somebody has already said yes to this paste, after its daemon held it (PasteHeld).
   bool confirmed = 2;
+
+  // The pane to paste into. Empty for the pane with the keyboard, which is where a paste from
+  // the menu goes; a confirmed paste names the pane that held it, since the keyboard may have
+  // moved while somebody read the question.
+  string daemon_id = 3;
+  string pane_id = 4;
+}
+
+// A wheel or trackpad turn over a pane, which is the pane under the pointer rather than the
+// one with the keyboard. The surface scrolls itself; this is for the pane's daemon, which
+// decides from the program's modes whether it gets arrow keys, a mouse report or nothing.
+message Wheel {
+  string daemon_id = 1;
+  string pane_id = 2;
+  // Positive is right and up, as Ghostty's scroll callback takes them, and not yet scaled by
+  // `scroll_multiplier`: the core scales them.
+  double dx = 3;
+  double dy = 4;
+  // A trackpad's pixel deltas rather than a wheel's notches.
+  bool precise = 5;
+  // The platform's momentum phase, in libghostty's numbering.
+  uint32 momentum = 6;
+  repeated string modifiers = 7;
+  // Where the pointer is, in the pixels the pane's terminal reports its size in.
+  double x = 8;
+  double y = 9;
+}
+
+// A button pressed or released, or the pointer moving, over a pane. Sent whether or not the
+// program asked for the mouse: the daemon knows whether it did, and the shell does not.
+message Mouse {
+  string daemon_id = 1;
+  string pane_id = 2;
+  // press, release or motion.
+  string action = 3;
+  // none, left, right or middle.
+  string button = 4;
+  repeated string modifiers = 5;
+  // Where the pointer is, in the pixels the pane's terminal reports its size in.
+  double x = 6;
+  double y = 7;
 }
 
 // What the core tells the shell without being asked.
@@ -1582,6 +1644,7 @@ message Event {
     RaiseWindow raise_window = 11;
     ReopenWindow reopen_window = 12;
     PasteHeld paste_held = 13;
+    ClipboardWrite clipboard_write = 14;
   }
 }
 
@@ -1590,6 +1653,14 @@ message Event {
 // One with a newline, to a pane that has not asked for bracketed paste: the shell asks whether
 // to send it anyway, as Ghostty does, and a yes pastes it again confirmed.
 message PasteHeld {
+  string daemon_id = 1;
+  string pane_id = 2;
+  string text = 3;
+}
+
+// A program in a pane set the clipboard (OSC 52), and the config allows it. Only ever the
+// standard clipboard: the selection and primary ones are X11's.
+message ClipboardWrite {
   string daemon_id = 1;
   string pane_id = 2;
   string text = 3;

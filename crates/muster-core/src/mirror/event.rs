@@ -33,6 +33,11 @@ pub enum BackendEvent {
         pane: PaneId,
         text: String,
     },
+    /// A program asked to set the clipboard (OSC 52).
+    ClipboardWrite {
+        pane: PaneId,
+        text: String,
+    },
 }
 
 /// What a daemon could not bring back from its saved state.
@@ -87,6 +92,12 @@ pub enum Change {
         pane: PaneId,
         text: String,
     },
+    /// A program asked to set the clipboard. Passed through for the same reason as
+    /// `PasteHeld`: it is an effect, and the mirror holds none.
+    ClipboardWrite {
+        pane: PaneId,
+        text: String,
+    },
 }
 
 impl Change {
@@ -103,6 +114,7 @@ impl Change {
             Change::LayoutChanged(_) => "layout_changed",
             Change::Restored(_) => "restored",
             Change::PasteHeld { .. } => "paste_held",
+            Change::ClipboardWrite { .. } => "clipboard_write",
         }
     }
 
@@ -121,6 +133,7 @@ impl Change {
                 | Change::PaneRelabelled(_)
                 | Change::TabRelabelled(_)
                 | Change::PasteHeld { .. }
+                | Change::ClipboardWrite { .. }
         )
     }
 

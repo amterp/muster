@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-use muster_core::config::{Cursor, CursorStyle};
+use muster_core::config::{ClipboardWrite, Cursor, CursorStyle};
 use muster_core::daemon_settings::DaemonSettings;
 use muster_core::input::NotSent;
 use muster_core::intent::{BackendChannel, BackendIntent, Side};
@@ -213,6 +213,7 @@ fn settings_reach_the_daemon() {
     let settings = DaemonSettings {
         scrollback_bytes: Some(1 << 20),
         cursor: Cursor { style: Some(CursorStyle::Bar), blink: Some(false) },
+        clipboard_write: ClipboardWrite::Deny,
         ..DaemonSettings::default()
     };
     followed.follower.configure(&settings);
@@ -224,6 +225,7 @@ fn settings_reach_the_daemon() {
     });
     let cursor = held.cursor.expect("the cursor was sent");
     assert_eq!((cursor.style(), cursor.blink), (proto::CursorStyle::Bar, Some(false)));
+    assert_eq!(held.clipboard_write, Some(false), "a program is told it may not copy");
 }
 
 /// A daemon Muster started is in the census with what it holds, asked of it rather than read

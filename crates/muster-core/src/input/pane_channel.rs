@@ -5,11 +5,11 @@
 //! keystroke itself, as libghostty carried it, and an adapter spells it in the daemon's
 //! protocol.
 
-use super::{KeyEvent, OptionAsAlt};
+use super::{KeyEvent, Modifiers, OptionAsAlt};
 use crate::mirror::backend::PaneId;
 
 /// One thing for one pane's program.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum InputEvent {
     /// A keystroke the keymap did not take, with option-as-alt already applied to its
     /// modifiers and text, and the setting beside it so the daemon's encoder applies the same
@@ -24,6 +24,63 @@ pub enum InputEvent {
     /// Bytes written as they are, with no encoding at all: what a `text:` binding in the
     /// config writes, and what an input method commits.
     Bytes(Vec<u8>),
+    /// A wheel or trackpad turn over the pane. The surface scrolls itself as well; this is
+    /// for the daemon to decide what, if anything, the program gets.
+    Wheel(Wheel),
+    /// A button or the pointer moving over the pane, for a program that asked for the mouse.
+    Mouse(Mouse),
+}
+
+/// A wheel or trackpad turn, as Ghostty's scroll callback takes it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Wheel {
+    /// Positive is right and up.
+    pub dx: f64,
+    pub dy: f64,
+    /// A trackpad's pixel deltas rather than a wheel's notches.
+    pub precise: bool,
+    /// The platform's momentum phase, in libghostty's numbering.
+    pub momentum: u8,
+    pub modifiers: Modifiers,
+    /// Where the pointer is, in the pixels the pane's terminal reports its size in.
+    pub x: f64,
+    pub y: f64,
+}
+
+impl Wheel {
+    /// The turn as `scroll_multiplier` scales it, which is the scale the surface applies to its
+    /// own scrolling, so the program and the surface move the same distance.
+    #[must_use]
+    pub fn scaled(self, multiplier: f64) -> Wheel {
+        Wheel { dx: self.dx * multiplier, dy: self.dy * multiplier, ..self }
+    }
+}
+
+/// A button pressed or released, or the pointer moving.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Mouse {
+    pub action: MouseAction,
+    pub button: MouseButton,
+    pub modifiers: Modifiers,
+    /// Where the pointer is, in the pixels the pane's terminal reports its size in.
+    pub x: f64,
+    pub y: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MouseAction {
+    Press,
+    Release,
+    Motion,
+}
+
+/// Which button, or none for motion with nothing held.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MouseButton {
+    None,
+    Left,
+    Right,
+    Middle,
 }
 
 /// Where one daemon's panes take their input from this window.

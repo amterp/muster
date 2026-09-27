@@ -88,5 +88,9 @@ fn describe(event: &InputEvent) -> Value {
         InputEvent::Send { text, enter } => {
             json!({ "event": "send", "text": text, "enter": enter })
         }
+        InputEvent::Wheel(wheel) => json!({ "event": "wheel", "dx": wheel.dx, "dy": wheel.dy }),
+        InputEvent::Mouse(mouse) => {
+            json!({ "event": "mouse", "action": format!("{:?}", mouse.action) })
+        }
     }
 }

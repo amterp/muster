@@ -460,6 +460,9 @@ fn send_settings(control: &Control, previous: Option<&DaemonSettings>, settings:
     if previous.is_none_or(|previous| previous.cursor != settings.cursor) {
         control.set_cursor(convert::cursor(settings));
     }
+    if previous.is_none_or(|previous| previous.clipboard_write != settings.clipboard_write) {
+        control.set_clipboard_write(settings.clipboard_write.allowed());
+    }
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {

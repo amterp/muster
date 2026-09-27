@@ -865,7 +865,7 @@
         ]
       },
       "expect": {
-        "refused": "the config file has a key called \"divider_color\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: daemon, keymap, text, option_as_alt, resize_step, scroll_multiplier, numbered_chords, pane_padding, scrollback_bytes, font, colors, cursor, shell, notifications."
+        "refused": "the config file has a key called \"divider_color\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: daemon, keymap, text, option_as_alt, resize_step, scroll_multiplier, numbered_chords, pane_padding, scrollback_bytes, clipboard_write, font, colors, cursor, shell, notifications."
       }
     },
     {
@@ -1188,6 +1188,51 @@
       },
       "expect": {
         "refused": "`scrollback_bytes` in the config file is -1, and it has to be a whole number of bytes, zero or more. None of the file was applied. Bytes rather than lines because that is what the daemon measures the buffer in; leave it out for its own answer."
+      }
+    },
+    {
+      "name": "a program can be kept off the clipboard",
+      "why": "A program that writes the clipboard (OSC 52) is usually doing what somebody asked, which is why Ghostty allows it by default and so does Muster - but it is also a program writing to somewhere outside its pane without asking, and somebody who runs agents they do not fully trust has to be able to say no. `deny` rather than `false` because they are Ghostty's words for the same setting.",
+      "given": {
+        "file": [
+          "clipboard_write = \"deny\""
+        ]
+      },
+      "expect": {
+        "daemons": [],
+        "keymap": [],
+        "option_as_alt": "never",
+        "text": [],
+        "panes": [
+          "clipboard_write=deny"
+        ]
+      }
+    },
+    {
+      "name": "allowing clipboard writes is the same as leaving the key out",
+      "why": "Allowed is the default, so writing it out has to land exactly where a file that never mentioned it lands.",
+      "given": {
+        "file": [
+          "clipboard_write = \"allow\""
+        ]
+      },
+      "expect": {
+        "daemons": [],
+        "keymap": [],
+        "option_as_alt": "never",
+        "text": []
+      }
+    },
+    {
+      "name": "a clipboard answer Muster does not have is refused with the two that exist",
+      "why": "`true` and `false` are the likely mistakes, and Ghostty's third answer, `ask`, is one Muster does not offer: a file that silently fell back to allowing would leave somebody who wrote `ask` or `false` believing programs could not reach their clipboard.",
+      "given": {
+        "file": [
+          "clipboard_write = \"ask\""
+        ]
+      },
+      "expect": {
+        "refused": "`clipboard_write` in the config file is \"ask\", and it has to be one of `allow`, `deny`. None of the file was applied."
       }
     },
     {

@@ -132,6 +132,7 @@ fn describe(change: &Change) -> String {
             if restored.saving_stopped { "stopped" } else { "on" }
         ),
         Change::PasteHeld { pane, text } => format!("pasteHeld:{pane}:{}", text.len()),
+        Change::ClipboardWrite { pane, text } => format!("clipboardWrite:{pane}:{}", text.len()),
     }
 }
 
@@ -159,6 +160,10 @@ fn read_event(given: &Value) -> BackendEvent {
             saving_stopped: given.get("savingStopped").and_then(Value::as_bool).unwrap_or(false),
         }),
         "pasteHeld" => BackendEvent::PasteHeld {
+            pane: PaneId::new(text(given, "pane")),
+            text: text(given, "text"),
+        },
+        "clipboardWrite" => BackendEvent::ClipboardWrite {
             pane: PaneId::new(text(given, "pane")),
             text: text(given, "text"),
         },

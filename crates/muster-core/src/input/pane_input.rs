@@ -59,8 +59,9 @@ impl PaneInput {
         *typing = Typing { keymap: settings.keymap(), settings: settings.clone() };
     }
 
-    /// Sends one keystroke, unless the keymap takes it.
-    pub fn send(&self, key: &KeyEvent) {
+    /// Sends one keystroke, unless the keymap takes it, and says whether the pane got it: as
+    /// itself, or as the text a binding writes.
+    pub fn send(&self, key: &KeyEvent) -> bool {
         let (resolution, as_alt, option_as_alt) = {
             let typing = self.typing.read().expect("a panicking sender poisoned the settings");
             (typing.keymap.resolve(key), typing.settings.as_alt(key), typing.settings.option_as_alt)
@@ -76,6 +77,7 @@ impl PaneInput {
                     },
                 );
                 self.deliver(InputEvent::Bytes(bytes));
+                true
             }
             Resolution::Action(_) => {
                 log::debug(
@@ -85,6 +87,7 @@ impl PaneInput {
                         "mods" => key.modifiers.names().join("+"),
                     },
                 );
+                false
             }
             Resolution::Unbound => {
                 let key = as_alt.unwrap_or_else(|| key.clone());
@@ -97,6 +100,7 @@ impl PaneInput {
                     },
                 );
                 self.deliver(InputEvent::Key { key, option_as_alt });
+                true
             }
         }
     }
@@ -130,6 +134,19 @@ impl PaneInput {
             },
         );
         self.deliver(InputEvent::Paste { text: text.to_string(), confirmed });
+    }
+
+    /// A wheel turn or the mouse over the pane, for a program that may have asked for it.
+    ///
+    /// Not counted as something reaching the pane: most programs draw nothing for a wheel or a
+    /// click, and a pane that stays still after one is not frozen.
+    pub fn pointer(&self, event: InputEvent) {
+        if let Err(not_sent) = self.sink.send(&self.pane, event) {
+            log::debug(
+                "input.not_sent",
+                fields! { "pane" => self.pane.to_string(), "why" => not_sent.to_string() },
+            );
+        }
     }
 
     fn deliver(&self, event: InputEvent) {

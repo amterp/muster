@@ -131,6 +131,9 @@ fn panes(panes: &config::Panes) -> Vec<String> {
             set.push(format!("shell.{key}={value}"));
         }
     }
+    if !panes.clipboard_write.allowed() {
+        set.push("clipboard_write=deny".to_string());
+    }
     set
 }
 

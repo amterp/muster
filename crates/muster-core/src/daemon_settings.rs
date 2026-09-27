@@ -8,7 +8,7 @@
 //! Pure, so the one rule here that is a decision rather than a copy - what palette a config
 //! that named only some colours stands for - is answerable to a test.
 
-use crate::config::{Config, Cursor, Rgb, Shell};
+use crate::config::{ClipboardWrite, Config, Cursor, Rgb, Shell};
 
 /// Ghostty's own default background and foreground (`src/config/Config.zig`), which the
 /// renderer draws when the config names none.
@@ -24,6 +24,9 @@ pub struct DaemonSettings {
     /// palette, which is what the renderer draws then too.
     pub palette: Option<Palette>,
     pub cursor: Cursor,
+    /// Whether programs may set the clipboard. The window applies a write; the daemon is told
+    /// so that a program asking what the terminal supports gets the truth.
+    pub clipboard_write: ClipboardWrite,
 }
 
 /// The colours programs are told the terminal has, when they ask.
@@ -63,6 +66,7 @@ impl DaemonSettings {
             scrollback_bytes: config.panes.scrollback_bytes,
             palette,
             cursor: config.appearance.cursor,
+            clipboard_write: config.panes.clipboard_write,
         }
     }
 }

@@ -6,11 +6,11 @@
 use muster_core::AgentState;
 use muster_core::config::{CursorStyle, Rgb, ShellMode};
 use muster_core::daemon_settings::{DaemonSettings, Palette};
-use muster_core::input::{InputEvent, KeyAction, OptionAsAlt};
+use muster_core::input::{InputEvent, KeyAction, MouseAction, MouseButton, OptionAsAlt};
 use muster_core::intent::{Branch, Side};
 use muster_core::mirror::backend::{AgentFacts, LayoutNode, Pane, PaneId, SplitAxis, Tab, TabId};
 use muster_core::mirror::{BackendEvent, Restored, Snapshot};
-use muster_daemon_proto::{self as proto, event, input_event};
+use muster_daemon_proto::{self as proto, event, input_event, pane_effect};
 
 /// A snapshot, with any tab whose tree will not read left out and counted.
 pub fn snapshot(snapshot: proto::Snapshot) -> (Snapshot, usize) {
@@ -35,8 +35,8 @@ pub fn snapshot(snapshot: proto::Snapshot) -> (Snapshot, usize) {
 }
 
 /// What an event means to the mirror. None for one the mirror holds nothing about: a setting
-/// changed, which this app sent; an effect, which the shell hears about another way; and a
-/// daemon handing over, whose connection ends right after, which is what the follower acts on.
+/// changed, which this app sent; an effect the window does not act on; and a daemon handing
+/// over, whose connection ends right after, which is what the follower acts on.
 pub fn event(event: proto::Event) -> Option<BackendEvent> {
     Some(match event.event? {
         event::Event::PaneOpened(opened) => BackendEvent::PaneOpened(pane(opened.pane?)),
@@ -49,6 +49,14 @@ pub fn event(event: proto::Event) -> Option<BackendEvent> {
         event::Event::PasteHeld(held) => {
             BackendEvent::PasteHeld { pane: PaneId::new(held.pane), text: held.text }
         }
+        event::Event::PaneEffect(proto::PaneEffect {
+            pane,
+            effect: Some(pane_effect::Effect::ClipboardWrite(write)),
+        }) if write.clipboard() == proto::ClipboardKind::Standard => {
+            BackendEvent::ClipboardWrite { pane: PaneId::new(pane), text: write.text }
+        }
+        // The selection and primary clipboards are X11's, and a Mac has neither; the bell,
+        // notifications and progress are not carried yet.
         event::Event::SettingsChanged(_)
         | event::Event::PaneEffect(_)
         | event::Event::Replaced(_) => return None,
@@ -176,6 +184,33 @@ pub fn input(
         InputEvent::Bytes(bytes) => input_event::Input::Perform(input_event::Perform {
             action: Some(input_event::perform::Action::Raw(bytes)),
             unconsumed: Vec::new(),
+        }),
+        InputEvent::Wheel(wheel) => input_event::Input::Wheel(input_event::Wheel {
+            dx: wheel.dx,
+            dy: wheel.dy,
+            precise: wheel.precise,
+            momentum: u32::from(wheel.momentum),
+            mods: u32::from(wheel.modifiers.0),
+            x: wheel.x,
+            y: wheel.y,
+        }),
+        InputEvent::Mouse(mouse) => input_event::Input::Mouse(input_event::Mouse {
+            action: match mouse.action {
+                MouseAction::Press => proto::MouseAction::Press,
+                MouseAction::Release => proto::MouseAction::Release,
+                MouseAction::Motion => proto::MouseAction::Motion,
+            }
+            .into(),
+            button: match mouse.button {
+                MouseButton::None => proto::MouseButton::None,
+                MouseButton::Left => proto::MouseButton::Left,
+                MouseButton::Right => proto::MouseButton::Right,
+                MouseButton::Middle => proto::MouseButton::Middle,
+            }
+            .into(),
+            mods: u32::from(mouse.modifiers.0),
+            x: mouse.x,
+            y: mouse.y,
         }),
     };
     proto::InputEvent { pane: pane.to_string(), input: Some(input) }

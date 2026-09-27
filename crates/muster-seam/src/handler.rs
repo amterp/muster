@@ -4,6 +4,7 @@
 //! shell, a window or a linker. [`crate::ffi`] is the shim that lets a C caller reach it.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
 use muster_core::diagnostics::log::{self, LogLevel};
 use muster_core::diagnostics::sink::JsonLinesSink;
@@ -14,7 +15,10 @@ use muster_core::config::{self, CursorStyle};
 use muster_core::daemon_settings::DaemonSettings;
 use muster_core::equalize::Evenly;
 use muster_core::font::{self, FontReport};
-use muster_core::input::{CompositionOutcome, Modifiers, composition_outcome};
+use muster_core::input::{
+    CompositionOutcome, InputEvent, Modifiers, Mouse, MouseAction, MouseButton, Wheel,
+    composition_outcome,
+};
 use muster_core::intent::Refusal;
 use muster_core::intent::{BackendIntent, Branch, Side};
 use muster_core::mirror::backend::{PaneId, TabId};
@@ -112,17 +116,14 @@ fn route(payload: request::Payload) -> Response {
         request::Payload::CreateTab(create) => create_tab(&create),
         request::Payload::BridgeExited(exited) => bridge_exited(&exited),
         request::Payload::KeyDown(down) => with_pane("a keystroke", |pane| key_down(pane, &down)),
-        request::Payload::KeyUp(up) => {
-            with_pane("a key release", |pane| send_key(pane, up.key.as_ref()))
-        }
+        request::Payload::KeyUp(up) => with_pane("a key release", |pane| key_up(pane, &up)),
         request::Payload::SendText(text) => with_pane("text", |pane| {
             pane.input.send_text(&text.text);
             Response::ok()
         }),
-        request::Payload::Paste(paste) => with_pane("a paste", |pane| {
-            pane.input.paste(&paste.text, paste.confirmed);
-            Response::ok()
-        }),
+        request::Payload::Paste(paste) => paste_into(&paste),
+        request::Payload::Wheel(wheel) => wheel_over(&wheel),
+        request::Payload::Mouse(mouse) => mouse_over(&mouse),
         request::Payload::SplitPane(split) => split_pane(&split),
         request::Payload::ReattachPane(reattach) => {
             reattach_pane(&reattach.daemon_id, &reattach.pane_id)
@@ -510,31 +511,142 @@ fn equalize_panes(even: &proto::EqualizePanes) -> Response {
 /// exactly one thing may come of a press: the text a composition produced, or the key
 /// itself, or nothing at all.
 fn key_down(pane: &AttachedPane, down: &proto::KeyDown) -> Response {
-    match composition_outcome(down.was_composing, down.committed.as_deref(), down.still_composing) {
-        CompositionOutcome::SendNothing => Response::ok(),
+    let to_pane = match composition_outcome(
+        down.was_composing,
+        down.committed.as_deref(),
+        down.still_composing,
+    ) {
+        CompositionOutcome::SendNothing => false,
         CompositionOutcome::SendText(text) => {
             pane.input.send_text(&text);
-            Response::ok()
+            true
         }
-        CompositionOutcome::SendKey => send_key(pane, down.key.as_ref()),
+        CompositionOutcome::SendKey => match send_key(pane, down.key.as_ref()) {
+            Ok(to_pane) => to_pane,
+            Err(refusal) => return *refusal,
+        },
+    };
+    Response { payload: Some(response::Payload::KeyHandled(proto::KeyHandled { to_pane })) }
+}
+
+fn key_up(pane: &AttachedPane, up: &proto::KeyUp) -> Response {
+    match send_key(pane, up.key.as_ref()) {
+        Ok(_) => Response::ok(),
+        Err(refusal) => *refusal,
     }
 }
 
-fn send_key(pane: &AttachedPane, key: Option<&proto::KeyEvent>) -> Response {
+/// Sends a key to the pane unless the keymap takes it, and says whether the pane got it.
+fn send_key(pane: &AttachedPane, key: Option<&proto::KeyEvent>) -> Result<bool, Box<Response>> {
     let Some(key) = key else {
-        return Response::failure(
+        return Err(Box::new(Response::failure(
             "the core was handed a keystroke with no key in it, so nothing reached the pane. \
              This is a bug in the shell's request building rather than a state worth \
              recovering from.",
-        );
+        )));
     };
-    match convert::key(key) {
-        Ok(key) => {
-            pane.input.send(&key);
+    convert::key(key)
+        .map(|key| pane.input.send(&key))
+        .map_err(|reason| Box::new(Response::failure(reason)))
+}
+
+/// A paste, into the pane with the keyboard or the one a held paste named.
+fn paste_into(paste: &proto::Paste) -> Response {
+    if paste.pane_id.is_empty() {
+        return with_pane("a paste", |pane| {
+            pane.input.paste(&paste.text, paste.confirmed);
+            Response::ok()
+        });
+    }
+    match named_pane(&paste.daemon_id, &paste.pane_id) {
+        Ok(pane) => {
+            pane.input.paste(&paste.text, paste.confirmed);
             Response::ok()
         }
-        Err(reason) => Response::failure(reason),
+        Err(refusal) => *refusal,
     }
+}
+
+/// A wheel turn over a pane, scaled as the surface scales its own scrolling.
+fn wheel_over(wheel: &proto::Wheel) -> Response {
+    let Some(modifiers) = Modifiers::parse(&wheel.modifiers) else {
+        return unknown_modifiers(&wheel.modifiers, "wheel turn");
+    };
+    let event = Wheel {
+        dx: wheel.dx,
+        dy: wheel.dy,
+        precise: wheel.precise,
+        momentum: u8::try_from(wheel.momentum).unwrap_or_default(),
+        modifiers,
+        x: wheel.x,
+        y: wheel.y,
+    };
+    pointer(
+        &wheel.daemon_id,
+        &wheel.pane_id,
+        InputEvent::Wheel(event.scaled(session::feel().scroll_multiplier)),
+    )
+}
+
+fn mouse_over(mouse: &proto::Mouse) -> Response {
+    let Some(modifiers) = Modifiers::parse(&mouse.modifiers) else {
+        return unknown_modifiers(&mouse.modifiers, "click");
+    };
+    let action = match mouse.action.as_str() {
+        "press" => MouseAction::Press,
+        "release" => MouseAction::Release,
+        "motion" => MouseAction::Motion,
+        other => {
+            return Response::failure(format!(
+                "the core does not know a mouse action called {other:?}, so it reached the pane \
+                 as nothing. Only press, release and motion exist."
+            ));
+        }
+    };
+    let button = match mouse.button.as_str() {
+        "none" | "" => MouseButton::None,
+        "left" => MouseButton::Left,
+        "right" => MouseButton::Right,
+        "middle" => MouseButton::Middle,
+        other => {
+            return Response::failure(format!(
+                "the core does not know a mouse button called {other:?}, so it reached the \
+                 pane as nothing. Only none, left, right and middle exist."
+            ));
+        }
+    };
+    let event = Mouse { action, button, modifiers, x: mouse.x, y: mouse.y };
+    pointer(&mouse.daemon_id, &mouse.pane_id, InputEvent::Mouse(event))
+}
+
+fn pointer(daemon_id: &str, pane_id: &str, event: InputEvent) -> Response {
+    match named_pane(daemon_id, pane_id) {
+        Ok(pane) => {
+            pane.input.pointer(event);
+            Response::ok()
+        }
+        Err(refusal) => *refusal,
+    }
+}
+
+/// A pane this window draws, named by both its daemon and itself, since two daemons hand out
+/// the same pane names.
+fn named_pane(daemon_id: &str, pane_id: &str) -> Result<Arc<AttachedPane>, Box<Response>> {
+    let daemon = DaemonId::new(daemon_id);
+    let pane = PaneId::new(pane_id);
+    session::attached_pane(&daemon, &pane).ok_or_else(|| {
+        Box::new(Response::failure(format!(
+            "this window is not drawing pane {pane} of {daemon}, so nothing reached it. Most \
+             likely it closed or moved to another tab while this was in flight."
+        )))
+    })
+}
+
+fn unknown_modifiers(modifiers: &[String], what: &str) -> Response {
+    Response::failure(format!(
+        "the core does not know one of the modifiers {modifiers:?}, so that {what} reached the \
+         pane as nothing rather than as the wrong one."
+    ))
 }
 
 /// Runs something against the pane the keyboard feeds, or explains why there is not one.
@@ -968,6 +1080,7 @@ fn appearance_message() -> proto::Appearance {
 
         divider_color: color(appearance.colors.divider),
         focus_ring_color: color(appearance.colors.focus_ring),
+        scroll_multiplier: session::feel().scroll_multiplier,
         agent_colors: Some(proto::AgentColors {
             working: color(appearance.colors.agents.working),
             blocked: color(appearance.colors.agents.blocked),
@@ -1674,6 +1787,7 @@ fn start(startup: &proto::Startup) -> Response {
     // Before the config, because applying one attaches the daemons it names and attaching a
     // local one may have to start it.
     session::set_daemon_binary(&startup.daemon_path);
+    session::set_daemon_data(&startup.daemon_data_path);
     // Before the config too, and for a sharper reason: applying a config attaches daemons,
     // attaching publishes, and a publish before this is one that would write the arrangement
     // out to nowhere - or worse, read it back after it had been replaced.

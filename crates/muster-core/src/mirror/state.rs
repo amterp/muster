@@ -150,6 +150,9 @@ impl Mirror {
                 vec![Change::Restored(restored)]
             }
             BackendEvent::PasteHeld { pane, text } => vec![Change::PasteHeld { pane, text }],
+            BackendEvent::ClipboardWrite { pane, text } => {
+                vec![Change::ClipboardWrite { pane, text }]
+            }
         }
     }
 

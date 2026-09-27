@@ -45,7 +45,7 @@ use muster_ssh::{Forward, State as TunnelState, Tunnel, remote_environment};
 use crate::bridge_link::{PaneLink, Reports};
 use crate::holding::Holding;
 use crate::proto::{
-    AttentionChanged, Event, PaneTypeable, PasteHeld, PresentationChanged,
+    AttentionChanged, ClipboardWrite, Event, PaneTypeable, PasteHeld, PresentationChanged,
     Problem as ProblemMessage, ProblemsChanged, RaiseWindow, ReopenWindow, RosterChanged,
     ViewChanged, event,
 };
@@ -76,6 +76,15 @@ pub(crate) fn set_daemon_binary(path: &str) {
 
 fn daemon_binary() -> Option<String> {
     poison::lock(&DAEMON_BINARY, "daemon-binary").clone()
+}
+
+/// The daemon's data directory, when the shell keeps it somewhere other than beside the
+/// binary. None is the directory beside it, which is where a build puts it.
+static DAEMON_DATA: Mutex<Option<String>> = Mutex::new(None);
+
+pub(crate) fn set_daemon_data(path: &str) {
+    let mut held = poison::lock(&DAEMON_DATA, "daemon-data");
+    *held = if path.is_empty() { None } else { Some(path.to_string()) };
 }
 
 /// What locale this machine is set to, as the shell read it off the platform.
@@ -533,9 +542,10 @@ fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, String> {
                 platform_locale().as_deref(),
                 commands_path().as_deref(),
             );
+            let data = poison::lock(&DAEMON_DATA, "daemon-data").clone();
             let (reached, _) = launch::ensure_running(&launch::Launch {
                 binary: binary.as_ref(),
-                data: None,
+                data: data.as_deref().map(std::path::Path::new),
                 socket: &socket,
                 environment: &given,
             })?;
@@ -1390,6 +1400,19 @@ impl Session {
 /// The pane this window's keyboard feeds, if it has one.
 pub(crate) fn keyboard_pane() -> Option<Arc<AttachedPane>> {
     poison::lock(&SESSION, "session").keyboard_pane()
+}
+
+/// A pane this window is drawing, by name: the one under the pointer, or the one a held paste
+/// came from.
+pub(crate) fn attached_pane(daemon: &DaemonId, pane: &PaneId) -> Option<Arc<AttachedPane>> {
+    poison::lock(&SESSION, "session").panes.get(daemon)?.get(pane).map(Arc::clone)
+}
+
+/// Whether the config lets a program in a pane set the clipboard.
+fn clipboard_writes_allowed() -> bool {
+    poison::lock(&SETTINGS, "daemon-settings")
+        .as_ref()
+        .is_none_or(|settings| settings.clipboard_write.allowed())
 }
 
 /// Whether this window's keyboard follows a pane the request makes.
@@ -3776,6 +3799,27 @@ fn report(daemon: &DaemonId, change: &Change) {
 
     if let Change::Restored(restored) = change {
         restored_from_disk(daemon, restored);
+    }
+    if let Change::ClipboardWrite { pane, text } = change {
+        let allowed = clipboard_writes_allowed();
+        log::info(
+            "clipboard.write",
+            fields! {
+                "daemon" => daemon.to_string(),
+                "pane" => pane.to_string(),
+                "characters" => text.chars().count().to_string(),
+                "allowed" => allowed.to_string(),
+            },
+        );
+        if allowed {
+            ffi::emit(&Event {
+                payload: Some(event::Payload::ClipboardWrite(ClipboardWrite {
+                    daemon_id: daemon.to_string(),
+                    pane_id: pane.to_string(),
+                    text: text.clone(),
+                })),
+            });
+        }
     }
     if let Change::PasteHeld { pane, text } = change {
         log::info(

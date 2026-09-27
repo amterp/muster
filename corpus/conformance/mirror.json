@@ -961,6 +961,69 @@
       }
     },
     {
+      "name": "a program's clipboard write passes through the mirror",
+      "why": "A clipboard write is an effect, not state: the window decides whether to apply it, so the mirror hands it on as a change and keeps nothing of it.",
+      "given": {
+        "snapshot": {
+          "tabs": [
+            {
+              "id": "t1",
+              "root": {
+                "axis": "columns",
+                "ratio": 0.5,
+                "first": "p1",
+                "second": "p2"
+              }
+            }
+          ],
+          "panes": [
+            {
+              "id": "p1",
+              "agentState": "idle",
+              "cwd": "/src"
+            },
+            {
+              "id": "p2",
+              "agentState": "idle",
+              "cwd": "/src"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "clipboardWrite",
+            "pane": "p1",
+            "text": "copied"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "p1",
+          "p2"
+        ],
+        "tabs": [
+          "t1"
+        ],
+        "paneTabs": {
+          "p1": "t1",
+          "p2": "t1"
+        },
+        "agentStates": {
+          "p1": "idle",
+          "p2": "idle"
+        },
+        "layouts": {
+          "t1": "columns(p1, p2@0.5)"
+        },
+        "health": "connected",
+        "restoring": false,
+        "changes": [
+          "clipboardWrite:p1:6"
+        ]
+      }
+    },
+    {
       "name": "a reconnect reports only what moved",
       "why": "A new snapshot replaces everything, and reporting the difference rather than everything is what lets a reconnect update the window without repainting panes nothing happened to.",
       "given": {

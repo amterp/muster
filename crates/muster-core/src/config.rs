@@ -372,6 +372,35 @@ pub struct Panes {
 
     /// `[shell]`.
     pub shell: Shell,
+
+    /// Whether a program in a pane may set the clipboard (OSC 52). Allowed unless the file
+    /// says `deny`, which is Ghostty's default too: a program that copies is doing what it was
+    /// asked, and one that may not reads as broken.
+    pub clipboard_write: ClipboardWrite,
+}
+
+/// `clipboard_write`: Ghostty's two answers to the same question, by Ghostty's names.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ClipboardWrite {
+    #[default]
+    Allow,
+    Deny,
+}
+
+impl ClipboardWrite {
+    pub const READABLE: [&str; 2] = ["allow", "deny"];
+
+    pub fn parse(name: &str) -> Option<ClipboardWrite> {
+        match name {
+            "allow" => Some(ClipboardWrite::Allow),
+            "deny" => Some(ClipboardWrite::Deny),
+            _ => None,
+        }
+    }
+
+    pub fn allowed(self) -> bool {
+        self == ClipboardWrite::Allow
+    }
 }
 
 /// What a pane runs, and how it starts.
@@ -469,7 +498,7 @@ impl std::fmt::Display for Rgb {
 const DAEMON_KEYS: [&str; 4] = ["id", "socket", "host", "ssh_options"];
 
 /// The keys the file itself may carry.
-const ROOT_KEYS: [&str; 14] = [
+const ROOT_KEYS: [&str; 15] = [
     "daemon",
     "keymap",
     "text",
@@ -479,6 +508,7 @@ const ROOT_KEYS: [&str; 14] = [
     "numbered_chords",
     "pane_padding",
     "scrollback_bytes",
+    "clipboard_write",
     "font",
     "colors",
     "cursor",
@@ -598,12 +628,26 @@ fn read_notifications(block: Option<toml::Table>) -> Result<Notifications, Strin
     Ok(notifications)
 }
 
-/// `scrollback_bytes` and `[shell]`.
+/// `scrollback_bytes`, `clipboard_write` and `[shell]`.
 fn read_panes(root: &toml::Table) -> Result<Panes, String> {
     let mut panes = Panes {
         scrollback_bytes: None,
         shell: read_shell(block(root, "shell", &SHELL_KEYS)?.as_ref())?,
+        clipboard_write: ClipboardWrite::default(),
     };
+
+    if let Some(value) = root.get("clipboard_write") {
+        let refused = |what: String| {
+            format!(
+                "`clipboard_write` in the config file is {what}, and it has to be one of {}. None \
+                 of the file was applied.",
+                quoted(&ClipboardWrite::READABLE),
+            )
+        };
+        let name = value.as_str().ok_or_else(|| refused(described(value).to_string()))?;
+        panes.clipboard_write =
+            ClipboardWrite::parse(name).ok_or_else(|| refused(format!("{name:?}")))?;
+    }
 
     if let Some(value) = root.get("scrollback_bytes") {
         panes.scrollback_bytes = Some(
