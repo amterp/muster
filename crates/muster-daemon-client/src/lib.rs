@@ -1,6 +1,6 @@
 //! Muster's side of muster-daemon's protocol (MIP-3, section 11): the control connection the
-//! app asks and follows a daemon on, the input connection its keystrokes travel, and the stream
-//! a bridge draws a pane from.
+//! app asks and follows a daemon on, the input connection its keystrokes travel, the stream a
+//! bridge draws a pane from, and starting or adopting a daemon here or on another machine.
 
 pub mod control;
 pub mod input;
