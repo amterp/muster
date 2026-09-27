@@ -6,17 +6,18 @@
     "backend",
     "shell"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "created_at_millis": 1790477155201,
   "creator": "Alexander Terp",
   "description": "Raised by round 1 of MIP-3 (slot 2). muster-daemon logs through muster_core::diagnostics::log and honors MUSTER_LOG_FILE, so under the app today it would write into the run log of the launch that started it. A daemon outlives that run by design (MIP-3 section 1), so later runs' timelines would miss it and the file it holds grows or dangles. AGENTS.md's 'every run explains itself' wants the daemon's events in each run's single timeline. Options to weigh: the daemon writes its own rotating file under ~/.muster/state (it must rotate itself - launchd holds StandardOutPath open) and each app run merges the window it covers; or the daemon streams its log events to connected apps over the control connection. Decide before the helper app starts muster-daemon (a_2XJ1ie3Ep).",
   "id": "a_2XM7ALAgi",
   "parent": "a_2XJ1fUIyr",
-  "position": "an",
+  "position": "Zk",
   "title": "The daemon's log has nowhere to go once it outlives the run that started it",
   "type": "chore",
-  "updated_at_millis": 1790477155201,
+  "updated_at_millis": 1790492840261,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1790477155201}
+    {"field":"column","value":"backlog-hi","at":1790477155201},
+    {"field":"column","value":"done","at":1790492840261}
   ]
 }

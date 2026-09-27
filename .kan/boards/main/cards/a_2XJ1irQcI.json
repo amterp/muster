@@ -6,6 +6,14 @@
     "backend"
   ],
   "column": "backlog-hi",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "From round 4: the daemon now persists state beside its socket and writes its own log there (both single-writer under the socket's lock), so a handoff must pass both cleanly to the successor. MIP-4 notes for amterp's decisions: slot 2 suggests persisted wake tokens (CLAUDE_CODE_MESSAGING_TOKEN) are a secret at rest, and that muster-daemon report stay the implementation with muster report exec-ing it.",
+      "created_at_millis": 1790492840316,
+      "id": "c_2XShCxNGD"
+    }
+  ],
   "created_at_millis": 1790469796115,
   "creator": "Alexander Terp",
   "description": "MIP-3 section 10. An app keeps using the daemon already running, so a daemon fix reaches a machine only when that daemon is replaced. Without handoff that ends every agent, people decline it, and old daemons run for weeks.\n\nThe old daemon starts the new one and passes each PTY master over `SCM_RIGHTS` with the pane's persisted fields and a replay of its headless terminal; the new one rebuilds each terminal by parsing the replay, takes the socket, and tells the old one to exit. A replay rather than the snapshot format, so the two libghostty versions need not match. The new daemon learns a pane's process exited from the PTY closing, since it is not the parent.\n\nShips before the first daemon update after the cut-over. Worth measuring on macOS: that permission (TCC) attribution survives, since the successor is started by the old daemon inside the same bundle. herdr's version (`src/server/handoff.rs`) is a reference.",
@@ -14,7 +22,7 @@
   "position": "aj",
   "title": "Handoff: replace a running daemon without ending its panes",
   "type": "feature",
-  "updated_at_millis": 1790469797471,
+  "updated_at_millis": 1790492840316,
   "history": [
     {"field":"column","value":"backlog-hi","at":1790469796115}
   ]
