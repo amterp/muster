@@ -994,8 +994,10 @@ feed, splices in the sequences where a parser keeps state across bytes or alloca
 sender's say-so, and feeds the result in random chunks between the resizes, replays, catch-ups,
 clears and formats the daemon interleaves with output. It passes when nothing crashes. It runs in
 the gate on stable Rust with a fixed seed, 15,000 cases in about 3 s; `MUSTER_FUZZ_SEED` and
-`MUSTER_FUZZ_ITERATIONS` run others. A case that crashes is written to `target/fuzz-crash.bin`,
-and one placed in `corpus/fuzz/` runs first from then on. cargo-fuzz was not used because it needs
+`MUSTER_FUZZ_ITERATIONS` run others. Each case has a seed of its own, from the run's seed and its
+number, which decides its mutations and how it is run, so a case is its input and its seed alone.
+One that crashes is written to `target/fuzz-crash.bin` with its seed in `target/fuzz-crash.seed`,
+and the two placed in `corpus/fuzz/` under one name run first from then on, as they crashed. cargo-fuzz was not used because it needs
 nightly, and `rust-toolchain.toml` pins stable.
 
 libghostty-vt is built ReleaseFast, not ReleaseSafe. ReleaseSafe keeps Zig's safety checks, so a

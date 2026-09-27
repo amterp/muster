@@ -7,14 +7,17 @@
 //! replay conformance's to judge, not this.
 //!
 //! Deterministic: a fixed seed and count, so the gate runs the same cases every time.
-//! `MUSTER_FUZZ_SEED` and `MUSTER_FUZZ_ITERATIONS` run others, or more. A case that crashes the
-//! process is written to `target/fuzz-crash.bin` first, and a file placed in `corpus/fuzz/` is
-//! run before the mutated cases from then on.
+//! `MUSTER_FUZZ_SEED` and `MUSTER_FUZZ_ITERATIONS` run others, or more. Each case has a seed of
+//! its own, made from the run's seed and the case's number, which decides both its mutations and
+//! how it is run - grid, chunks, and what is interleaved - so a case is its input and its seed
+//! alone. One that crashes the process is written to `target/fuzz-crash.bin`, with its seed in
+//! `target/fuzz-crash.seed`; both placed in `corpus/fuzz/` under one name run, as they crashed,
+//! before the mutated cases from then on.
 
 use std::ffi::CString;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
-use std::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicPtr, AtomicU64, AtomicUsize, Ordering};
 
 use muster_vt::{Format, FormatOptions, Mode, Screen, ScreenFormatOptions, Terminal};
 use muster_vt::{ScreenExtras, TerminalOptions};
@@ -174,7 +177,8 @@ fn seeds() -> Vec<Vec<u8>> {
     seeds
 }
 
-fn crashes() -> Vec<(PathBuf, Vec<u8>)> {
+/// The cases saved in `corpus/fuzz/`: each `<name>.bin` and the seed in `<name>.seed` beside it.
+fn crashes() -> Vec<(PathBuf, Vec<u8>, u64)> {
     let dir = Path::new(REPO).join("corpus/fuzz");
     let Ok(entries) = std::fs::read_dir(&dir) else { return Vec::new() };
     let mut found: Vec<_> = entries
@@ -182,11 +186,27 @@ fn crashes() -> Vec<(PathBuf, Vec<u8>)> {
         .filter(|path| path.extension().is_some_and(|extension| extension == "bin"))
         .map(|path| {
             let bytes = std::fs::read(&path).unwrap();
-            (path, bytes)
+            let seed_file = path.with_extension("seed");
+            let text = std::fs::read_to_string(&seed_file).unwrap_or_else(|error| {
+                panic!(
+                    "{}: {error}. A saved case runs as it crashed only with the seed written \
+                     beside it, target/fuzz-crash.seed, placed here under the same name.",
+                    seed_file.display()
+                )
+            });
+            let hex = text.trim().trim_start_matches("0x");
+            let seed = u64::from_str_radix(hex, 16)
+                .unwrap_or_else(|_| panic!("{}: {text:?} is not a seed", seed_file.display()));
+            (path, bytes, seed)
         })
         .collect();
     found.sort();
     found
+}
+
+/// The seed of the run's `index`th case.
+fn case_seed(seed: u64, index: u64) -> u64 {
+    Rng(seed ^ index.wrapping_mul(0x9e37_79b9_7f4a_7c15)).next()
 }
 
 fn mutated(rng: &mut Rng, seeds: &[Vec<u8>]) -> Vec<u8> {
@@ -335,63 +355,86 @@ fn run(rng: &mut Rng, input: &[u8]) {
 /// Where the case being run lives, for the crash handler to write out.
 static CASE: AtomicPtr<u8> = AtomicPtr::new(std::ptr::null_mut());
 static CASE_LENGTH: AtomicUsize = AtomicUsize::new(0);
-static CRASH_FILE: OnceLock<CString> = OnceLock::new();
+static CASE_SEED: AtomicU64 = AtomicU64::new(0);
+static CRASH_FILES: OnceLock<(CString, CString)> = OnceLock::new();
 
 extern "C" fn on_crash(signal: libc::c_int) {
     // Only async-signal-safe calls from here: open, write, close, signal, raise.
-    if let Some(path) = CRASH_FILE.get() {
-        let case = CASE.load(Ordering::SeqCst);
+    let case = CASE.load(Ordering::SeqCst);
+    if let (Some((input, seed)), false) = (CRASH_FILES.get(), case.is_null()) {
         let length = CASE_LENGTH.load(Ordering::SeqCst);
-        // SAFETY: the pointer and length describe the case `fuzz` is running, which it keeps
-        // alive until it has cleared them; the path is a NUL-terminated string set once.
-        unsafe {
-            let file =
-                libc::open(path.as_ptr(), libc::O_WRONLY | libc::O_CREAT | libc::O_TRUNC, 0o644);
-            if file >= 0 && !case.is_null() {
-                libc::write(file, case.cast(), length);
-                libc::close(file);
-            }
-            let said = b"\nfuzz: the case that crashed the terminal is in target/fuzz-crash.bin\n";
-            libc::write(2, said.as_ptr().cast(), said.len());
-            libc::signal(signal, libc::SIG_DFL);
-            libc::raise(signal);
+        let mut hex = *b"0x0000000000000000\n";
+        let value = CASE_SEED.load(Ordering::SeqCst);
+        for (at, digit) in hex[2..18].iter_mut().enumerate() {
+            let nibble = (value >> (60 - 4 * at)) & 0xf;
+            *digit = b"0123456789abcdef"[usize::try_from(nibble).unwrap_or(0)];
         }
+        let flags = libc::O_WRONLY | libc::O_CREAT | libc::O_TRUNC;
+        // SAFETY: the pointer and length describe the case `fuzz` is running, which it keeps
+        // alive until it has cleared them; the paths are NUL-terminated strings set once.
+        unsafe {
+            for (path, bytes, count) in [(input, case, length), (seed, hex.as_mut_ptr(), hex.len())]
+            {
+                let file = libc::open(path.as_ptr(), flags, 0o644);
+                if file >= 0 {
+                    libc::write(file, bytes.cast(), count);
+                    libc::close(file);
+                }
+            }
+            let said = b"\nfuzz: the case that crashed the terminal is in target/fuzz-crash.bin, \
+                         its seed in target/fuzz-crash.seed\n";
+            libc::write(2, said.as_ptr().cast(), said.len());
+        }
+    }
+    // SAFETY: as above.
+    unsafe {
+        libc::signal(signal, libc::SIG_DFL);
+        libc::raise(signal);
     }
 }
 
-/// Runs one case with the crash handler told where it is, and untold before it is freed.
-fn watched(rng: &mut Rng, input: &[u8]) {
+/// Runs one case, from its seed, with the crash handler told where it is, and untold before it
+/// is freed.
+fn watched(seed: u64, input: &[u8]) {
+    CASE_SEED.store(seed, Ordering::SeqCst);
     CASE_LENGTH.store(input.len(), Ordering::SeqCst);
     CASE.store(input.as_ptr().cast_mut(), Ordering::SeqCst);
-    run(rng, input);
+    run(&mut Rng(seed), input);
     CASE.store(std::ptr::null_mut(), Ordering::SeqCst);
 }
 
+/// The signals a crash in the parser arrives as.
+const CRASHES: [libc::c_int; 5] =
+    [libc::SIGABRT, libc::SIGSEGV, libc::SIGBUS, libc::SIGILL, libc::SIGTRAP];
+
 #[test]
 fn mutated_output_never_crashes_the_terminal() {
-    let target = Path::new(REPO).join("target/fuzz-crash.bin");
-    CRASH_FILE.set(CString::new(target.as_os_str().as_encoded_bytes()).unwrap()).unwrap();
-    // SAFETY: the handler makes only async-signal-safe calls.
-    unsafe {
-        for signal in [libc::SIGABRT, libc::SIGSEGV, libc::SIGBUS, libc::SIGILL, libc::SIGTRAP] {
-            libc::signal(signal, on_crash as *const () as libc::sighandler_t);
-        }
-    }
+    let target = Path::new(REPO).join("target");
+    let path = |name: &str| CString::new(target.join(name).as_os_str().as_encoded_bytes()).unwrap();
+    CRASH_FILES.set((path("fuzz-crash.bin"), path("fuzz-crash.seed"))).unwrap();
+    // SAFETY: the handler makes only async-signal-safe calls. The handlers found are put back
+    // at the end, so a crash in whatever runs in this process afterwards is not reported as this.
+    let previous = CRASHES
+        .map(|signal| unsafe { libc::signal(signal, on_crash as *const () as libc::sighandler_t) });
 
     let seed = environment("MUSTER_FUZZ_SEED").unwrap_or(SEED);
     let iterations = environment("MUSTER_FUZZ_ITERATIONS").unwrap_or(ITERATIONS);
-    let mut rng = Rng(seed);
 
-    for (path, input) in crashes() {
+    for (path, input, case) in crashes() {
         eprintln!("fuzz: rerunning {}", path.display());
-        watched(&mut rng, &input);
+        watched(case, &input);
     }
 
     let seeds = seeds();
     let started = std::time::Instant::now();
-    for _ in 0..iterations {
-        let input = mutated(&mut rng, &seeds);
-        watched(&mut rng, &input);
+    for index in 0..iterations {
+        let case = case_seed(seed, index);
+        let input = mutated(&mut Rng(case), &seeds);
+        watched(case, &input);
+    }
+    for (signal, handler) in CRASHES.into_iter().zip(previous) {
+        // SAFETY: restores what was installed before.
+        unsafe { libc::signal(signal, handler) };
     }
     eprintln!(
         "fuzz: {iterations} cases from seed {seed:#x} in {:.1?}; none crashed",
