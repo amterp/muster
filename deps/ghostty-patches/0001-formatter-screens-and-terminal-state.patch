@@ -15,14 +15,21 @@ formatters. This exposes both to C:
   alternate screen, looked up on every format call. It can omit content,
   and can emit the blank rows below the last row with text, which the
   formatter always drops, so that its output spans every row.
+- formatter.Options.unstyled_blanks, default false, which only
+  ghostty_formatter_screen_new turns on. The formatter writes a run of
+  blank cells before the next text in whatever style the previous text
+  left open, so a background or underline bleeds across the gap; with
+  the option it closes the style first. Default output is unchanged, and
+  a test pins both.
 
-Additive only: two functions, one struct, no existing behavior changed.
+Additive only: two functions, one struct, one option that defaults to
+the existing output, no existing behavior changed.
 Muster carries this for good rather than sending it upstream, so it is
 kept small enough to rebase on a re-pin. The Zig tests at the end of
 src/terminal/c/formatter.zig cover it: zig build test-lib-vt.
 
 diff --git a/include/ghostty/vt/formatter.h b/include/ghostty/vt/formatter.h
-index 5cdcd11..47fb771 100644
+index 5cdcd11..93b709d 100644
 --- a/include/ghostty/vt/formatter.h
 +++ b/include/ghostty/vt/formatter.h
 @@ -117,6 +117,37 @@ typedef struct {
@@ -63,7 +70,7 @@ index 5cdcd11..47fb771 100644
  /**
   * Create a formatter for a terminal's active screen.
   *
-@@ -137,6 +168,54 @@ GHOSTTY_API GhosttyResult ghostty_formatter_terminal_new(
+@@ -137,6 +168,58 @@ GHOSTTY_API GhosttyResult ghostty_formatter_terminal_new(
      GhosttyTerminal terminal,
      GhosttyFormatterTerminalOptions options);
  
@@ -96,6 +103,10 @@ index 5cdcd11..47fb771 100644
 + *
 + * The screen is looked up on each format call. A screen the terminal has
 + * never initialized formats as empty output.
++ *
++ * Unlike ghostty_formatter_terminal_new(), blank cells between text are
++ * written unstyled, as the screen holds them, rather than in the style of
++ * the text before them.
 + *
 + * The terminal must outlive the formatter.
 + *
@@ -132,7 +143,7 @@ index 5b78b8c..f172aa6 100644
          @export(&c.formatter_format_alloc, .{ .name = "ghostty_formatter_format_alloc" });
          @export(&c.formatter_free, .{ .name = "ghostty_formatter_free" });
 diff --git a/src/terminal/c/formatter.zig b/src/terminal/c/formatter.zig
-index 9b3c143..b79d167 100644
+index 9b3c143..64b69c5 100644
 --- a/src/terminal/c/formatter.zig
 +++ b/src/terminal/c/formatter.zig
 @@ -6,7 +6,10 @@ const terminal_c = @import("terminal.zig");
@@ -237,7 +248,7 @@ index 9b3c143..b79d167 100644
      /// C: GhosttyFormatterScreenExtra
      pub const Extra = extern struct {
          size: usize = @sizeOf(Extra),
-@@ -160,6 +240,103 @@ fn terminal_new_(
+@@ -160,6 +240,104 @@ fn terminal_new_(
      return ptr;
  }
  
@@ -327,6 +338,7 @@ index 9b3c143..b79d167 100644
 +                .emit = opts.emit,
 +                .unwrap = opts.unwrap,
 +                .trim = opts.trim,
++                .unstyled_blanks = true,
 +            },
 +            .content = opts.content,
 +            .trailing_blank_rows = opts.trailing_blank_rows,
@@ -341,7 +353,7 @@ index 9b3c143..b79d167 100644
  pub fn format_buf(
      formatter_: Formatter,
      out_: ?[*]u8,
-@@ -174,12 +351,12 @@ pub fn format_buf(
+@@ -174,12 +352,12 @@ pub fn format_buf(
          &.{});
  
      switch (wrapper.kind) {
@@ -356,7 +368,7 @@ index 9b3c143..b79d167 100644
                  out_written.* = @intCast(discarding.count);
                  return .out_of_space;
              },
-@@ -203,7 +380,7 @@ pub fn format_alloc(
+@@ -203,7 +381,7 @@ pub fn format_alloc(
      defer aw.deinit();
  
      switch (wrapper.kind) {
@@ -365,7 +377,7 @@ index 9b3c143..b79d167 100644
      }
  
      const buf = aw.toOwnedSlice() catch return .out_of_memory;
-@@ -481,3 +658,221 @@ test "format html" {
+@@ -481,3 +659,274 @@ test "format html" {
      try testing.expect(written > 0);
      try testing.expect(std.mem.indexOf(u8, buf[0..written], "Html") != null);
  }
@@ -587,6 +599,59 @@ index 9b3c143..b79d167 100644
 +    try testing.expectEqual(Result.success, format_buf(f, &buf, buf.len, &written));
 +    try testing.expectEqualStrings("\r\n\r\n\r\n", buf[0..written]);
 +}
++
++test "screen_new writes blanks between text unstyled, terminal_new does not" {
++    var t: terminal_c.Terminal = null;
++    try testing.expectEqual(Result.success, terminal_c.new(
++        &lib.alloc.test_allocator,
++        &t,
++        20,
++        3,
++    ));
++    defer terminal_c.free(t);
++
++    // Red text, then more text further along the row with nothing between.
++    const input = "\x1b[41mred\x1b[0m\x1b[1;10Hx\x1b[41m\x1b[1;15Hy\x1b[2;1Ha\x1b[2;5Hb\x1b[0m";
++    terminal_c.vt_write(t, input, input.len);
++
++    var existing: Formatter = null;
++    try testing.expectEqual(Result.success, terminal_new(
++        &lib.alloc.test_allocator,
++        &existing,
++        t,
++        .{ .emit = .vt, .unwrap = false, .trim = true, .extra = .{ .palette = false, .modes = false, .scrolling_region = false, .tabstops = false, .pwd = false, .keyboard = false, .screen = .{ .cursor = false, .style = false, .hyperlink = false, .protection = false, .kitty_keyboard = false, .charsets = false } } },
++    ));
++    defer free(existing);
++
++    var screen: Formatter = null;
++    try testing.expectEqual(Result.success, screen_new(
++        &lib.alloc.test_allocator,
++        &screen,
++        t,
++        .primary,
++        .{ .emit = .vt, .unwrap = false, .trim = true, .content = true, .trailing_blank_rows = false, .extra = .{ .cursor = false, .style = false, .hyperlink = false, .protection = false, .kitty_keyboard = false, .charsets = false } },
++    ));
++    defer free(screen);
++
++    var buf: [1024]u8 = undefined;
++    var written: usize = 0;
++    // The existing formatter is unchanged: the gaps take the red of the text before them.
++    try testing.expectEqual(Result.success, format_buf(existing, &buf, buf.len, &written));
++    try testing.expectEqualStrings(
++        "\x1b[0m\x1b[48;5;1mred      \x1b[0mx    \x1b[0m\x1b[48;5;1my\x1b[0m\r\n" ++
++            "\x1b[0m\x1b[48;5;1ma   b\x1b[0m",
++        buf[0..written],
++    );
++
++    // A screen formatter closes the style before a gap, including a gap between two runs
++    // of the same style.
++    try testing.expectEqual(Result.success, format_buf(screen, &buf, buf.len, &written));
++    try testing.expectEqualStrings(
++        "\x1b[0m\x1b[48;5;1mred\x1b[0m      x    \x1b[0m\x1b[48;5;1my\x1b[0m\r\n" ++
++            "\x1b[0m\x1b[48;5;1ma\x1b[0m   \x1b[0m\x1b[48;5;1mb\x1b[0m",
++        buf[0..written],
++    );
++}
 diff --git a/src/terminal/c/main.zig b/src/terminal/c/main.zig
 index d6f9e66..00f7796 100644
 --- a/src/terminal/c/main.zig
@@ -600,3 +665,47 @@ index d6f9e66..00f7796 100644
  pub const formatter_format_buf = formatter.format_buf;
  pub const formatter_format_alloc = formatter.format_alloc;
  pub const formatter_free = formatter.free;
+diff --git a/src/terminal/formatter.zig b/src/terminal/formatter.zig
+index 701a798..84607a4 100644
+--- a/src/terminal/formatter.zig
++++ b/src/terminal/formatter.zig
+@@ -96,6 +96,12 @@ pub const Options = struct {
+     /// is currently only space characters (0x20).
+     trim: bool = true,
+ 
++    /// Write blank cells that fall between text unstyled, as the screen
++    /// holds them. By default a run of blank cells is written as spaces in
++    /// whatever style the previous text left open, so a background or an
++    /// underline carries across the gap to the next text on the row.
++    unstyled_blanks: bool = false,
++
+     /// Replace matching Unicode codepoints with some other values.
+     /// This will use the last matching range found in the list.
+     codepoint_map: ?std.MultiArrayList(CodepointMap) = .{},
+@@ -1337,6 +1343,13 @@ pub const PageFormatter = struct {
+                 // This cell is not blank. If we have accumulated blank cells
+                 // then we want to emit them now.
+                 if (blank_cells > 0) {
++                    if (comptime formatStyled(emit)) {
++                        if (self.opts.unstyled_blanks and !style.default()) {
++                            try self.formatStyleClose(emit, writer);
++                            style = .{};
++                            style_id = 0;
++                        }
++                    }
+                     try writer.splatByteAll(' ', blank_cells);
+ 
+                     if (self.point_map) |*map| try self.appendBlankPoints(
+@@ -1661,6 +1674,12 @@ pub const PageFormatter = struct {
+             // The page coordinate of this cell, for point tracking.
+             const x: size.CellCountInt = @intCast(run_x + i);
+ 
++            // Blanks inside a styled run would take the run's style. The
++            // slow path writes them unstyled when asked to.
++            if (comptime formatStyled(emit)) {
++                if (pending > 0 and self.opts.unstyled_blanks and run_style_id != 0) break;
++            }
++
+             // This cell produces output: materialize accumulated blanks.
+             if (pending > 0) {
+                 if (comptime track_points) try self.appendBlankPoints(
