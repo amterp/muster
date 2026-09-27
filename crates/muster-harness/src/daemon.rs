@@ -95,16 +95,27 @@ impl Daemon {
 
     /// The same, with more in the daemon's environment - which every pane's starts from.
     pub fn start_with(binary: impl AsRef<Path>, environment: &[(&str, &str)]) -> Daemon {
-        Daemon::launch(binary, environment, None)
+        Daemon::launch(binary, environment, None, |_| {})
     }
 
     /// The same, with the daemon holding `descriptor` open and inheritable, as a launcher that
     /// leaks one leaves it. For a test that nothing the daemon holds reaches a pane unasked.
     pub fn start_holding(binary: impl AsRef<Path>, descriptor: i32) -> Daemon {
-        Daemon::launch(binary, &[], Some(descriptor))
+        Daemon::launch(binary, &[], Some(descriptor), |_| {})
     }
 
-    fn launch(binary: impl AsRef<Path>, environment: &[(&str, &str)], held: Option<i32>) -> Daemon {
+    /// The built daemon, able to detect the fake agent a test runs with [`Daemon::run_agent`]
+    /// and drives with [`Daemon::set_agent_state`].
+    pub fn start_detecting() -> Daemon {
+        Daemon::launch(built_daemon(), &[], None, crate::agents::install)
+    }
+
+    fn launch(
+        binary: impl AsRef<Path>,
+        environment: &[(&str, &str)],
+        held: Option<i32>,
+        prepare_home: fn(&Path),
+    ) -> Daemon {
         let root = PathBuf::from(ROOT).join(format!(
             "d{}-{}",
             std::process::id(),
@@ -115,6 +126,7 @@ impl Daemon {
         std::fs::create_dir_all(root.join("home")).unwrap_or_else(|error| {
             panic!("could not create the harness root at {}: {error}", root.display())
         });
+        prepare_home(&root.join("home"));
         let mut daemon = Daemon {
             binary: binary.as_ref().to_path_buf(),
             socket_path: root.join("daemon.sock"),
@@ -240,6 +252,37 @@ impl Daemon {
     /// This daemon's scratch directory, removed with it.
     pub fn root(&self) -> &Path {
         &self.root
+    }
+
+    /// A Muster config naming this daemon `local`, which is how a window is pointed at it.
+    pub fn muster_config(&self) -> PathBuf {
+        self.muster_config_with("")
+    }
+
+    /// The same file with more in it, for a test about a setting rather than about a daemon.
+    ///
+    /// Written as text rather than built from a config type, because what is under test is
+    /// what a person types. The extra goes first: in TOML every bare key after a table header
+    /// belongs to that table, so a setting written below `[[daemon]]` becomes a key of the
+    /// daemon block and the file is refused.
+    pub fn muster_config_with(&self, extra: &str) -> PathBuf {
+        let preamble = if extra.is_empty() { String::new() } else { format!("{extra}\n") };
+        let contents = format!("{preamble}{}", daemon_block("local", &self.socket_path));
+        write_config(&self.root.join("muster.toml"), &contents)
+    }
+
+    /// A config naming this daemon and others beside it, for a window showing two machines.
+    ///
+    /// Every daemon named is a local socket, so this stages the two-machine shape without
+    /// ssh: what separates the machines in the code under test is the id and the socket, and
+    /// both are real here.
+    pub fn muster_config_naming(&self, id: &str, others: &[(&str, &Daemon)]) -> PathBuf {
+        let mut contents = daemon_block(id, &self.socket_path);
+        for (id, daemon) in others {
+            contents.push('\n');
+            contents.push_str(&daemon_block(id, &daemon.socket_path));
+        }
+        write_config(&self.root.join("muster-machines.toml"), &contents)
     }
 
     /// A new control connection, welcomed.
@@ -415,6 +458,17 @@ impl Daemon {
 /// A replace request in flight.
 #[derive(Debug)]
 pub struct Replacing(std::thread::JoinHandle<proto::Answer>);
+
+fn daemon_block(id: &str, socket: &Path) -> String {
+    format!("[[daemon]]\nid = {id:?}\nsocket = {:?}\n", socket.to_string_lossy())
+}
+
+fn write_config(path: &Path, contents: &str) -> PathBuf {
+    std::fs::write(path, contents).unwrap_or_else(|error| {
+        panic!("could not write the harness's Muster config at {}: {error}", path.display())
+    });
+    path.to_path_buf()
+}
 
 impl Drop for Daemon {
     fn drop(&mut self) {

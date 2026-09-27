@@ -1,10 +1,7 @@
-//! What a test needs to drive a real daemon: the daemon itself, waiting without sleeping, and a
-//! relay that loses answers on request.
-//!
-//! Neutral between herdr and muster-daemon while both exist. `herdr-harness` spawns herdr and
-//! re-exports `until` and the relay from here; the cut-over (MIP-3) deletes it, and this becomes
-//! the harness.
+//! What a test needs to drive a real daemon: the daemon itself, waiting without sleeping, a
+//! relay that loses answers on request, and a fake agent the daemon detects.
 
+mod agents;
 mod control;
 mod daemon;
 mod input;
