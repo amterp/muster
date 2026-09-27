@@ -7,6 +7,12 @@
 //! of its own, then runs ssh with `TERM` set to xterm-ghostty if that worked and xterm-256color
 //! if not, forwarding the terminal's name and colors. A host that took the entry is remembered,
 //! once the ssh run ends well, in a file of Muster's rather than Ghostty's.
+//!
+//! Where it departs from Ghostty's: ssh that opens no terminal on a host, or asks ssh rather than
+//! a host (`-N`, `-f`, `-W`, `-O`, `-G`, `-V`, `-Q`, `-s`), runs exactly as given, since an
+//! install would hold a `-N` tunnel at the install step and a `-f` or `-G` that exits at once
+//! would be taken for a host that has the entry; and the install connection is given the
+//! destination without a remote command, which Ghostty's sends along with its install script.
 
 use std::io::Write;
 use std::os::unix::process::{CommandExt, ExitStatusExt};
@@ -59,10 +65,15 @@ pub(crate) fn run(arguments: impl Iterator<Item = String>) -> ExitCode {
         .then(|| install::muster_home(|name| std::env::var(name).ok()))
         .flatten()
         .map(|home| home.join("state").join("ssh-terminfo"));
-    let (term, to_cache) = session(&options, cache.as_deref());
+    let read = Arguments::read(&options.ssh);
+    let (term, to_cache) = if read.opens_terminal {
+        session(&options, read.to_host(&options.ssh), cache.as_deref())
+    } else {
+        (FALLBACK, None)
+    };
 
     let mut ssh = Command::new("ssh");
-    if options.forward_env {
+    if options.forward_env && read.opens_terminal {
         ssh.args(["-o", &format!("SetEnv=TERM={term}")]);
         for name in ["COLORTERM", "TERM_PROGRAM", "TERM_PROGRAM_VERSION"] {
             ssh.args(["-o", &format!("SendEnv={name}")]);
@@ -96,12 +107,65 @@ pub(crate) fn run(arguments: impl Iterator<Item = String>) -> ExitCode {
     ExitCode::from(exit_code(status))
 }
 
-/// The terminal ssh is to say it is, and the host to remember once ssh ends well.
-fn session(options: &Options, cache: Option<&Path>) -> (&'static str, Option<String>) {
+/// ssh's arguments as ssh(1) reads them: options, then the destination, then a remote command.
+#[derive(Debug, PartialEq, Eq)]
+struct Arguments {
+    /// Where the destination is, if there is one.
+    destination: Option<usize>,
+    /// False for the forms that open no terminal on a host, or ask ssh rather than a host:
+    /// `-N`, `-f`, `-W`, `-O`, `-G`, `-V`, `-Q` and `-s`.
+    opens_terminal: bool,
+}
+
+impl Arguments {
+    /// ssh's options that take an argument, joined to the letter or as the next word.
+    const WITH_VALUE: &str = "BbcDEeFIiJLlmOoPpQRSWw";
+    const NO_TERMINAL: &str = "NfWOGVQs";
+
+    fn read(ssh: &[String]) -> Arguments {
+        let mut opens_terminal = true;
+        let mut index = 0;
+        while let Some(word) = ssh.get(index) {
+            if word == "--" {
+                index += 1;
+                break;
+            }
+            let Some(letters) = word.strip_prefix('-').filter(|letters| !letters.is_empty()) else {
+                break;
+            };
+            for (at, letter) in letters.char_indices() {
+                if Self::NO_TERMINAL.contains(letter) {
+                    opens_terminal = false;
+                }
+                if Self::WITH_VALUE.contains(letter) {
+                    if at + letter.len_utf8() == letters.len() {
+                        index += 1;
+                    }
+                    break;
+                }
+            }
+            index += 1;
+        }
+        Arguments { destination: (index < ssh.len()).then_some(index), opens_terminal }
+    }
+
+    /// The options and the destination, without a remote command.
+    fn to_host<'a>(&self, ssh: &'a [String]) -> &'a [String] {
+        self.destination.map_or(ssh, |at| &ssh[..=at])
+    }
+}
+
+/// The terminal ssh is to say it is, and the host to remember once ssh ends well. `to_host` is
+/// ssh's arguments without a remote command, which the install is not to run.
+fn session(
+    options: &Options,
+    to_host: &[String],
+    cache: Option<&Path>,
+) -> (&'static str, Option<String>) {
     if !options.terminfo {
         return (FALLBACK, None);
     }
-    let Some(host) = destination(&options.ssh) else {
+    let Some(host) = destination(to_host) else {
         warn("could not resolve the ssh destination; not installing terminfo");
         return (FALLBACK, None);
     };
@@ -113,7 +177,7 @@ fn session(options: &Options, cache: Option<&Path>) -> (&'static str, Option<Str
         return (FALLBACK, None);
     };
     eprintln!("Setting up xterm-ghostty terminfo on {host}...");
-    if let Err(problem) = install(&options.ssh, &source, options.verbose) {
+    if let Err(problem) = install(to_host, &source, options.verbose) {
         warn(&format!("failed to install terminfo: {problem}"));
         return (FALLBACK, None);
     }
@@ -226,6 +290,24 @@ mod tests {
 
     fn parsed(arguments: &[&str]) -> Result<Option<Options>, String> {
         parse(arguments.iter().map(|argument| (*argument).to_string()))
+    }
+
+    fn read(arguments: &[&str]) -> Arguments {
+        Arguments::read(
+            &arguments.iter().map(|argument| (*argument).to_string()).collect::<Vec<_>>(),
+        )
+    }
+
+    #[test]
+    fn sshs_arguments_are_read_as_ssh_reads_them() {
+        let at = |destination, opens_terminal| Arguments { destination, opens_terminal };
+        assert_eq!(read(&["-p", "2222", "host", "ls"]), at(Some(2), true));
+        assert_eq!(read(&["-p2222", "-v", "host"]), at(Some(2), true));
+        assert_eq!(read(&["-tt", "-o", "A=b", "host"]), at(Some(3), true));
+        assert_eq!(read(&["-fNL", "80:x:80", "host"]), at(Some(2), false));
+        assert_eq!(read(&["-L80:x:80", "-N", "host"]), at(Some(2), false));
+        assert_eq!(read(&["--", "-host"]), at(Some(1), true));
+        assert_eq!(read(&["-V"]), at(None, false));
     }
 
     #[test]

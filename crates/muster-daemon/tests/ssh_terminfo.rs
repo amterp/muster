@@ -43,13 +43,19 @@ impl Scratch {
 
     /// Runs what a pane's `ssh` wrapper runs, and returns every line the fake ssh recorded.
     fn ssh(&self, flags: &[&str], failing: bool) -> Vec<String> {
+        self.ssh_with(flags, &["-p", "2222", "devbox"], failing)
+    }
+
+    /// [`Scratch::ssh`] with ssh's own arguments given.
+    fn ssh_with(&self, flags: &[&str], arguments: &[&str], failing: bool) -> Vec<String> {
         let _ = std::fs::remove_file(self.0.join("runs"));
         let path = format!("{}:{}", self.0.join("bin").display(), std::env::var("PATH").unwrap());
         let mut command = Command::new(Path::new(DAEMON_DATA).join("bin/ghostty"));
         command
             .arg("+ssh")
             .args(flags)
-            .args(["--", "-p", "2222", "devbox"])
+            .arg("--")
+            .args(arguments)
             .env("PATH", path)
             .env("MUSTER_HOME", self.0.join("home"))
             .env("MUSTER_DAEMON", env!("CARGO_BIN_EXE_muster-daemon"))
@@ -109,4 +115,48 @@ fn either_feature_off_leaves_its_part_out() {
     assert_eq!(runs.last().unwrap(), "-p 2222 devbox ");
     let runs = scratch.ssh(&["--terminfo=false"], false);
     assert_eq!(runs, [format!("-o SetEnv=TERM=xterm-256color {FORWARDED}")]);
+}
+
+/// ssh that opens no terminal, or asks ssh rather than a host, is run exactly as given: an
+/// install would hold a `-N` tunnel open at the install step, and a `-f` or `-G` that exits at
+/// once would be taken for a host that has the entry.
+#[test]
+fn ssh_that_opens_no_terminal_is_run_as_given() {
+    let scratch = Scratch::new("as-given");
+    let cases: [&[&str]; 10] = [
+        &["-N", "-L", "8080:localhost:80", "-p", "2222", "devbox"],
+        &["-f", "-N", "-L", "8080:localhost:80", "devbox"],
+        &["-fNL", "8080:localhost:80", "devbox"],
+        &["-W", "localhost:22", "devbox"],
+        &["-O", "check", "devbox"],
+        &["-G", "devbox"],
+        &["-V"],
+        &["-Q", "cipher"],
+        &["-s", "devbox", "sftp"],
+        &["-p", "2222", "-N", "devbox"],
+    ];
+    for arguments in cases {
+        let runs = scratch.ssh_with(&[], arguments, false);
+        assert_eq!(runs, [format!("{} ", arguments.join(" "))], "{arguments:?}");
+        assert!(!scratch.0.join("home/state/ssh-terminfo").exists(), "{arguments:?} was cached");
+    }
+}
+
+/// An option's argument is not the destination, and a remote command is not sent with the
+/// install: the install connection gets the options and the destination alone.
+#[test]
+fn the_install_gets_the_destination_without_the_remote_command() {
+    let scratch = Scratch::new("command");
+    let runs = scratch.ssh_with(
+        &[],
+        &["-o", "ControlMaster=no", "-p", "2222", "devbox", "ls", "-la"],
+        false,
+    );
+    assert_eq!(runs.len(), 3, "{runs:?}");
+    assert!(
+        runs[1].contains("-o ControlMaster=no -p 2222 devbox infocmp xterm-ghostty"),
+        "{runs:?}"
+    );
+    assert!(!runs[1].contains("ls -la"), "the command went with the install: {runs:?}");
+    assert!(runs[2].ends_with("-o ControlMaster=no -p 2222 devbox ls -la "), "{runs:?}");
 }
