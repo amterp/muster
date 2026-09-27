@@ -282,8 +282,7 @@ impl Painting {
     /// Whether this pane's silence would be worth saying anything about.
     fn counts(&self, pane: &PaneKey) -> bool {
         let drawn = self.visible.as_ref().is_none_or(|visible| visible.contains(pane));
-        (drawn || self.reported.contains(pane))
-            && !self.away.contains(&pane.daemon)
+        (drawn || self.reported.contains(pane)) && !self.away.contains(&pane.daemon)
     }
 }
 

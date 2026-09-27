@@ -126,7 +126,6 @@ struct Wait {
     /// file. `None` is a pane whose first bridge has not arrived, which is the launch case and
     /// has nothing to explain beyond the wait itself.
     last: Option<Ended>,
-
 }
 
 /// Every pane whose socket is bound and whose bridge has not dialed.
