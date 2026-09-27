@@ -996,7 +996,7 @@ message Handoff {
     // How many bytes of replay follow, in replay_piece frames.
     uint64 replay_length = 4;
     // Where the pane's agent detection stood, so the new daemon goes on from there rather than
-    // recognising the agent anew. Absent from a daemon that sends none: detection starts over.
+    // recognizing the agent anew. Absent from a daemon that sends none: detection starts over.
     Detection detection = 5;
   }
 
@@ -1013,7 +1013,7 @@ message Handoff {
     bool emitted = 5;
     optional string emitted_agent = 6;
     AgentState emitted_state = 7;
-    // What is left of the grace a newly recognised agent gets.
+    // What is left of the grace a newly recognized agent gets.
     optional uint32 grace_left_ms = 8;
     // An idle not yet believed: how long ago it was first seen, and how often since.
     optional uint32 idle_seen_ms_ago = 9;

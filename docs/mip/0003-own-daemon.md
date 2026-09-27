@@ -850,7 +850,7 @@ Linux, as for any orphan, including a daemon started with `setsid` over ssh. The
 under a reaping init for that reason. Each pane's agent detection goes with it: the reader, as it
 is held, writes down where detection stands - the agent, the state it published, what is left of a
 new agent's grace, an idle not yet believed - and the new daemon goes on from there, so a working
-agent stays working rather than being recognised anew and shown idle through the grace.
+agent stays working rather than being recognized anew and shown idle through the grace.
 
 **Not yet measured:** whether macOS charges a pane's permission prompts (TCC) to the new daemon when
 the process asking is the old one's child, which the stage that puts the daemon in its helper

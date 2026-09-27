@@ -336,7 +336,7 @@ fn what_an_agent_reported_about_itself_stays_while_it_runs_and_goes_with_it() {
 
 /// A working agent stays working across a handoff: the new daemon goes on from where the old
 /// one's detection was, rather than finding the agent anew and passing it through the grace a
-/// newly recognised agent gets, as idle.
+/// newly recognized agent gets, as idle.
 #[test]
 fn a_working_agent_stays_working_across_a_handoff() {
     let home = Home::new("handoff", &[("claude.toml", PROBE_MANIFEST)], &["claude"]);
@@ -357,7 +357,7 @@ fn a_working_agent_stays_working_across_a_handoff() {
     };
     let record = snapshot.panes.iter().find(|record| record.pane == "p1").unwrap();
     assert_eq!(record.agent_state(), proto::AgentState::Working, "handed over as working");
-    // Past the three seconds a newly recognised agent is held idle for.
+    // Past the three seconds a newly recognized agent is held idle for.
     let deadline = Instant::now() + Duration::from_secs(4);
     let mut published = Vec::new();
     while let Some(left) = deadline.checked_duration_since(Instant::now()) {
