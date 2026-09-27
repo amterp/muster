@@ -1,0 +1,18 @@
+{
+  "_v": 3,
+  "alias": "the-surface-honors",
+  "alias_explicit": false,
+  "column": "backlog-hi",
+  "created_at_millis": 1790519579774,
+  "creator": "Alexander Terp",
+  "description": "The daemon now reads XTSHIFTESCAPE and reports it on the pane record as Pane.shift_capture (optional bool): true means the program wants shift-clicks reported to it, false means shift-clicks are the surface's to select with, absent means the surface's mouse-shift-capture setting decides. The daemon honors it in its own mouse encoding; the Ghostty surface in the app must honor it too, or a shift-click selects when the program asked for it (or the reverse).",
+  "id": "a_2Xdup4HDC",
+  "parent": "a_2XJ1fUIyr",
+  "position": "b02",
+  "title": "The surface honors Pane.shift_capture",
+  "type": "feature",
+  "updated_at_millis": 1790519583979,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1790519579774}
+  ]
+}

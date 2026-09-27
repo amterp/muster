@@ -6,6 +6,14 @@
     "backend"
   ],
   "column": "backlog-lo",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Not built. Rows leave the top of libghostty's PageList at six sites (grow prune with a revert path, Limits.enforce, erasing history, the resize trim, reset, reflow). A stable row number has no meaning across reset or reflow, and a counter means edits across the most-changed core file, past what an additive patch should carry.",
+      "created_at_millis": 1790519579652,
+      "id": "c_2XduovI0A"
+    }
+  ],
   "created_at_millis": 1790483722201,
   "creator": "Alexander Terp",
   "description": "pane.read counts rows from the oldest row still held, so once scrollback starts trimming, a row number a caller saved points at different text on the next read. A stable numbering needs a trimmed-row count from libghostty (a C API addition in deps/ghostty-patches). Found in round 2 (slot 2, streams).",
@@ -14,7 +22,7 @@
   "position": "aR",
   "title": "pane.read: row numbers that stay stable as history is trimmed",
   "type": "feature",
-  "updated_at_millis": 1790483722201,
+  "updated_at_millis": 1790519579652,
   "history": [
     {"field":"column","value":"backlog-lo","at":1790483722201}
   ]

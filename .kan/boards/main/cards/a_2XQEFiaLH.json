@@ -5,17 +5,18 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-lo",
+  "column": "done",
   "created_at_millis": 1790486960729,
   "creator": "Alexander Terp",
   "description": "muster-daemon answers XTVERSION empty, as libghostty does by default; Ghostty answers 'ghostty \u003cversion\u003e'. The pane environment now derives TERM_PROGRAM_VERSION (build.zig.zon version plus the pin), so the same string could answer XTVERSION and the two would agree.",
   "id": "a_2XQEFiaLH",
   "parent": "a_2XJ1fUIyr",
-  "position": "aU",
+  "position": "Zc",
   "title": "Answer XTVERSION like Ghostty",
   "type": "feature",
-  "updated_at_millis": 1790486960729,
+  "updated_at_millis": 1790519579474,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1790486960729}
+    {"field":"column","value":"backlog-lo","at":1790486960729},
+    {"field":"column","value":"done","at":1790519579474}
   ]
 }
