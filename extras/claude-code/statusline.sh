@@ -11,7 +11,10 @@
 # Outside a Muster pane it only draws: $MUSTER_DAEMON is how a pane reaches the daemon that owns
 # it. Needs jq. The report runs in the background, so a slow daemon never holds the line up.
 
-input=$(cat)
+# The x keeps the trailing newline, which $( ) would strip: the command after this reads what
+# Claude Code wrote, byte for byte.
+input=$(cat; printf x)
+input=${input%x}
 
 report() {
     eval "set -- $1"
@@ -24,8 +27,10 @@ if [ -n "$MUSTER_DAEMON" ] && command -v jq >/dev/null 2>&1; then
         (.model.display_name // empty | "--model", .),
         (.cost.total_cost_usd // empty | "--cost-usd", tostring)
     ] | @sh' 2>/dev/null)
-    # Its output goes nowhere: Claude Code reads the line until every writer has closed it.
-    [ -n "$facts" ] && report "$facts" >/dev/null 2>&1 &
+    # Claude Code reads the line until every writer has closed it, so the background job's own
+    # output goes nowhere. Redirecting only the call inside it would leave the job holding the
+    # line open until the report finished.
+    { [ -n "$facts" ] && report "$facts"; } >/dev/null 2>&1 &
 fi
 
 if [ $# -gt 0 ]; then
