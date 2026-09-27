@@ -87,11 +87,11 @@ impl Hold {
         state.parked || state.gone
     }
 
-    /// Lets the thread go on.
     pub(crate) fn is_held(&self) -> bool {
         self.state().held
     }
 
+    /// Lets the thread go on.
     pub(crate) fn release(&self) {
         self.state().held = false;
         self.changed.notify_all();

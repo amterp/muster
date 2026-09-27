@@ -395,12 +395,12 @@ impl Persister {
         self.woken.notify_all();
     }
 
-    /// The file this persister writes.
     /// False once this persister will never write again this run, as one that is off.
     pub(crate) fn saving(&self) -> bool {
         self.pending().phase != Phase::Off
     }
 
+    /// The file this persister writes.
     pub(crate) fn path(&self) -> &Path {
         &self.path
     }
@@ -683,8 +683,6 @@ mod tests {
         assert_eq!(*persister.writes.lock().unwrap(), [state()], "only what it held");
     }
 
-    /// While saved tabs are coming back the session holds less than the file, so a change
-    /// long overdue writes nothing until restoring ends, and then writes at once.
     #[test]
     fn a_copy_that_fails_leaves_nothing_half_written() {
         let dir = std::env::temp_dir().join(format!("muster-copy-as-{}", std::process::id()));
@@ -709,6 +707,8 @@ mod tests {
         assert!(!persister.pause(Duration::from_millis(50)), "a write that did not finish");
     }
 
+    /// While saved tabs are coming back the session holds less than the file, so a change
+    /// long overdue writes nothing until restoring ends, and then writes at once.
     #[test]
     fn nothing_is_written_until_restoring_ends() {
         let scratch = Scratch::new("restoring");
