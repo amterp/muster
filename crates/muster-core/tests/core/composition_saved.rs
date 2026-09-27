@@ -73,7 +73,7 @@ fn what_is_written_is_what_comes_back() {
         endpoint: Endpoint::Ssh {
             host: "devenv".to_string(),
             options: vec!["-p".to_string(), "2222".to_string()],
-            socket_path: Some("/run/herdr.sock".to_string()),
+            socket_path: Some("/run/daemon.sock".to_string()),
         },
     });
     let region = composition
