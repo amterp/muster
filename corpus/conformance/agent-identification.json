@@ -1,0 +1,571 @@
+{
+  "concept": "detection.identify",
+  "source": "ported",
+  "citation": "herdr v0.8.0 src/detect/mod.rs (identification tests) and src/pane.rs (probe order and hint tests); each case names the test it came from. Windows-only cases (cmd, PowerShell) are not ported: Muster runs daemons on macOS and Linux.",
+  "why": "Most agents are not the process the kernel names - they are node or python running a script, a Nix wrapper, a thread-named binary, or a shell script - so which agent a pane runs is a search, and each of these cases is a way it has gone wrong before. `given` is the foreground group as the kernel reports it: each process's pid, comm name, argv and, where macOS reports it, argv[0]; `hints` are MUSTER_AGENT values by pid; `shell` is the pane's own pid. `expect` is the agent's id, the name it was recognised by, and whether the pane's shell is in the foreground; an empty expect is no agent.",
+  "cases": [
+    {
+      "name": "a runtime is unwrapped to the script it runs",
+      "why": "Most agents are a node script, so the kernel calls the process node; the script's name is the agent's. The script's name is what it is known by. (identify_agent_in_job_prefers_wrapped_codex)",
+      "given": {
+        "group": 123,
+        "processes": [
+          {
+            "pid": 1,
+            "name": "node",
+            "argv": [
+              "node",
+              "/path/to/bin/codex"
+            ]
+          },
+          {
+            "pid": 2,
+            "name": "bash",
+            "argv": [
+              "bash"
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "agent": "codex",
+        "processName": "codex"
+      }
+    },
+    {
+      "name": "a recognised group leader wins over a member",
+      "why": "The leader is the job the shell started; a member that looks like an agent is usually a tool the agent itself launched, such as an MCP server. (identify_agent_in_job_prefers_recognized_process_group_leader)",
+      "given": {
+        "group": 42,
+        "processes": [
+          {
+            "pid": 42,
+            "name": "claude",
+            "argv": [
+              "claude"
+            ]
+          },
+          {
+            "pid": 43,
+            "name": "node",
+            "argv": [
+              "node",
+              "/tmp/mcp/bin/codex"
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "agent": "claude",
+        "processName": "claude"
+      }
+    },
+    {
+      "name": "an unrecognised leader falls back to the members",
+      "why": "A shell wrapper leading the group does not hide the agent it runs. (identify_agent_in_job_falls_back_when_process_group_leader_is_unrecognized)",
+      "given": {
+        "group": 42,
+        "processes": [
+          {
+            "pid": 42,
+            "name": "bash",
+            "argv": [
+              "bash"
+            ]
+          },
+          {
+            "pid": 43,
+            "name": "node",
+            "argv": [
+              "node",
+              "/tmp/mcp/bin/codex"
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "agent": "codex",
+        "processName": "codex"
+      }
+    },
+    {
+      "name": "a Nix wrapper is known by its argv[0]",
+      "why": "Nix installs agents as .<name>-wrapped executables called by their real name, so argv[0] is the name that means something. (identify_agent_in_job_detects_nix_wrapped_codex_from_cmdline_argv0)",
+      "given": {
+        "group": 123,
+        "processes": [
+          {
+            "pid": 1,
+            "name": ".codex-wrapped",
+            "argv": [
+              "/etc/profiles/per-user/user/bin/codex",
+              "--model",
+              "gpt-5"
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "agent": "codex",
+        "processName": "codex"
+      }
+    },
+    {
+      "name": "a Nix-wrapped alias resolves to the agent's id",
+      "why": "An alias found by unwrapping reports the agent's own id, not the alias. (identify_agent_in_job_canonicalizes_nix_wrapped_aliases_from_cmdline_argv0)",
+      "given": {
+        "group": 123,
+        "processes": [
+          {
+            "pid": 1,
+            "name": ".claude-code-wrapped",
+            "argv": [
+              "/nix/store/example/bin/claude-code"
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "agent": "claude",
+        "processName": "claude"
+      }
+    },
+    {
+      "name": "a shell running a script is the script",
+      "why": "An agent installed as a shell script runs as sh with the script as its argument. (identify_agent_in_job_detects_shell_wrapped_pi)",
+      "given": {
+        "group": 123,
+        "processes": [
+          {
+            "pid": 1,
+            "name": "sh",
+            "argv": [
+              "/bin/sh",
+              "/tmp/test-bin/pi"
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "agent": "pi",
+        "processName": "pi"
+      }
+    },
+    {
+      "name": "node running pi's package entry point is pi",
+      "why": "pi's package runs as node with a path inside node_modules/@earendil-works/pi-coding-agent; pi's manifest names that path in script_paths. herdr's case used a Windows path; this one is the Unix equivalent. (identify_agent_in_job_detects_node_wrapped_pi_package_cli)",
+      "given": {
+        "group": 123,
+        "processes": [
+          {
+            "pid": 123,
+            "name": "node",
+            "argv": [
+              "node",
+              "/usr/local/lib/node_modules/@earendil-works/pi-coding-agent/dist/cli.js"
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "agent": "pi",
+        "processName": "pi"
+      }
+    },
+    {
+      "name": "another script in pi's package is not pi",
+      "why": "Only the package's CLI is the agent; a build script inside the same package is not. (identify_agent_in_job_ignores_non_cli_pi_package_script)",
+      "given": {
+        "group": 123,
+        "processes": [
+          {
+            "pid": 123,
+            "name": "node",
+            "argv": [
+              "node",
+              "/usr/local/lib/node_modules/@earendil-works/pi-coding-agent/scripts/build.js"
+            ]
+          }
+        ]
+      },
+      "expect": {}
+    },
+    {
+      "name": "opencode2 is opencode",
+      "why": "An older name opencode was installed under. (identify_agent_in_job_detects_opencode2_as_opencode)",
+      "given": {
+        "group": 123,
+        "processes": [
+          {
+            "pid": 123,
+            "name": "opencode2",
+            "argv": [
+              "opencode2",
+              "--standalone"
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "agent": "opencode",
+        "processName": "opencode2"
+      }
+    },
+    {
+      "name": "opencode.exe from a pnpm package is opencode",
+      "why": "opencode's npm package ships its binary as opencode.exe on every platform, and the name is reported as the kernel gave it. (identify_agent_in_job_detects_opencode_exe_from_pnpm_package)",
+      "given": {
+        "group": 123,
+        "processes": [
+          {
+            "pid": 123,
+            "name": "opencode.exe",
+            "argv": [
+              "/home/user/.local/share/pnpm/global/node_modules/opencode-ai/bin/opencode.exe"
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "agent": "opencode",
+        "processName": "opencode.exe"
+      }
+    },
+    {
+      "name": "a thread-named process is known by its argv[0] path",
+      "why": "Bun-compiled binaries report their main thread's name to the kernel, so the path in argv[0] is the only name there is. (identify_agent_in_job_detects_opencode_exe_from_argv0_path)",
+      "given": {
+        "group": 123,
+        "processes": [
+          {
+            "pid": 123,
+            "name": "MainThread",
+            "argv": [
+              "/home/user/.local/share/pnpm/global/node_modules/opencode-ai/bin/opencode.exe"
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "agent": "opencode",
+        "processName": "opencode"
+      }
+    },
+    {
+      "name": "python -c code is not an agent",
+      "why": "Code passed on the command line is not a script, whatever arguments follow it. (identify_agent_in_job_ignores_python_c_argument_named_codex)",
+      "given": {
+        "group": 123,
+        "processes": [
+          {
+            "pid": 1,
+            "name": "python3",
+            "argv": [
+              "python3",
+              "-c",
+              "import time; time.sleep(60)",
+              "/tmp/codex"
+            ]
+          }
+        ]
+      },
+      "expect": {}
+    },
+    {
+      "name": "node -e code is not an agent",
+      "why": "The same for node's eval flag. (identify_agent_in_job_ignores_node_eval_argument_named_codex)",
+      "given": {
+        "group": 123,
+        "processes": [
+          {
+            "pid": 1,
+            "name": "node",
+            "argv": [
+              "node",
+              "-e",
+              "setTimeout(() => {}, 60000)",
+              "/tmp/codex"
+            ]
+          }
+        ]
+      },
+      "expect": {}
+    },
+    {
+      "name": "bash -c code is not an agent",
+      "why": "And for a shell's. (identify_agent_in_job_ignores_shell_c_argument_named_codex)",
+      "given": {
+        "group": 123,
+        "processes": [
+          {
+            "pid": 1,
+            "name": "bash",
+            "argv": [
+              "bash",
+              "-c",
+              "sleep 60",
+              "/tmp/codex"
+            ]
+          }
+        ]
+      },
+      "expect": {}
+    },
+    {
+      "name": "a python script named for an agent is that agent",
+      "why": "A script path is a name, and python running it is the runtime being unwrapped. (identify_agent_in_job_detects_python_script_named_codex)",
+      "given": {
+        "group": 123,
+        "processes": [
+          {
+            "pid": 1,
+            "name": "python3",
+            "argv": [
+              "python3",
+              "/tmp/codex",
+              "--model",
+              "gpt-5"
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "agent": "codex",
+        "processName": "codex"
+      }
+    },
+    {
+      "name": "an argv[0] reported apart from comm is preferred",
+      "why": "macOS reports argv[0] separately, and a runtime that renamed itself shows there: node running pi with process.title set is pi. (herdr's process_argv0_name, src/platform/macos.rs)",
+      "given": {
+        "group": 7,
+        "processes": [
+          {
+            "pid": 7,
+            "name": "node",
+            "argv0": "pi",
+            "argv": [
+              "pi"
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "agent": "pi",
+        "processName": "pi"
+      }
+    },
+    {
+      "name": "a retitled argv[0] with spaces is split",
+      "why": "A runtime that set its title to a whole command line has one argv[0] with spaces in it; the first word is the name. (cmdline_argv0_agent_name, src/detect/mod.rs)",
+      "given": {
+        "group": 7,
+        "processes": [
+          {
+            "pid": 7,
+            "name": "MainThread",
+            "argv": [
+              "codex --model gpt-5"
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "agent": "codex",
+        "processName": "codex"
+      }
+    },
+    {
+      "name": "sleep is not an agent",
+      "why": "The ordinary case: most foreground jobs are not agents, and must stay unknown. (foreground_job_detects_sleep)",
+      "given": {
+        "group": 9,
+        "processes": [
+          {
+            "pid": 9,
+            "name": "sleep",
+            "argv": [
+              "sleep",
+              "999"
+            ]
+          }
+        ]
+      },
+      "expect": {}
+    },
+    {
+      "name": "a hint on the leader wins over its name",
+      "why": "MUSTER_AGENT is how a person or a wrapper says what a process is when its name does not; a hint on the leader beats the leader's own name. The name reported is the agent's id. (src/pane.rs, foreground_agent_hint_wins_over_process_name_detection)",
+      "given": {
+        "group": 99,
+        "processes": [
+          {
+            "pid": 99,
+            "name": "codex"
+          }
+        ],
+        "hints": {
+          "99": "claude"
+        }
+      },
+      "expect": {
+        "agent": "claude",
+        "processName": "claude"
+      }
+    },
+    {
+      "name": "a hint on the pane's shell counts",
+      "why": "A pane started with MUSTER_AGENT in its shell's environment is that agent while the shell leads the foreground. (src/pane.rs, foreground_agent_hint_accepts_pane_shell_environment)",
+      "given": {
+        "group": 42,
+        "processes": [
+          {
+            "pid": 42,
+            "name": "bash"
+          }
+        ],
+        "hints": {
+          "42": "claude"
+        },
+        "shell": 42
+      },
+      "expect": {
+        "agent": "claude",
+        "processName": "claude",
+        "shellInForeground": true
+      }
+    },
+    {
+      "name": "a hint on an unrecognised leader is authoritative",
+      "why": "A leader nobody could name is whatever its hint says. (src/pane.rs, foreground_agent_hint_on_inherited_child_environment_is_authoritative)",
+      "given": {
+        "group": 99,
+        "processes": [
+          {
+            "pid": 99,
+            "name": "vim"
+          }
+        ],
+        "hints": {
+          "99": "claude"
+        }
+      },
+      "expect": {
+        "agent": "claude",
+        "processName": "claude"
+      }
+    },
+    {
+      "name": "a member's hint does not override an identifiable leader",
+      "why": "The leader is the job; a member's environment is inherited clutter unless nothing better is known. (src/pane.rs, non_leader_agent_hint_does_not_override_identifiable_leader)",
+      "given": {
+        "group": 99,
+        "processes": [
+          {
+            "pid": 99,
+            "name": "codex"
+          },
+          {
+            "pid": 100,
+            "name": "vim"
+          }
+        ],
+        "hints": {
+          "100": "claude"
+        }
+      },
+      "expect": {
+        "agent": "codex",
+        "processName": "codex"
+      }
+    },
+    {
+      "name": "a member's hint wins when the leader is unidentified",
+      "why": "With no name for the leader, a member's hint is the best evidence there is. (src/pane.rs, non_leader_agent_hint_wins_when_leader_is_unidentified)",
+      "given": {
+        "group": 99,
+        "processes": [
+          {
+            "pid": 99,
+            "name": "some_vm"
+          },
+          {
+            "pid": 100,
+            "name": "vim"
+          }
+        ],
+        "hints": {
+          "100": "claude"
+        }
+      },
+      "expect": {
+        "agent": "claude",
+        "processName": "claude"
+      }
+    },
+    {
+      "name": "a member's hint counts in a job led by a wrapper",
+      "why": "A sandbox wrapper can lead the group while the agent runs under it with its hint. (src/pane.rs, foreground_agent_hint_accepts_non_leader_foreground_process_environment)",
+      "given": {
+        "group": 99,
+        "processes": [
+          {
+            "pid": 99,
+            "name": "fence"
+          },
+          {
+            "pid": 100,
+            "name": "pi"
+          }
+        ],
+        "hints": {
+          "100": "codex"
+        }
+      },
+      "expect": {
+        "agent": "codex",
+        "processName": "codex"
+      }
+    },
+    {
+      "name": "a hint naming no agent is no hint",
+      "why": "An unknown name in MUSTER_AGENT identifies nothing, and does not stop the process's own name from counting. (src/platform/mod.rs, parse_agent_env_hint)",
+      "given": {
+        "group": 99,
+        "processes": [
+          {
+            "pid": 99,
+            "name": "codex"
+          }
+        ],
+        "hints": {
+          "99": "not-an-agent"
+        }
+      },
+      "expect": {
+        "agent": "codex",
+        "processName": "codex"
+      }
+    },
+    {
+      "name": "the shell in the foreground is noticed",
+      "why": "Whether the pane's own shell is back in the foreground is what tells the loop an agent has exited. (src/pane.rs, process_probe_result)",
+      "given": {
+        "group": 42,
+        "processes": [
+          {
+            "pid": 42,
+            "name": "zsh",
+            "argv": [
+              "-zsh"
+            ]
+          }
+        ],
+        "shell": 42
+      },
+      "expect": {
+        "shellInForeground": true
+      }
+    }
+  ]
+}

@@ -10,14 +10,18 @@
 //! screen rules that classify it - built in, sent by the app, or overridden in
 //! `~/.muster/agent-detection/`.
 
+mod identify;
 mod manifest;
 mod manifests;
+mod process;
 
 use std::fmt;
 use std::sync::Arc;
 
+pub use identify::{Probe, identify_in_job, probe};
 pub use manifest::{Detection, ENGINE_VERSION, Input, Manifest, Version};
 pub use manifests::{Manifests, Source, Warning};
+pub use process::{Job, Process, Processes, System};
 
 /// What an agent is doing, as far as its screen says.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
