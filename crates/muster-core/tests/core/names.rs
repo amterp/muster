@@ -15,16 +15,15 @@ use serde_json::{Value, json};
 
 #[test]
 fn pane_names_conformance() {
-    run("pane-names.json");
+    run(&Conformance::load("pane-names.json"));
 }
 
 #[test]
 fn tab_names_conformance() {
-    run("tab-names.json");
+    run(&Conformance::load("tab-names.json"));
 }
 
-fn run(file: &str) {
-    let corpus = Conformance::load(file);
+fn run(corpus: &Conformance) {
     let ran = corpus.run(|given| {
         let mut minter = Minter::new(mint(given)?);
         let mut trace = Vec::new();
