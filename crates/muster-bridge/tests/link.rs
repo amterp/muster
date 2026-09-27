@@ -168,3 +168,43 @@ fn a_keystroke_reaches_the_program_and_its_echo_draws() {
     until_drawn(&drawn, "bridged-42");
     let _ = child.kill();
 }
+
+/// A daemon replaced by a new one hands its panes over on the same socket, and a bridge told
+/// so attaches there and goes on drawing, rather than leaving the window to notice a dead pane
+/// and start another.
+#[test]
+fn a_bridge_follows_its_pane_to_the_daemon_that_replaced_its_own() {
+    let mut daemon = Daemon::start_built();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    let window = Window::bind(&daemon, "window");
+    let mut child = bridge(&daemon, "p1", &window, false);
+    assert_eq!(window.next(), Report::Attached);
+    let drawn = drawn(&mut child);
+    drop(control);
+
+    assert_eq!(daemon.replace(None).outcome(), proto::Outcome::Done);
+    loop {
+        match window.next() {
+            Report::Attached => break,
+            Report::Painted { .. } => {}
+            other @ Report::Exiting(_) => {
+                panic!("the bridge should attach again, and said {other:?}")
+            }
+        }
+    }
+
+    let input = Input::open(daemon.socket_path(), "test", Box::new(|| {})).unwrap();
+    input
+        .send(proto::InputEvent {
+            pane: "p1".to_string(),
+            input: Some(input_event::Input::Send(input_event::Send {
+                text: "echo handed-$((6*7))".to_string(),
+                enter: true,
+            })),
+        })
+        .unwrap();
+    until_drawn(&drawn, "handed-42");
+    assert!(child.try_wait().unwrap().is_none(), "the bridge is still drawing");
+    let _ = child.kill();
+}

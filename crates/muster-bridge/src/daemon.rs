@@ -6,13 +6,14 @@
 //! pane, and an unread terminal would eventually stop the surface writing at all.
 
 use std::io::Read;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
+use std::time::{Duration, Instant};
 
 use muster_core::bridge_link::Report;
 use muster_core::diagnostics::log;
 use muster_core::fields;
 use muster_core::respawn::{Ended as Exit, Ending};
-use muster_daemon_client::stream::{AttachError, Attachment, Ended, Happened};
+use muster_daemon_client::stream::{AttachError, Attachment, Ended, Happened, Resizer};
 use muster_daemon_proto::{AttachRefusal, DetachReason, Grid};
 
 use crate::link::{CountedSurface, Counting, Link};
@@ -58,94 +59,142 @@ pub(crate) fn run(arguments: &Arguments) -> ! {
     pty::make_stdin_raw();
     std::thread::spawn(discard_stdin);
 
-    let grid = surface_grid();
     log::info(
         "bridge.start",
         fields! {
             "pane" => arguments.pane,
             "daemon" => arguments.socket,
-            "cols" => grid.cols,
-            "rows" => grid.rows,
             "takeover" => arguments.takeover.to_string(),
         },
     );
     // Before attaching, so a bridge the daemon refuses can still say why.
     let link = Link::dial(arguments.app_socket.as_deref());
-    let opened = Attachment::open_with_window(
-        arguments.socket.as_ref(),
-        &arguments.pane,
-        grid,
-        arguments.takeover,
-        arguments.remote.then_some(REMOTE_WINDOW),
-        &format!("muster-bridge {}", env!("CARGO_PKG_VERSION")),
-    );
-    let attachment = match opened {
-        Ok((attachment, _)) => attachment,
-        Err(error) => {
-            link.say(&Report::Exiting(refusal(&error)));
-            log::error(
-                "bridge.attach.failed",
-                fields! {
-                    "pane" => arguments.pane,
-                    "daemon" => arguments.socket,
-                    "error" => error,
-                    "impact" => "this pane renders nothing",
-                    "check" => "that a muster-daemon is listening on that socket and holds the \
-                                pane, and that it speaks this bridge's protocol version",
-                },
-            );
-            eprint!(
-                "muster-bridge: could not attach to pane {} on {}: {error}\n\
-                 This pane will render nothing.\n\n",
-                arguments.pane, arguments.socket
-            );
-            std::process::exit(1);
-        }
-    };
-
-    link.say(&Report::Attached);
     let counting = Arc::new(Counting::new());
     {
         let (counting, link) = (Arc::clone(&counting), link.clone());
         std::thread::spawn(move || counting.report(&link));
     }
-
-    let daemon = attachment.resizer();
-    std::thread::spawn(move || {
-        for () in resizes {
-            let grid = surface_grid();
-            log::info("bridge.resize", fields! { "cols" => grid.cols, "rows" => grid.rows });
-            // A daemon that has hung up ends the pump, which says so.
-            let _ = daemon.resize(grid);
-        }
-    });
-
-    let mut surface = CountedSurface { surface: std::io::stdout().lock(), counting: &counting };
-    let ended = attachment.pump(&mut surface, |happened| match happened {
-        Happened::Behind => log::info(
-            "bridge.behind",
-            fields! {
-                "impact" => "output is skipped until this surface catches up; what scrolled \
-                             past meanwhile is in the daemon, not in the surface's scrollback",
-            },
-        ),
-        Happened::CaughtUp(bytes) => log::info("bridge.caught_up", fields! { "bytes" => bytes }),
-    });
-    match &ended {
-        Ended::Detached(reason) => {
-            log::info("bridge.detached", fields! { "reason" => reason.as_str_name() });
-        }
-        Ended::HungUp => log::info("bridge.hung_up", fields! {}),
-        Ended::Failed(error) => log::warn(
-            "bridge.stream.failed",
-            fields! {
-                "error" => error,
-                "impact" => "this pane stops drawing; a new bridge attaches with a fresh replay",
-            },
-        ),
+    // Whichever attachment is current, since a replaced daemon's pane is attached again.
+    let current: Arc<Mutex<Option<Resizer>>> = Arc::default();
+    {
+        let current = Arc::clone(&current);
+        std::thread::spawn(move || {
+            for () in resizes {
+                let grid = surface_grid();
+                log::info("bridge.resize", fields! { "cols" => grid.cols, "rows" => grid.rows });
+                if let Some(resizer) =
+                    current.lock().unwrap_or_else(PoisonError::into_inner).as_ref()
+                {
+                    // A daemon that has hung up ends the pump, which says so.
+                    let _ = resizer.resize(grid);
+                }
+            }
+        });
     }
-    link.say(&Report::Exiting(exit(&ended, counting.painted())));
-    std::process::exit(exit_status(&ended));
+    let mut surface = CountedSurface { surface: std::io::stdout().lock(), counting: &counting };
+
+    let mut attached = attach(arguments, arguments.takeover);
+    loop {
+        let attachment = match attached {
+            Ok(attachment) => attachment,
+            Err(error) => {
+                link.say(&Report::Exiting(refusal(&error)));
+                log::error(
+                    "bridge.attach.failed",
+                    fields! {
+                        "pane" => arguments.pane,
+                        "daemon" => arguments.socket,
+                        "error" => error,
+                        "impact" => "this pane renders nothing",
+                        "check" => "that a muster-daemon is listening on that socket and holds \
+                                    the pane, and that it speaks this bridge's protocol version",
+                    },
+                );
+                eprint!(
+                    "muster-bridge: could not attach to pane {} on {}: {error}\n\
+                     This pane will render nothing.\n\n",
+                    arguments.pane, arguments.socket
+                );
+                std::process::exit(1);
+            }
+        };
+        link.say(&Report::Attached);
+        *current.lock().unwrap_or_else(PoisonError::into_inner) = Some(attachment.resizer());
+
+        let ended = attachment.pump(&mut surface, |happened| match happened {
+            Happened::Behind => log::info(
+                "bridge.behind",
+                fields! {
+                    "impact" => "output is skipped until this surface catches up; what scrolled \
+                                 past meanwhile is in the daemon, not in the surface's scrollback",
+                },
+            ),
+            Happened::CaughtUp(bytes) => {
+                log::info("bridge.caught_up", fields! { "bytes" => bytes });
+            }
+        });
+        match &ended {
+            Ended::Detached(DetachReason::Replaced) => {
+                // The pane went to the daemon replacing this one, on the same socket, whose
+                // replay draws the same screen.
+                log::info("bridge.replaced", fields! { "pane" => arguments.pane });
+                attached = attach_again(arguments);
+                continue;
+            }
+            Ended::Detached(reason) => {
+                log::info("bridge.detached", fields! { "reason" => reason.as_str_name() });
+            }
+            Ended::HungUp => log::info("bridge.hung_up", fields! {}),
+            Ended::Failed(error) => log::warn(
+                "bridge.stream.failed",
+                fields! {
+                    "error" => error,
+                    "impact" => "this pane stops drawing; a new bridge attaches with a fresh \
+                                 replay",
+                },
+            ),
+        }
+        link.say(&Report::Exiting(exit(&ended, counting.painted())));
+        std::process::exit(exit_status(&ended));
+    }
+}
+
+/// How long a replaced daemon's successor has to start taking attaches.
+const REPLACED_WITHIN: Duration = Duration::from_secs(10);
+
+fn attach(arguments: &Arguments, takeover: bool) -> Result<Attachment, AttachError> {
+    let grid = surface_grid();
+    log::info("bridge.attach", fields! { "cols" => grid.cols, "rows" => grid.rows });
+    Attachment::open_with_window(
+        arguments.socket.as_ref(),
+        &arguments.pane,
+        grid,
+        takeover,
+        arguments.remote.then_some(REMOTE_WINDOW),
+        &format!("muster-bridge {}", env!("CARGO_PKG_VERSION")),
+    )
+    .map(|(attachment, _)| attachment)
+}
+
+/// Attaches to the daemon that replaced the one this bridge was drawing from.
+///
+/// Retried while the socket answers nothing or hangs up, since the successor may still be
+/// taking it over; a refusal is an answer, and is not retried. Never a takeover: the daemon
+/// before let this bridge go, so nothing else should be drawing the pane.
+fn attach_again(arguments: &Arguments) -> Result<Attachment, AttachError> {
+    let deadline = Instant::now() + REPLACED_WITHIN;
+    let mut pause = Duration::from_millis(20);
+    loop {
+        match attach(arguments, false) {
+            Err(AttachError::Handshake(_) | AttachError::Broken(_))
+                if Instant::now() < deadline =>
+            {
+                std::thread::sleep(pause);
+                pause = (pause * 2).min(Duration::from_millis(500));
+            }
+            attached => return attached,
+        }
+    }
 }
 
 /// What the window is told about a stream that ended: whether to start another bridge.
