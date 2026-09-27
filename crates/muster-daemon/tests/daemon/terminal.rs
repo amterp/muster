@@ -59,6 +59,67 @@ fn a_pane_is_read_in_pages_counted_from_its_oldest_row() {
     expect(&mut control, read_request("missing", 0, 1), proto::Outcome::NotThere);
 }
 
+/// Rows `row0` to `row99`, printed by a pane's program.
+const HUNDRED_ROWS: &str = "i=0; while [ $i -lt 100 ]; do echo row$i; i=$((i+1)); done";
+
+fn has_row(text: &str, row: &str) -> bool {
+    text.lines().any(|line| line == row)
+}
+
+/// A program on the alternate screen is read as what it shows, and the history of the screen
+/// under it comes back when it leaves.
+#[test]
+fn a_program_on_the_alternate_screen_is_read_without_the_history_beneath_it() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let flag = daemon.root().join("leave");
+    let command = format!(
+        "{HUNDRED_ROWS}; printf '\\033[?1049h'; echo alternate-one; echo alternate-two; \
+         while [ ! -e {0} ]; do sleep 0.02; done; printf '\\033[?1049l'; echo left",
+        flag.display()
+    );
+    make(&mut control, running("p1", "t1", command));
+
+    let alternate = until_text(&mut control, "p1", "alternate-two");
+    assert!(!has_row(&alternate, "row0") && !has_row(&alternate, "row99"), "{alternate:?}");
+
+    std::fs::write(&flag, "").unwrap();
+    let main = until_text(&mut control, "p1", "left\n");
+    assert!(has_row(&main, "row0") && has_row(&main, "row99"), "{main:?}");
+}
+
+/// A program that erases the scrollback leaves a pane holding only its screen.
+#[test]
+fn erased_scrollback_is_gone_from_a_read() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let command = format!("{HUNDRED_ROWS}; printf '\\033[3J'; echo erased");
+    make(&mut control, running("p1", "t1", command));
+
+    let text = until_text(&mut control, "p1", "erased\n");
+    assert!(!has_row(&text, "row0") && !has_row(&text, "row50"), "{text:?}");
+    // What was printed after the erase, and the shell's prompt, may scroll a row or two back in.
+    let rows = read_text(&mut control, "p1", 0, 0).total_rows;
+    assert!(rows < 24 + 3, "the screen's rows and next to nothing else, not {rows}");
+}
+
+/// A line longer than the pane is read as the rows it wrapped onto, since a read counts rows as
+/// the screen does (docs/cli/limits.md).
+#[test]
+fn a_long_line_is_read_as_the_rows_it_wraps_onto() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    make(&mut control, running("p1", "t1", "printf '%0167d\\n' 0; echo printed".to_string()));
+
+    let text = until_text(&mut control, "p1", "printed\n");
+    let widths: Vec<usize> = text
+        .lines()
+        .filter(|line| !line.is_empty() && line.chars().all(|character| character == '0'))
+        .map(str::len)
+        .collect();
+    assert_eq!(widths, [80, 80, 7], "{text:?}");
+}
+
 /// The most text one page holds, well under the largest message a client accepts.
 const PAGE_BYTES: usize = 4 << 20;
 

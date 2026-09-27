@@ -123,8 +123,42 @@ fn a_pane_whose_process_ends_detaches_its_bridge_saying_so() {
     assert_eq!(surface.detached, Some(proto::DetachReason::Exited));
 }
 
+/// A bridge attaching after the fact is shown every kind of character as it was printed: wide,
+/// combining, box drawing, and an emoji joined from three. The lines are the ones herdr's replay
+/// was recorded carrying (corpus/herdr-0.8.0/frame-fidelity).
 #[test]
-fn a_bridge_resizes_its_pane() {
+fn a_replay_shows_each_character_as_it_was_printed() {
+    let facts = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../corpus/herdr-0.8.0/frame-fidelity/FACTS.json"
+    ))
+    .expect("the recorded facts");
+    let facts: serde_json::Value = serde_json::from_str(&facts).expect("JSON");
+    let lines: Vec<&str> = facts["payload_lines"]
+        .as_array()
+        .expect("payload_lines")
+        .iter()
+        .map(|line| line.as_str().expect("a line"))
+        .collect();
+    let quoted: Vec<String> = lines.iter().map(|line| format!("'{line}'")).collect();
+
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let command = format!("printf '%s\\n' {}; echo printed", quoted.join(" "));
+    make(&mut control, running("p1", "t1", &command));
+    until_text(&mut control, "p1", "printed\n");
+
+    let mut stream = attached(&daemon, "p1", false);
+    let mut surface = Surface::new(80, 24);
+    surface.follow(&mut stream, "the replay", true, |surface| surface.replays > 0);
+    let shown = surface.text();
+    for line in lines {
+        assert!(shown.lines().any(|row| row == line), "{line:?} is not in the replay: {shown:?}");
+    }
+}
+
+#[test]
+fn a_bridge_sizes_its_pane_and_the_size_stays_when_it_goes() {
     let daemon = daemon();
     let mut control = daemon.connect();
     let out = daemon.root().join("size");
@@ -144,6 +178,17 @@ fn a_bridge_resizes_its_pane() {
     until_some("the program to see its new size", || {
         std::fs::read_to_string(&out).ok().filter(|size| size.trim() == "30 100")
     });
+
+    // And keeps it once the bridge has gone: nothing but another bridge sizes a pane (MIP-3
+    // section 4), so a program running on in a window that closed is not reflowed.
+    drop(stream);
+    for _ in 0..3 {
+        let _ = std::fs::remove_file(&out);
+        let size = until_some("the program to look at its size again", || {
+            std::fs::read_to_string(&out).ok().filter(|size| !size.is_empty())
+        });
+        assert_eq!(size.trim(), "30 100", "the size after the bridge went");
+    }
 }
 
 #[test]

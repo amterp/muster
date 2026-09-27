@@ -1,0 +1,861 @@
+{
+  "why": "herdr 0.8.0's recorded behavior, one verdict per fact, taken before herdr left the repository. Each fact is pinned to the test that holds muster-daemon to the same behavior, says how Muster deliberately differs, or is marked as describing only herdr's own API or implementation. crates/muster-daemon/tests/migration.rs fails when a fact has no verdict, when a verdict names a fact that is gone, and when a pinned test no longer exists.",
+  "scenarios": {
+    "agent-states": {
+      "agent_detected_event_seen": {
+        "differs": "muster-daemon has no event of its own for recognizing an agent: the agent's name is the `agent` field on the pane's record, published in a pane_changed like any other change to it."
+      },
+      "agent_status_change_events_seen": {
+        "herdr_only": "A count of herdr's pane.agent_status_changed events in this run, which included herdr's derived done."
+      },
+      "agent_status_event_sequence": {
+        "differs": "muster-daemon publishes working and then idle and has no done state; the core derives done from whether the pane was on screen in a focused window (attach.rs::an_agent_finishing_unseen_waits_to_be_noticed)."
+      },
+      "completion_in_active_tab": {
+        "pinned": "corpus/conformance/attention.json#an agent that finishes in front of you is idle, not done"
+      },
+      "completion_in_background_tab": {
+        "pinned": "corpus/conformance/attention.json#an agent that finishes on a pane no window shows is done"
+      },
+      "done_is_derived_not_reported": {
+        "pinned": "crates/muster-seam/tests/seam/attach.rs::an_agent_finishing_unseen_waits_to_be_noticed"
+      },
+      "event_kinds_delivered": {
+        "herdr_only": "herdr's own event names and their spelling; muster-daemon's events are protobuf messages with no string names."
+      },
+      "event_kinds_dotted": {
+        "herdr_only": "herdr's own event names and their spelling; muster-daemon's events are protobuf messages with no string names."
+      },
+      "event_kinds_snake_cased": {
+        "herdr_only": "herdr's own event names and their spelling; muster-daemon's events are protobuf messages with no string names."
+      },
+      "pane_focus_supported": {
+        "differs": "muster-daemon holds no focus and has no focus request: which pane the keyboard is on is each window's own, and Muster never routes input by a daemon's cursor (docs/mip/0003-own-daemon.md)."
+      },
+      "states_a_client_may_report": {
+        "differs": "No client reports an agent state to muster-daemon: the state comes from its own detection, and a pane's report carries only facts (context, model, cost, sub-agents), never a state."
+      },
+      "states_rejected_when_reported": {
+        "differs": "No client reports an agent state to muster-daemon: the state comes from its own detection, and a pane's report carries only facts (context, model, cost, sub-agents), never a state."
+      },
+      "status_after_focusing_its_tab": {
+        "pinned": "corpus/conformance/attention.json#bringing a pane on screen settles what finished while it was hidden"
+      },
+      "status_after_pane_focus": {
+        "pinned": "corpus/conformance/attention.json#looking at a pane that finished unseen settles it"
+      },
+      "status_before_pane_focus": {
+        "pinned": "corpus/conformance/attention.json#an agent that finishes on a pane no window shows is done"
+      },
+      "status_while_working": {
+        "pinned": "crates/muster-daemon/tests/daemon/detection.rs::the_herdr_probe_detection_scenario_settles_with_and_without_a_viewer"
+      }
+    },
+    "arranging": {
+      "layout_after_move": {
+        "herdr_only": "The JSON of herdr's layout.export after the move."
+      },
+      "move_announces_pane_moved": {
+        "differs": "muster-daemon has no pane_moved event. A move announces the tab it left (tab_changed, or tab_closed once emptied) and then the tab it joined (tab_opened or tab_changed), as arranging.rs::moving_a_pane_out_announces_the_tab_it_left_and_then_where_it_went asserts."
+      },
+      "move_answer": {
+        "herdr_only": "The JSON of herdr's pane.move answer."
+      },
+      "move_answer_layout_keys": {
+        "herdr_only": "Key names in herdr's pane.move answer."
+      },
+      "move_answer_payload_keys": {
+        "herdr_only": "Key names in herdr's pane.move answer."
+      },
+      "move_event_kinds": {
+        "herdr_only": "herdr's own event names and their spelling; muster-daemon's events are protobuf messages with no string names."
+      },
+      "move_event_kinds_without_subscribing": {
+        "differs": "muster-daemon has one subscription with no parameters, and every event after its snapshot reaches every subscriber, agent state included. A move announces the tab it left (tab_changed, or tab_closed once emptied) and then the tab it joined (tab_opened or tab_changed)."
+      },
+      "move_pane_updated_count": {
+        "pinned": "crates/muster-daemon/tests/daemon/arranging.rs::moving_a_pane_out_announces_the_tab_it_left_and_then_where_it_went"
+      },
+      "move_pane_updated_tabs": {
+        "pinned": "crates/muster-daemon/tests/daemon/arranging.rs::moving_a_pane_out_announces_the_tab_it_left_and_then_where_it_went"
+      },
+      "pane_moved_arrives_unsubscribed": {
+        "differs": "muster-daemon has one subscription with no parameters, and every event after its snapshot reaches every subscriber, agent state included. There is no event a subscriber must name to hear a move."
+      },
+      "pane_moved_names_the_new_tab": {
+        "pinned": "crates/muster-daemon/tests/daemon/arranging.rs::moving_a_pane_out_announces_the_tab_it_left_and_then_where_it_went"
+      },
+      "pane_moved_payload": {
+        "herdr_only": "The JSON of herdr's pane_moved event."
+      },
+      "pane_moved_payload_keys": {
+        "herdr_only": "Key names in herdr's pane_moved event."
+      },
+      "panes_before_any_move": {
+        "herdr_only": "herdr's ids for the panes or tabs the probe set up; muster-daemon's panes and tabs carry the names Muster gave them."
+      },
+      "swap_answer_layout_keys": {
+        "herdr_only": "Key names in herdr's pane.swap answer."
+      },
+      "swap_answer_payload_keys": {
+        "herdr_only": "Key names in herdr's pane.swap answer."
+      },
+      "swap_event_kinds": {
+        "pinned": "crates/muster-daemon/tests/daemon/arranging.rs::swapping_exchanges_two_panes_in_one_tab"
+      },
+      "tab_labels_after": {
+        "differs": "muster-daemon stores only a name a person gave a tab, absent when unnamed; the core calls an unnamed tab after its place in the window (roster.json, 'a tab nobody has named is called after its place in the window')."
+      },
+      "tab_labels_before": {
+        "differs": "muster-daemon stores only a name a person gave a tab, absent when unnamed; the core calls an unnamed tab after its place in the window."
+      },
+      "tab_move_announces_tab_moved": {
+        "differs": "muster-daemon keeps no tab order and has no request to reorder tabs: the order a window walks is Muster's own composition record, where tabs arrive in the order daemons describe them and a new one goes on the end."
+      },
+      "tab_move_answer": {
+        "herdr_only": "The JSON of herdr's tab.move answer."
+      },
+      "tab_move_answer_payload_keys": {
+        "herdr_only": "Key names in herdr's tab.move answer."
+      },
+      "tab_move_event_kinds": {
+        "herdr_only": "herdr's own event names and their spelling; muster-daemon's events are protobuf messages with no string names."
+      },
+      "tab_move_event_kinds_without_subscribing": {
+        "herdr_only": "What herdr's per-kind subscriptions delivered for tab.move, a request muster-daemon does not have."
+      },
+      "tab_move_keeps_tab_ids": {
+        "differs": "muster-daemon has no tab reorder; a tab's name is minted once by Muster and is never positional, so nothing moving can change it."
+      },
+      "tab_move_noop_announces_tab_moved": {
+        "differs": "muster-daemon keeps no tab order and has no request to reorder tabs: the order a window walks is Muster's own composition record, where tabs arrive in the order daemons describe them and a new one goes on the end."
+      },
+      "tab_move_noop_answer_payload_keys": {
+        "herdr_only": "Key names in herdr's tab.move answer."
+      },
+      "tab_move_noop_event_kinds": {
+        "herdr_only": "What herdr announced for a tab.move to the index a tab already held, a request muster-daemon does not have."
+      },
+      "tab_move_renumbers_labels": {
+        "differs": "muster-daemon stores no positional label to renumber: the core numbers unnamed tabs by their place in the window's own order."
+      },
+      "tab_moved_arrives_unsubscribed": {
+        "differs": "muster-daemon keeps no tab order and has no request to reorder tabs: the order a window walks is Muster's own composition record, where tabs arrive in the order daemons describe them and a new one goes on the end."
+      },
+      "tab_moved_order": {
+        "herdr_only": "herdr's tab ids in the order its tab_moved event stated."
+      },
+      "tab_moved_payload": {
+        "herdr_only": "The JSON of herdr's tab_moved event."
+      },
+      "tab_moved_payload_keys": {
+        "herdr_only": "Key names in herdr's tab_moved event."
+      },
+      "tab_moved_states_whole_order": {
+        "differs": "muster-daemon keeps no tab order and has no request to reorder tabs: the order a window walks is Muster's own composition record, where tabs arrive in the order daemons describe them and a new one goes on the end."
+      },
+      "tab_moved_workspaces_named": {
+        "herdr_only": "herdr's workspace ids; Muster has no workspaces."
+      },
+      "tab_of_each_pane_after": {
+        "pinned": "crates/muster-daemon/tests/daemon/arranging.rs::moving_a_pane_out_announces_the_tab_it_left_and_then_where_it_went"
+      },
+      "tab_of_each_pane_before": {
+        "herdr_only": "herdr's ids for the panes or tabs the probe set up; muster-daemon's panes and tabs carry the names Muster gave them."
+      },
+      "tab_order_after": {
+        "differs": "muster-daemon keeps no tab order and has no request to reorder tabs: the order a window walks is Muster's own composition record, where tabs arrive in the order daemons describe them and a new one goes on the end."
+      },
+      "tab_order_before": {
+        "differs": "muster-daemon keeps no tab order and has no request to reorder tabs: the order a window walks is Muster's own composition record, where tabs arrive in the order daemons describe them and a new one goes on the end."
+      },
+      "tab_order_finally": {
+        "differs": "muster-daemon keeps no tab order and has no request to reorder tabs: the order a window walks is Muster's own composition record, where tabs arrive in the order daemons describe them and a new one goes on the end."
+      },
+      "workspace_of_moved_tabs": {
+        "herdr_only": "herdr's workspace id; Muster has no workspaces."
+      }
+    },
+    "detection": {
+      "agent_detected_from_process_name": {
+        "pinned": "crates/muster-daemon/tests/daemon/detection.rs::the_herdr_probe_detection_scenario_settles_with_and_without_a_viewer"
+      },
+      "detection_latency_no_viewer_s": {
+        "herdr_only": "herdr's own settle times in one run. The same scenario against muster-daemon prints its times beside these and asserts only that each state settles within ten seconds."
+      },
+      "detection_latency_with_viewer_s": {
+        "herdr_only": "herdr's own settle times in one run. The same scenario against muster-daemon prints its times beside these and asserts only that each state settles within ten seconds."
+      },
+      "detection_works_with_no_viewer": {
+        "pinned": "crates/muster-daemon/tests/daemon/detection.rs::the_herdr_probe_detection_scenario_settles_with_and_without_a_viewer"
+      },
+      "detection_works_with_viewer": {
+        "pinned": "crates/muster-daemon/tests/daemon/detection.rs::the_herdr_probe_detection_scenario_settles_with_and_without_a_viewer"
+      },
+      "override_manifest_loaded": {
+        "pinned": "crates/muster-daemon/tests/daemon/detection.rs::the_herdr_probe_detection_scenario_settles_with_and_without_a_viewer"
+      }
+    },
+    "durability": {
+      "cwds_after_apply": {
+        "herdr_only": "The result of herdr's layout.apply, a request muster-daemon does not have."
+      },
+      "cwds_survive_daemon_restart": {
+        "pinned": "crates/muster-daemon/tests/daemon/persistence.rs::a_restart_brings_back_every_tab_its_names_and_directories_and_nothing_else"
+      },
+      "export_carries_cwd_per_pane": {
+        "herdr_only": "The contents of herdr's layout.export."
+      },
+      "export_carries_root": {
+        "herdr_only": "The contents of herdr's layout.export."
+      },
+      "layout_apply_accepted_an_export": {
+        "herdr_only": "herdr's layout.apply, which muster-daemon has no counterpart to; it restores from its own state file."
+      },
+      "layout_apply_is_additive": {
+        "herdr_only": "herdr's layout.apply, which muster-daemon has no counterpart to; it restores from its own state file."
+      },
+      "marker_on_screen_before_restart": {
+        "herdr_only": "A precondition of the probe's run, not a claim about the daemon."
+      },
+      "pane_count_after_apply": {
+        "herdr_only": "The result of herdr's layout.apply."
+      },
+      "panes_after_apply": {
+        "herdr_only": "The result of herdr's layout.apply."
+      },
+      "panes_after_restart": {
+        "pinned": "crates/muster-daemon/tests/daemon/persistence.rs::a_restart_brings_back_every_tab_its_names_and_directories_and_nothing_else"
+      },
+      "panes_before_apply": {
+        "herdr_only": "herdr's ids for the panes or tabs the probe set up; muster-daemon's panes and tabs carry the names Muster gave them."
+      },
+      "panes_before_restart": {
+        "herdr_only": "herdr's ids for the panes or tabs the probe set up; muster-daemon's panes and tabs carry the names Muster gave them."
+      },
+      "scrollback_survives_daemon_restart": {
+        "pinned": "crates/muster-daemon/tests/daemon/persistence.rs::a_restart_brings_back_no_scrollback_and_no_title"
+      },
+      "session_survives_daemon_restart": {
+        "pinned": "crates/muster-daemon/tests/daemon/persistence.rs::a_restart_brings_back_every_tab_its_names_and_directories_and_nothing_else"
+      },
+      "splits_after_apply": {
+        "herdr_only": "The result of herdr's layout.apply."
+      },
+      "terminal_ids_after_restart": {
+        "herdr_only": "herdr's terminal ids, which Muster has no counterpart to."
+      },
+      "terminal_ids_before_restart": {
+        "herdr_only": "herdr's terminal ids, which Muster has no counterpart to."
+      },
+      "terminals_survive_daemon_restart": {
+        "pinned": "crates/muster-daemon/tests/daemon/persistence.rs::a_restart_brings_back_every_tab_its_names_and_directories_and_nothing_else"
+      },
+      "workspaces_after_restart": {
+        "herdr_only": "herdr's workspace ids; Muster has no workspaces."
+      }
+    },
+    "frame-fidelity": {
+      "frame_count": {
+        "herdr_only": "A count of herdr's re-encoded frames; muster-daemon streams a replay and then the program's own bytes."
+      },
+      "full_frame_count": {
+        "herdr_only": "A count of herdr's full frames; muster-daemon streams a replay and then the program's own bytes."
+      },
+      "payload_lines": {
+        "pinned": "crates/muster-daemon/tests/daemon/streams.rs::a_replay_shows_each_character_as_it_was_printed"
+      }
+    },
+    "frames": {
+      "attach_first_frame_bytes": {
+        "herdr_only": "The size of herdr's first frame."
+      },
+      "attach_first_frame_full": {
+        "pinned": "crates/muster-daemon/tests/daemon/streams.rs::a_bridge_is_brought_to_the_pane_by_a_replay_and_then_follows_it"
+      },
+      "attach_first_frame_seq": {
+        "herdr_only": "herdr's frame sequence number."
+      },
+      "attach_frame_geometry": {
+        "herdr_only": "The size herdr rendered its frames at; a Muster surface draws the replay at its own size."
+      },
+      "frame_count": {
+        "herdr_only": "A count of herdr's frames."
+      },
+      "frame_envelope_keys": {
+        "herdr_only": "Key names in herdr's frame envelope."
+      },
+      "frame_seq_monotonic": {
+        "herdr_only": "herdr's frame sequence numbers; a Muster stream counts bytes for credit instead."
+      },
+      "frame_seq_range": {
+        "herdr_only": "herdr's frame sequence numbers."
+      },
+      "full_frame_count": {
+        "pinned": "crates/muster-daemon/tests/daemon/streams.rs::a_bridge_is_brought_to_the_pane_by_a_replay_and_then_follows_it"
+      },
+      "mode_sequences_any_survived": {
+        "differs": "A Muster stream carries the program's own output bytes after a replay that states the modes in effect, so mode sequences reach the surface; the daemon also encodes input against those modes itself (typing.rs::keys_are_encoded_against_the_programs_own_modes)."
+      },
+      "mode_sequences_survive_frame_stream": {
+        "differs": "A Muster stream carries the program's own output bytes after a replay that states the modes in effect, so mode sequences reach the surface rather than being consumed."
+      },
+      "observer_frame_geometry": {
+        "differs": "muster-daemon allows one bridge per pane: a second attach is refused unless it takes over, and the displaced bridge is told (streams.rs::a_second_bridge_is_refused_unless_it_takes_over_and_the_first_is_told), so no observer views a pane at a size of its own."
+      },
+      "observer_gets_full_frame_on_attach": {
+        "differs": "muster-daemon allows one bridge per pane: a second attach is refused unless it takes over, and the displaced bridge is told (streams.rs::a_second_bridge_is_refused_unless_it_takes_over_and_the_first_is_told), so no observer views a pane at a size of its own."
+      }
+    },
+    "geometry": {
+      "controller_frame_geometry": {
+        "herdr_only": "The size of herdr's frames to its controlling client."
+      },
+      "controller_requested": {
+        "herdr_only": "The size the probe asked herdr for, an input rather than an observation."
+      },
+      "geometry_after_resize": {
+        "pinned": "crates/muster-daemon/tests/daemon/streams.rs::a_bridge_sizes_its_pane_and_the_size_stays_when_it_goes"
+      },
+      "geometry_hold_released_on_detach": {
+        "pinned": "crates/muster-daemon/tests/daemon/streams.rs::a_bridge_sizes_its_pane_and_the_size_stays_when_it_goes"
+      },
+      "layout_rect_no_viewer": {
+        "differs": "muster-daemon's tab record carries the tree and its ratios and never an area or cell rectangles, so each window lays a tab out at its own size."
+      },
+      "layout_rect_under_controller": {
+        "differs": "muster-daemon's tab record carries the tree and its ratios and never an area or cell rectangles, so each window lays a tab out at its own size."
+      },
+      "observer_forced_to_controller_size": {
+        "differs": "muster-daemon allows one bridge per pane: a second attach is refused unless it takes over, and the displaced bridge is told (streams.rs::a_second_bridge_is_refused_unless_it_takes_over_and_the_first_is_told), so no observer views a pane at a size of its own."
+      },
+      "observer_frame_geometry": {
+        "differs": "muster-daemon allows one bridge per pane: a second attach is refused unless it takes over, and the displaced bridge is told (streams.rs::a_second_bridge_is_refused_unless_it_takes_over_and_the_first_is_told), so no observer views a pane at a size of its own."
+      },
+      "observer_requested": {
+        "herdr_only": "The size the probe asked herdr for, an input rather than an observation."
+      },
+      "pane_keys_carrying_size": {
+        "herdr_only": "Key names in herdr's pane object."
+      },
+      "pty_size_10s_after_detach": {
+        "pinned": "crates/muster-daemon/tests/daemon/streams.rs::a_bridge_sizes_its_pane_and_the_size_stays_when_it_goes"
+      },
+      "pty_size_1s_after_detach": {
+        "pinned": "crates/muster-daemon/tests/daemon/streams.rs::a_bridge_sizes_its_pane_and_the_size_stays_when_it_goes"
+      },
+      "pty_size_after_resize": {
+        "pinned": "crates/muster-daemon/tests/daemon/streams.rs::a_bridge_sizes_its_pane_and_the_size_stays_when_it_goes"
+      },
+      "pty_size_no_viewer": {
+        "differs": "A pane nobody draws has the grid it was created with, its neighbor's, or 80x24 in a new tab, never a size from a layout of the daemon's own (panes.rs::a_pane_is_its_grid_from_birth_and_a_split_inherits_its_neighbors)."
+      },
+      "pty_size_under_controller": {
+        "pinned": "crates/muster-daemon/tests/daemon/streams.rs::a_bridge_sizes_its_pane_and_the_size_stays_when_it_goes"
+      },
+      "pty_size_with_observer_attached": {
+        "differs": "muster-daemon allows one bridge per pane: a second attach is refused unless it takes over, and the displaced bridge is told (streams.rs::a_second_bridge_is_refused_unless_it_takes_over_and_the_first_is_told), so no observer views a pane at a size of its own."
+      },
+      "resize_intent_took_effect": {
+        "pinned": "crates/muster-daemon/tests/daemon/streams.rs::a_bridge_sizes_its_pane_and_the_size_stays_when_it_goes"
+      }
+    },
+    "input-encoding": {
+      "cat_v_started": {
+        "herdr_only": "A precondition of the probe's run, not a claim about the daemon."
+      },
+      "control_stream_passes_bytes_through": {
+        "differs": "Keys, clicks, wheel turns and pastes reach muster-daemon as structured events, which it encodes against the pane's live modes; only a binding's own bytes are written unchanged."
+      },
+      "control_stream_reencodes_input": {
+        "differs": "muster-daemon encodes keys against the program's own modes (typing.rs::keys_are_encoded_against_the_programs_own_modes), so there is no raw keyboard channel to pass bytes through."
+      },
+      "probe_verdicts": {
+        "differs": "These are sequences written raw to herdr's control stream; Muster sends keys as events the daemon encodes, and writes raw bytes only for a binding that names them."
+      }
+    },
+    "input-path": {
+      "csi_i_moves_seenness": {
+        "differs": "Seen-ness is the core's, settled by the window gaining focus with the pane on screen; a focus event reaches a pane's program only when it asked for mode 1004 (typing.rs::focus_is_reported_only_to_a_program_that_asked)."
+      },
+      "focus_related_method_probe": {
+        "herdr_only": "Which of herdr's method names exist."
+      },
+      "pane_fields_mentioning_modes": {
+        "differs": "A client needs no modes, because muster-daemon encodes input against them itself; the one mode on a pane's record is shift_capture, which the surface needs for selection."
+      },
+      "process_info_mentions_modes": {
+        "herdr_only": "The contents of herdr's pane.process_info."
+      },
+      "raw_bytes_accepted_on_control_stream": {
+        "pinned": "crates/muster-daemon/tests/daemon/typing.rs::a_bindings_bytes_are_written_and_a_reset_resets_the_pane_and_its_surface"
+      },
+      "send_keys_accepted": {
+        "herdr_only": "herdr's key-name vocabulary for pane.send_keys; Muster sends libghostty key events, and every key encodes the same way (pane-input.json, 'an arrow is a keystroke like any other')."
+      },
+      "send_keys_refused": {
+        "herdr_only": "herdr's key-name vocabulary and its invalid_key errors."
+      },
+      "status_after_focus_gained_sequence": {
+        "differs": "In Muster a done pane is settled when the window gains focus with the pane on screen, reported across the seam rather than written to the pane (attention.json, 'looking at a pane that finished unseen settles it')."
+      },
+      "status_before_focus_gained_sequence": {
+        "herdr_only": "A precondition of the probe's run: herdr's derived done before the bytes were sent."
+      }
+    },
+    "layout": {
+      "area_after_that_client_left": {
+        "herdr_only": "herdr's own layout area, the size of its TUI minus its sidebar."
+      },
+      "area_follows_an_attached_client": {
+        "differs": "muster-daemon's tab record carries the tree and its ratios and never an area or cell rectangles, so each window lays a tab out at its own size."
+      },
+      "area_with_a_200x50_client": {
+        "herdr_only": "herdr's own layout area, the size of its TUI minus its sidebar."
+      },
+      "area_with_no_client": {
+        "herdr_only": "herdr's own layout area, the size of its TUI minus its sidebar."
+      },
+      "border_ratios_match_the_export": {
+        "herdr_only": "Agreement between herdr's two descriptions of a tree, its split borders and its export; muster-daemon publishes only the tree."
+      },
+      "close_events": {
+        "differs": "Closing a pane announces its tab (tab_changed, or tab_closed when it empties) and then pane_closed, with no focus events (panes.rs::closing_a_pane_hangs_up_its_processes_and_reaps_them)."
+      },
+      "collapsed_split_ids": {
+        "herdr_only": "herdr's split border ids."
+      },
+      "collapsed_tree_shape": {
+        "pinned": "crates/muster-daemon/src/tree.rs::removing_a_pane_hands_its_place_to_its_sibling"
+      },
+      "crowded": {
+        "herdr_only": "Whether herdr's rectangles stay distinct enough to rebuild its tree from; muster-daemon publishes the tree itself."
+      },
+      "deep_area": {
+        "herdr_only": "herdr's own layout area."
+      },
+      "deep_pane_count": {
+        "pinned": "crates/muster-daemon/tests/daemon/panes.rs::a_pane_goes_on_the_side_asked_and_its_neighbour_keeps_the_share_asked"
+      },
+      "deep_pane_rects": {
+        "herdr_only": "herdr's cell rectangles for its own TUI."
+      },
+      "deep_split_ids": {
+        "herdr_only": "herdr's split border ids."
+      },
+      "deep_tree_depth": {
+        "pinned": "crates/muster-daemon/tests/daemon/panes.rs::a_pane_goes_on_the_side_asked_and_its_neighbour_keeps_the_share_asked"
+      },
+      "deep_tree_directions": {
+        "pinned": "crates/muster-daemon/tests/daemon/panes.rs::a_pane_goes_on_the_side_asked_and_its_neighbour_keeps_the_share_asked"
+      },
+      "deep_tree_shape": {
+        "pinned": "crates/muster-daemon/tests/daemon/panes.rs::a_pane_goes_on_the_side_asked_and_its_neighbour_keeps_the_share_asked"
+      },
+      "event_kinds": {
+        "herdr_only": "herdr's own event names and their spelling; muster-daemon's events are protobuf messages with no string names."
+      },
+      "every_split_has_a_border_covering_exactly_its_panes": {
+        "herdr_only": "Whether herdr's split borders can rebuild its tree; muster-daemon publishes the tree itself."
+      },
+      "layout_updated_count": {
+        "herdr_only": "A count of herdr's layout_updated events."
+      },
+      "pane_rects_while_zoomed": {
+        "herdr_only": "herdr's cell rectangles for its own TUI."
+      },
+      "root_ratio_after_setting_it_to_0_3": {
+        "pinned": "crates/muster-daemon/tests/daemon/arranging.rs::a_ratio_is_set_by_the_path_to_its_split"
+      },
+      "same_axis_tree_shape": {
+        "pinned": "crates/muster-daemon/tests/daemon/panes.rs::a_pane_goes_on_the_side_asked_and_its_neighbour_keeps_the_share_asked"
+      },
+      "set_split_ratio_accepted": {
+        "pinned": "crates/muster-daemon/tests/daemon/arranging.rs::a_ratio_is_set_by_the_path_to_its_split"
+      },
+      "set_split_ratio_events": {
+        "pinned": "crates/muster-daemon/tests/daemon/arranging.rs::a_ratio_is_set_by_the_path_to_its_split"
+      },
+      "split_id_paths_match_the_export_paths": {
+        "herdr_only": "herdr's split border ids against its export paths."
+      },
+      "split_pairings": {
+        "herdr_only": "herdr's split borders paired with its export tree."
+      },
+      "zoom_accepted": {
+        "pinned": "crates/muster-daemon/tests/daemon/arranging.rs::zoom_is_a_state_and_asking_for_the_one_it_is_in_says_so"
+      },
+      "zoom_events": {
+        "differs": "A zoom announces one tab_changed naming the zoomed pane, and no focus events, since the daemon holds no focus (arranging.rs::zoom_is_a_state_and_asking_for_the_one_it_is_in_says_so)."
+      },
+      "zoomed_flag": {
+        "pinned": "crates/muster-daemon/tests/daemon/arranging.rs::zoom_is_a_state_and_asking_for_the_one_it_is_in_says_so"
+      }
+    },
+    "layout-replay": {
+      "a_fresh_subscription_replays_arrangements_the_tab_has_outgrown": {
+        "differs": "Subscribing answers with a snapshot and then only later events, so nothing from before it is replayed (subscribing.rs::a_subscription_starts_from_its_snapshot_and_hears_only_what_follows)."
+      },
+      "a_split_publishes_a_tree_naming_fewer_panes_than_the_tab_settles_at": {
+        "pinned": "crates/muster-daemon/tests/daemon/subscribing.rs::a_subscription_starts_from_its_snapshot_and_hears_only_what_follows"
+      },
+      "a_zoomed_tab_replays_unzoomed_and_then_zoomed_naming_the_same_panes": {
+        "differs": "Subscribing answers with a snapshot and then only later events, so nothing from before it is replayed (subscribing.rs::a_subscription_starts_from_its_snapshot_and_hears_only_what_follows)."
+      },
+      "arrangements_a_fresh_subscription_replays_for_a_settled_tab": {
+        "differs": "Subscribing answers with a snapshot and then only later events, so nothing from before it is replayed (subscribing.rs::a_subscription_starts_from_its_snapshot_and_hears_only_what_follows)."
+      },
+      "arrangements_a_fresh_subscription_replays_for_a_zoomed_tab": {
+        "differs": "Subscribing answers with a snapshot and then only later events, so nothing from before it is replayed (subscribing.rs::a_subscription_starts_from_its_snapshot_and_hears_only_what_follows)."
+      },
+      "arrangements_a_split_publishes_to_an_open_subscription": {
+        "pinned": "crates/muster-daemon/tests/daemon/subscribing.rs::a_subscription_starts_from_its_snapshot_and_hears_only_what_follows"
+      },
+      "panes_the_tab_held_the_whole_time": {
+        "herdr_only": "herdr's ids for the panes or tabs the probe set up; muster-daemon's panes and tabs carry the names Muster gave them."
+      },
+      "panes_the_tab_settles_at": {
+        "herdr_only": "A precondition of the probe's run: how many panes it built."
+      }
+    },
+    "lifecycle": {
+      "agent_state_change_events_when_naming_the_pane": {
+        "herdr_only": "herdr's parameterized pane.agent_status_changed subscription."
+      },
+      "agent_state_change_events_without_naming_the_pane": {
+        "differs": "muster-daemon has one subscription with no parameters, and every event after its snapshot reaches every subscriber, agent state included. A real-daemon test hears each change on it (muster-seam agent_states.rs::a_watch_starts_from_every_pane_and_hears_each_change)."
+      },
+      "agent_state_change_seq_final": {
+        "herdr_only": "herdr's state_change_seq counter; muster-daemon numbers every event with one sequence instead."
+      },
+      "agent_state_change_seq_progression": {
+        "herdr_only": "herdr's state_change_seq counter; muster-daemon numbers every event with one sequence instead."
+      },
+      "agent_state_change_seq_unique_across_panes": {
+        "herdr_only": "herdr's state_change_seq counter; muster-daemon numbers every event with one sequence instead."
+      },
+      "agent_state_visible_to_unparameterized_subscriber": {
+        "differs": "muster-daemon has one subscription with no parameters, and every event after its snapshot reaches every subscriber, agent state included. A real-daemon test hears each change on it (muster-seam agent_states.rs::a_watch_starts_from_every_pane_and_hears_each_change)."
+      },
+      "layout_updated_count": {
+        "herdr_only": "A count of herdr's layout_updated events."
+      },
+      "layout_updated_is_whole_tab_absolute": {
+        "pinned": "crates/muster-seam/tests/seam/attach.rs::the_window_follows_and_drives_the_tree"
+      },
+      "layout_updated_payload_keys": {
+        "herdr_only": "Key names in herdr's layout_updated event."
+      },
+      "lifecycle_event_kinds_delivered": {
+        "herdr_only": "herdr's own event names and their spelling; muster-daemon's events are protobuf messages with no string names."
+      },
+      "nested_snapshot_pane_rects": {
+        "herdr_only": "herdr's cell rectangles for its own TUI."
+      },
+      "nested_snapshot_split_count": {
+        "herdr_only": "A count of herdr's flat split borders."
+      },
+      "nested_snapshot_split_keys": {
+        "herdr_only": "Key names in herdr's split borders."
+      },
+      "nested_tree_depth": {
+        "pinned": "crates/muster-daemon/tests/daemon/panes.rs::a_pane_goes_on_the_side_asked_and_its_neighbour_keeps_the_share_asked"
+      },
+      "nested_tree_directions": {
+        "pinned": "crates/muster-daemon/tests/daemon/panes.rs::a_pane_goes_on_the_side_asked_and_its_neighbour_keeps_the_share_asked"
+      },
+      "pane_closed_payload_keys": {
+        "herdr_only": "Key names in herdr's pane_closed event."
+      },
+      "pane_exit_also_emits_pane_closed": {
+        "differs": "muster-daemon announces one pane_closed however a pane goes, with a reason saying whether a client asked or the process exited, and the exit status (panes.rs::a_pane_whose_process_exits_closes_and_says_how)."
+      },
+      "pane_exited_payload": {
+        "herdr_only": "The JSON of herdr's pane_exited event."
+      },
+      "pane_exited_payload_keys": {
+        "herdr_only": "Key names in herdr's pane_exited event."
+      },
+      "pane_revision_bumped_by_agent_state": {
+        "herdr_only": "herdr's per-pane revision counter, which muster-daemon has no counterpart to."
+      },
+      "pane_revision_bumped_by_title": {
+        "herdr_only": "herdr's per-pane revision counter, which muster-daemon has no counterpart to."
+      },
+      "pane_revision_start": {
+        "herdr_only": "herdr's per-pane revision counter, which muster-daemon has no counterpart to."
+      },
+      "panes_created": {
+        "herdr_only": "herdr's ids for the panes or tabs the probe set up; muster-daemon's panes and tabs carry the names Muster gave them."
+      },
+      "panes_removed_with_no_pane_event": {
+        "differs": "Closing a tab announces tab_closed and then a pane_closed for every pane in it (arranging.rs::closing_a_tab_closes_every_pane_in_it); Muster has no workspaces to close."
+      },
+      "panes_still_alive": {
+        "herdr_only": "herdr's ids for the panes or tabs the probe set up; muster-daemon's panes and tabs carry the names Muster gave them."
+      },
+      "panes_whose_removal_was_announced": {
+        "herdr_only": "herdr's ids for the panes or tabs the probe set up; muster-daemon's panes and tabs carry the names Muster gave them."
+      },
+      "removal_kinds_seen": {
+        "herdr_only": "herdr's own event names and their spelling; muster-daemon's events are protobuf messages with no string names."
+      },
+      "structural_change_followed_by_layout_updated": {
+        "differs": "muster-daemon announces each structural change as the whole record of the tab it touched (tab_opened, tab_changed or tab_closed), tabs included, rather than as a separate layout event."
+      },
+      "subscribe_replayed_event_count": {
+        "differs": "Subscribing answers with a snapshot and then only later events, so nothing from before it is replayed (subscribing.rs::a_subscription_starts_from_its_snapshot_and_hears_only_what_follows)."
+      },
+      "subscribe_replayed_kinds": {
+        "differs": "Subscribing answers with a snapshot and then only later events, so nothing from before it is replayed (subscribing.rs::a_subscription_starts_from_its_snapshot_and_hears_only_what_follows)."
+      }
+    },
+    "naming": {
+      "empty_string_restores_a_tab_number": {
+        "differs": "A tab rename with no text takes the tab's name away (arranging.rs::a_tab_name_older_than_the_one_recorded_is_refused), and the core then calls the tab after its place in the window."
+      },
+      "name_and_title_coexist": {
+        "pinned": "corpus/conformance/mirror.json#a name somebody gave a pane and the title its program set arrive on its record"
+      },
+      "null_clears_a_pane_name": {
+        "pinned": "crates/muster-daemon/tests/daemon/arranging.rs::renaming_a_pane_announces_its_record"
+      },
+      "pane_keys_when_unnamed": {
+        "herdr_only": "Key names in herdr's pane object."
+      },
+      "pane_label_after_null_rename": {
+        "pinned": "crates/muster-daemon/tests/daemon/arranging.rs::renaming_a_pane_announces_its_record"
+      },
+      "pane_label_after_rename": {
+        "pinned": "crates/muster-daemon/tests/daemon/arranging.rs::renaming_a_pane_announces_its_record"
+      },
+      "pane_label_key_present_when_unset": {
+        "herdr_only": "Whether herdr's JSON has a label key; muster-daemon's label is an optional field."
+      },
+      "pane_label_survives_daemon_restart": {
+        "pinned": "crates/muster-daemon/tests/daemon/persistence.rs::a_restart_brings_back_every_tab_its_names_and_directories_and_nothing_else"
+      },
+      "pane_label_survives_emoji_unmodified": {
+        "pinned": "crates/muster-daemon/tests/daemon/arranging.rs::renaming_a_pane_announces_its_record"
+      },
+      "pane_rename_announces_itself": {
+        "differs": "muster-daemon announces a rename as a pane_changed carrying the pane's whole record (arranging.rs::renaming_a_pane_announces_its_record)."
+      },
+      "pane_rename_answers_with_the_pane": {
+        "herdr_only": "The shape of herdr's pane.rename answer; a muster-daemon answer carries an outcome, and the record arrives as the event before it."
+      },
+      "pane_rename_event_kinds": {
+        "differs": "muster-daemon announces a rename as a pane_changed carrying the pane's whole record (arranging.rs::renaming_a_pane_announces_its_record)."
+      },
+      "pane_terminal_title_when_unset": {
+        "herdr_only": "herdr's JSON null for an unset title; muster-daemon's title is an empty string until a program sets one."
+      },
+      "pane_updated_payload_carries_the_title": {
+        "pinned": "crates/muster-daemon/tests/daemon/terminal.rs::what_a_programs_output_asks_for_arrives_as_events"
+      },
+      "pane_updated_payload_keys": {
+        "herdr_only": "Key names in herdr's pane_updated event."
+      },
+      "rename_survives_a_later_title": {
+        "pinned": "crates/muster-daemon/tests/daemon/arranging.rs::a_panes_name_and_its_programs_title_are_kept_apart"
+      },
+      "replayed_pane_created_carries_the_name": {
+        "differs": "Subscribing answers with a snapshot and then only later events, so nothing from before it is replayed (subscribing.rs::a_subscription_starts_from_its_snapshot_and_hears_only_what_follows)."
+      },
+      "replayed_pane_created_carries_the_title": {
+        "differs": "Subscribing answers with a snapshot and then only later events, so nothing from before it is replayed (subscribing.rs::a_subscription_starts_from_its_snapshot_and_hears_only_what_follows)."
+      },
+      "spinner_rotation_pane_updated_count": {
+        "differs": "muster-daemon strips no glyph from a title and announces one whenever its text differs from the last, so a rotating spinner is a pane_changed per frame; muster-perf budgets that cost per change (roster_cost)."
+      },
+      "tab_label_after_empty_rename": {
+        "differs": "A tab rename with no text leaves the tab unnamed rather than named by an empty string, and the core then calls it after its place in the window."
+      },
+      "tab_label_after_rename": {
+        "pinned": "crates/muster-daemon/tests/daemon/arranging.rs::a_tab_name_older_than_the_one_recorded_is_refused"
+      },
+      "tab_label_before_rename": {
+        "differs": "An unnamed tab has no label on muster-daemon; the core calls it after its place in the window rather than a number the daemon stored."
+      },
+      "tab_label_survives_daemon_restart": {
+        "pinned": "crates/muster-daemon/tests/daemon/persistence.rs::a_restart_brings_back_every_tab_its_names_and_directories_and_nothing_else"
+      },
+      "tab_rename_announces_itself": {
+        "pinned": "crates/muster-daemon/tests/daemon/arranging.rs::a_tab_name_older_than_the_one_recorded_is_refused"
+      },
+      "terminal_title_after_osc2": {
+        "pinned": "crates/muster-daemon/tests/daemon/terminal.rs::what_a_programs_output_asks_for_arrives_as_events"
+      },
+      "terminal_title_after_rename": {
+        "pinned": "crates/muster-daemon/tests/daemon/arranging.rs::a_panes_name_and_its_programs_title_are_kept_apart"
+      },
+      "terminal_title_keeps_the_glyph": {
+        "pinned": "crates/muster-daemon/tests/daemon/terminal.rs::what_a_programs_output_asks_for_arrives_as_events"
+      },
+      "terminal_title_stripped_after_later_osc2": {
+        "herdr_only": "herdr's terminal_title_stripped field, which muster-daemon has no counterpart to."
+      },
+      "terminal_title_stripped_after_osc2": {
+        "herdr_only": "herdr's terminal_title_stripped field, which muster-daemon has no counterpart to."
+      },
+      "terminal_title_stripped_drops_the_glyph": {
+        "differs": "muster-daemon keeps one title, exactly as the program wrote it, and strips no activity glyph from it."
+      },
+      "terminal_title_survives_daemon_restart": {
+        "pinned": "crates/muster-daemon/tests/daemon/persistence.rs::a_restart_brings_back_no_scrollback_and_no_title"
+      },
+      "title_change_event_kinds": {
+        "herdr_only": "herdr's own event names and their spelling; muster-daemon's events are protobuf messages with no string names."
+      },
+      "title_change_pane_updated_count": {
+        "pinned": "crates/muster-daemon/tests/daemon/terminal.rs::what_a_programs_output_asks_for_arrives_as_events"
+      }
+    },
+    "read-depth": {
+      "alternate_screen_read": {
+        "pinned": "crates/muster-daemon/tests/daemon/terminal.rs::a_program_on_the_alternate_screen_is_read_without_the_history_beneath_it"
+      },
+      "blank_bottom_read": {
+        "differs": "A muster-daemon read has a line for every row it covers, blank ones included (screen.rs::a_page_has_a_line_for_every_row_even_a_blank_one), so nothing is trimmed from the bottom."
+      },
+      "deepest_read_vs_max_offset_from_bottom": {
+        "differs": "A read pages by absolute row back to the oldest row held, capped at 4 MiB of text per page rather than at a row count (terminal.rs::a_long_history_is_read_in_pages_no_larger_than_a_message_may_be)."
+      },
+      "erase_scrollback_read": {
+        "pinned": "crates/muster-daemon/tests/daemon/terminal.rs::erased_scrollback_is_gone_from_a_read"
+      },
+      "long_line_row_widths_in_recent": {
+        "pinned": "crates/muster-daemon/tests/daemon/terminal.rs::a_long_line_is_read_as_the_rows_it_wraps_onto"
+      },
+      "long_line_row_widths_in_recent_unwrapped": {
+        "herdr_only": "herdr's recent_unwrapped read source, which muster-daemon has no counterpart to."
+      },
+      "main_screen_history_survives_the_alternate_screen": {
+        "pinned": "crates/muster-daemon/tests/daemon/terminal.rs::a_program_on_the_alternate_screen_is_read_without_the_history_beneath_it"
+      },
+      "method_exists__pane_find": {
+        "herdr_only": "Whether a method name exists in herdr's API."
+      },
+      "method_exists__pane_scroll": {
+        "herdr_only": "Whether a method name exists in herdr's API."
+      },
+      "method_exists__pane_search": {
+        "herdr_only": "Whether a method name exists in herdr's API."
+      },
+      "offset_from_bottom_after_scrolling_up": {
+        "differs": "muster-daemon has no scroll request: scrolling a pane's history is the surface's own, in libghostty, and a read addresses rows absolutely."
+      },
+      "recent_rows_returned_per_lines_asked": {
+        "differs": "There is no row cap: a read returns every row asked for, up to 4 MiB of text a page (terminal.rs::a_long_history_is_read_in_pages_no_larger_than_a_message_may_be)."
+      },
+      "recent_tail_is_the_visible_screen": {
+        "pinned": "crates/muster-daemon/tests/daemon/streams.rs::a_bridge_is_brought_to_the_pane_by_a_replay_and_then_follows_it"
+      },
+      "recent_truncated_per_lines_asked": {
+        "herdr_only": "herdr's truncated flag; a muster-daemon page says total_rows instead."
+      },
+      "scroll_after_printing": {
+        "herdr_only": "herdr's scroll object on a pane."
+      },
+      "scrolled_screen_is_the_predicted_slice_of_recent": {
+        "differs": "muster-daemon has no scroll request: scrolling a pane's history is the surface's own, in libghostty, and a read addresses rows absolutely."
+      },
+      "trimmed_rows_are_the_blank_remainder_of_the_viewport": {
+        "differs": "A muster-daemon read trims no rows, so there is no remainder to account for (screen.rs::a_page_has_a_line_for_every_row_even_a_blank_one)."
+      },
+      "unknown_offset_key_is_accepted_and_ignored": {
+        "differs": "A read takes the absolute row to start from, so paging is part of the request rather than a key a client has to guess at."
+      },
+      "visible_rows_returned": {
+        "herdr_only": "herdr's visible read source."
+      }
+    },
+    "sending-text": {
+      "bytes_a_bare_pty_carried": {
+        "herdr_only": "The probe's control: a pty with no daemon anywhere near it, measuring the kernel's MAX_CANON."
+      },
+      "bytes_a_canonical_mode_reader_received": {
+        "herdr_only": "The kernel's MAX_CANON as herdr's send_text reached it; canonical_reader_matches_bare_pty is the claim that carries over."
+      },
+      "bytes_a_raw_mode_reader_received": {
+        "pinned": "crates/muster-daemon/tests/daemon/typing.rs::a_long_send_reaches_a_raw_reader_whole"
+      },
+      "canonical_reader_matches_bare_pty": {
+        "pinned": "crates/muster-daemon/tests/daemon/typing.rs::a_line_sent_to_a_line_reader_arrives_whole"
+      },
+      "send_input_fences_a_paste": {
+        "pinned": "crates/muster-daemon/tests/daemon/typing.rs::sent_text_goes_as_a_paste_and_is_submitted_with_a_return"
+      },
+      "send_text_fences_a_paste": {
+        "differs": "muster-daemon has one verb for sending text, and it always goes as a paste, fenced when the program asked for bracketed paste (typing.rs::sent_text_goes_as_a_paste_and_is_submitted_with_a_return)."
+      }
+    },
+    "snapshot": {
+      "export_contains_live_fields": {
+        "herdr_only": "The contents of herdr's layout.export."
+      },
+      "export_top_level_keys": {
+        "herdr_only": "Key names in herdr's layout.export."
+      },
+      "snapshot_counts": {
+        "herdr_only": "Counts of the entities in herdr's session.snapshot, workspaces and agents among them."
+      },
+      "snapshot_live_fields_present": {
+        "herdr_only": "Key names on herdr's pane object in a snapshot."
+      },
+      "snapshot_pane_keys": {
+        "herdr_only": "Key names on herdr's pane object in a snapshot."
+      },
+      "snapshot_top_level_keys": {
+        "herdr_only": "Key names in herdr's session.snapshot."
+      },
+      "subscribe_replay_event_kinds": {
+        "herdr_only": "herdr's own event names and their spelling; muster-daemon's events are protobuf messages with no string names."
+      },
+      "subscribe_replays_existing_state": {
+        "differs": "Subscribing answers with a snapshot and then only later events, so nothing from before it is replayed (subscribing.rs::a_subscription_starts_from_its_snapshot_and_hears_only_what_follows)."
+      }
+    },
+    "split-sides": {
+      "arrangements_published_across_the_pair": {
+        "differs": "A pane goes on any of four sides in one request, so a left split publishes one arrangement rather than a split and a swap (panes.rs::a_pane_goes_on_the_side_asked_and_its_neighbour_keeps_the_share_asked)."
+      },
+      "arrival_gaps_ms": {
+        "herdr_only": "herdr's broadcast pacing, which delivers one event per kind per 100 ms."
+      },
+      "event_arrival_ms": {
+        "herdr_only": "herdr's broadcast pacing, which delivers one event per kind per 100 ms."
+      },
+      "pair_answered_in_ms": {
+        "herdr_only": "herdr's time to answer its split and swap requests."
+      },
+      "pair_event_kinds": {
+        "differs": "A split on any side is one request, announced as pane_opened and then one tab_changed (subscribing.rs::a_subscription_starts_from_its_snapshot_and_hears_only_what_follows)."
+      },
+      "settled_tree_shape": {
+        "pinned": "crates/muster-daemon/tests/daemon/panes.rs::a_pane_goes_on_the_side_asked_and_its_neighbour_keeps_the_share_asked"
+      },
+      "split_then_swap_answered_ms": {
+        "herdr_only": "herdr's time to answer its split and swap requests."
+      },
+      "swap_answer_arrangement": {
+        "herdr_only": "The layout in herdr's pane.swap answer."
+      },
+      "swap_answers_with_a_layout": {
+        "differs": "A muster-daemon swap answers with an outcome only; on a subscribed connection the tab's new record arrives as tab_changed before that answer."
+      },
+      "swap_changed": {
+        "pinned": "crates/muster-daemon/tests/daemon/arranging.rs::swapping_exchanges_two_panes_in_one_tab"
+      },
+      "swap_focused_pane": {
+        "differs": "muster-daemon holds no focus and has no focus request: which pane the keyboard is on is each window's own, and Muster never routes input by a daemon's cursor (docs/mip/0003-own-daemon.md)."
+      },
+      "swap_reason": {
+        "herdr_only": "The reason field in herdr's pane.swap answer."
+      },
+      "swap_with_no_target": {
+        "herdr_only": "herdr's error for a pane.swap missing a field; a muster-daemon swap names both panes, and one that is not there answers NOT_THERE."
+      }
+    }
+  }
+}

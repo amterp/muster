@@ -1,6 +1,8 @@
 //! Rearranging panes and tabs, and what each change announces.
 
 use crate::support::*;
+use muster_harness::Input;
+use proto::input_event::{self, Input as Event};
 use proto::{Side, pane_request, tab_request};
 
 /// A tab `t1` holding `[a|b]`, on a subscribed connection.
@@ -80,7 +82,8 @@ fn a_zoomed_pane_leaving_its_tab_unzooms_it() {
 #[test]
 fn swapping_exchanges_two_panes_in_one_tab() {
     let (_daemon, mut control) = two_panes();
-    expect(&mut control, swap("a", "b"), proto::Outcome::Done);
+    let asked = expect(&mut control, swap("a", "b"), proto::Outcome::Done);
+    assert_eq!(names(&asked.events), ["tab_changed:t1"]);
     assert_eq!(tab_shape(&mut control, "t1"), "[b|a 0.50]");
     expect(&mut control, swap("a", "a"), proto::Outcome::AlreadySo);
     make(&mut control, create("c", in_new_tab("t2")));
@@ -121,7 +124,8 @@ fn a_ratio_is_set_by_the_path_to_its_split() {
             ratio,
         }))
     };
-    expect(&mut control, set(0.25), proto::Outcome::Done);
+    let asked = expect(&mut control, set(0.25), proto::Outcome::Done);
+    assert_eq!(names(&asked.events), ["tab_changed:t1"]);
     assert_eq!(tab_shape(&mut control, "t1"), "[a|b 0.25]");
     expect(&mut control, set(0.25), proto::Outcome::AlreadySo);
     expect(&mut control, set(1.5), proto::Outcome::Refused);
@@ -163,10 +167,46 @@ fn renaming_a_pane_announces_its_record() {
     assert_eq!(snapshot(&mut control).panes[0].label, None);
 }
 
+/// A name somebody gave a pane and the title its program set are two things, and setting either
+/// leaves the other as it was.
+#[test]
+fn a_panes_name_and_its_programs_title_are_kept_apart() {
+    let (daemon, mut control) = two_panes();
+    let mut input = Input::connect(daemon.socket_path());
+    let mut set_title = |title: &str| {
+        let text = format!("printf '\\033]2;{title}\\007'");
+        input.send("a", Event::Send(input_event::Send { text, enter: true }));
+    };
+    let record = |control: &mut Control| {
+        snapshot(control).panes.into_iter().find(|record| record.pane == "a").unwrap()
+    };
+
+    set_title("first working build");
+    until_some("a's title", || (record(&mut control).title == "first working build").then_some(()));
+    let rename = pane_request::Rename { pane: "a".to_string(), label: Some("🤖 A".to_string()) };
+    let asked =
+        expect(&mut control, pane(pane_request::Request::Rename(rename)), proto::Outcome::Done);
+    let Some(proto::event::Event::PaneChanged(changed)) = &asked.events[0].event else {
+        panic!("a rename announced {:?}", names(&asked.events));
+    };
+    let changed = changed.pane.as_ref().unwrap();
+    assert_eq!(
+        (changed.label.as_deref(), changed.title.as_str()),
+        (Some("🤖 A"), "first working build")
+    );
+
+    set_title("second");
+    until_some("a's new title beside its name", || {
+        let now = record(&mut control);
+        (now.title == "second" && now.label.as_deref() == Some("🤖 A")).then_some(())
+    });
+}
+
 #[test]
 fn a_tab_name_older_than_the_one_recorded_is_refused() {
     let (_daemon, mut control) = two_panes();
-    expect(&mut control, rename_tab("t1", Some("work"), 2), proto::Outcome::Done);
+    let asked = expect(&mut control, rename_tab("t1", Some("work"), 2), proto::Outcome::Done);
+    assert_eq!(names(&asked.events), ["tab_changed:t1"]);
     expect(&mut control, rename_tab("t1", Some("work"), 2), proto::Outcome::AlreadySo);
     let stale = expect(&mut control, rename_tab("t1", Some("old"), 1), proto::Outcome::Refused);
     assert!(stale.answer.reason.contains("generation 2"), "{}", stale.answer.reason);

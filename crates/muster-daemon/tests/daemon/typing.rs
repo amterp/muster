@@ -193,6 +193,41 @@ fn sent_text_goes_as_a_paste_and_is_submitted_with_a_return() {
     received(&plain, &expected);
 }
 
+/// A long send reaches a program reading raw input whole, in however many writes the pty takes.
+#[test]
+fn a_long_send_reaches_a_raw_reader_whole() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let out = receiving(&mut control, &daemon, "raw", b"");
+    let text = "0123456789".repeat(1000);
+    let mut input = Input::connect(daemon.socket_path());
+    input.send("raw", Event::Send(input_event::Send { text: text.clone(), enter: false }));
+    received(&out, text.as_bytes());
+}
+
+/// A line sent to a program reading lines arrives as the terminal's line discipline delivers it:
+/// the daemon writes to a real pty and adds no limit of its own. 1023 characters and a return
+/// fit the smallest line buffer a kernel here keeps, macOS's 1024 bytes.
+#[test]
+fn a_line_sent_to_a_line_reader_arrives_whole() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let out = daemon.root().join("lines");
+    make(
+        &mut control,
+        proto::pane_request::Create {
+            command: Some(format!("echo ready; cat > {}", out.display())),
+            grid: Some(GRID),
+            ..create("lines", in_new_tab("t-lines"))
+        },
+    );
+    until_text(&mut control, "lines", "ready");
+    let line = "x".repeat(1023);
+    let mut input = Input::connect(daemon.socket_path());
+    input.send("lines", Event::Send(input_event::Send { text: line.clone(), enter: true }));
+    received(&out, format!("{line}\n").as_bytes());
+}
+
 #[test]
 fn a_click_is_reported_only_to_a_program_tracking_the_mouse_and_never_with_shift() {
     let daemon = daemon();

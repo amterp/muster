@@ -184,6 +184,29 @@ fn a_restart_brings_back_every_tab_its_names_and_directories_and_nothing_else() 
     until_text(&mut control, "p4", "features=cursor:steady,ssh-env,ssh-terminfo,title\n");
 }
 
+/// What a program printed and the title it set belong to its terminal, which ends with it.
+#[test]
+fn a_restart_brings_back_no_scrollback_and_no_title() {
+    let mut daemon = daemon();
+    let mut control = daemon.connect();
+    let mut input = Input::connect(daemon.socket_path());
+    make(&mut control, create("p1", in_new_tab("t1")));
+    type_line(&mut input, "p1", "printf '\\033]2;before the restart\\007'; echo printed-before");
+    until_text(&mut control, "p1", "printed-before\n");
+    until_some("p1's title", || {
+        (record(&snapshot(&mut control), "p1").title == "before the restart").then_some(())
+    });
+    until_saved(&daemon, "p1");
+
+    stop(&mut daemon, &mut control);
+    daemon.restart();
+    let mut control = daemon.connect();
+    let after = until_restored(&mut control, 1);
+    assert_ne!(record(&after, "p1").title, "before the restart", "no title");
+    let text = read_text(&mut control, "p1", 0, 0).text;
+    assert!(!text.contains("printed-before"), "no scrollback: {text:?}");
+}
+
 #[test]
 fn a_crash_keeps_what_was_written_shortly_before_it() {
     let mut daemon = daemon();
