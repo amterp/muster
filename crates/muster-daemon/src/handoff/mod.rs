@@ -49,7 +49,7 @@ const FLUSH: Duration = Duration::from_secs(1);
 /// Test-only faults, a comma-separated list read by both daemons, each acting on its own: the
 /// daemon taking over `refuse`, `exit-before-ready`, `exit-after-commit`, `pause-after-accept`,
 /// `pause-before-ready` and `pause-before-serving`, and the daemon handing over
-/// `pause-after-serving` and `report-before-settle`, which queues a report just before it waits
+/// `pause-before-hold`, `pause-after-serving` and `report-before-settle`, which queues a report just before it waits
 /// for the reports, as a reader does that reports as it parks.
 const FAULT: &str = "MUSTER_DAEMON_HANDOFF_FAULT";
 
@@ -230,6 +230,7 @@ fn handed(
         other => return Err(unexpected("an accept", &other)),
     };
 
+    Faults::read().pause("before-hold", &shared.socket.path);
     // Every reader held first, and what they reported applied, before anything is captured:
     // a title or directory that changed after the capture would reach the replay but not the
     // record.
@@ -245,7 +246,7 @@ fn handed(
     if !reports.settle(STEP) {
         return Err("what the panes reported was not applied in time".to_string());
     }
-    shared.lock().recapture(handing);
+    shared.lock().recapture(handing)?;
 
     let state = serde_json::to_vec(&handing.state).map_err(|error| error.to_string())?;
     let socket = &shared.socket;

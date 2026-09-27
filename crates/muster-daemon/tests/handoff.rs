@@ -548,6 +548,28 @@ fn a_report_queued_as_the_readers_stop_does_not_stall_the_handoff() {
     assert!(took < std::time::Duration::from_secs(5), "the handoff took {took:?}");
 }
 
+/// A pane whose shell exits once the handoff is under way is gone from the old daemon's tabs,
+/// so it cannot be handed over in its place: the handoff fails, and the old daemon goes on.
+#[test]
+fn a_pane_that_ends_during_a_handoff_fails_it() {
+    let mut daemon = daemon_with(&[("MUSTER_DAEMON_HANDOFF_FAULT", "pause-before-hold")]);
+    let (mut control, _input) = two_panes(&daemon);
+    let pid: i32 = pids_of_both(&mut control)[1].parse().unwrap();
+    let instance = control.welcome().instance;
+
+    let replacing = daemon.start_replacing(None);
+    daemon.paused();
+    // SAFETY: kill signals the shell of a pane this test made.
+    assert_eq!(unsafe { libc::kill(pid, libc::SIGKILL) }, 0);
+    until("p2 to end", || !snapshot(&mut control).panes.iter().any(|pane| pane.pane == "p2"), ());
+    daemon.resume();
+    let answer = daemon.finish_replacing(replacing);
+
+    assert_eq!(answer.outcome(), proto::Outcome::Refused, "{}", answer.reason);
+    assert!(answer.reason.contains("p2"), "{}", answer.reason);
+    still_serving(&daemon, instance);
+}
+
 /// The same resize, when the handoff fails, takes effect once the old daemon goes on.
 #[test]
 fn a_resize_during_a_handoff_that_fails_takes_effect_after_it() {

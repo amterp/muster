@@ -1876,14 +1876,26 @@ impl Session {
     }
 
     /// Takes what [`Session::handing`] captured again, once every pane's reader is held and
-    /// what they reported before is applied: nothing about a pane changes after this.
-    pub(crate) fn recapture(&self, handing: &mut Handing) {
-        handing.state = self.persisted();
+    /// what they reported before is applied: nothing about a pane changes after this. Fails
+    /// when the panes are no longer the ones captured: a pane that ended since is in no tab of
+    /// the state, and one made since was never held.
+    pub(crate) fn recapture(&self, handing: &mut Handing) -> Result<(), String> {
         for handed in &mut handing.panes {
-            if let Some(pane) = self.panes.iter().find(|pane| Arc::ptr_eq(&pane.io, &handed.io)) {
-                handed.record = pane.record.clone();
-            }
+            let Some(pane) = self.panes.iter().find(|pane| Arc::ptr_eq(&pane.io, &handed.io))
+            else {
+                return Err(format!("pane {} ended during the handoff", handed.record.pane));
+            };
+            handed.record = pane.record.clone();
         }
+        if let Some(made) = self
+            .panes
+            .iter()
+            .find(|pane| !handing.panes.iter().any(|handed| Arc::ptr_eq(&pane.io, &handed.io)))
+        {
+            return Err(format!("pane {} was made during the handoff", made.record.pane));
+        }
+        handing.state = self.persisted();
+        Ok(())
     }
 
     pub(crate) fn reports(&self) -> Reports {
@@ -1972,8 +1984,14 @@ impl Session {
         Ok(())
     }
 
-    /// The tabs of a handed-over state, every pane in them already adopted.
+    /// The tabs of a handed-over state, every pane in them already adopted and every adopted
+    /// pane in one of them: a pane in no tab could never be closed or saved.
     pub(crate) fn adopt_tabs(&mut self, tabs: Vec<persist::Tab>) -> Result<(), String> {
+        if let Some(stray) =
+            in_no_tab(self.panes.iter().map(|pane| pane.record.pane.as_str()), &tabs)
+        {
+            return Err(format!("pane {stray} was handed over in no tab"));
+        }
         for tab in tabs {
             if let Some(missing) =
                 tab.root.panes().into_iter().find(|pane| self.pane_index(pane).is_none())
@@ -2098,6 +2116,14 @@ fn node_record(node: &Node) -> proto::Node {
     proto::Node { node: Some(node) }
 }
 
+/// The first of `panes` that none of `tabs` holds.
+fn in_no_tab<'a>(
+    mut panes: impl Iterator<Item = &'a str>,
+    tabs: &[persist::Tab],
+) -> Option<&'a str> {
+    panes.find(|pane| !tabs.iter().any(|tab| tab.root.panes().contains(pane)))
+}
+
 #[cfg(test)]
 mod tests {
     use std::os::unix::net::UnixStream;
@@ -2145,6 +2171,24 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn a_pane_handed_over_in_no_tab_is_found() {
+        let tab = |name: &str, panes: [&str; 2]| persist::Tab {
+            name: name.to_string(),
+            label: proto::Label::default(),
+            zoomed: None,
+            root: Node::Split {
+                axis: tree::Axis::Columns,
+                ratio: 0.5,
+                first: Box::new(Node::Pane(panes[0].to_string())),
+                second: Box::new(Node::Pane(panes[1].to_string())),
+            },
+        };
+        let tabs = [tab("t1", ["p1", "p2"]), tab("t2", ["p3", "p4"])];
+        assert_eq!(in_no_tab(["p1", "p4"].into_iter(), &tabs), None);
+        assert_eq!(in_no_tab(["p1", "p5", "p2"].into_iter(), &tabs), Some("p5"));
     }
 
     /// A client waits for `restored` before deciding a saved tab is gone, so it arrives even
