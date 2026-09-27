@@ -1,0 +1,21 @@
+[package]
+name = "muster-latency"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "muster-latency"
+path = "src/main.rs"
+
+[dependencies]
+libc.workspace = true
+muster-daemon-proto.workspace = true
+muster-frame.workspace = true
+muster-harness.workspace = true
+muster-vt.workspace = true
+prost.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

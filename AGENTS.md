@@ -229,7 +229,10 @@ daemon rather than inside it, because the bash and zsh scripts are GPLv3 (`packa
 against a checked-in baseline and fails on regression, the second times input-to-glyph stage by stage - the bare PTY,
 herdr's own client, the real bridge, and the bridge against a stand-in daemon that echoes at once, so herdr's share
 and Muster's come out as separate numbers - at one pane and at a full window of fifteen, with the hidden panes
-attached and detached. A functional green is never a performance claim, so neither runs by default.
+attached and detached. `crates/muster-latency` then times the same keystroke through muster-daemon, the pane's
+stream read directly and the real bridge drawing from it, idle, in a full window and beside a flood, and prints
+each against MIP-3's targets; those rows are what the cut-over is judged by, and the herdr rows go with herdr. A
+functional green is never a performance claim, so neither tier runs by default.
 
 `--perf` also refuses to run at all on a machine whose fast cores are already committed. Everywhere else a busy
 machine only makes a run slow; here it makes the run lie against a file in the repository, and a tier that fails for

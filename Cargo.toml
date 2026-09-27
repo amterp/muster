@@ -13,6 +13,7 @@ members = [
     "crates/muster-frame",
     "crates/muster-harness",
     "crates/muster-herdr",
+    "crates/muster-latency",
     "crates/muster-perf",
     "crates/muster-proto",
     "crates/muster-seam",

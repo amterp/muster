@@ -45,7 +45,13 @@ Muster's principles, adapted to that evidence:
   the bytes it should have received come from libghostty's own encoders, configured from a terminal fed the same
   modes, so no test spells an escape sequence the encoder is the authority on. The flood test holds the structure
   that keeps one pane's flood from delaying another's echo and times nothing; an ignored test beside it prints the
-  latency. Agent detection is checked the way the herdr probe checked herdr's: its `detection` scenario runs again
+  latency. `./dev --latency` times the same keystroke through the daemon with `crates/muster-latency`: the pane's
+  stream read directly, and the real bridge (`muster-bridge --daemon-socket`) onto a PTY where a surface would be,
+  beside the bare PTY measured in the same run, idle, in a window of fifteen panes and beside a pane flooding into
+  a surface that reads slowly. It starts its own daemon from `target/release`, directly rather than through Launch
+  Services, until stage 3 puts the daemon in a helper bundle. `--socket` measures a daemon already running instead,
+  which is how a devenv's is measured through a forwarded socket until the SSH tier installs one itself. Agent
+  detection is checked the way the herdr probe checked herdr's: its `detection` scenario runs again
   against the daemon, the same fake agent and override manifest, and prints each state's settle time beside the one
   recorded in `corpus/herdr-0.8.0/detection/`.
 
@@ -136,7 +142,8 @@ Muster's principles, adapted to that evidence:
   logged-in GUI session to launch the app - and to draw the one Swift test that stands up a real libghostty
   surface, `ClickRedriveTests`, which skips itself in an ordinary run and says so - `--latency` and `--perf`
   measure timing and would be flaky as
-  assertions, `--corpus-linux` and the SSH tier need the devenv container, and `--linux`, which runs the daemon's and
+  assertions (`--latency` prints verdicts against MIP-3's targets and fails only when it cannot measure),
+  `--corpus-linux` and the SSH tier need the devenv container, and `--linux`, which runs the daemon's and
   detection's suites on Linux, needs docker. The gate still compiles the Linux daemons and lints their Linux code,
   so what `--linux` alone catches is behavior: dash as `/bin/sh`, `/proc`, `close_range`. That is the real line, and it is
   narrower than the one drawn when the backend was going to be faked.

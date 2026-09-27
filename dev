@@ -26,7 +26,7 @@ args:
     perf bool      # Measure the per-unit budgets against perf/baseline.json. Not in the gate.
     record bool    # With --perf, record this run as the new baseline instead of judging it.
     anyway bool    # With --perf, measure on a busy machine anyway rather than refusing.
-    latency bool   # Time input-to-glyph against a real herdr. Needs a daemon; not in the gate.
+    latency bool   # Time input-to-glyph through herdr and muster-daemon. Not in the gate.
     doctor bool    # Say what this repo's own tooling has left running on this machine.
 
 ZIG_VERSION = "0.16.0"
@@ -1626,7 +1626,7 @@ if test:
 // Lint is on this list because clippy is a compile - the style half of it needs nothing, but
 // the half that runs after the build does. Cheap to demand: a tree that already has libghostty
 // answers with one line, and the freshness check below costs a stamp read and seven path tests.
-if build or lint or perf or linux:
+if build or lint or perf or linux or latency:
     deps = true
 
 // Sampled once and reported before anything else runs, so that every run - the full gate and
@@ -1902,9 +1902,20 @@ if latency:
     // The pinned daemon, like every other tier, and a release bridge, because the bridge's
     // hop is one of the things measured and a debug build would overstate it.
     herdr = herdr_binary()
-    $`cargo build --release --bin muster-bridge`
+    $`cargo build --release --bin muster-bridge --bin muster-daemon --bin muster-latency`
     stdout, stderr, code = $`python3 tools/latency.py --herdr {herdr} --bridge target/release/muster-bridge` catch:
-        print_err(red("Input-to-glyph could not be measured, so nothing was learned."))
+        print_err(red("Input-to-glyph could not be measured through herdr, so nothing was learned."))
+        print_err(stdout.trim())
+        print_err(stderr.trim())
+        exit(1)
+    print(stdout.trim())
+
+    // The same keystroke through muster-daemon, which is what the cut-over is judged by, with
+    // the bare PTY measured again in the same run so the verdicts compare like with like
+    // (MIP-3 section 13). The herdr rows above go at the cut-over; these stay.
+    print("")
+    stdout, stderr, code = $`target/release/muster-latency --daemon target/release/muster-daemon --bridge target/release/muster-bridge` catch:
+        print_err(red("Input-to-glyph could not be measured through muster-daemon, so nothing was learned."))
         print_err(stdout.trim())
         print_err(stderr.trim())
         exit(1)
