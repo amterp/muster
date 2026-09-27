@@ -1,0 +1,188 @@
+{
+  "concept": "terminal.catch_up",
+  "source": "authored",
+  "citation": "MIP-3 sections 4 and 5. The oracle is libghostty-vt itself at run time: each case compares the caught-up terminal with the source, so no expected bytes are written here.",
+  "why": "A surface whose bridge fell behind a flooding pane stopped receiving output mid-stream, and is brought back with the screen only, not the history it missed. Each case is a stale state a receiver can be left in and a state the source moved on to; a case passes when the two agree on every active row and everything else either can be asked, before and after both receive the same bytes, and the receiver's own history is untouched. The expectation is always an empty list.",
+  "cases": [
+    {
+      "name": "a flood that scrolled past the receiver",
+      "why": "The baseline: the receiver stopped mid-flood with its own history, and the source scrolled on. The receiver keeps its history, shows the source's screen, and typing lands after the prompt.",
+      "given": {
+        "columns": 20,
+        "rows": 5,
+        "history": 20,
+        "feed": "$ yes\r\ny\r\ny\r\ny\r\ny\r\ny\r\ny\r\ny\r\ny\r\ny\r\ny\r\ny\r\ny\r\ny\r\ny\r\ny\r\ny\r\ny\r\ny\r\ny\r\ny\r\ny\r\ny\r\ny\r\ny\r\ny\r\ny\r\ny\r\ny\r\ny\r\ny\r\ny\r\ny\r\ny\r\ny\r\ny\r\ny\r\ny\r\ny\r\ny\r\ny\r\n^C\r\n$ ",
+        "stale": "old 0\r\nold 1\r\nold 2\r\nold 3\r\nold 4\r\nold 5\r\nold 6\r\nold 7\r\nold 8\r\nold 9\r\nold 10\r\nold 11\r\n$ yes\r\ny\r\ny\r\ny",
+        "after": "typed"
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
+      "name": "the receiver on the alternate screen, the source back on the primary",
+      "why": "The receiver stopped while a program held the alternate screen, and the program has since exited. The catch-up must leave the alternate screen without the receiver's history changing.",
+      "given": {
+        "columns": 20,
+        "rows": 5,
+        "history": 20,
+        "feed": "$ vim\r\n$ ls\r\nnotes.txt\r\n$ ",
+        "stale": "old 0\r\nold 1\r\nold 2\r\nold 3\r\nold 4\r\nold 5\r\nold 6\r\nold 7\r\nold 8\r\nold 9\r\nold 10\r\nold 11\r\n$ vim\r\n\u001b[?1049h\u001b[Hvim content",
+        "after": "typed"
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
+      "name": "the source on the alternate screen, the receiver on the primary",
+      "why": "A program entered the alternate screen after the receiver fell behind. The receiver must end on the alternate screen with the program's content, and find its primary screen when the program exits.",
+      "given": {
+        "columns": 20,
+        "rows": 5,
+        "history": 20,
+        "feed": "$ vim\r\n\u001b[?1049h\u001b[H~ vim content\u001b[3;5H",
+        "stale": "old 0\r\nold 1\r\nold 2\r\nold 3\r\nold 4\r\nold 5\r\nold 6\r\nold 7\r\nold 8\r\nold 9\r\nold 10\r\nold 11\r\n$ vi",
+        "after": "\u001b[?1049lback at the prompt"
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
+      "name": "both on the legacy alternate screen, the receiver's still drawn",
+      "why": "Mode 47 enters the alternate screen without clearing it, so the receiver's stale alternate content would survive a catch-up that only enters it.",
+      "given": {
+        "columns": 20,
+        "rows": 5,
+        "history": 20,
+        "feed": "\u001b[?47h\u001b[Hnew",
+        "stale": "old 0\r\nold 1\r\nold 2\r\nold 3\r\nold 4\r\nold 5\r\nold 6\r\nold 7\r\nold 8\r\nold 9\r\nold 10\r\nold 11\r\n\u001b[?47h\u001b[Hstale stale stale",
+        "after": "\u001b[?47lX"
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
+      "name": "color overrides the program took back",
+      "why": "The receiver still holds a palette entry and a background the program set and then reset while output was skipped. Only what the source has overridden may remain.",
+      "given": {
+        "columns": 20,
+        "rows": 5,
+        "history": 20,
+        "feed": "plain",
+        "stale": "old 0\r\nold 1\r\nold 2\r\nold 3\r\nold 4\r\nold 5\r\nold 6\r\nold 7\r\nold 8\r\nold 9\r\nold 10\r\nold 11\r\n\u001b]4;1;rgb:ff/00/00\u001b\\\u001b]11;rgb:10/10/10\u001b\\\u001b]12;rgb:20/20/20\u001b\\",
+        "after": "\u001b[31mred"
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
+      "name": "a title and directory the program cleared",
+      "why": "The receiver still shows a title and directory the source no longer has; a catch-up that states them only when set would leave the stale ones.",
+      "given": {
+        "columns": 20,
+        "rows": 5,
+        "history": 20,
+        "feed": "\u001b]2;\u001b\\done",
+        "stale": "old 0\r\nold 1\r\nold 2\r\nold 3\r\nold 4\r\nold 5\r\nold 6\r\nold 7\r\nold 8\r\nold 9\r\nold 10\r\nold 11\r\n\u001b]2;building\u001b\\\u001b]7;file://localhost/tmp\u001b\\",
+        "after": "x"
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
+      "name": "origin mode inside a scrolling region",
+      "why": "The source writes relative to a region the receiver never saw, and the receiver has a different region of its own; the catch-up must clear the stale one before writing, and the cursor must land relative to the source's.",
+      "given": {
+        "columns": 20,
+        "rows": 5,
+        "history": 20,
+        "feed": "\u001b[2;4r\u001b[?6h\u001b[2;3Hx",
+        "stale": "old 0\r\nold 1\r\nold 2\r\nold 3\r\nold 4\r\nold 5\r\nold 6\r\nold 7\r\nold 8\r\nold 9\r\nold 10\r\nold 11\r\n\u001b[1;2r\u001b[?6h",
+        "after": "Z\r\n\r\n\r\nbottom"
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
+      "name": "a pending wrap at the last column",
+      "why": "The source's cursor waits to wrap after filling the bottom row, which no position sequence reproduces.",
+      "given": {
+        "columns": 20,
+        "rows": 5,
+        "history": 20,
+        "feed": "\r\n\r\n\r\n\r\nabcdefghijklmnopqrst",
+        "stale": "old 0\r\nold 1\r\nold 2\r\nold 3\r\nold 4\r\nold 5\r\nold 6\r\nold 7\r\nold 8\r\nold 9\r\nold 10\r\nold 11\r\nhalf",
+        "after": "W"
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
+      "name": "insert mode and wrapping off left by the stale program",
+      "why": "Content written under the receiver's stale insert mode or with wrapping off would land wrong; both are reset before the content and stated after it.",
+      "given": {
+        "columns": 20,
+        "rows": 5,
+        "history": 20,
+        "feed": "abc",
+        "stale": "old 0\r\nold 1\r\nold 2\r\nold 3\r\nold 4\r\nold 5\r\nold 6\r\nold 7\r\nold 8\r\nold 9\r\nold 10\r\nold 11\r\n\u001b[4h\u001b[?7l",
+        "after": "Z"
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
+      "name": "a stale pen with a background and frozen rendering",
+      "why": "An erase paints with the pen's background, so a stale background would color the whole cleared screen; and a program mid synchronized update when output stopped would leave the receiver frozen.",
+      "given": {
+        "columns": 20,
+        "rows": 5,
+        "history": 20,
+        "feed": "plain",
+        "stale": "old 0\r\nold 1\r\nold 2\r\nold 3\r\nold 4\r\nold 5\r\nold 6\r\nold 7\r\nold 8\r\nold 9\r\nold 10\r\nold 11\r\n\u001b[41m\u001b[?2026h",
+        "after": "x"
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
+      "name": "stale kitty keyboard flags and a line-drawing charset",
+      "why": "The receiver's program pushed kitty flags and switched to DEC line drawing, and the source's program has neither. Both are per-screen state the pen carries only when set.",
+      "given": {
+        "columns": 20,
+        "rows": 5,
+        "history": 20,
+        "feed": "text",
+        "stale": "old 0\r\nold 1\r\nold 2\r\nold 3\r\nold 4\r\nold 5\r\nold 6\r\nold 7\r\nold 8\r\nold 9\r\nold 10\r\nold 11\r\n\u001b[>1u\u001b(0",
+        "after": "q"
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
+      "name": "stale left and right margins",
+      "why": "Margins the receiver's program set would confine the catch-up's content to a column range.",
+      "given": {
+        "columns": 20,
+        "rows": 5,
+        "history": 20,
+        "feed": "a line of text",
+        "stale": "old 0\r\nold 1\r\nold 2\r\nold 3\r\nold 4\r\nold 5\r\nold 6\r\nold 7\r\nold 8\r\nold 9\r\nold 10\r\nold 11\r\n\u001b[?69h\u001b[3;10s",
+        "after": "Z"
+      },
+      "expect": {
+        "differences": []
+      }
+    }
+  ]
+}

@@ -13,8 +13,10 @@ formatters. This exposes both to C:
   content none. Same options; the selection must be NULL.
 - ghostty_formatter_screen_new: a screen formatter for the primary or
   alternate screen, looked up on every format call. It can omit content,
-  and can emit the blank rows below the last row with text, which the
-  formatter always drops, so that its output spans every row.
+  can leave out history and emit only the active area, and can emit the
+  blank rows below the last row with text, which the formatter always
+  drops, so that its output spans every row. Leaving out history is how
+  a surface that fell behind is caught up with the screen alone.
 - formatter.Options.unstyled_blanks, default false, which only
   ghostty_formatter_screen_new turns on. The formatter writes a run of
   blank cells before the next text in whatever style the previous text
@@ -29,10 +31,10 @@ kept small enough to rebase on a re-pin. The Zig tests at the end of
 src/terminal/c/formatter.zig cover it: zig build test-lib-vt.
 
 diff --git a/include/ghostty/vt/formatter.h b/include/ghostty/vt/formatter.h
-index 5cdcd11..93b709d 100644
+index 5cdcd11a..e6e3200b 100644
 --- a/include/ghostty/vt/formatter.h
 +++ b/include/ghostty/vt/formatter.h
-@@ -117,6 +117,37 @@ typedef struct {
+@@ -117,6 +117,43 @@ typedef struct {
    const GhosttySelection *selection;
  } GhosttyFormatterTerminalOptions;
  
@@ -63,6 +65,12 @@ index 5cdcd11..93b709d 100644
 +   */
 +  bool trailing_blank_rows;
 +
++  /**
++   * Whether the content includes the screen's history. If false, only the
++   * active area's rows are emitted. Ignored without content.
++   */
++  bool history;
++
 +  /** Extra screen state to include in styled output. */
 +  GhosttyFormatterScreenExtra extra;
 +} GhosttyFormatterScreenOptions;
@@ -70,7 +78,7 @@ index 5cdcd11..93b709d 100644
  /**
   * Create a formatter for a terminal's active screen.
   *
-@@ -137,6 +168,58 @@ GHOSTTY_API GhosttyResult ghostty_formatter_terminal_new(
+@@ -137,6 +174,58 @@ GHOSTTY_API GhosttyResult ghostty_formatter_terminal_new(
      GhosttyTerminal terminal,
      GhosttyFormatterTerminalOptions options);
  
@@ -130,7 +138,7 @@ index 5cdcd11..93b709d 100644
   * Run the formatter and produce output into the caller-provided buffer.
   *
 diff --git a/src/lib_vt.zig b/src/lib_vt.zig
-index 5b78b8c..f172aa6 100644
+index 5b78b8cb..f172aa6f 100644
 --- a/src/lib_vt.zig
 +++ b/src/lib_vt.zig
 @@ -262,6 +262,8 @@ comptime {
@@ -143,7 +151,7 @@ index 5b78b8c..f172aa6 100644
          @export(&c.formatter_format_alloc, .{ .name = "ghostty_formatter_format_alloc" });
          @export(&c.formatter_free, .{ .name = "ghostty_formatter_free" });
 diff --git a/src/terminal/c/formatter.zig b/src/terminal/c/formatter.zig
-index 9b3c143..64b69c5 100644
+index 9b3c143a..5e16e88f 100644
 --- a/src/terminal/c/formatter.zig
 +++ b/src/terminal/c/formatter.zig
 @@ -6,7 +6,10 @@ const terminal_c = @import("terminal.zig");
@@ -157,7 +165,7 @@ index 9b3c143..64b69c5 100644
  const Result = @import("result.zig").Result;
  
  /// Wrapper around formatter that tracks the allocator for C API usage.
-@@ -16,6 +19,68 @@ const FormatterWrapper = struct {
+@@ -16,6 +19,79 @@ const FormatterWrapper = struct {
  
      const Kind = union(enum) {
          terminal: formatterpkg.TerminalFormatter,
@@ -174,6 +182,7 @@ index 9b3c143..64b69c5 100644
 +        opts: formatterpkg.Options,
 +        content: bool,
 +        trailing_blank_rows: bool,
++        history: bool,
 +        extra: formatterpkg.ScreenFormatter.Extra,
 +
 +        fn format(self: *const ScreenKind, writer: *std.Io.Writer) std.Io.Writer.Error!void {
@@ -187,6 +196,14 @@ index 9b3c143..64b69c5 100644
 +            if (self.content) {
 +                var content: formatterpkg.ScreenFormatter = .init(screen, self.opts);
 +                content.extra = .none;
++                if (!self.history) {
++                    const bottom = screen.pages.getBottomRight(.active) orelse return;
++                    content.content = .{ .selection = .init(
++                        screen.pages.getTopLeft(.active),
++                        bottom,
++                        false,
++                    ) };
++                }
 +                try content.format(writer);
 +                if (self.trailing_blank_rows) try self.formatTrailingBlankRows(screen, writer);
 +            }
@@ -205,17 +222,19 @@ index 9b3c143..64b69c5 100644
 +            screen: *const Screen,
 +            writer: *std.Io.Writer,
 +        ) std.Io.Writer.Error!void {
++            const rows: usize = if (self.history) screen.pages.total_rows else screen.pages.rows;
 +            var blank: usize = 0;
 +            const bl_pin = screen.pages.getBottomRight(.screen) orelse return;
 +            var it = bl_pin.rowIterator(.left_up, null);
 +            while (it.next()) |row_pin| {
++                if (blank == rows) break;
 +                if (pagepkg.Cell.hasTextAny(row_pin.cells(.all))) break;
 +                blank += 1;
 +            }
 +
 +            // With no text at all, the content was empty and already
 +            // occupies the first row.
-+            if (blank == screen.pages.total_rows) blank -|= 1;
++            if (blank == rows) blank -|= 1;
 +
 +            const sequence: []const u8 = switch (self.opts.emit) {
 +                .plain, .html => "\n",
@@ -226,7 +245,7 @@ index 9b3c143..64b69c5 100644
      };
  };
  
-@@ -29,6 +94,21 @@ const CSelection = selection_c.CSelection;
+@@ -29,6 +105,25 @@ const CSelection = selection_c.CSelection;
  
  /// C: GhosttyFormatterScreenOptions
  pub const ScreenOptions = extern struct {
@@ -243,12 +262,16 @@ index 9b3c143..64b69c5 100644
 +    /// content spans every row of the screen. Ignored without content.
 +    trailing_blank_rows: bool,
 +
++    /// Whether the content includes the screen's history. If false, only
++    /// the active area's rows are emitted. Ignored without content.
++    history: bool = true,
++
 +    extra: Extra,
 +
      /// C: GhosttyFormatterScreenExtra
      pub const Extra = extern struct {
          size: usize = @sizeOf(Extra),
-@@ -160,6 +240,104 @@ fn terminal_new_(
+@@ -160,6 +255,105 @@ fn terminal_new_(
      return ptr;
  }
  
@@ -342,6 +365,7 @@ index 9b3c143..64b69c5 100644
 +            },
 +            .content = opts.content,
 +            .trailing_blank_rows = opts.trailing_blank_rows,
++            .history = opts.history,
 +            .extra = opts.extra.toZig(),
 +        } },
 +        .alloc = alloc,
@@ -353,7 +377,7 @@ index 9b3c143..64b69c5 100644
  pub fn format_buf(
      formatter_: Formatter,
      out_: ?[*]u8,
-@@ -174,12 +352,12 @@ pub fn format_buf(
+@@ -174,12 +368,12 @@ pub fn format_buf(
          &.{});
  
      switch (wrapper.kind) {
@@ -368,7 +392,7 @@ index 9b3c143..64b69c5 100644
                  out_written.* = @intCast(discarding.count);
                  return .out_of_space;
              },
-@@ -203,7 +381,7 @@ pub fn format_alloc(
+@@ -203,7 +397,7 @@ pub fn format_alloc(
      defer aw.deinit();
  
      switch (wrapper.kind) {
@@ -377,7 +401,7 @@ index 9b3c143..64b69c5 100644
      }
  
      const buf = aw.toOwnedSlice() catch return .out_of_memory;
-@@ -481,3 +659,274 @@ test "format html" {
+@@ -481,3 +675,312 @@ test "format html" {
      try testing.expect(written > 0);
      try testing.expect(std.mem.indexOf(u8, buf[0..written], "Html") != null);
  }
@@ -574,6 +598,44 @@ index 9b3c143..64b69c5 100644
 +    try testing.expectEqualStrings("a\nb\n$\n\n\n", buf[0..written]);
 +}
 +
++test "screen_new without history emits only the active area" {
++    var t: terminal_c.Terminal = null;
++    try testing.expectEqual(Result.success, terminal_c.new(
++        &lib.alloc.test_allocator,
++        &t,
++        10,
++        4,
++    ));
++    defer terminal_c.free(t);
++
++    // Two rows of history, then a screen whose only text is on its first row.
++    const input = "a\r\nb\r\nc\r\nd\r\ne\r\nf\x1b[H\x1b[J$";
++    terminal_c.vt_write(t, input, input.len);
++
++    const opts: ScreenOptions = .{ .emit = .plain, .unwrap = false, .trim = true, .content = true, .trailing_blank_rows = true, .history = false, .extra = .{ .cursor = false, .style = false, .hyperlink = false, .protection = false, .kitty_keyboard = false, .charsets = false } };
++
++    var f: Formatter = null;
++    try testing.expectEqual(Result.success, screen_new(
++        &lib.alloc.test_allocator,
++        &f,
++        t,
++        .primary,
++        opts,
++    ));
++    defer free(f);
++
++    var buf: [1024]u8 = undefined;
++    var written: usize = 0;
++    try testing.expectEqual(Result.success, format_buf(f, &buf, buf.len, &written));
++    try testing.expectEqualStrings("$\n\n\n", buf[0..written]);
++
++    // A blank active area spans its own rows, not the history above it.
++    const clear = "\x1b[H\x1b[J";
++    terminal_c.vt_write(t, clear, clear.len);
++    try testing.expectEqual(Result.success, format_buf(f, &buf, buf.len, &written));
++    try testing.expectEqualStrings("\n\n\n", buf[0..written]);
++}
++
 +test "screen_new with trailing blank rows on an empty screen" {
 +    var t: terminal_c.Terminal = null;
 +    try testing.expectEqual(Result.success, terminal_c.new(
@@ -653,7 +715,7 @@ index 9b3c143..64b69c5 100644
 +    );
 +}
 diff --git a/src/terminal/c/main.zig b/src/terminal/c/main.zig
-index d6f9e66..00f7796 100644
+index d6f9e665..00f7796c 100644
 --- a/src/terminal/c/main.zig
 +++ b/src/terminal/c/main.zig
 @@ -78,6 +78,8 @@ pub const focus_encode = focus.encode;
@@ -666,7 +728,7 @@ index d6f9e66..00f7796 100644
  pub const formatter_format_alloc = formatter.format_alloc;
  pub const formatter_free = formatter.free;
 diff --git a/src/terminal/formatter.zig b/src/terminal/formatter.zig
-index 701a798..84607a4 100644
+index 701a798b..84607a4b 100644
 --- a/src/terminal/formatter.zig
 +++ b/src/terminal/formatter.zig
 @@ -96,6 +96,12 @@ pub const Options = struct {

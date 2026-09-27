@@ -146,6 +146,9 @@ pub struct ScreenFormatOptions {
     /// Emit the blank rows below the last row with text as well, so the output spans every
     /// row of the screen and a replay of it lines up with the original.
     pub trailing_blank_rows: bool,
+    /// Include the screen's history. Without it, only the active area's rows, which is how
+    /// a surface that fell behind is caught up without resending what it already holds.
+    pub history: bool,
     pub extras: ScreenExtras,
 }
 
@@ -158,6 +161,7 @@ impl ScreenFormatOptions {
             trim: self.trim,
             content: self.content,
             trailing_blank_rows: self.trailing_blank_rows,
+            history: self.history,
             extra: self.extras.raw(),
         }
     }

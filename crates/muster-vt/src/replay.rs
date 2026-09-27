@@ -22,6 +22,29 @@ use crate::terminal::Terminal;
 const RESET: &[u8] = b"\x1bc";
 const HOME: &[u8] = b"\x1b[H";
 
+/// What RIS would reset, short of the history it would erase: the primary screen, a pen,
+/// hyperlink, protection and charsets at their defaults (an erase paints with the pen's
+/// background), margins and a scrolling region spanning the screen, no frozen rendering, no
+/// kitty flags or modifyOtherKeys, and every color a program set taken back. Then the screen
+/// erased, from the top. The modes the content is written under are stated here too; every
+/// mode is stated again after it.
+const CATCH_UP_RESET: &[u8] = b"\x1b[?2026l\x1b[?1049l\x1b[?1047l\x1b[?47l\
+    \x1b[0m\x1b]8;;\x1b\\\x1b[0\"q\x1b(B\x1b)B\x1b*B\x1b+B\x0f\
+    \x1b[4l\x1b[?7h\x1b[?6l\x1b[?69l\x1b[r\x1b[=0;1u\x1b[>4m\
+    \x1b]104\x1b\\\x1b]110\x1b\\\x1b]111\x1b\\\x1b]112\x1b\\\
+    \x1b[H\x1b[2J";
+
+/// The same for the alternate screen once it is entered, where the kitty flags are its own.
+const ALTERNATE_RESET: &[u8] = b"\x1b[2J\x1b[=0;1u";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    /// Into a fresh terminal.
+    Replay,
+    /// Into a terminal that fell behind, keeping its history.
+    CatchUp,
+}
+
 /// A screen's pen: what the next character printed there will look like.
 const PEN: ScreenExtras = ScreenExtras {
     cursor: false,
@@ -35,30 +58,56 @@ const PEN: ScreenExtras = ScreenExtras {
 impl Terminal {
     pub fn replay(&self) -> Vec<u8> {
         let mut out = RESET.to_vec();
+        self.compose(&mut out, Kind::Replay);
+        out
+    }
+
+    /// The bytes that bring a terminal which fell behind this one to its screen, keeping the
+    /// history it already holds.
+    ///
+    /// A surface that stopped receiving a pane's output mid-flood holds a stale screen and
+    /// whatever state the program left when the bytes stopped reaching it. A replay would
+    /// resend the whole history, which over ssh is the flood again. This resends the screen
+    /// and states every piece of state instead: RIS would erase the receiver's history, so
+    /// what RIS resets is reset piece by piece, before the replay's own steps.
+    pub fn catch_up(&self) -> Vec<u8> {
+        let mut out = CATCH_UP_RESET.to_vec();
+        self.compose(&mut out, Kind::CatchUp);
+        out
+    }
+
+    fn compose(&self, out: &mut Vec<u8>, kind: Kind) {
         let alternate = self.active_screen() == Screen::Alternate;
+        let history = kind == Kind::Replay;
 
         // Before any content: whether a ZWJ sequence occupies one cell decides where every
         // later cell lands.
         out.extend(sequence(Mode::GRAPHEME_CLUSTER, self.mode(Mode::GRAPHEME_CLUSTER)));
 
-        // The primary screen always, with its history, so a program leaving the alternate
-        // screen finds what was there before it. While the alternate one is active the
-        // primary's cursor and pen are what entering it saved, and leaving it restores them,
-        // so they are set before the switch.
+        // The primary screen always, so a program leaving the alternate screen finds what was
+        // there before it. While the alternate one is active the primary's cursor and pen are
+        // what entering it saved, and leaving it restores them, so they are set before the
+        // switch.
         let primary_extras =
             if alternate { ScreenExtras { cursor: true, ..PEN } } else { ScreenExtras::default() };
-        out.extend(self.format_screen(Screen::Primary, content(primary_extras)));
+        out.extend(self.format_screen(Screen::Primary, content(primary_extras, history)));
         if alternate {
             out.extend(sequence(self.alternate_entry(), true));
             // The alternate screen starts with the cursor where the primary left it.
             out.extend_from_slice(HOME);
-            out.extend(self.format_screen(Screen::Alternate, content(ScreenExtras::default())));
+            if kind == Kind::CatchUp {
+                // Entering it with 47 or 1047 keeps whatever the receiver last drew there.
+                out.extend_from_slice(ALTERNATE_RESET);
+            }
+            out.extend(
+                self.format_screen(Screen::Alternate, content(ScreenExtras::default(), false)),
+            );
         }
 
         // After the content, which must be written with wrapping on and insert mode off
         // whatever the program left them as. Origin mode waits: setting it moves the cursor
         // into the scrolling region, which does not exist yet.
-        self.modes(&mut out);
+        self.modes(out);
         let movers = self.format_state(FormatOptions {
             extras: Extras {
                 tabstops: true,
@@ -75,16 +124,15 @@ impl Terminal {
             out.extend(sequence(Mode::ORIGIN, true));
         }
 
-        self.colors(&mut out);
-        self.identity(&mut out);
-        self.cursor_position(&mut out, origin.then_some(region));
+        self.colors(out);
+        self.identity(out, kind);
+        self.cursor_position(out, origin.then_some(region));
 
         // Last, because re-drawing a pending wrap prints with the cell's own style.
         out.extend(self.format_state(FormatOptions {
             extras: Extras { screen: PEN, ..Extras::default() },
             ..FormatOptions::vt()
         }));
-        out
     }
 
     /// The screen-switch mode the program entered the alternate screen with, so leaving it
@@ -137,14 +185,16 @@ impl Terminal {
     }
 
     /// The title and directory the program reported, which a daemon rebuilt from a replay
-    /// reports in turn.
-    fn identity(&self, out: &mut Vec<u8>) {
+    /// reports in turn. A catch-up states them even when empty, because the receiver may
+    /// still hold ones the program has since cleared.
+    fn identity(&self, out: &mut Vec<u8>, kind: Kind) {
+        let stated = |value: &str| kind == Kind::CatchUp || !value.is_empty();
         let title = self.title();
-        if !title.is_empty() {
+        if stated(&title) {
             out.extend(format!("\x1b]2;{title}\x1b\\").into_bytes());
         }
         let pwd = self.pwd();
-        if !pwd.is_empty() {
+        if stated(&pwd) {
             out.extend(format!("\x1b]7;{pwd}\x1b\\").into_bytes());
         }
     }
@@ -186,13 +236,14 @@ impl Terminal {
 /// Screen content that lines up with the original: soft wraps kept as wraps, so the receiver
 /// re-wraps them at the same width, and every row down to the bottom, so its history holds
 /// the same number of rows and its cursor lands on the same one.
-fn content(extras: ScreenExtras) -> ScreenFormatOptions {
+fn content(extras: ScreenExtras, history: bool) -> ScreenFormatOptions {
     ScreenFormatOptions {
         format: Format::Vt,
         unwrap: true,
         trim: false,
         content: true,
         trailing_blank_rows: true,
+        history,
         extras,
     }
 }

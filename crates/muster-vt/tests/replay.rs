@@ -9,7 +9,10 @@
 //! Cases live in corpus/conformance/replay.json.
 
 use conformance::{CaseError, Conformance, fields};
-use muster_vt::{Cell, Mode, Palette, Rgb, Row, Style, Terminal};
+use muster_vt::{
+    Cell, Format, Mode, Palette, Rgb, Row, Screen, ScreenExtras, ScreenFormatOptions, Style,
+    Terminal,
+};
 use serde_json::{Value, json};
 
 #[test]
@@ -45,6 +48,76 @@ fn replay_conformance() {
     assert!(ran > 0);
 }
 
+/// A terminal that fell behind, caught up on another's screen, must agree with it on
+/// everything but history, and keep the history it had.
+///
+/// Cases live in corpus/conformance/catch_up.json. `stale` is what the receiver was showing
+/// when output stopped reaching it; `feed` is everything the source saw, and `after` is fed
+/// to both once caught up.
+#[test]
+fn catch_up_conformance() {
+    let corpus = Conformance::load("catch_up.json");
+
+    let ran = corpus.run(|given| {
+        let columns = number(given, "columns")?;
+        let rows = number(given, "rows")?;
+        let mut source = terminal(columns, rows)?;
+        source.write(&history(given));
+        source.write(text(given, "feed").as_bytes());
+
+        let mut behind = terminal(columns, rows)?;
+        behind.write(text(given, "stale").as_bytes());
+        let kept = primary_history(&behind, rows);
+        behind.write(&source.catch_up());
+
+        let mut differences = caught_up_differences(&source, &behind, rows, "");
+        let now = primary_history(&behind, rows);
+        if now != kept {
+            differences.push(format!("history: had {kept:?}, now {now:?}"));
+        }
+
+        let after = text(given, "after");
+        if !after.is_empty() {
+            source.write(after.as_bytes());
+            behind.write(after.as_bytes());
+            differences.extend(caught_up_differences(&source, &behind, rows, "after: "));
+        }
+
+        Ok(fields([("differences", Some(json!(differences)))]))
+    });
+
+    assert_eq!(ran, corpus.cases.len());
+    assert!(ran > 0);
+}
+
+fn caught_up_differences(a: &Terminal, b: &Terminal, rows: u16, prefix: &str) -> Vec<String> {
+    let active = |t: &Terminal| {
+        let screen = t.screen();
+        let first = screen.len().saturating_sub(usize::from(rows));
+        screen[first..].to_vec()
+    };
+    let mut found = state_differences(a, b, prefix);
+    found.extend(row_differences(&active(a), &active(b), 0, &format!("{prefix}active ")));
+    found
+}
+
+/// The primary screen's history as text, whichever screen is active.
+fn primary_history(terminal: &Terminal, rows: u16) -> Vec<String> {
+    let options = ScreenFormatOptions {
+        format: Format::Plain,
+        unwrap: false,
+        trim: true,
+        content: true,
+        trailing_blank_rows: true,
+        history: true,
+        extras: ScreenExtras::default(),
+    };
+    let text =
+        String::from_utf8_lossy(&terminal.format_screen(Screen::Primary, options)).into_owned();
+    let lines: Vec<String> = text.split('\n').map(str::to_string).collect();
+    lines[..lines.len().saturating_sub(usize::from(rows))].to_vec()
+}
+
 fn differences_after(original: &Terminal, replayed: &Terminal, given: &Value) -> Vec<String> {
     let nothing_after = given.get("after").is_none() && given.get("theme").is_none();
     if nothing_after { Vec::new() } else { differences(original, replayed, "after: ") }
@@ -52,6 +125,20 @@ fn differences_after(original: &Terminal, replayed: &Terminal, given: &Value) ->
 
 /// Every observable way the two terminals differ, each named so a failure says what.
 fn differences(a: &Terminal, b: &Terminal, prefix: &str) -> Vec<String> {
+    let mut found = state_differences(a, b, prefix);
+    let mut compare = |what: &str, left: String, right: String| {
+        if left != right {
+            found.push(format!("{prefix}{what}: original {left}, replayed {right}"));
+        }
+    };
+    compare("scrollback rows", a.scrollback_rows().to_string(), b.scrollback_rows().to_string());
+    compare("total rows", a.total_rows().to_string(), b.total_rows().to_string());
+    found.extend(row_differences(&a.screen(), &b.screen(), 0, prefix));
+    found
+}
+
+/// Every way the two differ apart from their rows.
+fn state_differences(a: &Terminal, b: &Terminal, prefix: &str) -> Vec<String> {
     let mut found = Vec::new();
     let mut compare = |what: &str, left: String, right: String| {
         if left != right {
@@ -66,8 +153,6 @@ fn differences(a: &Terminal, b: &Terminal, prefix: &str) -> Vec<String> {
     );
     compare("cursor", format!("{:?}", a.cursor()), format!("{:?}", b.cursor()));
     compare("pending wrap", a.pending_wrap().to_string(), b.pending_wrap().to_string());
-    compare("scrollback rows", a.scrollback_rows().to_string(), b.scrollback_rows().to_string());
-    compare("total rows", a.total_rows().to_string(), b.total_rows().to_string());
     for mode in Mode::all() {
         compare(&format!("mode {mode}"), a.mode(mode).to_string(), b.mode(mode).to_string());
     }
@@ -91,14 +176,16 @@ fn differences(a: &Terminal, b: &Terminal, prefix: &str) -> Vec<String> {
         );
     }
 
-    // Every row that differs, not the first: a case pinning a known gap on one row must
-    // still fail when something else breaks further down.
-    let (ra, rb) = (a.screen(), b.screen());
-    for index in (0..ra.len().max(rb.len())).filter(|&i| !same_row(ra.get(i), rb.get(i))) {
-        found
-            .push(format!("{prefix}row {index}: {}", row_difference(ra.get(index), rb.get(index))));
-    }
     found
+}
+
+/// Every row that differs, not the first: a case pinning a known gap on one row must still
+/// fail when something else breaks further down. Rows are numbered from `first`.
+fn row_differences(ra: &[Row], rb: &[Row], first: usize, prefix: &str) -> Vec<String> {
+    (0..ra.len().max(rb.len()))
+        .filter(|&i| !same_row(ra.get(i), rb.get(i)))
+        .map(|i| format!("{prefix}row {}: {}", first + i, row_difference(ra.get(i), rb.get(i))))
+        .collect()
 }
 
 /// Whether two rows look and behave the same.
