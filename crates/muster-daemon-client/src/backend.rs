@@ -135,8 +135,8 @@ impl DaemonBackend {
         let mirror = self.mirror.lock().unwrap_or_else(PoisonError::into_inner);
         match mirror.tree(tab).and_then(|root| root.panes().last().copied().cloned()) {
             Some(last) => beside(&last, Side::Right),
-            // A part of a grouped tab starts unnamed, and the window renames it to match the
-            // rest once it appears.
+            // A part of a grouped tab starts unnamed, and the window names it after the rest
+            // when the daemon announces it.
             None => placement::Where::NewTab(placement::NewTab {
                 tab: tab.to_string(),
                 label: Some(proto::Label::default()),

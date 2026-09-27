@@ -3729,6 +3729,11 @@ fn announce(daemon: &DaemonId, notice: Notice) {
             if change.republishes() {
                 publish(change.kind());
             }
+            // A pane moved into a tab another machine holds makes a nameless part of it here,
+            // which takes the tab's name now rather than at this machine's next reconnect.
+            if matches!(change, Change::TabAdded(_)) {
+                catch_up_tab_names(daemon);
+            }
             report(daemon, &change);
         }
         Notice::Stale { detail } => {
@@ -3883,7 +3888,7 @@ fn restored_from_disk(daemon: &DaemonId, restored: &Restored) {
 /// A tab spanning machines holds its name on each of them, ordered by a generation, and a
 /// machine that was away when the tab was renamed comes back with the old name (MIP-3, section
 /// 2). The part with the highest generation holds the name; a lagging part is told it, at that
-/// generation, when its machine answers again.
+/// generation, when its machine answers again, and a part a move just made is told it at once.
 fn catch_up_tab_names(daemon: &DaemonId) {
     let lagging: Vec<(TabId, Option<String>, u64)> = {
         let session = poison::lock(&SESSION, "session");

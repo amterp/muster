@@ -18,8 +18,8 @@ use std::sync::Mutex;
 
 use muster::proto::{
     ArrangePane, ClosePane, CreateTab, EqualizePanes, Event, FocusPane, OpenWindow, PaneText,
-    ReadPane, ReadWindow, RenamePane, Request, Response, RosterChanged, SendToPane, SplitPane,
-    Startup, ZoomPane, event, request, response,
+    ReadPane, ReadWindow, RenamePane, RenameTab, Request, Response, RosterChanged, SendToPane,
+    SplitPane, Startup, ZoomPane, event, request, response,
 };
 use muster_daemon_proto as daemon_proto;
 use muster_harness::requests::{create, in_new_tab, make, read_text};
@@ -816,6 +816,46 @@ fn a_tab_can_hold_panes_from_two_machines() {
         "the list to say the tab spans both machines",
         || machines_of(&laptop_tab) == vec!["laptop".to_string(), "devenv".to_string()],
         || format!("the tab says it is on {:?}", machines_of(&laptop_tab)),
+    );
+}
+
+/// A pane moved into a named tab on another machine makes that machine a part of the tab, and
+/// the part takes the tab's name at once rather than at that machine's next reconnect.
+///
+/// Each machine holding part of a grouped tab keeps the name itself (MIP-3, section 2), so a
+/// part left nameless is what another window reading only that machine shows - and what this
+/// window shows too, once the laptop's panes close and the devenv's part is all that is left.
+#[test]
+fn a_new_part_of_a_named_tab_takes_its_name() {
+    let _turn = muster::testing::fresh_session();
+    let TwoMachines { laptop: _laptop, devenv } = a_window_showing_two_machines();
+    let on_laptop = pane_on("laptop").expect("the fixture waited for it");
+    let on_devenv = pane_on("devenv").expect("the fixture waited for it");
+    let laptop_tab = tab_holding(&on_laptop).expect("the list says which tab holds each pane");
+
+    assert_ok(&answer(request::Payload::RenameTab(RenameTab {
+        tab_id: laptop_tab.clone(),
+        name: "work".to_string(),
+        ..RenameTab::default()
+    })));
+    assert_ok(&answer(request::Payload::ArrangePane(ArrangePane {
+        pane_id: on_devenv,
+        tab_id: laptop_tab.clone(),
+        ..ArrangePane::default()
+    })));
+
+    let devenv_label = || {
+        snapshot(&devenv)
+            .tabs
+            .into_iter()
+            .find(|tab| tab.tab == laptop_tab)
+            .and_then(|tab| tab.label)
+            .and_then(|label| label.text)
+    };
+    until(
+        "the devenv's part of the tab to be called what the tab is called",
+        || devenv_label().as_deref() == Some("work"),
+        || format!("the devenv's part is labelled {:?}", devenv_label()),
     );
 }
 
