@@ -242,9 +242,11 @@ gone or makes a pane under a saved name, since a name a client takes first is no
 Nothing is written until every saved tab is back, so a crash or a stop while restoring loses
 nothing. A directory that no longer exists starts its pane's shell at home, and a shell that will
 not start - one uninstalled since the last run, a directory it may not enter - is tried again as
-the default shell at home. What still does not come back, the next write leaves out, so the file
-as it was is first copied to `<file>.unrestored-<seconds>` and the daemon's log names it; if the
-copy fails, the daemon saves nothing that run rather than lose the only record. A restored pane
+the default shell, in the same directory and then at home. What still does not come back, the next
+write leaves out, so the file as it was is first copied to `<file>.unrestored-<seconds>` and the
+daemon's log names it; if the copy fails, the daemon saves nothing that run rather than lose the
+only record, and `restored` says so. It says so too if restoring fails partway, which is a bug,
+so that `restored` always arrives. A restored pane
 has the environment the daemon gives every pane (section 3) and not what its create asked for:
 that is chiefly `MUSTER_SOCKET`, which names a window's socket and so a window a restart may well
 have outlived. `muster` run in a restored pane therefore reaches no window until the app hands

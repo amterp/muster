@@ -410,8 +410,9 @@ impl Restoring {
     /// what anybody asked for.
     ///
     /// A shell that will not start there - a configured shell since uninstalled, a directory it
-    /// may not enter - is tried again as the default shell at home, so a setting that went bad
-    /// between runs costs where the panes start rather than the panes.
+    /// may not enter - is tried again as the default shell, in the same directory and then at
+    /// home, so a setting that went bad between runs costs neither the panes nor where they
+    /// start, and a directory that did costs only where they start.
     fn start(&self) -> Vec<Restarted> {
         self.panes
             .iter()
@@ -439,11 +440,16 @@ impl Restoring {
                         "program" => first.program,
                         "cwd" => cwd.display(),
                         "error" => error,
-                        "impact" => "the pane comes back running the default shell at home",
+                        "impact" => "the default shell is tried instead, in this directory and \
+                                     then at home",
                         "check" => "whether the configured shell still exists, and whether the \
                                     directory can be entered",
                     },
                 );
+                let fallback = start_launched(&pane.fallback, &cwd, pane.saved.grid);
+                if fallback.started.is_ok() || cwd == self.home {
+                    return fallback;
+                }
                 start_launched(&pane.fallback, &self.home, pane.saved.grid)
             })
             .collect()
@@ -455,63 +461,161 @@ fn start_launched((argv, environment): &Launched, cwd: &Path, grid: Grid) -> Res
     Restarted { cwd: cwd.to_path_buf(), program: argv[0].clone(), started: pty::start(&launch) }
 }
 
+/// What a restore could not bring back, as [`proto::Restored`] names it.
+#[derive(Debug, Default)]
+struct Lost {
+    tabs: Vec<String>,
+    /// Every saved pane not brought back, a lost tab's among them.
+    panes: Vec<String>,
+}
+
+impl Lost {
+    fn is_empty(&self) -> bool {
+        self.tabs.is_empty() && self.panes.is_empty()
+    }
+}
+
 /// Brings back the tabs a previous run saved, one at a time, each pane's shell starting with
 /// the session unlocked. Only then may the persister write: until every saved tab is back, the
 /// session holds less than the file, and a write would lose the difference. What could not be
 /// brought back is kept in a copy of the file, since the next write leaves it out.
 pub(crate) fn restore(shared: &Shared, state: persist::State) {
     let started = std::time::Instant::now();
-    let unfinished = Unfinished;
     let saved: HashMap<String, persist::Pane> =
         state.panes.into_iter().map(|pane| (pane.name.clone(), pane)).collect();
-    let tabs = state.tabs.len();
-    let mut lost = Vec::new();
-    for tab in state.tabs {
-        let Some(restoring) = shared.lock().prepare_restore(tab, &saved, &mut lost) else {
-            continue;
-        };
-        let started = restoring.start();
-        shared.lock().restored(restoring, started, &mut lost);
+    let names: Vec<(String, Vec<String>)> = state
+        .tabs
+        .iter()
+        .map(|tab| (tab.name.clone(), tab.root.panes().into_iter().map(str::to_string).collect()))
+        .collect();
+    let mut lost = Lost::default();
+    let mut done = 0;
+    let finished = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        for tab in state.tabs {
+            let restoring = shared.lock().prepare_restore(tab, &saved, &mut lost);
+            if let Some(restoring) = restoring {
+                let started = restoring.start();
+                shared.lock().restored(restoring, started, &mut lost);
+            }
+            done += 1;
+        }
+    }));
+    let failed = finished.err().map(|panic| {
+        let session = shared.lock();
+        for (tab, panes) in &names[done..] {
+            if session.tab_index(tab).is_none() && !lost.tabs.contains(tab) {
+                lost.tabs.push(tab.clone());
+            }
+            let gone = |pane: &&String| session.pane_index(pane).is_none();
+            for pane in panes.iter().filter(gone) {
+                if !lost.panes.contains(pane) {
+                    lost.panes.push(pane.clone());
+                }
+            }
+        }
+        panic
+            .downcast_ref::<&str>()
+            .map(ToString::to_string)
+            .or_else(|| panic.downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "a panic with no message".to_string())
+    });
+    {
+        let session = shared.lock();
+        log::info(
+            "daemon.state.restored",
+            fields! {
+                "tabs" => session.tabs.len(),
+                "saved_tabs" => names.len(),
+                "panes" => session.panes.len(),
+                "saved_panes" => saved.len(),
+                "ms" => started.elapsed().as_millis(),
+            },
+        );
     }
-    drop(unfinished);
+    finish_restore(shared, lost, failed.as_deref());
+}
+
+/// Ends a restore, however it went: a client waits for [`proto::Restored`] before deciding
+/// a saved tab is gone, so it is sent even when restoring failed. `failed` is a panic's message.
+fn finish_restore(shared: &Shared, lost: Lost, failed: Option<&str>) {
+    if let Some(panic) = failed {
+        log::error(
+            "daemon.state.restore_failed",
+            fields! {
+                "panic" => panic,
+                "impact" => "the saved tabs are not all back, and nothing is saved for the rest of \
+                             this daemon's run; the file keeps what the last run saved",
+                "check" => "this is a bug: the panic, here and on the daemon's stderr, says where \
+                            restoring stopped",
+            },
+        );
+    }
+    let persister = {
+        let mut session = shared.lock();
+        if session.stopping {
+            session.restoring = false;
+            return;
+        }
+        Arc::clone(&session.persister)
+    };
+    // Outside the lock, as every other disk operation is: a hung disk must not stall every
+    // connection.
+    let saving =
+        failed.is_none() && (lost.is_empty() || keep_what_was_lost(persister.path(), &lost));
     let mut session = shared.lock();
-    log::info(
-        "daemon.state.restored",
-        fields! {
-            "tabs" => session.tabs.len(),
-            "saved_tabs" => tabs,
-            "panes" => session.panes.len(),
-            "saved_panes" => saved.len(),
-            "ms" => started.elapsed().as_millis(),
-        },
-    );
     session.restoring = false;
     if session.stopping {
         return;
     }
-    if !lost.is_empty() && !session.keep_what_was_lost(&lost) {
-        return;
+    let Lost { tabs, panes } = lost;
+    session.emit(Payload::Restored(proto::Restored {
+        lost_tabs: tabs,
+        lost_panes: panes,
+        saving_stopped: !saving,
+    }));
+    if saving {
+        persister.arm();
+    } else {
+        persister.off();
     }
-    session.emit(Payload::Restored(proto::Restored { lost }));
-    session.persister.arm();
 }
 
-/// Says so when restoring ends by a panic, which leaves the persister never armed.
-struct Unfinished;
-
-impl Drop for Unfinished {
-    fn drop(&mut self) {
-        if !std::thread::panicking() {
-            return;
+/// Copies the state file aside before the persister's first write leaves out the saved tabs
+/// and panes that did not come back. False when the copy failed, and nothing may be written
+/// this run: the file is then the only record of them.
+fn keep_what_was_lost(path: &Path, lost: &Lost) -> bool {
+    match persist::keep_aside(path) {
+        Ok(kept) => {
+            log::warn(
+                "daemon.state.unrestored",
+                fields! {
+                    "lost_tabs" => lost.tabs.join(" "),
+                    "lost_panes" => lost.panes.join(" "),
+                    "kept" => kept.display(),
+                    "impact" => "these saved tabs and panes did not come back, and the next write \
+                                 leaves them out of the state file; the file as it was is kept \
+                                 aside",
+                    "check" => "the daemon.state.* and daemon.pane.not_started records before \
+                                this one say why each did not come back",
+                },
+            );
+            true
         }
-        log::error(
-            "daemon.state.restore_failed",
-            fields! {
-                "impact" => "the saved tabs are not all back, and nothing is saved for the rest of \
-                             this daemon's run; the file keeps what the last run saved",
-                "check" => "this is a bug: the panic above says where restoring stopped",
-            },
-        );
+        Err(error) => {
+            log::error(
+                "daemon.state.unrestored",
+                fields! {
+                    "lost_tabs" => lost.tabs.join(" "),
+                    "lost_panes" => lost.panes.join(" "),
+                    "error" => error,
+                    "impact" => "these saved tabs and panes did not come back, and the file \
+                                 holding them could not be copied aside, so nothing is saved for \
+                                 the rest of this daemon's run",
+                    "check" => "the permissions on the state file's directory, and free space",
+                },
+            );
+            false
+        }
     }
 }
 
@@ -1380,7 +1484,7 @@ impl Session {
         &mut self,
         tab: persist::Tab,
         saved: &HashMap<String, persist::Pane>,
-        lost: &mut Vec<String>,
+        lost: &mut Lost,
     ) -> Option<Restoring> {
         if self.stopping {
             return None;
@@ -1399,7 +1503,11 @@ impl Session {
                                  of that name first",
                 },
             );
-            lost.push(tab.name);
+            let panes = tab.root.panes();
+            lost.panes.extend(
+                panes.into_iter().filter(|pane| saved.contains_key(*pane)).map(str::to_string),
+            );
+            lost.tabs.push(tab.name);
             return None;
         }
         let mut panes = Vec::new();
@@ -1414,7 +1522,7 @@ impl Session {
                                      one of that name first",
                     },
                 );
-                lost.push(name.to_string());
+                lost.panes.push(name.to_string());
                 continue;
             }
             let shell = self.settings.shell.clone().unwrap_or_default();
@@ -1432,7 +1540,7 @@ impl Session {
 
     /// Finishes restoring a tab once its panes' shells have started, or failed to. The tab
     /// comes back with the panes that did.
-    fn restored(&mut self, restoring: Restoring, started: Vec<Restarted>, lost: &mut Vec<String>) {
+    fn restored(&mut self, restoring: Restoring, started: Vec<Restarted>, lost: &mut Lost) {
         let Restoring { tab, panes, .. } = restoring;
         self.reserved.remove(&tab.name);
         for pane in &panes {
@@ -1446,7 +1554,7 @@ impl Session {
                 Ok(started) => started,
                 Err(error) => {
                     Self::could_not_start(&name, program, &cwd, &error);
-                    lost.push(name);
+                    lost.panes.push(name);
                     continue;
                 }
             };
@@ -1464,7 +1572,7 @@ impl Session {
             if self.open(record, pane.saved.grid, master, child, program).is_ok() {
                 back.insert(name);
             } else {
-                lost.push(name);
+                lost.panes.push(name);
             }
         }
         if self.stopping {
@@ -1490,7 +1598,7 @@ impl Session {
                     "check" => "the daemon.pane.not_started records before this one",
                 },
             );
-            lost.push(tab.name);
+            lost.tabs.push(tab.name);
             return;
         };
         let zoomed = tab.zoomed.filter(|pane| root.contains(pane));
@@ -1498,43 +1606,6 @@ impl Session {
         let record = tab.record();
         self.tabs.push(tab);
         self.emit(Payload::TabOpened(proto::TabOpened { tab: Some(record) }));
-    }
-
-    /// Copies the state file aside before the persister's first write leaves out the saved
-    /// tabs and panes that did not come back. False when the copy failed, and nothing may be
-    /// written this run: the file is then the only record of them.
-    fn keep_what_was_lost(&self, lost: &[String]) -> bool {
-        match persist::keep_aside(self.persister.path()) {
-            Ok(kept) => {
-                log::warn(
-                    "daemon.state.unrestored",
-                    fields! {
-                        "lost" => lost.join(" "),
-                        "kept" => kept.display(),
-                        "impact" => "these saved tabs and panes did not come back, and the next \
-                                     write leaves them out of the state file; the file as it was \
-                                     is kept aside",
-                        "check" => "the daemon.state.* and daemon.pane.not_started records before \
-                                    this one say why each did not come back",
-                    },
-                );
-                true
-            }
-            Err(error) => {
-                log::error(
-                    "daemon.state.unrestored",
-                    fields! {
-                        "lost" => lost.join(" "),
-                        "error" => error,
-                        "impact" => "these saved tabs and panes did not come back, and the file \
-                                     holding them could not be copied aside, so nothing is saved \
-                                     for the rest of this daemon's run",
-                        "check" => "the permissions on the state file's directory, and free space",
-                    },
-                );
-                false
-            }
-        }
     }
 
     // -----------------------------------------------------------------------------------------
@@ -1633,4 +1704,91 @@ fn node_record(node: &Node) -> proto::Node {
         }
     };
     proto::Node { node: Some(node) }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::os::unix::net::UnixStream;
+
+    use muster_daemon_proto::connection;
+
+    use super::*;
+
+    /// A session with no panes, persisting to `file`, whose events reach the returned stream.
+    fn session(file: &Path) -> (Arc<Shared>, UnixStream) {
+        let places = Places {
+            home: PathBuf::from("/"),
+            overrides: None,
+            reachable: spawn::Reachable { daemon: None, socket: file.with_extension("sock") },
+            data: Data::unchecked(PathBuf::from("/nonexistent")),
+            log: None,
+        };
+        let persister = Persister::new(file.to_path_buf(), false);
+        let saved = Saved { persister, settings: None, restoring: true };
+        let (stopping, _) = std::sync::mpsc::channel();
+        let shared = Shared::new(1, stopping, Vec::new(), places, saved);
+        let (ours, theirs) = UnixStream::pair().unwrap();
+        let outbox = Outbox::open(&ours).unwrap();
+        shared.lock().subscribers.push(outbox);
+        (shared, theirs)
+    }
+
+    fn next_event(stream: &mut UnixStream) -> Payload {
+        stream.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
+        let message = connection::receive::<proto::ControlMessage>(stream).unwrap().unwrap();
+        match message.message {
+            Some(proto::control_message::Message::Event(event)) => event.event.unwrap(),
+            other => panic!("not an event: {other:?}"),
+        }
+    }
+
+    fn scratch(name: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("muster-session-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// A client waits for `restored` before deciding a saved tab is gone, so it arrives even
+    /// when the file holding what was lost cannot be kept aside, and says nothing is saved.
+    #[test]
+    fn restored_arrives_when_what_was_lost_cannot_be_kept_aside() {
+        let dir = scratch("unkept");
+        // No file there to copy.
+        let (shared, mut events) = session(&dir.join("daemon.state.json"));
+        let lost = Lost { tabs: vec!["t1".to_string()], panes: vec!["p1".to_string()] };
+        finish_restore(&shared, lost, None);
+        let expected = proto::Restored {
+            lost_tabs: vec!["t1".to_string()],
+            lost_panes: vec!["p1".to_string()],
+            saving_stopped: true,
+        };
+        assert_eq!(next_event(&mut events), Payload::Restored(expected));
+        assert!(!shared.lock().restoring);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn restored_arrives_when_restoring_failed_partway() {
+        let dir = scratch("failed");
+        let (shared, mut events) = session(&dir.join("daemon.state.json"));
+        finish_restore(&shared, Lost::default(), Some("a bug"));
+        let expected = proto::Restored { saving_stopped: true, ..proto::Restored::default() };
+        assert_eq!(next_event(&mut events), Payload::Restored(expected));
+        assert!(!shared.lock().restoring);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// The persist thread's copy and the stop's hand-over happen in holds of one lock, so a
+    /// copy after the stop's must see that it has begun, never the closed session.
+    #[test]
+    fn a_stopping_session_hands_over_what_it_held_and_offers_nothing_after() {
+        let dir = scratch("stopping");
+        let (shared, _events) = session(&dir.join("daemon.state.json"));
+        assert!(shared.lock().persisted_unless_stopping().is_some());
+        shared.lock().close_everything();
+        assert_eq!(shared.lock().persisted_unless_stopping(), None);
+        let _ = std::fs::remove_dir_all(dir);
+    }
 }

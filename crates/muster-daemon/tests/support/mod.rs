@@ -142,7 +142,7 @@ pub fn named(event: &proto::Event) -> String {
         E::SettingsChanged(_) => "settings_changed".to_string(),
         E::PaneEffect(effect) => format!("pane_effect:{}", effect.pane),
         E::PasteHeld(held) => format!("paste_held:{}", held.pane),
-        E::Restored(restored) => format!("restored:{}", restored.lost.join(",")),
+        E::Restored(restored) => format!("restored:{}", restored.lost_tabs.join(",")),
     }
 }
 

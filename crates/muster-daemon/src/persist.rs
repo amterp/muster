@@ -337,6 +337,14 @@ impl Persister {
         }
     }
 
+    /// Writes nothing more this run, since the file holds something this daemon could not
+    /// bring back and could not keep elsewhere.
+    pub(crate) fn off(&self) {
+        let mut pending = self.pending();
+        pending.phase = Phase::Off;
+        self.woken.notify_all();
+    }
+
     /// The file this persister writes.
     pub(crate) fn path(&self) -> &Path {
         &self.path
@@ -612,6 +620,28 @@ mod tests {
         });
         thread.join().unwrap();
         assert_eq!(*persister.writes.lock().unwrap(), [state()], "only what it held");
+    }
+
+    /// While saved tabs are coming back the session holds less than the file, so a change
+    /// long overdue writes nothing until restoring ends, and then writes at once.
+    #[test]
+    fn nothing_is_written_until_restoring_ends() {
+        let scratch = Scratch::new("restoring");
+        let persister = Persister::new(scratch.file(), false);
+        persister.changed();
+        persister.pending().changed = Instant::now().checked_sub(DELAY * 2);
+        let writing = Arc::clone(&persister);
+        let thread = std::thread::spawn(move || writing.run(|| Copied::State(Box::new(state()))));
+        std::thread::sleep(Duration::from_millis(100));
+        assert!(persister.writes.lock().unwrap().is_empty(), "written while restoring");
+        persister.arm();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while persister.writes.lock().unwrap().is_empty() {
+            assert!(Instant::now() < deadline, "never written once armed");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        persister.stopping(state());
+        thread.join().unwrap();
     }
 
     #[test]

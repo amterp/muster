@@ -47,7 +47,7 @@ enum Outbound {
 }
 
 impl Outbox {
-    fn open(stream: &UnixStream) -> std::io::Result<Outbox> {
+    pub(crate) fn open(stream: &UnixStream) -> std::io::Result<Outbox> {
         let id = NEXT_CONNECTION.fetch_add(1, Ordering::Relaxed);
         let (sender, receiver) = mpsc::sync_channel(QUEUE_DEPTH);
         let mut writing = stream.try_clone()?;

@@ -85,6 +85,14 @@ impl Data {
     }
 }
 
+/// A data directory taken as it is, for a unit test whose panes never start.
+#[cfg(test)]
+impl Data {
+    pub(crate) fn unchecked(dir: PathBuf) -> Data {
+        Data { dir }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

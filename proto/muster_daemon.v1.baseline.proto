@@ -495,12 +495,19 @@ message Event {
   }
 }
 
-// The daemon has finished bringing back what a previous run saved, sent only when it restored.
+// The daemon has finished bringing back what a previous run saved, sent only when it restored,
+// and sent however restoring ended.
 message Restored {
-  // The saved tabs and panes that did not come back: a name a client had already taken, or a
-  // pane no shell would start for. The file that held them is kept aside, and the daemon's log
-  // says where.
-  repeated string lost = 1;
+  // The saved tabs that did not come back: a name a client had already taken, or no pane in
+  // it that a shell would start for.
+  repeated string lost_tabs = 1;
+  // The saved panes that did not come back, those of a lost tab among them. The file that held
+  // what was lost is kept aside, and the daemon's log says where.
+  repeated string lost_panes = 2;
+  // True when this daemon writes nothing down for the rest of its run, and a restart brings
+  // back what the file held when it started: restoring failed partway, or the file holding
+  // what was lost could not be copied aside. The log says which.
+  bool saving_stopped = 3;
 }
 
 message PaneOpened {

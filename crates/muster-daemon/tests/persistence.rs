@@ -312,12 +312,14 @@ fn restored(events: &[proto::Event]) -> Option<&proto::Restored> {
     })
 }
 
+/// Only the shell went bad, so the pane keeps its directory.
 #[test]
 fn a_shell_gone_since_the_last_run_comes_back_as_the_default_shell() {
     let mut daemon = daemon();
     let work = directory(&daemon, "work");
     let mut control = restarted_from(&mut daemon, &saved(1, &work, Some("/nonexistent/shell")));
-    until_restored(&mut control, 1);
+    let snapshot = until_restored(&mut control, 1);
+    assert_eq!(record(&snapshot, "p0").cwd, work.display().to_string());
     until_text(&mut control, "p0", "");
     assert!(written(&daemon.root().join("daemon.log")).contains("daemon.state.fallback"));
     assert_eq!(kept_aside(daemon.root()), None, "nothing was lost");
@@ -341,7 +343,7 @@ fn a_tab_no_shell_will_start_for_is_kept_in_a_copy_of_the_file() {
 
 /// A client that makes a pane under a name a saved pane has, while the daemon is restoring,
 /// keeps it; the saved pane is lost, and the file that held it is kept aside. Until the restore
-/// has ended, the file is not written at all, and the snapshot says it is under way.
+/// has ended, the snapshot says it is under way.
 #[test]
 fn a_name_a_client_took_while_restoring_is_kept_in_a_copy_of_the_file() {
     const TABS: usize = 60;
@@ -359,9 +361,10 @@ fn a_name_a_client_took_while_restoring_is_kept_in_a_copy_of_the_file() {
 
     let events =
         events_until(&mut control, "the restore to end", |events| restored(events).is_some());
-    assert_eq!(std::fs::read_to_string(state_file(&daemon)).unwrap(), file, "untouched so far");
-    let lost = &restored(&events).unwrap().lost;
-    assert_eq!(*lost, [taken.clone(), format!("t{}", TABS - 1)]);
+    let restored = restored(&events).unwrap();
+    assert_eq!(restored.lost_tabs, [format!("t{}", TABS - 1)]);
+    assert_eq!(restored.lost_panes, [taken.as_str()]);
+    assert!(!restored.saving_stopped);
     let kept = kept_aside(daemon.root()).expect("a copy kept aside");
     assert_eq!(std::fs::read_to_string(kept).unwrap(), file);
     let after = snapshot(&mut control);
