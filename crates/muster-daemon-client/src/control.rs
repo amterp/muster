@@ -160,7 +160,7 @@ impl Control {
             "daemon.control.opened",
             fields! {
                 "socket" => socket.display(),
-                "pid" => welcome.pid,
+                "daemon_pid" => welcome.pid,
                 "instance" => welcome.instance,
                 "version" => welcome.daemon_version,
                 "install" => welcome.install,

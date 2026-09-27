@@ -733,7 +733,7 @@ impl Pane {
                 "daemon.pane.not_signaled",
                 fields! {
                     "pane" => self.record.pane,
-                    "pid" => self.process.unwrap_or_default(),
+                    "process" => self.process.unwrap_or_default(),
                     "why" => "its shell has ended and its pid now belongs to another process",
                 },
             );

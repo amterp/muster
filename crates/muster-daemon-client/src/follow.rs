@@ -360,7 +360,7 @@ fn connect(
         fields! {
             "daemon" => following.daemon.clone(),
             "instance" => instance,
-            "pid" => control.welcome().pid,
+            "daemon_pid" => control.welcome().pid,
             "version" => control.welcome().daemon_version.clone(),
         },
     );

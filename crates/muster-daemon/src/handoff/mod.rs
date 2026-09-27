@@ -174,7 +174,7 @@ pub(crate) fn hand_over(shared: &Arc<Shared>, replacement: &Replacement) -> Repl
             log::info(
                 "daemon.handoff.done",
                 fields! {
-                    "pid" => pid,
+                    "successor_pid" => pid,
                     "version" => accepted.daemon_version,
                     "ms" => started.elapsed().as_millis(),
                 },
@@ -321,7 +321,7 @@ fn handed(
     }
     log::info(
         "daemon.handoff.committed",
-        fields! { "pid" => successor.as_ref().map_or(0, Child::id) },
+        fields! { "successor_pid" => successor.as_ref().map_or(0, Child::id) },
     );
     // From here the new daemon writes the log's file; this one keeps its records to itself.
     if let Some(log) = &handing.log {
