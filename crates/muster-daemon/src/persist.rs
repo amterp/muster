@@ -14,10 +14,13 @@
 //!   reads. A field every file has is required, and its absence means a damaged file.
 //! - A field is never renamed or retyped. The settings are the protocol's own messages, keyed by
 //!   their field names, so renaming a `Settings` field - which the protocol allows - needs a
-//!   `#[serde(alias)]` naming the old one, added in `muster-daemon-proto/build.rs`. Enums are
-//!   stored as numbers, which a renamed enum value leaves alone.
+//!   `#[serde(alias)]` naming the old one, added in `muster-daemon-proto/build.rs`. The
+//!   protocol's enums are stored as their numbers, which a renamed value leaves alone; a split's
+//!   axis is stored as a word, and follows the rule for fields.
 //! - Anything else bumps [`VERSION`], and [`load`] goes on reading every earlier version.
-//! - A fixture is frozen once written. A new version gets a fixture of its own.
+//! - A fixture is frozen once written. A new version gets a fixture of its own, and so does a
+//!   setting added since the last fixture: the tests' `FIXTURES` says which fixture holds which
+//!   setting, and fails until every setting is held by one.
 
 use std::collections::HashSet;
 use std::fs::File;
@@ -654,9 +657,36 @@ mod tests {
         assert_eq!(load(&scratch.file()), Loaded::Nothing, "the last file stays");
     }
 
+    /// Every fixture, and the settings it holds at something other than their defaults. Each
+    /// setting is held by exactly one, the first written after it was added.
+    const FIXTURES: [(&str, &[&str]); 1] =
+        [("state-v1.json", &["shell", "scrollback_bytes", "palette", "clipboard_write", "cursor"])];
+
+    fn fixture(name: &str) -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures").join(name)
+    }
+
     /// The state `tests/fixtures/state-v1.json` holds: every setting other than its default, a
-    /// zoomed split and labels.
+    /// zoomed split each way and labels. Frozen with the file, so it shares nothing with the
+    /// other tests' states.
+    #[allow(
+        clippy::needless_update,
+        reason = "a setting added later compiles here, and takes its default as the file does"
+    )]
     fn fixture_v1() -> State {
+        let grid = Grid { cols: 80, rows: 24, width_px: 800, height_px: 480 };
+        let pane = |name: &str, label: Option<&str>| Pane {
+            name: name.to_string(),
+            label: label.map(str::to_string),
+            cwd: PathBuf::from("/tmp"),
+            grid,
+        };
+        let split = |axis, ratio, first: &str, second: &str| Node::Split {
+            axis,
+            ratio,
+            first: Box::new(Node::Pane(first.to_string())),
+            second: Box::new(Node::Pane(second.to_string())),
+        };
         State {
             version: 1,
             daemon: "0.9.0".to_string(),
@@ -664,6 +694,7 @@ mod tests {
                 shell: Some(proto::Shell {
                     command: Some("/bin/zsh".to_string()),
                     mode: proto::ShellMode::NonLogin.into(),
+                    ..Default::default()
                 }),
                 scrollback_bytes: Some(5_000_000),
                 palette: Some(proto::Palette {
@@ -672,35 +703,113 @@ mod tests {
                     background: 0x11_11_11,
                     cursor: Some(0xff_00_ff),
                     scheme: proto::ColorScheme::Dark.into(),
+                    ..Default::default()
                 }),
                 clipboard_write: Some(false),
                 cursor: Some(proto::Cursor {
                     style: proto::CursorStyle::Bar.into(),
                     blink: Some(false),
+                    ..Default::default()
                 }),
+                ..Default::default()
             },
-            ..state()
+            tabs: vec![
+                Tab {
+                    name: "t1".to_string(),
+                    label: proto::Label { text: Some("work".to_string()), generation: 2 },
+                    zoomed: Some("p2".to_string()),
+                    root: split(Axis::Columns, 0.3, "p1", "p2"),
+                },
+                Tab {
+                    name: "t2".to_string(),
+                    label: proto::Label { text: None, generation: 1 },
+                    zoomed: None,
+                    root: split(Axis::Rows, 0.6, "p3", "p4"),
+                },
+            ],
+            panes: vec![
+                pane("p1", Some("A")),
+                pane("p2", None),
+                pane("p3", None),
+                pane("p4", Some("B")),
+            ],
         }
     }
 
-    /// A file an earlier daemon wrote is read as it was meant, whatever has changed since. The
-    /// file is frozen: a later format gets a fixture of its own, never an edit to this one.
+    /// A file an earlier daemon wrote is read as it was meant, whatever has changed since. A
+    /// field added since takes its default here as it does in the file.
     #[test]
     fn a_version_1_file_reads_as_it_was_written() {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/state-v1.json");
-        assert_eq!(load(&path), Loaded::State(fixture_v1()));
+        assert_eq!(load(&fixture("state-v1.json")), Loaded::State(fixture_v1()));
     }
 
-    /// Every setting the fixture holds is one a restart must keep, so each must differ from its
-    /// default, or a renamed field would read back as the default and pass. A setting added
-    /// later goes in a later version's fixture.
+    /// Whatever a fixture says survives reading it and writing it again, under the same names:
+    /// a field renamed or retyped since would be missing or different.
     #[test]
-    fn the_version_1_fixture_sets_every_setting_it_has() {
-        let set = serde_json::to_value(fixture_v1().settings).unwrap();
+    fn every_fixture_reads_back_everything_it_holds() {
+        fn within(held: &serde_json::Value, read: &serde_json::Value, at: &str) {
+            match (held, read) {
+                (serde_json::Value::Object(held), serde_json::Value::Object(read)) => {
+                    for (key, value) in held {
+                        let path = format!("{at}.{key}");
+                        within(value, read.get(key).unwrap_or(&serde_json::Value::Null), &path);
+                    }
+                }
+                (serde_json::Value::Array(held), serde_json::Value::Array(read))
+                    if held.len() == read.len() =>
+                {
+                    for (index, (held, read)) in held.iter().zip(read).enumerate() {
+                        within(held, read, &format!("{at}[{index}]"));
+                    }
+                }
+                // A ratio is an f32, which reads back as the nearest f64 to it.
+                (serde_json::Value::Number(held), serde_json::Value::Number(read)) => {
+                    let (held, read) = (held.as_f64().unwrap(), read.as_f64().unwrap());
+                    assert!((held - read).abs() < 1e-6, "{at} reads back as {read}, not {held}");
+                }
+                _ => assert_eq!(held, read, "{at} reads back differently"),
+            }
+        }
+        for (name, _) in FIXTURES {
+            let bytes = std::fs::read(fixture(name)).unwrap();
+            let held: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+            let Loaded::State(state) = load(&fixture(name)) else { panic!("{name} does not load") };
+            within(&held, &serde_json::to_value(state).unwrap(), name);
+        }
+    }
+
+    /// A setting a fixture holds at its default would read back as the default after a rename,
+    /// and pass.
+    #[test]
+    fn every_fixture_holds_its_settings_at_something_other_than_their_defaults() {
         let default = serde_json::to_value(proto::Settings::default()).unwrap();
-        let (set, default) = (set.as_object().unwrap(), default.as_object().unwrap());
-        for (name, value) in default {
-            assert_ne!(set.get(name), Some(value), "{name} is its default in the fixture");
+        for (name, settings) in FIXTURES {
+            let Loaded::State(state) = load(&fixture(name)) else { panic!("{name} does not load") };
+            let held = serde_json::to_value(state.settings).unwrap();
+            for setting in settings {
+                assert!(default.get(setting).is_some(), "{setting} is not a setting");
+                assert_ne!(
+                    held.get(setting),
+                    default.get(setting),
+                    "{name} leaves {setting} at its default"
+                );
+            }
+        }
+    }
+
+    /// A setting added to the protocol is saved, so a restart must keep it, and nothing proves
+    /// it does until a fixture holds it. That is a new fixture, never an edit to a frozen one.
+    #[test]
+    fn every_setting_is_held_by_a_fixture() {
+        let default = serde_json::to_value(proto::Settings::default()).unwrap();
+        let held: Vec<&str> =
+            FIXTURES.iter().flat_map(|(_, settings)| settings.iter().copied()).collect();
+        for setting in default.as_object().unwrap().keys() {
+            assert!(
+                held.contains(&setting.as_str()),
+                "no fixture holds {setting}: add one, a copy of the latest with {setting} set, to \
+                 FIXTURES"
+            );
         }
     }
 

@@ -43,6 +43,24 @@
           }
         }
       }
+    },
+    {
+      "tab": "t2",
+      "label": {
+        "generation": 1
+      },
+      "root": {
+        "split": {
+          "axis": "rows",
+          "ratio": 0.6,
+          "first": {
+            "pane": "p3"
+          },
+          "second": {
+            "pane": "p4"
+          }
+        }
+      }
     }
   ],
   "panes": [
@@ -59,6 +77,27 @@
     },
     {
       "pane": "p2",
+      "cwd": "/tmp",
+      "grid": {
+        "cols": 80,
+        "rows": 24,
+        "width_px": 800,
+        "height_px": 480
+      }
+    },
+    {
+      "pane": "p3",
+      "cwd": "/tmp",
+      "grid": {
+        "cols": 80,
+        "rows": 24,
+        "width_px": 800,
+        "height_px": 480
+      }
+    },
+    {
+      "pane": "p4",
+      "label": "B",
       "cwd": "/tmp",
       "grid": {
         "cols": 80,

@@ -214,13 +214,14 @@ scrollback do not survive a daemon restart, which is the guarantee herdr gives t
 (`docs/architecture.md`, durability).
 
 The file is JSON beside the socket, `~/.muster/daemon/<install>.state.json`, so a person can read
-it, although its enums are numbers: a number survives the protocol renaming a value, where the
-name would not. The settings in it are the protocol's own `Settings` message, so a setting added
+it, although the protocol's enums are numbers in it: a number survives the protocol renaming a
+value, where the name would not. A split's axis is a word, and is never renamed. The settings in it are the protocol's own `Settings` message, so a setting added
 to the protocol is kept across a restart without anyone remembering to. The format outlives the
 code that wrote it, so it changes only by rule: a field is added with a default, never renamed
 or retyped - a renamed `Settings` field keeps its old name as an alias - and anything else raises
 the format's version, which every later daemon goes on reading. A checked-in file of the first
-version, with every setting set, must load as it was written. It is written a second after the
+version, with every setting set, must load as it was written, and such files are never edited: a
+setting added later gets a new file holding it, and a test fails until one does. It is written a second after the
 first change it covers, whatever changes after, with the session locked only to copy the state
 out; the write itself goes to a temporary file that is synced and renamed over the last, so a
 crash at any moment leaves the old file or the new one. A write that would change no byte, such as

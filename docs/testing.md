@@ -51,11 +51,10 @@ Muster's principles, adapted to that evidence:
   a surface that reads slowly. It starts its own daemon from `target/release`, directly rather than through Launch
   Services, until stage 3 puts the daemon in a helper bundle. `--socket` measures a daemon already running instead,
   which is how a devenv's is measured through a forwarded socket until the SSH tier installs one itself, and
-`--flood-surface fast` floods a surface that keeps up, so the flood's time is what the link and the daemon's flow
-control allow. Agent
-  detection is checked the way the herdr probe checked herdr's: its `detection` scenario runs again
-  against the daemon, the same fake agent and override manifest, and prints each state's settle time beside the one
-  recorded in `corpus/herdr-0.8.0/detection/`.
+  `--flood-surface fast` floods a surface that keeps up, so the flood's time is what the link and the daemon's flow
+  control allow. Agent detection is checked the way the herdr probe checked herdr's: its `detection` scenario runs
+  again against the daemon, the same fake agent and override manifest, and prints each state's settle time beside
+  the one recorded in `corpus/herdr-0.8.0/detection/`.
 
   A lost answer is staged the same way. `Daemon::withholding_answers_to` puts a relay in front of the real daemon
   that passes every connection through and, for the methods a test names, reads herdr's answer and never delivers
