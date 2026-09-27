@@ -24,9 +24,8 @@ public enum Core {
   ///
   /// `logPath` nil turns logging off, which is what a release build does unless asked.
   public static func start(
-    logPath: String?, configPath: String? = nil, daemonPath: String? = nil,
-    statePath: String? = nil, daemonConfigPath: String? = nil, paneNamesPath: String? = nil,
-    commandSocketPath: String? = nil, commandsPath: String? = nil, cachePath: String? = nil,
+    logPath: String?, configPath: String? = nil, daemon: DaemonLocation? = nil,
+    statePath: String? = nil, commandSocketPath: String? = nil, commandsPath: String? = nil,
     daemonRecordsPath: String? = nil, tabHoldersPath: String? = nil, show: String? = nil,
     process: String = "app"
   ) {
@@ -35,13 +34,11 @@ public enum Core {
     var startup = Muster_Startup()
     startup.logPath = logPath ?? ""
     startup.configPath = configPath ?? ""
-    startup.daemonPath = daemonPath ?? ""
+    startup.daemonPath = daemon?.binary ?? ""
+    startup.daemonDataPath = daemon?.data ?? ""
     startup.statePath = statePath ?? ""
-    startup.daemonConfigPath = daemonConfigPath ?? ""
-    startup.paneNamesPath = paneNamesPath ?? ""
     startup.commandSocketPath = commandSocketPath ?? ""
     startup.commandsPath = commandsPath ?? ""
-    startup.cachePath = cachePath ?? ""
     startup.daemonRecordsPath = daemonRecordsPath ?? ""
     startup.tabHoldersPath = tabHoldersPath ?? ""
     startup.show = show ?? ""
@@ -256,16 +253,42 @@ public enum Core {
     send(request)
   }
 
-  /// Scrolls one named pane, which is the pane the pointer was over rather than the focused
-  /// one. Both ids, because two daemons hand out the same pane ids.
-  public static func scroll(daemonID: String, paneID: String, direction: String, delta: Double) {
-    var scroll = Muster_Scroll()
-    scroll.daemonID = daemonID
-    scroll.paneID = paneID
-    scroll.direction = direction
-    scroll.delta = delta
+  /// A wheel or trackpad turn over a pane, as the pane's surface was given it.
+  ///
+  /// The surface scrolls its own history; this is for the pane's daemon, which decides from the
+  /// program's modes whether the program gets arrow keys, a mouse report or nothing. Carried
+  /// whole rather than turned into lines here, because the core scales it by
+  /// `scroll_multiplier` and a shell that did the arithmetic would be a second place that lives.
+  public struct Wheel: Equatable, Sendable {
+    /// Positive is right and up, the same numbers the surface was handed.
+    public let dx: Double
+    public let dy: Double
+    /// A trackpad's pixel deltas rather than a wheel's notches.
+    public let precise: Bool
+    /// The platform's momentum phase, in libghostty's numbering.
+    public let momentum: UInt32
+    public let modifiers: [String]
+    /// Where the pointer is, in the pixels the pane's terminal reports its size in: backing
+    /// pixels from the surface's top left.
+    public let x: Double
+    public let y: Double
+  }
+
+  /// Tells a pane's daemon about a wheel over it. The pane under the pointer rather than the
+  /// focused one, so both ids: two daemons hand out the same pane ids.
+  public static func wheel(daemonID: String, paneID: String, _ wheel: Wheel) {
+    var sent = Muster_Wheel()
+    sent.daemonID = daemonID
+    sent.paneID = paneID
+    sent.dx = wheel.dx
+    sent.dy = wheel.dy
+    sent.precise = wheel.precise
+    sent.momentum = wheel.momentum
+    sent.modifiers = wheel.modifiers
+    sent.x = wheel.x
+    sent.y = wheel.y
     var request = Muster_Request()
-    request.scroll = scroll
+    request.wheel = sent
     send(request)
   }
 
@@ -649,135 +672,6 @@ public enum Core {
     answer.bindings.map { Binding(action: $0.action, key: $0.key, modifiers: $0.modifiers) }
   }
 
-  /// What a search found, which is everything the find bar draws.
-  public struct Findings: Equatable, Sendable {
-    /// How much of the pane a search covered.
-    ///
-    /// The three cases want three different sentences under a search box, and only the core
-    /// can tell them apart - a bar cannot work out from a row count whether the rows it did
-    /// not see are out of reach or are not there at all.
-    public enum Reach: Equatable, Sendable {
-      /// Every row the pane holds. Draws no caveat.
-      case whole
-      /// The pane holds `rowsHeld` rows and the daemon would not hand them all over.
-      case capped(rowsHeld: UInt32)
-      /// The pane keeps no history behind the screen. What a full-screen program leaves.
-      case screenOnly
-    }
-
-    public let total: UInt32
-    /// Which match is selected, counting from one. Zero when nothing matched.
-    public let selected: UInt32
-    /// How many rows the core managed to look at.
-    public let rowsSearched: UInt32
-    public let reach: Reach
-
-    /// Whether landing on the selected match moved the pane.
-    ///
-    /// A wheel is this window's own gesture, so it knows the pane moved. A landing is written
-    /// onto the pane's channel by the core, so without this the window would never hear - and
-    /// a selection made before the search would sit over the wrong text until the next notch
-    /// (kan a_2JrhrSBOx).
-    public let scrolled: Bool
-
-    /// Nothing typed, so nothing found. What an empty field shows.
-    public static let none = Findings(
-      total: 0, selected: 0, rowsSearched: 0, reach: .whole, scrolled: false)
-  }
-
-  /// Where a pane is looking, and how much history it holds.
-  ///
-  /// The one fact a selection cannot survive a scroll without. A pane is scrolled by the
-  /// daemon, which repaints the screen in place rather than moving anything, so the surface
-  /// drawing it has no idea it travelled - and a highlight made at screen row 4 stays at
-  /// screen row 4 while the text under it changes.
-  ///
-  /// Named rather than left empty, because a wheel scrolls whatever the pointer is over and
-  /// that is often not the pane with the keyboard.
-  public struct Viewport: Equatable, Sendable {
-    /// How far above the bottom of the pane's history its lowest visible row sits.
-    public let rowsFromBottom: UInt32
-    /// How many rows the daemon is drawing, which is its answer rather than the grid the
-    /// shell laid out - the two differ for a frame while a resize settles.
-    public let rows: UInt32
-    /// The furthest up this pane can go.
-    public let deepest: UInt32
-  }
-
-  public static func viewport(daemonID: String = "", paneID: String) -> Viewport? {
-    var asked = Muster_ReadViewport()
-    asked.daemonID = daemonID
-    asked.paneID = paneID
-    var request = Muster_Request()
-    request.readViewport = asked
-    guard case .paneViewport(let answer) = send(request) else { return nil }
-    return read(answer)
-  }
-
-  static func read(_ answer: Muster_PaneViewport) -> Viewport {
-    Viewport(
-      rowsFromBottom: answer.rowsFromBottom, rows: answer.rows, deepest: answer.deepest)
-  }
-
-  /// Looks for text in the pane the keyboard is on, and lands on the first match.
-  ///
-  /// Sent per keystroke: the needle is the whole question every time, never something added
-  /// to. A core that refuses answers `nil`, which the bar draws as no matches rather than as
-  /// an error - the reason is already in the log, and a search box is a poor place to report
-  /// a daemon problem.
-  public static func find(needle: String, daemonID: String = "", paneID: String = "")
-    -> Findings?
-  {
-    var find = Muster_Find()
-    find.daemonID = daemonID
-    find.paneID = paneID
-    find.needle = needle
-    var request = Muster_Request()
-    request.find = find
-    guard case .findings(let answer) = send(request) else { return nil }
-    return read(answer)
-  }
-
-  /// Goes to the next match, or the previous one, and lands on it.
-  /// `through` rather than the global, because the caller is a view that was handed a
-  /// dispatcher at construction and reaching past it for a step was the whole of what made a
-  /// find test race the suite: one half of the same view's traffic went where it was told and
-  /// the other half went wherever the process global happened to be pointing (kan a_2LMRCjcSV).
-  /// Defaulted, on the same terms as every other seam in this shell, so a caller with no
-  /// opinion still gets the one core there is.
-  public static func stepFind(forward: Bool, through dispatcher: Dispatcher = Core.dispatcher)
-    -> Findings?
-  {
-    var step = Muster_FindStep()
-    step.direction = forward ? "next" : "previous"
-    var request = Muster_Request()
-    request.findStep = step
-    guard case .findings(let answer) = send(request, through: dispatcher) else { return nil }
-    return read(answer)
-  }
-
-  /// Forgets the search, which is what closing the find bar means.
-  public static func endFind(through dispatcher: Dispatcher = Core.dispatcher) {
-    var request = Muster_Request()
-    request.endFind = Muster_EndFind()
-    send(request, through: dispatcher)
-  }
-
-  static func read(_ answer: Muster_Findings) -> Findings {
-    // A word the core spells rather than a number, and an unknown one reads as the reach
-    // that draws nothing. A shell that guessed here would put a caveat under a search box
-    // on the strength of a string it did not recognise.
-    let reach: Findings.Reach =
-      switch answer.reach {
-      case "capped": .capped(rowsHeld: answer.rowsHeld)
-      case "screen_only": .screenOnly
-      default: .whole
-      }
-    return Findings(
-      total: answer.total, selected: answer.selected,
-      rowsSearched: answer.rowsSearched, reach: reach, scrolled: answer.scrolled)
-  }
-
   /// Points this window's keyboard at a pane, and tells the daemon somebody looked.
   public static func focus(daemonID: String, paneID: String) {
     var focus = Muster_FocusPane()
@@ -1034,7 +928,8 @@ public enum Core {
     case .keyUp: return "key_up"
     case .sendText: return "send_text"
     case .paste: return "paste"
-    case .scroll: return "scroll"
+    case .wheel: return "wheel"
+    case .mouse: return "mouse"
     case .splitPane: return "split_pane"
     case .closePane: return "close_pane"
     case .reattachPane: return "reattach_pane"
@@ -1047,14 +942,12 @@ public enum Core {
     case .readAppearance: return "read_appearance"
     case .readWindow: return "read_window"
     case .readPane: return "read_pane"
-    case .readViewport: return "read_viewport"
     case .readDaemons: return "read_daemons"
     case .watchPanes: return "watch_panes"
     case .readWindowFrame: return "read_window_frame"
     case .setWindowFrame: return "set_window_frame"
     case .reportFontFamily: return "report_font_family"
-    // The kind, never the text, for the reason a find needle is never logged: what somebody
-    // types into their own terminal is theirs.
+    // The kind, never the text: what somebody types into their own terminal is theirs.
     case .sendToPane: return "send_to_pane"
     case .adjustFontSize: return "adjust_font_size"
     case .reloadConfig: return "reload_config"
@@ -1075,11 +968,6 @@ public enum Core {
     case .renamePane: return "rename_pane"
     case .renameTab: return "rename_tab"
     case .closeTab: return "close_tab"
-    // The kind, never the needle, for the reason above and more sharply: what somebody is
-    // looking for in their own terminal is the most private thing this seam carries.
-    case .find: return "find"
-    case .findStep: return "find_step"
-    case .endFind: return "end_find"
     case .endNumberedChord: return "end_numbered_chord"
     case .quitting: return "quitting"
     case nil: return "(none)"
@@ -1202,6 +1090,15 @@ public enum Core {
       let presentation = Presentation(sidebar: changed.sidebar)
       info("presentation.received", ["sidebar": String(presentation.sidebar)])
       window?.apply(presentation: presentation)
+    case .pasteHeld(let held):
+      // The kind and the size, never the text: it is somebody's clipboard.
+      info(
+        "paste.held",
+        ["daemon": held.daemonID, "pane": held.paneID, "bytes": String(held.text.utf8.count)])
+    case .clipboardWrite(let write):
+      info(
+        "clipboard.write.received",
+        ["daemon": write.daemonID, "pane": write.paneID, "bytes": String(write.text.utf8.count)])
     case .reopenWindow(let reopen):
       // Going to a tab a closed window holds is going to that window, and opening one is
       // starting an app.

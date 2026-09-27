@@ -25,12 +25,38 @@ private func rendererWakeup(_ userdata: UnsafeMutableRawPointer?) {
   Task { @MainActor in Renderer.current?.tick() }
 }
 
+/// Takes the actions Muster's find bar is built on, and declines the rest.
+///
+/// The counts are what the bar draws. Starting and ending a search are claimed without doing
+/// anything, because Muster's own bar is what starts and ends one - a surface never opens
+/// Ghostty's. Everything else arrives with the feature that consumes it.
 private func rendererAction(
   _ app: ghostty_app_t?, _ target: ghostty_target_s, _ action: ghostty_action_s
 ) -> Bool {
-  // Declining every action. The ones Muster needs - title changes, bells - arrive with
-  // the features that consume them.
-  false
+  switch action.tag {
+  case GHOSTTY_ACTION_START_SEARCH, GHOSTTY_ACTION_END_SEARCH:
+    return true
+  case GHOSTTY_ACTION_SEARCH_TOTAL:
+    let total = action.action.search_total.total
+    report(.total(total >= 0 ? Int(total) : nil), to: target)
+    return true
+  case GHOSTTY_ACTION_SEARCH_SELECTED:
+    let selected = action.action.search_selected.selected
+    report(.selected(selected >= 0 ? Int(selected) : nil), to: target)
+    return true
+  default:
+    return false
+  }
+}
+
+/// Hands a search's news to the surface it is about, on the main actor.
+///
+/// By the token the surface was created with, for the reason `rendererCloseSurface` uses it: this
+/// arrives on libghostty's thread, and the surface may be freed by the time the hop lands.
+private func report(_ search: SearchReport, to target: ghostty_target_s) {
+  guard target.tag == GHOSTTY_TARGET_SURFACE, let surface = target.target.surface else { return }
+  let token = UInt(bitPattern: ghostty_surface_userdata(surface))
+  Task { @MainActor in Surface.report(search, token: token) }
 }
 
 private func rendererReadClipboard(
@@ -238,6 +264,9 @@ public final class Surface {
   /// anybody can type into any more.
   public var onProcessExited: (@MainActor (Bool) -> Void)?
 
+  /// Called when a search this surface is running has counted its matches or moved to one.
+  public var onSearch: (@MainActor (SearchReport) -> Void)?
+
   /// The offset this surface is already drawn at.
   ///
   /// Not a second home for the answer - the core owns it - but a memo of what was last pushed
@@ -278,6 +307,10 @@ public final class Surface {
 
   static func reportExit(token: UInt, processAlive: Bool) {
     living[token]?.surface?.onProcessExited?(processAlive)
+  }
+
+  static func report(_ search: SearchReport, token: UInt) {
+    living[token]?.surface?.onSearch?(search)
   }
 
   public func setSize(width: UInt32, height: UInt32) {
@@ -322,19 +355,29 @@ public final class Surface {
     return refused
   }
 
-  /// Marks every occurrence of some text on screen, and clears the marks for nil.
+  /// Searches this pane's screen and history for a needle, replacing any search already
+  /// running, and ends the search for nil.
   ///
-  /// libghostty draws these itself once told what to look for: the colours are config keys and
-  /// the rectangles never leave it, so nothing here paints. Its own matcher is a plain
-  /// substring with ASCII case folding, which is the rule whoever counts these has to follow
-  /// too - a count that disagreed with the marks under it would be worse than no marks.
+  /// libghostty searches and marks by itself once told what to look for, on a thread of its
+  /// own, and reports its counts through `onSearch`. An empty needle stops searching, which is
+  /// what Ghostty's own app sends while its field is empty.
   ///
-  /// `end_search` rather than an empty needle for clearing. An empty `search:` cancels the
-  /// search and deliberately leaves any interface up, which for an embedder means the marks
-  /// stay (`observations/libghostty-9f9b8d1d.md` section 10).
-  public func highlight(_ text: String?) -> [String] {
-    guard let text, !text.isEmpty else { return act("end_search", []) }
-    return act("search:\(text)", [])
+  /// Answers with the action the renderer would not carry out, and only for a needle. libghostty
+  /// reports ending a search that was not running, and emptying one, as not performed, which is
+  /// no failure - while a needle refused is the action renamed under a pin bump, and the search
+  /// silently finding nothing.
+  @discardableResult
+  public func search(_ needle: String?) -> [String] {
+    let refused = act(needle.map { "search:\($0)" } ?? "end_search", [])
+    return needle?.isEmpty == false ? refused : []
+  }
+
+  /// Moves to the next match of the running search, or the previous one, scrolling to it.
+  ///
+  /// Nothing to report either way: libghostty answers a step with no search running as not
+  /// performed, which is an ordinary state rather than a refusal.
+  public func navigateSearch(next: Bool) {
+    _ = act(next ? "navigate_search:next" : "navigate_search:previous", [])
   }
 
   private func act(_ action: String, _ refused: [String]) -> [String] {
@@ -373,14 +416,13 @@ public final class Surface {
     return (size.cell_width_px, size.cell_height_px)
   }
 
-  // Selection, which libghostty makes and paints from the grid it has already drawn.
+  // The pointer and the wheel, which libghostty turns into a selection or a scroll of its own
+  // history.
   //
-  // Unlike a keystroke, a drag over a pane needs no mode guessed and no daemon's agreement -
-  // which is what makes copy possible while reporting mouse buttons to the program in the pane
-  // is still blocked (kan a_27CTgqqdv). What the host does own is *where* the selection is:
-  // a pane is scrolled by its daemon, which repaints this screen in place, so the buffer these
-  // are pinned to never moves and the host asks for the selection again wherever the text
-  // went (`observations/libghostty-9f9b8d1d.md` section 12).
+  // The surface holds the pane's real stream and history, so a selection it makes stays on its
+  // text however the pane scrolls. What the program in the pane is owed - a mouse report, or
+  // arrow keys for a wheel - is the daemon's to send, and what this surface writes back for the
+  // same gesture is dropped by the bridge.
 
   /// Reports where the pointer is, measured from this surface's top left.
   ///
@@ -402,53 +444,15 @@ public final class Surface {
       ghosttyModifiers(modifiers))
   }
 
-  /// Selects the cells between two points, or clears the selection for nil.
+  /// Scrolls this surface's own history, or lets it answer as the pane's modes say.
   ///
-  /// Driven as a drag because that is the only lever libghostty gives an embedder: it exports
-  /// no way to set or clear a selection, `Surface.setSelection` is private, and no binding
-  /// action says "none" (`observations/libghostty-9f9b8d1d.md` section 12). A press, a move
-  /// and a release is what a person's own drag does, so the selection this produces is the
-  /// same object their drag produced.
-  ///
-  /// **Clearing is a click**, because a left press whose click count is one and which selects
-  /// nothing is what clears a selection in libghostty's own handling. Skipped when nothing is
-  /// selected, which also keeps two clicks from ever landing back to back at one point - two
-  /// within the repeat interval and within a cell's width of each other would be a double
-  /// click, and would select the word there rather than nothing.
-  ///
-  /// **A click gesture is driven at one point and counts on libghostty starting over.** Its
-  /// presses go in back to back, which is well inside the repeat interval, so the second is
-  /// counted as a repeat and takes the word. What makes it the *second* rather than the third
-  /// is that the press before it was somewhere else: libghostty starts the count over past one
-  /// cell's width (`Surface.zig`, max_distance), and the caller must not ask for the same point
-  /// twice running - see `ClickRedriveTests`, which measures both outcomes.
-  ///
-  /// A point outside the surface is deliberate rather than a caller's mistake: libghostty
-  /// clamps a position to its grid, so an end scrolled off the top is asked for above the top
-  /// and lands on the first cell of the first row - which is where a selection continuing from
-  /// further up should start.
-  ///
-  /// Points measured from the top left, on the same terms as `mouseMoved`: whoever owns the
-  /// view owns the conversion, because that is where AppKit's flipped coordinates are.
-  public func select(_ selection: SurfaceSelection?) {
-    switch selection {
-    case .none:
-      guard ghostty_surface_has_selection(surface) else { return }
-      mouseMoved(to: .zero, modifiers: [])
-      leftMouse(pressed: true, modifiers: [])
-      leftMouse(pressed: false, modifiers: [])
-    case .dragged(let from, let to):
-      mouseMoved(to: from, modifiers: [])
-      leftMouse(pressed: true, modifiers: [])
-      mouseMoved(to: to, modifiers: [])
-      leftMouse(pressed: false, modifiers: [])
-    case .clicked(let at, let times):
-      mouseMoved(to: at, modifiers: [])
-      for _ in 0..<times {
-        leftMouse(pressed: true, modifiers: [])
-        leftMouse(pressed: false, modifiers: [])
-      }
-    }
+  /// `momentum` is already in libghostty's numbering (`scrollMomentum`), because the same
+  /// number goes to the daemon.
+  public func scroll(dx: Double, dy: Double, precise: Bool, momentum: UInt32) {
+    // ghostty_input_scroll_mods_t: precision in the low bit, the momentum phase in the three
+    // above it (Ghostty.Input.swift, ScrollMods).
+    let mods = ghostty_input_scroll_mods_t((precise ? 1 : 0) | (Int32(momentum) << 1))
+    ghostty_surface_mouse_scroll(surface, dx, dy, mods)
   }
 
   /// What is selected in this pane, or nil when nothing is.
@@ -466,25 +470,31 @@ public final class Surface {
   }
 }
 
-/// A selection, as the gesture that would have made it.
-///
-/// The gesture rather than the cells, because libghostty exports no way to set a selection and
-/// the mouse is the only lever an embedder has (`observations/libghostty-9f9b8d1d.md` section
-/// 12). Which gesture matters: a drag covers what lies between two points, and a repeated click
-/// covers the word or line under one, which is a thing no pair of points can ask for.
-///
-/// Points rather than cells, because a cell is a fact about a grid whose size only the renderer
-/// knows and a point is what the surface API takes. A point may be outside the surface, which
-/// libghostty clamps to its grid - see `Surface.select`.
-public enum SurfaceSelection: Equatable, Sendable {
-  /// Everything between two points, as a press, a move and a release make it.
-  case dragged(from: CGPoint, to: CGPoint)
+/// What a surface's search has found, as libghostty reports it: one fact at a time.
+public enum SearchReport: Equatable, Sendable {
+  /// How many matches there are. Nil while libghostty does not know.
+  case total(Int?)
 
-  /// The word or line under one point, as clicking there twice or three times makes it.
-  ///
-  /// The count is the gesture rather than a granularity, because libghostty has no name for
-  /// "the word here" that an embedder can say - only a click counter it keeps itself.
-  case clicked(at: CGPoint, times: Int)
+  /// Which match is selected, counting from zero. Nil when none is.
+  case selected(Int?)
+}
+
+/// A scroll's momentum phase, in libghostty's numbering.
+///
+/// Public because the same number goes to the pane's daemon as well as to the surface, and the
+/// shell is what builds both from one event.
+public func scrollMomentum(_ phase: NSEvent.Phase) -> UInt32 {
+  let momentum =
+    switch phase {
+    case .began: GHOSTTY_MOUSE_MOMENTUM_BEGAN
+    case .stationary: GHOSTTY_MOUSE_MOMENTUM_STATIONARY
+    case .changed: GHOSTTY_MOUSE_MOMENTUM_CHANGED
+    case .ended: GHOSTTY_MOUSE_MOMENTUM_ENDED
+    case .cancelled: GHOSTTY_MOUSE_MOMENTUM_CANCELLED
+    case .mayBegin: GHOSTTY_MOUSE_MOMENTUM_MAY_BEGIN
+    default: GHOSTTY_MOUSE_MOMENTUM_NONE
+    }
+  return momentum.rawValue
 }
 
 /// Puts the derived config where libghostty can read it, and says whether it got there.

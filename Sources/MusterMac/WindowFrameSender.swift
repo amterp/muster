@@ -29,7 +29,7 @@ public final class WindowFrameSender {
       read: { response in
         readResponse(response).map { _ in () }
       })
-    sender.onAnswer = { [weak self] _, _ in self?.onAnswered?() }
+    sender.onAnswer = { [weak self] _ in self?.onAnswered?() }
   }
 
   /// Reports where the window is, and returns without waiting.

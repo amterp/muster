@@ -16,7 +16,7 @@ import Testing
 struct PaneTreeTests {
   private let bounds = CGRect(x: 0, y: 0, width: 1000, height: 600)
 
-  private func leaf(_ id: String) -> PaneTree { .pane(.init(paneID: id, controlSocketPath: nil)) }
+  private func leaf(_ id: String) -> PaneTree { .pane(.init(paneID: id, linkSocketPath: nil)) }
 
   @Test("one pane fills the region")
   func singlePaneFillsIt() {
@@ -193,7 +193,22 @@ struct WindowContentsTests {
       Issue.record("expected a leaf")
       return
     }
-    #expect(leaf.controlSocketPath == nil)
+    #expect(leaf.linkSocketPath == nil)
+  }
+
+  @Test("a region whose daemon is not reached names no socket rather than an empty one")
+  func anUnreachedDaemonIsNil() {
+    // An empty path on a bridge's command line is a bridge that dials nothing, so the window
+    // has to be able to tell "no socket" from a socket.
+    var region = Muster_ViewRegion()
+    region.regionID = "r0"
+    var changed = Muster_ViewChanged()
+    changed.regions = [region]
+
+    let contents = WindowContents(changed)
+
+    #expect(contents.regions[0].daemonSocket == nil)
+    #expect(!contents.regions[0].remote)
   }
 
   @Test("each pane carries its own text size, and most carry none")
@@ -225,7 +240,7 @@ struct WindowContentsTests {
   func aViewCrossesIntact() {
     var first = Muster_ViewPane()
     first.paneID = "w1:p1"
-    first.controlSocketPath = "/tmp/muster-1-0.sock"
+    first.linkSocketPath = "/tmp/muster-1-0.sock"
     var second = Muster_ViewPane()
     second.paneID = "w1:p2"
     var split = Muster_ViewSplit()
@@ -239,6 +254,8 @@ struct WindowContentsTests {
     region.tabID = "w1:t1"
     region.paneID = "w1:p2"
     region.root = .with { $0.split = split }
+    region.daemonSocket = "/tmp/muster-devenv.sock"
+    region.remote = true
     var changed = Muster_ViewChanged()
     changed.regions = [region]
     changed.focusedRegion = "r0"
@@ -251,7 +268,11 @@ struct WindowContentsTests {
     // exactly as often as the window shows one daemon.
     #expect(contents.regions[0].daemon == "devenv")
     #expect(contents.regions[0].tree?.leaves.map(\.paneID) == ["w1:p1", "w1:p2"])
-    #expect(contents.regions[0].tree?.leaves[0].controlSocketPath == "/tmp/muster-1-0.sock")
+    #expect(contents.regions[0].tree?.leaves[0].linkSocketPath == "/tmp/muster-1-0.sock")
+    // Both reach a bridge's command line, and a pane whose bridge dialled nothing renders
+    // nothing for a reason no log line names.
+    #expect(contents.regions[0].daemonSocket == "/tmp/muster-devenv.sock")
+    #expect(contents.regions[0].remote)
     guard case .split(let axis, let ratio, _, _) = contents.regions[0].tree else {
       Issue.record("expected a split")
       return

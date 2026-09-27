@@ -28,9 +28,7 @@ public enum EmptyWindow {
 
   /// The action that gets a pane back, named the way the rest of the app names it.
   ///
-  /// A tab rather than a split, because a split needs a pane to split and there is none. What
-  /// the core does with it is make a workspace, which is herdr's word rather than a user's -
-  /// the menu says New Tab, so this does too.
+  /// A tab rather than a split, because a split needs a pane to split and there is none.
   static let recovery = "new_tab"
 
   public static func message(bindings: [Core.Binding]) -> Message {

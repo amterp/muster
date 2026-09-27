@@ -12,21 +12,18 @@ import AppKit
 /// measured at 444-561ms against 29-59ms for a local pane. Held here instead, a pane pays it
 /// once and switching is free (kan a_2HzbwzO32).
 ///
-/// **Two regions showing one tab used to build two surfaces**, and only one of them can have
-/// the terminal - the other prints herdr's refusal and cannot be closed. The core no longer
-/// opens two such regions, and a store keyed by pane cannot produce two surfaces even if it
-/// ever does again (kan a_2Ht74jTXV).
+/// **Two regions showing one tab used to build two surfaces**, and only one bridge may draw a
+/// pane - the other printed a refusal and could not be closed. The core no longer opens two
+/// such regions, and a store keyed by pane cannot produce two surfaces even if it ever does
+/// again (kan a_2Ht74jTXV).
 ///
 /// **A pane's border and badge used to be found by walking the regions**, which reached only
 /// what was on screen. Keyed by pane, a parked pane keeps its state painted, so a tab switched
 /// back to is right on the first frame rather than on the next agent transition.
 ///
 /// What it costs is what the card priced: one `muster-bridge` per pane, held for as long as the
-/// pane exists, rather than per pane on screen, and for a remote pane its ssh channel and herdr
-/// client too. A local pane's bridge lets go of its herdr client while the pane is hidden,
-/// because herdr renders every attached client whether anybody can see it, and a local client
-/// is cheap to start again. They are released when the daemon stops holding the pane, so the
-/// cost scales with panes rather than with switches.
+/// pane exists, rather than per pane on screen. They are released when the daemon stops holding
+/// the pane, so the cost scales with panes rather than with switches.
 @MainActor
 public final class PaneSurfaces {
   /// Gives a pane's chrome a surface, and the bridge that feeds it.
@@ -36,17 +33,21 @@ public final class PaneSurfaces {
   /// one is let go - is worth testing without any of the three.
   public typealias StartPane =
     @MainActor (
-      _ daemonID: String, _ transport: WindowContents.Region.Transport?,
-      _ backendSocket: String?, _ chrome: PaneChrome, _ pane: PaneTree.Leaf
+      _ region: WindowContents.Region, _ chrome: PaneChrome, _ pane: PaneTree.Leaf
     ) -> Void
 
   private struct Held {
     let chrome: PaneChrome
 
-    /// What its bridge was pointed at when it was built. A pane whose socket changed needs a
+    /// Where its bridge was to report when it was built. A pane whose socket changed needs a
     /// new bridge, and a bridge is spawned by its surface's command - so it needs a new
     /// surface too.
-    let controlSocketPath: String?
+    let linkSocketPath: String?
+
+    /// Where its bridge was to dial when it was built. Only its absence is acted on: a pane
+    /// whose daemon had no socket yet was never given a bridge, and gets one once there is a
+    /// socket to dial.
+    let daemonSocket: String?
 
     /// Which replacement its bridge was on when it was built. The core counts these, and a
     /// number that has moved means the bridge behind this surface has ended - most often
@@ -86,48 +87,48 @@ public final class PaneSurfaces {
   /// said was new - because libghostty is handed a view and sizes its surface from it, so a
   /// surface created against a zero-sized view is a PTY told it has no columns.
   ///
-  /// A pane whose control socket moved is torn down and built again rather than reused. Left
-  /// alone its bridge would keep painting into a socket nothing is listening on and swallow
-  /// every keystroke, which is the symptom that has cost this project the most time.
+  /// A pane whose link socket moved is torn down and built again rather than reused. Left
+  /// alone its bridge would keep reporting to a socket nothing is listening on, and the window
+  /// would never hear that it died.
   public func borrow(
-    daemonID: String, leaf: PaneTree.Leaf, focus: @escaping (String) -> Void,
-    scroll: @escaping (String, String, Double) -> Void
+    daemonID: String, daemonSocket: String?, leaf: PaneTree.Leaf,
+    focus: @escaping (String) -> Void, wheel: @escaping (String, Core.Wheel) -> Void
   ) -> (chrome: PaneChrome, isNew: Bool) {
     let key = PaneKey(daemon: daemonID, pane: leaf.paneID)
     if let existing = held[key] {
-      if existing.controlSocketPath == leaf.controlSocketPath,
-        existing.bridgeRestarts == leaf.bridgeRestarts
+      let neverDialed = existing.daemonSocket == nil && daemonSocket != nil
+      if existing.linkSocketPath == leaf.linkSocketPath,
+        existing.bridgeRestarts == leaf.bridgeRestarts, !neverDialed
       {
         return (existing.chrome, false)
       }
+      let reason =
+        if existing.linkSocketPath != leaf.linkSocketPath {
+          "its link socket changed, so its bridge was reporting to a closed listener"
+        } else if neverDialed {
+          "its daemon has a socket now, and it was never given a bridge without one"
+        } else {
+          "the core replaced its bridge, which only a new surface can start"
+        }
       Core.info(
         "pane.surface.rebuilt",
-        [
-          "pane": leaf.paneID,
-          "reason": existing.controlSocketPath == leaf.controlSocketPath
-            ? "the core replaced its bridge, which only a new surface can start"
-            : "its control socket changed, so its bridge was dialing a closed listener",
-          "bridge_restarts": String(leaf.bridgeRestarts),
-        ])
+        ["pane": leaf.paneID, "reason": reason, "bridge_restarts": String(leaf.bridgeRestarts)])
       release(key)
     }
 
     let chrome = PaneChrome(frame: .zero, surface: SurfaceView(frame: .zero))
     chrome.attach(paneID: leaf.paneID)
     chrome.onFocusRequested = focus
-    chrome.onScrollRequested = scroll
+    chrome.onWheelRequested = wheel
     held[key] = Held(
-      chrome: chrome, controlSocketPath: leaf.controlSocketPath,
+      chrome: chrome, linkSocketPath: leaf.linkSocketPath, daemonSocket: daemonSocket,
       bridgeRestarts: leaf.bridgeRestarts)
     return (chrome, true)
   }
 
   /// Starts the bridge for a pane that has just been given a chrome and laid out.
-  public func start(
-    daemonID: String, transport: WindowContents.Region.Transport?, backendSocket: String?,
-    chrome: PaneChrome, leaf: PaneTree.Leaf
-  ) {
-    startPane(daemonID, transport, backendSocket, chrome, leaf)
+  public func start(in region: WindowContents.Region, chrome: PaneChrome, leaf: PaneTree.Leaf) {
+    startPane(region, chrome, leaf)
   }
 
   /// Takes back every chrome no region is showing, and keeps it alive off screen.

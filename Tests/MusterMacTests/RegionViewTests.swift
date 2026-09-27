@@ -15,21 +15,20 @@ import Testing
 @MainActor
 private final class Started {
   var panes: [String] = []
-  /// Which daemon each pane's frames were to come from, in the order they were started.
+  /// Which daemon socket each pane's bridge was to dial, in the order they were started.
   var daemonSockets: [String?] = []
-  /// What each pane's daemon calls it, which is what its bridge is given.
-  var backendPanes: [String] = []
+  /// Whether each pane's daemon was on another machine.
+  var remote: [Bool] = []
 }
 
 /// A window's worth of surfaces, recorded rather than allocated.
 @MainActor
 private func surfaces(_ started: Started) -> PaneSurfaces {
-  paneSurfaces { daemon, transport, backendSocket, chrome, pane in
-    let machine = transport.map { "@\($0.sshHost)" } ?? ""
+  paneSurfaces { region, chrome, pane in
     started.panes.append(
-      "\(daemon)\(machine):\(chrome.paneID ?? "")@\(pane.controlSocketPath ?? "-")")
-    started.daemonSockets.append(backendSocket)
-    started.backendPanes.append(pane.backendPaneID)
+      "\(region.daemon):\(chrome.paneID ?? "")@\(pane.linkSocketPath ?? "-")")
+    started.daemonSockets.append(region.daemonSocket)
+    started.remote.append(region.remote)
   }
 }
 
@@ -68,19 +67,18 @@ private func show(
 }
 
 private func leaf(
-  _ id: String, socket: String? = "/tmp/\(0).sock", backend: String = "", restarts: UInt32 = 0
+  _ id: String, socket: String? = "/tmp/\(0).sock", restarts: UInt32 = 0
 ) -> PaneTree {
-  .pane(
-    .init(
-      paneID: id, controlSocketPath: socket, backendPaneID: backend, bridgeRestarts: restarts))
+  .pane(.init(paneID: id, linkSocketPath: socket, bridgeRestarts: restarts))
 }
 
 private func contents(
-  _ tree: PaneTree?, keyboard: String? = nil, backendSocket: String? = nil
+  _ tree: PaneTree?, keyboard: String? = nil, daemonSocket: String? = "/tmp/muster/daemon.sock",
+  remote: Bool = false
 ) -> WindowContents.Region {
   WindowContents.Region(
     id: "r0", daemon: "local", tab: "w1:t1", keyboardPane: keyboard, tree: tree, zoomed: false,
-    backendSocket: backendSocket)
+    daemonSocket: daemonSocket, remote: remote)
 }
 
 @Suite("a region renders a tree", .ownsTheSeam)
@@ -149,8 +147,8 @@ struct RegionViewTests {
   @MainActor
   @Test("two regions showing one pane share its surface")
   func onePanePerWindowHasOneSurface() {
-    // Only one client can hold a herdr terminal, so a pane drawn twice is one surface printing
-    // "already has an attached client" and a panel nobody can close (kan a_2Ht74jTXV). The core
+    // A daemon lets one bridge draw a pane, so a pane drawn twice is one surface printing a
+    // refusal and a panel nobody can close (kan a_2Ht74jTXV). The core
     // no longer opens two regions onto one tab; a store keyed by pane cannot draw one twice
     // even if it does again.
     let started = Started()
@@ -172,7 +170,7 @@ struct RegionViewTests {
   @Test("a parked pane the daemons no longer hold is let go")
   func closedPanesAreReleased() {
     // What stops the held set growing with switches. A window that visited fifteen tabs would
-    // otherwise hold fifteen tabs' worth of bridges, sockets and herdr clients until it quit.
+    // otherwise hold fifteen tabs' worth of bridges and sockets until it quit.
     let (view, _, store) = regionAndStore()
     show(
       view, contents(.split(axis: .rows, ratio: 0.5, first: leaf("w1:p1"), second: leaf("w1:p2"))),
@@ -234,8 +232,8 @@ struct RegionViewTests {
   @MainActor
   @Test("a tree that has not arrived leaves what is on screen alone")
   func anAbsentTreeChangesNothing() {
-    // herdr publishes a tab's panes and its tree separately, so this is an ordinary moment
-    // rather than a failure. Tearing surfaces down for it is a flicker on every split.
+    // A tab's tree can arrive after the panes it names, so this is an ordinary moment rather
+    // than a failure. Tearing surfaces down for it is a flicker on every split.
     let (view, started) = region()
     view.apply(contents(leaf("w1:p1")), focused: true)
 
@@ -311,12 +309,12 @@ struct RegionViewTests {
 
     scrolled.surface.scrollWheel(with: event)
 
-    let scrolls = recorder.sent(since: mark) {
-      if case .scroll = $0.payload { true } else { false }
+    let wheels = recorder.sent(since: mark) {
+      if case .wheel = $0.payload { true } else { false }
     }
-    #expect(scrolls.map { $0.scroll.paneID } == ["w1:p2"])
-    #expect(scrolls.map { $0.scroll.daemonID } == ["local"])
-    #expect(scrolls.map { $0.scroll.direction } == ["up"])
+    #expect(wheels.map { $0.wheel.paneID } == ["w1:p2"])
+    #expect(wheels.map { $0.wheel.daemonID } == ["local"])
+    #expect(wheels.map { $0.wheel.dy } == [3])
     // And the keyboard stayed where it was: nothing asked to focus the pane it moved over.
     let focuses = recorder.sent(since: mark) {
       if case .focusPane = $0.payload { true } else { false }
@@ -325,29 +323,62 @@ struct RegionViewTests {
   }
 }
 
-@Suite("a region says which daemon its frames come from")
+@Suite("a region says which daemon its panes come from")
 struct RegionFrameSourceTests {
   @MainActor
   @Test("the daemon's socket reaches the pane that is about to be started")
   func theDaemonSocketReachesTheBridge() {
-    // Muster runs its own herdr on a session of its own, so a bridge left to find a daemon
-    // finds a different one, does not hold the pane, and ends its stream before a frame.
-    // Dropping this value between the view and the bridge's command line is invisible until
-    // a pane renders nothing - which is exactly how it was found.
+    // A bridge has no way to find a daemon for itself, so dropping this value between the view
+    // and the bridge's command line is invisible until a pane renders nothing - which is
+    // exactly how it was found.
     let (view, started) = region()
 
-    view.apply(contents(leaf("w1:p1"), backendSocket: "/tmp/muster/herdr.sock"), focused: true)
+    view.apply(contents(leaf("w1:p1"), daemonSocket: "/tmp/muster/daemon.sock"), focused: true)
 
-    #expect(started.daemonSockets == ["/tmp/muster/herdr.sock"])
+    #expect(started.daemonSockets == ["/tmp/muster/daemon.sock"])
+    #expect(started.remote == [false])
   }
 
   @MainActor
-  @Test("a remote region names no socket, because that path means nothing over there")
-  func aRemoteRegionNamesNoSocket() {
+  @Test("a remote region says so, beside the near end of its forward")
+  func aRemoteRegionSaysSo() {
     let (view, started) = region()
 
-    view.apply(contents(leaf("w1:p1")), focused: true)
+    view.apply(
+      contents(leaf("w1:p1"), daemonSocket: "/tmp/muster/devenv.sock", remote: true),
+      focused: true)
 
-    #expect(started.daemonSockets == [nil])
+    #expect(started.daemonSockets == ["/tmp/muster/devenv.sock"])
+    #expect(started.remote == [true])
+  }
+
+  @MainActor
+  @Test("a pane started before its daemon had a socket is started again once it has one")
+  func aDaemonSocketArrivingRebuildsTheSurface() {
+    // The window gives a pane no bridge while its daemon has no socket, because a bridge with
+    // nothing to dial renders nothing. The pane's own sockets have not moved when the daemon's
+    // arrives, so without this the pane would stay blank until something else about it changed.
+    let (view, started, store) = regionAndStore()
+    show(view, contents(leaf("w1:p1"), daemonSocket: nil), in: store)
+
+    show(view, contents(leaf("w1:p1"), daemonSocket: "/tmp/muster/daemon.sock"), in: store)
+
+    #expect(started.daemonSockets == [nil, "/tmp/muster/daemon.sock"])
+    #expect(store.count == 1)
+  }
+
+  @MainActor
+  @Test("a daemon's socket going away does not take its panes down")
+  func aDaemonSocketLeavingKeepsTheSurface() {
+    // A surface holds the pane's history, and its bridge's connection outlives whatever made the
+    // view briefly name no socket. The core replaces a bridge that actually died.
+    let (view, started, store) = regionAndStore()
+    show(view, contents(leaf("w1:p1")), in: store)
+    let before = view.chrome(for: "w1:p1")
+
+    show(view, contents(leaf("w1:p1"), daemonSocket: nil), in: store)
+
+    #expect(started.panes.count == 1)
+    #expect(view.chrome(for: "w1:p1") === before)
   }
 }

@@ -9,10 +9,9 @@ import Foundation
 /// alive on one machine, nineteen held nothing and one held somebody's live agent.
 ///
 /// A directory rather than a file, one record per daemon, so two windows starting daemons on two
-/// sockets never write the same file. That is what lets this be a plain write where `panes.toml`
-/// beside it needs a lock.
+/// sockets never write the same file, and neither needs a lock.
 ///
-/// Beside the arrangements and the names, under Muster's own home, so `MUSTER_HOME` moves the
+/// Beside the arrangements, under Muster's own home, so `MUSTER_HOME` moves the
 /// lot and a test pointed at a scratch home gets a scratch record without being told about this
 /// file.
 ///

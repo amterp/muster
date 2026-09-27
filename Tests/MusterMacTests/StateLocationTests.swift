@@ -139,30 +139,11 @@ private func publish(_ path: String?) {
 }
 
 @Test func xdgDoesNotMoveTheRecords() {
-  // It did until Muster's files moved into one home, and it still moves herdr's - so a reader
-  // could reasonably expect it to move these too. Pinned rather than assumed.
+  // It did until Muster's files moved into one home, so a reader could reasonably expect it to
+  // move these too. Pinned rather than assumed.
   #expect(
     Arrangements.directory(environment: ["XDG_STATE_HOME": "/xdg", "HOME": "/home/a"])?.path
       == "/home/a/.muster/state/windows")
-}
-
-// Where what Muster calls each pane is remembered. One file for all of them, unlike an
-// arrangement, because the names belong to panes that outlive every window.
-
-@Test func paneNamesSitBesideTheArrangements() {
-  #expect(paneNamesPath(environment: ["HOME": "/home/a"]) == "/home/a/.muster/state/panes.toml")
-}
-
-@Test func musterHomeMovesThePaneNames() {
-  #expect(
-    paneNamesPath(environment: ["MUSTER_HOME": "/scratch", "HOME": "/home/a"])
-      == "/scratch/state/panes.toml")
-}
-
-@Test func anEmptyExplicitPaneNamesPathMeansNameAfresh() {
-  // A test or a script saying "start with no names". Every pane is named again, which is only
-  // safe because nothing was running in one yet.
-  #expect(paneNamesPath(environment: ["MUSTER_PANE_NAMES": "", "HOME": "/home/a"]) == nil)
 }
 
 @Test func aClosedWindowIsReopenedFromItsOwnRecord() {

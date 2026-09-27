@@ -33,8 +33,8 @@ private func holding(_ paths: String...) -> (String) -> Bool {
 
 @Test func xdgDoesNotMoveTheConfigFile() {
   // Muster's own files stopped being XDG-shaped when they moved into one home. XDG_CONFIG_HOME
-  // still means something here - it decides where herdr listens - so a reader could reasonably
-  // expect it to move this too, which is why the expectation is pinned rather than assumed.
+  // is where plenty of other tools keep theirs, so a reader could reasonably expect it to move
+  // this too, which is why the expectation is pinned rather than assumed.
   #expect(
     configPath(
       environment: ["XDG_CONFIG_HOME": "/xdg", "HOME": "/home/a"],

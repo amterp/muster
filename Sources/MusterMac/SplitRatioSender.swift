@@ -9,9 +9,9 @@ import Foundation
 /// dragged. Measured on a real drag: a hundred requests a second, a ten-millisecond median gap
 /// between them, and the gap was the round trip rather than the mouse (kan a_28h3eBJa2).
 ///
-/// The coalescing that fixes that is `LatestRequestSender`, which the find bar uses too. What
-/// is here is only what a divider does differently, which is nearly nothing: there is no answer
-/// to draw, so a refusal is logged and a success is dropped.
+/// The coalescing that fixes that is `LatestRequestSender`, which a moving window uses too.
+/// What is here is only what a divider does differently, which is nearly nothing: there is no
+/// answer to draw, so a refusal is logged and a success is dropped.
 ///
 /// Deliberately only this request. The other drag in the window moves a region boundary, which
 /// is Muster's own composition and never reaches a daemon - there is nothing there to wait for.
@@ -30,7 +30,7 @@ public final class SplitRatioSender {
       read: { response in
         readResponse(response).map { _ in () }
       })
-    sender.onAnswer = { [weak self] _, _ in self?.onAnswered?() }
+    sender.onAnswer = { [weak self] _ in self?.onAnswered?() }
   }
 
   /// Asks for a divider position, and returns without waiting for it.

@@ -47,18 +47,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // The config file goes over at the same moment and for the same reason: where it lives
     // is an OS question, and what it says is the core's.
     // The daemon binary goes over for the same reason and at the same moment: Muster runs
-    // its own herdr rather than asking anybody to install one, and where a build put it is
+    // its own daemon rather than asking anybody to install one, and where a build put it is
     // an OS question while starting it is the core's.
     // And the state file, which is the same division once more: where a window's arrangement
     // is remembered is an OS question, and what is worth remembering is the core's.
-    // The daemon's own config file is the same division a fourth time: what a pane runs and
-    // how deep its scrollback is are the core's to decide, and where the file telling the
-    // daemon so gets written is an OS question.
     // The endpoint is the division once more with a resource rather than a file: what a request
     // means is the core's, and where a caller on this machine should look for this process is
     // an OS question - which is why the pid in the name is decided here.
     let config = configPath()
-    let daemon = herdrPath(executable: CommandLine.arguments[0])
+    let daemon = daemonLocation(executable: CommandLine.arguments[0])
     // Sockets from Musters that were killed refuse every connection, and finding the endpoint
     // means trying the ones that are there - so left alone they make the CLI slower to answer
     // and harder to trust with every crash.
@@ -77,9 +74,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let arrangement = Arrangements.open(fresh: fresh, named: launchWindow(arguments: launched))
     let holders = tabHoldersPath()
     Core.start(
-      logPath: logPath, configPath: config, daemonPath: daemon, statePath: arrangement,
-      daemonConfigPath: daemonConfigPath(), paneNamesPath: paneNamesPath(),
-      commandSocketPath: commandSocketPath(), commandsPath: commands, cachePath: cachePath(),
+      logPath: logPath, configPath: config, daemon: daemon, statePath: arrangement,
+      commandSocketPath: commandSocketPath(), commandsPath: commands,
       daemonRecordsPath: daemonRecordsPath(), tabHoldersPath: holders,
       show: launchShow(arguments: launched))
     watchTabHolders(holders)

@@ -11,7 +11,7 @@ import Foundation
 /// so a test or a bug report can point at a file of its own.
 ///
 /// Nil when nothing is there, which is the ordinary case rather than a problem: a Muster with no
-/// config file finds the daemon on this machine the way herdr's own client would. The distinction
+/// config file attaches this install's own daemon on this machine. The distinction
 /// that matters is between absent and unreadable, and it is the core that draws it - a path
 /// handed over that turns out to be unparseable is worth a line saying so, where a path that was
 /// never there is worth nothing.

@@ -94,9 +94,9 @@ public enum PaneAppearance {
     case "done": named = configured.agents.done
     case "idle": named = configured.agents.idle
     case "unknown": named = configured.agents.unknown
-    // Every other spelling is a state herdr invented since this was written, and it is drawn
-    // as unknown rather than as itself - the same rule the default table follows, and for the
-    // same reason: a state we could not read is not a fifth thing an agent can be doing.
+    // Every other spelling is a state the daemon invented since this was written, and it is
+    // drawn as unknown rather than as itself - the same rule the default table follows, and for
+    // the same reason: a state we could not read is not a fifth thing an agent can be doing.
     default: named = configured.agents.unknown
     }
     return named.flatMap(NSColor.init(hex:))
@@ -249,7 +249,7 @@ public final class PaneChrome: NSView {
   /// Called when the wheel moves over this pane. Never moves the keyboard: a wheel scrolls
   /// what the pointer is over and a click is what asks for the keyboard, and keeping the two
   /// apart is what lets you read one agent while typing into another.
-  public var onScrollRequested: ((_ paneID: String, _ direction: String, _ delta: Double) -> Void)?
+  public var onWheelRequested: ((_ paneID: String, _ wheel: Core.Wheel) -> Void)?
 
   private let focusRing = CALayer()
 
@@ -257,35 +257,8 @@ public final class PaneChrome: NSView {
   /// typed. Added over the surface rather than beside it, the way the find bar is.
   private let badge = PaneBadge(frame: .zero)
 
-  /// Asks the core where this pane is looking, one request at a time.
-  ///
-  /// Coalesced for the reason a divider drag and a find needle are: a wheel produces events
-  /// faster than a daemon answers, and a selection that lags the scroll by a frame is fine
-  /// while a scroll that waits for a round trip is not. Only the newest answer is used, which
-  /// is exactly what placing a selection wants.
-  private let viewports: LatestRequestSender<Core.Viewport>
-
-  /// How many scrolls this pane has been asked for.
-  ///
-  /// Compared against what it was when a drag ended, which is the one thing that can make a
-  /// pinned selection wrong: the viewport that arrives has to be the one the drag ended under,
-  /// and a wheel touched in between makes it a different pane position.
-  private var scrolls: UInt64 = 0
-  private var scrollsWhenSelected: UInt64 = 0
-
-  public init(frame: NSRect, surface: SurfaceView, dispatcher: Dispatcher = Core.dispatcher) {
+  public init(frame: NSRect, surface: SurfaceView) {
     self.surface = surface
-    viewports = LatestRequestSender(
-      what: "viewport", queue: "muster.viewport", dispatcher: dispatcher,
-      read: { response in
-        readResponse(response).flatMap { decoded in
-          guard case .paneViewport(let viewport) = decoded.payload else {
-            return .failure(
-              Refused("the core answered a viewport read with something other than a viewport"))
-          }
-          return .success(Core.read(viewport))
-        }
-      })
     super.init(frame: frame)
     wantsLayer = true
     layer?.addSublayer(focusRing)
@@ -298,23 +271,9 @@ public final class PaneChrome: NSView {
       guard let self, let paneID = self.paneID else { return }
       self.onFocusRequested?(paneID)
     }
-    surface.onScroll = { [weak self] direction, delta in
+    surface.onWheel = { [weak self] wheel in
       guard let self, let paneID = self.paneID else { return }
-      self.onScrollRequested?(paneID, direction, delta)
-      self.paneScrolled()
-    }
-    // A drag has ended, and the cells it covered are screen cells until they are counted from
-    // the bottom of the pane instead. That needs the pane's own position, which is a round
-    // trip - so the view reports and this asks.
-    surface.onSelectionMade = { [weak self] in
-      guard let self else { return }
-      self.scrollsWhenSelected = self.scrolls
-      self.askWhereThePaneIsLooking()
-    }
-    viewports.onAnswer = { [weak self] answer, _ in
-      guard let self else { return }
-      self.surface.applyViewport(
-        try? answer.get(), movedSince: self.scrolls != self.scrollsWhenSelected)
+      self.onWheelRequested?(paneID, wheel)
     }
     // After the surface, so it composites over libghostty's own layer rather than under it.
     addSubview(badge)
@@ -324,29 +283,6 @@ public final class PaneChrome: NSView {
 
   required init?(coder: NSCoder) {
     fatalError("muster builds its views in code")
-  }
-
-  /// Takes the news that this pane is looking somewhere else now.
-  ///
-  /// Two things move a pane and only one of them goes through this window. A wheel does, and
-  /// calls this on its way out. A find's landing does not - the core works out where the match
-  /// is and writes the scroll onto the pane's own channel - so the find bar calls this when the
-  /// answer says the pane moved (kan a_2JrhrSBOx). One method rather than the same two lines
-  /// twice, because the fact is the same fact.
-  public func paneScrolled() {
-    scrolls += 1
-    // Only while something is selected, so an ordinary scroll costs the round trip it always
-    // cost and nothing more.
-    if surface.isTrackingSelection { askWhereThePaneIsLooking() }
-  }
-
-  private func askWhereThePaneIsLooking() {
-    guard let paneID else { return }
-    var read = Muster_ReadViewport()
-    read.paneID = paneID
-    var request = Muster_Request()
-    request.readViewport = read
-    viewports.send(request)
   }
 
   public func attach(paneID: String?) {

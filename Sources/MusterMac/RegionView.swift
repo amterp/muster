@@ -32,11 +32,6 @@ public final class RegionView: NSView {
   /// first.
   public private(set) var daemonID: String = ""
 
-  /// How this region's panes are reached, when they are on another machine.
-  public private(set) var transport: WindowContents.Region.Transport?
-
-  /// Which daemon this region's frames come from, when it is on this machine.
-  public private(set) var backendSocket: String?
   private var tab: String = ""
 
   /// Carries divider positions to the core without stalling the drag. One per region rather
@@ -88,21 +83,17 @@ public final class RegionView: NSView {
   public func apply(_ region: WindowContents.Region, focused: Bool) {
     regionID = region.id
     daemonID = region.daemon
-    transport = region.transport
-    backendSocket = region.backendSocket
     tab = region.tab
     guard let tree = region.tree else { return }
     self.tree = tree
-    let fresh = takePanes(tree.leaves)
+    let fresh = takePanes(tree.leaves, daemonSocket: region.daemonSocket)
     // Laid out before the surfaces are made, so each one is handed a view that already has
     // the size it will keep.
     needsLayout = true
     layoutSubtreeIfNeeded()
     for leaf in fresh {
       guard let chrome = chrome(for: leaf.paneID) else { continue }
-      surfaces.start(
-        daemonID: daemonID, transport: transport, backendSocket: backendSocket, chrome: chrome,
-        leaf: leaf)
+      surfaces.start(in: region, chrome: chrome, leaf: leaf)
     }
     apply(keyboardPane: focused ? region.keyboardPane : nil)
   }
@@ -112,17 +103,15 @@ public final class RegionView: NSView {
   /// A pane already here is left where it is: `addSubview` on a view that has this superview
   /// already still reorders it, and a surface reordered every publish is a flicker on every
   /// agent transition.
-  private func takePanes(_ leaves: [PaneTree.Leaf]) -> [PaneTree.Leaf] {
+  private func takePanes(_ leaves: [PaneTree.Leaf], daemonSocket: String?) -> [PaneTree.Leaf] {
     var fresh: [PaneTree.Leaf] = []
     showing = leaves.map(\.paneID)
     for leaf in leaves {
       let daemon = daemonID
       let taken = surfaces.borrow(
-        daemonID: daemon, leaf: leaf,
+        daemonID: daemon, daemonSocket: daemonSocket, leaf: leaf,
         focus: { paneID in Core.focus(daemonID: daemon, paneID: paneID) },
-        scroll: { paneID, direction, delta in
-          Core.scroll(daemonID: daemon, paneID: paneID, direction: direction, delta: delta)
-        })
+        wheel: { paneID, wheel in Core.wheel(daemonID: daemon, paneID: paneID, wheel) })
       if taken.chrome.superview !== self {
         taken.chrome.frame = bounds
         addSubview(taken.chrome)

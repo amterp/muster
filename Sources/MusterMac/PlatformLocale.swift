@@ -8,7 +8,7 @@ import Foundation
 // why this is worth having: `daemon::supplied` in the core has the measurement and the
 // argument.
 //
-// Reported here and decided in the core, the same split the log file and the herdr binary
+// Reported here and decided in the core, the same split the log file and the daemon binary
 // already draw: naming a POSIX locale from the user's macOS settings is an OS question, and
 // whether a daemon with none of its own gets one is Muster's.
 
@@ -16,7 +16,7 @@ import Foundation
 ///
 /// Takes the two halves rather than reading them, so the answer is assertable without
 /// depending on what the developer running the suite has their Mac set to - the same shape as
-/// `herdrPath`.
+/// `daemonLocation`.
 ///
 /// `.UTF-8` unconditionally, which is Ghostty's answer too (`src/os/locale.zig`,
 /// `setLangFromCocoa`). macOS has no other text encoding worth naming here, and a locale

@@ -12,7 +12,7 @@ import Testing
 struct PaneChromeTests {
   @Test("an unrecognized state is unknown, never idle")
   func unknownStateIsNotIdle() {
-    // Not the same assertion twice: the point is that a state herdr invents next week
+    // Not the same assertion twice: the point is that a state the daemon invents next week
     // gets the resting appearance of something unreadable rather than being colored as an
     // agent that finished. A user who learns the colors lie stops reading them.
     #expect(PaneAppearance.isHighlighted(state: "compacting") == false)
@@ -223,7 +223,7 @@ struct PaneChromeTests {
     chrome.attach(paneID: "w1:p3")
     var scrolled: [String] = []
     var focused: [String] = []
-    chrome.onScrollRequested = { paneID, _, _ in scrolled.append(paneID) }
+    chrome.onWheelRequested = { paneID, _ in scrolled.append(paneID) }
     chrome.onFocusRequested = { focused.append($0) }
     // A view with no pane behind it reports nothing at all, which is a separate rule and one
     // the renderer check relies on.

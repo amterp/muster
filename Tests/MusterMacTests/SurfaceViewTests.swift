@@ -71,22 +71,61 @@ private func view(_ recorder: RecordingDispatcher) -> SurfaceView {
   #expect(recorder.requests.map { $0.sendText.text } == ["→"])
 }
 
-@Test(.ownsTheSeam) @MainActor func aWheelIsReportedRatherThanSent() {
-  // The device's own delta, unscaled and unrounded. How many lines that is worth depends on
-  // `scroll_multiplier`, so the core decides it - a shell that turned a delta into lines here
-  // would be a second place that answer lives, and the two would drift.
+@Test(.ownsTheSeam) @MainActor func aWheelScrollsTheSurfaceAndIsReportedAsItWasGiven() {
+  // Two halves of one gesture, and they have to agree. The surface scrolls its own history, or
+  // answers as the pane's modes say; the daemon decides what the program gets. Handed different
+  // numbers, the two would scroll different distances. Unscaled: `scroll_multiplier` is the
+  // core's to apply, and a shell that applied it too would scale the program's scroll twice.
   //
   // Reported rather than sent, because a wheel is addressed to a pane and this view does not
   // know which one it is showing. Which pane it names is pinned a layer up, where the id is.
-  let surface = view(recorder())
-  var asked: [(String, Double)] = []
-  surface.onScroll = { asked.append(($0, $1)) }
+  let recording = RecordingSurface()
+  let surface = view(surface: recording, clipboard: NSPasteboard.general)
+  var reported: [Core.Wheel] = []
+  surface.onWheel = { reported.append($0) }
+  guard let event = wheel(deltaY: 3, modifiers: .maskAlternate) else { return }
+
+  surface.scrollWheel(with: event)
+
+  #expect(recording.scrolls.map(\.dy) == [3])
+  #expect(recording.scrolls.map(\.precise) == [false])
+  #expect(reported.map(\.dy) == [3])
+  #expect(reported.map(\.precise) == [false])
+  #expect(reported.map(\.modifiers) == [["alt"]])
+}
+
+@Test(.ownsTheSeam) @MainActor func aWheelIsPlacedInThePanesPixelsFromItsTopLeft() {
+  // The daemon compares the pointer against the terminal's size, which it knows in backing
+  // pixels from the top left. Points from the bottom left would put a click on the mirror-image
+  // row at half the distance.
+  let surface = view(surface: RecordingSurface(), clipboard: NSPasteboard.general)
+  var reported: [Core.Wheel] = []
+  surface.onWheel = { reported.append($0) }
+  guard let event = wheel(deltaY: 3, at: NSPoint(x: 30, y: 20)) else { return }
+
+  surface.scrollWheel(with: event)
+
+  // No window, so the view falls back to the 2x it assumes everywhere else it needs a scale,
+  // and the event's position is its own: where CoreGraphics puts it depends on the screen.
+  let point = event.locationInWindow
+  #expect(reported.map(\.x) == [Double(point.x * 2)])
+  #expect(reported.map(\.y) == [Double((100 - point.y) * 2)])
+}
+
+@Test(.ownsTheSeam) @MainActor func theRendererCheckScrollsWithNoDaemonToTell() {
+  // A bare `muster` runs a shell straight in its surface, whose history is the only one there
+  // is. Nothing in it is a daemon's pane, so there is nobody to report the wheel to.
+  let recording = RecordingSurface()
+  let surface = view(surface: recording, clipboard: NSPasteboard.general)
+  surface.attach(typeable: false)
+  var reported: [Core.Wheel] = []
+  surface.onWheel = { reported.append($0) }
   guard let event = wheel(deltaY: 3) else { return }
 
   surface.scrollWheel(with: event)
 
-  #expect(asked.map(\.0) == ["up"])
-  #expect(asked.map(\.1) == [3])
+  #expect(recording.scrolls.count == 1)
+  #expect(reported.isEmpty)
 }
 
 @Test(.ownsTheSeam) @MainActor func aCellIsReportedInPointsRatherThanBackingPixels() {

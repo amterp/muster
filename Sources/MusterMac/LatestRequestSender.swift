@@ -37,12 +37,11 @@ func readResponse(_ response: [UInt8]) -> Result<Muster_Response, Refused> {
 /// Sends one request at a time and remembers only the newest, for the gestures that outrun
 /// the seam.
 ///
-/// Two things in this window produce requests faster than a daemon answers them. A drag
-/// produces about a hundred mouse-moved events a second and each `set_split_ratio` is a ten
-/// millisecond round trip; a find sends a needle per keystroke and each one reads a pane's
-/// history back, which over an ssh-forwarded socket is tens of milliseconds. Sent
-/// synchronously from the main thread, either gesture spends its whole duration inside the
-/// seam with no time left to draw the thing being dragged or typed into (kan a_28h3eBJa2).
+/// Two things in this window produce requests faster than a daemon answers them: a divider
+/// drag and a window being moved or resized. Each produces about a hundred events a second,
+/// and a round trip is measured in milliseconds. Sent synchronously from the main thread, the
+/// gesture spends its whole duration inside the seam with no time left to draw the thing being
+/// dragged (kan a_28h3eBJa2).
 ///
 /// So a request is handed over rather than sent. One is in flight at a time and the latest is
 /// remembered; when the answer arrives, whatever was asked for while it was out goes next.
@@ -50,12 +49,9 @@ func readResponse(_ response: [UInt8]) -> Result<Muster_Response, Refused> {
 /// asked for, so the final one is always sent, which is what makes coalescing safe here rather
 /// than merely cheap.
 ///
-/// One type rather than two, though it began as two. A divider and a find bar want different
-/// things from an answer - one only needs to hear a refusal, the other draws what came back -
-/// and that difference was read as a reason to write the coalescing twice. It is not: the
-/// difference is the `Answer` and what is done with it, and the part worth having once is the
-/// interleaving of `pending` and `inFlight` across a thread hop, which is the part that is
-/// subtle and the part a future change would otherwise have to be made in twice.
+/// One type rather than one per gesture, because the part worth having once is the interleaving
+/// of `pending` and `inFlight` across a thread hop, which is the part that is subtle and the
+/// part a future change would otherwise have to be made in twice.
 @MainActor
 final class LatestRequestSender<Answer: Sendable> {
   /// What was asked for while a request was out, and not yet sent.
@@ -85,11 +81,7 @@ final class LatestRequestSender<Answer: Sendable> {
   private let read: @Sendable ([UInt8]) -> Result<Answer, Refused>
 
   /// What came back, on the main thread.
-  ///
-  /// `stale` says whether something newer was already waiting when this landed. A find bar
-  /// drops those - drawing a count for a word somebody has typed past makes the counter
-  /// flicker backwards - and a divider has nothing to draw either way.
-  var onAnswer: (@MainActor (Result<Answer, Refused>, _ stale: Bool) -> Void)?
+  var onAnswer: (@MainActor (Result<Answer, Refused>) -> Void)?
 
   init(
     what: String,
@@ -107,14 +99,6 @@ final class LatestRequestSender<Answer: Sendable> {
   func send(_ request: Muster_Request) {
     pending = request
     sendPendingIfIdle()
-  }
-
-  /// Drops anything queued, for a gesture that is ending.
-  ///
-  /// A request already in flight still answers. What this prevents is something asked for
-  /// just before the end going out after it.
-  func cancel() {
-    pending = nil
   }
 
   private func sendPendingIfIdle() {
@@ -143,9 +127,7 @@ final class LatestRequestSender<Answer: Sendable> {
         if case .failure(let refused) = answer {
           Core.error("core.refused", ["request": self.what, "reason": refused.reason])
         }
-        // Stale means something newer is already waiting, so this answer is about a request
-        // the person has already moved past.
-        self.onAnswer?(answer, self.pending != nil)
+        self.onAnswer?(answer)
         // Whatever was asked for while this was out, which is where the gesture is now.
         self.sendPendingIfIdle()
       }

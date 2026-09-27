@@ -35,44 +35,31 @@ public struct WindowContents: Equatable {
     /// Already resolved by the core, so a window that ignores this renders the right thing.
     public let zoomed: Bool
 
-    /// How this region's panes are reached, when they are on another machine. Nil is a daemon
-    /// on this one, which is the only difference the shell ever notices between local and
-    /// remote: these are relayed onto the bridge's command line and nothing else changes.
-    public let transport: Transport?
+    /// Where this region's bridges dial to draw its panes: the daemon's own socket, or for a
+    /// daemon on another machine the local end of the ssh forward to it. Relayed onto the
+    /// bridge's command line and never interpreted. Nil for a daemon the core has not reached.
+    public let daemonSocket: String?
 
-    /// Which daemon this region's frame streams come from, on this machine.
-    ///
-    /// Relayed onto the bridge's command line, because a bridge that found a daemon for
-    /// itself would find whichever one is on the default socket - and Muster runs its own on
-    /// a session of its own. Nil for a remote region: that bridge asks the far machine, where
-    /// a path from this one names nothing.
-    public let backendSocket: String?
-
-    public struct Transport: Equatable {
-      public let sshHost: String
-      public let sshControlPath: String
-
-      public init(sshHost: String, sshControlPath: String) {
-        self.sshHost = sshHost
-        self.sshControlPath = sshControlPath
-      }
-    }
+    /// Whether that daemon is on another machine. The only difference the shell ever notices
+    /// between local and remote, and it only passes it on: a remote bridge asks for a window of
+    /// unacknowledged output sized for the link.
+    public let remote: Bool
 
     public init(
       id: String, daemon: String, tab: String, keyboardPane: String?, weight: CGFloat = 1,
-      tree: PaneTree?, zoomed: Bool, transport: Transport? = nil, backendSocket: String? = nil
+      tree: PaneTree?, zoomed: Bool, daemonSocket: String? = nil, remote: Bool = false
     ) {
       self.id = id
       self.daemon = daemon
       self.tab = tab
-      self.backendSocket = backendSocket
       self.keyboardPane = keyboardPane
       // Defaulted so that a test describing a window it is not about the widths of does not
       // have to say so. Equal shares are what every region starts at.
       self.weight = weight
       self.tree = tree
       self.zoomed = zoomed
-      self.transport = transport
+      self.daemonSocket = daemonSocket
+      self.remote = remote
     }
 
     /// The panes this region will be showing once it has applied.
@@ -177,7 +164,7 @@ public struct PaneKey: Hashable {
 
 /// How a split divides its area.
 ///
-/// Muster's spelling, not a backend's: herdr says right and down, which describe the moment
+/// Muster's spelling, not a backend's: herdr said right and down, which describe the moment
 /// of splitting rather than how to lay two children out long afterwards.
 public enum SplitAxis: String, Equatable {
   case columns
@@ -192,17 +179,10 @@ public indirect enum PaneTree: Equatable {
   public struct Leaf: Equatable {
     public let paneID: String
 
-    /// Where this pane's bridge dials back. Nil means no channel is open for this pane yet,
-    /// and a surface spawned against it would render and never be typeable - so a window
-    /// must not start a bridge pointed at one.
-    public let controlSocketPath: String?
-
-    /// What the pane's own daemon calls it, for the bridge's command line.
-    ///
-    /// The bridge streams frames from the daemon directly, so it is the one thing up here that
-    /// speaks the backend's vocabulary. Never used to address a pane: `paneID` is what every
-    /// request takes, and the two differ.
-    public let backendPaneID: String
+    /// Where this pane's bridge reports that it attached, that it is painting, and why it
+    /// exits. Nil means none is bound yet, and a bridge the window cannot hear from is one whose
+    /// death nobody notices - so a window must not start a bridge until there is one.
+    public let linkSocketPath: String?
 
     /// How big this pane's text is, in points away from what the config file asked for. Zero
     /// is a pane nobody has sized, which is most of them.
@@ -223,12 +203,11 @@ public indirect enum PaneTree: Equatable {
     public let bridgeRestarts: UInt32
 
     public init(
-      paneID: String, controlSocketPath: String?, backendPaneID: String = "",
-      fontSizeOffset: Int32 = 0, bridgeRestarts: UInt32 = 0
+      paneID: String, linkSocketPath: String?, fontSizeOffset: Int32 = 0,
+      bridgeRestarts: UInt32 = 0
     ) {
       self.paneID = paneID
-      self.controlSocketPath = controlSocketPath
-      self.backendPaneID = backendPaneID
+      self.linkSocketPath = linkSocketPath
       // Defaulted so that a test describing a window it is not about the text size of does not
       // have to say so, on the same terms as a region's weight.
       self.fontSizeOffset = fontSizeOffset
@@ -384,12 +363,8 @@ extension WindowContents {
           weight: CGFloat(region.weight),
           tree: region.hasRoot ? PaneTree(region.root) : nil,
           zoomed: region.zoomed,
-          // Both or neither: half a target names no machine, and the core sends both when it
-          // has opened a connection at all.
-          transport: region.sshHost.isEmpty || region.sshControlPath.isEmpty
-            ? nil
-            : Region.Transport(sshHost: region.sshHost, sshControlPath: region.sshControlPath),
-          backendSocket: region.backendSocket.isEmpty ? nil : region.backendSocket)
+          daemonSocket: region.daemonSocket.isEmpty ? nil : region.daemonSocket,
+          remote: region.remote)
       },
       focusedRegion: changed.focusedRegion.isEmpty ? nil : changed.focusedRegion)
   }
@@ -406,8 +381,7 @@ extension PaneTree {
       self = .pane(
         Leaf(
           paneID: pane.paneID,
-          controlSocketPath: pane.controlSocketPath.isEmpty ? nil : pane.controlSocketPath,
-          backendPaneID: pane.backendPaneID,
+          linkSocketPath: pane.linkSocketPath.isEmpty ? nil : pane.linkSocketPath,
           fontSizeOffset: pane.fontSizeOffset,
           bridgeRestarts: pane.bridgeRestarts))
     case .split(let split):
@@ -417,7 +391,7 @@ extension PaneTree {
         first: PaneTree(split.first),
         second: PaneTree(split.second))
     case nil:
-      self = .pane(Leaf(paneID: "", controlSocketPath: nil))
+      self = .pane(Leaf(paneID: "", linkSocketPath: nil))
     }
   }
 }

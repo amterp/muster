@@ -7,9 +7,8 @@ import Foundation
 /// can list one directory needs no documentation to find the whole of it. Three trees is the
 /// arrangement that made a person hunt.
 ///
-/// It follows that `XDG_CONFIG_HOME` and friends no longer move Muster's own files. They still
-/// decide where *herdr* listens and what config *herdr* reads, because those are herdr's rules
-/// and Muster only passes them on (`crates/muster-herdr/src/daemon.rs`).
+/// It follows that `XDG_CONFIG_HOME` and friends do not move Muster's own files, the daemon's
+/// socket among them.
 ///
 /// An OS question, which is why it is answered here and handed to the core at startup - the same
 /// division the log file and the daemon binary already draw.

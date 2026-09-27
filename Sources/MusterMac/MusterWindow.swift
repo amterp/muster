@@ -16,11 +16,6 @@ public final class MusterWindow: NSObject {
   public let window: NSWindow
   private let renderer: Renderer
   private let executable: String
-  /// The daemon binary every bridge this window spawns is told to run.
-  ///
-  /// Resolved once rather than per pane, because it is a property of the build and a window of
-  /// fifteen panes would otherwise ask the filesystem the same question fifteen times.
-  private let herdrBinary: String?
   private let strip = RegionStrip(frame: NSRect(x: 0, y: 0, width: 960, height: 600))
   private let sidebar = SidebarView(frame: .zero)
   private let shortcuts = ShortcutsPanel()
@@ -145,7 +140,6 @@ public final class MusterWindow: NSObject {
   public init(renderer: Renderer, executable: String) {
     self.renderer = renderer
     self.executable = executable
-    self.herdrBinary = herdrBinaryPath(executable: executable)
     let keyboard = KeyboardWindow(
       contentRect: strip.frame,
       styleMask: [.titled, .closable, .resizable, .miniaturizable],
@@ -167,10 +161,8 @@ public final class MusterWindow: NSObject {
     // After the content view, because a parked pane waits inside the window rather than
     // outside every hierarchy - a surface is handed to libghostty as a view, and keeping that
     // view in a window for its whole life is the only state this has ever run in.
-    surfaces = PaneSurfaces(parkedIn: split) {
-      [weak self] daemonID, transport, socket, chrome, pane in
-      self?.start(
-        chrome, daemonID: daemonID, transport: transport, backendSocket: socket, pane: pane)
+    surfaces = PaneSurfaces(parkedIn: split) { [weak self] region, chrome, pane in
+      self?.start(chrome, in: region, pane: pane)
     }
     // Named rather than left to the default, because `show` toggles into full-screen for a
     // window that quit from it and a default is a thing that can move.
@@ -516,40 +508,50 @@ public final class MusterWindow: NSObject {
 
   /// Gives a pane's chrome a surface, and starts the bridge that paints it.
   private func start(
-    _ chrome: PaneChrome, daemonID: String,
-    transport: WindowContents.Region.Transport?, backendSocket: String?, pane: PaneTree.Leaf
+    _ chrome: PaneChrome, in region: WindowContents.Region, pane: PaneTree.Leaf
   ) {
     guard let paneID = chrome.paneID else { return }
+    let daemonID = region.daemon
     if let state = states[PaneKey(daemon: daemonID, pane: paneID)] {
       chrome.apply(paneID: paneID, state: state)
     }
-    guard let socketPath = pane.controlSocketPath else {
-      // No channel is open for this pane yet, and a bridge started against nothing would
-      // paint and then swallow every keystroke. The core opens one and republishes, and the
-      // surface is built on that pass instead.
+    guard let linkSocketPath = pane.linkSocketPath else {
+      // No link is bound for this pane yet, and a bridge the window cannot hear from is one
+      // whose death nobody notices. The core binds one and republishes, and the surface is
+      // built on that pass instead.
       Core.warn(
         "pane.surface.deferred",
         [
           "daemon": daemonID,
           "pane": paneID,
-          "impact": "this pane is blank until the core opens its channel and republishes",
-          "check": "a pane.channel.unavailable record above this, which says why one could "
-            + "not be opened",
+          "impact": "this pane is blank until the core binds its link and republishes",
+          "check": "a record above this saying why the pane's link socket could not be bound",
+        ])
+      return
+    }
+    guard let daemonSocket = region.daemonSocket else {
+      // Rebuilt once the view names one: a surface that was never given a bridge for want of a
+      // socket is not reused (PaneSurfaces.borrow).
+      Core.warn(
+        "pane.surface.deferred",
+        [
+          "daemon": daemonID,
+          "pane": paneID,
+          "impact": "this pane is blank until the core reaches its daemon and republishes",
+          "check": "the daemon's attach records above this, which say why it was not reached",
         ])
       return
     }
     // Reported rather than acted on here: the core is what can find out whether a bridge
-    // ending means the daemon has dropped the pane, which is the commonest reason and the
-    // one herdr does not always announce.
+    // ending means the daemon has dropped the pane, which is the commonest reason.
     chrome.surface.onProcessExited = { processAlive in
       Core.bridgeExited(daemonID: daemonID, paneID: paneID, processAlive: processAlive)
     }
     start(
       chrome,
       command: PaneCommand.bridge(
-        executable: executable, paneID: pane.backendPaneID, controlSocketPath: socketPath,
-        paneName: paneID, herdrSocketPath: backendSocket, herdrBinaryPath: herdrBinary,
-        sshHost: transport?.sshHost, sshControlPath: transport?.sshControlPath,
+        executable: executable, paneID: paneID, daemonSocket: daemonSocket,
+        linkSocketPath: linkSocketPath, remote: region.remote,
         reattaching: pane.bridgeRestarts > 0),
       typeable: true)
   }
@@ -631,9 +633,9 @@ public final class MusterWindow: NSObject {
 
 /// Whether anybody is looking at this window.
 ///
-/// The only input to agent state that no daemon can supply. herdr derives `done` from the
-/// foreground client's window focus and has no API to be told it, so a window sitting behind
-/// a browser while an agent finishes is reported as `idle` - "nothing needs you", at the one
+/// The only input to agent state that no daemon can supply. `done` is `idle` on a pane nobody
+/// looked at, and no daemon can see a window's focus - so without this, a window sitting behind
+/// a browser while an agent finishes would report `idle`: "nothing needs you", at the one
 /// moment something does. The core decides what this means; this only says it happened.
 ///
 /// Key window rather than app activation, because the question is whether this window was
@@ -789,24 +791,23 @@ extension MusterWindow {
       guard let chrome = self?.keyboardChrome() else { return }
       self?.window.makeFirstResponder(chrome.surface)
     }
-    bar.onRefused = { [weak self] refused in self?.reportUnmarked(refused) }
+    bar.onRefused = { [weak self] refused in self?.reportUnsearched(refused) }
     findBar = bar
     return bar
   }
 
-  /// Says so when the renderer would not mark what a find turned up.
+  /// Says so when the renderer would not search for what was typed.
   ///
-  /// Separate from `report` because the consequence is different and so is what to check. The
-  /// counter and the scrolling are the core's and are unaffected; what is lost is the marks
-  /// on screen, so the pane scrolls to a match nothing points at.
-  private func reportUnmarked(_ refused: [String]) {
+  /// Separate from `report` because the consequence is different and so is what to check: the
+  /// pane is fine, and the find bar will count nothing in it however much there is to find.
+  private func reportUnsearched(_ refused: [String]) {
     guard !refused.isEmpty else { return }
     Core.warn(
       "renderer.action.refused",
       [
         "actions": refused.joined(separator: ", "),
-        "impact": "matches are counted and scrolled to and not marked on screen, so the pane "
-          + "lands on something with nothing pointing at it",
+        "impact": "find searched nothing, so the bar shows no count and nothing is marked, "
+          + "whatever the pane holds",
         "check": "whether libghostty renamed its search actions between deps/ghostty.pin "
           + "bumps; Muster names them as strings and nothing else can tell",
       ])
@@ -910,7 +911,7 @@ extension MusterWindow {
   /// Starts another Muster, and says whether it is a window somebody asked for.
   ///
   /// Fresh means it starts on tabs of its own rather than on the ones this window is showing -
-  /// which it could not render anyway, because herdr allows one client per terminal - and takes
+  /// which it could not render anyway, because a daemon lets one bridge draw a pane - and takes
   /// an arrangement nothing has ever held. Not fresh means it takes the most recent arrangement
   /// no live window is holding, which is the window that was closed.
   /// Opens a closed window again, onto a pane or tab it holds.

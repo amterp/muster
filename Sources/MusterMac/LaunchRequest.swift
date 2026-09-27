@@ -40,7 +40,7 @@ public func launchRequest(arguments: [String]) -> LaunchRequest {
 /// `muster window new` and the New Window menu item both pass this; a launch from the Dock, from
 /// Spotlight, or by opening the bundle does not. What turns on it is where the window starts: a
 /// window Muster comes back to opens onto the tabs it was left on, and a window somebody asked
-/// for opens onto tabs of its own, because herdr allows one client per terminal and the tabs the
+/// for opens onto tabs of its own, because a daemon lets one bridge draw a pane and the tabs the
 /// other window is showing are tabs this one would render as dead surfaces.
 ///
 /// An argument for the same reason `--home` is one: this window is started through Launch
@@ -61,7 +61,7 @@ public func launchIsFresh(arguments: [String]) -> Bool {
 ///
 /// Clearing rather than forwarding is deliberate and is not this file's decision: `open`
 /// hands the app its own environment, so a window opened from a pane would otherwise inherit
-/// that pane's `MUSTER_PANE`, `MUSTER_SOCKET` and `HERDR_SOCKET_PATH`
+/// that pane's `MUSTER_PANE`, `MUSTER_SOCKET` and `MUSTER_DAEMON_SOCKET`
 /// (`observations/macos-26.4.1.md` section 8).
 ///
 /// The environment still wins where it is set on this process directly, because that is the

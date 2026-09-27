@@ -1,122 +1,130 @@
 import AppKit
+import MusterRenderer
 import Testing
 
 @testable import MusterMac
 
-// What the find bar asks of the core, and what it asks of the renderer.
+// What the find bar asks of the pane's surface, and what it draws from the answers.
 //
-// The division of labour is the thing worth protecting here. The core searches - it is the
-// only party that can, since a pane's history is the daemon's and a surface is repainted from
-// frames - and the renderer only marks what is on screen. So these assert on the requests that
-// cross the seam and on what the surface was told to mark, and never on a count, which is the
-// core's answer and is judged by its own corpus.
-
-/// A dispatcher that answers a find the way the core does, and records what it was asked.
-private final class FindingDispatcher: Dispatcher, @unchecked Sendable {
-  private let lock = NSLock()
-  private var recorded: [Muster_Request] = []
-
-  /// What every find and step will be answered with.
-  private let answer: Muster_Findings
-
-  init(
-    total: UInt32 = 0, selected: UInt32 = 0, rows: UInt32 = 0, reach: String = "whole",
-    rowsHeld: UInt32 = 0, scrolled: Bool = false
-  ) {
-    var findings = Muster_Findings()
-    findings.total = total
-    findings.selected = selected
-    findings.rowsSearched = rows
-    findings.reach = reach
-    findings.rowsHeld = rowsHeld
-    findings.scrolled = scrolled
-    answer = findings
-  }
-
-  var requests: [Muster_Request] { lock.withLock { recorded } }
-
-  func dispatch(_ request: [UInt8]) -> [UInt8] {
-    guard let decoded = try? Muster_Request(serializedBytes: request) else { return [] }
-    lock.withLock { recorded.append(decoded) }
-    var response = Muster_Response()
-    switch decoded.payload {
-    case .find, .findStep: response.findings = answer
-    default: response.ok = Muster_Ok()
-    }
-    return (try? response.serializedBytes()) ?? []
-  }
-
-  func needles() -> [String] {
-    requests.compactMap { if case .find(let find) = $0.payload { find.needle } else { nil } }
-  }
-
-  func steps() -> [String] {
-    requests.compactMap {
-      if case .findStep(let step) = $0.payload { step.direction } else { nil }
-    }
-  }
-
-  var endedFinds: Int {
-    requests.filter { if case .endFind = $0.payload { true } else { false } }.count
-  }
-
-  var viewportReads: Int {
-    requests.filter { if case .readViewport = $0.payload { true } else { false } }.count
-  }
-}
+// The surface searches - it holds the pane's history - so these assert on what it was asked to
+// search for and on what the bar drew from what it reported, and never on a count of real
+// matches, which is libghostty's to get right.
 
 @MainActor
-private func chrome(_ surface: RecordingSurface, dispatcher: Dispatcher = Core.dispatcher)
-  -> PaneChrome
-{
+private func chrome(_ surface: RecordingSurface) -> PaneChrome {
   let view = SurfaceView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
   view.attach(surface, typeable: true)
-  let chrome = PaneChrome(
-    frame: NSRect(x: 0, y: 0, width: 400, height: 300), surface: view, dispatcher: dispatcher)
-  chrome.attach(paneID: "w1:p1")
+  let chrome = PaneChrome(frame: NSRect(x: 0, y: 0, width: 400, height: 300), surface: view)
+  chrome.attach(paneID: "p1w3r07bsd")
   return chrome
 }
 
-/// A chrome whose surface has a selection pinned to the pane, made the way a drag makes one.
-@MainActor
-private func chromeHoldingASelection(_ surface: RecordingSurface, dispatcher: Dispatcher)
-  -> PaneChrome
-{
-  surface.cellPixelSize = (width: 20, height: 40)
-  let held = chrome(surface, dispatcher: dispatcher)
-  held.surface.mouseDown(with: mouse(.leftMouseDown, at: NSPoint(x: 10, y: 290)))
-  held.surface.mouseDragged(with: mouse(.leftMouseDragged, at: NSPoint(x: 50, y: 240)))
-  held.surface.mouseUp(with: mouse(.leftMouseUp, at: NSPoint(x: 50, y: 240)))
-  return held
-}
-
-private func mouse(_ type: NSEvent.EventType, at point: NSPoint) -> NSEvent {
-  NSEvent.mouseEvent(
-    with: type, location: point, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil,
-    eventNumber: 0, clickCount: 1, pressure: 1)!
-}
-
-@Suite("find", .ownsTheSeam)
+@Suite("find")
 struct FindTests {
   @MainActor
-  @Test("a landing that moved the pane sends the selection after it")
-  func aLandingMovesTheSelection() async {
-    // The pane is scrolled from the other side: the core works out where the match is and
-    // writes the scroll onto the pane's own channel, so nothing in this window hears about it.
-    // Without this the selection sits over whatever text has arrived under it until somebody
-    // touches the wheel (kan a_2JrhrSBOx).
-    let core = FindingDispatcher(total: 1, selected: 1, scrolled: true)
-    seam(core)
-    let held = chromeHoldingASelection(RecordingSurface(), dispatcher: core)
-    let bar = FindBar(dispatcher: core)
-    bar.show(over: held)
+  @Test("a needle of three characters or more is searched for at once")
+  func aLongNeedleGoesStraightOut() {
+    let surface = RecordingSurface()
+    let bar = FindBar()
+    let pane = chrome(surface)
+    bar.show(over: pane)
 
-    bar.step(forward: true)
+    bar.typed("err")
 
-    // Two reads: the one the drag asked for, so its cells could be counted from the bottom of
-    // the pane rather than from the top of the screen, and the one the landing asked for
-    // because the pane has moved under them.
-    await until("the landing to ask where the pane is looking") { core.viewportReads == 2 }
+    #expect(surface.searches == ["err"])
+  }
+
+  @MainActor
+  @Test("a short needle waits, and only the last one typed is searched for")
+  func shortNeedlesAreDebounced() async {
+    // One or two characters match nearly everything in a pane's history, and a longer needle
+    // is typed through them. Searching each would cost two searches of the whole history for
+    // every needle anybody types.
+    let surface = RecordingSurface()
+    let bar = FindBar()
+    let pane = chrome(surface)
+    bar.show(over: pane)
+
+    bar.typed("e")
+    bar.typed("er")
+    #expect(surface.searches.isEmpty, "a short needle went out without waiting")
+
+    await until("the short needle to be searched for") { !surface.searches.isEmpty }
+    #expect(surface.searches == ["er"])
+    // The bar holds its pane weakly, and a pane gone by the time the wait ends is searched for
+    // nothing.
+    withExtendedLifetime(pane) {}
+  }
+
+  @MainActor
+  @Test("typing past a short needle cancels it")
+  func aLongerNeedleCancelsTheWait() async throws {
+    // Otherwise the short needle lands after the long one and replaces it, and the bar counts
+    // matches of "e" under a field reading "err".
+    let surface = RecordingSurface()
+    let bar = FindBar()
+    let pane = chrome(surface)
+    bar.show(over: pane)
+
+    bar.typed("e")
+    bar.typed("err")
+    try await Task.sleep(for: FindBar.debounce * 2)
+
+    #expect(surface.searches == ["err"])
+  }
+
+  @MainActor
+  @Test("emptying the field stops the search at once")
+  func anEmptyNeedleIsNotDebounced() {
+    // An empty needle matches nothing and costs nothing, and the marks of the last one should
+    // leave with the text.
+    let surface = RecordingSurface()
+    let bar = FindBar()
+    let pane = chrome(surface)
+    bar.show(over: pane)
+
+    bar.typed("")
+
+    #expect(surface.searches == [""])
+  }
+
+  @MainActor
+  @Test("the counter draws what the surface reported")
+  func theCounterFollowsTheReports() {
+    let surface = RecordingSurface()
+    let bar = FindBar()
+    let pane = chrome(surface)
+    bar.show(over: pane)
+    bar.typed("error")
+    #expect(bar.state.counter == "", "a count was drawn before the surface reported one")
+
+    surface.onSearch?(.total(47))
+    #expect(bar.state.counter == "-/47")
+
+    surface.onSearch?(.selected(2))
+    #expect(bar.state.counter == "3/47")
+
+    // What libghostty sends while it does not know. The place is still worth showing.
+    surface.onSearch?(.total(nil))
+    #expect(bar.state.counter == "3/?")
+  }
+
+  @MainActor
+  @Test("a new needle forgets the old one's counts")
+  func aNewNeedleClearsTheCounter() {
+    // Until the renderer answers, the counts on screen are for the needle before, drawn under
+    // the one now in the field.
+    let surface = RecordingSurface()
+    let bar = FindBar()
+    let pane = chrome(surface)
+    bar.show(over: pane)
+    bar.typed("error")
+    surface.onSearch?(.total(47))
+    surface.onSearch?(.selected(2))
+
+    bar.typed("errors")
+
+    #expect(bar.state.counter == "")
   }
 
   @MainActor
@@ -124,149 +132,123 @@ struct FindTests {
   func aStepNamesItsDirection() {
     // Two actions rather than keys the bar swallows, so they work with the keyboard back in
     // the pane. Which means they can be pressed with no bar at all, and that has to cost
-    // nothing rather than ask the core to walk a search it is not holding.
-    let core = FindingDispatcher(total: 3, selected: 2)
-    seam(core)
-    let bar = FindBar(dispatcher: core)
+    // nothing.
+    let surface = RecordingSurface()
+    let bar = FindBar()
 
     bar.step(forward: true)
-    #expect(core.steps().isEmpty, "a step with no bar up reached the core")
+    #expect(surface.navigations.isEmpty)
 
-    bar.show(over: chrome(RecordingSurface()))
+    let pane = chrome(surface)
+    bar.show(over: pane)
     bar.step(forward: true)
     bar.step(forward: false)
 
-    #expect(core.steps() == ["next", "previous"])
+    #expect(surface.navigations == [true, false])
   }
 
   @MainActor
-  @Test("a step and an end reach the core the bar was given, not the one the process holds")
-  func theBarSendsThroughItsOwnCore() {
-    // The coupling kan a_2LMRCjcSV names: a view handed a dispatcher, reaching past it to the
-    // process global for the half of its traffic that does not go through the sender. Both
-    // halves have to land in the same place, or a test can be handed a core, watch its needle
-    // arrive, and have its step answered by whatever another test installed.
-    let elsewhere = seam(FindingDispatcher(total: 9, selected: 9))
-    let mine = FindingDispatcher(total: 3, selected: 2)
-    let bar = FindBar(dispatcher: mine)
-    bar.show(over: chrome(RecordingSurface(), dispatcher: mine))
-
-    bar.step(forward: true)
-    bar.close()
-
-    #expect(mine.steps() == ["next"])
-    #expect(elsewhere.steps().isEmpty, "the step went to the process global, not the bar's core")
-    #expect(mine.endedFinds == 1)
-    #expect(elsewhere.endedFinds == 0, "the end went to the process global, not the bar's core")
-  }
-
-  @MainActor
-  @Test("closing tells the core to forget, and takes the marks off the pane")
-  func closingForgets() {
-    // Both halves matter and they fail differently. A core still holding a search answers a
-    // later step about a pane nobody is looking at; a pane still marked is a terminal with
-    // yellow text in it and nothing on screen explaining why.
-    let core = FindingDispatcher()
-    seam(core)
+  @Test("closing ends the search, and stops listening to the pane")
+  func closingEndsTheSearch() {
+    // A pane still searched is a terminal with marked text in it and nothing on screen
+    // explaining why.
     let surface = RecordingSurface()
-    let bar = FindBar(dispatcher: core)
-    bar.show(over: chrome(surface))
+    let bar = FindBar()
+    let pane = chrome(surface)
+    bar.show(over: pane)
+    bar.typed("error")
+    surface.onSearch?(.total(3))
 
     bar.close()
 
-    #expect(core.endedFinds == 1)
-    #expect(surface.highlighted.last == .some(nil), "the pane kept its marks after closing")
+    #expect(surface.searches.last == .some(nil), "the pane's search outlived the bar")
+    #expect(bar.state.counter == "")
     #expect(!bar.isShown)
+    surface.onSearch?(.total(9))
+    #expect(bar.state.counter == "", "the closed bar still takes the pane's counts")
   }
 
   @MainActor
-  @Test("following the keyboard to another pane unmarks the one it left")
-  func movingUnmarksTheOldPane() {
-    // The find bar follows the keyboard, because a find is about a pane. Without this the
-    // pane left behind stays marked, so two panes look searched and only one is counted.
-    let core = FindingDispatcher()
-    seam(core)
+  @Test("closing cancels a short needle still waiting")
+  func closingCancelsTheWait() async throws {
+    let surface = RecordingSurface()
+    let bar = FindBar()
+    let pane = chrome(surface)
+    bar.show(over: pane)
+    bar.typed("e")
+
+    bar.close()
+    try await Task.sleep(for: FindBar.debounce * 2)
+
+    #expect(surface.searches == [nil])
+  }
+
+  @MainActor
+  @Test("following the keyboard to another pane searches it, and ends the one it left")
+  func movingSearchesTheNewPane() {
+    // The find bar follows the keyboard, because a find is about a pane. The pane left behind
+    // would otherwise stay marked, so two panes look searched and only one is counted.
     let first = RecordingSurface()
     let second = RecordingSurface()
-    let bar = FindBar(dispatcher: core)
+    let bar = FindBar()
+    let firstPane = chrome(first)
+    bar.show(over: firstPane)
+    // The field's binding sets this before it reports the keystroke, and there is no field here.
+    bar.state.needle = "error"
+    bar.typed("error")
 
-    bar.show(over: chrome(first))
-    bar.show(over: chrome(second))
+    let secondPane = chrome(second)
+    bar.show(over: secondPane)
 
-    #expect(first.highlighted.last == .some(nil), "the pane the bar left kept its marks")
+    #expect(first.searches.last == .some(nil), "the pane the bar left is still searched")
+    #expect(second.searches == ["error"])
     #expect(bar.isShown)
   }
 
   @MainActor
-  @Test("a needle reaches the core, and only the last one typed does")
-  func typingCoalescesBehindTheRoundTrip() async {
-    // The reason a needle leaves through a sender at all. A find is a round trip - the core
-    // reads the pane's history back before it can match anything - and it happens once per
-    // keystroke, which over an ssh-forwarded socket is tens of milliseconds a character.
-    let core = FindingDispatcher(total: 2, selected: 1)
-    let sender = FindSender(dispatcher: core)
+  @Test("a needle the renderer would not search for is reported, not swallowed")
+  func aRefusedNeedleIsReported() {
+    // The failure this can have: the action is a string libghostty parses, so a version that
+    // renamed it is a find that quietly counts nothing.
+    let surface = RecordingSurface()
+    surface.refuses = ["search:error"]
+    let bar = FindBar()
+    var reported: [[String]] = []
+    bar.onRefused = { reported.append($0) }
+    let pane = chrome(surface)
+    bar.show(over: pane)
 
-    sender.send(needle: "e")
-    sender.send(needle: "er")
-    sender.send(needle: "err")
+    bar.typed("error")
 
-    await until("the needle to reach the core") { !core.needles().isEmpty }
-    await until("the last needle typed to reach the core") { core.needles().last == "err" }
-    #expect(core.needles().count < 3, "every keystroke went out rather than the latest")
+    #expect(reported == [["search:error"]])
   }
 
   @MainActor
   @Test("a surface with nothing rendering it is asked for nothing")
   func aDetachedSurfaceIsNotAsked() {
-    // A pane whose bridge has not started has nothing on screen to mark. Answering with a
-    // refusal there would report a renderer problem for a pane with no renderer yet, which
-    // is the ordinary state at launch.
+    // A pane whose bridge has not started has nothing to search. Answering with a refusal
+    // there would report a renderer problem for a pane with no renderer yet, which is the
+    // ordinary state at launch.
     let view = SurfaceView(frame: NSRect(x: 0, y: 0, width: 100, height: 100))
 
-    #expect(view.highlight("error").isEmpty)
+    #expect(view.search("error").isEmpty)
   }
 
   @MainActor
-  @Test("what the renderer would not do is carried back, not swallowed")
-  func aRefusedMarkIsReported() {
-    // The failure this can have: the action is a string libghostty parses, so a version that
-    // renamed it is a highlight that quietly stops appearing while every count stays right.
+  @Test("a report reaches a bar that opened before the pane's surface did")
+  func reportsSurviveALateSurface() {
+    // The bar listens to the view, and the view is handed its surface when the bridge starts,
+    // which can be after somebody pressed the chord.
+    let view = SurfaceView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+    let chrome = PaneChrome(frame: NSRect(x: 0, y: 0, width: 400, height: 300), surface: view)
+    chrome.attach(paneID: "p1w3r07bsd")
+    let bar = FindBar()
+    bar.show(over: chrome)
     let surface = RecordingSurface()
-    surface.refuses = ["search:error"]
-    let view = SurfaceView(frame: NSRect(x: 0, y: 0, width: 100, height: 100))
+
     view.attach(surface, typeable: true)
+    surface.onSearch?(.total(5))
 
-    #expect(view.highlight("error") == ["search:error"])
-    #expect(surface.highlighted == ["error"])
-  }
-}
-
-@Suite("find reach")
-struct FindReachTests {
-  // How much of a pane a search covered is the core's answer and the bar's to draw, and the
-  // decoding is the only place the two meet. A word the shell does not recognise has to read
-  // as the reach that draws nothing: a caveat put under a search box on the strength of an
-  // unrecognised string would be a claim nobody made.
-
-  @Test("each word the core spells decodes to the reach it names")
-  func eachWordDecodes() {
-    #expect(reach("whole") == .whole)
-    #expect(reach("screen_only") == .screenOnly)
-    #expect(reach("capped", rowsHeld: 3000) == .capped(rowsHeld: 3000))
-  }
-
-  @Test("a word this shell does not know draws no caveat")
-  func anUnknownWordIsQuiet() {
-    // What a core one version ahead would send. The bar drawing "last 39 of 0" from a reach
-    // it could not read would be worse than drawing nothing.
-    #expect(reach("something_new") == .whole)
-    #expect(reach("") == .whole)
-  }
-
-  private func reach(_ word: String, rowsHeld: UInt32 = 0) -> Core.Findings.Reach {
-    var findings = Muster_Findings()
-    findings.reach = word
-    findings.rowsHeld = rowsHeld
-    return Core.read(findings).reach
+    #expect(bar.state.counter == "-/5")
   }
 }

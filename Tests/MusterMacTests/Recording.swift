@@ -25,13 +25,16 @@ final class RecordingSurface: PaneSurface {
   var fontSizeOffsets: [Int32] = []
   /// In backing pixels, as libghostty answers. Nil is a surface nothing has sized yet.
   var cellPixelSize: (width: UInt32, height: UInt32)?
-  /// Every needle it was asked to mark, `nil` for a clear, so a test can tell one from none.
-  var highlighted: [String?] = []
+  /// Every needle it was asked to search for, `nil` for an end, so a test can tell one from
+  /// none.
+  var searches: [String?] = []
+  /// Every step through a search, `true` for next.
+  var navigations: [Bool] = []
+  var onSearch: (@MainActor (SearchReport) -> Void)?
   /// What this surface will not do, for the tests about a renderer that refuses.
   var refuses: [String] = []
-  /// Every selection it was asked to draw, `nil` for a clear, so a test can tell one from
-  /// none. Points rather than cells, because that is what the seam carries.
-  var selections: [SurfaceSelection?] = []
+  /// Every wheel it was handed, as the deltas and flags the surface was given.
+  var scrolls: [(dx: Double, dy: Double, precise: Bool, momentum: UInt32)] = []
 
   init(selection: String? = nil) { selectedText = selection }
 
@@ -41,15 +44,15 @@ final class RecordingSurface: PaneSurface {
     fontSizeOffsets.append(points)
     return []
   }
-  func highlight(_ text: String?) -> [String] {
-    highlighted.append(text)
+  func search(_ needle: String?) -> [String] {
+    searches.append(needle)
     return refuses
   }
+  func navigateSearch(next: Bool) { navigations.append(next) }
   func mouseMoved(to point: NSPoint, modifiers: NSEvent.ModifierFlags) { positions.append(point) }
   func leftMouse(pressed: Bool, modifiers: NSEvent.ModifierFlags) { buttons.append(pressed) }
-  func select(_ selection: SurfaceSelection?) {
-    selections.append(selection)
-    selectedText = selection == nil ? nil : selectedText
+  func scroll(dx: Double, dy: Double, precise: Bool, momentum: UInt32) {
+    scrolls.append((dx, dy, precise, momentum))
   }
 }
 
@@ -98,7 +101,7 @@ extension RecordingDispatcher {
 /// libghostty runtime and a subprocess.
 @MainActor
 func paneSurfaces(
-  startPane: @escaping PaneSurfaces.StartPane = { _, _, _, _, _ in }
+  startPane: @escaping PaneSurfaces.StartPane = { _, _, _ in }
 ) -> PaneSurfaces {
   PaneSurfaces(parkedIn: NSView(frame: .zero), startPane: startPane)
 }
@@ -131,7 +134,9 @@ func until(
 /// Wheel events have no public constructor, so this goes through CGEvent, which does. The
 /// location matters wherever a test drives a view hierarchy rather than one view: AppKit
 /// hit-tests `scrollWheel` to whatever is under it.
-func wheel(deltaY: CGFloat, at location: NSPoint = .zero) -> NSEvent? {
+func wheel(
+  deltaY: CGFloat, at location: NSPoint = .zero, modifiers: CGEventFlags = []
+) -> NSEvent? {
   guard
     let event = CGEvent(
       scrollWheelEvent2Source: nil, units: .line, wheelCount: 1, wheel1: 0, wheel2: 0, wheel3: 0)
@@ -139,6 +144,7 @@ func wheel(deltaY: CGFloat, at location: NSPoint = .zero) -> NSEvent? {
   event.setDoubleValueField(.scrollWheelEventPointDeltaAxis1, value: Double(deltaY))
   event.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1, value: Double(deltaY))
   event.location = CGPoint(x: location.x, y: location.y)
+  event.flags = modifiers
   return NSEvent(cgEvent: event)
 }
 

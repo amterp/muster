@@ -38,7 +38,7 @@ public func commandsPath(environment: [String: String] = ProcessInfo.processInfo
 /// a build whose binary has since gone is taken away.
 ///
 /// Beside the running executable, because that is where a bundle puts its helpers and where `./dev`
-/// stages them - the same one rule `herdrPath` and `PaneCommand` already follow. The staged name is
+/// stages them - the same one rule `PaneCommand` already follows. The staged name is
 /// `muster-cli` because the app's own executable is already called `muster`; the link is what gives
 /// it the name people type.
 @discardableResult

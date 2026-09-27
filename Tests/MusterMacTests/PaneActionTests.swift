@@ -52,7 +52,7 @@ struct PaneActionTests {
     started.apply(
       WindowContents.Region(
         id: "r0", daemon: "devenv", tab: "w1:t1", keyboardPane: "w1:p1",
-        tree: .pane(.init(paneID: "w1:p1", controlSocketPath: "/tmp/a.sock")), zoomed: false),
+        tree: .pane(.init(paneID: "w1:p1", linkSocketPath: "/tmp/a.sock")), zoomed: false),
       focused: true)
     let before = recorder.requests.count
 
@@ -81,8 +81,8 @@ struct PaneActionTests {
         id: "r0", daemon: "devenv", tab: "w1:t1", keyboardPane: "w1:p1",
         tree: .split(
           axis: .columns, ratio: 0.5,
-          first: .pane(.init(paneID: "w1:p1", controlSocketPath: "/tmp/a.sock")),
-          second: .pane(.init(paneID: "w1:p2", controlSocketPath: "/tmp/b.sock"))),
+          first: .pane(.init(paneID: "w1:p1", linkSocketPath: "/tmp/a.sock")),
+          second: .pane(.init(paneID: "w1:p2", linkSocketPath: "/tmp/b.sock"))),
         zoomed: false),
       focused: true)
     let before = recorder.requests.count
@@ -132,8 +132,7 @@ struct PaneActionTests {
   @Test("a split names the side the new pane lands on")
   func aSplitAsksForASide() {
     // All four, and the shell cannot tell which of them its daemon can do in one request:
-    // herdr splits rightward and downward only, so the other two are a split and a rearrange,
-    // and that belongs in the adapter rather than in a menu item.
+    // that belongs in the core rather than in a menu item.
     let recorder = recorder()
 
     Core.split(side: "right")

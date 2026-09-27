@@ -1,18 +1,16 @@
 import AppKit
+import MusterRenderer
 import SwiftUI
 
 // The bar itself is ported from ghostty's own macOS app - `SurfaceSearchOverlay` and
 // `BackportSelectionTextField` in macos/Sources/Ghostty/Surface View/SurfaceView.swift and
 // macos/Sources/Helpers/Backport.swift, MIT, Mitchell Hashimoto and Ghostty contributors, see
-// NOTICE. The layout, the corner-snapping drag, the button style and the escape and return
-// behaviour are theirs; what is Muster's is where the numbers come from.
-//
-// **The one substitution, and it is the whole design.** In ghostty the renderer searches and
-// the bar reads its answers back through libghostty's own actions. Here a pane's surface is
-// repainted from a daemon's frames and holds no scrollback, so the renderer would be
-// searching one screen (`observations/libghostty-9f9b8d1d.md` section 10). The core searches
-// instead, and this draws what it answered - so `FindState` is filled from the seam rather
-// than from libghostty, and no view here calls into the renderer at all.
+// NOTICE. The layout, the corner-snapping drag, the button style, the escape and return
+// behaviour and the counter are theirs. So is the search: each pane's surface holds the pane's
+// own stream and history, so libghostty searches, marks and scrolls to a match exactly as it
+// does in Ghostty, and reports its counts back through the same actions. What is Muster's is
+// that the bar is opened and stepped by Muster's own keymap, and follows the keyboard between
+// panes.
 //
 // **This is the only file in `Sources/` that imports SwiftUI, and here is what that cost** -
 // worth reading before deciding a second one should. The hosting view's layer background has
@@ -25,9 +23,9 @@ import SwiftUI
 
 /// What the find bar is showing.
 ///
-/// The needle is the only thing here somebody types; everything else is the core's answer to
-/// it. Kept apart from the view so that what is on screen is a function of what the core
-/// said, which is the same rule the rest of the window follows.
+/// The needle is the only thing here somebody types; everything else is the renderer's answer
+/// to it. Kept apart from the view so that what is on screen is a function of what the
+/// renderer said, which is the same rule the rest of the window follows.
 @MainActor
 final class FindState: ObservableObject {
   @Published var needle: String = ""
@@ -36,7 +34,18 @@ final class FindState: ObservableObject {
   /// typing replaces it. Only honoured on macOS 26 and up - see `SelectableTextField`.
   @Published var selection: Range<String.Index>?
 
-  @Published var findings: Core.Findings = .none
+  /// How many matches there are, and which one is selected counting from zero. Nil is not
+  /// known yet, which is what every needle starts as.
+  @Published var total: Int?
+  @Published var selected: Int?
+
+  /// "3/47" on a match, "-/47" before one is selected, and nothing before anything is counted.
+  /// Ghostty's own counter, and a "?" where it has a place but no total yet.
+  var counter: String {
+    if let selected { return "\(selected + 1)/\(total.map(String.init) ?? "?")" }
+    if let total { return "-/\(total)" }
+    return ""
+  }
 }
 
 /// The bar drawn over a pane.
@@ -71,7 +80,7 @@ struct FindBarView: View {
           .cornerRadius(6)
           .focused($isFieldFocused)
           .overlay(alignment: .trailing) {
-            Text(counter)
+            Text(state.counter)
               .font(.caption)
               .foregroundColor(.secondary)
               .monospacedDigit()
@@ -94,14 +103,6 @@ struct FindBarView: View {
             onStep(false)
             return .handled
           }
-
-        if let caveat {
-          Text(caveat.label)
-            .font(.caption)
-            .foregroundColor(.secondary)
-            .monospacedDigit()
-            .help(caveat.detail)
-        }
 
         Button(action: { onStep(true) }) { Image(systemName: "chevron.up") }
           .buttonStyle(FindButtonStyle())
@@ -144,41 +145,6 @@ struct FindBarView: View {
               dragOffset = .zero
             }
           }
-      )
-    }
-  }
-
-  /// "3/47" while walking matches, "0/47" before anything is selected, nothing at all before
-  /// anybody has typed. Muster's own counting: the core answers with a place counting from
-  /// one and zero for none, so there is no absent case to draw a dash for.
-  private var counter: String {
-    let findings = state.findings
-    if state.needle.isEmpty { return "" }
-    return "\(findings.selected)/\(findings.total)"
-  }
-
-  /// What the count does not cover, when it does not cover everything.
-  ///
-  /// Nothing at all for a search of a whole pane, which is most of them - a caveat that
-  /// appeared every time would stop being read by the time it mattered. The two that do
-  /// appear are the reasons "0/0" can be true and misleading at once, and the help text is
-  /// where the reason a person can act on lives.
-  private var caveat: (label: String, detail: String)? {
-    guard !state.needle.isEmpty else { return nil }
-    switch state.findings.reach {
-    case .whole:
-      return nil
-    case .capped(let rowsHeld):
-      return (
-        "last \(state.findings.rowsSearched) of \(rowsHeld)",
-        "This pane holds \(rowsHeld) rows and the daemon will not hand over more than a "
-          + "thousand at a time, so only its last \(state.findings.rowsSearched) were searched."
-      )
-    case .screenOnly:
-      return (
-        "this screen",
-        "This pane keeps no history behind what is on screen, which is what a full-screen "
-          + "program leaves - so this searched the screen and there is nothing else to search."
       )
     }
   }
@@ -288,18 +254,17 @@ extension Notification.Name {
 
 /// The find bar, and the only thing outside this file that knows one exists.
 ///
-/// Owns the hosted view, the state it draws, and the sender that keeps the core answering it.
+/// Owns the hosted view and the state it draws, and drives the search of the pane it is over.
 /// Everything AppKit is here and everything SwiftUI is above, so the window deals with a
 /// hosting view exactly nowhere.
 @MainActor
 public final class FindBar {
-  private let state = FindState()
-  private let sender: FindSender
+  let state = FindState()
   private lazy var hosting: NSHostingView<FindBarView> = {
     let view = NSHostingView(
       rootView: FindBarView(
         state: state,
-        onNeedle: { [weak self] needle in self?.sender.send(needle: needle) },
+        onNeedle: { [weak self] needle in self?.typed(needle) },
         onStep: { [weak self] forward in self?.step(forward: forward) },
         onClose: { [weak self] in self?.close() },
         onReturnToPane: { [weak self] in self?.onReturnToPane?() }
@@ -314,100 +279,111 @@ public final class FindBar {
   /// is the pane is a thing only it knows.
   public var onReturnToPane: (@MainActor () -> Void)?
 
-  /// Says so when the renderer would not mark what was found.
+  /// Says so when the renderer would not search for a needle.
   ///
   /// The same shape as the window's report about font sizing, and reported the same way,
   /// because it fails the same way: the action is named by a string libghostty parses, so a
-  /// version that renamed it is a highlight that quietly stops appearing while every count
-  /// stays right.
+  /// version that renamed it is a find that quietly counts nothing.
   public var onRefused: (@MainActor ([String]) -> Void)?
 
-  /// The pane the bar is over, which is also the surface asked to mark what was found.
+  /// How long a needle shorter than `shortNeedle` waits before it is searched for.
+  ///
+  /// Ghostty's own figures. One or two characters match nearly everything in a pane's history,
+  /// and typing a longer needle passes through them on the way - so each one waits to see
+  /// whether another character follows before costing a search of the whole history.
+  static let debounce: Duration = .milliseconds(300)
+  static let shortNeedle = 3
+
+  /// The pane the bar is over, which is also the one being searched.
   ///
   /// Weak because a pane can close under an open find bar, and a bar holding the last view of
   /// a dead pane alive would keep a libghostty surface alive with it.
   private weak var chrome: PaneChrome?
 
-  /// The core this bar talks to, held as well as handed to the sender.
-  ///
-  /// A step and an end are one keypress each rather than one per character, so they go straight
-  /// rather than through the coalescing sender - and going straight used to mean going to the
-  /// process global instead of here. One view reaching the core two ways is how a test could be
-  /// handed a recorder, watch its needle arrive, and have its step answered by a different
-  /// test's core (kan a_2LMRCjcSV).
-  private let dispatcher: Dispatcher
+  /// A short needle waiting out the debounce, cancelled by whatever is typed next.
+  private var waiting: Task<Void, Never>?
 
-  public init(dispatcher: Dispatcher = Core.dispatcher) {
-    self.dispatcher = dispatcher
-    sender = FindSender(dispatcher: dispatcher)
-    sender.onFindings = { [weak self] findings in
-      self?.landed(findings)
-    }
-  }
+  public init() {}
 
   /// Shows the bar over a pane, moving it there if it was over another one.
   ///
-  /// The needle survives the move and is asked about again, because a find bar that follows
+  /// The needle survives the move and is searched for again, because a find bar that follows
   /// the keyboard to a second pane is being asked the same question about a different pane -
   /// and a counter left over from the first would be a count of matches that are not there.
   public func show(over chrome: PaneChrome) {
-    if self.chrome !== chrome {
-      // The pane being left keeps its marks otherwise, which would be two panes looking
-      // searched and one of them counted.
-      self.chrome?.surface.highlight(nil)
-      hosting.removeFromSuperview()
-      chrome.addSubview(hosting)
-      hosting.frame = chrome.bounds
-      hosting.autoresizingMask = [.width, .height]
-      self.chrome = chrome
-      if !state.needle.isEmpty {
-        sender.send(needle: state.needle)
-      }
+    guard self.chrome !== chrome else { return }
+    // The pane being left keeps its marks otherwise, which would be two panes looking searched
+    // and one of them counted.
+    leave()
+    hosting.removeFromSuperview()
+    chrome.addSubview(hosting)
+    hosting.frame = chrome.bounds
+    hosting.autoresizingMask = [.width, .height]
+    self.chrome = chrome
+    chrome.surface.onSearch = { [weak self] report in self?.apply(report) }
+    if !state.needle.isEmpty {
+      search(state.needle)
+    }
+  }
+
+  /// Takes a needle as it is typed, once per keystroke.
+  func typed(_ needle: String) {
+    waiting?.cancel()
+    waiting = nil
+    // The counts belong to the needle before this one, and would be drawn against this one
+    // until the renderer answered.
+    state.total = nil
+    state.selected = nil
+    guard !needle.isEmpty, needle.count < FindBar.shortNeedle else {
+      search(needle)
+      return
+    }
+    waiting = Task { [weak self] in
+      try? await Task.sleep(for: FindBar.debounce)
+      guard !Task.isCancelled else { return }
+      self?.search(needle)
     }
   }
 
   /// Goes to the next match, or the previous one.
   ///
-  /// Sent straight rather than through the sender, because a step is one keypress rather than
-  /// one per character - there is nothing to coalesce, and the answer is wanted now.
+  /// Nothing with no bar up: the chords work with the keyboard back in the pane, which means
+  /// they can be pressed with no bar at all.
   public func step(forward: Bool) {
-    guard isShown, let findings = Core.stepFind(forward: forward, through: dispatcher)
-    else { return }
-    landed(findings)
-  }
-
-  /// Draws what the core answered, and tells the pane's chrome if the answer moved it.
-  ///
-  /// One method for both ways an answer arrives - a needle typed, and a step - because both
-  /// land on a match and both scroll. The chrome has to be told: a landing is written onto the
-  /// pane's own channel by the core, so nothing else in this window hears about it, and a
-  /// selection made before the search would stay over text that has moved (kan a_2JrhrSBOx).
-  private func landed(_ findings: Core.Findings) {
-    state.findings = findings
-    if findings.scrolled { chrome?.paneScrolled() }
-    // Marked after the answer rather than with the request, because the core scrolls the pane
-    // onto a match as part of answering: the marks are drawn over what is on screen, and what
-    // is on screen has just changed.
-    mark()
-  }
-
-  /// Takes the bar down, and tells the core to forget what it was searching for.
-  public func close() {
-    sender.cancel()
-    chrome?.surface.highlight(nil)
-    chrome = nil
-    hosting.removeFromSuperview()
-    state.findings = .none
-    Core.endFind(through: dispatcher)
-  }
-
-  /// Asks the renderer to mark what is on screen.
-  private func mark() {
     guard let chrome else { return }
-    let refused = chrome.surface.highlight(state.needle.isEmpty ? nil : state.needle)
-    if !refused.isEmpty { onRefused?(refused) }
+    chrome.surface.navigateSearch(next: forward)
+  }
+
+  /// Takes the bar down, and ends the search with it.
+  public func close() {
+    leave()
+    hosting.removeFromSuperview()
   }
 
   /// Whether the bar is on screen. For the window and for a test; nothing else asks.
   public var isShown: Bool { chrome != nil }
+
+  private func search(_ needle: String) {
+    guard let chrome else { return }
+    let refused = chrome.surface.search(needle)
+    if !refused.isEmpty { onRefused?(refused) }
+  }
+
+  private func apply(_ report: SearchReport) {
+    switch report {
+    case .total(let total): state.total = total
+    case .selected(let selected): state.selected = selected
+    }
+  }
+
+  /// Ends the search of the pane the bar is over, and stops listening to it.
+  private func leave() {
+    waiting?.cancel()
+    waiting = nil
+    chrome?.surface.onSearch = nil
+    chrome?.surface.search(nil)
+    chrome = nil
+    state.total = nil
+    state.selected = nil
+  }
 }

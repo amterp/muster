@@ -27,21 +27,22 @@ public protocol PaneSurface: AnyObject {
   @discardableResult
   func setFontSizeOffset(_ points: Int32) -> [String]
 
-  /// Marks every occurrence of some text on this pane's screen, and `nil` clears the marks.
+  /// Searches this pane for a needle, replacing any search already running, and `nil` ends it.
   ///
-  /// The renderer's whole part in find, and it is drawing rather than searching. The core
-  /// holds the answer to "how many matches are there" - it read the pane's history from the
-  /// daemon to get it - and this asks for the ones now in view to be shown. A renderer whose
-  /// own search covered more than the screen would still be answering a narrower question
-  /// than the core's, because a surface here is repainted from a frame stream and holds no
-  /// history at all (`architecture.md`, control plane and data plane).
+  /// The renderer's whole part in find, and all of it: the surface holds the pane's history, so
+  /// it counts, marks and scrolls by itself, and reports what it found through `onSearch`.
   ///
-  /// Answers with whatever it would not do, like `setFontSizeOffset` and for the same reason:
-  /// a renderer that cannot mark text is a real answer rather than an error. What it costs is
-  /// the highlight, and the counter and the scrolling are unaffected - so this is a line for
-  /// the log rather than a throw.
+  /// Answers with whatever it would not do, like `setFontSizeOffset` and for the same reason: a
+  /// renderer that cannot search is a real answer rather than an error, so this is a line for the
+  /// log rather than a throw.
   @discardableResult
-  func highlight(_ text: String?) -> [String]
+  func search(_ needle: String?) -> [String]
+
+  /// Moves to the next match of the running search, or the previous one.
+  func navigateSearch(next: Bool)
+
+  /// Called when the running search has counted its matches or moved to one.
+  var onSearch: (@MainActor (SearchReport) -> Void)? { get set }
 
   /// Called when the command this surface is running exits, which for a pane means its
   /// bridge is gone. Settable rather than reported once, because whoever owns the surface is
@@ -54,18 +55,9 @@ public protocol PaneSurface: AnyObject {
 
   func leftMouse(pressed: Bool, modifiers: NSEvent.ModifierFlags)
 
-  /// Selects the cells between two points, or clears the selection for nil.
-  ///
-  /// The renderer's whole part in keeping a selection on its own text. A pane is scrolled by
-  /// the daemon, which repaints the screen in place, so the surface's own buffer never moves
-  /// and a selection stays on the screen rows it was made on while the text under it changes
-  /// (`observations/libghostty-9f9b8d1d.md` section 12). Muster remembers where the selection
-  /// is in the pane and asks for it again wherever it has landed.
-  ///
-  /// Points measured from this surface's top left, on the same terms as `mouseMoved`, and a
-  /// point outside the surface is asked for on purpose - it is how an end scrolled off the
-  /// screen is placed against the edge it went past. A renderer clamps it to its own grid.
-  func select(_ selection: SurfaceSelection?)
+  /// Scrolls the surface's own history, or lets it answer as the pane's modes say. Deltas are
+  /// positive right and up, and `momentum` is in libghostty's numbering.
+  func scroll(dx: Double, dy: Double, precise: Bool, momentum: UInt32)
 
   /// What is selected in this pane, or nil when nothing is.
   var selectedText: String? { get }
