@@ -12,6 +12,12 @@
       "body": "From round 4: the daemon now persists state beside its socket and writes its own log there (both single-writer under the socket's lock), so a handoff must pass both cleanly to the successor. MIP-4 notes for amterp's decisions: slot 2 suggests persisted wake tokens (CLAUDE_CODE_MESSAGING_TOKEN) are a secret at rest, and that muster-daemon report stay the implementation with muster report exec-ing it.",
       "created_at_millis": 1790492840316,
       "id": "c_2XShCxNGD"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Built in 255ae04 (MIP-3 section 10 rewritten). Stays open: the review (scratchpad round-5/review-2b.md) found a stop signal during a handoff can end every agent and unlink the successor's socket, a successor exits if it cannot send Serving after Commit, and a successor saves over a state file the old daemon had stopped writing. Fixes are the next round's first work.",
+      "created_at_millis": 1790506278152,
+      "id": "c_2XYKmtwYD"
     }
   ],
   "created_at_millis": 1790469796115,
@@ -22,7 +28,7 @@
   "position": "aj",
   "title": "Handoff: replace a running daemon without ending its panes",
   "type": "feature",
-  "updated_at_millis": 1790492840316,
+  "updated_at_millis": 1790506278152,
   "history": [
     {"field":"column","value":"backlog-hi","at":1790469796115}
   ]

@@ -1,0 +1,18 @@
+{
+  "_v": 3,
+  "alias": "carry-agent",
+  "alias_explicit": false,
+  "column": "backlog-lo",
+  "created_at_millis": 1790506278256,
+  "creator": "Alexander Terp",
+  "description": "A handoff (a_2XJ1irQcI) starts each pane's agent detection over in the new daemon, so a working agent can show as passing through detection's startup grace once. The old daemon could send each pane's detection state with its record, so the new one resumes where the old one was. Found building handoff (round 5).",
+  "id": "a_2XYKn17jq",
+  "parent": "a_2XJ1fUIyr",
+  "position": "ab",
+  "title": "Carry agent detection's state across a handoff",
+  "type": "enhancement",
+  "updated_at_millis": 1790506283238,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1790506278256}
+  ]
+}

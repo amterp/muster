@@ -5,17 +5,18 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-lo",
+  "column": "done",
   "created_at_millis": 1790486960625,
   "creator": "Alexander Terp",
   "description": "An interactive dash holding a HUP trap does not run it while a foreground loop runs, so a closed pane's process outlives the close until the loop next reads the dead tty. The daemon could follow SIGHUP with SIGKILL to the process group after a grace period. Found while running the suites under dash (./dev --linux).",
   "id": "a_2XQEFYgGe",
   "parent": "a_2XJ1fUIyr",
-  "position": "aT",
+  "position": "Zi",
   "title": "Close a pane whose shell defers SIGHUP",
   "type": "bug",
-  "updated_at_millis": 1790486960625,
+  "updated_at_millis": 1790506278023,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1790486960625}
+    {"field":"column","value":"backlog-lo","at":1790486960625},
+    {"field":"column","value":"done","at":1790506278023}
   ]
 }
