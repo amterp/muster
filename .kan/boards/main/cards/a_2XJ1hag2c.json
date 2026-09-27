@@ -7,17 +7,18 @@
     "shell",
     "testing"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "created_at_millis": 1790469795334,
   "creator": "Alexander Terp",
   "description": "MIP-3, Delivery, end of stage 1. Stage 2 moves the mirror, input, bridge and shell at once, so the assumptions most likely to be wrong should be tested before it starts: the replay in a real surface, input side effects on the surface, latency with a real bridge, and flow control over ssh.\n\nA throwaway slice, not merged into the app's code path: one pane in a real libghostty surface on `muster-daemon`, with daemon-side input (events also fed to the surface, its writes discarded), attach and detach, measured in the latency tier against the bare-PTY row. The MIP's targets: median within 0.5 ms of bare PTY, p95 within 1 ms with no second mode, one byte on the stream per echoed byte plus framing.\n\nWhat it finds goes into MIP-3 before stage 2 starts.",
   "id": "a_2XJ1hag2c",
   "parent": "a_2XJ1fUIyr",
-  "position": "ae",
+  "position": "Zm",
   "title": "Vertical slice: one real pane on muster-daemon, measured before the cut-over",
   "type": "chore",
-  "updated_at_millis": 1790469797222,
+  "updated_at_millis": 1790491693453,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1790469795334}
+    {"field":"column","value":"backlog-hi","at":1790469795334},
+    {"field":"column","value":"done","at":1790491693453}
   ]
 }

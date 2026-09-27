@@ -6,6 +6,14 @@
     "testing"
   ],
   "column": "backlog-hi",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "From the vertical slice (MIP-3 s13 History 2026-09-27): crates/muster-latency now carries the daemon rows in ./dev --latency (idle, 15 panes attached/detached, local flood, bytes per echo); every local target met (bridge glyph median 0.09 ms, p95 0.14; 1.00 surface byte per echoed byte). Rust rather than tools/latency.py, and the daemon is spawned directly until the helper app exists. Remaining here: the Launch Services launch, reattach timing, and the remote flood: over one ssh ControlMaster the second pane's echo beside a flood had p95 +4 ms (median unaffected) at load 14. Re-measure on a quiet machine once --ssh installs a commit-built daemon; if it holds, consider a smaller remote window or streams not sharing one ssh connection.",
+      "created_at_millis": 1790491693507,
+      "id": "c_2XSDNGJMc"
+    }
+  ],
   "created_at_millis": 1790469796598,
   "creator": "Alexander Terp",
   "description": "MIP-3 section 13. The goal amterp set is responsiveness equivalent to native Ghostty; this card is where that claim is measured rather than asserted.\n\n`tools/latency.py` gains a daemon driver in place of herdr's, launched through Launch Services the way the app starts it, and keeps its bare-PTY row. Targets at 1 and 15 panes: median input-to-glyph within 0.5 ms of bare PTY; p95 within 1 ms with no second mode; one byte on the stream per echoed byte plus framing; keystroke echo on a remote pane unaffected by another remote pane flooding (within 1 ms plus network time); attach-to-painted-replay against the number a_2XJ1ffNcD sets. New stages: reattach, local flood with a slow reader, remote flood.\n\n`muster-perf` gains the daemon's per-unit costs: per-byte fan-out, replay formatting per screen and per 1000 history rows, detection scan per pane.",
@@ -14,7 +22,7 @@
   "position": "am",
   "title": "Latency tier: prove muster-daemon feels like plain Ghostty",
   "type": "chore",
-  "updated_at_millis": 1790469797624,
+  "updated_at_millis": 1790491693507,
   "history": [
     {"field":"column","value":"backlog-hi","at":1790469796598}
   ]

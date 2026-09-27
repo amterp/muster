@@ -6,6 +6,14 @@
     "backend"
   ],
   "column": "backlog-hi",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "From round 4: the core must send session.set_cursor with the app's [cursor] beside the palette (the daemon derives the shell integration's prompt cursor from it); and follow each daemon's log (see the follow-log card).",
+      "created_at_millis": 1790491693615,
+      "id": "c_2XSDNRSLt"
+    }
+  ],
   "created_at_millis": 1790469795492,
   "creator": "Alexander Terp",
   "description": "MIP-3 stage 2, control plane. Lands in the same integration as a_2XJ1i5JiA and a_2XJ1iQGQ6; nothing ships with both backends.\n\n`muster-daemon-client` replaces `muster-herdr` behind the core's backend traits (`BackendChannel` at `crates/muster-core/src/intent.rs:505`, `PaneChannel`, the event vocabulary in `mirror/`), reshaped to the new protocol. The seam's composition root (`crates/muster-seam/src/session.rs`) calls about a dozen herdr functions directly today (daemon reach/start/reload/stop, the subscription loop, snapshot fetch, quit-time sizes); those move behind the client.\n\nWhat goes (MIP-3 section 14): rect-to-tree reconstruction, replay rejection and remembered removals, answer-before-broadcast settling, inferred tab closes, per-pane agent subscriptions, the name registry's backend binding, the workaround for herdr's 2 MiB cap, quit-time size hand-back, `find`/`viewport` on `BackendChannel`, `find.rs`, the scroll intent, the holding record's wait for a new tab's name, prompt polling before a command. The mirror applies events only; an answer tells the caller when its request took effect.\n\nAlso here: grouped tabs by membership on each daemon, region order and weights staying in the window arrangement, label generations (MIP-3 section 2).",
@@ -14,7 +22,7 @@
   "position": "af",
   "title": "Cut-over: the core and seam run on muster-daemon's events",
   "type": "feature",
-  "updated_at_millis": 1790469797270,
+  "updated_at_millis": 1790491693615,
   "history": [
     {"field":"column","value":"backlog-hi","at":1790469795492}
   ]

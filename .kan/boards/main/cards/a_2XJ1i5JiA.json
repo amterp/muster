@@ -14,6 +14,12 @@
       "body": "From round 2 (slot 2): the app side of the new input protocol belongs to the cut-over - PasteHeld and Paste.confirmed (the paste-confirmation dialog), and option_as_alt sent per key.",
       "created_at_millis": 1790483701106,
       "id": "c_2XOrSIcS9"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "muster-bridge already has a --daemon-socket mode over crates/muster-daemon-client (vertical slice). At the cut-over the herdr half of the bridge is deleted and that mode becomes the only one. The bridge must drain and discard what the surface writes (key encodings, query answers): the slice confirmed an undrained tty would block the surface.",
+      "created_at_millis": 1790491693672,
+      "id": "c_2XSDNXAwr"
     }
   ],
   "created_at_millis": 1790469795647,
@@ -24,7 +30,7 @@
   "position": "ag",
   "title": "Cut-over: bridge, input and surfaces on passthrough",
   "type": "feature",
-  "updated_at_millis": 1790483701106,
+  "updated_at_millis": 1790491693672,
   "history": [
     {"field":"column","value":"backlog-hi","at":1790469795647}
   ]
