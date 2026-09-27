@@ -643,6 +643,10 @@ message Pane {
   // What the agent has said about itself. Absent until it says anything, and cleared when
   // detection sees the pane's agent change or leave.
   AgentFacts facts = 8;
+  // What the pane's program said with XTSHIFTESCAPE (CSI > Ps s): true to be sent shift-clicks,
+  // false to leave them to the surface's selection. Absent while it has said nothing, when the
+  // surface's own setting decides, as Ghostty's mouse-shift-capture does.
+  optional bool shift_capture = 9;
 }
 
 // Facts an agent reports about itself (`PaneRequest.Report`), for a view to render beside its

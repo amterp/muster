@@ -368,3 +368,23 @@ fn clear_screen_away_from_a_prompt_keeps_the_cursor_row_and_tells_nobody() {
     until_some("the program to stop reading", || heard.exists().then_some(()));
     assert_eq!(std::fs::read(&heard).unwrap(), b"");
 }
+
+/// What a program says with XTSHIFTESCAPE reaches the pane's record, so the app can leave
+/// shift-clicks to the program as Ghostty would.
+#[test]
+fn xtshiftescape_is_on_the_panes_record() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    expect(&mut control, subscribe_request(), proto::Outcome::Done);
+    make(&mut control, running("p1", "t1", "printf '\\033[>1s'; sleep 30".to_string()));
+
+    let changed = events_until(&mut control, "shift capture on the record", |events| {
+        events.iter().any(|event| {
+            matches!(&event.event, Some(Payload::PaneChanged(changed))
+                if changed.pane.as_ref().is_some_and(|pane| pane.shift_capture == Some(true)))
+        })
+    });
+    assert!(!changed.is_empty());
+    let record = snapshot(&mut control).panes.into_iter().find(|pane| pane.pane == "p1").unwrap();
+    assert_eq!(record.shift_capture, Some(true));
+}

@@ -215,6 +215,20 @@ impl Terminal {
         (event, format)
     }
 
+    /// What the program said with XTSHIFTESCAPE: whether it is to be sent shift-clicks, or
+    /// None if it has said nothing.
+    pub fn mouse_shift_capture(&self) -> Option<bool> {
+        let mut capture = 0u8;
+        // SAFETY: the terminal is live for this borrow, and the output is the type muster.h
+        // documents.
+        unsafe { ffi::ghostty_terminal_mouse_shift_capture(self.handle(), &raw mut capture) };
+        match capture {
+            1 => Some(false),
+            2 => Some(true),
+            _ => None,
+        }
+    }
+
     /// The cursor's shape on the active screen.
     pub fn cursor_shape(&self) -> CursorShape {
         self.cursor_shape_of(self.active_screen())

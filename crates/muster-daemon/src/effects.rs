@@ -34,6 +34,8 @@ pub(crate) enum Happened {
     /// OSC 7's URL, as the program reported it.
     Pwd(String),
     Shown(Shown),
+    /// What the program now says with XTSHIFTESCAPE.
+    ShiftCapture(Option<bool>),
 }
 
 impl Happened {
@@ -153,6 +155,8 @@ pub(crate) enum Reported {
         agent: Option<String>,
         state: proto::AgentState,
     },
+    /// What the program says with XTSHIFTESCAPE, for the pane's record.
+    ShiftCapture(Option<bool>),
     /// Answered once every report queued before it has been applied ([`Reports::settle`]).
     Settled(Settle),
 }

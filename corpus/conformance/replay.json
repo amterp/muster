@@ -409,6 +409,18 @@
       }
     },
     {
+      "name": "a program that asked for shift-clicks",
+      "why": "XTSHIFTESCAPE says whether shift-clicks go to the program or to the surface's selection, and a surface reads it from its own terminal, so a replay that dropped it would leave a program like a file manager unable to take shift-clicks after an attach.",
+      "given": {
+        "columns": 20,
+        "rows": 4,
+        "feed": "\u001b[?1000h\u001b[?1006h\u001b[>1s"
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
       "name": "application cursor and keypad modes",
       "why": "Arrow keys encode differently in application cursor mode; a pager or an editor that set it must keep getting the encoding it asked for.",
       "given": {

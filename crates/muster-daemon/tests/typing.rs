@@ -225,6 +225,25 @@ fn a_click_is_reported_only_to_a_program_tracking_the_mouse_and_never_with_shift
     received(&plain, b"z");
 }
 
+/// A program that asked for shift-clicks with XTSHIFTESCAPE is sent them, shift and all.
+#[test]
+fn a_shift_click_reaches_a_program_that_asked_for_it() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let modes = b"\x1b[?1000h\x1b[?1006h\x1b[>1s";
+    let asked = receiving(&mut control, &daemon, "asked", modes);
+    let mut input = Input::connect(daemon.socket_path());
+    let shift = u32::from(muster_core::input::Modifiers::SHIFT.0);
+    input.send("asked", mouse(proto::MouseAction::Press, shift));
+
+    let mut encoder = mouse_encoder(&after(modes));
+    let shifted = muster_vt::MouseEvent {
+        modifiers: muster_core::input::Modifiers::SHIFT,
+        ..mouse_event(muster_vt::MouseAction::Press, muster_vt::MouseButton::Left)
+    };
+    received(&asked, &encoder.encode(&shifted).unwrap());
+}
+
 #[test]
 fn a_wheel_turn_is_arrows_to_a_pager_a_report_to_a_mouse_program_and_nothing_otherwise() {
     let daemon = daemon();

@@ -600,10 +600,12 @@ and its reports are discarded. The daemon decides from the pane's modes what the
 mouse report, arrow keys for alternate scroll when a program on the alternate screen asked for
 none (`less`, `man`, git's pager), or nothing. That is the decision Ghostty's `Surface.zig` makes,
 made once, by the side that writes, with Ghostty's counting: a discrete wheel tick is three rows,
-and a precise turn moves a row per cell height of pixels. A click with shift held is never
-reported, because shift belongs to the surface's selection under Ghostty's default
-`mouse-shift-capture`; a program that asks to capture shift (XTSHIFTESCAPE) cannot be honored,
-since the request is not readable from the headless terminal.
+and a precise turn moves a row per cell height of pixels. A click with shift held is reported
+only to a program that asked for shift-clicks with XTSHIFTESCAPE, which the carried patch reads:
+otherwise shift belongs to the surface's selection, as under Ghostty's default
+`mouse-shift-capture`. The pane's record carries what the program said, `shift_capture`, so the
+app can leave those clicks to the program rather than select with them; the replay states it too.
+The app's own `never` and `always` settings are not passed to the daemon.
 
 **Each pane has one writer thread and one queue**, carrying keystrokes, pastes, `muster pane send`
 text and query answers in order. The encoder reads a copy of the pane's input modes that the

@@ -1311,6 +1311,13 @@ impl Session {
             }
             // Answered by the publisher, never applied here.
             Reported::Settled(_) => {}
+            Reported::ShiftCapture(capture) => {
+                if record.shift_capture != capture {
+                    record.shift_capture = capture;
+                    let record = record.clone();
+                    self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
+                }
+            }
             Reported::PasteHeld(text) => {
                 self.emit(Payload::PasteHeld(proto::PasteHeld { pane: name, text }));
             }

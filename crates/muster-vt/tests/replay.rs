@@ -174,6 +174,11 @@ fn state_differences(a: &Terminal, b: &Terminal, prefix: &str) -> Vec<String> {
     );
     compare("mouse tracking", a.mouse_tracking().to_string(), b.mouse_tracking().to_string());
     compare(
+        "shift capture",
+        format!("{:?}", a.mouse_shift_capture()),
+        format!("{:?}", b.mouse_shift_capture()),
+    );
+    compare(
         "mouse mode and format in effect",
         format!("{:?}", a.mouse_in_effect()),
         format!("{:?}", b.mouse_in_effect()),

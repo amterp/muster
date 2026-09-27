@@ -110,6 +110,9 @@ impl Terminal {
         // into the scrolling region, which does not exist yet.
         self.modes(out);
         self.mouse_in_effect_statement(out);
+        if let Some(capture) = self.mouse_shift_capture() {
+            out.extend_from_slice(if capture { b"\x1b[>1s" } else { b"\x1b[>0s" });
+        }
         if alternate {
             let primary = self.cursor_shape_of(Screen::Primary);
             self.cursor_shape_statement(out, Screen::Alternate, Some(primary));

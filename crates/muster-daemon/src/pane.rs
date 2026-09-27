@@ -263,8 +263,11 @@ impl PaneIo {
     /// then the modes it left read out for the writer.
     fn output(&self, bytes: &[u8]) -> Vec<Happened> {
         let mut screen = self.screen();
-        let happened = screen.output(bytes);
-        poison::lock(&self.encoding, "daemon.pane.encoding").refresh(screen.terminal());
+        let mut happened = screen.output(bytes);
+        let mut encoding = poison::lock(&self.encoding, "daemon.pane.encoding");
+        if encoding.refresh(screen.terminal()) {
+            happened.push(Happened::ShiftCapture(encoding.shift_capture()));
+        }
         happened
     }
 
@@ -423,6 +426,9 @@ impl PaneIo {
                 }
                 Happened::Shown(shown) => {
                     reports.send(self.serial, Reported::Shown(shown));
+                }
+                Happened::ShiftCapture(capture) => {
+                    reports.send(self.serial, Reported::ShiftCapture(capture));
                 }
             }
         }

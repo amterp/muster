@@ -96,6 +96,8 @@ pub(crate) struct InputModes {
     pub(crate) cursor_keys: bool,
     pub(crate) mouse_tracking: bool,
     pub(crate) focus_events: bool,
+    /// What the program said with XTSHIFTESCAPE, None while it has said nothing.
+    pub(crate) shift_capture: Option<bool>,
 }
 
 impl InputModes {
@@ -107,6 +109,7 @@ impl InputModes {
             cursor_keys: terminal.mode(Mode::CURSOR_KEYS),
             mouse_tracking: terminal.mouse_tracking(),
             focus_events: terminal.mode(Mode::FOCUS_EVENT),
+            shift_capture: terminal.mouse_shift_capture(),
         }
     }
 }
@@ -136,10 +139,17 @@ impl Encoding {
     /// Takes the pane's modes from its terminal: the encoders' own (cursor and keypad modes,
     /// modifyOtherKeys, kitty flags, mouse tracking and format), and the ones the decisions
     /// here need.
-    pub(crate) fn refresh(&mut self, terminal: &Terminal) {
+    /// True when the refresh changed what XTSHIFTESCAPE says, which the pane's record carries.
+    pub(crate) fn refresh(&mut self, terminal: &Terminal) -> bool {
         self.key.configure_from(terminal, OptionAsAlt::Never);
         self.mouse.configure_from(terminal);
+        let before = self.modes.shift_capture;
         self.modes = InputModes::of(terminal);
+        self.modes.shift_capture != before
+    }
+
+    pub(crate) fn shift_capture(&self) -> Option<bool> {
+        self.modes.shift_capture
     }
 
     pub(crate) fn resize(&mut self, grid: Grid) {
@@ -248,15 +258,19 @@ impl Writer {
                 }
                 self.track_buttons(&event);
                 // Shift belongs to the surface's selection, as Ghostty's default
-                // `mouse-shift-capture` has it; a program cannot claim it here, since whether it
-                // asked (XTSHIFTESCAPE) is not readable.
+                // `mouse-shift-capture` has it, unless the program asked for it (XTSHIFTESCAPE).
+                let captured = modes.shift_capture == Some(true);
                 let shifted = event.modifiers.0 & Modifiers::SHIFT.0 != 0;
-                if shifted && event.action != MouseAction::Motion {
+                if shifted && !captured && event.action != MouseAction::Motion {
                     return Vec::new();
                 }
-                let event = MouseEvent {
-                    modifiers: Modifiers(event.modifiers.0 & !Modifiers::SHIFT.0),
-                    ..event
+                let event = if captured {
+                    event
+                } else {
+                    MouseEvent {
+                        modifiers: Modifiers(event.modifiers.0 & !Modifiers::SHIFT.0),
+                        ..event
+                    }
                 };
                 let geometry = encoding.geometry();
                 encoding.mouse.set_geometry(geometry);
