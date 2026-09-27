@@ -27,6 +27,7 @@ const FIRST_TRY_BYTES: usize = 128;
 pub enum EncoderError {
     CreationFailed(i32),
     EncodingFailed(i32),
+    UnknownKey(u32),
 }
 
 impl fmt::Display for EncoderError {
@@ -38,11 +39,27 @@ impl fmt::Display for EncoderError {
             EncoderError::EncodingFailed(code) => {
                 write!(f, "libghostty-vt could not encode this keystroke (result {code})")
             }
+            EncoderError::UnknownKey(code) => {
+                write!(f, "{code} is not a key this libghostty-vt knows")
+            }
         }
     }
 }
 
 impl std::error::Error for EncoderError {}
+
+/// A keystroke as libghostty numbers it: its key code and modifier bits are libghostty's own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RawKeyEvent<'a> {
+    pub action: KeyAction,
+    pub code: u32,
+    pub modifiers: u16,
+    pub consumed_modifiers: u16,
+    pub text: &'a str,
+    /// Zero when there is none.
+    pub unshifted_codepoint: u32,
+    pub composing: bool,
+}
 
 /// An encoder fixed to one set of pane modes.
 ///
@@ -102,6 +119,19 @@ impl KeyEncoder {
         }
     }
 
+    /// Whether option acts as alt, which is the app's setting rather than the pane's.
+    pub fn set_option_as_alt(&mut self, option_as_alt: OptionAsAlt) {
+        let mut option_as_alt = ghostty_option_as_alt(option_as_alt);
+        // SAFETY: the option reads one GhosttyOptionAsAlt, which libghostty copies.
+        unsafe {
+            ffi::ghostty_key_encoder_setopt(
+                self.encoder,
+                ffi::GhosttyKeyEncoderOption_GHOSTTY_KEY_ENCODER_OPT_MACOS_OPTION_AS_ALT,
+                (&raw mut option_as_alt).cast(),
+            );
+        }
+    }
+
     fn apply(&self, profile: TerminalModeProfile) {
         let mut kitty_flags = profile.kitty_flags;
         let mut cursor_keys = profile.application_cursor_keys;
@@ -151,9 +181,28 @@ impl KeyEncoder {
     /// does not report them, or a keystroke the input method has claimed. Empty is a normal
     /// answer, not a failure, and callers must not send anything for it.
     pub fn encode(&self, key: &KeyEvent) -> Result<Vec<u8>, EncoderError> {
+        self.encode_raw(&RawKeyEvent {
+            action: key.action,
+            code: ghostty_key(key.key),
+            modifiers: key.modifiers.0,
+            consumed_modifiers: key.consumed_modifiers.0,
+            text: &key.text,
+            unshifted_codepoint: key.unshifted_codepoint.map_or(0, |c| c as u32),
+            composing: key.is_composing,
+        })
+    }
+
+    /// As `encode`, for a key already numbered as libghostty numbers it - which is how a key
+    /// arrives from a surface, and so on the daemon's wire.
+    pub fn encode_raw(&self, key: &RawKeyEvent<'_>) -> Result<Vec<u8>, EncoderError> {
+        // Zig reads the code as an enum, and a value outside it is undefined behavior there
+        // rather than an error, so an unknown key never gets that far.
+        if key.code > ffi::GhosttyKey_GHOSTTY_KEY_PASTE {
+            return Err(EncoderError::UnknownKey(key.code));
+        }
         // A composing keystroke belongs to the input method. Encoding it would deliver the
         // romaji as well as the characters it composes into.
-        if key.is_composing {
+        if key.composing {
             return Ok(Vec::new());
         }
 
@@ -162,14 +211,11 @@ impl KeyEncoder {
         // borrows `text` only for the duration of the call.
         unsafe {
             ffi::ghostty_key_event_set_action(self.event, ghostty_action(key.action));
-            ffi::ghostty_key_event_set_key(self.event, ghostty_key(key.key));
-            ffi::ghostty_key_event_set_mods(self.event, key.modifiers.0);
-            ffi::ghostty_key_event_set_consumed_mods(self.event, key.consumed_modifiers.0);
+            ffi::ghostty_key_event_set_key(self.event, key.code);
+            ffi::ghostty_key_event_set_mods(self.event, key.modifiers);
+            ffi::ghostty_key_event_set_consumed_mods(self.event, key.consumed_modifiers);
             ffi::ghostty_key_event_set_composing(self.event, false);
-            ffi::ghostty_key_event_set_unshifted_codepoint(
-                self.event,
-                key.unshifted_codepoint.map_or(0, |c| c as u32),
-            );
+            ffi::ghostty_key_event_set_unshifted_codepoint(self.event, key.unshifted_codepoint);
             ffi::ghostty_key_event_set_utf8(self.event, text.as_ptr().cast(), text.len());
         }
 

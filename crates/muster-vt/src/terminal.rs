@@ -262,6 +262,37 @@ impl Terminal {
         }
     }
 
+    /// Tells the terminal the foreground, background and cursor colors the app is drawing
+    /// with. None leaves that color unset. As with the palette, a color a program set with
+    /// OSC 10, 11 or 12 keeps the program's value.
+    pub fn set_default_colors(
+        &mut self,
+        foreground: Option<Rgb>,
+        background: Option<Rgb>,
+        cursor: Option<Rgb>,
+    ) {
+        for (option, color) in [
+            (ffi::GhosttyTerminalOption_GHOSTTY_TERMINAL_OPT_COLOR_FOREGROUND, foreground),
+            (ffi::GhosttyTerminalOption_GHOSTTY_TERMINAL_OPT_COLOR_BACKGROUND, background),
+            (ffi::GhosttyTerminalOption_GHOSTTY_TERMINAL_OPT_COLOR_CURSOR, cursor),
+        ] {
+            let mut raw = color.map(Rgb::raw);
+            let value =
+                raw.as_mut().map_or(std::ptr::null_mut(), |raw| std::ptr::from_mut(raw).cast());
+            // SAFETY: each color option reads one GhosttyColorRgb, or clears on null.
+            unsafe { ffi::ghostty_terminal_set(self.terminal, option, value) };
+        }
+    }
+
+    /// The most history kept, in bytes, from now on. Lowering it drops history at once.
+    pub fn set_scrollback_bytes(&mut self, bytes: usize) -> Result<(), TerminalError> {
+        let mut bytes = bytes;
+        self.set(
+            ffi::GhosttyTerminalOption_GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_BYTES,
+            (&raw mut bytes).cast(),
+        )
+    }
+
     pub(crate) fn handle(&self) -> ffi::GhosttyTerminal {
         self.terminal
     }

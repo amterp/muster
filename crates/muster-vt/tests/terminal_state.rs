@@ -132,3 +132,34 @@ fn screen_text_counts_rows_from_the_oldest_history() {
     assert_eq!(terminal.screen_text(3, 99), "d\ne", "a range past the end stops at the end");
     assert_eq!(terminal.screen_text(9, 12), "", "a range wholly past the end is empty");
 }
+
+#[test]
+fn default_colors_are_set_and_a_programs_override_outlives_them() {
+    let red = Rgb { r: 200, g: 0, b: 0 };
+    let blue = Rgb { r: 0, g: 0, b: 200 };
+    let mut terminal = Terminal::new(20, 4).expect("libghostty-vt gives us a terminal");
+    terminal.set_default_colors(Some(red), Some(blue), None);
+    assert_eq!(terminal.foreground(), Some(red));
+    assert_eq!(terminal.background(), Some(blue));
+    assert_eq!(terminal.cursor_color(), None);
+
+    terminal.write(b"\x1b]11;rgb:00/c8/00\x1b\\");
+    terminal.set_default_colors(Some(blue), Some(red), None);
+    assert_eq!(terminal.foreground(), Some(blue));
+    assert_eq!(terminal.background(), Some(Rgb { r: 0, g: 200, b: 0 }), "the program's own");
+    assert_eq!(terminal.default_background(), Some(red));
+}
+
+#[test]
+fn lowering_scrollback_drops_history_at_once() {
+    let mut terminal = Terminal::with_options(TerminalOptions {
+        scrollback_bytes: Some(64 * 1024 * 1024),
+        ..TerminalOptions::new(80, 24)
+    })
+    .expect("libghostty-vt gives us a terminal");
+    let lines: Vec<u8> = (0..20_000).flat_map(|n| format!("line {n}\r\n").into_bytes()).collect();
+    terminal.write(&lines);
+    assert!(terminal.scrollback_rows() > 19_000);
+    terminal.set_scrollback_bytes(0).expect("the limit takes");
+    assert_eq!(terminal.scrollback_rows(), 0);
+}

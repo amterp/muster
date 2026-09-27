@@ -4,10 +4,10 @@
 //! them, which is the whole reason the daemon encodes input rather than the app guessing
 //! at a profile (MIP-3 section 6).
 
-use muster_core::input::{Key, KeyEvent, Modifiers, OptionAsAlt, TerminalModeProfile};
+use muster_core::input::{Key, KeyAction, KeyEvent, Modifiers, OptionAsAlt, TerminalModeProfile};
 use muster_vt::{
-    KeyEncoder, MouseAction, MouseButton, MouseEncoder, MouseEvent, MouseGeometry, Terminal,
-    encode_paste, paste_is_safe,
+    EncoderError, KeyEncoder, MouseAction, MouseButton, MouseEncoder, MouseEvent, MouseGeometry,
+    RawKeyEvent, Terminal, encode_paste, paste_is_safe,
 };
 
 fn terminal_after(bytes: &[u8]) -> Terminal {
@@ -33,6 +33,35 @@ fn an_arrow_follows_the_programs_cursor_key_mode() {
 fn escape_follows_the_programs_kitty_flags() {
     assert_eq!(key_from(&terminal_after(b""), Key::Escape), b"\x1b");
     assert_eq!(key_from(&terminal_after(b"\x1b[>1u"), Key::Escape), b"\x1b[27u");
+}
+
+/// libghostty's code for Escape, as a surface hands it over.
+const ESCAPE: u32 = 120;
+
+fn raw_escape(code: u32) -> RawKeyEvent<'static> {
+    RawKeyEvent {
+        action: KeyAction::Press,
+        code,
+        modifiers: 0,
+        consumed_modifiers: 0,
+        text: "",
+        unshifted_codepoint: 0,
+        composing: false,
+    }
+}
+
+#[test]
+fn a_key_numbered_as_libghostty_numbers_it_encodes_as_the_same_key() {
+    let terminal = terminal_after(b"\x1b[>1u");
+    let mut encoder =
+        KeyEncoder::new(TerminalModeProfile::default()).expect("libghostty-vt gives us an encoder");
+    encoder.configure_from(&terminal, OptionAsAlt::Never);
+    assert_eq!(encoder.encode_raw(&raw_escape(ESCAPE)), Ok(key_from(&terminal, Key::Escape)));
+    assert_eq!(
+        encoder.encode_raw(&raw_escape(100_000)),
+        Err(EncoderError::UnknownKey(100_000)),
+        "a code past the last key is refused rather than handed to libghostty"
+    );
 }
 
 fn mouse_from(terminal: &Terminal, event: MouseEvent) -> Vec<u8> {

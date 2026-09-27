@@ -21,6 +21,7 @@ impl Mode {
     pub const CURSOR_VISIBLE: Mode = Mode::dec(25);
     pub const ALT_SCREEN_LEGACY: Mode = Mode::dec(47);
     pub const KEYPAD_KEYS: Mode = Mode::dec(66);
+    pub const FOCUS_EVENT: Mode = Mode::dec(1004);
     pub const ALT_SCROLL: Mode = Mode::dec(1007);
     pub const ALT_SCREEN: Mode = Mode::dec(1047);
     pub const SAVE_CURSOR: Mode = Mode::dec(1048);
