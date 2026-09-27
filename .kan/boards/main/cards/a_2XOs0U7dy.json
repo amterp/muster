@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "muster-daemon-honor-xtshiftescape",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1790483722355,
+  "creator": "Alexander Terp",
+  "description": "A program can ask the terminal to pass shift-clicks through to it instead of using them for selection (XTSHIFTESCAPE). muster-daemon never reports shift-clicks today, because libghostty-vt's C API does not expose the flag. Needs the flag readable (a patch addition) and the surface told.",
+  "id": "a_2XOs0U7dy",
+  "parent": "a_2XJ1fUIyr",
+  "position": "aS",
+  "title": "muster-daemon: honor XTSHIFTESCAPE",
+  "type": "feature",
+  "updated_at_millis": 1790483722355,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1790483722355}
+  ]
+}

@@ -5,7 +5,7 @@
   "area": [
     "backend"
   ],
-  "column": "in-progress",
+  "column": "done",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -19,12 +19,13 @@
   "description": "MIP-3 sections 4, 6 and 7. Builds on a_2XJ1ffNcD-a_2XJ1gDR4W. This is where the daemon becomes a terminal host.\n\nOutput:\n- a reader thread per pane sends each chunk to the attached bridge first, then writes it into the headless terminal; nothing on that path waits for another pane, a request, or a replay;\n- credit flow control: the bridge acknowledges bytes written to the surface; at most a window (256 KB to start) unacknowledged per pane; a pane that falls behind is caught up with the screen only, not history;\n- attach: register the bridge at the recorded offset under the pane's lock, then send the composed replay from a_2XJ1ffNcD; format long histories from a copy outside the lock;\n- one bridge per pane; a second attach must ask for takeover or is refused, and the displaced bridge is told why;\n- kitty graphics: storage on with a small limit, file/temp-file/shm media refused.\n\nInput and replies:\n- the input connection carries structured key, mouse, focus and paste events; each pane has one writer thread and queue for keystrokes, pastes, `pane send` text and query answers, in order; the encoder reads a copy of the pane's modes updated after each chunk; a full queue drops query answers rather than blocking the reader;\n- mouse and wheel: the daemon decides from the pane's modes between a report, alternate-scroll arrows, and nothing (Ghostty's `Surface.zig:3570-3625`);\n- paste is fenced for bracketed paste; a newline-bearing paste to a pane without it is reported unsafe instead of written;\n- the daemon answers DA1/DA2, CPR, XTVERSION, size reports in cells and pixels, kitty keyboard, XTGETTCAP, OSC 4/10/11/12 from the palette the app sends (persisted for when no app is connected), and emits mode 2031 notifications on appearance change;\n- effects (title, OSC 7, bell, OSC 9/777, OSC 9;4, OSC 52 writes) become events.\n\nThe latency tier's flood and remote-flood cases (MIP-3 section 13) are the acceptance test for the flow control; they can land here or with the vertical slice.",
   "id": "a_2XJ1gZRTY",
   "parent": "a_2XJ1fUIyr",
-  "position": "Zx",
+  "position": "Zr",
   "title": "Pane streams: passthrough, credit, attach by replay, and daemon-side input",
   "type": "feature",
-  "updated_at_millis": 1790478675329,
+  "updated_at_millis": 1790483700699,
   "history": [
     {"field":"column","value":"backlog-hi","at":1790469794694},
-    {"field":"column","value":"in-progress","at":1790478675329}
+    {"field":"column","value":"in-progress","at":1790478675329},
+    {"field":"column","value":"done","at":1790483700699}
   ]
 }

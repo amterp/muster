@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "kitty-images-vanish",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1790483722463,
+  "creator": "Alexander Terp",
+  "description": "A replay carries no images, so after the app reattaches a pane, the surface has none of the pane's kitty images while the daemon's headless terminal still holds them and answers queries about their ids as present. A program that re-places an image by id then draws nothing. Found in the round-2 review of streams (round-2/review-2.md). Store size is 320 MB per screen, Ghostty's default, kept deliberately.",
+  "id": "a_2XOs0hTFh",
+  "parent": "a_2XJ1fUIyr",
+  "position": "au",
+  "title": "Kitty images vanish from the surface after reattach but the daemon still knows them",
+  "type": "bug",
+  "updated_at_millis": 1790483722463,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1790483722463}
+  ]
+}
